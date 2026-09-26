@@ -2068,10 +2068,20 @@ would bury the answer.
 
 ### One name per test
 
-The failure summary, a `test output` heading, and the selectors `--failed`
-builds all name a test the way `-only-testing` takes it, `Target/Class/method`,
-so any one of them can be pasted into a rerun. JSON carries it as `identifier`,
-next to the `test` and `target` fields.
+The failure summary, a `test output` or `test attachments` heading, and the
+selectors `--failed` builds all name a test the way `-only-testing` takes it,
+`Target/Class/method`, so any one of them can be pasted into a rerun. JSON
+carries it as `identifier`, next to the `test` and `target` fields; in `test
+attachments` the `test` field keeps the manifest's own `Class/method()`, and
+each test's directory is named after the identifier.
+
+JUnit splits the same name at its last `/`: `classname="Target.Class"` and
+`name="method"`, or `classname="Target"` for a Swift Testing function outside
+any suite. Jenkins reads a classname as `package.Class`, splitting at the last
+dot, so the target becomes the package its classes group under; GitLab shows
+the classname as the suite; the GitHub reporter actions key a test on the pair.
+The report has one `<testsuite>`, named after the scheme, so the target has to
+ride in `classname` for two targets' same-named classes to stay apart.
 
 **The target comes from the test tree.** The bundle's own identifiers start at
 the class (`AppTests/testGreeting()`), and xcodebuild rejects a selector built

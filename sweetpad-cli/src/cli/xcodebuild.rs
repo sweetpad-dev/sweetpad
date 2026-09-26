@@ -871,13 +871,19 @@ fn failed_selectors(root: &serde_json::Value) -> Vec<String> {
 /// markers name its module and its output directory names its product, and
 /// either one differs from the target once renamed.
 #[derive(Default)]
-struct TestTargets(BTreeMap<String, Vec<String>>);
+struct TestTargets {
+    by_test: BTreeMap<String, Vec<String>>,
+    /// The target under each test's `test://` URL, which stays unique where
+    /// one test identifier sits in two targets.
+    by_url: BTreeMap<String, String>,
+}
 
 impl TestTargets {
     fn from_tree(root: &serde_json::Value) -> Self {
         let mut cases = Vec::new();
         tree_cases(root, None, &mut cases);
         let mut by_test: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut by_url = BTreeMap::new();
         for case in cases {
             if let Some(target) = case.target {
                 let targets = by_test
@@ -886,9 +892,24 @@ impl TestTargets {
                 if !targets.iter().any(|t| t == target) {
                     targets.push(target.to_string());
                 }
+                if let Some(url) = case.url {
+                    by_url.insert(url.to_string(), target.to_string());
+                }
             }
         }
-        Self(by_test)
+        Self { by_test, by_url }
+    }
+
+    /// `test` (`Class/method()`, `Suite/function()`, as the result bundle
+    /// names it within its target) the way `-only-testing:` takes it, found
+    /// by its URL or else by the identifier alone. A test the tree doesn't
+    /// list keeps the bundle's name, with no target in front.
+    fn identifier(&self, test: &str, url: Option<&str>) -> String {
+        let target = url
+            .and_then(|u| self.by_url.get(u))
+            .map(String::as_str)
+            .or_else(|| self.target_of(test.trim_end_matches("()"), None));
+        test_selector(target, test, url)
     }
 
     /// The target that ran `test` (`Class/method`), whose marker named
@@ -898,7 +919,7 @@ impl TestTargets {
     /// itself, which is the target's name unless the product or module was
     /// renamed.
     fn target_of<'a>(&'a self, test: &str, module: Option<&'a str>) -> Option<&'a str> {
-        let targets = self.0.get(test).map_or(&[][..], Vec::as_slice);
+        let targets = self.by_test.get(test).map_or(&[][..], Vec::as_slice);
         let as_module =
             |target: &str| target.replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_");
         targets
@@ -967,6 +988,9 @@ fn parse_summary(out: &str) -> Result<TestSummary, CliError> {
 pub struct ExportedAttachment {
     /// The owning test, as `xcresulttool` identifies it (`Class/method()`).
     pub test: String,
+    /// The same test as `-only-testing:` takes it (`Target/Class/method`),
+    /// the name every other view of the run gives it.
+    pub identifier: String,
     pub file: PathBuf,
     pub suggested_name: String,
     /// Recorded against a test failure rather than a passing step.
@@ -983,6 +1007,8 @@ pub struct ExportedAttachment {
 #[serde(rename_all = "camelCase")]
 struct AttachmentManifestEntry {
     test_identifier: String,
+    #[serde(default, rename = "testIdentifierURL")]
+    test_identifier_url: Option<String>,
     #[serde(default)]
     attachments: Vec<ManifestAttachment>,
 }
@@ -1043,18 +1069,37 @@ pub fn export_attachments(
             manifest.display()
         ))
     })?;
-    let entries: Vec<AttachmentManifestEntry> = serde_json::from_str(&manifest_json)
+    // The manifest names a test from its class on, like the rest of the
+    // bundle; the tree adds the target. When it can't be read, a test is
+    // named without one and its files are exported all the same.
+    let targets = test_tree(bundle)
+        .map(|root| TestTargets::from_tree(&root))
+        .unwrap_or_default();
+    parse_attachment_manifest(&manifest_json, staging, &targets)
+}
+
+/// Flatten an attachment manifest to one entry per file, each test named by
+/// the target `targets` puts it under.
+fn parse_attachment_manifest(
+    manifest_json: &str,
+    staging: &Path,
+    targets: &TestTargets,
+) -> Result<Vec<ExportedAttachment>, CliError> {
+    let entries: Vec<AttachmentManifestEntry> = serde_json::from_str(manifest_json)
         .map_err(|e| CliError::new(format!("parsing the attachment manifest: {e}")))?;
 
     Ok(entries
         .into_iter()
         .flat_map(|entry| {
+            let identifier =
+                targets.identifier(&entry.test_identifier, entry.test_identifier_url.as_deref());
             let test = entry.test_identifier;
             entry
                 .attachments
                 .into_iter()
                 .map(move |a| ExportedAttachment {
                     test: test.clone(),
+                    identifier: identifier.clone(),
                     file: staging.join(&a.exported_file_name),
                     suggested_name: if a.suggested_human_readable_name.is_empty() {
                         a.exported_file_name
@@ -2239,6 +2284,78 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             ..TestFailure::default()
         };
         assert_eq!(failure.selector(), "AppTests/testSignIn");
+    }
+
+    #[test]
+    fn an_attachment_is_filed_under_the_name_a_rerun_takes() {
+        // The manifest's `testIdentifier` starts at the class, like the rest
+        // of the bundle; its URL finds the test in the tree, which adds the
+        // target. Trimmed from an export of the same run as [`TREE`].
+        let manifest = r#"[
+          { "testIdentifier": "AppTests/testGreeting()",
+            "testIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/AppTests/testGreeting",
+            "attachments": [ { "exportedFileName": "FC88EDEC.txt",
+              "suggestedHumanReadableName": "greeting-note_0_01AF03AA-6BD7-4522-9FFF-BEAA0B4D2F0D.txt",
+              "isAssociatedWithFailure": false, "timestamp": 1790441857.045 } ] },
+          { "testIdentifier": "GreetingSuite/suiteGreeting()",
+            "testIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite/suiteGreeting()",
+            "attachments": [ { "exportedFileName": "8B93D9DB.txt", "timestamp": 1790441857.306 } ] },
+          { "testIdentifier": "AppUITests/testLaunchShowsNothing()",
+            "attachments": [ { "exportedFileName": "B21A126E.mp4", "timestamp": 1790441864.451 } ] },
+          { "testIdentifier": "Gone/testElsewhere()",
+            "attachments": [ { "exportedFileName": "0A8B57AD.txt", "timestamp": 1790441879.133 } ] }
+        ]"#;
+        let staging = Path::new("/staging");
+        let exported =
+            parse_attachment_manifest(manifest, staging, &TestTargets::from_tree(&tree())).unwrap();
+        let names: Vec<(&str, &str)> = exported
+            .iter()
+            .map(|a| (a.test.as_str(), a.identifier.as_str()))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                (
+                    "AppTests/testGreeting()",
+                    "SweetpadCIAppTests/AppTests/testGreeting"
+                ),
+                (
+                    "GreetingSuite/suiteGreeting()",
+                    "SweetpadCIAppTests/GreetingSuite/suiteGreeting()"
+                ),
+                // An entry without a URL is found by its identifier alone.
+                (
+                    "AppUITests/testLaunchShowsNothing()",
+                    "SweetpadCIAppUITests/AppUITests/testLaunchShowsNothing"
+                ),
+                // One the tree doesn't list keeps the bundle's own name.
+                ("Gone/testElsewhere()", "Gone/testElsewhere"),
+            ]
+        );
+        assert_eq!(exported[0].file, staging.join("FC88EDEC.txt"));
+        assert_eq!(
+            exported[0].suggested_name,
+            "greeting-note_0_01AF03AA-6BD7-4522-9FFF-BEAA0B4D2F0D.txt"
+        );
+        // An attachment the test gave no name to keeps the exported one.
+        assert_eq!(exported[1].suggested_name, "8B93D9DB.txt");
+    }
+
+    #[test]
+    fn a_url_tells_apart_one_test_in_two_targets() {
+        let targets = TestTargets::from_tree(&serde_json::json!({ "testNodes": [
+            { "name": "AppTests", "nodeType": "Unit test bundle", "children": [
+                { "name": "t()", "nodeIdentifier": "Shared/t()", "nodeIdentifierURL": "test://p/AppTests/Shared/t", "nodeType": "Test Case" }
+            ] },
+            { "name": "AppIntegrationTests", "nodeType": "Unit test bundle", "children": [
+                { "name": "t()", "nodeIdentifier": "Shared/t()", "nodeIdentifierURL": "test://p/AppIntegrationTests/Shared/t", "nodeType": "Test Case" }
+            ] }
+        ] }));
+        assert_eq!(
+            targets.identifier("Shared/t()", Some("test://p/AppIntegrationTests/Shared/t")),
+            "AppIntegrationTests/Shared/t"
+        );
+        assert_eq!(targets.identifier("Shared/t()", None), "AppTests/Shared/t");
     }
 
     /// The fixture's own test process stream, from the same run as [`TREE`].

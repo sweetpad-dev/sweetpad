@@ -748,7 +748,10 @@ struct AttachmentsReport {
 }
 
 struct TestAttachments {
+    /// As the manifest names it (`Class/method()`).
     test: String,
+    /// As `-only-testing` takes it (`Target/Class/method`).
+    identifier: String,
     files: Vec<ExportedFile>,
 }
 
@@ -779,7 +782,7 @@ impl Render for AttachmentsReport {
             if self.tests.len() == 1 { "" } else { "s" }
         ));
         for test in &self.tests {
-            out.line(&format!("  {}", test.test));
+            out.line(&format!("  {}", test.identifier));
             for file in &test.files {
                 out.line(&format!(
                     "    {}{}",
@@ -813,7 +816,11 @@ impl Render for AttachmentsReport {
                         })
                     })
                     .collect();
-                serde_json::json!({ "test": t.test, "attachments": files })
+                serde_json::json!({
+                    "test": t.test,
+                    "identifier": t.identifier,
+                    "attachments": files,
+                })
             })
             .collect();
         serde_json::json!({
@@ -864,23 +871,23 @@ fn attachments(ctx: &mut Context, args: &TestArgs, opts: &AttachmentsArgs) -> Co
         // Read off the full set before filtering: what a failed match needs to
         // report is already here, and re-exporting to recover it would both
         // cost a second xcresulttool run and strand its files on the way out.
-        let classes = classes_with_attachments(&exported);
+        let tests = tests_with_attachments(&exported);
         exported.retain(|a| {
             args.only_testing
                 .iter()
-                .any(|sel| selector_matches(sel, &a.test))
+                .any(|sel| selector_matches(sel, &a.identifier) || selector_matches(sel, &a.test))
         });
         if exported.is_empty() && found_any {
             let _ = std::fs::remove_dir_all(&staging);
-            return Err(no_selector_match(&classes, &args.only_testing));
+            return Err(no_selector_match(&tests, &args.only_testing));
         }
     }
 
     // The run order is the timestamp order: the manifest lists a test's
     // attachments in neither the order they were taken nor a stable one.
     exported.sort_by(|a, b| {
-        a.test
-            .cmp(&b.test)
+        a.identifier
+            .cmp(&b.identifier)
             .then(a.timestamp.total_cmp(&b.timestamp))
     });
 
@@ -918,7 +925,7 @@ fn rename_into_place(
 ) -> Result<Vec<TestAttachments>, CliError> {
     let mut tests: Vec<TestAttachments> = Vec::new();
     for item in exported {
-        let dir = output_dir.join(test_dir_name(&item.test));
+        let dir = output_dir.join(test_dir_name(&item.identifier));
         std::fs::create_dir_all(&dir)
             .map_err(|e| CliError::new(format!("failed to create {}: {e}", dir.display())))?;
         let path = unique_path(&dir, &clean_name(&item.suggested_name));
@@ -937,9 +944,10 @@ fn rename_into_place(
             timestamp: item.timestamp,
         };
         match tests.last_mut() {
-            Some(last) if last.test == item.test => last.files.push(file),
+            Some(last) if last.identifier == item.identifier => last.files.push(file),
             _ => tests.push(TestAttachments {
                 test: item.test,
+                identifier: item.identifier,
                 files: vec![file],
             }),
         }
@@ -1196,38 +1204,24 @@ fn empty_note(only_failures: bool) -> String {
     }
 }
 
-/// The distinct classes an export covers, which is what a failed `--only-testing`
+/// The distinct tests an export covers, which is what a failed `--only-testing`
 /// match needs to name.
-fn classes_with_attachments(exported: &[xcodebuild::ExportedAttachment]) -> Vec<String> {
-    let mut classes: Vec<String> = exported
-        .iter()
-        .map(|a| {
-            a.test
-                .split_once('/')
-                .map_or_else(|| a.test.clone(), |(class, _)| class.to_string())
-        })
-        .collect();
-    classes.sort();
-    classes.dedup();
-    classes
+fn tests_with_attachments(exported: &[xcodebuild::ExportedAttachment]) -> Vec<String> {
+    let mut tests: Vec<String> = exported.iter().map(|a| a.identifier.clone()).collect();
+    tests.sort();
+    tests.dedup();
+    tests
 }
 
-/// `--only-testing` matched nothing. A selector naming a *target* is the usual
-/// cause — the manifest knows tests by class — so the classes that do have
-/// attachments are the correction, and they are far shorter than the full
-/// identifier list.
-fn no_selector_match(classes: &[String], selectors: &[String]) -> CliError {
-    let known = match classes.len() {
-        0 => String::new(),
-        n if n > 5 => format!(
-            "; classes with attachments: {}, and {} more",
-            classes[..5].join(", "),
-            n - 5
-        ),
-        _ => format!("; classes with attachments: {}", classes.join(", ")),
+/// `--only-testing` matched none of the tests that attached anything, so those
+/// are named instead, in the form the selector takes.
+fn no_selector_match(tests: &[String], selectors: &[String]) -> CliError {
+    let known = match tests.len() {
+        n if n > 5 => format!("{}, and {} more", tests[..5].join(", "), n - 5),
+        _ => tests.join(", "),
     };
     CliError::new(format!(
-        "no attachments matched {} — a test here is identified by class, not target{known}",
+        "no attachments matched {}; tests with attachments: {known}",
         selectors.join(", ")
     ))
 }
@@ -1257,7 +1251,7 @@ fn selector_matches(selector: &str, identifier: &str) -> bool {
 }
 
 /// The directory one test's attachments land in: its identifier as a single
-/// path component, with the `()` that XCTest identifiers carry trimmed.
+/// path component, with a trailing `()` trimmed.
 fn test_dir_name(identifier: &str) -> String {
     let name: String = identifier
         .trim_end_matches("()")
@@ -1400,11 +1394,13 @@ fn write_junit(
         summary.skipped_tests
     );
     for f in &summary.test_failures {
+        let selector = f.selector();
+        let (classname, name) = junit_names(&selector, scheme);
         let _ = writeln!(
             xml,
             "    <testcase classname=\"{}\" name=\"{}\">\n      <failure message=\"{}\"/>\n    </testcase>",
-            xml_escape(&f.target_name),
-            xml_escape(&f.test_name),
+            xml_escape(&classname),
+            xml_escape(name),
             xml_escape(&f.failure_text)
         );
     }
@@ -1414,6 +1410,19 @@ fn write_junit(
     }
     std::fs::write(path, xml)
         .map_err(|e| CliError::new(format!("failed to write {}: {e}", path.display())))
+}
+
+/// A test's JUnit `classname` and `name`, cut from its `-only-testing`
+/// selector at the last `/`: `Target.Class` and `method`, or the target alone
+/// for a Swift Testing function outside any suite. Report viewers read
+/// `classname` as a dotted `package.Class` (Jenkins groups by the part before
+/// the last dot), so each target groups its own classes. A selector with no
+/// `/` in it takes the scheme as its class.
+fn junit_names<'a>(selector: &'a str, scheme: &str) -> (String, &'a str) {
+    match selector.rsplit_once('/') {
+        Some((class, name)) => (class.replace('/', "."), name),
+        None => (scheme.to_string(), selector),
+    }
 }
 
 fn xml_escape(s: &str) -> String {
@@ -1732,8 +1741,12 @@ mod tests {
     #[test]
     fn a_test_identifier_becomes_one_directory_component() {
         assert_eq!(
-            test_dir_name("ReflowUITests/testOpensAPDF()"),
-            "ReflowUITests.testOpensAPDF"
+            test_dir_name("ReflowUITests/OpenTests/testOpensAPDF"),
+            "ReflowUITests.OpenTests.testOpensAPDF"
+        );
+        assert_eq!(
+            test_dir_name("ReflowTests/PageSuite/reflows()"),
+            "ReflowTests.PageSuite.reflows"
         );
         // A separator inside the name must never escape into a nested path,
         // and a name that sanitizes away still needs somewhere to land.
@@ -1760,6 +1773,52 @@ mod tests {
         );
         assert_eq!(std::fs::read(&first).unwrap(), b"a");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn attachments_name_each_test_the_way_a_rerun_takes_it() {
+        // The heading is what `--only-testing` takes, and the JSON keeps the
+        // manifest's own name under `test` beside it.
+        let report = AttachmentsReport {
+            output_dir: PathBuf::from("/out"),
+            tests: vec![TestAttachments {
+                test: "AppTests/testGreeting()".into(),
+                identifier: "SweetpadCIAppTests/AppTests/testGreeting".into(),
+                files: vec![ExportedFile {
+                    name: "greeting-note.txt".into(),
+                    path: PathBuf::from(
+                        "/out/SweetpadCIAppTests.AppTests.testGreeting/greeting-note.txt",
+                    ),
+                    failure: false,
+                    timestamp: 1.0,
+                }],
+            }],
+            recorded_at: None,
+            note: None,
+        };
+        let json = report.json();
+        assert_eq!(json["tests"][0]["test"], "AppTests/testGreeting()");
+        assert_eq!(
+            json["tests"][0]["identifier"],
+            "SweetpadCIAppTests/AppTests/testGreeting"
+        );
+    }
+
+    #[test]
+    fn a_selector_matching_no_attachments_names_the_tests_that_have_some() {
+        let message = no_selector_match(
+            &["SweetpadCIAppTests/AppTests/testGreeting".to_string()],
+            &["SweetpadCIAppUITests".to_string()],
+        )
+        .to_string();
+        assert_eq!(
+            message,
+            "no attachments matched SweetpadCIAppUITests; tests with attachments: \
+             SweetpadCIAppTests/AppTests/testGreeting"
+        );
+        let many: Vec<String> = (0..8).map(|i| format!("T/C/test{i}")).collect();
+        let message = no_selector_match(&many, &["X".to_string()]).to_string();
+        assert!(message.contains("and 3 more"), "{message}");
     }
 
     #[test]
@@ -1813,14 +1872,16 @@ mod tests {
         // rename fails and the loop gives up with one file already moved.
         let exported = vec![
             xcodebuild::ExportedAttachment {
-                test: "AppTests/testOne()".into(),
+                test: "ATests/testOne()".into(),
+                identifier: "AppTests/ATests/testOne".into(),
                 file: staging.join("aaaa"),
                 suggested_name: "shot.png".into(),
                 failure: false,
                 timestamp: 1.0,
             },
             xcodebuild::ExportedAttachment {
-                test: "AppTests/testTwo()".into(),
+                test: "ATests/testTwo()".into(),
+                identifier: "AppTests/ATests/testTwo".into(),
                 file: staging.join("missing"),
                 suggested_name: "gone.png".into(),
                 failure: false,
@@ -1837,7 +1898,11 @@ mod tests {
         // directory — the cleanup sat below the `?`.
         assert!(staging.exists(), "the caller was given nothing to clean up");
         // The file that did move is where it was put, under its test's name.
-        assert!(root.join("AppTests.testOne").join("shot.png").exists());
+        assert!(
+            root.join("AppTests.ATests.testOne")
+                .join("shot.png")
+                .exists()
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -2084,6 +2149,32 @@ mod tests {
     }
 
     #[test]
+    fn junit_names_a_test_by_its_target_class_and_method() {
+        // `classname` is `Target.Class`, which report viewers split into a
+        // package and a class, and `name` is the method as a rerun takes it.
+        assert_eq!(
+            junit_names("SweetpadCIAppTests/AppTests/testGreeting", "App"),
+            ("SweetpadCIAppTests.AppTests".to_string(), "testGreeting")
+        );
+        assert_eq!(
+            junit_names("SweetpadCIAppTests/GreetingSuite/Nested/inner()", "App"),
+            (
+                "SweetpadCIAppTests.GreetingSuite.Nested".to_string(),
+                "inner()"
+            )
+        );
+        // A Swift Testing function outside any suite has only its target.
+        assert_eq!(
+            junit_names("SweetpadCIAppTests/freeGreeting()", "App"),
+            ("SweetpadCIAppTests".to_string(), "freeGreeting()")
+        );
+        assert_eq!(
+            junit_names("testSignIn", "App"),
+            ("App".to_string(), "testSignIn")
+        );
+    }
+
+    #[test]
     fn junit_report_escapes_and_counts() {
         let dir = std::env::temp_dir().join(format!("sweetpad-junit-{}", std::process::id()));
         let path = dir.join("r.xml");
@@ -2104,7 +2195,10 @@ mod tests {
         write_junit(&path, "App", &summary).unwrap();
         let xml = std::fs::read_to_string(&path).unwrap();
         assert!(xml.contains("tests=\"3\" failures=\"1\""));
-        assert!(xml.contains("name=\"testA&lt;&gt;()\""));
+        assert!(
+            xml.contains("<testcase classname=\"AppTests.Suite\" name=\"testA&lt;&gt;\">"),
+            "{xml}"
+        );
         assert!(xml.contains("x &amp; y &quot;broke&quot;"));
         std::fs::remove_dir_all(&dir).unwrap();
     }

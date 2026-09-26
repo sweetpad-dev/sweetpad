@@ -164,7 +164,8 @@ sweetpad test attachments --output-dir ./out   # somewhere you choose
 ```
 
 Without `--output-dir` the files land beside the retained result bundle, replacing the previous
-export.
+export. Each test gets its own directory, and the listing names tests in the same
+`Target/Class/method` form as the failure lines, so `--only-testing` takes any of them.
 
 ## Tests in CI
 
@@ -176,6 +177,10 @@ displays test results with:
 ```bash
 sweetpad test --junit ./reports/tests.xml
 ```
+
+Each failing test's `classname` is `Target.Class` and its `name` is the method, as in
+`classname="SweetpadCIAppTests.AppTests" name="testGreeting"`, so report viewers group the tests by
+target and then by class.
 
 **Inline annotations on GitHub.** `--gh-annotations` emits GitHub Actions annotations, so failures
 show up on the diff instead of only in the log:
