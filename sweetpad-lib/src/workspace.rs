@@ -95,9 +95,22 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 /// Open a `.xcworkspace` directory and extract referenced projects + schemes.
+///
+/// A project's embedded workspace (`Foo.xcodeproj/project.xcworkspace`) with
+/// no `contents.xcworkspacedata` stands for the project around it, as the
+/// `self:` reference Xcode writes there would: `xcodebuild -list -workspace`
+/// lists that project's schemes for one. A checkout that commits the embedded
+/// workspace's `xcuserdata` but not its contents has exactly that.
 pub fn open(workspace_path: &Path) -> Result<Workspace, Error> {
     let contents = workspace_path.join("contents.xcworkspacedata");
-    let root = xcscheme::parse_file(&contents)?;
+    let root = match xcscheme::parse_file(&contents) {
+        Err(xcscheme::Error::Io(e))
+            if e.kind() == io::ErrorKind::NotFound && is_embedded(workspace_path) =>
+        {
+            xcscheme::parse(EMBEDDED_CONTENTS).map_err(xcscheme::Error::from)?
+        }
+        parsed => parsed?,
+    };
     if root.name != "Workspace" {
         return Err(Error::BadWorkspace(format!(
             "expected root <Workspace>, got <{}>",
@@ -137,6 +150,21 @@ pub fn open(workspace_path: &Path) -> Result<Workspace, Error> {
         package_refs,
         schemes,
     })
+}
+
+/// What Xcode writes into a project's embedded workspace: the project itself.
+const EMBEDDED_CONTENTS: &str =
+    "<Workspace version = \"1.0\"><FileRef location = \"self:\"></FileRef></Workspace>";
+
+/// Whether `workspace_path` is an existing `project.xcworkspace` inside a
+/// `.xcodeproj` bundle.
+fn is_embedded(workspace_path: &Path) -> bool {
+    workspace_path.file_name() == Some(OsStr::new("project.xcworkspace"))
+        && workspace_path.is_dir()
+        && workspace_path
+            .parent()
+            .and_then(Path::extension)
+            .is_some_and(|e| e == "xcodeproj")
 }
 
 impl Workspace {
@@ -818,6 +846,29 @@ mod tests {
         let ws = open(&ws_path).unwrap();
         assert_eq!(ws.project_for_scheme("Scratch"), Some(proj.as_path()));
         assert_eq!(ws.project_for_scheme("NotATarget"), None);
+    }
+
+    /// A checkout holding the embedded workspace's `xcuserdata` but not its
+    /// `contents.xcworkspacedata` (issue #339) still names the project.
+    #[test]
+    fn an_embedded_workspace_without_contents_is_its_project() {
+        let (ws_path, proj) = scratch_workspace("embedded-stub");
+        let embedded = proj.join("project.xcworkspace");
+        fs::create_dir_all(embedded.join("xcuserdata/me.xcuserdatad")).unwrap();
+        let ws = open(&embedded).unwrap();
+        assert_eq!(ws.project_refs, [proj]);
+        assert_eq!(
+            ws.merged_schemes(),
+            open(&ws_path).unwrap().merged_schemes()
+        );
+        assert!(!ws.merged_schemes().is_empty());
+
+        // A missing contents file still fails where the bundle isn't a
+        // project's embedded workspace, or doesn't exist at all.
+        fs::remove_file(ws_path.join("contents.xcworkspacedata")).unwrap();
+        assert!(matches!(open(&ws_path), Err(Error::Parse(_))));
+        fs::remove_dir_all(&embedded).unwrap();
+        assert!(open(&embedded).is_err());
     }
 
     #[test]
