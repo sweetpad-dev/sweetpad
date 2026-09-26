@@ -1263,7 +1263,11 @@ Four more the Xcode 27 capture hit, all fixed in the repo:
   symlink beside it is enough and needs no sudo, but then `xcodebuild` reports
   paths through the *real* app name while the resolver uses the symlinked one;
   `canon_path_token` now splits a `-L`/`-I`/`-F`/`-isystem` prefix off a token
-  before canonicalizing, which is what made `OTHER_LDFLAGS` agree.
+  before canonicalizing, which is what made `OTHER_LDFLAGS` agree. That split
+  is for the oracle. When resolving against a live Xcode, `xcode::locate`
+  canonicalizes the install, so a symlinked `DEVELOPER_DIR` resolves through
+  the real app name as `xcodebuild` does, and both spellings share one catalog
+  cache file.
 - **`01_clone_corpus.py` re-resolves `latest-release`** whenever a clone is
   missing, so re-materialising the corpus for a new version silently moves the
   pins. Use **`--from-manifest`** to clone each project at its recorded SHA.

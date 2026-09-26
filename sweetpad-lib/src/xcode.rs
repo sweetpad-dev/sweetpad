@@ -134,7 +134,8 @@ pub fn flush_caches() {
 
 /// Spec + SDK roots discovered inside one Xcode install, so a `build-settings`
 /// run can resolve against a *specific* Xcode (via `--xcode`) instead of the
-/// catalog baked into the binary.
+/// catalog baked into the binary. [`locate`] spells every root through the
+/// install's canonical path, whichever spelling it was given.
 #[derive(Debug, Clone)]
 pub struct XcodeLayout {
     /// `…/Xcode.app/Contents/Developer` — feeds `DEVELOPER_DIR`.
@@ -153,7 +154,9 @@ pub struct XcodeLayout {
 impl XcodeLayout {
     /// A stable identity for cache validation: the build + short version and
     /// the install path. Cheaper and more robust than stat-ing every spec —
-    /// the specs are a pure function of which Xcode this is.
+    /// the specs are a pure function of which Xcode this is. The path is the
+    /// canonical one the cache file is named from, so two spellings of one
+    /// Xcode share a cache file and agree on what it holds.
     #[must_use]
     pub fn cache_key(&self) -> String {
         format!(
@@ -179,7 +182,8 @@ fn layout_cache() -> MutexGuard<'static, HashMap<PathBuf, XcodeLayout>> {
 ///
 /// Accepts an `Xcode.app`, its `Contents`, or a `Contents/Developer`
 /// (`DEVELOPER_DIR`) — the `Contents` dir holding both `SharedFrameworks` (where
-/// the xcspecs live) and `Developer` is the anchor we search for.
+/// the xcspecs live) and `Developer` is the anchor we search for. The layout
+/// is spelled through that dir's canonical path.
 ///
 /// Cached: a second call for the same path returns the stored layout without
 /// re-reading `version.plist`.
@@ -206,6 +210,11 @@ fn locate_uncached(xcode_path: &Path) -> Result<XcodeLayout, String> {
             xcode_path.display()
         )
     })?;
+    // Every spelling of one install (an `Xcode-27.0.0.app` symlink to
+    // `Xcode.app`, say) resolves to the same roots: xcodebuild reports
+    // DEVELOPER_DIR and SDKROOT through the resolved path too, and the catalog
+    // cache names its file from these roots and validates it by `cache_key`.
+    let contents = std::fs::canonicalize(&contents).unwrap_or(contents);
 
     let developer_dir = contents.join("Developer");
     let (short_version, build_version) = read_version_plist(&developer_dir);
@@ -307,16 +316,15 @@ mod tests {
              <key>ProductBuildVersion</key><string>17F6</string></dict></plist>",
         )
         .unwrap();
+        // The temp dir itself may sit behind a symlink (`/var` on macOS).
+        let real = std::fs::canonicalize(&contents).unwrap();
 
         for entry in [&app, &contents, &contents.join("Developer")] {
             let layout =
                 locate(entry).unwrap_or_else(|e| panic!("locate {}: {e}", entry.display()));
-            assert_eq!(layout.developer_dir, contents.join("Developer"));
-            assert_eq!(layout.xcspec_root, contents.join("SharedFrameworks"));
-            assert_eq!(
-                layout.sdksettings_root,
-                contents.join("Developer/Platforms")
-            );
+            assert_eq!(layout.developer_dir, real.join("Developer"));
+            assert_eq!(layout.xcspec_root, real.join("SharedFrameworks"));
+            assert_eq!(layout.sdksettings_root, real.join("Developer/Platforms"));
             assert_eq!(layout.short_version, "26.5");
             assert_eq!(layout.build_version, "17F6");
         }
@@ -325,6 +333,37 @@ mod tests {
             locate(&root).is_err(),
             "bare dir without Contents should fail"
         );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_symlinked_spelling_locates_the_same_install() {
+        // `/Applications/Xcode-27.0.0.app` pointing at `Xcode.app`: one
+        // install, so one layout and one catalog cache key for both.
+        let root = std::env::temp_dir().join(format!("sweetpad-xcode-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let contents = root.join("Xcode.app/Contents");
+        std::fs::create_dir_all(contents.join("SharedFrameworks")).unwrap();
+        std::fs::create_dir_all(contents.join("Developer/Platforms")).unwrap();
+        std::fs::write(
+            contents.join("version.plist"),
+            "<plist><dict><key>CFBundleShortVersionString</key><string>27.0</string>\
+             <key>ProductBuildVersion</key><string>18A5</string></dict></plist>",
+        )
+        .unwrap();
+        let link = root.join("Xcode-27.0.0.app");
+        std::os::unix::fs::symlink(root.join("Xcode.app"), &link).unwrap();
+
+        let real = locate(&contents.join("Developer")).unwrap();
+        let linked = locate(&link.join("Contents/Developer")).unwrap();
+        assert_eq!(
+            linked.developer_dir,
+            std::fs::canonicalize(contents.join("Developer")).unwrap()
+        );
+        assert_eq!(linked.developer_dir, real.developer_dir);
+        assert_eq!(linked.xcspec_root, real.xcspec_root);
+        assert_eq!(linked.sdksettings_root, real.sdksettings_root);
+        assert_eq!(linked.cache_key(), real.cache_key());
         std::fs::remove_dir_all(&root).ok();
     }
 
