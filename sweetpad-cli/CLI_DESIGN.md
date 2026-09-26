@@ -3134,7 +3134,15 @@ scratch copies only, never a tracked file. The simulator it boots and erases
 is one it creates for the run and deletes on exit, or the one
 `SWEETPAD_SMOKE_DEST` names (`platform=iOS Simulator,id=<UDID>`); it never
 picks a shared simulator on its own. On exit it also purges the DerivedData
-its scratch projects built into.
+its scratch projects built into. It points `XDG_STATE_HOME`, `XDG_CONFIG_HOME`
+and `XDG_CACHE_HOME` at a directory of its own for the run and removes that
+too, so it reads none of the user's config and writes none of their state.
+Runs from two checkouts can go at once: each builds into its own DerivedData,
+the CLI finds a running macOS app by its executable path, and the macOS app
+the script scaffolds takes a per-run bundle id. The committed fixture's
+`dev.sweetpad.ci.mac` is shared, which is what macOS keys the app's
+preferences and `app logs --exits` its exit records on. Two runs from one
+checkout share its DerivedData, so they go one at a time.
 
 ## 11. Build-log beautifier
 

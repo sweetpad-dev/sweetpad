@@ -14,6 +14,17 @@
 # ('platform=iOS Simulator,id=<UDID>'); that simulator is erased at teardown
 # too. Without it the script makes a simulator for the run, modelled on the
 # first iOS simulator 'destination list' reports, and deletes it on exit.
+# sweetpad's state, config and caches (XDG_STATE_HOME, XDG_CONFIG_HOME,
+# XDG_CACHE_HOME) live in a directory the run makes and removes, so the run
+# reads none of your config and leaves no remembered context behind.
+#
+# Runs from two checkouts can share a Mac. Each builds into its own
+# DerivedData, and the CLI finds a running macOS app by its executable path,
+# so neither stops the other's app. The macOS app a run scaffolds gets a
+# bundle id of its own, but the committed fixture's, dev.sweetpad.ci.mac, is
+# the same in every run: macOS keys the app's preferences and saved state on
+# it, and 'app logs --exits' looks its exits up by it. Two runs from one
+# checkout also share its DerivedData, so run those one at a time.
 set -euo pipefail
 
 BIN="${SWEETPAD_BIN:?set SWEETPAD_BIN to the sweetpad binary}"
@@ -22,10 +33,15 @@ APP_DIR="$ROOT/fixture-app"
 SPM_DIR="$ROOT/fixture-spm"
 APP="$APP_DIR/SweetpadCIApp.xcodeproj"
 
+XDG_DIR="$(mktemp -d)"
+export XDG_STATE_HOME="$XDG_DIR/state" XDG_CONFIG_HOME="$XDG_DIR/config" \
+  XDG_CACHE_HOME="$XDG_DIR/cache"
+
 # Whatever the run makes outside the repo goes when it ends, pass or fail: the
 # simulator it created, the DerivedData its scratch projects built into (a
-# project-scoped purge takes only that project's own folder), and the scratch
-# directories. A simulator from SWEETPAD_SMOKE_DEST is the caller's and stays.
+# project-scoped purge takes only that project's own folder), the scratch
+# directories, and the XDG directory last, since the purges run the CLI. A
+# simulator from SWEETPAD_SMOKE_DEST is the caller's and stays.
 CREATED_SIM=""
 cleanup() {
   local rc=$?
@@ -39,7 +55,7 @@ cleanup() {
       "$BIN" derived-data purge --project "$proj" --yes >/dev/null 2>&1 || true
     fi
   done
-  for dir in "${GEN_DIR:-}" "${TREE_DIR:-}" "${ARCH_DIR:-}" "${FORMAT_DIR:-}" "${SHOT:-}"; do
+  for dir in "${GEN_DIR:-}" "${TREE_DIR:-}" "${ARCH_DIR:-}" "${FORMAT_DIR:-}" "${SHOT:-}" "$XDG_DIR"; do
     if [ -n "$dir" ]; then
       rm -rf "$dir"
     fi
@@ -255,8 +271,8 @@ assert_json "$out" "d['schemes']" "['SmokeGen']"
 ok "generated project resolves (target + shared scheme)"
 "$BIN" build start --project "$GEN_PROJ" --scheme SmokeGen --destination "$DEST"
 ok "build start on generated project (iOS simulator)"
-# Same, for a generated macOS app.
-( cd "$GEN_DIR" && "$BIN" project new MacGen --platform macos --bundle-id dev.sweetpad.ci.macgen --no-git )
+# Same, for a generated macOS app, under a bundle id no other run uses.
+( cd "$GEN_DIR" && "$BIN" project new MacGen --platform macos --bundle-id "dev.sweetpad.ci.macgen-$$" --no-git )
 MAC_PROJ="$GEN_DIR/MacGen/MacGen.xcodeproj"
 out=$("$BIN" project info --project "$MAC_PROJ" --json)
 assert_json "$out" "d['targets']" "['MacGen']"
