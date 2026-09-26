@@ -426,7 +426,11 @@ args = ["-skipMacroValidation"]   # added to every command that builds
   it lives. The typed tail is appended *after* the file's arguments, so typing
   one wins under xcodebuild's last-one-wins, and `status` prints the effective
   list — a build shaped by a file the caller never opened must still say where
-  that came from.
+  that came from. The `app` verbs that find an already-built product instead
+  of building one (`launch`, `stop`, `uninstall`, `logs`, `container`,
+  `screenshot`, `sample`, `ui`) plan with the same list, so a file `build`
+  refuses, or a relocating setting `app run` refuses, stops them too instead
+  of their running a stale `.app` out of the default DerivedData.
 - The arguments the CLI settles itself are **refused** in the file, naming the
   key to use instead: `-scheme`, `-configuration`, `-destination`, `-sdk`,
   `-workspace`, `-project` (a second copy makes the build depend on which one

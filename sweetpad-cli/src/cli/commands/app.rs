@@ -755,13 +755,12 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         } => {
             ctx.targeting = target.clone().into();
             settle_stage_mode(ctx, stage)?;
-            let passthrough = ctx.xcodebuild_args(&xcodebuild.passthrough)?;
             simple(
                 ctx,
                 Stage::Install,
                 &LaunchArgs::default(),
                 stage,
-                &passthrough,
+                &xcodebuild.passthrough,
             )
         }
         Action::Launch {
@@ -3644,12 +3643,23 @@ enum Stage {
     Stop,
 }
 
+/// The passthrough for a verb that finds an already-built product instead of
+/// building one: the project's `[xcodebuild] args`, since it takes no `--`
+/// tail. Those arguments decide where the build put the `.app`, so a plan
+/// without them looks somewhere other than where `build` wrote it, or runs a
+/// stale product that `build` and `app run` refuse to go near.
+fn project_xcodebuild_args(ctx: &Context) -> Result<Vec<String>, CliError> {
+    ctx.xcodebuild_args(&[])
+}
+
+/// `tail` is the `--` passthrough typed on this invocation, which only
+/// `install` takes.
 fn simple(
     ctx: &mut Context,
     stage: Stage,
     launch: &LaunchArgs,
     stage_target: &StageTargetArgs,
-    passthrough: &[String],
+    tail: &[String],
 ) -> CommandResult {
     let on_device = stage_target.device || stage_target.device_id.is_some();
     // `stop` acts on the *running* app: when a launch is recorded, use it
@@ -3665,6 +3675,9 @@ fn simple(
         return result;
     }
 
+    // Every stage plans with the project's `[xcodebuild] args`, not only the
+    // one that builds (see `project_xcodebuild_args`).
+    let passthrough = ctx.xcodebuild_args(tail)?;
     // Simulator by default (the common headless case); --device/--device-id
     // switch every stage to devicectl.
     let opts = RunOpts {
@@ -3680,7 +3693,7 @@ fn simple(
         keep_sandbox: false,
         hot_entitlements: None,
         launch,
-        passthrough,
+        passthrough: &passthrough,
     };
     let plan = plan(ctx, &opts)?;
     let app = plan.app_bundle()?;
@@ -4328,7 +4341,7 @@ fn simple_logs(
         keep_sandbox: false,
         hot_entitlements: None,
         launch: &LaunchArgs::default(),
-        passthrough: &[],
+        passthrough: &project_xcodebuild_args(ctx)?,
     };
     let plan = plan(ctx, &opts)?;
     let app = plan.app_bundle()?;
@@ -5031,7 +5044,7 @@ fn screenshot(ctx: &mut Context, args: &ScreenshotArgs) -> CommandResult {
         keep_sandbox: false,
         hot_entitlements: None,
         launch: &LaunchArgs::default(),
-        passthrough: &[],
+        passthrough: &project_xcodebuild_args(ctx)?,
     };
     let plan = plan(ctx, &opts)?;
     match &plan.target {
@@ -5309,7 +5322,7 @@ fn sample(ctx: &mut Context, args: &SampleArgs) -> CommandResult {
         keep_sandbox: false,
         hot_entitlements: None,
         launch: &LaunchArgs::default(),
-        passthrough: &[],
+        passthrough: &project_xcodebuild_args(ctx)?,
     };
     let plan = plan(ctx, &opts)?;
     match &plan.target {
@@ -5528,7 +5541,7 @@ fn container(ctx: &mut Context, stage: &StageTargetArgs, kind: ContainerKind) ->
         keep_sandbox: false,
         hot_entitlements: None,
         launch: &LaunchArgs::default(),
-        passthrough: &[],
+        passthrough: &project_xcodebuild_args(ctx)?,
     };
     let plan = plan(ctx, &opts)?;
     match &plan.target {
@@ -6010,7 +6023,7 @@ fn resolve_ui_app(ctx: &mut Context, pid: Option<i32>) -> Result<MacShot, CliErr
         keep_sandbox: false,
         hot_entitlements: None,
         launch: &LaunchArgs::default(),
-        passthrough: &[],
+        passthrough: &project_xcodebuild_args(ctx)?,
     };
     let plan = plan(ctx, &opts)?;
     match &plan.target {
@@ -7160,5 +7173,110 @@ error: unable to evaluate expression while the process is exited\n\
                 "destination": "platform=iOS Simulator,id=AAAA",
             })
         );
+    }
+
+    /// A context aimed at `project` by `--project`, with no config and no
+    /// recorded state, so every verb falls through to the resolved build target.
+    fn project_ctx(project: &Path) -> Context {
+        let global = crate::cli::GlobalArgs {
+            chdir: None,
+            developer_dir: None,
+            output: None,
+            json: false,
+            non_interactive: true,
+            no_color: true,
+            verbose: false,
+            quiet: false,
+            gh_annotations: false,
+        };
+        let out = Output::new(&global);
+        Context {
+            global,
+            targeting: crate::cli::Targeting {
+                project: Some(project.to_path_buf()),
+                ..crate::cli::Targeting::default()
+            },
+            config: crate::cli::config::Config::default(),
+            state: crate::cli::state::State::default(),
+            out,
+            project_toml: std::cell::OnceCell::new(),
+            root_toml: std::cell::OnceCell::new(),
+            stale_checked: std::cell::OnceCell::new(),
+        }
+    }
+
+    /// The verbs that find an already-built product read the project's
+    /// `[xcodebuild] args` before they plan, as `build` does. A file `build`
+    /// refuses is refused here too, rather than these verbs quietly looking in
+    /// the default DerivedData for a product the build would put elsewhere.
+    #[test]
+    fn the_verbs_that_find_a_built_product_read_the_projects_xcodebuild_args() {
+        let dir = std::env::temp_dir().join(format!(
+            "sweetpad-app-configured-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let project = dir.join("App.xcodeproj");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(
+            dir.join("sweetpad.toml"),
+            "[xcodebuild]\nargs = [\"-derivedDataPath\", \"dd\"]\n",
+        )
+        .unwrap();
+
+        let refused = |verb: &str, err: Option<CliError>| {
+            let err = err.unwrap_or_else(|| panic!("{verb} planned past a refused sweetpad.toml"));
+            assert!(
+                err.to_string()
+                    .contains("sweetpad.toml: '-derivedDataPath' in [xcodebuild] args"),
+                "{verb}: {err}"
+            );
+        };
+        let stage = StageTargetArgs::default();
+        let launch = LaunchArgs::default();
+        for (verb, kind) in [
+            ("launch", Stage::Launch),
+            ("uninstall", Stage::Uninstall),
+            ("stop", Stage::Stop),
+        ] {
+            let result = simple(&mut project_ctx(&project), kind, &launch, &stage, &[]);
+            refused(verb, result.err());
+        }
+        let result = simple_logs(
+            &mut project_ctx(&project),
+            &stage,
+            &LogFilterArgs::default(),
+        );
+        refused("logs", result.err());
+        let result = container(&mut project_ctx(&project), &stage, ContainerKind::Data);
+        refused("container", result.err());
+        let result = screenshot(
+            &mut project_ctx(&project),
+            &ScreenshotArgs {
+                target: crate::cli::BuildTargetArgs::default(),
+                output_file: None,
+                window: None,
+                pid: None,
+                clipboard: false,
+            },
+        );
+        refused("screenshot", result.err());
+        let result = sample(
+            &mut project_ctx(&project),
+            &SampleArgs {
+                target: crate::cli::BuildTargetArgs::default(),
+                seconds: 3,
+                output_file: None,
+                pid: None,
+            },
+        );
+        refused("sample", result.err());
+        let result = resolve_ui_app(&mut project_ctx(&project), None);
+        refused("ui", result.err());
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -734,7 +734,9 @@ impl Context {
     /// invocation. Every verb that spawns `xcodebuild` resolves its
     /// passthrough through here, so a committed argument reaches the builds
     /// inside `app run`/`install`/`debug`/`diagnose` as well as
-    /// `build`/`test`/`archive`.
+    /// `build`/`test`/`archive`. The `app` verbs that find an already-built
+    /// product (`launch`, `stop`, `logs`, `container`, …) read it too, with an
+    /// empty tail, so they look where the build put the `.app`.
     pub fn xcodebuild_args(&self, tail: &[String]) -> Result<Vec<String>, CliError> {
         // Silent resolution: this runs *before* the command resolves for real,
         // and `container` narrates its discovery ("using X (found below …)") —
