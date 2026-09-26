@@ -229,6 +229,30 @@ impl Termination {
     }
 }
 
+impl TestReport {
+    /// One `✗` line per failed test, naming it and its failure, with what
+    /// the report adds about it indented below.
+    fn failure_lines(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+        for (i, f) in self.summary.test_failures.iter().enumerate() {
+            let mut message = f.failure_text.lines();
+            lines.push(format!(
+                "  ✗ {}: {}",
+                f.selector(),
+                message.next().unwrap_or_default()
+            ));
+            // A Swift Testing expectation continues with one line per operand
+            // (`n → 2`). They sit under the message they belong to, deeper
+            // than the lines about the failure as a whole.
+            lines.extend(message.map(|line| format!("        {line}")));
+            if let Some(Some(termination)) = self.terminations.get(i) {
+                lines.push(format!("      {}", termination.line()));
+            }
+        }
+        lines
+    }
+}
+
 impl Render for TestReport {
     fn human(&self, out: &Output) {
         out.line(&format!(
@@ -238,11 +262,8 @@ impl Render for TestReport {
             self.summary.skipped_tests,
             self.summary.total_test_count
         ));
-        for (i, f) in self.summary.test_failures.iter().enumerate() {
-            out.line(&format!("  ✗ {}: {}", f.selector(), f.failure_text));
-            if let Some(Some(termination)) = self.terminations.get(i) {
-                out.line(&format!("      {}", termination.line()));
-            }
+        for line in self.failure_lines() {
+            out.line(&line);
         }
         if let Some(coverage) = self.coverage {
             out.line(&format!("coverage: {:.1}%", coverage * 100.0));
@@ -2146,6 +2167,31 @@ mod tests {
         assert!(json["failures"][1].get("terminationReason").is_none());
         let bare = failed_report(Vec::new()).json();
         assert!(bare["failures"][0].get("terminationReason").is_none());
+    }
+
+    #[test]
+    fn a_multi_line_failure_stays_under_its_test() {
+        // Swift Testing spells an expectation's operands out on the lines
+        // after its first; at column 0 they read as a line of their own.
+        let mut report = failed_report(Vec::new());
+        report.summary.test_failures[1] = xcodebuild::TestFailure {
+            test_name: "suiteGreeting()".into(),
+            target_name: "SweetpadCIAppTests".into(),
+            failure_text: "Expectation failed: n == 1\nn → 2".into(),
+            test_identifier_string: "GreetingSuite/suiteGreeting()".into(),
+            test_identifier_url: "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/\
+                                  GreetingSuite/suiteGreeting()"
+                .into(),
+        };
+        assert_eq!(
+            report.failure_lines(),
+            [
+                "  ✗ ExitProbeUITests/ProbeUITests/testAppKilledFromOutside: Failed to \
+                 application dev.sweetpad.exitprobe.app is not running",
+                "  ✗ SweetpadCIAppTests/GreetingSuite/suiteGreeting(): Expectation failed: n == 1",
+                "        n → 2",
+            ]
+        );
     }
 
     #[test]
