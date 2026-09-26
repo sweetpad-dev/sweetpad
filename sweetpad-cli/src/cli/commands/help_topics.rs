@@ -164,7 +164,8 @@ forms (usable with --destination or SWEETPAD_DESTINATION):
   platform=macOS
 
 'sweetpad destination list' prints every runnable target with a ready
-specifier; 'simulator list' and 'device list' show each pool.
+specifier; 'simulator list' and 'device list' show each pool, and
+'device info' connects to a physical device to say whether it is ready.
 
 When no destination is given, an interactive terminal gets the picker:
 ordered most-used-first (per project), then booted (marked ●), then the

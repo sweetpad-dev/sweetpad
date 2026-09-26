@@ -130,15 +130,17 @@ error: xcodebuild: Timed out waiting for all destinations matching the provided 
     { platform:iOS, arch:arm64, id:00008110-000559182E90401E, name:Iphone 13, error:Iphone 13 needs to be unlocked to enable development services Please unlock the device. }
 ```
 
-`sweetpad device list` shows whether the device is paired, and whether it's on USB or Wi-Fi:
+To check a device before spending a build on it, run `sweetpad device info`. It connects to the
+device, checks pairing, Developer Mode, and the lock, and says what to fix first:
 
 ```console
-$ sweetpad device list
-Iphone 13 (iPhone 13, iOS 26.6)  [wifi]
-    00008110-000559182E90401E
+$ sweetpad device info "Iphone 13"
+…
+not ready: Iphone 13 is locked; unlock it so Xcode can start its development services
 ```
 
-Device builds also need signing settings that a simulator build doesn't. See
+[Checking that a device is ready](./destinations.md#checking-that-a-device-is-ready) shows the full
+report. Device builds also need signing settings that a simulator build doesn't. See
 [Destinations and devices](./destinations.md#physical-devices).
 
 ## I need to see what xcodebuild actually said

@@ -60,6 +60,16 @@ A physical device's entry also has devicectl's `connection`, `transport`
 `connection: "disconnected"`, because xcodebuild connects when it needs to, so
 don't read that as a fault.
 
+Before building to a phone, check it:
+
+```bash
+sweetpad device info "<name or UDID>" -o json
+```
+
+It connects to the device and returns `ready` and a `reason` that names the fix
+(locked, Developer Mode off, not paired, unreachable). It waits at most
+`--timeout` seconds (10 by default) and exits 1 when the device isn't ready.
+
 Target one with `--on <ref>`: a fuzzy name (`"iPhone 16 Pro"`), `booted`, `mac`,
 `device`, a platform word (`ios`, `watchos`, …), a UDID, or a saved context
 alias. `--destination "<raw>"` is the escape hatch for an exact xcodebuild

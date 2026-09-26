@@ -549,8 +549,8 @@ pub enum Resource {
         #[command(subcommand)]
         action: Option<commands::app::Action>,
     },
-    /// Inspect connected physical devices (hidden alias — see 'devices').
-    #[command(hide = true)]
+    /// Physical devices: list the paired ones, or check that one is ready to
+    /// build to ('device info').
     Device {
         #[command(subcommand)]
         action: commands::device::Action,

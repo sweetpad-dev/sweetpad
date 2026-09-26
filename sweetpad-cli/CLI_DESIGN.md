@@ -99,6 +99,7 @@ sweetpad test output              what the last run's tests printed, §9l
 sweetpad clean [--purge]          xcodebuild clean; --purge adds DerivedData
 sweetpad archive [--export-method M] [--no-export]
 sweetpad devices                  everything runnable, specifier-ready
+sweetpad device <list|info>       paired physical devices; info checks one is ready (§9q)
 sweetpad status / open / doctor / self-update / help <topic>
 sweetpad simulator <boot|create|delete|clone|push|privacy|status-bar|
                     location|media-add|record|screenshot|…>   (alias: sim)
@@ -210,9 +211,10 @@ builds it with real `xcodebuild`.
   even when child-process stderr interleaves).
 - **`ok` means "the command executed"**, not "the outcome was good": a red
   test suite is `ok: true` with `data.passed: false` (exit 3), `doctor` with
-  problems is `ok: true` with per-check statuses (exit 1), `format --check`
-  reports findings in `data` (exit 3). Every such payload carries its own
-  status field — read that, not `ok`.
+  problems is `ok: true` with per-check statuses (exit 1), `device info` on a
+  device that is not ready is `ok: true` with `data.ready: false` (exit 1),
+  `format --check` reports findings in `data` (exit 3). Every such payload
+  carries its own status field — read that, not `ok`.
 - **`schema` bump policy:** additive fields never bump it; a removed or
   re-typed field bumps it. Consumers should tolerate unknown fields.
 - **Exceptions:** `app run` rejects `--json` only in the forms that stream —
@@ -2228,7 +2230,7 @@ by name, not dropped.
 `--watch` is `build --watch`'s loop unchanged. A Swift package runs `swift build
 --build-tests`.
 
-## 9q. v8 — physical devices: how they connect
+## 9q. v8 — physical devices: how they connect, and whether they are ready
 
 A physical device in `sweetpad devices` read the same whether it was plugged
 in, unlocked and in Developer Mode, or none of those. An agent picked a listed
@@ -2252,6 +2254,43 @@ On Xcode 27 the same listing also returns simulators (`reality: "simulated"`,
 specifier that cannot build for them, and they made `--on device` ambiguous
 whenever the listing held one. They are dropped when the listing is parsed,
 since `simctl` already reports them.
+
+### `device info` — asking the device itself
+
+```
+sweetpad device info [DEVICE] [--timeout SECONDS]
+```
+
+Readiness needs a connection attempt, which the listing never makes.
+`device info` runs `devicectl device info details` against one device, and
+`device info lockState` once it has connected, then reports pairing,
+connection and transport, Developer Mode (`developerModeStatus`, present only
+once connected), whether the developer disk image's services are up
+(`ddiServicesAvailable`), the lock, boot state, OS version, and devicectl's
+own warnings (written only to its human output, read back through
+`--log-output`).
+
+It ends with one verdict, `ready` or a `reason` that names the first thing to
+fix. The checks go in the order the problems have to be fixed: not paired;
+did not answer, or did not connect within the timeout; Developer Mode off; not
+booted; locked; development services down. The payload is `ok: true` either
+way, and a device that is not ready exits 1, as `doctor` does with a problem.
+
+- **Placement.** `device` is the singular resource noun beside `simulator`,
+  and `info` acts on one named device the way the `simulator` verbs act on
+  their TARGET. `devices` stays the aggregated view with no actions: `devices
+  info X` would be a per-item verb hung off a list. So `device` is visible in
+  the help, with `list` beside `info`.
+- **The argument** resolves like `--on`, over physical devices only: a
+  `context alias` of the project in the current directory, a UDID, an exact
+  name, a unique part of a name, or `device`. With none, the only paired
+  device. A simulator's name gets an error that says it is a simulator.
+- **Bounded.** devicectl gets `--timeout` (default 10, at least 5, which is
+  devicectl's floor), and the process is killed 5 seconds past it in case
+  devicectl does not honour its own. The lock query gets devicectl's minimum,
+  since it runs only against a device that has already connected.
+- **Read-only**, apart from what connecting does: the details request may
+  try to mount the developer disk image, as xcodebuild does before a build.
 
 ## 10. Testing
 

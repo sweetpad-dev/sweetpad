@@ -155,6 +155,39 @@ pub fn run(
     Ok(status.success())
 }
 
+/// Run a command with every stream detached, killing it once `limit` has
+/// passed. `Ok(None)` means it was killed; otherwise whether it succeeded. For
+/// a tool that waits on something outside this machine (a device over Wi-Fi)
+/// and has its own timeout, as the backstop behind it.
+pub fn run_quiet_within(
+    program: &str,
+    args: &[&str],
+    limit: std::time::Duration,
+) -> Result<Option<bool>, CliError> {
+    let mut child = Command::new(program)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| spawn_error(program, &e))?;
+    let deadline = std::time::Instant::now() + limit;
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| CliError::new(format!("failed to wait for `{program}`: {e}")))?
+        {
+            return Ok(Some(status.success()));
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(None);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
 /// Run a command, invoking `on_line` for each line of output as it arrives.
 /// Both stdout and stderr flow through one merged pipe (chronologically, at
 /// pipe level), so tool errors that only reach stderr — `xcodebuild: error:

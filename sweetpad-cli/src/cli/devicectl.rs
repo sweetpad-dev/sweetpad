@@ -7,10 +7,11 @@
 //! `hardwareProperties` / `deviceProperties` / `connectionProperties`; version 5
 //! (Xcode 27) adds a `properties` dictionary that supersedes all three and
 //! carries a `_deprecationNotice` saying the old trio will be removed. Both are
-//! read, `properties` first — see [`RawDevice`].
+//! read, `properties` first — see [`RawDevice`]. `device info details` returns
+//! the same record for one device, after connecting to it ([`details`]).
 
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 
@@ -121,6 +122,57 @@ impl RawDevice {
             &self.connection_properties.pairing_state,
         )
     }
+
+    fn boot_state(&self) -> &str {
+        pick(
+            &self.properties.state.boot_state,
+            &self.device_properties.boot_state,
+        )
+    }
+
+    /// `enabled` / `disabled`, reported only once a connection is made.
+    /// Version 5 spells it as a one-case object (`{"enabled": {"mode": 1}}`),
+    /// the deprecated field as the bare word.
+    fn developer_mode(&self) -> Option<String> {
+        let case = |status: &serde_json::Value| match status {
+            serde_json::Value::String(word) if !word.is_empty() => Some(word.clone()),
+            serde_json::Value::Object(cases) => cases.keys().next().cloned(),
+            _ => None,
+        };
+        case(&self.properties.state.developer_mode_status)
+            .or_else(|| case(&self.device_properties.developer_mode_status))
+    }
+
+    /// Present only in the deprecated `deviceProperties`.
+    fn ddi_services_available(&self) -> Option<bool> {
+        self.device_properties.ddi_services_available
+    }
+
+    /// The device this entry describes, or `None` for an entry with no id at
+    /// all and for the simulators Xcode 27 lists alongside the devices.
+    /// Devices missing a UDID (devicectl returns an empty hardware section for
+    /// some USB iOS ≤16 devices) fall back to their `identifier`.
+    fn to_device(&self) -> Option<Device> {
+        let udid = pick(self.udid(), &self.identifier);
+        if udid.is_empty() || self.reality() == "simulated" {
+            return None;
+        }
+        let platform = if self.platform().is_empty() {
+            "iOS"
+        } else {
+            self.platform()
+        };
+        Some(Device {
+            udid: udid.to_string(),
+            name: self.name().to_string(),
+            model: self.model().to_string(),
+            platform: platform.to_string(),
+            os_version: self.os_version().to_string(),
+            connection: self.connection().to_string(),
+            transport: self.transport().to_string(),
+            pairing: self.pairing().to_string(),
+        })
+    }
 }
 
 /// The version-5 value, falling back to the deprecated one when the listing
@@ -189,9 +241,14 @@ struct OsVersionNumber {
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct StateSection {
     #[serde(default)]
     name: String,
+    #[serde(default)]
+    boot_state: String,
+    #[serde(default)]
+    developer_mode_status: serde_json::Value,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -212,6 +269,12 @@ struct DeviceProperties {
     name: String,
     #[serde(default)]
     os_version_number: String,
+    #[serde(default)]
+    boot_state: String,
+    #[serde(default)]
+    developer_mode_status: serde_json::Value,
+    #[serde(default)]
+    ddi_services_available: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -277,16 +340,22 @@ impl Device {
     }
 }
 
-/// Enumerate the physical devices paired with this Mac.
-pub fn list() -> Result<Vec<Device>, CliError> {
+/// A fresh temp path for one `devicectl` `--json-output` / `--log-output`, so
+/// concurrent runs never share a file.
+fn temp_file(stem: &str, extension: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let tmp: PathBuf = std::env::temp_dir().join(format!(
-        "sweetpad-devices-{}-{nanos}.json",
+    std::env::temp_dir().join(format!(
+        "sweetpad-{stem}-{}-{nanos}.{extension}",
         std::process::id()
-    ));
+    ))
+}
+
+/// Enumerate the physical devices paired with this Mac.
+pub fn list() -> Result<Vec<Device>, CliError> {
+    let tmp = temp_file("devices", "json");
 
     let ok = process::run(
         "xcrun",
@@ -315,12 +384,10 @@ pub fn list() -> Result<Vec<Device>, CliError> {
 }
 
 /// Parse `devicectl list devices` JSON into sorted devices. Split out from
-/// [`list`] so it's testable without `devicectl`. Devices missing a UDID
-/// (devicectl returns an empty hardware section for some USB iOS ≤16 devices)
-/// fall back to their `identifier`, and are dropped only if both are empty.
-/// The simulators Xcode 27 lists here are dropped as well: `simctl` already
+/// [`list`] so it's testable without `devicectl`. Entries without any id are
+/// dropped, and so are the simulators Xcode 27 lists here: `simctl` already
 /// reports them, and as devices they would get a `platform=iOS` specifier that
-/// cannot build for them.
+/// cannot build for them (see [`RawDevice::to_device`]).
 fn parse_devices(raw: &str) -> Result<Vec<Device>, CliError> {
     let parsed: ListOutput = serde_json::from_str(raw)
         .map_err(|e| CliError::new(format!("parsing devicectl output: {e}")))?;
@@ -329,30 +396,165 @@ fn parse_devices(raw: &str) -> Result<Vec<Device>, CliError> {
         .result
         .devices
         .iter()
-        .filter_map(|d| {
-            let udid = pick(d.udid(), &d.identifier);
-            if udid.is_empty() || d.reality() == "simulated" {
-                return None;
-            }
-            let platform = if d.platform().is_empty() {
-                "iOS"
-            } else {
-                d.platform()
-            };
-            Some(Device {
-                udid: udid.to_string(),
-                name: d.name().to_string(),
-                model: d.model().to_string(),
-                platform: platform.to_string(),
-                os_version: d.os_version().to_string(),
-                connection: d.connection().to_string(),
-                transport: d.transport().to_string(),
-                pairing: d.pairing().to_string(),
-            })
-        })
+        .filter_map(RawDevice::to_device)
         .collect();
     devices.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(devices)
+}
+
+/// What connecting to one device found. The listing reads CoreDevice's cached
+/// record, which reports an idle device as `disconnected` and leaves out
+/// Developer Mode; `device info details` opens a connection first, so it
+/// knows whether the device answers and what its developer services are
+/// doing.
+#[derive(Debug, Clone)]
+pub struct Details {
+    /// The device as the probe saw it: `connection` is the state after the
+    /// attempt to connect.
+    pub device: Device,
+    pub boot_state: String,
+    /// `enabled` / `disabled`, or `None` when the device did not say.
+    pub developer_mode: Option<String>,
+    /// Whether the developer disk image's services are up. xcodebuild needs
+    /// them to install and run, and mounts the image itself when it can.
+    pub ddi_services_available: Option<bool>,
+    /// What devicectl warned about while gathering, e.g. `The developer disk
+    /// image could not be mounted on this device.` It writes these only to its
+    /// human output, read back through `--log-output`.
+    pub warnings: Vec<String>,
+}
+
+/// How long past its own `--timeout` a devicectl call may run before it is
+/// killed.
+const KILL_GRACE: Duration = Duration::from_secs(5);
+
+/// The shortest `--timeout` devicectl accepts.
+pub const MIN_TIMEOUT_SECS: u64 = 5;
+
+/// Connect to a device and read its details, waiting at most `timeout` for it
+/// to answer. A device that cannot be reached still yields details (devicectl
+/// returns the best it has); an error means devicectl itself failed or had to
+/// be killed.
+pub fn details(udid: &str, timeout: Duration) -> Result<Details, CliError> {
+    let json = temp_file("details", "json");
+    let log = temp_file("details", "log");
+    let seconds = timeout.as_secs().max(MIN_TIMEOUT_SECS).to_string();
+    let finished = process::run_quiet_within(
+        "xcrun",
+        &[
+            "devicectl",
+            "device",
+            "info",
+            "details",
+            "--device",
+            udid,
+            "--json-output",
+            &json.to_string_lossy(),
+            "--log-output",
+            &log.to_string_lossy(),
+            "--timeout",
+            &seconds,
+        ],
+        timeout + KILL_GRACE,
+    )?;
+    let raw = std::fs::read_to_string(&json).unwrap_or_default();
+    let log_text = std::fs::read_to_string(&log).unwrap_or_default();
+    let _ = std::fs::remove_file(&json);
+    let _ = std::fs::remove_file(&log);
+    if finished.is_none() {
+        return Err(CliError::new(format!(
+            "devicectl did not finish within {seconds}s"
+        )));
+    }
+    if raw.trim().is_empty() {
+        return Err(CliError::new("devicectl exited without a result"));
+    }
+    parse_details(&raw, &log_text)
+}
+
+/// `device info details` (and `lockState`) JSON: the record under `result`,
+/// or an `error` whose description says why there is none.
+#[derive(Debug, Deserialize)]
+struct InfoOutput<T> {
+    result: Option<T>,
+    #[serde(default)]
+    error: serde_json::Value,
+}
+
+impl<T> InfoOutput<T> {
+    fn into_result(self) -> Result<T, CliError> {
+        self.result.ok_or_else(|| {
+            let description = self.error["userInfo"]["NSLocalizedDescription"]["string"]
+                .as_str()
+                .unwrap_or("devicectl reported no result");
+            CliError::new(description.to_string())
+        })
+    }
+}
+
+/// Parse `device info details` JSON plus the log devicectl wrote alongside
+/// it. Split out from [`details`] so it's testable without a device.
+fn parse_details(raw: &str, log: &str) -> Result<Details, CliError> {
+    let parsed: InfoOutput<RawDevice> = serde_json::from_str(raw)
+        .map_err(|e| CliError::new(format!("parsing devicectl output: {e}")))?;
+    let raw_device = parsed.into_result()?;
+    let device = raw_device
+        .to_device()
+        .ok_or_else(|| CliError::new("devicectl described a device without an id"))?;
+    let warnings = log
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("Error: "))
+        .map(str::to_string)
+        .collect();
+    Ok(Details {
+        device,
+        boot_state: raw_device.boot_state().to_string(),
+        developer_mode: raw_device.developer_mode(),
+        ddi_services_available: raw_device.ddi_services_available(),
+        warnings,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LockState {
+    passcode_required: Option<bool>,
+}
+
+/// Whether the device is locked right now (`device info lockState`'s
+/// `passcodeRequired`), or `None` when it cannot say. A locked device cannot
+/// have its developer services started or its apps launched.
+#[must_use]
+pub fn locked(udid: &str, timeout: Duration) -> Option<bool> {
+    let json = temp_file("lock-state", "json");
+    let seconds = timeout.as_secs().max(MIN_TIMEOUT_SECS).to_string();
+    let finished = process::run_quiet_within(
+        "xcrun",
+        &[
+            "devicectl",
+            "device",
+            "info",
+            "lockState",
+            "--device",
+            udid,
+            "--json-output",
+            &json.to_string_lossy(),
+            "--timeout",
+            &seconds,
+        ],
+        timeout + KILL_GRACE,
+    )
+    .ok()
+    .flatten();
+    let raw = std::fs::read_to_string(&json).unwrap_or_default();
+    let _ = std::fs::remove_file(&json);
+    finished?;
+    parse_lock_state(&raw)
+}
+
+fn parse_lock_state(raw: &str) -> Option<bool> {
+    let parsed: InfoOutput<LockState> = serde_json::from_str(raw).ok()?;
+    parsed.into_result().ok()?.passcode_required
 }
 
 /// Find a device by UDID (case-insensitive) or exact name.
@@ -538,14 +740,7 @@ struct RawProcess {
 /// directory. `devicectl device info processes` routes through a
 /// `--json-output` temp file like [`list`].
 fn app_pids(device_id: &str, app_dir_name: &str) -> Result<Vec<i64>, CliError> {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let tmp: PathBuf = std::env::temp_dir().join(format!(
-        "sweetpad-processes-{}-{nanos}.json",
-        std::process::id()
-    ));
+    let tmp = temp_file("processes", "json");
     let ok = process::run(
         "xcrun",
         &[
@@ -801,6 +996,90 @@ mod tests {
         assert_eq!(devices[0].transport, "wired");
         assert_eq!(devices[0].pairing, "paired");
         assert_eq!(devices[0].link_hint().as_deref(), Some("usb"));
+    }
+
+    /// `devicectl device info details` for a locked iPhone on Wi-Fi, trimmed
+    /// from a real run (Xcode 27, jsonVersion 5), with the log it wrote.
+    const DETAILS_LOCKED: &str = r#"{
+      "info": {"commandType": "devicectl.device.info.details", "jsonVersion": 5, "outcome": "success"},
+      "result": {
+        "connectionProperties": {"pairingState": "paired", "transportType": "localNetwork", "tunnelState": "connected"},
+        "deviceProperties": {"bootState": "booted", "ddiServicesAvailable": false, "developerModeStatus": "enabled", "name": "Iphone 13", "osVersionNumber": "27.0"},
+        "hardwareProperties": {"marketingName": "iPhone 13", "platform": "iOS", "productType": "iPhone14,5", "reality": "physical", "udid": "00008110-000559182E90401E"},
+        "identifier": "8648BE6E-199F-55FE-B508-5B42071FEE92",
+        "properties": {
+          "connection": {"pairingState": "paired", "state": "connected", "transportType": "localNetwork"},
+          "hardware": {"marketingName": "iPhone 13", "platform": "iOS", "productType": "iPhone14,5", "reality": "physical", "udid": "00008110-000559182E90401E"},
+          "software": {"osVersionNumber": {"stringValue": "27.0"}},
+          "state": {"bootState": "booted", "developerModeStatus": {"enabled": {"mode": 1}}, "name": "Iphone 13", "preparednessState": 1}
+        }
+      }
+    }"#;
+
+    const DETAILS_LOG: &str = "\
+Gathering device information\u{2026}
+WARNING: Unable to retrieve complete information for this device. The best available information will be returned.
+         Error: The developer disk image could not be mounted on this device.
+Current device information:
+\u{2022} Identifier: 8648BE6E-199F-55FE-B508-5B42071FEE92
+";
+
+    #[test]
+    fn details_read_developer_mode_the_disk_image_and_warnings() {
+        let details = parse_details(DETAILS_LOCKED, DETAILS_LOG).unwrap();
+        assert_eq!(details.device.udid, "00008110-000559182E90401E");
+        assert_eq!(details.device.connection, "connected");
+        assert_eq!(details.device.transport, "localNetwork");
+        assert_eq!(details.boot_state, "booted");
+        assert_eq!(details.developer_mode.as_deref(), Some("enabled"));
+        assert_eq!(details.ddi_services_available, Some(false));
+        assert_eq!(
+            details.warnings,
+            ["The developer disk image could not be mounted on this device."]
+        );
+
+        // Version 5's object spelling alone, as it reads once the deprecated
+        // trio is gone; and a status devicectl did not report at all.
+        let raw = r#"{"result":{"properties":{
+          "hardware": {"udid": "U"},
+          "state": {"developerModeStatus": {"disabled": {}}}
+        }}}"#;
+        let details = parse_details(raw, "").unwrap();
+        assert_eq!(details.developer_mode.as_deref(), Some("disabled"));
+        assert_eq!(details.ddi_services_available, None);
+        let raw = r#"{"result":{"properties":{"hardware": {"udid": "U"}}}}"#;
+        assert_eq!(parse_details(raw, "").unwrap().developer_mode, None);
+    }
+
+    /// A failed lookup carries devicectl's own description, captured from
+    /// `device info details --device 00000000-0000000000000000`.
+    #[test]
+    fn a_details_failure_carries_devicectls_reason() {
+        let raw = r#"{
+          "error": {
+            "code": 1000,
+            "domain": "com.apple.dt.CoreDeviceError",
+            "userInfo": {
+              "DeviceName": {"string": "00000000-0000000000000000"},
+              "NSLocalizedDescription": {"string": "The specified device was not found. (Name: 00000000-0000000000000000)"}
+            }
+          },
+          "info": {"commandType": "devicectl.device.info.details", "jsonVersion": 5, "outcome": "failed"}
+        }"#;
+        let err = parse_details(raw, "").unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "The specified device was not found. (Name: 00000000-0000000000000000)"
+        );
+    }
+
+    /// `device info lockState`, captured from the same locked iPhone.
+    #[test]
+    fn lock_state_reads_passcode_required() {
+        let raw = r#"{"info":{"outcome":"success"},"result":{"deviceIdentifier":"8648BE6E-199F-55FE-B508-5B42071FEE92","passcodeRequired":true,"unlockedSinceBoot":true}}"#;
+        assert_eq!(parse_lock_state(raw), Some(true));
+        assert_eq!(parse_lock_state(r#"{"error":{}}"#), None);
+        assert_eq!(parse_lock_state(""), None);
     }
 
     #[test]

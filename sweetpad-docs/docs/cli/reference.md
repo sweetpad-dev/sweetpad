@@ -165,6 +165,13 @@ Alias: `sim`. Most take an optional target (name or UDID) and default to the boo
 | `sweetpad simulator erase`      | Erase contents and settings (simulator must be shut down).     |
 | `sweetpad simulator delete`     | Delete a simulator. There is no undo (`--yes` skips the prompt).       |
 
+### Physical devices
+
+| Command                | What it does                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `sweetpad device list`  | List the physical devices paired with this Mac, and whether each is on USB or Wi-Fi. |
+| `sweetpad device info`  | Connect to a device and report whether it's ready to build to and run on, and what to fix if it isn't. Exits 1 when it isn't ready. |
+
 ### Context and configuration
 
 | Command                     | What it does                                                              |

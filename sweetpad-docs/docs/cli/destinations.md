@@ -33,6 +33,7 @@ Each pool has its own narrower list when that's what you want:
 ```bash
 sweetpad simulator list   # simulators only, with UDIDs
 sweetpad device list      # paired physical devices, with how each one connects
+sweetpad device info      # connect to a physical device and check that it's ready
 ```
 
 [Simulators](./simulators.md) covers the rest of that group: booting, screenshots, push payloads,
@@ -170,13 +171,31 @@ sweetpad app install --on device -- -allowProvisioningUpdates DEVELOPMENT_TEAM=A
 If your project always needs them, put them in `sweetpad.toml` once instead. See
 [Extra xcodebuild arguments](./reference.md#extra-xcodebuild-arguments).
 
-:::tip
+### Checking that a device is ready
 
-A device that's plugged in isn't necessarily ready. It also has to be unlocked, trusted, and in
-Developer Mode before xcodebuild can reach it. When a device build stalls looking for a destination,
-that's the first thing to check.
+A listed device isn't necessarily ready. It also has to be unlocked, trusted, and in Developer Mode
+before xcodebuild can reach it. `sweetpad device info` connects to the device and checks each of
+those:
 
-:::
+```console
+$ sweetpad device info "Iphone 13"
+Iphone 13 (iPhone 13, iOS 26.6)
+    00008110-000559182E90401E
+  pairing         paired
+  connection      connected (wifi)
+  developer mode  enabled
+  developer disk  not mounted
+  lock            locked
+  boot            booted
+  devicectl       The developer disk image could not be mounted on this device.
+not ready: Iphone 13 is locked; unlock it so Xcode can start its development services
+```
+
+The last line is the verdict: `ready to build and run`, or the first thing to fix. The command exits 1
+when the device isn't ready, and `-o json` reports the same facts plus `ready` and `reason` fields.
+
+With no argument, it checks the only paired device. It waits up to 10 seconds for the device to
+answer, and `--timeout` changes that.
 
 ## macOS
 
