@@ -50,6 +50,10 @@ To get the app's own behavior back, pass `--restore-state` to `run`, `app launch
 `app diagnose`. SweetPad also leaves the argument out if you set `-ApplePersistenceIgnoreState`
 yourself, with `--arg` or in the scheme's launch arguments. Simulators and devices aren't affected.
 
+AppKit answers the argument with a line on stderr at every launch, `ApplePersistenceIgnoreState:
+Existing state will not be touched…`. When SweetPad added the argument, `sweetpad run` leaves that
+line out of the app's output. When you set it yourself, the line shows as usual.
+
 ## Logs
 
 `sweetpad app logs` is the most useful verb in the group, because a running app's output is otherwise

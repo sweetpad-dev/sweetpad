@@ -1800,6 +1800,15 @@ settled once on the run plan, so every launch that plan drives carries it.
 `--restore-state` leaves it out, as does an `--arg` or a scheme launch
 argument that already sets the key; simulators and devices never get it.
 
+AppKit acknowledges the key on stderr at every launch
+(`ApplePersistenceIgnoreState: Existing state will not be touched. New state
+will be written to …`). When the plan added the pair itself
+(`RunPlan::added_ignore_persistence`), that line describes sweetpad's launch
+rather than the app, so the run session, plain and `--hot`, leaves it out of
+the app's console. A key the caller or the scheme set keeps its line. A
+detached launch's captured file keeps it too: its stdio goes straight to the
+file, and nothing reading the file later can tell who added the key.
+
 A macOS app logs to two disjoint places — plain stdout/stderr (`print`,
 `NSLog`'s stderr leg, C `printf`) and the unified log (`os_log`/`Logger`) —
 so `app logs` on macOS follows *both*: the captured

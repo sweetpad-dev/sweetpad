@@ -952,6 +952,67 @@ fn launchable_session(tag: &str, slow_from: u32) -> (Command, [TempDir; 3]) {
     (session, [home, cwd, derived])
 }
 
+/// An `app run --mac` session plus `extra` flags, whose build succeeds at once
+/// and whose product writes AppKit's note about `-ApplePersistenceIgnoreState`
+/// to stderr, as a real app launched with it does, then `stderr marker` on
+/// the same pipe, and stays up.
+fn persistence_note_session(tag: &str, extra: &[&str]) -> (Command, [TempDir; 3]) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let project = project();
+    let derived = tmp(&format!("{tag}-dd"));
+    let mut args = vec![
+        "app",
+        "run",
+        "--mac",
+        "--project",
+        project.to_str().unwrap(),
+        "--scheme",
+        "SweetpadCIMac",
+        "--configuration",
+        "Debug",
+    ];
+    args.extend_from_slice(extra);
+    args.extend_from_slice(&["--", "-derivedDataPath", derived.to_str().unwrap()]);
+    let (session, home, cwd) = stub_command(tag, "** BUILD SUCCEEDED **\n", 0, &args);
+    let app = derived.join("Build/Products/Debug/SweetpadCIMac.app/Contents/MacOS/SweetpadCIMac");
+    std::fs::create_dir_all(app.parent().unwrap()).unwrap();
+    std::fs::write(
+        &app,
+        "#!/bin/sh\n\
+         echo '2026-09-27 00:01:39.396 SweetpadCIMac[34229:21532494] ApplePersistenceIgnoreState: \
+         Existing state will not be touched. New state will be written to \
+         /var/folders/T/dev.sweetpad.ci.mac.savedState' >&2\n\
+         echo 'stderr marker' >&2\n\
+         exec sleep 60\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&app, std::fs::Permissions::from_mode(0o755)).unwrap();
+    (session, [home, cwd, derived])
+}
+
+/// AppKit's note that `-ApplePersistenceIgnoreState YES` took effect is about
+/// sweetpad's launch when sweetpad added the argument, so the session leaves
+/// it out of the app's output. Passed by the caller, the argument is the
+/// caller's, and so is the note.
+#[test]
+fn the_session_hides_appkits_note_about_the_argument_sweetpad_added() {
+    let note = "Existing state will not be touched";
+
+    let (session, _dirs) = persistence_note_session("note-ours", &[]);
+    let (status, shown) = on_pty(session, &[("stderr marker", "q")]);
+    assert_eq!(status.code(), Some(0), "{shown}");
+    assert!(!shown.contains(note), "{shown}");
+
+    let (session, _dirs) = persistence_note_session(
+        "note-theirs",
+        &["--arg", "-ApplePersistenceIgnoreState", "--arg", "YES"],
+    );
+    let (status, shown) = on_pty(session, &[("stderr marker", "q")]);
+    assert_eq!(status.code(), Some(0), "{shown}");
+    assert!(shown.contains(note), "{shown}");
+}
+
 /// A session exits by how it ends. Ctrl-C while a build runs cancels it,
 /// exit 6, whether or not the app ran before; a quit at the prompt, by 'q'
 /// or by Ctrl-C, exits 0 once the app has run.

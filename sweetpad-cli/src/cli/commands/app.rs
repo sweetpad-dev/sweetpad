@@ -999,6 +999,11 @@ struct RunPlan {
     hot_entitlements: Option<std::path::PathBuf>,
     /// Launch args/env/wait-for-debugger for the app process.
     launch: LaunchArgs,
+    /// Whether sweetpad put [`IGNORE_PERSISTENCE`] into `launch.args`
+    /// itself, rather than the caller or the scheme. AppKit's note that the
+    /// key took effect is then about sweetpad's launch, not the app, and the
+    /// session leaves it out of the app's output ([`is_persistence_note`]).
+    added_ignore_persistence: bool,
     /// Extra xcodebuild arguments (after `--`), passed through verbatim.
     passthrough: Vec<String>,
 }
@@ -1379,14 +1384,19 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         hot: opts.hot,
         hot_entitlements: None,
         launch: opts.launch.clone(),
+        added_ignore_persistence: false,
         passthrough: opts.passthrough.to_vec(),
     };
     // Settled on the plan, so every macOS launch it drives carries it: the
     // session's relaunches, a detached launch, and lldb's.
     if matches!(plan.target, Target::Mac) {
-        plan.launch.args = mac_launch_args(&plan.launch.args, plan.launch.restore_state, || {
+        let args = mac_launch_args(&plan.launch.args, plan.launch.restore_state, || {
             resolve::scheme_launch_arguments(&plan.resolved.container, &plan.scheme)
         });
+        // `mac_launch_args` only ever prepends the pair, so a longer list
+        // means sweetpad added it.
+        plan.added_ignore_persistence = args.len() > plan.launch.args.len();
+        plan.launch.args = args;
     }
     // A hot macOS build may need to sign with an ephemeral sandbox-stripped
     // entitlements file (§9d zero-config sandbox stripping) — settled here so
@@ -2496,7 +2506,12 @@ impl HotApp<'_> {
                         CliError::new(format!("failed to run '{}': {e}", app.executable.display()))
                     })
                 })?;
-                render_console(&mut child, ctx.out.use_color(), filter);
+                render_console(
+                    &mut child,
+                    ctx.out.use_color(),
+                    filter,
+                    plan.added_ignore_persistence,
+                );
                 let reap_slot = crate::cli::signals::register_child(child.id());
                 *running = Some(Running {
                     stream: Some(child),
@@ -2861,7 +2876,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
             let mut child = ctx.out.step("Launching app", || {
                 simctl::spawn_console(udid, &app.bundle_id, &opts)
             })?;
-            render_console(&mut child, ctx.out.use_color(), filter);
+            render_console(&mut child, ctx.out.use_color(), filter, false);
             let reap_slot = crate::cli::signals::register_child(child.id());
             Ok(Running {
                 stream: Some(child),
@@ -2884,7 +2899,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
                 &plan.launch.args,
                 &plan.launch.env_pairs("DEVICECTL_CHILD_")?,
             )?;
-            render_console(&mut child, ctx.out.use_color(), filter);
+            render_console(&mut child, ctx.out.use_color(), filter, false);
             let reap_slot = crate::cli::signals::register_child(child.id());
             Ok(Running {
                 stream: Some(child),
@@ -2914,7 +2929,12 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
             if plan.launch.wait_for_debugger {
                 stop_for_debugger(ctx, child.id());
             }
-            render_console(&mut child, ctx.out.use_color(), filter);
+            render_console(
+                &mut child,
+                ctx.out.use_color(),
+                filter,
+                plan.added_ignore_persistence,
+            );
             let reap_slot = crate::cli::signals::register_child(child.id());
             Ok(Running {
                 stream: Some(child),
@@ -3817,27 +3837,43 @@ fn render_logs(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
 /// with the local arrival time, distinct from os_log ([`render_logs`]). Both pipes
 /// are drained so neither blocks the app; known
 /// boot noise ([`is_boot_noise`]) is dropped, and lines obey the live `filter` like
-/// os_log, so `4 off` silences them too.
+/// os_log, so `4 off` silences them too. `ours_ignore_persistence` drops
+/// AppKit's stderr note about an `-ApplePersistenceIgnoreState` sweetpad added
+/// ([`RunPlan::added_ignore_persistence`]).
 #[allow(clippy::print_stdout)] // live app stdout/stderr stream on detached threads
-fn render_console(child: &mut Child, color: bool, filter: &Arc<AtomicU8>) {
-    let pipes: [Option<Box<dyn std::io::Read + Send>>; 2] = [
-        child
-            .stdout
-            .take()
-            .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
-        child
-            .stderr
-            .take()
-            .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+fn render_console(
+    child: &mut Child,
+    color: bool,
+    filter: &Arc<AtomicU8>,
+    ours_ignore_persistence: bool,
+) {
+    let pipes: [(Option<Box<dyn std::io::Read + Send>>, bool); 2] = [
+        (
+            child
+                .stdout
+                .take()
+                .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+            false,
+        ),
+        (
+            child
+                .stderr
+                .take()
+                .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+            ours_ignore_persistence,
+        ),
     ];
-    for pipe in pipes.into_iter().flatten() {
+    for (pipe, drop_persistence_note) in pipes {
+        let Some(pipe) = pipe else {
+            continue;
+        };
         let filter = Arc::clone(filter);
         std::thread::spawn(move || {
             // Lossy line reads: a binary dump on the app's own stdout must
             // not end this thread — on the Mac target the streamed child *is*
             // the app, and a dropped read end SIGPIPE-kills it mid-session.
             process::read_lines_lossy(pipe, &mut |line| {
-                if is_boot_noise(line) {
+                if is_boot_noise(line) || (drop_persistence_note && is_persistence_note(line)) {
                     return;
                 }
                 // Console output has no timestamp of its own; stamp it with the local
@@ -3883,6 +3919,18 @@ fn render_log_stderr(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
 /// genuine diagnostics fall through to their renderer.
 fn is_boot_noise(line: &str) -> bool {
     line.contains("getpwuid_r did not find a match for uid")
+}
+
+/// Whether a line is AppKit's note that [`IGNORE_PERSISTENCE`] took effect,
+/// which it writes to stderr at every launch that carries the pair, after
+/// the usual `<date> <App>[<pid>:<tid>] ` log prefix:
+/// `ApplePersistenceIgnoreState: Existing state will not be touched. New
+/// state will be written to <path>`. The message has to open the line, so an
+/// app's own line that merely quotes it still shows.
+fn is_persistence_note(line: &str) -> bool {
+    const NOTE: &str = "ApplePersistenceIgnoreState: Existing state will not be touched";
+    let message = line.split_once("] ").map_or(line, |(_, rest)| rest);
+    message.starts_with(NOTE)
 }
 
 /// Render a device's `pymobiledevice3` syslog stdout on a detached thread, mirroring
@@ -8287,6 +8335,25 @@ Target 0: (crash) stopped.\n"
             "'sweetpad app ui tree --project App.xcodeproj --scheme AppMac --destination \
              platform=macOS'"
         );
+    }
+
+    /// AppKit's note opens the message after the log prefix; the same words
+    /// anywhere else in a line are the app's.
+    #[test]
+    fn the_persistence_note_is_recognized_by_its_opening() {
+        assert!(is_persistence_note(
+            "2026-09-27 00:01:39.396 SweetpadCIMac[34229:21532494] ApplePersistenceIgnoreState: \
+             Existing state will not be touched. New state will be written to \
+             /var/folders/wq/T/dev.sweetpad.ci.mac.savedState"
+        ));
+        assert!(is_persistence_note(
+            "ApplePersistenceIgnoreState: Existing state will not be touched."
+        ));
+        assert!(!is_persistence_note(
+            "2026-09-27 00:01:39.396 App[1:2] saw 'ApplePersistenceIgnoreState: Existing \
+             state will not be touched' in the log"
+        ));
+        assert!(!is_persistence_note("hello from print()"));
     }
 
     /// A macOS launch skips AppKit's window restoration unless asked not to,
