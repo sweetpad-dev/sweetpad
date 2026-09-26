@@ -592,12 +592,17 @@ fn quitting_a_session_whose_build_failed_exits_as_a_failed_build() {
             "Debug",
         ],
     );
-    let (status, shown) = on_pty(session, &[("q quit", "q")]);
+    let (status, shown) = on_pty(
+        session,
+        &[("q quit", "h"), ("q quit (terminate the app)", "q")],
+    );
     assert_eq!(status.code(), Some(3), "{shown}");
     assert!(
         shown.contains("the last build failed, so nothing was launched"),
         "{shown}"
     );
+    // With nothing launched there is no log stream, so no level keys to offer.
+    assert!(!shown.contains("log level"), "{shown}");
     let tip = "(this tip shows once)";
     assert!(!shown.contains(tip), "{shown}");
 

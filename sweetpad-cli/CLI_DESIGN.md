@@ -623,7 +623,14 @@ sweetpad completions <shell>          clap_complete-generated scripts
   killing the macOS process) so the relaunch is always a fresh process picking up
   the new binary — `simctl launch` alone would just foreground the stale one — and
   the app is likewise terminated on quit. A failed rebuild keeps the session alive;
-  fix and press `r` again. The exit code follows how the session ended (§4):
+  fix and press `r` again. The os_log stream starts with the first launch, not
+  the first build: a session whose build failed has no app to follow, so it
+  runs no `log stream` (and `h` offers no level keys) until an `r` gets the app
+  up. The `Filtering the log data using …` line `log stream` prints first is
+  the tool restating sweetpad's predicate, so `oslog::render_ndjson_line` drops
+  it wherever an os_log stream is rendered: the session, and `app logs`, where
+  it can't satisfy an `--until` that names the app either. The exit code
+  follows how the session ended (§4):
   Ctrl-C during any of its builds is 6, and a quit is 0 once the app has run,
   else the last build's code (3 failed, 1 built but not launched).
 

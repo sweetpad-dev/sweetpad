@@ -1808,15 +1808,15 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
     // threshold, set live by the 1/2/3 keys.
     let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
     // Boot the simulator on a background thread so it comes up while the project
-    // builds. Joined below before install — or, on a failed build, before the log
-    // stream so it attaches to a booted device instead of failing with "device is
-    // not booted". A no-op for device/macOS targets.
+    // builds. Joined below before install, or on a failed build right away, so
+    // the next `r` finds it booted. A no-op for device/macOS targets.
     let mut boot = BgBoot::start(&plan.target);
     // Build + launch. A failure keeps the session (nothing running) so you can fix
     // the error and press `r`, instead of being dropped back to the shell.
     let started = Instant::now();
     let mut ever_launched = false;
     let mut last_build;
+    let mut logs = SessionLogs::default();
     let mut running = match build(plan, &ctx.out, None) {
         BuildOutcome::Ok => {
             last_build = LastBuild::Succeeded;
@@ -1827,6 +1827,7 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
                 Ok(r) => {
                     note_launch(ctx, "Launched", started);
                     ever_launched = true;
+                    logs.launched(ctx, plan, &filter);
                     Some(r)
                 }
                 Err(e) => {
@@ -1839,8 +1840,7 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
             last_build = LastBuild::Failed;
             ctx.out.error(&e);
             // Nothing launched, but the session stays open to fix and rebuild. Finish
-            // the boot so the log stream ([`start_logs`]) attaches to a booted device
-            // and it's ready for the next `r`. Best-effort.
+            // the boot so the simulator is ready for the next `r`. Best-effort.
             let _ = boot.wait();
             None
         }
@@ -1853,34 +1853,28 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
             return session_result(false, LastBuild::Cancelled);
         }
     };
-    // The log stream is session-scoped: started once and kept across rebuilds (its
-    // name-based predicate follows the relaunched app), so rebuilds never tear it
-    // down. Dropped on exit.
-    let logs = start_logs(ctx, plan, &filter);
-    // The level keys are meaningful only when there's an os_log stream to filter
-    // (the simulator, a macOS app, or a device with pymobiledevice3) — not a device
-    // on its raw console.
-    let filterable = logs.is_some();
-    session_hint(ctx, filterable);
+    session_hint(ctx, logs.filterable());
 
     let mut detach = false;
     loop {
         match rawmode::poll_key() {
             rawmode::Input::Key(ch) => match classify_key(ch) {
-                SessionKey::Rebuild => match do_rebuild(ctx, plan, &mut running, &filter) {
-                    RebuildOutcome::Continue { build, launched } => {
-                        last_build = build;
-                        ever_launched |= launched;
-                        session_hint(ctx, filterable);
+                SessionKey::Rebuild => {
+                    match do_rebuild(ctx, plan, &mut running, &mut logs, &filter) {
+                        RebuildOutcome::Continue { build, launched } => {
+                            last_build = build;
+                            ever_launched |= launched;
+                            session_hint(ctx, logs.filterable());
+                        }
+                        // Ctrl-C during the rebuild cancels the whole run, whether
+                        // or not the app ran before it; fall through to the shared
+                        // teardown.
+                        RebuildOutcome::Cancelled => {
+                            last_build = LastBuild::Cancelled;
+                            break;
+                        }
                     }
-                    // Ctrl-C during the rebuild cancels the whole run, whether
-                    // or not the app ran before it; fall through to the shared
-                    // teardown.
-                    RebuildOutcome::Cancelled => {
-                        last_build = LastBuild::Cancelled;
-                        break;
-                    }
-                },
+                }
                 SessionKey::Quit => break,
                 // `d`: stop watching but leave the app running.
                 SessionKey::Detach => {
@@ -1890,11 +1884,11 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
                 SessionKey::Screenshot => session_screenshot(ctx, plan),
                 SessionKey::Foreground => session_foreground(ctx, plan, running.as_mut()),
                 SessionKey::Clear => ctx.out.line("\x1b[2J\x1b[H"),
-                SessionKey::Help => session_keys_help(ctx, &plan.target, filterable),
+                SessionKey::Help => session_keys_help(ctx, &plan.target, logs.filterable()),
                 // Inert unless an os_log stream is actually being filtered (see
-                // `filterable`).
+                // [`SessionLogs::filterable`]).
                 SessionKey::Filter(level) => {
-                    if filterable {
+                    if logs.filterable() {
                         set_filter(ctx, &filter, level);
                     }
                 }
@@ -1903,7 +1897,7 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
                     // shell; SIGCONT re-asserts raw mode on `fg`.
                     crate::cli::signals::suspend_self();
                     ctx.out.note("resumed");
-                    session_hint(ctx, filterable);
+                    session_hint(ctx, logs.filterable());
                 }
                 SessionKey::Ignore => {}
             },
@@ -2767,6 +2761,35 @@ struct LogStream {
     reap_slot: Option<usize>,
 }
 
+/// The plain session's os_log stream. It starts at the first launch, since
+/// until an app runs there is nothing it could show, and then stays up across
+/// rebuilds: its predicate follows the relaunched app by name. It is tried
+/// once, so a target with no stream (a device without `pymobiledevice3`)
+/// isn't retried and re-reported at every relaunch. Dropping it stops it.
+#[derive(Default)]
+struct SessionLogs {
+    /// Set at the first launch, whether or not a stream came up then.
+    started: bool,
+    stream: Option<LogStream>,
+}
+
+impl SessionLogs {
+    /// An app just launched: start the stream if this is the first launch.
+    fn launched(&mut self, ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) {
+        if !self.started {
+            self.started = true;
+            self.stream = start_logs(ctx, plan, filter);
+        }
+    }
+
+    /// Whether there is an os_log stream for the level keys to filter: the
+    /// simulator's, a macOS app's, or a device's through `pymobiledevice3`,
+    /// never a device's raw console.
+    fn filterable(&self) -> bool {
+        self.stream.is_some()
+    }
+}
+
 impl LogStream {
     /// Block until the stream ends on its own (e.g. the simulator shuts down).
     /// Used by the non-interactive `--hot` follow; Ctrl-C usually ends the
@@ -3455,12 +3478,14 @@ enum RebuildOutcome {
 }
 
 /// Stop the running app, rebuild, and relaunch (the `r` key). The session log
-/// stream is left running; it follows the relaunched app by process name. Ctrl-C
+/// stream is left running, since it follows the relaunched app by process
+/// name, or starts here when this is the session's first launch. Ctrl-C
 /// during the rebuild returns [`RebuildOutcome::Cancelled`] so the session ends.
 fn do_rebuild(
     ctx: &Context,
     plan: &RunPlan,
     running: &mut Option<Running>,
+    logs: &mut SessionLogs,
     filter: &Arc<AtomicU8>,
 ) -> RebuildOutcome {
     ctx.out.note("»  Restarting — rebuilding…");
@@ -3473,6 +3498,7 @@ fn do_rebuild(
             Ok(r) => {
                 *running = Some(r);
                 note_launch(ctx, "Relaunched", started);
+                logs.launched(ctx, plan, filter);
                 RebuildOutcome::Continue {
                     build: LastBuild::Succeeded,
                     launched: true,
@@ -3736,8 +3762,9 @@ fn render_logs(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
         // Lossy line reads: one invalid-UTF-8 byte must not end the thread —
         // dropping the pipe's read end SIGPIPEs the still-writing child.
         process::read_lines_lossy(stdout, &mut |line| {
-            let rendered = oslog::render_ndjson_line(line, color);
-            if rendered.level.as_u8() >= filter.load(Ordering::Relaxed) {
+            if let Some(rendered) = oslog::render_ndjson_line(line, color)
+                && rendered.level.as_u8() >= filter.load(Ordering::Relaxed)
+            {
                 println!("{}", rendered.text);
             }
         });
@@ -6596,8 +6623,10 @@ fn stream_logs(
     if let Some(stdout) = child.stdout.take() {
         process::read_lines_lossy(stdout, &mut |line: &str| {
             emit_log_line(line, color, json);
-            if let Some(w) = watch.as_ref() {
-                w.sees(&oslog::render_ndjson_line(line, false).text);
+            if let Some(w) = watch.as_ref()
+                && let Some(rendered) = oslog::render_ndjson_line(line, false)
+            {
+                w.sees(&rendered.text);
             }
         });
     }
@@ -6702,8 +6731,8 @@ fn emit_log_line(line: &str, color: bool, json: bool) {
         if line.trim_start().starts_with('{') {
             println!("{line}");
         }
-    } else {
-        println!("{}", oslog::render_ndjson_line(line, color).text);
+    } else if let Some(rendered) = oslog::render_ndjson_line(line, color) {
+        println!("{}", rendered.text);
     }
 }
 
