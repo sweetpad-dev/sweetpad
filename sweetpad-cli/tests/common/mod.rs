@@ -14,13 +14,19 @@ pub struct TempDir(PathBuf);
 
 impl TempDir {
     /// `<temp>/<name>-<pid>-<n>`, where `n` counts the directories this
-    /// process has made. The name stays short because a unix socket path
-    /// under it has to fit in 104 bytes. One an earlier process with the same
-    /// pid left behind is cleared first.
+    /// process has made. One an earlier process with the same pid left behind
+    /// is cleared first.
     pub fn new(name: &str) -> Self {
+        Self::new_in(&std::env::temp_dir(), name)
+    }
+
+    /// [`TempDir::new`] under `parent` instead of the temp directory: `/tmp`
+    /// for a unix socket, whose path has to fit in 104 bytes however long
+    /// `$TMPDIR` is.
+    pub fn new_in(parent: &Path, name: &str) -> Self {
         static MADE: AtomicUsize = AtomicUsize::new(0);
         let n = MADE.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("{name}-{}-{n}", std::process::id()));
+        let dir = parent.join(format!("{name}-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         Self(dir)

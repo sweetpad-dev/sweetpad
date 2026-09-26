@@ -9,8 +9,21 @@ import {
   getProjectStateDir,
   getSocketPath,
   getSweetpadStateHome,
+  socketPathFor,
   workspaceHash,
 } from "./paths";
+
+// `os.tmpdir()` reads `TMPDIR` on every call.
+function withTmpdir(value: string, fn: () => void): void {
+  const prev = process.env.TMPDIR;
+  process.env.TMPDIR = value;
+  try {
+    fn();
+  } finally {
+    if (prev === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = prev;
+  }
+}
 
 function withStateHome(value: string | undefined, fn: () => void): void {
   const prev = process.env.XDG_STATE_HOME;
@@ -59,7 +72,27 @@ describe("server/paths", () => {
 
   describe("getSocketPath", () => {
     it("puts the socket in tmpdir (short path), keyed by name", () => {
-      expect(getSocketPath("abc123")).toBe(path.join(os.tmpdir(), "sweetpad-abc123.sock"));
+      withTmpdir("/var/folders/ab/cdefgh/T", () => {
+        expect(getSocketPath("abc123")).toBe(path.join(os.tmpdir(), "sweetpad-abc123.sock"));
+      });
+    });
+  });
+
+  describe("socketPathFor", () => {
+    it("keeps a path that fits sun_path in tmpdir", () => {
+      const tmpdir = `/${"t".repeat(103 - "/x.sock".length - 1)}`;
+      withTmpdir(tmpdir, () => {
+        expect(socketPathFor("x.sock")).toBe(`${tmpdir}/x.sock`);
+        expect(Buffer.byteLength(socketPathFor("x.sock"))).toBe(103);
+      });
+    });
+
+    it("falls back to /tmp when a long TMPDIR would pass sun_path's 104 bytes", () => {
+      const tmpdir = `/${"t".repeat(103 - "/x.sock".length)}`;
+      withTmpdir(tmpdir, () => {
+        expect(socketPathFor("x.sock")).toBe("/tmp/x.sock");
+        expect(getSocketPath("abc123")).toBe("/tmp/sweetpad-abc123.sock");
+      });
     });
   });
 

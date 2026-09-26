@@ -10,9 +10,10 @@ import * as path from "node:path";
 //   <stateHome>/projects.json        the discovery index (path -> servers)
 //   <stateHome>/projects/<hash>/     per-project state: bsp.json, bsp.log, builds/
 //
-// Only the Unix sockets live elsewhere — a per-workspace tmpdir path — because
-// `sun_path` caps at ~104 bytes and a state-home path can be longer. Nothing is
-// ever written into the project root — there is no `.sweetpad/` directory.
+// Only the Unix sockets live elsewhere — a short tmpdir path (see
+// `socketPathFor`) — because `sun_path` caps at 104 bytes and a state-home path
+// can be longer. Nothing is ever written into the project root — there is no
+// `.sweetpad/` directory.
 
 /** `$XDG_STATE_HOME` or `~/.local/state`. */
 function stateHome(): string {
@@ -61,12 +62,24 @@ export function getBuildDir(workspacePath: string, buildId: string): string {
   return path.join(getBuildsDir(workspacePath), buildId);
 }
 
-// The socket path for a server name: a short tmpdir path, independent of how
-// deeply the project is nested, so it always fits within `sun_path`. Derivable
-// from the name alone, so a client that knows the name can connect without
-// reading the index.
+// `sun_path` holds 104 bytes on macOS, the terminating NUL included.
+const MAX_SOCKET_PATH_BYTES = 103;
+
+// Where a socket file named `fileName` goes: the per-user tmpdir, or `/tmp`
+// when a long `TMPDIR` would push the path past `sun_path`, where binding it
+// fails. Either way the path is independent of how deeply the project is
+// nested.
+export function socketPathFor(fileName: string): string {
+  const inTmpdir = path.join(os.tmpdir(), fileName);
+  if (Buffer.byteLength(inTmpdir) <= MAX_SOCKET_PATH_BYTES) return inTmpdir;
+  return path.join("/tmp", fileName);
+}
+
+// The socket path for a server name (see `socketPathFor`). Derivable from the
+// name alone, so a client that knows the name can connect without reading the
+// index.
 export function getSocketPath(name: string): string {
-  return path.join(os.tmpdir(), `sweetpad-${name}.sock`);
+  return socketPathFor(`sweetpad-${name}.sock`);
 }
 
 export function generateServerName(): string {

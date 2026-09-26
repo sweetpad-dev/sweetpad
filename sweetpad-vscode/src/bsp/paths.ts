@@ -1,7 +1,6 @@
-import * as os from "node:os";
 import * as path from "node:path";
 
-import { getProjectStateDir, workspaceHash } from "../cli-server/paths";
+import { getProjectStateDir, socketPathFor, workspaceHash } from "../cli-server/paths";
 
 // Default debug-log file for the BSP server, in the per-project state dir
 // (alongside bsp.json and the build logs) so it stays out of the project tree.
@@ -19,11 +18,11 @@ export function getBspConfigFile(workspacePath: string): string {
 }
 
 // The BSP server's telemetry socket: a short, stable, project-unique tmpdir path
-// (a path under the state home could be long enough to blow `sun_path`'s ~104-byte
-// cap, so sockets stay in tmpdir). The extension computes it, writes it into
-// bsp.json for the BSP server to bind,
-// and dials it for live logs/status. Stable across restarts, so a relaunched
-// extension or server reconnects to the same path.
+// (a path under the state home could be long enough to blow `sun_path`'s 104-byte
+// cap, so sockets stay in tmpdir, or `/tmp` when `TMPDIR` is long; see
+// `socketPathFor`). The extension computes it, writes it into bsp.json for the
+// BSP server to bind, and dials it for live logs/status. Stable across restarts,
+// so a relaunched extension or server reconnects to the same path.
 export function getBspSocketPath(workspacePath: string): string {
-  return path.join(os.tmpdir(), `sweetpad-bsp-${workspaceHash(workspacePath)}.sock`);
+  return socketPathFor(`sweetpad-bsp-${workspaceHash(workspacePath)}.sock`);
 }
