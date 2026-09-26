@@ -119,6 +119,9 @@ it follows the sender after a semicolon. In `-o json`, the sender is `sentBy`, t
 `exception`, and each exit's `source` says where it came from: `launchd`, `crashReport`, or
 `sweetpad`.
 
+A crash can come without a crash report. macOS saves only so many for one app (25 on macOS 27),
+so an app that crashes again and again stops getting them, and the note under the list says so.
+
 :::note
 
 `--exits` works for simulators and macOS apps, not physical devices. On macOS, launchd keeps a

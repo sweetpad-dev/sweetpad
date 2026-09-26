@@ -80,6 +80,16 @@ explanation, plus the crash report's path and the fault it names (`exception`) w
 Other failures get no such field.
 `sweetpad app logs --exits` shows the same records outside a test run.
 
+A crash doesn't always come with a crash report. macOS saves only so many for one app (25 on
+macOS 27), so a suite that crashes the app many times in a day stops getting them, and the fault
+is missing from the `app terminated:` line. SweetPad adds a line under the failure when that may
+be the reason, and the JSON failure gets a `note` with the same text:
+
+```console
+      app terminated: crashed with SIGTRAP (sent by exc handler[79175])
+      no crash report was found; macOS may have reached its limit of crash reports for this app
+```
+
 ## Compiling the tests without running them
 
 `sweetpad test build` compiles the test targets and stops, the way `sweetpad build` does for the app.

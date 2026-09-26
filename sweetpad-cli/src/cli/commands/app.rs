@@ -7008,8 +7008,9 @@ impl Render for ExitsReport {
         }
         if unreported_crash {
             out.note(&format!(
-                "no crash report found for a crash above; {} runs the app under lldb and \
-                 stops at the fault",
+                "no crash report found for a crash above ({}); {} runs the app under lldb \
+                 and stops at the fault",
+                exits::REPORT_LIMIT,
                 self.diagnose
             ));
         }

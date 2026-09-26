@@ -2460,6 +2460,28 @@ simulator's log, as `simctl diagnose` does, stretched the usual 1.5s query to
 extra query. A green run, or a red one with no failure of that kind, never
 queries at all.
 
+**A crash without its report says why.** The fault's detail (`EXC_BREAKPOINT`,
+the address) comes from the crash report, and a suite that crashes its app all
+day stops getting reports. osanalyticshelper counts the reports it saves for an
+app (`Saved type '309(…)' report (25 of max 25) at …/SweetpadCIApp-….ips` on
+macOS 27) and logs each crash after that as `not saved because the limit of 25
+logs has been reached`. launchd's line is then all there is: `crashed with
+SIGTRAP (sent by exc handler[…])`, with nothing to say why the rest is missing.
+So a crash with no matching report gets a line under it, and the failure gains
+a `note` in JSON:
+
+```
+      app terminated: crashed with SIGTRAP (sent by exc handler[79175])
+      no crash report was found; macOS may have reached its limit of crash reports for this app
+```
+
+It says "may" because the limit is only the cause seen so far: the report may
+also not be written yet, and nothing in the log says when the count resets.
+The limit is not strict either. Another process on the same Mac reached `33 of
+max 25`, and each count seen matched the reports of that name on disk, so a
+report that goes away may make room for one more. `app logs --exits` gives the
+same reason in its note about a crash with no report.
+
 ### A red suite that looked hung
 
 From Xcode 26 on, a test run that fails starts `simctl diagnose --timeout=600`

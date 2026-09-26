@@ -344,6 +344,14 @@ impl Termination {
 }
 
 impl TestReport {
+    /// What the report says about failure `i` beyond its exit: that a crash
+    /// has no crash report, and why that can be.
+    fn note(&self, i: usize) -> Option<String> {
+        let termination = self.terminations.get(i)?.as_ref()?;
+        (termination.exit.is_crash() && termination.crash_report.is_none())
+            .then(|| format!("no crash report was found; {}", exits::REPORT_LIMIT))
+    }
+
     /// One `✗` line per failed test, naming it and its first failure, with
     /// its other failures and what the report adds about it indented below.
     fn failure_lines(&self) -> Vec<String> {
@@ -367,6 +375,9 @@ impl TestReport {
             }
             if let Some(Some(termination)) = self.terminations.get(i) {
                 lines.push(format!("      {}", termination.line()));
+            }
+            if let Some(note) = self.note(i) {
+                lines.push(format!("      {note}"));
             }
         }
         lines
@@ -407,6 +418,9 @@ impl Render for TestReport {
                 });
                 if let Some(Some(t)) = self.terminations.get(i) {
                     failure["terminationReason"] = t.exit.json(t.crash_report.as_deref());
+                }
+                if let Some(note) = self.note(i) {
+                    failure["note"] = note.into();
                 }
                 failure
             })
@@ -2760,6 +2774,63 @@ mod tests {
         assert!(json["failures"][1].get("terminationReason").is_none());
         let bare = failed_report(Vec::new()).json();
         assert!(bare["failures"][0].get("terminationReason").is_none());
+    }
+
+    #[test]
+    fn a_crash_with_no_crash_report_says_why_there_may_be_none() {
+        // Past its limit for an app, macOS saves no more of that app's crash
+        // reports, so launchd's line is all a suite that keeps crashing it
+        // gets: no report path, and no EXC_* detail.
+        const APP: &str = "dev.sweetpad.exitprobe.app";
+        let crash = || {
+            exit_at(
+                APP,
+                79175,
+                "2026-09-26 20:45:07.612000+0200",
+                "exited due to SIGTRAP | sent by exc handler[79175], ran for 4517ms",
+            )
+        };
+        let note = "no crash report was found; macOS may have reached its limit of crash \
+                    reports for this app";
+        let report = failed_report(vec![
+            Some(Termination {
+                exit: crash(),
+                crash_report: None,
+            }),
+            None,
+        ]);
+        assert_eq!(
+            report.failure_lines()[1..3],
+            [
+                "      app terminated: crashed with SIGTRAP (sent by exc handler[79175])"
+                    .to_string(),
+                format!("      {note}"),
+            ]
+        );
+        let json = report.json();
+        assert_eq!(json["failures"][0]["note"], note);
+        assert!(json["failures"][1].get("note").is_none());
+
+        // A crash whose report was found has nothing missing, and a kill never
+        // had a report to miss.
+        let reported = failed_report(vec![Some(Termination {
+            exit: crash(),
+            crash_report: Some(PathBuf::from("/tmp/App.ips")),
+        })]);
+        let killed = failed_report(vec![Some(Termination {
+            exit: exit_at(
+                APP,
+                79644,
+                "2026-09-26 17:54:45.694421+0200",
+                "exited due to SIGKILL, ran for 5820ms",
+            ),
+            crash_report: None,
+        })]);
+        for report in [reported, killed] {
+            let lines = report.failure_lines();
+            assert_eq!(lines.len(), 3, "{lines:?}");
+            assert!(report.json()["failures"][0].get("note").is_none());
+        }
     }
 
     /// launchd's exit line for `bundle_id` at `time`, as `log show` gives it.

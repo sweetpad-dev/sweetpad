@@ -594,6 +594,13 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     era * 146_097 + day_of_era - 719_468
 }
 
+/// Why a crash can come without a crash report. osanalyticshelper saves only
+/// so many for one app, counting as it goes (`Saved type '309(…)' report (25
+/// of max 25) at …/App-….ips` on macOS 27), and logs each crash past that as
+/// `not saved because the limit of 25 logs has been reached`. So an app
+/// crashed over and over by a test suite stops getting reports at all.
+pub const REPORT_LIMIT: &str = "macOS may have reached its limit of crash reports for this app";
+
 /// The crash report the system wrote for this exit, if there is one: an
 /// `.ips` in `~/Library/Logs/DiagnosticReports` — where simulator crashes land
 /// too — whose header names the bundle id and whose body names the pid. Only
