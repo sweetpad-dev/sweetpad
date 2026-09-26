@@ -31,6 +31,10 @@ pub struct TestArgs {
     #[command(flatten)]
     pub target: crate::cli::BuildTargetArgs,
 
+    /// Test on this Mac ('--on mac' is the same thing).
+    #[arg(long, global = true, help_heading = crate::cli::TARGET_SELECTION)]
+    pub mac: bool,
+
     /// Run only this test identifier (Target[/Class[/method]]); repeatable.
     #[arg(long = "only-testing", global = true)]
     pub only_testing: Vec<String>,
@@ -205,6 +209,7 @@ struct RunArgs<'a> {
 
 pub fn run(ctx: &mut Context, args: &TestArgs, action: Option<&Action>) -> CommandResult {
     ctx.targeting = args.target.clone().into();
+    crate::cli::mac_as_on(&mut ctx.targeting, args.mac)?;
     match action {
         Some(Action::Attachments(opts)) => {
             refuse_run_flags(&read_refused_flags(args), &read_reason("attachments"))?;

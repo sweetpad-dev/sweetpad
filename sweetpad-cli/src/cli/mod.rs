@@ -502,6 +502,30 @@ pub(crate) fn settle_on_vs_mode(
     Ok(())
 }
 
+/// `--mac` on `build` and `test`, which take it as a spelling of `--on mac`
+/// so the Mac is named the same way as on the `app` verbs. It beats an
+/// exported `SWEETPAD_ON` or `SWEETPAD_DESTINATION` the way any typed flag
+/// does, and a typed `--on` or `--destination` beside it is a usage error.
+pub(crate) fn mac_as_on(targeting: &mut Targeting, mac: bool) -> Result<(), CliError> {
+    if !mac {
+        return Ok(());
+    }
+    for (flag, given) in [
+        ("--on", targeting.on.is_some()),
+        ("--destination", targeting.destination.is_some()),
+    ] {
+        if given && flag_typed(flag) {
+            return Err(CliError::new(format!(
+                "{flag} and --mac are mutually exclusive; pass one"
+            ))
+            .kind(ErrorKind::Usage));
+        }
+    }
+    targeting.on = Some("mac".to_string());
+    targeting.destination = None;
+    Ok(())
+}
+
 /// Top-level resources. Each is a noun; actions are its subcommands.
 #[derive(Debug, Subcommand)]
 pub enum Resource {

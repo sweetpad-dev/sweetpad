@@ -368,11 +368,16 @@ explicit flag  >  env var  >  config file  >  remembered state  >  auto-discover
   settles the pair with one check, `run` and the lifecycle stages alike: a
   typed mode flag beats an exported `SWEETPAD_ON`, and a typed `--on` beside
   one is a usage error, whether it names the same place (`--on mac --mac`) or
-  another (`--on "iPhone 17" --mac`).
+  another (`--on "iPhone 17" --mac`). `build`, `test` and `test build` take
+  `--mac` as a spelling of `--on mac`, so the Mac is named the same way on
+  every command that builds. `--on` and `--destination` already exclude each
+  other there, so a typed `--mac` is a usage error beside either one, and an
+  exported `SWEETPAD_ON` or `SWEETPAD_DESTINATION` yields to it. `--device`
+  and `--device-id` stay on the `app` verbs.
 - **Remembered state:** the last interactive picks, saved per project, feed the
   layer just above auto-discovery so the daily loop doesn't re-prompt (§6).
   Only picker-settled values are remembered — a one-off flag/env/config
-  override never rewrites the stored context, and `app run --mac`/`--device`
+  override never rewrites the stored context, and `--mac`/`--device`
   destinations are never remembered. The cost shows up as `no scheme
   specified` on the command after a `build --scheme X`, so that error names
   the scheme the project's last recorded build ran when it is still one of

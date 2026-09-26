@@ -210,6 +210,13 @@ sweetpad run --on mac
 sweetpad run --mac      # the same thing
 ```
 
+`build`, `test`, and `test build` also take `--mac`, which means the same as `--on mac`:
+
+```bash
+sweetpad test --mac
+sweetpad build --mac
+```
+
 The macOS destination is also where the CLI's Mac-only verbs apply: `app screenshot` captures the
 app's window, and `app ui` reads and drives it through accessibility.
 
@@ -224,7 +231,8 @@ sweetpad build --destination 'platform=macOS'
 ```
 
 `--on` and `--destination` are mutually exclusive, so pick one per command. On the `app` commands,
-`--on` is also exclusive with `--mac`, `--device`, and `--device-id`.
+`--on` is also exclusive with `--mac`, `--device`, and `--device-id`. On `build` and `test`, `--mac`
+is exclusive with both `--on` and `--destination`.
 
 Prefer `--destination` in CI. Fuzzy matching against whatever simulators a runner happens to have
 installed is a liability, and a pinned specifier fails loudly instead of quietly building for the

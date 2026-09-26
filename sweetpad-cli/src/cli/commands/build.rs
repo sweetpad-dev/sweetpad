@@ -16,9 +16,14 @@ use crate::cli::{
 /// either side of the (optional) `start` token: `sweetpad build --clean` and
 /// `sweetpad build start --clean` are the same invocation.
 #[derive(Debug, clap::Args)]
+#[allow(clippy::struct_excessive_bools)] // independent CLI toggles, not a state machine
 pub struct StartArgs {
     #[command(flatten)]
     pub target: crate::cli::BuildTargetArgs,
+
+    /// Build for this Mac ('--on mac' is the same thing).
+    #[arg(long, global = true, help_heading = crate::cli::TARGET_SELECTION)]
+    pub mac: bool,
 
     /// Clean before building.
     #[arg(long, global = true)]
@@ -64,6 +69,7 @@ pub struct DiagnosticsArgs {
 
 pub fn run(ctx: &mut Context, args: &StartArgs, action: Option<&Action>) -> CommandResult {
     ctx.targeting = args.target.clone().into();
+    crate::cli::mac_as_on(&mut ctx.targeting, args.mac)?;
     match action {
         Some(Action::Diagnostics(_)) => {
             // The resource-global build flags parse here too; accepting and

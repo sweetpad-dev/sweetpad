@@ -263,6 +263,29 @@ fn a_refused_flag_is_a_usage_error() {
     );
 }
 
+/// 'build', 'test' and 'test build' take '--mac' as '--on mac', so a typed
+/// '--on' or '--destination' beside it is a usage error, found before any
+/// project is looked for.
+#[test]
+fn a_typed_destination_beside_mac_is_a_usage_error_on_build_and_test() {
+    let home = tmp("dest-mac-home");
+    let cwd = tmp("dest-mac-cwd");
+    for verb in [&["build"][..], &["test"], &["test", "build"]] {
+        for (flag, value) in [
+            ("--on", "mac"),
+            ("--on", "iPhone 17"),
+            ("--destination", "platform=macOS"),
+        ] {
+            let args = [verb, &[flag, value, "--mac"]].concat();
+            let out = sweetpad(&args, &cwd, &home);
+            assert_eq!(out.status.code(), Some(2), "{args:?}: {out:?}");
+            let stderr = String::from_utf8(out.stderr).unwrap();
+            let expected = format!("{flag} and --mac are mutually exclusive; pass one");
+            assert!(stderr.contains(&expected), "{args:?}: {stderr}");
+        }
+    }
+}
+
 /// Every `app` verb that takes '--mac' checks a typed '--on' against it the
 /// way 'app run' does, before any project is looked for: both typed is a
 /// usage error, whichever destination '--on' names.

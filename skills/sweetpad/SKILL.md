@@ -74,7 +74,8 @@ When a build or test can't reach a device, its error carries this command in
 
 Target one with `--on <ref>`: a fuzzy name (`"iPhone 16 Pro"`), `booted`, `mac`,
 `device`, a platform word (`ios`, `watchos`, …), a UDID, or a saved context
-alias. `--destination "<raw>"` is the escape hatch for an exact xcodebuild
+alias. `--mac` means `--on mac` on `build`, `test`, and the `app` verbs.
+`--destination "<raw>"` is the escape hatch for an exact xcodebuild
 specifier.
 
 ## Build

@@ -259,6 +259,7 @@ builds:
 sweetpad test --on "iPhone 16 Pro"
 sweetpad test --on booted
 sweetpad test --on mac
+sweetpad test --mac     # the same thing
 ```
 
 SweetPad keeps a **separate remembered destination for testing**, so you can develop against one

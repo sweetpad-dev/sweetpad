@@ -162,6 +162,48 @@ fn build_args(project: &Path) -> Vec<&str> {
     ]
 }
 
+/// '--mac' on 'build', 'test' and 'test build' is '--on mac': each builds for
+/// 'platform=macOS', and an exported destination yields to it as it would to
+/// any typed flag.
+#[test]
+fn mac_names_the_mac_on_build_and_test() {
+    let project = project();
+    for verb in [&["build"][..], &["test"], &["test", "build"]] {
+        let mut args = verb.to_vec();
+        args.extend([
+            "--project",
+            project.to_str().unwrap(),
+            "--scheme",
+            "SweetpadCIMac",
+            "--configuration",
+            "Debug",
+            "--mac",
+            "--show-command",
+            "-o",
+            "json",
+            "--non-interactive",
+        ]);
+        let (mut cmd, _home, _cwd) = stub_command("mac", "", 0, &args);
+        let out = cmd
+            .env("SWEETPAD_DESTINATION", "platform=iOS Simulator,name=Nope")
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{args:?}: {out:?}");
+        let envelope: Value = serde_json::from_slice(&out.stdout).unwrap();
+        let command: Vec<&str> = envelope["data"]["command"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a.as_str().unwrap())
+            .collect();
+        let destination = command
+            .windows(2)
+            .find(|pair| pair[0] == "-destination")
+            .map(|pair| pair[1]);
+        assert_eq!(destination, Some("platform=macOS"), "{args:?}: {command:?}");
+    }
+}
+
 /// Run `cmd` with stdout and stderr in one file under `dir`, the way a
 /// terminal or a `2>&1` capture holds them. Returns the exit code and what
 /// the file holds.
