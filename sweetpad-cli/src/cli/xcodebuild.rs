@@ -142,6 +142,7 @@ impl BuildPlan<'_> {
         // Only the raw `-v` human passthrough leaves output unparsed; every
         // parsing mode (including ndjson under `-v`) records the artifact.
         let mut parsed = true;
+        let mut streamed = false;
         let ok = if out.is_ndjson() {
             let (ok, d, b) = buildlog::run_ndjson("xcodebuild", &args, cwd.as_deref(), out)?;
             diagnostics = d;
@@ -170,6 +171,7 @@ impl BuildPlan<'_> {
                 buildlog::run_collecting("xcodebuild", &args, cwd.as_deref(), out, "Building")?;
             diagnostics = d;
             blocker = b;
+            streamed = true;
             ok
         };
         if parsed {
@@ -183,14 +185,16 @@ impl BuildPlan<'_> {
             // Classified here, the one chokepoint every build goes through, so
             // `build start` and `app run`'s build step both exit 3 on a failed
             // compile instead of the generic 1.
+            let shown = blocker.is_none() && streamed_an_error(streamed, &diagnostics);
             let headline = blocker.map_or_else(
                 || format!("xcodebuild exited with a non-zero status{failure_detail}"),
                 |hint| format!("the build is blocked, not broken: {hint}"),
             );
-            Err(CliError::new(headline)
+            let err = CliError::new(headline)
                 .kind(ErrorKind::BuildFailure)
                 .diagnostics(diagnostics)
-                .context("building the project"))
+                .context("building the project");
+            Err(if shown { err.shown() } else { err })
         }
     }
 }
@@ -258,8 +262,7 @@ pub struct TestRunOutcome {
     pub tail: Option<String>,
     /// Diagnostics parsed from the run's output, so a run that died in its
     /// build step reports the compile errors as data rather than as a log.
-    /// Empty in the modes that already showed them to the user (`-v`, the
-    /// beautified human stream).
+    /// Empty under `-v`, whose raw passthrough is not parsed.
     pub diagnostics: Vec<serde_json::Value>,
     /// The whole captured transcript (`--json` only, where nothing reached the
     /// terminal), for [`record_failure_transcript`].
@@ -267,6 +270,9 @@ pub struct TestRunOutcome {
     /// Set when the run was blocked rather than broken — a policy gate no
     /// compile error describes (see [`buildlog::BlockerWatch`]).
     pub blocker: Option<String>,
+    /// The beautified human stream rendered the diagnostics as they arrived
+    /// (see [`streamed_an_error`]).
+    pub streamed: bool,
 }
 
 impl TestPlan<'_> {
@@ -333,6 +339,7 @@ impl TestPlan<'_> {
                 diagnostics,
                 transcript: None,
                 blocker,
+                streamed: false,
             }
         } else if out.is_json() {
             let run = process::run_captured("xcodebuild", &args, cwd.as_deref())?;
@@ -349,6 +356,7 @@ impl TestPlan<'_> {
                     .flatten(),
                 diagnostics,
                 transcript: (!run.success).then_some(run.combined),
+                streamed: false,
             }
         } else if out.is_verbose() {
             let ok = process::run("xcodebuild", &args, cwd.as_deref(), false)
@@ -359,6 +367,7 @@ impl TestPlan<'_> {
                 diagnostics: Vec::new(),
                 transcript: None,
                 blocker: None,
+                streamed: false,
             }
         } else {
             let (ok, diagnostics, blocker) =
@@ -370,6 +379,7 @@ impl TestPlan<'_> {
                 diagnostics,
                 transcript: None,
                 blocker,
+                streamed: true,
             }
         };
         Ok(outcome)
@@ -519,6 +529,15 @@ pub(crate) fn diagnostics_summary(diagnostics: &[serde_json::Value]) -> Option<S
         n => format!(" (and {} more)", n - 1),
     };
     Some(format!("{location}{message}{more}"))
+}
+
+/// Whether a failed run's own log already told the user why: the beautified
+/// stream rendered an error as it arrived and closed on its `✗` banner, so a
+/// trailing error would only restate it (see [`CliError::shown`]). A failure
+/// with no parsed error keeps its trailing message, which is then the only
+/// account of what went wrong.
+pub(crate) fn streamed_an_error(streamed: bool, diagnostics: &[serde_json::Value]) -> bool {
+    streamed && diagnostics.iter().any(|d| d["severity"] == "error")
 }
 
 /// Read the project's last-build diagnostics artifact, if a build recorded one.

@@ -195,7 +195,10 @@ builds it with real `xcodebuild`.
   `CLICOLOR_FORCE`/`FORCE_COLOR` force it back on when piped (an explicit
   `--no-color`/`NO_COLOR` still wins).
 - Errors: human messages on **stderr** by default; **structured error objects**
-  under `--json`. Meaningful exit codes.
+  under `--json`. Meaningful exit codes. When a build or test fails on a
+  compile error that the streamed log already showed, output ends on the `✗`
+  line and no trailing error repeats it. The exit code still reports the
+  failure, and a failure with no parsed error still prints its message.
 
 ### The JSON envelope
 

@@ -118,3 +118,71 @@ fn json_and_ndjson_report_the_same_build_result() {
         assert!(data["durationMs"].is_u64(), "{data}");
     }
 }
+
+const BROKEN: &str = "\
+CompileSwift normal arm64 /src/App/ContentView.swift (in target 'SweetpadCIMac' from project 'SweetpadCIApp')
+/src/App/ContentView.swift:17:19: error: cannot find 'undefinedSymbol' in scope
+** BUILD FAILED **
+
+The following build commands failed:
+\tCompileSwift normal arm64 /src/App/ContentView.swift (in target 'SweetpadCIMac' from project 'SweetpadCIApp')
+(1 failure)
+";
+
+/// The streamed log already names the compile error and closes on `✗ Build
+/// failed`, so human output ends there; the exit code still says it failed.
+#[test]
+fn a_streamed_compile_error_ends_human_output_at_the_banner() {
+    let out = build_with_stub("broken", BROKEN, 65, &[]);
+    assert_eq!(out.status.code(), Some(3), "{out:?}");
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert_eq!(stdout.lines().last(), Some("✗ Build failed"), "{stdout}");
+    assert!(
+        stdout.contains("error: /src/App/ContentView.swift:17:19: cannot find"),
+        "{stdout}"
+    );
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(!stderr.contains("error:"), "{stderr}");
+}
+
+/// With nothing on the stream to explain it, the trailing error is the only
+/// account of the failure and stays.
+#[test]
+fn a_failure_with_no_parsed_error_keeps_the_trailing_error() {
+    let transcript = "Command PhaseScriptExecution failed with a nonzero exit code\n\
+                      ** BUILD FAILED **\n";
+    let out = build_with_stub("unexplained", transcript, 65, &[]);
+    assert_eq!(out.status.code(), Some(3), "{out:?}");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stderr.contains("error: building the project"), "{stderr}");
+    assert!(
+        stderr.contains("xcodebuild exited with a non-zero status"),
+        "{stderr}"
+    );
+}
+
+/// The machine-readable modes keep their error object whatever the terminal
+/// would have shown.
+#[test]
+fn a_streamed_compile_error_still_reaches_the_machine_modes() {
+    for mode in [["-o", "json"], ["-o", "ndjson"]] {
+        let out = build_with_stub(mode[1], BROKEN, 65, &mode);
+        assert_eq!(out.status.code(), Some(3), "{mode:?}: {out:?}");
+        let stderr = String::from_utf8(out.stderr).unwrap();
+        let envelope: Value = serde_json::from_str(stderr.lines().last().unwrap()).unwrap();
+        assert_eq!(envelope["ok"], false, "{mode:?}");
+        assert_eq!(envelope["error"]["code"], "build_failure", "{mode:?}");
+        assert!(
+            envelope["error"]["message"]
+                .as_str()
+                .unwrap()
+                .starts_with("building the project: xcodebuild exited with a non-zero status"),
+            "{mode:?}: {envelope}"
+        );
+        assert_eq!(
+            envelope["error"]["diagnostics"][0]["message"],
+            "cannot find 'undefinedSymbol' in scope",
+            "{mode:?}"
+        );
+    }
+}

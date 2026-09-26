@@ -414,6 +414,7 @@ fn build_step_failure(container: &Container, outcome: xcodebuild::TestRunOutcome
             .kind(crate::cli::ErrorKind::BuildFailure)
             .context("running the tests");
     }
+    let shown = xcodebuild::streamed_an_error(outcome.streamed, &outcome.diagnostics);
     let log = outcome
         .transcript
         .as_deref()
@@ -427,12 +428,13 @@ fn build_step_failure(container: &Container, outcome: xcodebuild::TestRunOutcome
             .tail
             .map_or_else(String::new, |tail| format!(":\n{tail}")),
     };
-    CliError::new(format!(
+    let err = CliError::new(format!(
         "xcodebuild test failed before any test ran{detail}"
     ))
     .kind(crate::cli::ErrorKind::BuildFailure)
     .diagnostics(outcome.diagnostics)
-    .context("running the tests")
+    .context("running the tests");
+    if shown { err.shown() } else { err }
 }
 
 /// Where a project's latest `.xcresult` is retained: one slot per project in
@@ -1206,6 +1208,7 @@ mod tests {
             diagnostics: crate::cli::buildlog::diagnostics_from_transcript(&transcript),
             transcript: Some(transcript.clone()),
             blocker: None,
+            streamed: false,
         };
         let err = build_step_failure(&container, outcome);
 
@@ -1245,10 +1248,38 @@ mod tests {
             diagnostics: Vec::new(),
             transcript: None,
             blocker: None,
+            streamed: true,
         };
         let err = build_step_failure(&container, outcome);
         assert!(err.to_string().contains("Unable to find a destination"));
         assert!(err.json().get("diagnostics").is_none());
+        // Nothing on the stream explained it, so the terminal needs this error.
+        assert!(!err.is_shown());
+    }
+
+    #[test]
+    fn a_streamed_compile_error_is_not_restated_after_the_banner() {
+        let container = Container::Project(PathBuf::from("/work/App.xcodeproj"));
+        let outcome = |streamed, blocker: Option<&str>| xcodebuild::TestRunOutcome {
+            passed: false,
+            tail: None,
+            diagnostics: crate::cli::buildlog::diagnostics_from_transcript(
+                "/work/App/Picker.swift:4:11: error: cannot find 'Missing' in scope\n",
+            ),
+            transcript: None,
+            blocker: blocker.map(str::to_string),
+            streamed,
+        };
+        let err = build_step_failure(&container, outcome(true, None));
+        assert!(err.is_shown());
+        // The machine-readable object and the exit code still carry it.
+        assert_eq!(err.json()["diagnostics"].as_array().map(Vec::len), Some(1));
+        assert_eq!(err.error_kind().exit_code(), 3);
+
+        // The captured modes showed nothing, and a blocker's hint says what
+        // the stream did not.
+        assert!(!build_step_failure(&container, outcome(false, None)).is_shown());
+        assert!(!build_step_failure(&container, outcome(true, Some("approve it"))).is_shown());
     }
 
     #[test]

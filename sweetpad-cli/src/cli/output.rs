@@ -252,7 +252,8 @@ impl Output {
     /// with the operation [`headline`](CliError::headline) in bold; any
     /// underlying [`detail`](CliError::detail) follows on the next line, dimmed
     /// and indented two spaces — so "what we were doing" reads at a glance and
-    /// the raw tool output sits quietly beneath it.
+    /// the raw tool output sits quietly beneath it. A failure the terminal
+    /// already shows ([`CliError::shown`]) prints nothing in human mode.
     pub fn error(&self, err: &CliError) {
         if self.json || self.ndjson {
             let payload = serde_json::json!({
@@ -263,6 +264,9 @@ impl Output {
             if let Ok(s) = serde_json::to_string(&payload) {
                 let _ = writeln!(std::io::stderr(), "{s}");
             }
+            return;
+        }
+        if err.is_shown() {
             return;
         }
         let prefix = if self.color_stderr {

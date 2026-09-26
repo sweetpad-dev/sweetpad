@@ -1499,6 +1499,11 @@ pub struct CliError {
     /// object so a caller reads `error.diagnostics` instead of scraping a log
     /// out of `error.message`.
     diagnostics: Vec<serde_json::Value>,
+    /// The terminal already shows this failure: the streamed build log printed
+    /// the errors behind it and closed on its `✗` banner. Human output then
+    /// prints nothing more; the exit code and the machine-readable error
+    /// object are unaffected.
+    shown: bool,
 }
 
 impl std::fmt::Display for CliError {
@@ -1519,6 +1524,7 @@ impl CliError {
             message: msg.into(),
             kind: ErrorKind::Generic,
             diagnostics: Vec::new(),
+            shown: false,
         }
     }
 
@@ -1563,6 +1569,7 @@ impl CliError {
             context: Some(context.to_string()),
             kind: self.kind,
             diagnostics: self.diagnostics,
+            shown: self.shown,
         }
     }
 
@@ -1573,6 +1580,22 @@ impl CliError {
     pub fn diagnostics(mut self, diagnostics: Vec<serde_json::Value>) -> Self {
         self.diagnostics = diagnostics;
         self
+    }
+
+    /// Mark this failure as already on the terminal, so human output leaves
+    /// the streamed log's `✗` banner as its last word. Set by the runner that
+    /// rendered the errors; it survives [`context`](CliError::context).
+    #[must_use]
+    pub fn shown(mut self) -> Self {
+        self.shown = true;
+        self
+    }
+
+    /// Whether the terminal already shows this failure (see
+    /// [`shown`](CliError::shown)).
+    #[must_use]
+    pub fn is_shown(&self) -> bool {
+        self.shown
     }
 
     /// The machine-readable error object: the taxonomy code, the flattened
@@ -2077,5 +2100,20 @@ mod error_tests {
         let wrapped = r.context("doing the thing").unwrap_err();
         assert_eq!(wrapped.headline(), Some("doing the thing"));
         assert_eq!(wrapped.detail(), "boom");
+    }
+
+    #[test]
+    fn a_shown_failure_stays_shown_through_context_and_keeps_its_exit_code() {
+        let e = CliError::new("xcodebuild exited with a non-zero status")
+            .kind(ErrorKind::BuildFailure)
+            .shown()
+            .context("building the project");
+        assert!(e.is_shown());
+        assert_eq!(e.error_kind().exit_code(), 3);
+        assert_eq!(
+            e.json()["message"],
+            "building the project: xcodebuild exited with a non-zero status"
+        );
+        assert!(!CliError::new("boom").is_shown());
     }
 }
