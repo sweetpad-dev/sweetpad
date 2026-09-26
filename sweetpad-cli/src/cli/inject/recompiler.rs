@@ -17,6 +17,12 @@
 //!
 //! Recovered commands are **cached per source** (they're stable until the file
 //! set / settings change), so the only per-save cost is the compile + link.
+//!
+//! Every toolchain child runs with a `TMPDIR` of the session's own, `tmp/` in
+//! the session's work directory: the Swift driver leaves a
+//! `TemporaryDirectory.*` in `$TMPDIR` on each `-###` dry run, and the work
+//! directory goes when the session ends. It lasts as long as the cached jobs
+//! do, so a path a job names inside it stays valid for every save.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -81,6 +87,10 @@ pub struct Recompiler {
     // BuildLog (A) input: the `--hot` build's captured transcript.
     build_log: Option<PathBuf>,
 
+    /// `<out_dir>/tmp`, the `TMPDIR` the toolchain children run with. The
+    /// caller removes `out_dir` when the session ends, which takes this too.
+    tmpdir: PathBuf,
+
     counter: AtomicUsize,
 }
 
@@ -107,6 +117,7 @@ impl Recompiler {
         };
         Recompiler {
             mode,
+            tmpdir: out_dir.join("tmp"),
             out_dir,
             developer_dir,
             sdk,
@@ -123,9 +134,17 @@ impl Recompiler {
         }
     }
 
+    /// The `TMPDIR` the toolchain children run with, once it exists. Without
+    /// it they keep the one this process has.
+    fn tmpdir(&self) -> Option<&Path> {
+        self.tmpdir.is_dir().then_some(self.tmpdir.as_path())
+    }
+
     /// Recompile `source` into a fresh loadable dylib, returning its path.
     pub fn recompile(&self, source: &Path) -> Result<PathBuf, String> {
         std::fs::create_dir_all(&self.out_dir).map_err(|e| format!("create inject dir: {e}"))?;
+        // Best effort: a missing one leaves the children the inherited TMPDIR.
+        let _ = std::fs::create_dir_all(&self.tmpdir);
         let n = self.counter.fetch_add(1, Ordering::Relaxed);
         // The `eval_injection_` prefix is what the client's image scan expects.
         let dylib = self.out_dir.join(format!("eval_injection_{n}.dylib"));
@@ -140,9 +159,16 @@ impl Recompiler {
 
         // Primary: the recovered single-file frontend command (resolver `-###`, or
         // the build log in `BuildLog` mode), compiled and linked into the dylib.
-        let primary = self
-            .frontend_tokens(source)
-            .and_then(|tokens| compile_and_link(&tokens, &source_str, &object, &dylib, &self.sdk));
+        let primary = self.frontend_tokens(source).and_then(|tokens| {
+            compile_and_link(
+                &tokens,
+                &source_str,
+                &object,
+                &dylib,
+                &self.sdk,
+                self.tmpdir(),
+            )
+        });
         match primary {
             Ok(()) => Ok(dylib),
             // Only resolver mode degrades; build-log mode surfaces its own failure.
@@ -155,7 +181,15 @@ impl Recompiler {
                 // single-file — and cache it so later saves of this file skip the
                 // broken `-###` path. Whole-module `-emit-library` is the last resort.
                 if let Ok(tokens) = self.buildlog_tokens(source)
-                    && compile_and_link(&tokens, &source_str, &object, &dylib, &self.sdk).is_ok()
+                    && compile_and_link(
+                        &tokens,
+                        &source_str,
+                        &object,
+                        &dylib,
+                        &self.sdk,
+                        self.tmpdir(),
+                    )
+                    .is_ok()
                 {
                     let canon =
                         std::fs::canonicalize(source).unwrap_or_else(|_| source.to_path_buf());
@@ -219,7 +253,7 @@ impl Recompiler {
             vec!["swiftc".into(), "-###".into(), "-disable-batch-mode".into()];
         argv.extend(sanitize_driver_args(&swift.arguments));
         argv.extend(swift.input_files.clone());
-        let output = capture_combined("xcrun", &argv)?;
+        let output = capture_combined("xcrun", &argv, self.tmpdir())?;
 
         let mut cache = self.frontend_cache.lock().unwrap();
         let mut found = 0;
@@ -256,7 +290,12 @@ impl Recompiler {
             .map(String::from),
         );
         argv.push(dylib.to_string_lossy().into_owned());
-        run("xcrun", &prepend("swiftc", &argv), "emit-library")
+        run(
+            "xcrun",
+            &prepend("swiftc", &argv),
+            "emit-library",
+            self.tmpdir(),
+        )
     }
 
     /// Resolve (and cache) the target whose module owns `source`, returning its
@@ -399,10 +438,19 @@ impl Recompiler {
 
 // ---- shared command helpers (ported from the validated spike) ----
 
+/// `Command::new(program)`, with `TMPDIR` set to `tmpdir` when there is one.
+fn command(program: &str, tmpdir: Option<&Path>) -> Command {
+    let mut cmd = Command::new(program);
+    if let Some(dir) = tmpdir {
+        cmd.env("TMPDIR", dir);
+    }
+    cmd
+}
+
 /// Run `prog argv`, returning stdout+stderr combined (the `-###` dry run prints
 /// its jobs to stderr; we don't care which stream).
-fn capture_combined(prog: &str, argv: &[String]) -> Result<String, String> {
-    let out = Command::new(prog)
+fn capture_combined(prog: &str, argv: &[String], tmpdir: Option<&Path>) -> Result<String, String> {
+    let out = command(prog, tmpdir)
         .args(argv)
         .output()
         .map_err(|e| format!("spawn {prog}: {e}"))?;
@@ -514,7 +562,7 @@ fn prepend(first: &str, rest: &[String]) -> Vec<String> {
 }
 
 #[allow(clippy::similar_names)] // prog/program/argv/args are the natural names here
-fn run(prog: &str, argv: &[String], what: &str) -> Result<(), String> {
+fn run(prog: &str, argv: &[String], what: &str, tmpdir: Option<&Path>) -> Result<(), String> {
     if argv.is_empty() {
         return Err(format!("{what}: empty command"));
     }
@@ -524,7 +572,7 @@ fn run(prog: &str, argv: &[String], what: &str) -> Result<(), String> {
     } else {
         (prog, argv)
     };
-    let out = Command::new(program)
+    let out = command(program, tmpdir)
         .args(args)
         .output()
         .map_err(|e| format!("spawn {what}: {e}"))?;
@@ -541,19 +589,26 @@ fn run(prog: &str, argv: &[String], what: &str) -> Result<(), String> {
 /// Compile `source` into one object via the recovered single-file frontend
 /// command, then link it into a loadable `dylib`. Shared by the primary attempt
 /// and the build-log fallback. `fallback_sdk` resolves the sysroot when the
-/// frontend command carries no `-sdk`.
+/// frontend command carries no `-sdk`; both children get `tmpdir` as `TMPDIR`.
 fn compile_and_link(
     tokens: &[String],
     source: &str,
     object: &Path,
     dylib: &Path,
     fallback_sdk: &str,
+    tmpdir: Option<&Path>,
 ) -> Result<(), String> {
-    run("", &single_file_command(tokens, source, object)?, "compile")?;
+    run(
+        "",
+        &single_file_command(tokens, source, object)?,
+        "compile",
+        tmpdir,
+    )?;
     run(
         "",
         &link_command(tokens, object, dylib, fallback_sdk)?,
         "link",
+        tmpdir,
     )?;
     Ok(())
 }
@@ -755,6 +810,45 @@ fn link_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every toolchain child gets the session's own `TMPDIR`, inside the work
+    /// directory the session removes.
+    #[test]
+    fn children_run_with_the_sessions_tmpdir() {
+        let work = crate::cli::testdir::TempDir::new("sweetpad-hot-tmpdir");
+        // Build-log mode with no log fails before resolving anything, so the
+        // recompile below spawns nothing and reads no Xcode.
+        let recompiler = Recompiler::new(
+            Mode::BuildLog,
+            &Container::Project(PathBuf::from("/nonexistent/App.xcodeproj")),
+            "App".into(),
+            "Debug".into(),
+            CommandLineSettings::default(),
+            "macosx".into(),
+            "arm64".into(),
+            String::new(),
+            None,
+            work.to_path_buf(),
+        );
+        assert_eq!(recompiler.tmpdir(), None);
+        // A recompile makes it first thing, before anything it spawns.
+        assert!(recompiler.recompile(&work.join("Missing.swift")).is_err());
+        let dir = recompiler.tmpdir().expect("a session TMPDIR").to_path_buf();
+        assert_eq!(dir, work.join("tmp"));
+        let shell = |script: &str| vec!["-c".to_string(), script.to_string()];
+        assert_eq!(
+            capture_combined("sh", &shell("printf %s \"$TMPDIR\""), recompiler.tmpdir()).unwrap(),
+            dir.display().to_string()
+        );
+        let probe = dir.join("seen");
+        let script = format!(
+            "[ \"$TMPDIR\" = '{}' ] && touch '{}'",
+            dir.display(),
+            probe.display()
+        );
+        run("sh", &shell(&script), "probe", recompiler.tmpdir()).unwrap();
+        assert!(probe.exists());
+    }
 
     #[test]
     fn mode_parses_aliases() {

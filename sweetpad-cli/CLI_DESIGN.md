@@ -1082,7 +1082,24 @@ dependency, no Xcode-version log-format drift, and because `-###` uses the
 `-###` recovery ever fails, it falls back to whole-module `swiftc -emit-library`.
 (We deliberately do **not** link `swift-driver` as a library: a vendored driver
 wouldn't match the user's Xcode — the same skew we avoid everywhere — and the
-cached one-shot spawn makes per-save cost ~0 anyway.)
+cached one-shot spawn makes per-save cost ~0 anyway.) Each `-###` dry run leaves
+a `TemporaryDirectory.*` in `$TMPDIR`, which the driver never removes, so every
+toolchain child of the recompiler (the dry run, the compile, the link and the
+whole-module fallback) runs with a `TMPDIR` of the session's own, `tmp/` in the
+work directory the session removes when it ends. It lasts as long as the cached jobs do, so a path a job names
+inside it stays valid for every save.
+
+`xcodebuild` itself keeps the user's `TMPDIR`, though a build leaves a
+`TemporaryDirectory.*` there too, and every invocation that opens a project
+(`-list`, `clean`, `-resolvePackageDependencies`, a build) writes a
+`_Users_<user>_.swiftpm.lock`. SwiftPM keeps its cross-process locks in
+`$TMPDIR`, each named for the path it guards (this one guards `~/.swiftpm`), and
+a lock only excludes the other SwiftPM clients (Xcode itself, a second
+`xcodebuild`, `swift build`) because they all take it in the same directory. A
+private `TMPDIR` would let a sweetpad build and one of them write that shared
+state at once. The build's children inherit `TMPDIR` as well: a Run Script phase and a macOS
+test host (in its environment, though not in `NSTemporaryDirectory()`) see it,
+so both would get a directory that is removed when the build ends.
 
 **(A) Switchable — capture frontend command lines from our own build.**
 Because the CLI *is* the builder, the `--hot` build tees the `swift-frontend`
