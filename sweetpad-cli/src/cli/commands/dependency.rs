@@ -1099,6 +1099,9 @@ fn resolve_packages(
         args.push("-clonedSourcePackagesDirPath".to_string());
         args.push(dir.to_string_lossy().into_owned());
     }
+    let bundle = ResolveBundle::new();
+    args.push("-resultBundlePath".to_string());
+    args.push(bundle.path.to_string_lossy().into_owned());
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let cwd = xcodebuild::working_dir(container);
     // Beautify like `build`: quiet/JSON captures both streams (so nothing
@@ -1565,6 +1568,31 @@ impl Drop for CloneDir {
     }
 }
 
+/// The pid-keyed `-resultBundlePath` every xcodebuild resolve passes. A failed
+/// resolve writes a result bundle, and given no path xcodebuild writes it to
+/// `ResultBundle_<date>.xcresult` in the temp directory, where nothing clears
+/// it. Dropping this removes the bundle. xcodebuild refuses a path that
+/// already exists (Xcode 27.0), so one an interrupted run left behind is
+/// removed first.
+struct ResolveBundle {
+    path: PathBuf,
+}
+
+impl ResolveBundle {
+    fn new() -> Self {
+        let path =
+            std::env::temp_dir().join(format!("sweetpad-resolve-{}.xcresult", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        Self { path }
+    }
+}
+
+impl Drop for ResolveBundle {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
 /// Locate a resolved package's checkout under `base` — a cloned-source-packages
 /// dir or a `.build` dir holding `workspace-state.json` + `checkouts/`. Prefers
 /// the precise identity→subpath map in `workspace-state.json` (robust to
@@ -1900,5 +1928,20 @@ mod tests {
         left.sort();
         let _ = std::fs::remove_dir_all(&temp);
         assert_eq!(left, unrelated);
+    }
+
+    /// xcodebuild refuses a `-resultBundlePath` that exists, so a bundle an
+    /// interrupted run left at this process's path goes before the resolve.
+    #[test]
+    fn a_resolve_bundle_path_starts_absent_and_goes_on_drop() {
+        let path =
+            std::env::temp_dir().join(format!("sweetpad-resolve-{}.xcresult", std::process::id()));
+        std::fs::create_dir_all(path.join("Data")).unwrap();
+        let bundle = ResolveBundle::new();
+        assert_eq!(bundle.path, path);
+        assert!(!path.exists(), "the leftover bundle is still there");
+        std::fs::create_dir_all(path.join("Data")).unwrap();
+        drop(bundle);
+        assert!(!path.exists(), "the resolve's bundle is still there");
     }
 }
