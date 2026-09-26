@@ -448,13 +448,13 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     if matches!(resolved.container, resolve::Container::SwiftPackage(_)) {
         if args.failed || args.result_bundle.is_some() || args.junit.is_some() {
             return Err(CliError::new(
-                "--failed/--result-bundle/--junit need an .xcresult bundle; `swift test` \
+                "--failed/--result-bundle/--junit need an .xcresult bundle; 'swift test' \
                  produces none for a Swift package",
             ));
         }
         if args.retry_flaky.is_some() {
             return Err(CliError::new(
-                "--retry-flaky is xcodebuild's -retry-tests-on-failure; `swift test` has no \
+                "--retry-flaky is xcodebuild's -retry-tests-on-failure; 'swift test' has no \
                  equivalent for a Swift package",
             ));
         }

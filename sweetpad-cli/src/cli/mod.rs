@@ -850,7 +850,7 @@ pub fn run(argv: &[String]) -> ExitCode {
         Err(e) => {
             out.warn(&format!(
                 "failed to load config: {e} — continuing with defaults \
-                 (`sweetpad open config` to fix it)"
+                 ('sweetpad open config' to fix it)"
             ));
             config::Config::default()
         }
@@ -1441,8 +1441,8 @@ fn first_run_hint(out: &output::Output) {
     let _ = std::fs::create_dir_all(&dir);
     if std::fs::write(&marker, b"shown\n").is_ok() {
         out.note(
-            "tip: `sweetpad doctor` checks your toolchain, `sweetpad completions <shell>` \
-             sets up tab-completion, and `sweetpad help config` explains configuration \
+            "tip: 'sweetpad doctor' checks your toolchain, 'sweetpad completions <shell>' \
+             sets up tab-completion, and 'sweetpad help config' explains configuration \
              (this tip shows once)",
         );
     }
@@ -1729,6 +1729,60 @@ mod cli_definition_tests {
                 "help group lists `{name}`, which is not a top-level subcommand"
             );
         }
+    }
+
+    /// A terminal prints backticks literally, so help text quotes with
+    /// 'single quotes', as clap's own text does. Doc comments on the clap
+    /// types are that help text.
+    ///
+    /// `app` and its subcommands are skipped until their help in
+    /// `commands/app.rs` is converted; drop the exclusion then.
+    #[test]
+    fn help_text_quotes_without_backticks() {
+        use clap::CommandFactory;
+
+        fn walk(cmd: &clap::Command, path: &str, found: &mut Vec<String>) {
+            let texts = [
+                cmd.get_about(),
+                cmd.get_long_about(),
+                cmd.get_before_help(),
+                cmd.get_before_long_help(),
+                cmd.get_after_help(),
+                cmd.get_after_long_help(),
+            ];
+            for text in texts.into_iter().flatten() {
+                if text.to_string().contains('`') {
+                    found.push(format!("{path}: {text}"));
+                }
+            }
+            for arg in cmd.get_arguments() {
+                let values = arg.get_possible_values();
+                let value_help = values
+                    .iter()
+                    .filter_map(clap::builder::PossibleValue::get_help);
+                for text in [arg.get_help(), arg.get_long_help()]
+                    .into_iter()
+                    .flatten()
+                    .chain(value_help)
+                {
+                    if text.to_string().contains('`') {
+                        found.push(format!("{path} [{}]: {text}", arg.get_id()));
+                    }
+                }
+            }
+            for sub in cmd.get_subcommands() {
+                if path == "sweetpad" && sub.get_name() == "app" {
+                    continue;
+                }
+                walk(sub, &format!("{path} {}", sub.get_name()), found);
+            }
+        }
+
+        let mut root = super::Cli::command();
+        root.build();
+        let mut found = Vec::new();
+        walk(&root, "sweetpad", &mut found);
+        assert!(found.is_empty(), "backticks in help:\n{}", found.join("\n"));
     }
 
     /// The `-- XCODEBUILD_ARGS` tail follows the build: every `app` verb that
@@ -2152,7 +2206,7 @@ mod error_tests {
     fn context_preserves_the_error_kind() {
         // Nearly every surfaced error is `.context`-wrapped through `?`; the
         // classification (and thus the exit code) must survive every layer.
-        let e = CliError::new("`xcrun` not found on PATH")
+        let e = CliError::new("'xcrun' not found on PATH")
             .kind(ErrorKind::ToolMissing)
             .context("installing the app on the simulator")
             .context("running the app");

@@ -149,7 +149,7 @@ fn lint(raw: &toml::Value) -> Vec<String> {
                 }
             }
             other => warnings.push(format!(
-                "config: unknown key `{other}` (did you mean `defaults` or `projects`?)"
+                "config: unknown key '{other}' (did you mean 'defaults' or 'projects'?)"
             )),
         }
     }
@@ -166,15 +166,15 @@ fn lint_defaults(value: &toml::Value, at: &str, warnings: &mut Vec<String>) {
             if let Some(testing) = sub.as_table() {
                 for tkey in testing.keys() {
                     if !TESTING_KEYS.contains(&tkey.as_str()) {
-                        warnings.push(format!("config: unknown key `{tkey}` in {at} testing"));
+                        warnings.push(format!("config: unknown key '{tkey}' in {at} testing"));
                     }
                 }
             }
         } else if !DEFAULTS_KEYS.contains(&key.as_str()) {
             let hint = suggest(key, &DEFAULTS_KEYS)
-                .map(|s| format!(" (did you mean `{s}`?)"))
+                .map(|s| format!(" (did you mean '{s}'?)"))
                 .unwrap_or_default();
-            warnings.push(format!("config: unknown key `{key}` in {at}{hint}"));
+            warnings.push(format!("config: unknown key '{key}' in {at}{hint}"));
         }
     }
 }
@@ -332,7 +332,7 @@ pub fn effective_xcodebuild_args(
         .find_map(|a| configured_arg_refusal(a).map(|fix| (a, fix)))
     {
         return Err(format!(
-            "sweetpad.toml: `{arg}` in [xcodebuild] args — {fix}"
+            "sweetpad.toml: '{arg}' in [xcodebuild] args — {fix}"
         ));
     }
     let mut merged = configured.to_vec();
@@ -349,11 +349,11 @@ pub fn effective_xcodebuild_args(
 /// committed line would mean a different directory per caller.
 fn configured_arg_refusal(arg: &str) -> Option<&'static str> {
     Some(match arg {
-        "-workspace" | "-project" => "name the container with the `workspace`/`project` key",
-        "-scheme" => "use the `scheme` key",
-        "-configuration" => "use the `configuration` key",
-        "-destination" => "use the `destination` key",
-        "-sdk" => "use the `sdk` key",
+        "-workspace" | "-project" => "name the container with the 'workspace'/'project' key",
+        "-scheme" => "use the 'scheme' key",
+        "-configuration" => "use the 'configuration' key",
+        "-destination" => "use the 'destination' key",
+        "-sdk" => "use the 'sdk' key",
         "-derivedDataPath" => {
             "a relative value would resolve against the working directory rather than \
              the file, so it would name a different place per caller; pass it per \
@@ -509,7 +509,7 @@ fn lint_project_file(raw: &toml::Value, warnings: &mut Vec<String>) {
     let Some(top) = raw.as_table() else { return };
     if top.contains_key("workspace") && top.contains_key("project") {
         warnings.push(
-            "sweetpad.toml: `workspace` and `project` are both set; using `workspace`".to_string(),
+            "sweetpad.toml: 'workspace' and 'project' are both set; using 'workspace'".to_string(),
         );
     }
     for (key, value) in top {
@@ -523,7 +523,7 @@ fn lint_project_file(raw: &toml::Value, warnings: &mut Vec<String>) {
                     .is_some_and(|s| std::path::Path::new(s).is_absolute())
                 {
                     warnings.push(format!(
-                        "sweetpad.toml: `{key}` is an absolute path, which won't resolve for \
+                        "sweetpad.toml: '{key}' is an absolute path, which won't resolve for \
                          anyone else with this repo — make it relative to sweetpad.toml"
                     ));
                 }
@@ -533,7 +533,7 @@ fn lint_project_file(raw: &toml::Value, warnings: &mut Vec<String>) {
                     for tkey in t.keys() {
                         if !TESTING_KEYS.contains(&tkey.as_str()) {
                             warnings
-                                .push(format!("sweetpad.toml: unknown key `{tkey}` in [testing]"));
+                                .push(format!("sweetpad.toml: unknown key '{tkey}' in [testing]"));
                         }
                     }
                 }
@@ -542,7 +542,7 @@ fn lint_project_file(raw: &toml::Value, warnings: &mut Vec<String>) {
                 if let Some(t) = value.as_table() {
                     for rkey in t.keys() {
                         if !["hot", "hot_recompiler", "auto_unsandbox"].contains(&rkey.as_str()) {
-                            warnings.push(format!("sweetpad.toml: unknown key `{rkey}` in [run]"));
+                            warnings.push(format!("sweetpad.toml: unknown key '{rkey}' in [run]"));
                         }
                     }
                 }
@@ -552,7 +552,7 @@ fn lint_project_file(raw: &toml::Value, warnings: &mut Vec<String>) {
                     for fkey in t.keys() {
                         if fkey != "tool" {
                             warnings
-                                .push(format!("sweetpad.toml: unknown key `{fkey}` in [format]"));
+                                .push(format!("sweetpad.toml: unknown key '{fkey}' in [format]"));
                         }
                     }
                 }
@@ -562,7 +562,7 @@ fn lint_project_file(raw: &toml::Value, warnings: &mut Vec<String>) {
                     for xkey in t.keys() {
                         if xkey != "args" {
                             warnings.push(format!(
-                                "sweetpad.toml: unknown key `{xkey}` in [xcodebuild]"
+                                "sweetpad.toml: unknown key '{xkey}' in [xcodebuild]"
                             ));
                         }
                     }
@@ -570,9 +570,9 @@ fn lint_project_file(raw: &toml::Value, warnings: &mut Vec<String>) {
             }
             other if !PROJECT_FILE_KEYS.contains(&other) => {
                 let hint = suggest(other, &PROJECT_FILE_KEYS)
-                    .map(|s| format!(" (did you mean `{s}`?)"))
+                    .map(|s| format!(" (did you mean '{s}'?)"))
                     .unwrap_or_default();
-                warnings.push(format!("sweetpad.toml: unknown key `{other}`{hint}"));
+                warnings.push(format!("sweetpad.toml: unknown key '{other}'{hint}"));
             }
             _ => {}
         }
@@ -639,19 +639,19 @@ mod tests {
         // `[default]` instead of `[defaults]`, and a `schme` typo — both parse
         // cleanly (serde drops them), so the lint is the only signal.
         let cfg = Config::parse("[default]\nscheme = \"App\"\n").unwrap();
-        assert!(cfg.warnings.iter().any(|w| w.contains("`default`")));
+        assert!(cfg.warnings.iter().any(|w| w.contains("'default'")));
 
         let cfg = Config::parse("[defaults]\nschme = \"App\"\n").unwrap();
         assert!(
             cfg.warnings
                 .iter()
-                .any(|w| w.contains("`schme`") && w.contains("did you mean `scheme`?")),
+                .any(|w| w.contains("'schme'") && w.contains("did you mean 'scheme'?")),
             "warnings: {:?}",
             cfg.warnings
         );
 
         let cfg = Config::parse("[defaults.testing]\nsdk = \"x\"\n").unwrap();
-        assert!(cfg.warnings.iter().any(|w| w.contains("`sdk`")));
+        assert!(cfg.warnings.iter().any(|w| w.contains("'sdk'")));
 
         // A clean config produces no warnings.
         let cfg = Config::parse("[defaults]\nscheme = \"App\"\n").unwrap();
@@ -761,12 +761,12 @@ mod tests {
         let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
 
         for (arg, hint) in [
-            ("-scheme", "`scheme` key"),
-            ("-configuration", "`configuration` key"),
-            ("-destination", "`destination` key"),
-            ("-sdk", "`sdk` key"),
-            ("-workspace", "`workspace`/`project` key"),
-            ("-project", "`workspace`/`project` key"),
+            ("-scheme", "'scheme' key"),
+            ("-configuration", "'configuration' key"),
+            ("-destination", "'destination' key"),
+            ("-sdk", "'sdk' key"),
+            ("-workspace", "'workspace'/'project' key"),
+            ("-project", "'workspace'/'project' key"),
             ("-derivedDataPath", "per command"),
             ("-resultBundlePath", "own result bundle"),
         ] {

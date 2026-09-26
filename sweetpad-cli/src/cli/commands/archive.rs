@@ -27,7 +27,7 @@ pub enum ExportMethod {
     Enterprise,
     /// macOS Developer ID distribution (notarizable, outside the App Store).
     DeveloperId,
-    /// macOS application distribution (a signed `.app`, no installer).
+    /// macOS application distribution (a signed '.app', no installer).
     MacApplication,
 }
 

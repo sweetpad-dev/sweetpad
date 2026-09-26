@@ -393,7 +393,7 @@ pub fn find<'a>(root: &'a Node, query: &Query) -> Result<&'a Node, String> {
         }
     }
     Err(format!(
-        "nothing matches {}; `sweetpad app ui tree` shows what the app exposes",
+        "nothing matches {}; 'sweetpad app ui tree' shows what the app exposes",
         describe_query(query),
     ))
 }
@@ -602,7 +602,7 @@ pub fn act(pid: i32, target: &Node, action: &Act) -> Result<(), CliError> {
     if landed_role != target.role {
         return Err(CliError::new(format!(
             "the UI changed under us: expected {} at that position, found {}. Re-run \
-             `sweetpad app ui tree` and try again",
+             'sweetpad app ui tree' and try again",
             target.describe(),
             if landed_role.is_empty() {
                 "nothing".to_string()
@@ -630,7 +630,7 @@ pub fn act(pid: i32, target: &Node, action: &Act) -> Result<(), CliError> {
 fn moved_error(target: &Node, depth: usize) -> CliError {
     CliError::new(format!(
         "the UI changed under us: {} is no longer at that position (level {depth}). Re-run \
-         `sweetpad app ui tree` and try again",
+         'sweetpad app ui tree' and try again",
         target.describe(),
     ))
 }

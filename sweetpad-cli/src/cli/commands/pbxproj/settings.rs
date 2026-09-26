@@ -37,7 +37,7 @@ use sweetpad_lib::{settings_pbxproj, settings_xcproj, sync_pbxproj, sync_xcproj}
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
-    /// Show the stored `buildSettings` entries, per configuration.
+    /// Show the stored 'buildSettings' entries, per configuration.
     Show {
         #[command(flatten)]
         container: ContainerArgs,
@@ -60,9 +60,9 @@ pub enum Action {
 /// Flags for `pbxproj settings set`.
 #[derive(Debug, Args)]
 pub struct SetArgs {
-    /// Assignments: `KEY=VALUE` sets, `KEY+=VALUE` appends to the value's
+    /// Assignments: 'KEY=VALUE' sets, 'KEY+=VALUE' appends to the value's
     /// element list, and repeating a key builds an array in argument order.
-    /// Conditional keys (`KEY[sdk=iphoneos*]`) pass through verbatim.
+    /// Conditional keys ('KEY[sdk=iphoneos*]') pass through verbatim.
     #[arg(required = true, value_name = "KEY=VALUE")]
     pub assignments: Vec<String>,
 
@@ -89,7 +89,7 @@ pub struct SetArgs {
 #[derive(Debug, Args)]
 pub struct UnsetArgs {
     /// Keys to remove. Exact match only — conditional variants
-    /// (`KEY[sdk=…]`) are separate keys and stay untouched.
+    /// ('KEY[sdk=…]') are separate keys and stay untouched.
     #[arg(required = true, value_name = "KEY")]
     pub keys: Vec<String>,
 
@@ -509,7 +509,7 @@ fn split_assignment(input: &str) -> Result<(String, bool, String), CliError> {
         }
     }
     Err(CliError::new(format!(
-        "`{input}` is not a KEY=VALUE assignment (use KEY=VALUE, or KEY+=VALUE to append)"
+        "'{input}' is not a KEY=VALUE assignment (use KEY=VALUE, or KEY+=VALUE to append)"
     )))
 }
 
@@ -527,7 +527,7 @@ fn parse_keys(inputs: &[String]) -> Result<Vec<String>, CliError> {
                     ']' => depth = depth.saturating_sub(1),
                     '=' if depth == 0 => {
                         return Err(CliError::new(format!(
-                            "`{k}` names a key to remove — pass the key only, without a value"
+                            "'{k}' names a key to remove — pass the key only, without a value"
                         )));
                     }
                     _ => {}
@@ -542,12 +542,12 @@ fn parse_keys(inputs: &[String]) -> Result<Vec<String>, CliError> {
 fn validate_key(key: &str, input: &str) -> Result<(), CliError> {
     if key.is_empty() {
         return Err(CliError::new(format!(
-            "`{input}` has no setting key before the `=`"
+            "'{input}' has no setting key before the '='"
         )));
     }
     if key.chars().any(char::is_whitespace) {
         return Err(CliError::new(format!(
-            "setting key `{key}` contains whitespace"
+            "setting key '{key}' contains whitespace"
         )));
     }
     Ok(())

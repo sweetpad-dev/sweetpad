@@ -373,7 +373,7 @@ fn usage_error(message: &str) -> Value {
     error_envelope(
         "USAGE",
         message,
-        Some("Run `sweetpad vscode --help` to get started."),
+        Some("Run 'sweetpad vscode --help' to get started."),
         None,
     )
 }

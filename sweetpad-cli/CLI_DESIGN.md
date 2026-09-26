@@ -204,6 +204,9 @@ builds it with real `xcodebuild`.
   compile error that the streamed log already showed, output ends on the `✗`
   line and no trailing error repeats it. The exit code still reports the
   failure, and a failure with no parsed error still prints its message.
+- Help, errors, warnings and notes quote a command or value with 'single
+  quotes', as clap does; a terminal prints backticks literally. A unit test
+  walks the clap tree and fails on a backtick in any help text.
 
 ### The JSON envelope
 

@@ -218,7 +218,7 @@ pub fn boot(udid: &str) -> Result<(), CliError> {
     let output = std::process::Command::new("xcrun")
         .args(["simctl", "boot", udid])
         .output()
-        .map_err(|e| CliError::new(format!("failed to run `xcrun simctl boot`: {e}")))?;
+        .map_err(|e| CliError::new(format!("failed to run 'xcrun simctl boot': {e}")))?;
     if output.status.success() {
         return Ok(());
     }
@@ -305,7 +305,7 @@ pub fn launch_opts(udid: &str, bundle_id: &str, opts: &LaunchOptions) -> Result<
         .args(&argv)
         .envs(opts.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .output()
-        .map_err(|e| CliError::new(format!("failed to run `xcrun simctl launch`: {e}")))?;
+        .map_err(|e| CliError::new(format!("failed to run 'xcrun simctl launch': {e}")))?;
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
@@ -347,7 +347,7 @@ pub fn spawn_console(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     cmd.spawn()
-        .map_err(|e| CliError::new(format!("failed to run `xcrun simctl launch`: {e}")))
+        .map_err(|e| CliError::new(format!("failed to run 'xcrun simctl launch': {e}")))
 }
 
 /// Terminate a running app by bundle id. Already-stopped is treated as success
@@ -358,7 +358,7 @@ pub fn terminate(udid: &str, bundle_id: &str) -> Result<(), CliError> {
     let output = std::process::Command::new("xcrun")
         .args(["simctl", "terminate", udid, bundle_id])
         .output()
-        .map_err(|e| CliError::new(format!("failed to run `xcrun simctl terminate`: {e}")))?;
+        .map_err(|e| CliError::new(format!("failed to run 'xcrun simctl terminate': {e}")))?;
     if output.status.success() {
         return Ok(());
     }
@@ -381,7 +381,7 @@ pub fn shutdown(udid: &str) -> Result<(), CliError> {
     let output = std::process::Command::new("xcrun")
         .args(["simctl", "shutdown", udid])
         .output()
-        .map_err(|e| CliError::new(format!("failed to run `xcrun simctl shutdown`: {e}")))?;
+        .map_err(|e| CliError::new(format!("failed to run 'xcrun simctl shutdown': {e}")))?;
     if output.status.success() {
         return Ok(());
     }
@@ -438,7 +438,7 @@ pub fn app_container(
         .output()
         .map_err(|e| {
             CliError::new(format!(
-                "failed to run `xcrun simctl get_app_container`: {e}"
+                "failed to run 'xcrun simctl get_app_container': {e}"
             ))
         })?;
     if output.status.success() {

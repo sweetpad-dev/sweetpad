@@ -386,9 +386,9 @@ fn link(ctx: &mut Context, args: &LinkArgs, attach: bool) -> CommandResult {
         Editable::Xcproj(_) => {
             let verb = if attach { "attach" } else { "detach" };
             return Err(CliError::new(format!(
-                "`group {verb}` has no meaning in the project.xcproj format: a group holds \
+                "'group {verb}' has no meaning in the project.xcproj format: a group holds \
                  its children rather than listing references to them, so a node is in one \
-                 place and cannot be in two. Move it with `pbxproj group move {} --to {}`",
+                 place and cannot be in two. Move it with 'pbxproj group move {} --to {}'",
                 args.id, args.group
             )));
         }

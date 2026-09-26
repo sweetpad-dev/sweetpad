@@ -42,11 +42,11 @@ pub fn run(ctx: &mut Context) -> CommandResult {
                     "brew upgrade sweetpad exited with a non-zero status:\n{}",
                     run.tail
                 ))
-                .context("running `brew upgrade sweetpad`"));
+                .context("running 'brew upgrade sweetpad'"));
             }
         } else {
             process::stream("brew", &["upgrade", "sweetpad"], None)
-                .context("running `brew upgrade sweetpad`")?;
+                .context("running 'brew upgrade sweetpad'")?;
         }
         return Ok(Rendered::data(UpdateReport {
             method: "homebrew",
@@ -57,7 +57,7 @@ pub fn run(ctx: &mut Context) -> CommandResult {
         method: "manual",
         note: format!(
             "this sweetpad ({path}) wasn't installed via Homebrew; install/upgrade with \
-             `brew install sweetpad-dev/tap/sweetpad`, or replace the binary from the \
+             'brew install sweetpad-dev/tap/sweetpad', or replace the binary from the \
              latest cli-v* release"
         ),
     }))

@@ -175,7 +175,7 @@ pub fn run_quiet_within(
     loop {
         if let Some(status) = child
             .try_wait()
-            .map_err(|e| CliError::new(format!("failed to wait for `{program}`: {e}")))?
+            .map_err(|e| CliError::new(format!("failed to wait for '{program}': {e}")))?
         {
             return Ok(Some(status.success()));
         }
@@ -237,7 +237,7 @@ fn merged_output_pipe(program: &str) -> Result<(std::fs::File, Stdio, Stdio), Cl
     unsafe {
         if libc::pipe(fds.as_mut_ptr()) != 0 {
             return Err(CliError::new(format!(
-                "failed to run `{program}`: {}",
+                "failed to run '{program}': {}",
                 std::io::Error::last_os_error()
             )));
         }
@@ -246,7 +246,7 @@ fn merged_output_pipe(program: &str) -> Result<(std::fs::File, Stdio, Stdio), Cl
             let e = std::io::Error::last_os_error();
             libc::close(fds[0]);
             libc::close(fds[1]);
-            return Err(CliError::new(format!("failed to run `{program}`: {e}")));
+            return Err(CliError::new(format!("failed to run '{program}': {e}")));
         }
         // CLOEXEC on all three (macOS has no pipe2): a child spawned
         // concurrently on another thread (BgBoot, the hot-reload watcher)
@@ -427,8 +427,8 @@ fn spawn_error(program: &str, e: &std::io::Error) -> CliError {
             "brew" => " (install Homebrew from https://brew.sh)",
             _ => "",
         };
-        CliError::new(format!("`{program}` not found on PATH{hint}")).kind(ErrorKind::ToolMissing)
+        CliError::new(format!("'{program}' not found on PATH{hint}")).kind(ErrorKind::ToolMissing)
     } else {
-        CliError::new(format!("failed to run `{program}`: {e}"))
+        CliError::new(format!("failed to run '{program}': {e}"))
     }
 }

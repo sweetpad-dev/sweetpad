@@ -307,7 +307,7 @@ fn select(ctx: &mut Context, variable: Option<Variable>, scope: Scope) -> Comman
     if !ctx.out.is_interactive() {
         return Err(CliError::new(
             "context select prompts interactively and the terminal is not interactive; use \
-             `sweetpad context set <variable> <value>` instead",
+             'sweetpad context set <variable> <value>' instead",
         )
         .kind(ErrorKind::TargetResolution));
     }

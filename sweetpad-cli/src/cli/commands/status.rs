@@ -58,7 +58,7 @@ impl Render for StatusReport {
         if let Some(log) = &self.detached_log {
             out.line(&format!("  {:<13} {log}", "detached log"));
         }
-        out.note("run `sweetpad app run` to build and launch");
+        out.note("run 'sweetpad app run' to build and launch");
     }
 
     fn json(&self) -> serde_json::Value {

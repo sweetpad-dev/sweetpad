@@ -1262,9 +1262,9 @@ fn recover_stale(
         }
         let _ = ctx.state.save();
         let hint = if testing_match {
-            format!("`sweetpad context remove {what} --testing` does this by hand")
+            format!("'sweetpad context remove {what} --testing' does this by hand")
         } else {
-            format!("`sweetpad context remove {what}` does this by hand")
+            format!("'sweetpad context remove {what}' does this by hand")
         };
         ctx.out.warn(&format!(
             "the remembered {what} {value:?} no longer exists in the project — cleared it ({hint})"
@@ -1686,7 +1686,7 @@ pub fn pick_destination_for(
     if platforms.as_ref().is_some_and(SupportedPlatforms::mac_only) {
         ctx.out.note(
             "targeting My Mac (macOS) — the only destination this scheme supports \
-             (`context set destination` overrides)",
+             ('context set destination' overrides)",
         );
         return Ok("platform=macOS".to_string());
     }
@@ -1737,7 +1737,7 @@ pub fn pick_destination(
     if labels.len() == 1 {
         ctx.out.note(&format!(
             "targeting {} — the only destination this scheme supports \
-             (`context set destination` overrides)",
+             ('context set destination' overrides)",
             labels[0].trim()
         ));
     }

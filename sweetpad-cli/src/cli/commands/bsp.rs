@@ -106,7 +106,7 @@ fn doctor(ctx: &mut Context) -> CommandResult {
     let Ok(text) = std::fs::read_to_string(&path) else {
         checks.push(BspCheck {
             ok: false,
-            what: "file exists (run `sweetpad bsp init` to create it)".to_string(),
+            what: "file exists (run 'sweetpad bsp init' to create it)".to_string(),
         });
         return Ok(Rendered::data_with_exit(
             BspDoctor {
@@ -132,11 +132,11 @@ fn doctor(ctx: &mut Context) -> CommandResult {
                 checks.push(BspCheck {
                     ok: present,
                     what: format!(
-                        "`{field}` present{}",
+                        "'{field}' present{}",
                         if present {
                             ""
                         } else {
-                            " (sourcekit-lsp silently skips the file without it — rerun `sweetpad bsp init`)"
+                            " (sourcekit-lsp silently skips the file without it — rerun 'sweetpad bsp init')"
                         }
                     ),
                 });
@@ -160,7 +160,7 @@ fn doctor(ctx: &mut Context) -> CommandResult {
                         if exists {
                             " exists"
                         } else {
-                            " is missing — rerun `sweetpad bsp init`"
+                            " is missing — rerun 'sweetpad bsp init'"
                         }
                     ),
                 });
@@ -202,7 +202,7 @@ fn probe_launch(argv: &[String]) -> BspCheck {
         Ok(status) => BspCheck {
             ok: false,
             what: format!(
-                "argv starts a BSP server (exec exited with {status} — rerun `sweetpad bsp init`)"
+                "argv starts a BSP server (exec exited with {status} — rerun 'sweetpad bsp init')"
             ),
         },
         Err(e) => BspCheck {

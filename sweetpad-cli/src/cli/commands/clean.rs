@@ -60,13 +60,13 @@ pub fn run(ctx: &mut Context, purge: bool) -> CommandResult {
             // for its own inapplicable flags).
             if ctx.targeting.scheme.is_some() {
                 return Err(CliError::new(
-                    "--scheme doesn't apply to a Swift package; `swift package clean` cleans \
+                    "--scheme doesn't apply to a Swift package; 'swift package clean' cleans \
                      the whole package",
                 ));
             }
             if ctx.targeting.configuration.is_some() {
                 return Err(CliError::new(
-                    "--configuration doesn't apply to a Swift package; `swift package clean` \
+                    "--configuration doesn't apply to a Swift package; 'swift package clean' \
                      removes every configuration's products",
                 ));
             }

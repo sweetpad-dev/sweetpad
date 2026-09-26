@@ -119,7 +119,7 @@ pub struct AddArgs {
 #[derive(Debug, Args)]
 pub struct PathArgs {
     /// File path, relative to the project directory (e.g.
-    /// `App/Resources/Info.plist`).
+    /// 'App/Resources/Info.plist').
     pub path: String,
 
     #[command(flatten)]
@@ -346,18 +346,18 @@ impl Render for AddResult {
 fn add(ctx: &mut Context, args: &AddArgs) -> CommandResult {
     if args.paths.is_empty() && args.filerefs.is_empty() {
         return Err(CliError::new(
-            "name at least one file, by path or by `--fileref <ID>`",
+            "name at least one file, by path or by '--fileref <ID>'",
         ));
     }
     let (xcodeproj, mut document) =
         super::open_document_mut(ctx, &args.container, args.target.as_slice(), args.force)?;
     let target = super::settle_target(&document, args.target.as_ref())?;
     let phase = Phase::parse(&args.phase)
-        .ok_or_else(|| CliError::new(format!("unknown build phase `{}`", args.phase)))?;
+        .ok_or_else(|| CliError::new(format!("unknown build phase '{}'", args.phase)))?;
     if !args.filerefs.is_empty() && matches!(document, Editable::Xcproj(_)) {
         return Err(CliError::new(
             "--fileref names a project.pbxproj object; this project stores its files as \
-             navigator nodes, so name them by the path `pbxproj fileref list` prints",
+             navigator nodes, so name them by the path 'pbxproj fileref list' prints",
         ));
     }
 
@@ -376,7 +376,7 @@ fn add(ctx: &mut Context, args: &AddArgs) -> CommandResult {
             return Err(CliError::new(format!(
                 "{path} sits in the synchronized folder {folder}, which is already the \
                  membership for target {target} — a classic entry would build it twice. \
-                 If it is excepted, use `pbxproj membership include {path} --target {target}`"
+                 If it is excepted, use 'pbxproj membership include {path} --target {target}'"
             )));
         }
     }
@@ -491,7 +491,7 @@ fn remove(ctx: &mut Context, args: &RemoveArgs) -> CommandResult {
         {
             return Err(CliError::new(format!(
                 "{path} is built via the synchronized folder {folder} — use \
-                 `pbxproj membership exclude {path} --target {target}`"
+                 'pbxproj membership exclude {path} --target {target}'"
             )));
         }
     }
@@ -541,7 +541,7 @@ fn exclude(ctx: &mut Context, args: &PathArgs) -> CommandResult {
     if has_classic_entry(&document, &target, &args.path) {
         return Err(CliError::new(format!(
             "{} is built via an explicit build-file entry, not a synchronized \
-             folder — use `pbxproj membership remove {} --target {target}`",
+             folder — use 'pbxproj membership remove {} --target {target}'",
             args.path, args.path
         )));
     }

@@ -439,7 +439,7 @@ fn erase(ctx: &mut Context, target: Option<&str>) -> CommandResult {
     let sim = resolve::select_simulator(ctx, &sims, target, "the TARGET argument")?;
     if sim.is_booted() {
         return Err(CliError::new(format!(
-            "{} is booted; shut it down first (`sweetpad simulator shutdown`)",
+            "{} is booted; shut it down first ('sweetpad simulator shutdown')",
             sim.label()
         )));
     }

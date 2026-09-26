@@ -268,7 +268,7 @@ fn list(ctx: &mut Context, args: &ListArgs) -> CommandResult {
     if let Some(filter) = &args.target {
         targets.retain(|t| &t.target == filter);
         if targets.is_empty() {
-            return Err(CliError::new(format!("no target named `{filter}`")));
+            return Err(CliError::new(format!("no target named '{filter}'")));
         }
     }
     Ok(Rendered::data(ListResult { targets }))

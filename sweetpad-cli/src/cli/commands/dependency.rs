@@ -491,7 +491,7 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
     // toolchains instead of surfacing a raw "unknown subcommand" exit.
     if swiftpm::swift_major_version().is_some_and(|v| v < 6) {
         return Err(CliError::new(
-            "adding a dependency to a Package.swift needs Swift 6+ (swift package add-dependency); edit Package.swift and run `dep resolve` instead",
+            "adding a dependency to a Package.swift needs Swift 6+ (swift package add-dependency); edit Package.swift and run 'dep resolve' instead",
         ));
     }
 
@@ -828,7 +828,7 @@ fn find_package_or_hint(
     }
     Err(transitive_hint(container, query).unwrap_or_else(|| {
         CliError::new(format!(
-            "no package matching `{query}` in {}",
+            "no package matching '{query}' in {}",
             xcodeproj.display()
         ))
         .kind(ErrorKind::TargetResolution)
@@ -842,7 +842,7 @@ fn transitive_hint(container: &Container, query: &str) -> Option<CliError> {
     let id = identity_from_url(query);
     pins.contains_key(&id).then(|| {
         CliError::new(format!(
-            "`{query}` is a transitive dependency (resolved but not directly declared); it's pulled in by one of your direct packages — change that package's requirement or remove it instead"
+            "'{query}' is a transitive dependency (resolved but not directly declared); it's pulled in by one of your direct packages — change that package's requirement or remove it instead"
         ))
         .kind(ErrorKind::TargetResolution)
     })
@@ -867,7 +867,7 @@ fn update(ctx: &mut Context, args: &UpdateArgs) -> CliResult {
     let spec = requirement_spec(&args.requirement)?;
     if let Container::SwiftPackage(_) = container {
         return Err(CliError::new(
-            "changing a Package.swift dependency's requirement via the CLI isn't supported; edit Package.swift, then run `dep resolve`",
+            "changing a Package.swift dependency's requirement via the CLI isn't supported; edit Package.swift, then run 'dep resolve'",
         ));
     }
 
@@ -1486,7 +1486,7 @@ fn local_relative_path(document: &Path, url: &str) -> Result<String, CliError> {
     let target = PathBuf::from(url);
     if !target.exists() {
         return Err(CliError::new(format!(
-            "local package path `{url}` does not exist"
+            "local package path '{url}' does not exist"
         )));
     }
     // A bare `--project App.xcodeproj` has parent `Some("")`, not `None` —

@@ -1566,8 +1566,8 @@ pub fn passthrough_derived_data(passthrough: &[String]) -> Result<Option<PathBuf
             && matches!(key, "SYMROOT" | "OBJROOT" | "CONFIGURATION_BUILD_DIR")
         {
             return Err(CliError::new(format!(
-                "`-- {key}=…` relocates the built product where the app locator can't \
-                 follow; use `-- -derivedDataPath <dir>` instead"
+                "'-- {key}=…' relocates the built product where the app locator can't \
+                 follow; use '-- -derivedDataPath <dir>' instead"
             )));
         }
     }

@@ -321,7 +321,7 @@ fn resolve_one(repo: &Path, kind: Kind, path: &str, merge_head: Option<&str>) ->
         return Outcome::Skipped(format!("failed to write {}: {e}", abs.display()));
     }
     if let Err(e) = git(Some(repo), &["add", "--", path]) {
-        return Outcome::Skipped(format!("merged but failed to `git add`: {e}"));
+        return Outcome::Skipped(format!("merged but failed to 'git add': {e}"));
     }
     Outcome::Resolved
 }
@@ -438,7 +438,7 @@ pub fn run_driver(
         Ok(())
     } else {
         Err(CliError::new(format!(
-            "{} conflict(s) in {pathname} need manual resolution (run `sweetpad {} resolve`)",
+            "{} conflict(s) in {pathname} need manual resolution (run 'sweetpad {} resolve')",
             merged.conflicts.len(),
             kind.token(),
         )))
@@ -538,7 +538,7 @@ impl Render for InstallReport {
             out.line(&format!("  {line}"));
         }
         if !self.global {
-            out.note("commit .gitattributes so collaborators get the same behavior (the driver config is per-clone — they run `sweetpad merge install` once).");
+            out.note("commit .gitattributes so collaborators get the same behavior (the driver config is per-clone — they run 'sweetpad merge install' once).");
         }
     }
 

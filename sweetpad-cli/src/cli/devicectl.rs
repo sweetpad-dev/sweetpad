@@ -373,7 +373,7 @@ pub fn list() -> Result<Vec<Device>, CliError> {
     )?;
     if !ok {
         let _ = std::fs::remove_file(&tmp);
-        return Err(CliError::new("`xcrun devicectl list devices` failed"));
+        return Err(CliError::new("'xcrun devicectl list devices' failed"));
     }
 
     let raw = std::fs::read_to_string(&tmp)
@@ -759,7 +759,7 @@ fn app_pids(device_id: &str, app_dir_name: &str) -> Result<Vec<i64>, CliError> {
     if !ok {
         let _ = std::fs::remove_file(&tmp);
         return Err(CliError::new(
-            "`xcrun devicectl device info processes` failed",
+            "'xcrun devicectl device info processes' failed",
         ));
     }
     let raw = std::fs::read_to_string(&tmp)

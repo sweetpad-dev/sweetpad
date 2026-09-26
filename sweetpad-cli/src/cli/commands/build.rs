@@ -71,8 +71,8 @@ pub fn run(ctx: &mut Context, args: &StartArgs, action: Option<&Action>) -> Comm
             if args.clean || args.watch || args.show_command || !args.passthrough.is_empty() {
                 return Err(crate::cli::CliError::new(
                     "build diagnostics re-reads the last build's record; \
-                     --clean/--watch/--show-command and `--` passthrough don't apply \
-                     (run `sweetpad build` to build)",
+                     --clean/--watch/--show-command and '--' passthrough don't apply \
+                     (run 'sweetpad build' to build)",
                 ));
             }
             diagnostics(ctx)
@@ -182,7 +182,7 @@ fn diagnostics(ctx: &mut Context) -> CommandResult {
     let container = resolve::container(ctx)?;
     let record = xcodebuild::last_build_diagnostics(&container).ok_or_else(|| {
         crate::cli::CliError::new(
-            "no build has been recorded for this project yet — run `sweetpad build` first",
+            "no build has been recorded for this project yet — run 'sweetpad build' first",
         )
     })?;
     Ok(Rendered::data(DiagnosticsReport { record }))
