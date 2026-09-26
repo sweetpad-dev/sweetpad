@@ -18,6 +18,7 @@ simulators, and most work on physical devices and native macOS apps too.
 | `sweetpad app uninstall`  | Remove it from the simulator or device.                          |
 | `sweetpad app logs`       | Follow or replay its logs.                                       |
 | `sweetpad app open-url`   | Open a deep link or universal link on a simulator.               |
+| `sweetpad app container`  | Print the app's data container, `.app`, or App Group paths.      |
 | `sweetpad app debug`      | Run it under lldb.                                               |
 | `sweetpad app diagnose`   | Run it under lldb, catch the first crash, report, and quit.      |
 | `sweetpad app screenshot` | Capture the app: a macOS window, or the simulator it's on.       |
@@ -159,6 +160,30 @@ sweetpad app diagnose -o json
 It's bounded by `--timeout`, 30 seconds by default, and reports a timeout if the app neither crashes
 nor exits in that window. The result is the report, not the exit code, so read the output (or the JSON
 payload) rather than branching on `$?`. Simulator and macOS only.
+
+## The app's files
+
+`sweetpad app container` prints where the app keeps its files, for a script that seeds a fixture
+before a test or reads back what the app wrote. It prints only the path, so it works inside `$(…)`:
+
+```bash
+sweetpad app container                # the data container: Documents, Library, tmp
+sweetpad app container --kind app     # the installed .app bundle
+sweetpad app container --kind groups  # one "id  path" line per App Group
+cp fixture.pdf "$(sweetpad app container)/Documents/"
+```
+
+`-o json` gives `path`, `kind`, `bundleId`, and `destination`, or a `groups` list of `{id, path}` for
+`--kind groups`.
+
+On a simulator this works for any installed app, and SweetPad boots the simulator first if it has
+to.
+
+On macOS only a sandboxed app has a data container. SweetPad reads the App Sandbox entitlement from
+the built app, and for an app without it the command reports that there is no container.
+
+A physical device's containers stay on the device. For those, the error names the
+`xcrun devicectl device copy to` and `copy from` commands to use.
 
 ## Screenshots of the app
 

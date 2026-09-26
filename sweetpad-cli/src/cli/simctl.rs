@@ -417,6 +417,62 @@ pub fn open_url(udid: &str, url: &str) -> Result<(), CliError> {
         .context("opening the URL on the simulator")
 }
 
+/// The `simctl get_app_container` argv for one of an installed app's
+/// containers: `app` (the installed `.app`), `data`, or `groups`.
+fn app_container_args<'a>(udid: &'a str, bundle_id: &'a str, container: &'a str) -> [&'a str; 5] {
+    ["simctl", "get_app_container", udid, bundle_id, container]
+}
+
+/// Where one of an installed app's containers lives on the host, as simctl
+/// prints it — for `groups`, one line per App Group (see
+/// [`parse_app_groups`]). `Ok(None)` when the app isn't installed on this
+/// simulator, so the caller can name both. The simulator must be booted: a
+/// shut-down one answers every lookup with "Unable to lookup in current state".
+pub fn app_container(
+    udid: &str,
+    bundle_id: &str,
+    container: &str,
+) -> Result<Option<String>, CliError> {
+    let output = std::process::Command::new("xcrun")
+        .args(app_container_args(udid, bundle_id, container))
+        .output()
+        .map_err(|e| {
+            CliError::new(format!(
+                "failed to run `xcrun simctl get_app_container`: {e}"
+            ))
+        })?;
+    if output.status.success() {
+        return Ok(Some(String::from_utf8_lossy(&output.stdout).into_owned()));
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if not_installed(&stderr) {
+        return Ok(None);
+    }
+    Err(CliError::new(format!(
+        "simctl get_app_container failed: {}",
+        stderr.trim()
+    )))
+}
+
+/// Whether a failed `get_app_container` is simctl saying the bundle id isn't
+/// installed: it reports that as a bare ENOENT (`NSPOSIXErrorDomain, code=2`),
+/// where an unknown simulator is `Invalid device` and a shut-down one a
+/// CoreSimulator state error.
+fn not_installed(stderr: &str) -> bool {
+    stderr.contains("No such file or directory")
+}
+
+/// Parse `get_app_container … groups` output: one `<group id>\t<path>` line
+/// per App Group, in simctl's order. An app with no groups prints nothing.
+#[must_use]
+pub fn parse_app_groups(raw: &str) -> Vec<(String, String)> {
+    raw.lines()
+        .filter_map(|line| line.split_once('\t'))
+        .map(|(id, path)| (id.trim().to_string(), path.trim_end().to_string()))
+        .filter(|(id, path)| !id.is_empty() && !path.is_empty())
+        .collect()
+}
+
 /// Capture a PNG screenshot of a booted simulator to `path`.
 pub fn screenshot(udid: &str, path: &str) -> Result<(), CliError> {
     process::stream("xcrun", &["simctl", "io", udid, "screenshot", path], None)
@@ -801,6 +857,75 @@ mod tests {
         };
         assert_eq!(s.label(), "iPhone 15 (17.0)");
         assert!(s.is_booted());
+    }
+
+    #[test]
+    fn app_container_asks_simctl_for_the_named_container() {
+        assert_eq!(
+            app_container_args("AAAA", "dev.sweetpad.ci.app", "data"),
+            [
+                "simctl",
+                "get_app_container",
+                "AAAA",
+                "dev.sweetpad.ci.app",
+                "data"
+            ]
+        );
+        assert_eq!(
+            app_container_args("AAAA", "dev.sweetpad.ci.app", "groups")[4],
+            "groups"
+        );
+    }
+
+    // `get_app_container <udid> com.apple.Bridge groups` on Xcode 27, home
+    // directory renamed.
+    const GROUPS: &str = "group.com.apple.weather\t/Users/someone/Library/Developer/CoreSimulator/Devices/F13C004A-0824-4870-B4F2-29AAEE36636E/data/Containers/Shared/AppGroup/8100592D-0F4B-4803-849C-67B4B7FF148B
+group.com.apple.stocks\t/Users/someone/Library/Developer/CoreSimulator/Devices/F13C004A-0824-4870-B4F2-29AAEE36636E/data/Containers/Shared/AppGroup/3BE35442-E367-4CDD-BA59-337B672C900B
+243LU875E5.groups.com.apple.podcasts\t/Users/someone/Library/Developer/CoreSimulator/Devices/F13C004A-0824-4870-B4F2-29AAEE36636E/data/Containers/Shared/AppGroup/4E042FCD-BE10-4C9B-9B2B-23D485FB85D7
+";
+
+    #[test]
+    fn app_groups_pair_each_id_with_its_path_in_simctls_order() {
+        let groups = parse_app_groups(GROUPS);
+        let ids: Vec<&str> = groups.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec![
+                "group.com.apple.weather",
+                "group.com.apple.stocks",
+                "243LU875E5.groups.com.apple.podcasts",
+            ]
+        );
+        assert_eq!(
+            groups[0].1,
+            "/Users/someone/Library/Developer/CoreSimulator/Devices/\
+             F13C004A-0824-4870-B4F2-29AAEE36636E/data/Containers/Shared/AppGroup/\
+             8100592D-0F4B-4803-849C-67B4B7FF148B"
+        );
+    }
+
+    #[test]
+    fn an_app_without_groups_has_none() {
+        assert!(parse_app_groups("").is_empty());
+        assert!(parse_app_groups("\n").is_empty());
+    }
+
+    #[test]
+    fn only_enoent_reads_as_not_installed() {
+        // The captured stderr for a bundle id the simulator doesn't have.
+        let missing = "An error was encountered processing the command \
+                       (domain=NSPOSIXErrorDomain, code=2):\n\
+                       The operation couldn’t be completed. No such file or directory\n\
+                       No such file or directory\n";
+        assert!(not_installed(missing));
+        assert!(!not_installed(
+            "Invalid device: 00000000-0000-0000-0000-000000000000\n"
+        ));
+        assert!(!not_installed(
+            "An error was encountered processing the command \
+             (domain=com.apple.CoreSimulator.SimError, code=405):\n\
+             Unable to lookup in current state: Shutdown\n"
+        ));
     }
 
     fn fake_xcode(tag: &str, bundle: &str) -> std::path::PathBuf {

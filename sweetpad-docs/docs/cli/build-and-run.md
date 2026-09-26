@@ -130,6 +130,7 @@ sweetpad app logs         # follow the running app's logs
 sweetpad app stop         # terminate it
 sweetpad app uninstall    # remove it from the simulator or device
 sweetpad app open-url URL # open a deep link or universal link on a simulator
+sweetpad app container    # print where the app keeps its files
 ```
 
 `sweetpad app logs` is the one you'll reach for most: `--last 5m` prints recent history and exits

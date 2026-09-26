@@ -102,10 +102,11 @@ sweetpad status / open / doctor / self-update / help <topic>
 sweetpad simulator <boot|create|delete|clone|push|privacy|status-bar|
                     location|media-add|record|screenshot|…>   (alias: sim)
 sweetpad app <run|install|launch|debug|diagnose|uninstall|logs|stop|open-url|
-              screenshot|ui>           (screenshot: simulator or macOS window, §9h;
+              container|screenshot|ui> (screenshot: simulator or macOS window, §9h;
                                         ui: drive a macOS app's UI, §9i;
                                         debug --batch / diagnose: scriptable lldb, §9j;
-                                        logs: os_log + captured stdout on macOS, --source/--last, §9h)
+                                        logs: os_log + captured stdout on macOS, --source/--last, §9h;
+                                        container: the app's data/.app/App Group paths, §9o)
 sweetpad merge <install|run>      semantic conflict resolution (pbxproj/spm
                                   are hidden aliases)
 sweetpad context <show|select|set|alias|remove>
@@ -2121,6 +2122,44 @@ it makes one process depend on another's pid-namespaced temp directory for
 Signals and watched control files are cheaper still and strictly worse: they
 trigger a rebuild but return nothing, leaving the caller blind to the result
 that was the reason it asked.
+
+## 9o. v8 — `app container` — where the app's files live
+
+Seeding a PDF into an app's Documents folder before a UI test needs the data
+container's path. `simctl get_app_container` prints it, but only for a UDID
+and bundle id the caller resolves by hand, and sweetpad already resolves both
+for `app install`, `launch` and `stop`.
+
+```
+sweetpad app container [--kind data|app|groups]
+```
+
+**Resolution is `stop`'s:** the recorded last launch unless a targeting flag
+names another app, else the resolved build target, and never a build. Human
+mode prints the path alone on stdout, so `cd "$(sweetpad app container)"`
+works, and `--kind groups` prints one `id  path` line per App Group. `-o json`
+emits `{path, kind, bundleId, destination}`, with `groups: [{id, path}]` in
+place of `path`.
+
+**On a simulator** it is `simctl get_app_container`, after booting the
+simulator, because a shut-down one fails every lookup with a CoreSimulator
+state error. simctl reports an app that isn't installed as a bare ENOENT (`No
+such file or directory`), so that case is reworded to name the app and the
+simulator, with the `app install --on <udid>` that fixes it.
+
+**On macOS** `app` is the built product, `data` is `~/Library/Containers/<bundle
+id>/Data`, and each id in `com.apple.security.application-groups` maps to
+`~/Library/Group Containers/<id>`. Whether the app is sandboxed comes from the
+signed product (`codesign -d --entitlements - --xml`), not from whether the
+container directory exists: the directory appears only on first launch and
+stays behind after the sandbox is switched off. An app without the sandbox has
+no container, and the error says so instead of pointing at Application
+Support. App Groups work without the sandbox, so `groups` reads the
+entitlement either way.
+
+**A physical device** is refused. Its containers stay on the device, so the
+error names `xcrun devicectl device copy to` and `copy from`, with the device
+and bundle id filled in.
 
 ## 10. Testing
 

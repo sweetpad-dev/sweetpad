@@ -59,6 +59,7 @@ The CLI describes itself, and that is the authority: `sweetpad --help` lists the
 | `sweetpad app stop`       | Terminate the running app.                                 |
 | `sweetpad app uninstall`  | Remove the app from a simulator or device.                 |
 | `sweetpad app open-url`   | Open a URL on a simulator, including deep links and universal links. |
+| `sweetpad app container`  | Print the path of the app's data container, installed `.app`, or App Group containers, on a simulator or for a sandboxed macOS app. |
 | `sweetpad app screenshot` | Save a PNG of the running app: a macOS app's window, or the simulator it launched on. |
 | `sweetpad app ui`         | Read or drive a macOS app's UI through accessibility: `ui tree`, `ui click`, `ui type`. |
 

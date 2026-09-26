@@ -326,6 +326,30 @@ pub struct StageTargetArgs {
     pub mac: bool,
 }
 
+/// Which of the app's containers `app container` prints.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum ContainerKind {
+    /// The app's data container, holding Documents, Library, and tmp (the
+    /// default).
+    #[default]
+    Data,
+    /// The installed '.app' bundle.
+    App,
+    /// Every App Group container the app is entitled to.
+    Groups,
+}
+
+impl ContainerKind {
+    /// The name `simctl get_app_container` and the JSON payload both use.
+    fn as_str(self) -> &'static str {
+        match self {
+            ContainerKind::Data => "data",
+            ContainerKind::App => "app",
+            ContainerKind::Groups => "groups",
+        }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 pub enum Action {
     /// Build, install, launch, and follow logs; at an interactive terminal,
@@ -417,6 +441,21 @@ pub enum Action {
         /// Simulator name or UDID to open it on (defaults to the booted one).
         #[arg(long)]
         simulator: Option<String>,
+    },
+    /// Print the path of the app's data container, its installed '.app', or
+    /// its App Group containers, on a simulator or for a sandboxed macOS app.
+    /// Only the path goes to stdout, so 'cd "$(sweetpad app container)"'
+    /// works. Uses the last-launched app when one is recorded; otherwise
+    /// resolves the build target.
+    Container {
+        #[command(flatten)]
+        target: crate::cli::BuildTargetArgs,
+        #[command(flatten)]
+        stage: StageTargetArgs,
+        /// Which container to print. 'groups' prints one 'id  path' line per
+        /// App Group.
+        #[arg(long, value_enum, default_value_t = ContainerKind::Data)]
+        kind: ContainerKind,
     },
     /// Save a PNG screenshot of the running app: a macOS app's window, or
     /// the simulator it launched on.
@@ -711,6 +750,15 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
             simple(ctx, Stage::Stop, &LaunchArgs::default(), stage, &[])
         }
         Action::OpenUrl { url, simulator } => open_url(ctx, url, simulator.as_deref()),
+        Action::Container {
+            target,
+            stage,
+            kind,
+        } => {
+            ctx.targeting = target.clone().into();
+            settle_stage_mode(ctx, stage)?;
+            container(ctx, stage, *kind)
+        }
         Action::Screenshot(args) => {
             ctx.targeting = args.target.clone().into();
             screenshot(ctx, args)
@@ -5030,6 +5078,314 @@ fn simulator_screenshot(ctx: &Context, udid: &str, args: &ScreenshotArgs) -> Com
     }))
 }
 
+/// `app container` — where the app's files live on this Mac (CLI_DESIGN
+/// §9o). Resolution mirrors `stop`: the recorded last launch unless a flag
+/// names another target, else the resolved build target — no build, ever.
+fn container(ctx: &mut Context, stage: &StageTargetArgs, kind: ContainerKind) -> CommandResult {
+    // An explicit --mac/--device names the target, so the recorded launch
+    // yields to it just as it does to explicit targeting.
+    if !explicit_targeting(ctx)
+        && !stage.mac
+        && !stage.device
+        && stage.device_id.is_none()
+        && let Some(last) = last_launched(ctx)
+    {
+        match last.kind.as_str() {
+            "simulator" => {
+                if let Some(udid) = &last.simulator_udid {
+                    return simulator_container(ctx, udid, &last.bundle_identifier, kind);
+                }
+            }
+            "macos" => {
+                return mac_container(
+                    ctx,
+                    Path::new(&last.app_path),
+                    &last.bundle_identifier,
+                    "platform=macOS",
+                    kind,
+                );
+            }
+            "device" => {
+                return Err(device_container_error(
+                    last.destination_id.as_deref(),
+                    &last.bundle_identifier,
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    let opts = RunOpts {
+        device: stage.device || stage.device_id.is_some(),
+        device_id: stage.device_id.as_deref(),
+        mac: stage.mac,
+        no_logs: true,
+        detach: false,
+        hot: false,
+        hot_explicit: false,
+        hot_mode: Mode::Resolver,
+        hot_selfcheck: None,
+        keep_sandbox: false,
+        hot_entitlements: None,
+        launch: &LaunchArgs::default(),
+        passthrough: &[],
+    };
+    let plan = plan(ctx, &opts)?;
+    match &plan.target {
+        Target::Simulator(udid) => {
+            let app = plan.app_bundle()?;
+            simulator_container(ctx, udid, &app.bundle_id, kind)
+        }
+        Target::Mac => {
+            let app = plan.app_bundle()?;
+            mac_container(ctx, &app.path, &app.bundle_id, &plan.destination, kind)
+        }
+        Target::Device(id) => {
+            let app = plan.app_bundle()?;
+            Err(device_container_error(Some(id), &app.bundle_id))
+        }
+        Target::SpmRun(_) => Err(CliError::new(
+            "a Swift package executable has no app bundle, so it has no container",
+        )),
+    }
+}
+
+/// The simulator side of `app container`: `simctl get_app_container`, after
+/// booting the simulator, since a shut-down one can't answer the lookup.
+fn simulator_container(
+    ctx: &Context,
+    udid: &str,
+    bundle_id: &str,
+    kind: ContainerKind,
+) -> CommandResult {
+    let sims = simctl::list()?;
+    let sim = simctl::find(&sims, udid).ok_or_else(|| {
+        CliError::new(format!("no simulator matching {udid:?}")).kind(ErrorKind::TargetResolution)
+    })?;
+    if !sim.is_booted() {
+        ctx.out
+            .step("Booting simulator", || simctl::boot(&sim.udid))?;
+    }
+    let raw = simctl::app_container(&sim.udid, bundle_id, kind.as_str())?.ok_or_else(|| {
+        CliError::new(format!(
+            "{bundle_id} isn't installed on {}; install it there with \
+             'sweetpad app install --on {}'",
+            sim.label(),
+            sim.udid
+        ))
+    })?;
+    let found = match kind {
+        ContainerKind::Groups => ContainerPaths::Groups(simctl::parse_app_groups(&raw)),
+        ContainerKind::Data | ContainerKind::App => ContainerPaths::One(raw.trim().to_string()),
+    };
+    Ok(Rendered::data(ContainerReport {
+        kind,
+        bundle_id: bundle_id.to_string(),
+        destination: sim.destination(),
+        found,
+    }))
+}
+
+/// The macOS side of `app container`. The `.app` is the product sweetpad
+/// launches; the data and App Group containers are whatever its signed
+/// entitlements grant. Those are read from the product rather than inferred
+/// from `~/Library/Containers`, which appears only after a first launch and
+/// stays behind when the sandbox is turned off.
+fn mac_container(
+    ctx: &Context,
+    app: &Path,
+    bundle_id: &str,
+    destination: &str,
+    kind: ContainerKind,
+) -> CommandResult {
+    if !app.exists() {
+        return Err(CliError::new(format!(
+            "{} isn't built yet; build it with 'sweetpad build --on mac'",
+            app.display()
+        )));
+    }
+    let home = || {
+        sweetpad_core::paths::home_dir()
+            .ok_or_else(|| CliError::new("$HOME is not set; cannot locate the app's container"))
+    };
+    let found = match kind {
+        ContainerKind::App => ContainerPaths::One(app.display().to_string()),
+        ContainerKind::Data => {
+            let path = mac_data_container(&home()?, bundle_id, &signed_entitlements(app))?;
+            if !path.exists() {
+                ctx.out.note(&format!(
+                    "{} doesn't exist yet; macOS creates it the first time the app launches",
+                    path.display()
+                ));
+            }
+            ContainerPaths::One(path.display().to_string())
+        }
+        ContainerKind::Groups => {
+            ContainerPaths::Groups(mac_group_containers(&home()?, &signed_entitlements(app)))
+        }
+    };
+    Ok(Rendered::data(ContainerReport {
+        kind,
+        bundle_id: bundle_id.to_string(),
+        destination: destination.to_string(),
+        found,
+    }))
+}
+
+/// What `app container` reads from a macOS product's signed entitlements.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct MacEntitlements {
+    /// `com.apple.security.app-sandbox` is `<true/>`.
+    sandboxed: bool,
+    /// `com.apple.security.application-groups`, in declared order.
+    groups: Vec<String>,
+}
+
+/// The entitlements `codesign` reports for a signed product. An unsigned
+/// bundle has none, which reads correctly as "not sandboxed": the sandbox
+/// can't be granted without a signature.
+fn signed_entitlements(app: &Path) -> MacEntitlements {
+    let xml = std::process::Command::new("codesign")
+        .args(["-d", "--entitlements", "-", "--xml"])
+        .arg(app)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    parse_entitlements(&xml)
+}
+
+/// Read [`MacEntitlements`] from the XML plist `codesign --xml` prints: a
+/// `<dict>` of `<key>` elements, each followed by its value. Anything that
+/// doesn't parse grants nothing.
+fn parse_entitlements(xml: &str) -> MacEntitlements {
+    let mut found = MacEntitlements::default();
+    let Ok(root) = sweetpad_lib::xcscheme::parse(xml) else {
+        return found;
+    };
+    let Some(dict) = root.child("dict") else {
+        return found;
+    };
+    let mut entries = dict.children.iter();
+    while let Some(key) = entries.next() {
+        if key.name != "key" {
+            continue;
+        }
+        let Some(value) = entries.next() else {
+            break;
+        };
+        match key.text.as_str() {
+            "com.apple.security.app-sandbox" => found.sandboxed = value.name == "true",
+            "com.apple.security.application-groups" => {
+                found.groups = value
+                    .children_named("string")
+                    .map(|s| s.text.clone())
+                    .collect();
+            }
+            _ => {}
+        }
+    }
+    found
+}
+
+/// A sandboxed macOS app's data container, `~/Library/Containers/<bundle
+/// id>/Data`. An app without the sandbox has none, since it reads and writes
+/// the home directory directly, so that is an error rather than a guess at
+/// Application Support.
+fn mac_data_container(
+    home: &Path,
+    bundle_id: &str,
+    entitlements: &MacEntitlements,
+) -> Result<std::path::PathBuf, CliError> {
+    if !entitlements.sandboxed {
+        return Err(CliError::new(format!(
+            "{bundle_id} isn't sandboxed (its signed entitlements don't grant \
+             com.apple.security.app-sandbox), so it has no container"
+        )));
+    }
+    Ok(home.join("Library/Containers").join(bundle_id).join("Data"))
+}
+
+/// A macOS app's App Group containers, `~/Library/Group Containers/<id>` for
+/// each group it is entitled to. Groups don't need the sandbox, so this reads
+/// the entitlement whether or not the app is sandboxed.
+fn mac_group_containers(home: &Path, entitlements: &MacEntitlements) -> Vec<(String, String)> {
+    entitlements
+        .groups
+        .iter()
+        .map(|id| {
+            let path = home.join("Library/Group Containers").join(id);
+            (id.clone(), path.display().to_string())
+        })
+        .collect()
+}
+
+/// `app container` on a physical device: its containers live on the device,
+/// not on this Mac, so there is no path to print. devicectl copies files in
+/// and out of them.
+fn device_container_error(device: Option<&str>, bundle_id: &str) -> CliError {
+    let device = device.unwrap_or("<udid>");
+    CliError::new(format!(
+        "a physical device's containers aren't on this Mac, so there's no path to print; \
+         copy files with 'xcrun devicectl device copy to' or 'copy from', passing \
+         '--device {device} --domain-type appDataContainer --domain-identifier {bundle_id}'"
+    ))
+}
+
+/// What `app container` found: one path, or every App Group as `(id, path)`.
+enum ContainerPaths {
+    One(String),
+    Groups(Vec<(String, String)>),
+}
+
+/// The `app container` payload. Human mode prints only the path, so
+/// `$(sweetpad app container)` captures exactly it, or one `id  path` line
+/// per App Group. JSON is `{path, kind, bundleId, destination}`, with
+/// `groups: [{id, path}]` in place of `path` for `--kind groups`.
+struct ContainerReport {
+    kind: ContainerKind,
+    bundle_id: String,
+    /// The `-destination` specifier of the simulator or Mac it belongs to.
+    destination: String,
+    found: ContainerPaths,
+}
+
+impl Render for ContainerReport {
+    fn human(&self, out: &Output) {
+        match &self.found {
+            ContainerPaths::One(path) => out.line(path),
+            ContainerPaths::Groups(groups) if groups.is_empty() => {
+                out.note(&format!("{} has no App Group containers", self.bundle_id));
+            }
+            ContainerPaths::Groups(groups) => {
+                let width = groups.iter().map(|(id, _)| id.len()).max().unwrap_or(0);
+                for (id, path) in groups {
+                    out.line(&format!("{id:<width$}  {path}"));
+                }
+            }
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let mut data = serde_json::json!({
+            "kind": self.kind.as_str(),
+            "bundleId": self.bundle_id,
+            "destination": self.destination,
+        });
+        match &self.found {
+            ContainerPaths::One(path) => data["path"] = path.as_str().into(),
+            ContainerPaths::Groups(groups) => {
+                data["groups"] = groups
+                    .iter()
+                    .map(|(id, path)| serde_json::json!({ "id": id, "path": path }))
+                    .collect();
+            }
+        }
+        data
+    }
+}
+
 /// The `app ui tree` payload: the app that was inspected and its element
 /// tree.
 struct UiTreeReport {
@@ -6139,5 +6495,145 @@ error: unable to evaluate expression while the process is exited\n\
         assert_eq!(o.signal.as_deref(), Some("SIGABRT"));
         assert_eq!(o.exception_name, None); // not an ObjC exception → no $arg1
         assert_eq!(o.backtrace.len(), 1);
+    }
+
+    // `codesign -d --entitlements - --xml` on a `project new --platform macos`
+    // build as scaffolded, with the App Sandbox turned on, and re-signed with
+    // an App Group.
+    const STOCK_ENTITLEMENTS: &str = r#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.get-task-allow</key><true/></dict></plist>"#;
+    const SANDBOXED_ENTITLEMENTS: &str = r#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.app-sandbox</key><true/><key>com.apple.security.get-task-allow</key><true/></dict></plist>"#;
+    const GROUP_ENTITLEMENTS: &str = r#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.app-sandbox</key><true/><key>com.apple.security.application-groups</key><array><string>group.com.example.ContainerProbe.shared</string></array></dict></plist>"#;
+
+    #[test]
+    fn entitlements_read_the_sandbox_and_app_groups_codesign_reports() {
+        assert_eq!(
+            parse_entitlements(STOCK_ENTITLEMENTS),
+            MacEntitlements::default()
+        );
+        assert_eq!(
+            parse_entitlements(SANDBOXED_ENTITLEMENTS),
+            MacEntitlements {
+                sandboxed: true,
+                groups: Vec::new(),
+            }
+        );
+        assert_eq!(
+            parse_entitlements(GROUP_ENTITLEMENTS),
+            MacEntitlements {
+                sandboxed: true,
+                groups: vec!["group.com.example.ContainerProbe.shared".to_string()],
+            }
+        );
+        // An unsigned product prints nothing, and '<false/>' grants nothing.
+        assert_eq!(parse_entitlements(""), MacEntitlements::default());
+        assert!(
+            !parse_entitlements(
+                "<plist><dict><key>com.apple.security.app-sandbox</key><false/></dict></plist>"
+            )
+            .sandboxed
+        );
+    }
+
+    #[test]
+    fn a_sandboxed_mac_apps_data_container_is_under_library_containers() {
+        let sandboxed = parse_entitlements(SANDBOXED_ENTITLEMENTS);
+        assert_eq!(
+            mac_data_container(Path::new("/Users/someone"), "com.example.App", &sandboxed).unwrap(),
+            Path::new("/Users/someone/Library/Containers/com.example.App/Data")
+        );
+    }
+
+    #[test]
+    fn an_unsandboxed_mac_app_has_no_data_container() {
+        let err = mac_data_container(
+            Path::new("/Users/someone"),
+            "com.example.App",
+            &parse_entitlements(STOCK_ENTITLEMENTS),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("com.example.App isn't sandboxed"), "{err}");
+        assert!(err.contains("com.apple.security.app-sandbox"), "{err}");
+        // No guess at where an unsandboxed app might keep its files.
+        assert!(!err.contains("Application Support"), "{err}");
+    }
+
+    #[test]
+    fn mac_app_groups_map_to_group_containers_without_needing_the_sandbox() {
+        let entitlements = MacEntitlements {
+            sandboxed: false,
+            groups: vec![
+                "group.com.example.shared".to_string(),
+                "ABCDE12345.com.example.team".to_string(),
+            ],
+        };
+        assert_eq!(
+            mac_group_containers(Path::new("/Users/someone"), &entitlements),
+            vec![
+                (
+                    "group.com.example.shared".to_string(),
+                    "/Users/someone/Library/Group Containers/group.com.example.shared".to_string()
+                ),
+                (
+                    "ABCDE12345.com.example.team".to_string(),
+                    "/Users/someone/Library/Group Containers/ABCDE12345.com.example.team"
+                        .to_string()
+                ),
+            ]
+        );
+        assert!(
+            mac_group_containers(Path::new("/Users/someone"), &MacEntitlements::default())
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_device_container_error_names_the_devicectl_copy() {
+        let err = device_container_error(Some("00008110-000A1B2C3D4E5F60"), "com.example.App")
+            .to_string();
+        assert!(err.contains("aren't on this Mac"), "{err}");
+        assert!(err.contains("xcrun devicectl device copy to"), "{err}");
+        assert!(err.contains("--device 00008110-000A1B2C3D4E5F60"), "{err}");
+        assert!(err.contains("--domain-identifier com.example.App"), "{err}");
+        // Backticks render literally in a terminal.
+        assert!(!err.contains('`'), "{err}");
+    }
+
+    #[test]
+    fn container_json_carries_the_path_or_the_groups() {
+        let data = ContainerReport {
+            kind: ContainerKind::Data,
+            bundle_id: "dev.sweetpad.ci.app".to_string(),
+            destination: "platform=iOS Simulator,id=AAAA".to_string(),
+            found: ContainerPaths::One("/sim/Data/Application/1234".to_string()),
+        };
+        assert_eq!(
+            data.json(),
+            serde_json::json!({
+                "path": "/sim/Data/Application/1234",
+                "kind": "data",
+                "bundleId": "dev.sweetpad.ci.app",
+                "destination": "platform=iOS Simulator,id=AAAA",
+            })
+        );
+
+        let groups = ContainerReport {
+            kind: ContainerKind::Groups,
+            bundle_id: "dev.sweetpad.ci.app".to_string(),
+            destination: "platform=iOS Simulator,id=AAAA".to_string(),
+            found: ContainerPaths::Groups(vec![(
+                "group.dev.sweetpad.ci.shared".to_string(),
+                "/sim/Shared/AppGroup/5678".to_string(),
+            )]),
+        };
+        assert_eq!(
+            groups.json(),
+            serde_json::json!({
+                "groups": [{ "id": "group.dev.sweetpad.ci.shared", "path": "/sim/Shared/AppGroup/5678" }],
+                "kind": "groups",
+                "bundleId": "dev.sweetpad.ci.app",
+                "destination": "platform=iOS Simulator,id=AAAA",
+            })
+        );
     }
 }
