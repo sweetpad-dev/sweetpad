@@ -631,12 +631,91 @@ pub struct TestFailure {
     pub target_name: String,
     pub failure_text: String,
     /// The test within its target, as the test tree names it
-    /// (`Class/method()`, `Suite/function()`).
+    /// (`Class/method()`, `Suite/function()`), and the id `xcresulttool` takes
+    /// as `--test-id`.
     pub test_identifier_string: String,
     /// The same test as a `test://` URL, whose spelling settles the `()`
     /// (see [`test_selector`]).
     #[serde(rename = "testIdentifierURL")]
     pub test_identifier_url: String,
+}
+
+/// When a failing test started and when one of its failures was recorded, in
+/// seconds since the epoch.
+#[derive(Debug, PartialEq)]
+pub struct FailureTimes {
+    /// The test's `Start Test at …` activity; unit tests record none.
+    pub started: Option<f64>,
+    pub failed: f64,
+}
+
+/// The [`FailureTimes`] of `failure_text` in test `test_id`, from the test's
+/// activity log (`xcresulttool get test-results activities`). `None` when the
+/// log is unreadable or holds no failure.
+#[must_use]
+pub fn failure_times(bundle: &Path, test_id: &str, failure_text: &str) -> Option<FailureTimes> {
+    let out = process::capture(
+        "xcrun",
+        &[
+            "xcresulttool",
+            "get",
+            "test-results",
+            "activities",
+            "--test-id",
+            test_id,
+            "--path",
+            &bundle.to_string_lossy(),
+        ],
+        None,
+    )
+    .ok()?;
+    parse_failure_times(&out, failure_text)
+}
+
+/// Read [`FailureTimes`] out of an activities export. A retried test records
+/// one run per attempt, so the last run holding a failure wins. Within it the
+/// activity titled with the failure's own text is the moment; a failure the
+/// log titles differently falls back to the first activity marked failing.
+fn parse_failure_times(out: &str, failure_text: &str) -> Option<FailureTimes> {
+    fn find(
+        nodes: &[serde_json::Value],
+        matches: &dyn Fn(&serde_json::Value) -> bool,
+    ) -> Option<f64> {
+        nodes.iter().find_map(|node| {
+            if matches(node) {
+                return node.get("startTime").and_then(serde_json::Value::as_f64);
+            }
+            let children = node.get("childActivities")?.as_array()?;
+            find(children, matches)
+        })
+    }
+    let failing = |node: &serde_json::Value| {
+        node.get("isAssociatedWithFailure")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let titled = |node: &serde_json::Value| {
+        failing(node) && node.get("title").and_then(serde_json::Value::as_str) == Some(failure_text)
+    };
+    let json = out.find('{').map(|i| &out[i..])?;
+    let root: serde_json::Value = serde_json::from_str(json).ok()?;
+    root.get("testRuns")?
+        .as_array()?
+        .iter()
+        .rev()
+        .find_map(|run| {
+            let activities = run.get("activities")?.as_array()?;
+            let failed = find(activities, &titled).or_else(|| find(activities, &failing))?;
+            let started = activities
+                .iter()
+                .find(|a| {
+                    a.get("title")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|t| t.starts_with("Start Test at "))
+                })
+                .and_then(|a| a.get("startTime").and_then(serde_json::Value::as_f64));
+            Some(FailureTimes { started, failed })
+        })
 }
 
 impl TestFailure {
@@ -1955,6 +2034,54 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             (5, 4, 1)
         );
         assert_eq!(s.test_failures[0].test_name, "testX");
+    }
+
+    #[test]
+    fn a_failure_is_timed_by_the_activity_that_names_it() {
+        // A UI test whose app aborted mid-wait (Xcode 27), trimmed to the
+        // fields read: the crash is recorded inside the failing wait.
+        let out = r#"{
+          "testIdentifier" : "ProbeUITests/testAppAbortsMidTest()",
+          "testRuns" : [ { "activities" : [
+            { "isAssociatedWithFailure" : false, "startTime" : 1790436994.038,
+              "title" : "Start Test at 2026-09-26 17:36:34.038" },
+            { "isAssociatedWithFailure" : true, "startTime" : 1790436999.651,
+              "title" : "Waiting 10.0s for \"probe\" StaticText to exist",
+              "childActivities" : [
+                { "isAssociatedWithFailure" : true, "startTime" : 1790437003.737,
+                  "title" : "dev.sweetpad.exitprobe.app crashed" } ] },
+            { "isAssociatedWithFailure" : true, "startTime" : 1790437019.985,
+              "title" : "Failed to application dev.sweetpad.exitprobe.app is not running" }
+          ] } ]
+        }"#;
+        assert_eq!(
+            parse_failure_times(out, "dev.sweetpad.exitprobe.app crashed"),
+            Some(FailureTimes {
+                started: Some(1_790_436_994.038),
+                failed: 1_790_437_003.737,
+            })
+        );
+        // A failure titled differently falls back to the first failing activity.
+        assert_eq!(
+            parse_failure_times(out, "something else").map(|t| t.failed),
+            Some(1_790_436_999.651)
+        );
+        // A hosted unit test records only the crash, with no start activity.
+        let unit = r#"{ "testRuns" : [ { "activities" : [
+            { "isAssociatedWithFailure" : true, "startTime" : 1790437907.543,
+              "title" : "Crash: ExitProbe at +[XCTFailableInvocation invokeStandardConventionInvocation:completion:]" }
+        ] } ] }"#;
+        assert_eq!(
+            parse_failure_times(
+                unit,
+                "Crash: ExitProbe at +[XCTFailableInvocation invokeStandardConventionInvocation:completion:]"
+            ),
+            Some(FailureTimes {
+                started: None,
+                failed: 1_790_437_907.543,
+            })
+        );
+        assert_eq!(parse_failure_times("not json", "x"), None);
     }
 
     /// `xcresulttool get test-results tests` for the CI fixture app, extended

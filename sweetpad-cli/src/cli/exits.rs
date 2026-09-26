@@ -86,9 +86,9 @@ struct Entry {
     event_message: Option<String>,
 }
 
-/// Every exit of `bundle_ids` launchd logged within `window`, oldest first.
-/// The query is bounded by `timeout`, so a wedged `log` can cost a caller at
-/// most that long.
+/// Every exit of `bundle_ids` launchd logged within `window`, oldest first —
+/// of every app job when `bundle_ids` is empty. The query is bounded by
+/// `timeout`, so a wedged `log` can cost a caller at most that long.
 pub fn query(
     source: &Source,
     bundle_ids: &[&str],
@@ -105,8 +105,9 @@ pub fn query(
 
 /// The `log show` invocation for [`query`]. The predicate narrows on the
 /// launchd process and the message's leading `exited`, then on the bundle ids
-/// in the job label; [`parse_ndjson_line`] checks the label exactly, since a
-/// `CONTAINS` also matches a longer bundle id that shares the prefix.
+/// in the job label (or on any app label, for none); [`parse_ndjson_line`]
+/// checks the label exactly, since a `CONTAINS` also matches a longer bundle
+/// id that shares the prefix.
 fn log_show_command(
     source: &Source,
     bundle_ids: &[&str],
@@ -116,10 +117,13 @@ fn log_show_command(
         Source::Simulator(_) => ("launchd_sim", "UIKitApplication:"),
         Source::Mac => ("launchd", "application."),
     };
-    let jobs: Vec<String> = bundle_ids
+    let mut jobs: Vec<String> = bundle_ids
         .iter()
         .map(|id| format!("subsystem CONTAINS \"{label}{}\"", predicate_escape(id)))
         .collect();
+    if jobs.is_empty() {
+        jobs.push(format!("subsystem CONTAINS \"{label}\""));
+    }
     let predicate = format!(
         "process == \"{launchd}\" AND eventMessage BEGINSWITH \"exited \" AND ({})",
         jobs.join(" OR ")
@@ -212,17 +216,19 @@ fn run_bounded(program: &str, args: &[String], timeout: Duration) -> Result<Stri
 }
 
 /// Parse one `log show --style ndjson` line into an [`Exit`] when it is
-/// launchd's exit line for one of `bundle_ids`. Anything else — the trailing
-/// `{"count":…}` summary, another job whose label merely shares a prefix, a
-/// message this module does not recognize — is `None`.
+/// launchd's exit line for an app job — one of `bundle_ids`, or any app when
+/// that is empty. Anything else — the trailing `{"count":…}` summary, another
+/// job whose label merely shares a prefix, a message this module does not
+/// recognize — is `None`.
 #[must_use]
 pub fn parse_ndjson_line(line: &str, bundle_ids: &[&str]) -> Option<Exit> {
     let entry: Entry = serde_json::from_str(line).ok()?;
     let subsystem = entry.subsystem?;
-    let bundle_id = bundle_ids
-        .iter()
-        .find(|id| job_is(&subsystem, id))?
-        .to_string();
+    let bundle_id = job_bundle_id(&subsystem)?;
+    if !bundle_ids.is_empty() && !bundle_ids.contains(&bundle_id) {
+        return None;
+    }
+    let bundle_id = bundle_id.to_string();
     let message = entry.event_message?;
     let (cause, explanation, ran_for_ms) = parse_message(&message)?;
     Some(Exit {
@@ -236,19 +242,29 @@ pub fn parse_ndjson_line(line: &str, bundle_ids: &[&str]) -> Option<Exit> {
     })
 }
 
-/// Whether a launchd job label is the app `bundle_id`'s: `UIKitApplication:<id>[`
-/// in a simulator, `application.<id>.<digits>` on macOS.
-fn job_is(subsystem: &str, bundle_id: &str) -> bool {
-    if subsystem.contains(&format!("UIKitApplication:{bundle_id}[")) {
-        return true;
+/// The app bundle id in a launchd job label: `UIKitApplication:<id>[…]` in a
+/// simulator; on macOS `application.<id>.<n>.<n>`, optionally followed by a
+/// UUID, which is peeled from the right so an id with a numeric component of
+/// its own stays whole.
+fn job_bundle_id(subsystem: &str) -> Option<&str> {
+    if let Some((_, rest)) = subsystem.split_once("UIKitApplication:") {
+        return rest.split_once('[').map(|(id, _)| id);
     }
-    let mac = format!("/application.{bundle_id}.");
-    subsystem.find(&mac).is_some_and(|at| {
-        subsystem[at + mac.len()..]
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_digit())
-    })
+    let (_, rest) = subsystem.split_once("/application.")?;
+    let mut label = rest.split(' ').next()?;
+    if let Some((head, uuid)) = label.rsplit_once('.')
+        && uuid.contains('-')
+    {
+        label = head;
+    }
+    for _ in 0..2 {
+        let (head, serial) = label.rsplit_once('.')?;
+        if serial.is_empty() || !serial.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        label = head;
+    }
+    Some(label)
 }
 
 /// The pid in a job label's trailing ` [pid]`.
@@ -785,9 +801,20 @@ mod tests {
         );
         let exit = parse_ndjson_line(&line, &["dev.sweetpad.exitprobe.mac"]).expect("an exit");
         assert_eq!(exit.pid, Some(61476));
+        assert_eq!(
+            parse_ndjson_line(&line, &[])
+                .map(|e| e.bundle_id)
+                .as_deref(),
+            Some("dev.sweetpad.exitprobe.mac")
+        );
         assert_eq!(exit.label().as_deref(), Some("crashed with SIGABRT"));
         // A bundle id that is only a prefix of the label's is someone else's.
         assert!(parse_ndjson_line(&line, &["dev.sweetpad.exitprobe"]).is_none());
+        // A LaunchServices label without the trailing UUID, macOS 27.
+        assert_eq!(
+            job_bundle_id("gui/503/application.com.cmuxterm.app.243196168.243196175 [40940]"),
+            Some("com.cmuxterm.app")
+        );
     }
 
     #[test]
@@ -802,6 +829,14 @@ mod tests {
         let exit = parse_ndjson_line(&runner, &[APP, "dev.sweetpad.exitprobe.uitests.xctrunner"])
             .expect("the runner's exit");
         assert_eq!(exit.bundle_id, "dev.sweetpad.exitprobe.uitests.xctrunner");
+        // No bundle ids means every app job.
+        assert!(parse_ndjson_line(&runner, &[]).is_some());
+        let daemon = entry(
+            "2026-09-26 16:30:42.359386+0200",
+            "user/503/com.apple.migrationpluginwrapper [31332]",
+            "exited due to exit(0), ran for 26227ms",
+        );
+        assert!(parse_ndjson_line(&daemon, &[]).is_none());
         assert!(parse_ndjson_line(r#"{"count":8,"finished":1}"#, &[APP]).is_none());
         assert!(parse_ndjson_line("getpwuid_r did not find a match for uid 503", &[APP]).is_none());
     }
@@ -900,6 +935,11 @@ mod tests {
             predicate,
             "process == \"launchd_sim\" AND eventMessage BEGINSWITH \"exited \" AND \
              (subsystem CONTAINS \"UIKitApplication:dev.sweetpad.exitprobe.app\")"
+        );
+        let (_, args) = log_show_command(&Source::Simulator("UDID"), &[], &Window::Last("1m"));
+        assert!(
+            args.last()
+                .is_some_and(|p| p.ends_with("(subsystem CONTAINS \"UIKitApplication:\")"))
         );
         let (program, args) = log_show_command(&Source::Mac, &["a.b", "c.d"], &Window::Last("10m"));
         assert_eq!(program, "log");

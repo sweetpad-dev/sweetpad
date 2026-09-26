@@ -44,6 +44,22 @@ Red tests exit with code `3`, the same code a failed build uses, since both mean
 the answer was no". A missing scheme or an unresolvable destination is code `4` instead, so a CI
 script can tell a genuine test failure apart from a broken invocation.
 
+### When the app goes away mid-test
+
+If the app under test crashes or is killed during a test, XCTest only reports that it's gone, with
+a message like "is not running" or "crashed". For those failures, SweetPad looks up the system's
+record of how the process ended and prints it under the failure:
+
+```console
+  ✗ ExitProbeUITests/ProbeUITests/testAppAbortsMidTest: dev.sweetpad.exitprobe.app crashed
+      app terminated: crashed with SIGABRT (sent by ExitProbe[96265])
+```
+
+This also covers kills that leave no crash report, such as the simulator host ending the app. With
+`-o json`, the same failure carries a `terminationReason` object with the raw reason, code, and
+explanation, plus the crash report's path when there is one. Other failures get no such field.
+`sweetpad app logs --exits` shows the same records outside a test run.
+
 ## Compiling the tests without running them
 
 `sweetpad test build` compiles the test targets and stops, the way `sweetpad build` does for the app.

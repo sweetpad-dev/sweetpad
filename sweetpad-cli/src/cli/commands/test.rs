@@ -11,13 +11,14 @@
 //! retained bundle alone.
 
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use clap::Subcommand;
 
 use crate::cli::output::Output;
 use crate::cli::resolve::Container;
 use crate::cli::{
-    CliError, CommandResult, Context, Render, Rendered, resolve, swiftpm, xcodebuild,
+    CliError, CommandResult, Context, Render, Rendered, exits, resolve, simctl, swiftpm, xcodebuild,
 };
 
 /// The test flags, declared `global` at the `test` resource so they parse on
@@ -202,8 +203,30 @@ fn run_only_flags(args: &TestArgs) -> Vec<&'static str> {
 struct TestReport {
     passed: bool,
     summary: xcodebuild::TestSummary,
+    /// What ended the app or the test runner, per failure (same order as
+    /// `summary.test_failures`), for the failures that say one vanished.
+    terminations: Vec<Option<Termination>>,
     coverage: Option<f64>,
     result_bundle: String,
+}
+
+/// launchd's account of the exit behind a failure (CLI_DESIGN §9m), with the
+/// crash report the system wrote when the exit was a crash.
+struct Termination {
+    exit: exits::Exit,
+    crash_report: Option<PathBuf>,
+}
+
+impl Termination {
+    /// `app terminated: …` or `test runner terminated: …`, by whose exit it was.
+    fn line(&self) -> String {
+        let who = if self.exit.bundle_id.ends_with(".xctrunner") {
+            "test runner"
+        } else {
+            "app"
+        };
+        format!("{who} terminated: {}", self.exit.summary())
+    }
 }
 
 impl Render for TestReport {
@@ -215,8 +238,11 @@ impl Render for TestReport {
             self.summary.skipped_tests,
             self.summary.total_test_count
         ));
-        for f in &self.summary.test_failures {
+        for (i, f) in self.summary.test_failures.iter().enumerate() {
             out.line(&format!("  ✗ {}: {}", f.selector(), f.failure_text));
+            if let Some(Some(termination)) = self.terminations.get(i) {
+                out.line(&format!("      {}", termination.line()));
+            }
         }
         if let Some(coverage) = self.coverage {
             out.line(&format!("coverage: {:.1}%", coverage * 100.0));
@@ -229,13 +255,18 @@ impl Render for TestReport {
             .summary
             .test_failures
             .iter()
-            .map(|f| {
-                serde_json::json!({
+            .enumerate()
+            .map(|(i, f)| {
+                let mut failure = serde_json::json!({
                     "test": f.test_name,
                     "target": f.target_name,
                     "identifier": f.selector(),
                     "message": f.failure_text,
-                })
+                });
+                if let Some(Some(t)) = self.terminations.get(i) {
+                    failure["terminationReason"] = t.exit.json(t.crash_report.as_deref());
+                }
+                failure
             })
             .collect();
         serde_json::json!({
@@ -363,6 +394,7 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         target.scheme, target.destination
     ));
 
+    let run_started = SystemTime::now();
     // Human mode beautifies output; JSON stays quiet so stdout holds only the
     // enveloped summary the dispatcher renders from the returned payload.
     let outcome = plan.run(&ctx.out)?;
@@ -432,9 +464,22 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         .then(|| xcodebuild::coverage_percent(&bundle))
         .flatten();
 
+    let terminations = if passed {
+        Vec::new()
+    } else {
+        let run = RunContext {
+            resolved: &resolved,
+            target: &target,
+            passthrough: args.passthrough,
+            bundle: &bundle,
+            started: run_started,
+        };
+        terminations(&run, &summary.test_failures)
+    };
     let report = TestReport {
         passed,
         summary,
+        terminations,
         coverage,
         result_bundle: bundle.display().to_string(),
     };
@@ -481,6 +526,195 @@ fn build_step_failure(container: &Container, outcome: xcodebuild::TestRunOutcome
     .diagnostics(outcome.diagnostics)
     .context("running the tests");
     if shown { err.shown() } else { err }
+}
+
+/// What a failure message says vanished mid-test, in the wording Xcode 27
+/// uses for it.
+#[derive(Debug, PartialEq, Eq)]
+enum Vanished {
+    /// The app it names: `<bundle id> crashed`, `Failed to application <bundle
+    /// id> is not running`.
+    Named(String),
+    /// The app under test, when an `… is not running` names no bundle id.
+    App,
+    /// The process running the tests: `Test crashed with signal kill.` (a UI
+    /// test runner), `Crash: <App> at <frame>` (a unit test's host app), `Lost
+    /// connection to the test runner`, `… test runner exited …`.
+    Runner,
+}
+
+fn vanished(message: &str) -> Option<Vanished> {
+    let bundle_id = |token: &str| {
+        (token.contains('.')
+            && token
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_')))
+        .then(|| token.to_string())
+    };
+    if let Some(named) = message.strip_suffix(" crashed").and_then(bundle_id) {
+        return Some(Vanished::Named(named));
+    }
+    if let Some((head, _)) = message.split_once(" is not running") {
+        let named = head.rsplit(' ').next().and_then(bundle_id);
+        return Some(named.map_or(Vanished::App, Vanished::Named));
+    }
+    let lower = message.to_lowercase();
+    let runner = message.starts_with("Crash: ")
+        || lower.contains("crashed")
+        || lower.contains("lost connection to the test runner")
+        || lower.contains("test runner exited");
+    runner.then_some(Vanished::Runner)
+}
+
+/// The run [`terminations`] searches: what was tested, where the result bundle
+/// is, and when xcodebuild started.
+struct RunContext<'a> {
+    resolved: &'a resolve::Resolved,
+    target: &'a resolve::BuildTarget,
+    passthrough: &'a [String],
+    bundle: &'a Path,
+    started: SystemTime,
+}
+
+/// How far before the run's start the exit query reaches, so a skew between
+/// launchd's clock and ours cannot cut off an early exit.
+const EXIT_QUERY_LEAD: f64 = 2.0;
+
+/// How long after a failure the exit behind it may be logged. launchd writes
+/// the line when it reaps the process, which can trail the moment the test
+/// noticed. XCTest restarts a crashed unit-test host, and in a measured run the
+/// restart's clean exit landed 1.5s after the failure, so the margin stays well
+/// under that.
+const EXIT_AFTER_FAILURE: f64 = 0.5;
+
+/// The longest the exit query may take before the report goes out without
+/// termination reasons.
+const EXIT_QUERY_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// At most this many failures are timed, since each costs an `xcresulttool`
+/// read of the test's activity log.
+const MAX_TIMED_FAILURES: usize = 20;
+
+/// For each failure whose message says the app or the test runner vanished,
+/// the exit launchd logged for it: the last exit of that process between the
+/// test's start and just after the failure was recorded. Best effort and
+/// bounded: an unreadable log, an unsupported destination, or a failure with
+/// no activity log leaves that failure without one.
+fn terminations(
+    run: &RunContext,
+    failures: &[xcodebuild::TestFailure],
+) -> Vec<Option<Termination>> {
+    let causes: Vec<Option<Vanished>> =
+        failures.iter().map(|f| vanished(&f.failure_text)).collect();
+    let mut found = Vec::new();
+    if causes.iter().any(Option::is_some) {
+        found = exits_during(run).unwrap_or_default();
+    }
+    if found.is_empty() {
+        return failures.iter().map(|_| None).collect();
+    }
+    let run_start = epoch_seconds(run.started) - EXIT_QUERY_LEAD;
+    // Resolved on first need: only a failure that names no bundle id needs it.
+    let mut app_id: Option<Option<String>> = None;
+    let mut app_id = || app_id.get_or_insert_with(|| app_bundle_id(run)).clone();
+    let mut budget = MAX_TIMED_FAILURES;
+    causes
+        .into_iter()
+        .zip(failures)
+        .map(|(cause, failure)| {
+            let cause = cause?;
+            budget = budget.checked_sub(1)?;
+            let times = xcodebuild::failure_times(
+                run.bundle,
+                &failure.test_identifier_string,
+                &failure.failure_text,
+            )?;
+            let from = times.started.map_or(run_start, |t| t - 1.0);
+            let until = times.failed + EXIT_AFTER_FAILURE;
+            let last_of = |matches: &dyn Fn(&exits::Exit) -> bool| {
+                found
+                    .iter()
+                    .filter(|e| e.epoch_seconds().is_some_and(|t| t >= from && t <= until))
+                    .rfind(|e| matches(e))
+                    .cloned()
+            };
+            let exit = match cause {
+                Vanished::Named(id) => last_of(&|e| e.bundle_id == id),
+                Vanished::App => app_id().and_then(|id| last_of(&|e| e.bundle_id == id)),
+                // A UI test's runner is its own `.xctrunner` app; a unit
+                // test's is the host app, so that is the fallback.
+                Vanished::Runner => last_of(&|e| e.bundle_id.ends_with(".xctrunner"))
+                    .or_else(|| app_id().and_then(|id| last_of(&|e| e.bundle_id == id))),
+            }?;
+            let crash_report = exit
+                .is_crash()
+                .then(|| exits::crash_report(&exit, Some(run.started)))
+                .flatten();
+            Some(Termination { exit, crash_report })
+        })
+        .collect()
+}
+
+/// Every app exit launchd logged on the test destination since the run
+/// started. `None` for a destination with no exit records to read (a device)
+/// or a query that failed.
+fn exits_during(run: &RunContext) -> Option<Vec<exits::Exit>> {
+    let destination = &run.target.destination;
+    let field = |key: &str| {
+        destination
+            .split(',')
+            .find_map(|kv| kv.trim().strip_prefix(key))
+            .map(str::to_string)
+    };
+    let platform = field("platform=")?;
+    let udid;
+    let source = if platform == "macOS" {
+        exits::Source::Mac
+    } else if platform.ends_with(" Simulator") {
+        udid = if let Some(id) = field("id=") {
+            id
+        } else {
+            let name = field("name=")?;
+            let sims = simctl::list().ok()?;
+            simctl::find(&sims, &name)?.udid.clone()
+        };
+        exits::Source::Simulator(&udid)
+    } else {
+        return None;
+    };
+    let window = exits::Window::Between {
+        start: epoch_seconds(run.started) - EXIT_QUERY_LEAD,
+        end: epoch_seconds(SystemTime::now()) + 1.0,
+    };
+    exits::query(&source, &[], &window, EXIT_QUERY_TIMEOUT).ok()
+}
+
+/// The bundle id of the app the scheme builds, through the in-process
+/// build-settings resolver (no xcodebuild spawn).
+fn app_bundle_id(run: &RunContext) -> Option<String> {
+    let plan = xcodebuild::BuildPlan {
+        container: &run.resolved.container,
+        scheme: &run.target.scheme,
+        configuration: &run.target.configuration,
+        destination: Some(&run.target.destination),
+        sdk: run.resolved.sdk.as_deref(),
+        clean: false,
+        hot: false,
+        hot_entitlements: None,
+        result_bundle: None,
+        passthrough: run.passthrough,
+        action: xcodebuild::BuildAction::Build,
+    };
+    let settings = xcodebuild::resolved_settings(&plan).ok()?;
+    xcodebuild::app_bundle(&settings, Some(&run.target.destination))
+        .ok()
+        .map(|app| app.bundle_id)
+}
+
+fn epoch_seconds(time: SystemTime) -> f64 {
+    time.duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
 }
 
 /// Where a project's latest `.xcresult` is retained: one slot per project in
@@ -1744,6 +1978,108 @@ mod tests {
     }
 
     #[test]
+    fn a_failure_that_says_something_vanished_names_whose_exit_to_read() {
+        // Xcode 27's wording, each from a real run.
+        let named = Some(Vanished::Named("dev.sweetpad.exitprobe.app".into()));
+        assert_eq!(vanished("dev.sweetpad.exitprobe.app crashed"), named);
+        assert_eq!(
+            vanished("Failed to application dev.sweetpad.exitprobe.app is not running"),
+            named
+        );
+        assert_eq!(
+            vanished("Test crashed with signal kill."),
+            Some(Vanished::Runner)
+        );
+        assert_eq!(
+            vanished(
+                "Crash: ExitProbe at +[XCTFailableInvocation \
+                 invokeStandardConventionInvocation:completion:]"
+            ),
+            Some(Vanished::Runner)
+        );
+        assert_eq!(vanished("XCTAssertTrue failed"), None);
+        assert_eq!(
+            vanished("XCTAssertEqual failed: (\"1\") is not equal to (\"2\")"),
+            None
+        );
+    }
+
+    fn failed_report(terminations: Vec<Option<Termination>>) -> TestReport {
+        TestReport {
+            passed: false,
+            summary: xcodebuild::TestSummary {
+                result: "Failed".into(),
+                total_test_count: 2,
+                failed_tests: 2,
+                test_failures: vec![
+                    xcodebuild::TestFailure {
+                        test_name: "testAppKilledFromOutside()".into(),
+                        target_name: "ExitProbeUITests".into(),
+                        failure_text: "Failed to application dev.sweetpad.exitprobe.app is not \
+                                       running"
+                            .into(),
+                        test_identifier_string: "ProbeUITests/testAppKilledFromOutside()".into(),
+                        ..Default::default()
+                    },
+                    xcodebuild::TestFailure {
+                        test_name: "testPasses()".into(),
+                        target_name: "ExitProbeTests".into(),
+                        failure_text: "XCTAssertEqual failed".into(),
+                        test_identifier_string: "ProbeTests/testPasses()".into(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+            terminations,
+            coverage: None,
+            result_bundle: "/tmp/ExitProbe.xcresult".into(),
+        }
+    }
+
+    #[test]
+    fn a_termination_rides_on_its_failure_and_nowhere_else() {
+        // `simctl terminate` of the app while a UI test waited on it.
+        let line = serde_json::json!({
+            "timestamp": "2026-09-26 17:54:45.694421+0200",
+            "subsystem": "user/503/UIKitApplication:dev.sweetpad.exitprobe.app[8818][rb-legacy] \
+                          [79644]",
+            "eventMessage": "exited with exit reason (namespace: 10 code: 0xfbfbfbfb) - \
+                             OS_REASON_SPRINGBOARD | <RBSTerminateContext| domain:10 \
+                             code:0xFBFBFBFB explanation:Termination requested by simulator \
+                             host\n\nProcessVisibility: Foreground\nProcessState: Running \
+                             reportType:None maxTerminationResistance:Interactive>, ran for \
+                             8372ms",
+        })
+        .to_string();
+        let exit = exits::parse_ndjson_line(&line, &[]).expect("an exit");
+        let termination = Termination {
+            exit,
+            crash_report: None,
+        };
+        assert_eq!(
+            termination.line(),
+            "app terminated: Termination requested by simulator host (OS_REASON_SPRINGBOARD \
+             0xfbfbfbfb)"
+        );
+        let json = failed_report(vec![Some(termination), None]).json();
+        let reason = &json["failures"][0]["terminationReason"];
+        assert_eq!(reason["namespace"], 10);
+        assert_eq!(reason["code"], "0xfbfbfbfb");
+        assert_eq!(reason["reason"], "OS_REASON_SPRINGBOARD");
+        assert_eq!(
+            reason["explanation"],
+            "Termination requested by simulator host"
+        );
+        assert!(reason["label"].is_null());
+        // An ordinary failure gains no field, and neither does a report whose
+        // lookup found nothing.
+        assert!(json["failures"][1].get("terminationReason").is_none());
+        let bare = failed_report(Vec::new()).json();
+        assert!(bare["failures"][0].get("terminationReason").is_none());
+    }
+
+    #[test]
     fn junit_report_escapes_and_counts() {
         let dir = std::env::temp_dir().join(format!("sweetpad-junit-{}", std::process::id()));
         let path = dir.join("r.xml");
@@ -1757,6 +2093,7 @@ mod tests {
                 test_name: "testA<>()".into(),
                 target_name: "AppTests".into(),
                 failure_text: "x & y \"broke\"".into(),
+                test_identifier_string: "Suite/testA<>()".into(),
                 ..xcodebuild::TestFailure::default()
             }],
         };

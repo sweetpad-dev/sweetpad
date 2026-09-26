@@ -2090,7 +2090,7 @@ URL, a test gets the XCTest spelling.
 
 ## 9m. v8 — failures that name their own fix
 
-Three more from §9k's family, all found by agents losing time rather than by
+Five more from §9k's family, all found by agents losing time rather than by
 anyone filing a bug: the CLI knew what had gone wrong and said something that
 did not help, or said nothing at all.
 
@@ -2178,6 +2178,45 @@ Everything else is counted: `(26 other destinations omitted)`. The
 incompatible side's errors are left out on purpose. Every entry there has one,
 and it says the platform does not match the scheme, which is true of all of
 them and explains nothing.
+
+### A test whose app vanished says what ended it
+
+When the app under a UI test dies mid-test, XCTest reports only that it is
+gone. Xcode 27 says `<bundle id> crashed` or `Failed to application <bundle id>
+is not running`, and `test` passed that on with nothing else. Why it went is in
+launchd's exit line (§9j), which `test` reads for exactly these failures and
+attaches:
+
+```
+  ✗ ExitProbeUITests/ProbeUITests/testAppKilledFromOutside: Failed to application dev.sweetpad.exitprobe.app is not running
+      app terminated: Termination requested by simulator host (OS_REASON_SPRINGBOARD 0xfbfbfbfb)
+```
+
+Under `-o json` and ndjson the failure gains `terminationReason`, the same
+object `app logs --exits` reports per exit: `namespace`, `code`, `reason`,
+`label`, `explanation`, and the rest. The field is additive, so `schema` stays.
+
+**Which failures, in Xcode's words.** Each wording was reproduced against a
+scratch app on Xcode 27. `<id> crashed` and `… application <id> is not running`
+name the app. `Test crashed with signal kill.` (the UI test runner killed) and
+`Crash: <App> at <frame>` (a unit test's host app crashed) point at the process
+running the tests, as do `Lost connection to the test runner` and `… test
+runner exited …`. A UI test's runner is its `.xctrunner` app; a unit test's is
+the host app, whose bundle id comes from the in-process build-settings
+resolver. Any other failure is left alone, so an ordinary red suite pays
+nothing.
+
+**Which exit.** One `log show` covers every app job's exits over the run. Per
+failure, the test's activity log gives two times: the test's start and the
+moment the failure was recorded. The exit is that process's last one between
+them, plus half a second. launchd can log the reap just after XCTest notices,
+but the margin cannot be wider: XCTest restarts a crashed unit-test host, and
+the restart exited cleanly 1.5s after the failure it caused.
+
+**Best effort, bounded.** The query gives up after 15s, and at most 20 failures
+are timed (each costs an `xcresulttool` read). A failed query, a device
+destination, or a failure with no activity log leaves the field out rather
+than guessing.
 
 ## 9n. Direction — the run session as a server
 
