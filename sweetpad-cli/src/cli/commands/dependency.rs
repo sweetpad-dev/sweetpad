@@ -172,10 +172,8 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     }
 }
 
-// ---------------------------------------------------------------------------
-// list
-// ---------------------------------------------------------------------------
-
+/// `dependency list`: each declared package with its locked version, and the
+/// transitive pins too when asked.
 fn list(ctx: &mut Context, transitive: bool) -> CommandResult {
     let container = resolve::container(ctx)?;
     let pins = read_resolved(&resolved_path(&container));
@@ -369,10 +367,7 @@ impl Render for DependencyList {
     }
 }
 
-// ---------------------------------------------------------------------------
-// add
-// ---------------------------------------------------------------------------
-
+/// `dependency add`: declare the package, then link its products into targets.
 fn add(ctx: &mut Context, args: &AddArgs) -> CliResult {
     let container = resolve::container(ctx)?;
     match container {
@@ -709,10 +704,7 @@ fn products_to_link(manifest: &swiftpm::Manifest) -> Result<Vec<String>, CliErro
     Ok(names)
 }
 
-// ---------------------------------------------------------------------------
-// remove
-// ---------------------------------------------------------------------------
-
+/// `dependency remove`: drop a package, or unlink one product from one target.
 fn remove(ctx: &mut Context, args: &RemoveArgs) -> CliResult {
     let container = resolve::container(ctx)?;
     match container {
@@ -854,10 +846,8 @@ fn transitive_hint(container: &Container, query: &str) -> Option<CliError> {
     })
 }
 
-// ---------------------------------------------------------------------------
-// update
-// ---------------------------------------------------------------------------
-
+/// `dependency update`: re-pin, or rewrite one package's requirement and then
+/// re-pin.
 fn update(ctx: &mut Context, args: &UpdateArgs) -> CliResult {
     let container = resolve::container(ctx)?;
     if args.requirement.is_empty() {
@@ -1065,10 +1055,7 @@ fn report_updated(ctx: &Context, package: Option<&str>, changes: &[PinChange], r
     }
 }
 
-// ---------------------------------------------------------------------------
-// resolve
-// ---------------------------------------------------------------------------
-
+/// `dependency resolve`: bring `Package.resolved` up to date.
 fn resolve_action(ctx: &mut Context) -> CliResult {
     let container = resolve::container(ctx)?;
     resolve_packages(&container, None, &ctx.out, false)?;
@@ -1151,10 +1138,6 @@ fn resolve_packages(
         .context("resolving package dependencies"))
     }
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 /// Resolve the version requirement for a remote add: exactly one primary flag,
 /// with `--to` only alongside `--from`. Validated here (not via a clap group) so
@@ -1733,10 +1716,6 @@ fn kind_str(container: &Container) -> &'static str {
         Container::SwiftPackage(_) => "package",
     }
 }
-
-// ---------------------------------------------------------------------------
-// Package.resolved reading
-// ---------------------------------------------------------------------------
 
 /// A locked pin from `Package.resolved`.
 struct Pin {
