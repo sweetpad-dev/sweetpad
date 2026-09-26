@@ -1404,8 +1404,8 @@ sweetpad pbxproj group list                         the navigator tree
 sweetpad pbxproj group add <name> [--parent G] [--path P] [--source-tree ST]
 sweetpad pbxproj group remove <group> [--orphan-children]
 sweetpad pbxproj group move <node> [--to G]         re-home a node
-sweetpad pbxproj group attach <id> --group ID|DIR   list a child (pbxproj only)
-sweetpad pbxproj group detach <id> --group ID|DIR   unlist a child (pbxproj only)
+sweetpad pbxproj group attach <node> --group ID|DIR list a child (pbxproj only)
+sweetpad pbxproj group detach <node> --group ID|DIR unlist a child (pbxproj only)
 ```
 
 - **`settings` splits by layer, not by flag.** Top-level `sweetpad settings
@@ -1486,7 +1486,8 @@ friction, without collapsing the axes:
   are separate calls. A bad path refuses the batch rather than half-applying
   it.
 - **Membership is addressable by file-reference id** (`--fileref <ID>`), which
-  is what `fileref add` returns. This is the spelling that *composes* — the id
+  is the `address` `fileref add` returns (a pbxproj addresses a node by its
+  object id). This is the spelling that *composes* — the id
   flows from one command to the next and nothing is spelled twice, the way
   `git hash-object` feeds `git update-index`. It is also the only way to name
   a reference no group lists (no navigator path exists) or to disambiguate a
@@ -1610,7 +1611,15 @@ from the root — which is the spelling `membership` and `folder` already take,
 the one the document itself uses for a target's `product`, and the one a person
 would type. Ids are not invented to keep the old argument shape: `fileref list`
 and `group list` print the address each format wants back, and every verb takes
-it.
+it. Every mutation's JSON names the node it touched as `address` too, `group
+attach`/`detach` included, whose `group` is the address of the group whose
+children changed rather than the spelling `--group` was given in. The `data`
+of `group detach 85BB78F9ECC9184F5BA8114B --group Sources/App --json`:
+
+```
+{"action": "detach", "address": "85BB78F9ECC9184F5BA8114B",
+ "group": "71376D09ABE451C1E73CAAE7", "changed": true}
+```
 
 The navigator path is not the on-disk path. A node stored as
 `<PROJECT>/Sources/Deep.swift` but listed at the root appears as `Deep.swift`,

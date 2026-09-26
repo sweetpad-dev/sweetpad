@@ -92,10 +92,11 @@ pub struct AddArgs {
     #[command(flatten)]
     pub container: ContainerArgs,
 
-    /// File reference id to add, instead of naming it by path (repeatable, and
-    /// combines with paths). This is what 'pbxproj fileref add' returns, so the
-    /// two verbs compose without spelling the file twice — and it stays exact
-    /// where a path is shared by two references.
+    /// File reference to add, instead of naming it by path (repeatable, and
+    /// combines with paths): the 'address' that 'pbxproj fileref add' returns,
+    /// which is the reference's object id. The two verbs compose without
+    /// spelling the file twice, and it stays exact where a path is shared by
+    /// two references.
     #[arg(long = "fileref", value_name = "ID")]
     pub filerefs: Vec<String>,
 

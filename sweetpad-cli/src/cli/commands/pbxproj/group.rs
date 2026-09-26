@@ -134,8 +134,11 @@ pub struct MoveArgs {
 /// Flags for `pbxproj group attach`/`detach`.
 #[derive(Debug, Args)]
 pub struct LinkArgs {
-    /// The child object's id (a file reference or another group).
-    pub id: String,
+    /// The child to list or unlist, a file reference or another group: the
+    /// 'address' that 'pbxproj fileref list' or 'pbxproj group list' prints
+    /// for it (its object id).
+    #[arg(value_name = "NODE")]
+    pub address: String,
 
     #[command(flatten)]
     pub container: ContainerArgs,
@@ -389,42 +392,52 @@ fn link(ctx: &mut Context, args: &LinkArgs, attach: bool) -> CommandResult {
                 "'group {verb}' has no meaning in the project.xcproj format: a group holds \
                  its children rather than listing references to them, so a node is in one \
                  place and cannot be in two. Move it with 'pbxproj group move {} --to {}'",
-                args.id, args.group
+                args.address, args.group
             )));
         }
     };
     let outcome = if attach {
-        tree_pbxproj::attach(root, &args.id, &args.group)
+        tree_pbxproj::attach(root, &args.address, &args.group)
     } else {
-        tree_pbxproj::detach(root, &args.id, &args.group)
+        tree_pbxproj::detach(root, &args.address, &args.group)
     }
     .map_err(CliError::new)?;
 
-    let (line, changed) = match &outcome {
-        LinkOutcome::Linked { child, group } => (format!("{group} now lists {child}"), true),
-        LinkOutcome::AlreadyLinked { child, group } => {
-            (format!("{group} already lists {child}"), false)
+    let (line, changed, child, group) = match &outcome {
+        LinkOutcome::Linked { child, group } => {
+            (format!("{group} now lists {child}"), true, child, group)
         }
+        LinkOutcome::AlreadyLinked { child, group } => (
+            format!("{group} already lists {child}"),
+            false,
+            child,
+            group,
+        ),
         LinkOutcome::Unlinked { child, group } => (
             format!("{group} no longer lists {child} (the object stays)"),
             true,
+            child,
+            group,
         ),
-        LinkOutcome::NotLinked { child, group } => {
-            (format!("{group} does not list {child}"), false)
-        }
+        LinkOutcome::NotLinked { child, group } => (
+            format!("{group} does not list {child}"),
+            false,
+            child,
+            group,
+        ),
     };
     if changed {
         document.write(&xcodeproj)?;
     }
-    Ok(Rendered::data(GroupMutation {
-        line,
-        json: serde_json::json!({
-            "action": if attach { "attach" } else { "detach" },
-            "id": args.id,
-            "group": args.group,
-            "changed": changed,
-        }),
-    }))
+    // The child and the group as the rest of the family names them: by
+    // address, whatever spelling '--group' was given in.
+    let json = serde_json::json!({
+        "action": if attach { "attach" } else { "detach" },
+        "address": child,
+        "group": group,
+        "changed": changed,
+    });
+    Ok(Rendered::data(GroupMutation { line, json }))
 }
 
 /// The navigator root resolves to the project directory, which prints as an
