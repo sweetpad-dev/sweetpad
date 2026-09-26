@@ -33,7 +33,9 @@
 //! registers the child pid; the handler then forwards SIGINT to that child and
 //! **returns** instead of exiting, letting the main thread reap it and render
 //! a real result. [`take_forwarded`] tells the command a signal was the reason
-//! its child ended.
+//! its child ended. Such a child is spawned with SIGINT at its default
+//! disposition: one that inherited an ignored SIGINT from a backgrounded CLI
+//! would drop the forwarded signal.
 
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
 

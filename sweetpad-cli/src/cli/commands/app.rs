@@ -6456,7 +6456,7 @@ fn stream_logs(
     let marker = log_stream_marker();
     let (program, args) = log_command(source, app, level, Some(&marker), filters);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let mut child = process::spawn_piped(program, &refs, None)?;
+    let mut child = process::spawn_piped_forwarded(program, &refs)?;
     let stream_pid = child.id();
 
     // Both sources can satisfy `--until`, and either one matching ends the

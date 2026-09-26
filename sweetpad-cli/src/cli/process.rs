@@ -321,9 +321,9 @@ pub(crate) fn read_lines_lossy(reader: impl std::io::Read, mut on_line: &mut imp
 }
 
 /// Spawn a long-running command in the background with stdout **piped** for the
-/// caller to read/format on its own thread (stderr inherited, stdin null). Used
-/// by the `app run` session to render the simulator log stream while the keypress
-/// loop runs; stdin is null so the child never competes for the terminal's keys.
+/// caller to read/format on its own thread (stderr inherited, stdin null, so the
+/// child never competes for the terminal's keys). A child that only ever gets a
+/// forwarded SIGINT uses [`spawn_piped_forwarded`] instead.
 pub fn spawn_piped(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<Child, CliError> {
     let mut cmd = Command::new(program);
     cmd.args(args)
@@ -334,6 +334,38 @@ pub fn spawn_piped(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<C
         cmd.current_dir(dir);
     }
     cmd.spawn().map_err(|e| spawn_error(program, &e))
+}
+
+/// [`spawn_piped`] for a child the signal handler's forward-only mode
+/// ([`crate::cli::signals::set_forward_child`]) ends with a SIGINT, such as the
+/// log follow's `log stream`; see [`default_sigint`].
+pub fn spawn_piped_forwarded(program: &str, args: &[&str]) -> Result<Child, CliError> {
+    let mut cmd = Command::new(program);
+    cmd.args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit());
+    default_sigint(&mut cmd);
+    cmd.spawn().map_err(|e| spawn_error(program, &e))
+}
+
+/// Start the child with SIGINT at its default disposition, so the one SIGINT
+/// forward-only mode sends it is delivered. The CLI honors an inherited
+/// `SIG_IGN` for itself (a background job of a script starts that way), and a
+/// child left to inherit it too drops the forwarded signal until it installs a
+/// handler of its own: `simctl spawn … log stream` takes seconds to get there
+/// on a loaded machine, and a SIGTERM landing in that window leaves the CLI
+/// waiting on a stream that never ends.
+fn default_sigint(cmd: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    // Safety: signal(2) is async-signal-safe and touches no shared state; this
+    // closure runs in the forked child before `exec`.
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::signal(libc::SIGINT, libc::SIG_DFL);
+            Ok(())
+        });
+    }
 }
 
 /// Like [`spawn_piped`], but with **stderr also piped** so the caller can drain and
@@ -409,6 +441,7 @@ pub fn spawn_group_inherit(
 
     let mut cmd = Command::new(program);
     cmd.args(args).stdin(Stdio::null()).process_group(0);
+    default_sigint(&mut cmd);
     if quiet_stdout {
         cmd.stdout(Stdio::null());
     }
