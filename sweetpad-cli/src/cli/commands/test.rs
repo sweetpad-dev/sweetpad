@@ -468,10 +468,7 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     // (its cwd), while the CLI's own exists/summary/rename steps resolve
     // against the CLI's cwd — absolutize so a relative `--result-bundle`
     // means the same directory on both sides.
-    let final_bundle = args.result_bundle.map_or_else(
-        || retained_bundle_path(&resolved.container),
-        |p| std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf()),
-    );
+    let final_bundle = bundle_path(&resolved.container, args.result_bundle);
 
     // `--failed`: the selectors come from the *previous* run's retained
     // bundle, read before anything touches it.
@@ -604,8 +601,8 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     let summary = summary.unwrap_or_default();
     let passed = outcome.passed;
 
-    if let Some(junit) = args.junit {
-        write_junit(junit, &target.scheme, &summary)?;
+    if let Some(junit) = args.junit.map(sweetpad_lib::project::absolutize) {
+        write_junit(&junit, &target.scheme, &summary)?;
         if read_summary && summary.test_cases.is_none() {
             ctx.out.warn(
                 "could not read the result bundle's test tree, so the JUnit report lists only \
@@ -993,6 +990,18 @@ fn retained_bundle_path(container: &Container) -> PathBuf {
     xcodebuild::project_artifact(container, ".xcresult")
 }
 
+/// The `.xcresult` a run writes or a read-back verb reads: the one `given`
+/// names, else the project's retained slot. A named path is made absolute
+/// with its `.` and `..` collapsed, the form every report prints, so
+/// `--result-bundle ../x.xcresult` reads back as one clean path rather than
+/// as the cwd with `/../x.xcresult` on the end.
+fn bundle_path(container: &Container, given: Option<&Path>) -> PathBuf {
+    given.map_or_else(
+        || retained_bundle_path(container),
+        sweetpad_lib::project::absolutize,
+    )
+}
+
 /// Where an export lands by default: a directory beside the retained bundle,
 /// so `test attachments` works with no arguments and writes nothing into the
 /// working directory.
@@ -1107,14 +1116,18 @@ impl Render for AttachmentsReport {
 fn attachments(ctx: &mut Context, args: &TestArgs, opts: &AttachmentsArgs) -> CommandResult {
     let (container, bundle) = last_run_bundle(ctx, args)?;
 
-    let output_dir = opts.output_dir.clone().unwrap_or_else(|| {
-        let ours = export_dir_path(&container);
-        // Our own slot holds one export at a time, so a stale file from a
-        // previous run can never be mistaken for this one. A directory the
-        // caller named is theirs, and is added to rather than emptied.
-        let _ = std::fs::remove_dir_all(&ours);
-        ours
-    });
+    // A named directory is reported the way [`bundle_path`] reports a bundle.
+    let output_dir = opts.output_dir.as_deref().map_or_else(
+        || {
+            let ours = export_dir_path(&container);
+            // Our own slot holds one export at a time, so a stale file from a
+            // previous run can never be mistaken for this one. A directory the
+            // caller named is theirs, and is added to rather than emptied.
+            let _ = std::fs::remove_dir_all(&ours);
+            ours
+        },
+        sweetpad_lib::project::absolutize,
+    );
 
     // xcresulttool exports under UUID names and *duplicates* into a populated
     // directory (`name (1).png`), so it always gets a fresh directory of its
@@ -1233,10 +1246,7 @@ fn rename_into_place(
 /// run left behind, or the one `--result-bundle` names.
 fn last_run_bundle(ctx: &Context, args: &TestArgs) -> Result<(Container, PathBuf), CliError> {
     let container = resolve::container(ctx)?;
-    let bundle = args.result_bundle.as_deref().map_or_else(
-        || retained_bundle_path(&container),
-        |p| std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf()),
-    );
+    let bundle = bundle_path(&container, args.result_bundle.as_deref());
     if !bundle.exists() {
         return Err(CliError::new(format!(
             "no result bundle at {} — run 'sweetpad test' first, or name one with \
@@ -2060,6 +2070,24 @@ mod tests {
             xcodebuild::build_result_bundle(&c),
             retained_bundle_path(&c)
         );
+    }
+
+    #[test]
+    fn a_named_bundle_reads_back_as_one_clean_absolute_path() {
+        // `std::path::absolute` keeps a `..`, which would print
+        // `--result-bundle ../x.xcresult` as the cwd with `/../x.xcresult` on
+        // the end.
+        let c = Container::Project(PathBuf::from("/work/App.xcodeproj"));
+        let cwd = std::env::current_dir().unwrap();
+        assert_eq!(
+            bundle_path(&c, Some(Path::new("../x.xcresult"))),
+            cwd.parent().unwrap().join("x.xcresult")
+        );
+        assert_eq!(
+            bundle_path(&c, Some(Path::new("/r/./a/../x.xcresult"))),
+            PathBuf::from("/r/x.xcresult")
+        );
+        assert_eq!(bundle_path(&c, None), retained_bundle_path(&c));
     }
 
     #[test]

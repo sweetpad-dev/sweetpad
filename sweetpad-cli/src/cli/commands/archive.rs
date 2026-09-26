@@ -122,12 +122,11 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
 
     // A relative output dir must mean the same directory for the CLI's own
     // writes (create_dir_all, the generated plist) and for xcodebuild, which
-    // runs from the container's parent — absolutize once against the CLI cwd.
-    let out_dir = args
-        .output_file
-        .clone()
-        .unwrap_or_else(|| PathBuf::from("build"));
-    let out_dir = std::path::absolute(&out_dir).unwrap_or(out_dir);
+    // runs from the container's parent — absolutize once against the CLI cwd,
+    // collapsing `.` and `..` so the paths the report prints read cleanly.
+    let out_dir = sweetpad_lib::project::absolutize(
+        args.output_file.as_deref().unwrap_or(Path::new("build")),
+    );
     let archive_path = out_dir.join(format!("{scheme}.xcarchive"));
 
     let mut archive_args: Vec<String> = vec![
@@ -150,11 +149,10 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
 
     let cwd = xcodebuild::working_dir(&resolved.container);
     let export_dir = out_dir.join("export");
-    let plist_path = args
-        .export_options
-        .clone()
-        .unwrap_or_else(|| out_dir.join("ExportOptions.plist"));
-    let plist_path = std::path::absolute(&plist_path).unwrap_or(plist_path);
+    let plist_path = args.export_options.as_deref().map_or_else(
+        || out_dir.join("ExportOptions.plist"),
+        sweetpad_lib::project::absolutize,
+    );
     let export_args: Vec<String> = vec![
         "-exportArchive".into(),
         "-archivePath".into(),
