@@ -672,21 +672,14 @@ fn discover_products(
         let manifest = swiftpm::manifest_at(Path::new(url))?;
         return Ok(product_names(&manifest));
     }
-    let clone = clone_dir();
+    let clone = CloneDir::new();
     ctx.out.step("Resolving package dependencies", || {
-        resolve_packages(container, Some(&clone), &ctx.out, true)
+        resolve_packages(container, Some(&clone.path), &ctx.out, true)
     })?;
-    let products = (|| {
-        let checkout = resolve_checkout(&clone, url).ok_or_else(|| {
-            CliError::new("could not locate the resolved package checkout to read its products")
-        })?;
-        Ok(product_names(&swiftpm::manifest_at(&checkout)?))
-    })();
-    // The discovery checkouts (a full source clone of the package graph) are
-    // only needed to read the manifest — the pid-keyed dir would otherwise
-    // accumulate hundreds of MB per `dep add` with no later cleanup.
-    let _ = std::fs::remove_dir_all(&clone);
-    products
+    let checkout = resolve_checkout(&clone.path, url).ok_or_else(|| {
+        CliError::new("could not locate the resolved package checkout to read its products")
+    })?;
+    Ok(product_names(&swiftpm::manifest_at(&checkout)?))
 }
 
 /// For a `Package.swift` add: resolve, then read the just-added package's
@@ -970,10 +963,10 @@ fn repin(
         Some(p) => remove_pin(container, p),
         None => delete_lockfile(container),
     }
-    let clone = clone_dir();
-    let resolved = resolve_packages(container, Some(&clone), &ctx.out, false)
+    let clone = CloneDir::new();
+    let resolved = resolve_packages(container, Some(&clone.path), &ctx.out, false)
         .and_then(|()| resolve_packages(container, None, &ctx.out, false));
-    let _ = std::fs::remove_dir_all(&clone);
+    drop(clone);
     if let Err(e) = resolved {
         if snapshot.is_some() {
             restore_lockfile(ctx, container, snapshot);
@@ -1523,8 +1516,43 @@ fn product_names(manifest: &swiftpm::Manifest) -> Vec<String> {
     manifest.products.iter().map(|p| p.name.clone()).collect()
 }
 
-fn clone_dir() -> PathBuf {
-    std::env::temp_dir().join(format!("sweetpad-spm-{}", std::process::id()))
+/// The pid-keyed `-clonedSourcePackagesDirPath` that `add`'s product discovery
+/// and [`repin`] resolve into. Dropping it removes the checkouts (a full source
+/// clone of the package graph, often hundreds of MB) and the empty lock files
+/// SwiftPM creates beside it in the temp directory for each path it locks
+/// inside, named after that path both as given and with symlinks resolved
+/// (`_var_folders_…_T_sweetpad-spm-<pid>_Package.resolved.lock`,
+/// `_private_var_folders_…`), which nothing else clears.
+struct CloneDir {
+    path: PathBuf,
+}
+
+impl CloneDir {
+    fn new() -> Self {
+        Self {
+            path: std::env::temp_dir().join(format!("sweetpad-spm-{}", std::process::id())),
+        }
+    }
+}
+
+impl Drop for CloneDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+        let (Some(temp), Some(name)) = (self.path.parent(), self.path.file_name()) else {
+            return;
+        };
+        let locked_inside = format!("_{}_", name.to_string_lossy());
+        let Ok(entries) = std::fs::read_dir(temp) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let file = entry.file_name();
+            let file = file.to_string_lossy();
+            if file.ends_with(".lock") && file.contains(&locked_inside) {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
 }
 
 /// Locate a resolved package's checkout under `base` — a cloned-source-packages
@@ -1828,5 +1856,39 @@ mod tests {
     fn identical_lockfiles_have_no_changes() {
         let pins = lockfile(&[("swift-collections", "1.1.4")]);
         assert_eq!(pin_changes(Some(&pins), &pins, None), []);
+    }
+
+    /// The lock names a discovery `dep add` left behind on Xcode 27.0, with
+    /// the temp path shortened.
+    #[test]
+    fn dropping_the_clone_dir_removes_its_lock_files() {
+        let temp = std::env::temp_dir().join(format!("sweetpad-clonedir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp);
+        let clone = CloneDir {
+            path: temp.join("sweetpad-spm-7"),
+        };
+        std::fs::create_dir_all(clone.path.join("checkouts/swift-collections")).unwrap();
+        let locks = [
+            "_private_var_folders_T_sweetpad-spm-7_Package.resolved.lock",
+            "_private_var_folders_T_sweetpad-spm-7_workspace-state.json.lock",
+            "_private_var_folders_T_sweetpad-spm-7_checkouts_swift-collections_.build.lock",
+            "_var_folders_T_sweetpad-spm-7_Package.resolved.lock",
+        ];
+        let unrelated = [
+            "_private_var_folders_T_sweetpad-spm-71_Package.resolved.lock",
+            "_private_var_folders_T_sweetpad-spm-7_notes.txt",
+        ];
+        for name in locks.iter().chain(&unrelated) {
+            std::fs::write(temp.join(name), "").unwrap();
+        }
+        drop(clone);
+        let mut left: Vec<String> = std::fs::read_dir(&temp)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        let _ = std::fs::remove_dir_all(&temp);
+        assert_eq!(left, unrelated);
     }
 }
