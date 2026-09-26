@@ -531,6 +531,15 @@ CLI.
   `sweetpad build run --scheme App` work. A resource that doesn't consume a
   tier never advertises its flags (e.g. `project info` rejects
   `--destination`).
+- **Help headings:** `--help` lists the targeting flags under "Target
+  selection", along with `--mac`/`--device`/`--device-id` (the flag forms of
+  `--on mac`/`--on device`). A command's own flags go under "Options" and the
+  universal ones under "Global". Each targeting flag sets its heading itself.
+  A struct-level `next_help_heading` would not stop at the struct: clap keeps
+  it for every arg declared after the flatten, so `build`'s `--clean` and
+  `test`'s `--failed` would land under "Target selection" too. A unit test
+  walks the clap tree and fails on a flag under a heading its struct doesn't
+  own.
 - **Process orchestration:** spawn and stream `xcodebuild` / `xcrun simctl`;
   parse output for human and `--json` render paths.
 

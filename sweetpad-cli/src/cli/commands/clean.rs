@@ -18,7 +18,11 @@ pub struct CleanArgs {
     pub scheme: crate::cli::SchemeArgs,
 
     /// Build configuration whose products to clean (e.g. Debug, Release).
-    #[arg(long, env = "SWEETPAD_CONFIGURATION")]
+    #[arg(
+        long,
+        env = "SWEETPAD_CONFIGURATION",
+        help_heading = crate::cli::TARGET_SELECTION
+    )]
     pub configuration: Option<String>,
 
     /// Also delete this project's DerivedData folder(s). The flag itself is

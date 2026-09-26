@@ -146,33 +146,56 @@ pub enum OutputMode {
     Quiet,
 }
 
+/// The help heading for the flags that pick what a command acts on: the
+/// [`ContainerArgs`]/[`SchemeArgs`]/[`BuildTargetArgs`] tiers, plus the
+/// '--mac'/'--device'/'--device-id' spellings of a destination.
+///
+/// Each of those args names this heading itself. A struct-level
+/// `next_help_heading` would not end with the struct: clap keeps it as the
+/// command's current heading, so every arg declared after the flatten (a
+/// command's own '--clean', '--failed', …) would be listed under it too.
+pub(crate) const TARGET_SELECTION: &str = "Target selection";
+
 /// Tier 1 — which project container to act on. Flattened into every command
 /// that locates a workspace/project — either at the resource level (when every
 /// action consumes it, the flags being `global` within that resource so they
 /// parse on either side of the action token) or directly on the consuming
 /// action (so a sibling like `project new` never advertises flags it ignores).
 #[derive(Debug, Clone, Default, clap::Args)]
-#[command(next_help_heading = "Target selection")]
 pub struct ContainerArgs {
     /// Path to the '.xcworkspace' to operate on (overrides auto-discovery).
-    #[arg(long, env = "SWEETPAD_WORKSPACE", global = true)]
+    #[arg(
+        long,
+        env = "SWEETPAD_WORKSPACE",
+        global = true,
+        help_heading = TARGET_SELECTION
+    )]
     pub workspace: Option<std::path::PathBuf>,
 
     /// Path to the '.xcodeproj' to operate on (overrides auto-discovery).
-    #[arg(long, env = "SWEETPAD_PROJECT", global = true)]
+    #[arg(
+        long,
+        env = "SWEETPAD_PROJECT",
+        global = true,
+        help_heading = TARGET_SELECTION
+    )]
     pub project: Option<std::path::PathBuf>,
 }
 
 /// Tier 2 — container plus a scheme. For commands that need to know *which*
 /// scheme but not a full build target.
 #[derive(Debug, Clone, Default, clap::Args)]
-#[command(next_help_heading = "Target selection")]
 pub struct SchemeArgs {
     #[command(flatten)]
     pub container: ContainerArgs,
 
     /// Scheme to use (overrides config and remembered selection).
-    #[arg(long, env = "SWEETPAD_SCHEME", global = true)]
+    #[arg(
+        long,
+        env = "SWEETPAD_SCHEME",
+        global = true,
+        help_heading = TARGET_SELECTION
+    )]
     pub scheme: Option<String>,
 }
 
@@ -180,29 +203,38 @@ pub struct SchemeArgs {
 /// and destination. For the build-ish commands (`build`, `test`, `settings`,
 /// `app`).
 #[derive(Debug, Clone, Default, clap::Args)]
-#[command(next_help_heading = "Target selection")]
 pub struct BuildTargetArgs {
     #[command(flatten)]
     pub scheme: SchemeArgs,
 
     /// Build configuration to use (e.g. Debug, Release).
-    #[arg(long, env = "SWEETPAD_CONFIGURATION", global = true)]
+    #[arg(
+        long,
+        env = "SWEETPAD_CONFIGURATION",
+        global = true,
+        help_heading = TARGET_SELECTION
+    )]
     pub configuration: Option<String>,
 
     /// Destination specifier (e.g. "platform=iOS Simulator,name=iPhone 15").
-    #[arg(long, env = "SWEETPAD_DESTINATION", global = true)]
+    #[arg(
+        long,
+        env = "SWEETPAD_DESTINATION",
+        global = true,
+        help_heading = TARGET_SELECTION
+    )]
     pub destination: Option<String>,
 
     /// Where to build/run, as a human reference: a fuzzy simulator/device name
     /// ("iPhone 16 Pro"), 'booted', 'mac', 'device', a platform word ('ios',
     /// 'watchos', …), or a UDID. Resolved against the live device list;
     /// --destination stays the raw escape hatch.
-    #[arg(long, env = "SWEETPAD_ON", global = true)]
+    #[arg(long, env = "SWEETPAD_ON", global = true, help_heading = TARGET_SELECTION)]
     pub on: Option<String>,
 
     /// SDK to build against (e.g. iphonesimulator, macosx). Rarely needed —
     /// the destination usually implies it.
-    #[arg(long, env = "SWEETPAD_SDK", global = true)]
+    #[arg(long, env = "SWEETPAD_SDK", global = true, help_heading = TARGET_SELECTION)]
     pub sdk: Option<String>,
 }
 
@@ -1738,6 +1770,81 @@ mod cli_definition_tests {
                 "help group lists `{name}`, which is not a top-level subcommand"
             );
         }
+    }
+
+    /// Each help heading lists only the flags of the struct that owns it, and
+    /// every flag of the targeting tiers sits under Target selection. clap
+    /// files an arg under whatever heading is current when it is added, so a
+    /// heading set for one flattened struct and not closed again takes over
+    /// the command's own flags declared after it.
+    #[test]
+    fn help_headings_hold_only_their_own_flags() {
+        use clap::{Args, CommandFactory};
+        use std::collections::HashSet;
+
+        fn ids(cmd: &clap::Command) -> HashSet<String> {
+            cmd.get_arguments()
+                .map(|a| a.get_id().to_string())
+                .collect()
+        }
+
+        fn walk(
+            cmd: &clap::Command,
+            path: &str,
+            owners: &[(&str, HashSet<String>)],
+            found: &mut Vec<String>,
+        ) {
+            let (targeting_heading, targeting) = &owners[0];
+            for arg in cmd.get_arguments() {
+                let id = arg.get_id().as_str();
+                let heading = arg.get_help_heading();
+                let owner = owners.iter().find(|(name, _)| Some(*name) == heading);
+                let problem = match (heading, owner) {
+                    (Some(_), Some((name, members))) => {
+                        (!members.contains(id)).then(|| format!("under {name:?}"))
+                    }
+                    (Some(unknown), None) => Some(format!("under unknown {unknown:?}")),
+                    (None, _) => {
+                        (targeting.contains(id) && arg.get_long().is_some() && !arg.is_hide_set())
+                            .then(|| format!("not under {targeting_heading:?}"))
+                    }
+                };
+                if let Some(problem) = problem {
+                    found.push(format!("{path} [{id}]: {problem}"));
+                }
+            }
+            for sub in cmd.get_subcommands() {
+                walk(sub, &format!("{path} {}", sub.get_name()), owners, found);
+            }
+        }
+
+        let probe = || clap::Command::new("probe");
+        let targeting_tier = super::BuildTargetArgs::augment_args(probe());
+        let modes = crate::cli::commands::app::StageTargetArgs::augment_args(probe());
+        for arg in targeting_tier.get_arguments().chain(modes.get_arguments()) {
+            assert_eq!(
+                arg.get_help_heading(),
+                Some(super::TARGET_SELECTION),
+                "[{}]",
+                arg.get_id()
+            );
+        }
+        let mut targeting = ids(&targeting_tier);
+        targeting.extend(ids(&modes));
+        let owners = [
+            (super::TARGET_SELECTION, targeting),
+            ("Global", ids(&super::GlobalArgs::augment_args(probe()))),
+        ];
+
+        let mut root = super::Cli::command();
+        root.build();
+        let mut found = Vec::new();
+        walk(&root, "sweetpad", &owners, &mut found);
+        assert!(
+            found.is_empty(),
+            "flags under the wrong heading:\n{}",
+            found.join("\n")
+        );
     }
 
     /// A terminal prints backticks literally, so help text quotes with

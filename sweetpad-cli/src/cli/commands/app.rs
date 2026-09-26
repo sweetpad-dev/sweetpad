@@ -38,15 +38,19 @@ pub struct RunArgs {
     /// ('--on device' is the same thing). Conflicts with a *typed* '--on'
     /// post-parse — a clap-level conflict would also fire on an env-sourced
     /// SWEETPAD_ON, breaking flag-beats-env.
-    #[arg(long)]
+    #[arg(long, help_heading = crate::cli::TARGET_SELECTION)]
     pub device: bool,
 
     /// Specific device UDID/name to target (implies --device).
-    #[arg(long = "device-id")]
+    #[arg(long = "device-id", help_heading = crate::cli::TARGET_SELECTION)]
     pub device_id: Option<String>,
 
     /// Build and run as a native macOS app ('--on mac' is the same thing).
-    #[arg(long, conflicts_with_all = ["device", "device_id"])]
+    #[arg(
+        long,
+        conflicts_with_all = ["device", "device_id"],
+        help_heading = crate::cli::TARGET_SELECTION
+    )]
     pub mac: bool,
 
     /// Don't stream the app's logs after launching (logs follow by default
@@ -382,15 +386,19 @@ impl UntilWatch {
 #[derive(Debug, Clone, Default, clap::Args)]
 pub struct StageTargetArgs {
     /// Act on a connected physical device instead of a simulator.
-    #[arg(long)]
+    #[arg(long, help_heading = crate::cli::TARGET_SELECTION)]
     pub device: bool,
 
     /// Specific device UDID/name (implies --device).
-    #[arg(long = "device-id")]
+    #[arg(long = "device-id", help_heading = crate::cli::TARGET_SELECTION)]
     pub device_id: Option<String>,
 
     /// Act on the native macOS app ('--on mac' is the same thing).
-    #[arg(long, conflicts_with_all = ["device", "device_id"])]
+    #[arg(
+        long,
+        conflicts_with_all = ["device", "device_id"],
+        help_heading = crate::cli::TARGET_SELECTION
+    )]
     pub mac: bool,
 }
 
