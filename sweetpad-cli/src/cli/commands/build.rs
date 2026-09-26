@@ -73,7 +73,8 @@ pub fn run(ctx: &mut Context, args: &StartArgs, action: Option<&Action>) -> Comm
                     "build diagnostics re-reads the last build's record; \
                      --clean/--watch/--show-command and '--' passthrough don't apply \
                      (run 'sweetpad build' to build)",
-                ));
+                )
+                .kind(ErrorKind::Usage));
             }
             diagnostics(ctx)
         }

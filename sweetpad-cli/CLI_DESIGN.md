@@ -263,13 +263,24 @@ builds it with real `xcodebuild`.
 ```
 0  success                      4  target resolution failed (no/unknown
 1  generic failure                 scheme, destination, simulator, …)
-2  usage error (owned by clap)  5  required tool missing (xcodebuild, …)
+2  usage error                  5  required tool missing (xcodebuild, …)
 3  build or test failure        6  cancelled by the user (a declined or
                                    Esc'd prompt, Ctrl-C in a session)
 ```
 
 A SIGINT/SIGTERM that kills the process exits `128 + signo` (130/143), after
 the handler restores the terminal and reaps children.
+
+Exit 2 has two sources. clap reports what it can't parse, in its own text
+even under `--json`. The command reports what it parses but refuses: a flag
+on a verb it means nothing to (`test build --failed`, `build diagnostics
+--clean`), two flags that can't go together (`--on` with `--destination`,
+`--gh-annotations` with `-o json`), a flag value out of range (`--pid 0`).
+Those take the envelope with `code: "usage_error"`. The flags alone decide
+it, including a committed default such as `[run] hot`. A flag refused because
+of what the project or destination turns out to be (`--scheme` on a Swift
+package, `--keep-sandbox` off macOS) keeps its own code, since the same flags
+work in another project.
 
 ## 5. Target resolution
 
@@ -2040,7 +2051,8 @@ retained bundle, so they answer after the fact without re-running anything.
 `test run`'s flags are resource-global, so they also parse after `test
 attachments` and `test output`. Both verbs redeclare them hidden under the same
 ids, as `build diagnostics` does, so their help lists only what they take, and
-a run flag given anyway is refused by name instead of dropped. `--only-testing`
+a run flag given anyway is refused by name instead of dropped, as a usage error
+(exit 2, §4). `--only-testing`
 and `--result-bundle` are redeclared visible, with help that says what they
 pick here: the tests and the bundle to read.
 
@@ -2485,8 +2497,8 @@ error in a target the filter leaves out still fails the build. A filter would
 promise a narrowing that never happens. The run flags (`--only-testing`,
 `--skip-testing`, `--failed`, `--result-bundle`, `--junit`, `--retry-flaky`,
 `--coverage`) are resource-global, so they parse after `build`; they are refused
-by name, not dropped. The verb redeclares them hidden, so `test build --help`
-leaves them out.
+by name as a usage error (exit 2), not dropped. The verb redeclares them hidden,
+so `test build --help` leaves them out.
 
 `--watch` is `build --watch`'s loop unchanged. A Swift package runs `swift build
 --build-tests`.

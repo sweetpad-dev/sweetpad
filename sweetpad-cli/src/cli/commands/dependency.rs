@@ -856,9 +856,10 @@ fn update(ctx: &mut Context, args: &UpdateArgs) -> CliResult {
 
     // Requirement change (bump / pin / downgrade) — needs a target package.
     let Some(package) = &args.package else {
-        return Err(CliError::new(
-            "a package is required when changing the requirement",
-        ));
+        return Err(
+            CliError::new("a package is required when changing the requirement")
+                .kind(ErrorKind::Usage),
+        );
     };
     let spec = requirement_spec(&args.requirement)?;
     if let Container::SwiftPackage(_) = container {
@@ -1156,10 +1157,13 @@ fn requirement_spec(args: &RequirementArgs) -> Result<RequirementSpec, CliError>
     if primaries == 0 {
         return Err(CliError::new(
             "a remote package needs a version requirement (--from/--exact/--up-to-next-minor-from/--branch/--revision)",
-        ));
+        )
+        .kind(ErrorKind::Usage));
     }
     if primaries > 1 {
-        return Err(CliError::new("only one version requirement may be given"));
+        return Err(
+            CliError::new("only one version requirement may be given").kind(ErrorKind::Usage)
+        );
     }
     if let Some(v) = &args.from {
         return Ok(match &args.to {
@@ -1171,7 +1175,7 @@ fn requirement_spec(args: &RequirementArgs) -> Result<RequirementSpec, CliError>
         });
     }
     if args.to.is_some() {
-        return Err(CliError::new("--to requires --from"));
+        return Err(CliError::new("--to requires --from").kind(ErrorKind::Usage));
     }
     if let Some(v) = &args.up_to_next_minor_from {
         return Ok(RequirementSpec::UpToNextMinor(v.clone()));

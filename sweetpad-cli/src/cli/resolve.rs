@@ -1401,12 +1401,12 @@ pub(crate) fn refresh_stale_destination(
 /// both were *typed*, and the CLI refuses to guess which one wins.
 ///
 /// # Errors
-/// Returns a `TargetResolution` error when both are set.
+/// Returns a `Usage` error when both are set.
 pub fn reject_on_destination_conflict(ctx: &Context) -> Result<(), CliError> {
     if ctx.targeting.on.is_some() && ctx.targeting.destination.is_some() {
         return Err(
             CliError::new("--on and --destination are mutually exclusive; pass one")
-                .kind(ErrorKind::TargetResolution),
+                .kind(ErrorKind::Usage),
         );
     }
     Ok(())

@@ -23,8 +23,8 @@ projects. This skill covers the everyday flows and how to discover the rest.
 
 - Success is `{"schema":N,"ok":true,"data":{…}}` on stdout. Errors are
   `{"schema":1,"ok":false,"error":{"code":…,"message":…}}` on stderr, where
-  `code` is one of: `generic`, `build_failure`, `target_resolution`,
-  `tool_missing`, `user_cancel`.
+  `code` is one of: `generic`, `usage_error`, `build_failure`,
+  `target_resolution`, `tool_missing`, `user_cancel`.
 - `ok: true` means "the command ran", not "the outcome was good". A failing test
   run still reports `ok: true` with `data.passed: false` — read the payload's own
   status field, not just `ok`.

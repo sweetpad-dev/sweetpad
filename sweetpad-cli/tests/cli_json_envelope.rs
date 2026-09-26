@@ -203,3 +203,40 @@ fn app_run_rejects_json() {
     assert!(!out.status.success(), "app run --json must exit non-zero");
     parse_stderr_error(&out, args);
 }
+
+/// A flag clap parses but the verb refuses (a run flag on 'test build', a
+/// start flag on 'build diagnostics') is a usage error: exit 2, the code
+/// clap's own usage errors get, and a 'usage_error' envelope under '--json'.
+/// Each is refused before any project is looked for, so no fixture is needed.
+#[test]
+fn a_refused_flag_is_a_usage_error() {
+    let home = tmp("usage-home");
+    let cwd = tmp("usage-cwd");
+    let refused: &[&[&str]] = &[
+        &["test", "build", "--failed"],
+        &["test", "attachments", "--junit", "x.xml"],
+        &["test", "output", "--coverage"],
+        &["build", "diagnostics", "--clean"],
+    ];
+    for args in refused {
+        let human = sweetpad(args, &cwd, &home);
+        assert_eq!(human.status.code(), Some(2), "{args:?}: {human:?}");
+        let stderr = String::from_utf8(human.stderr).unwrap();
+        assert!(stderr.contains("error:"), "{args:?}: {stderr}");
+
+        let json_args = [*args, &["--json"]].concat();
+        let out = sweetpad(&json_args, &cwd, &home);
+        assert_eq!(out.status.code(), Some(2), "{json_args:?}: {out:?}");
+        let err = parse_stderr_error(&out, &json_args);
+        assert_eq!(err["error"]["code"], "usage_error", "{json_args:?}");
+    }
+
+    // A flag that conflicts with the output mode is refused the same way.
+    let args: &[&str] = &["build", "--gh-annotations", "--json"];
+    let out = sweetpad(args, &cwd, &home);
+    assert_eq!(out.status.code(), Some(2), "{out:?}");
+    assert_eq!(
+        parse_stderr_error(&out, args)["error"]["code"],
+        "usage_error"
+    );
+}

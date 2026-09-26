@@ -21,7 +21,8 @@ pub(crate) fn watch_swift(
         return Err(crate::cli::CliError::new(
             "--watch reruns continuously and has no machine-readable form; drop --watch, or \
              run single passes with -o json/ndjson yourself",
-        ));
+        )
+        .kind(crate::cli::ErrorKind::Usage));
     }
     loop {
         match once(ctx) {

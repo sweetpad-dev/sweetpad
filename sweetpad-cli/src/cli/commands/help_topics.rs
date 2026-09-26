@@ -132,7 +132,8 @@ EXIT CODES
 
   0   success
   1   generic failure
-  2   usage error (bad flags/arguments; rendered by clap)
+  2   usage error (bad flags/arguments, or a flag the command refuses, like
+      '--failed' on 'test build')
   3   build or test failure
   4   target resolution failed (unknown/missing scheme, destination,
       simulator, device, …)
@@ -142,8 +143,9 @@ EXIT CODES
 A SIGINT/SIGTERM that kills the process exits 128+signo (130/143) after the
 handler restores the terminal and reaps children. Under --json, errors are
 '{\"schema\":1,\"ok\":false,\"error\":{code,message}}' on stderr, where 'code'
-is the same taxonomy: generic, build_failure, target_resolution, tool_missing,
-user_cancel.
+is the same taxonomy: generic, usage_error, build_failure, target_resolution,
+tool_missing, user_cancel. A flag clap can't parse is reported in clap's own
+text, even under --json.
 
 'ok: true' means \"the command executed\", not \"the outcome was good\": a red
 test suite exits 3 with 'data.passed: false'; read the payload's own status

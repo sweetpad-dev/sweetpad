@@ -18,7 +18,8 @@ use clap::Subcommand;
 use crate::cli::output::Output;
 use crate::cli::resolve::Container;
 use crate::cli::{
-    CliError, CommandResult, Context, Render, Rendered, exits, resolve, simctl, swiftpm, xcodebuild,
+    CliError, CommandResult, Context, ErrorKind, Render, Rendered, exits, resolve, simctl, swiftpm,
+    xcodebuild,
 };
 
 /// The test flags, declared `global` at the `test` resource so they parse on
@@ -265,7 +266,7 @@ fn refuse_run_flags(given: &[&str], why: &str) -> Result<(), CliError> {
     } else {
         (format!("{} and {last}", rest.join(", ")), "apply")
     };
-    Err(CliError::new(format!("{flags} {verb} to a test run{why}")))
+    Err(CliError::new(format!("{flags} {verb} to a test run{why}")).kind(ErrorKind::Usage))
 }
 
 /// Why `test <verb>` refuses a run flag.
@@ -1750,6 +1751,9 @@ mod tests {
             "--failed applies to a test run: 'test output' reads the last run's result bundle \
              and runs nothing"
         );
+        // A refused flag is a usage error, like the ones clap reports itself.
+        assert_eq!(err.error_kind(), crate::cli::ErrorKind::Usage);
+        assert_eq!(err.error_kind().exit_code(), 2);
     }
 
     #[test]

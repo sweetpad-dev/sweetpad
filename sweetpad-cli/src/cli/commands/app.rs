@@ -207,7 +207,10 @@ impl LaunchArgs {
             .map(|pair| {
                 pair.split_once('=')
                     .map(|(k, v)| (format!("{prefix}{k}"), v.to_string()))
-                    .ok_or_else(|| CliError::new(format!("--env takes KEY=VALUE (got {pair:?})")))
+                    .ok_or_else(|| {
+                        CliError::new(format!("--env takes KEY=VALUE (got {pair:?})"))
+                            .kind(ErrorKind::Usage)
+                    })
             })
             .collect()
     }
@@ -1055,6 +1058,7 @@ fn streaming_under_machine_output(out: &Output, streams: bool) -> Option<CliErro
              'build start -o ndjson', 'app install'/'app launch --json', and \
              'app logs -o ndjson' as separate steps",
         )
+        .kind(ErrorKind::Usage)
     })
 }
 
@@ -1096,13 +1100,15 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
         return Err(CliError::new(
             "--wait-for-debugger isn't supported with --hot; run without --hot to \
              attach a debugger at launch",
-        ));
+        )
+        .kind(ErrorKind::Usage));
     }
     if hot && opts.no_logs {
         return Err(CliError::new(
             "--no-logs isn't supported with --hot; the hot session streams logs \
              as part of its UI",
-        ));
+        )
+        .kind(ErrorKind::Usage));
     }
     if (opts.keep_sandbox || opts.hot_entitlements.is_some()) && !matches!(plan.target, Target::Mac)
     {
@@ -1115,7 +1121,8 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
         return Err(CliError::new(
             "--detach isn't supported with --hot; hot reload has to stay attached to \
              recompile and inject (press 'd' in the session to detach and leave it running)",
-        ));
+        )
+        .kind(ErrorKind::Usage));
     }
 
     // The rest is settled by the resolved plan: a hot session streams by
@@ -5193,12 +5200,13 @@ fn screenshot(ctx: &mut Context, args: &ScreenshotArgs) -> CommandResult {
         if explicit_targeting(ctx) {
             return Err(CliError::new(
                 "--pid captures a process directly; scheme/destination flags don't apply",
-            ));
+            )
+            .kind(ErrorKind::Usage));
         }
         // Positive pids only — 0/negative would address a process *group* in
         // the liveness probe below.
         if pid <= 0 {
-            return Err(CliError::new("--pid takes a positive process id"));
+            return Err(CliError::new("--pid takes a positive process id").kind(ErrorKind::Usage));
         }
         // ESRCH now beats "no on-screen window" after a 5s wait.
         if unsafe { libc::kill(pid, 0) } != 0
@@ -5495,10 +5503,11 @@ fn sample(ctx: &mut Context, args: &SampleArgs) -> CommandResult {
         if explicit_targeting(ctx) {
             return Err(CliError::new(
                 "--pid samples a process directly; scheme/destination flags don't apply",
-            ));
+            )
+            .kind(ErrorKind::Usage));
         }
         if pid <= 0 {
-            return Err(CliError::new("--pid takes a positive process id"));
+            return Err(CliError::new("--pid takes a positive process id").kind(ErrorKind::Usage));
         }
         if unsafe { libc::kill(pid, 0) } != 0
             && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
@@ -5668,7 +5677,9 @@ fn wait_for_window(
     index: Option<usize>,
 ) -> Result<(macwin::WindowInfo, usize), CliError> {
     if index == Some(0) {
-        return Err(CliError::new("--window is 1-based (1 is the frontmost)"));
+        return Err(
+            CliError::new("--window is 1-based (1 is the frontmost)").kind(ErrorKind::Usage)
+        );
     }
     if !macwin::has_screen_capture_access() {
         if ctx.out.is_interactive() {
@@ -6153,7 +6164,8 @@ fn ui_act(
         return Err(CliError::new(
             "name the element with --label, or --role for a lone control; \
              'sweetpad app ui tree' shows what the app exposes",
-        ));
+        )
+        .kind(ErrorKind::Usage));
     }
     let shot = resolve_ui_app(ctx, app.pid)?;
     let pid = ui_preflight(ctx, &shot)?;
@@ -6215,10 +6227,11 @@ fn resolve_ui_app(ctx: &mut Context, pid: Option<i32>) -> Result<MacShot, CliErr
         if explicit_targeting(ctx) {
             return Err(CliError::new(
                 "--pid drives a process directly; scheme/destination flags don't apply",
-            ));
+            )
+            .kind(ErrorKind::Usage));
         }
         if pid <= 0 {
-            return Err(CliError::new("--pid takes a positive process id"));
+            return Err(CliError::new("--pid takes a positive process id").kind(ErrorKind::Usage));
         }
         if unsafe { libc::kill(pid, 0) } != 0
             && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)

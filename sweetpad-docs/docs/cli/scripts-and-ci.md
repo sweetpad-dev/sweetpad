@@ -60,8 +60,12 @@ $ sweetpad build --on "nope-does-not-exist" -o json
 {"error":{"code":"target_resolution","message":"--on \"nope-does-not-exist\" matches nothing (try one of: …)"},"ok":false,"schema":1}
 ```
 
-`error.code` is a name, not a number: `generic`, `build_failure`, `target_resolution`, `tool_missing`,
-or `user_cancel`. It mirrors the exit-code taxonomy, so a script can branch on either.
+`error.code` is a name, not a number: `generic`, `usage_error`, `build_failure`, `target_resolution`,
+`tool_missing`, or `user_cancel`. It mirrors the exit-code taxonomy, so a script can branch on either.
+
+`usage_error` goes with exit 2 when SweetPad parses a flag but won't take it, such as `--failed` on
+`test build` or `--on` together with `--destination`. A flag that doesn't parse at all also exits 2,
+but prints the argument parser's plain-text error, even under `-o json`.
 
 :::warning
 

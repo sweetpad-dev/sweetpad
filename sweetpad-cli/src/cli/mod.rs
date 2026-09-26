@@ -496,7 +496,7 @@ pub(crate) fn settle_on_vs_mode(
         return Err(CliError::new(
             "--on and --mac/--device/--device-id are mutually exclusive; pass one",
         )
-        .kind(ErrorKind::TargetResolution));
+        .kind(ErrorKind::Usage));
     }
     targeting.on = None;
     Ok(())
@@ -877,7 +877,8 @@ pub fn run(argv: &[String]) -> ExitCode {
         let err = CliError::new(
             "--gh-annotations writes ::error workflow commands to stdout, which -o json/ndjson \
              reserve for the envelope/event stream; use --gh-annotations with human output",
-        );
+        )
+        .kind(ErrorKind::Usage);
         render_early_error(&out, &err);
         return ExitCode::from(err.error_kind().exit_code());
     }
@@ -1490,11 +1491,17 @@ fn first_run_hint(out: &output::Output) {
 }
 
 /// The class of a failure. Drives both the process exit code and the `--json`
-/// error envelope's `code`, from one taxonomy. Exit code 2 is owned by clap
-/// (usage errors) and 0 is success, so neither is an `ErrorKind`.
+/// error envelope's `code`, from one taxonomy. 0 is success, so it is not an
+/// `ErrorKind`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
     Generic,
+    /// A command line clap parsed but the command refuses on its own: a flag
+    /// on a verb it means nothing to, two flags that can't go together, a
+    /// flag value out of range. Exit 2, the code of clap's own usage errors.
+    /// A flag refused because of what the project or destination turned out
+    /// to be is not one of these; that depends on more than the command line.
+    Usage,
     BuildFailure,
     TargetResolution,
     ToolMissing,
@@ -1502,11 +1509,12 @@ pub enum ErrorKind {
 }
 
 impl ErrorKind {
-    /// The process exit code for this class (never 0 or 2).
+    /// The process exit code for this class (never 0).
     #[must_use]
     pub fn exit_code(self) -> u8 {
         match self {
             ErrorKind::Generic => 1,
+            ErrorKind::Usage => 2,
             ErrorKind::BuildFailure => 3,
             ErrorKind::TargetResolution => 4,
             ErrorKind::ToolMissing => 5,
@@ -1520,6 +1528,7 @@ impl ErrorKind {
     pub fn code_str(self) -> &'static str {
         match self {
             ErrorKind::Generic => "generic",
+            ErrorKind::Usage => "usage_error",
             ErrorKind::BuildFailure => "build_failure",
             ErrorKind::TargetResolution => "target_resolution",
             ErrorKind::ToolMissing => "tool_missing",
@@ -2381,6 +2390,17 @@ mod error_tests {
     fn default_kind_is_generic() {
         assert_eq!(CliError::new("boom").error_kind(), ErrorKind::Generic);
         assert_eq!(ErrorKind::Generic.exit_code(), 1);
+    }
+
+    /// A usage error the command raises itself exits 2, the code clap gives
+    /// its own, and names the class in the error object.
+    #[test]
+    fn a_usage_error_shares_claps_exit_code() {
+        let e = CliError::new("--failed applies to a test run")
+            .kind(ErrorKind::Usage)
+            .context("running the tests");
+        assert_eq!(e.error_kind().exit_code(), 2);
+        assert_eq!(e.json()["code"], "usage_error");
     }
 
     #[test]
