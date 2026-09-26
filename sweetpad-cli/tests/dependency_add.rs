@@ -95,3 +95,52 @@ fn a_failed_local_add_keeps_no_backup_and_names_a_path() {
         "only the existing directory reaches swift, as a path"
     );
 }
+
+/// `swift --version` writes the driver's version to stderr with no trailing
+/// newline (Swift 6.4). Under `--json` that must not reach sweetpad's stderr,
+/// where it would run into the error envelope.
+#[test]
+fn json_stderr_holds_only_the_error_envelope() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = tmp("envelope-home");
+    let root = tmp("envelope-root");
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(
+        bin.join("swift"),
+        "#!/bin/sh\n\
+         if [ \"$1\" = --version ]; then\n\
+         echo 'Apple Swift version 6.4 (swiftlang-6.4.0.34.1 clang-2100.3.34.1)'\n\
+         printf 'swift-driver version: 1.168.6 ' >&2\n\
+         exit 0\n\
+         fi\n\
+         exit 1\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(bin.join("swift"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let app = root.join("App");
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::create_dir_all(root.join("Dep")).unwrap();
+    std::fs::write(app.join("Package.swift"), "// swift-tools-version: 6.0\n").unwrap();
+
+    let args = [
+        "dep",
+        "add",
+        "../Dep",
+        "--product",
+        "Dep",
+        "--target",
+        "App",
+        "--json",
+    ];
+    let out = sweetpad(&args, &app, &home, &bin);
+    assert!(!out.status.success(), "expected the stub's add to fail");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    let envelope: serde_json::Value = serde_json::from_str(&stderr)
+        .unwrap_or_else(|e| panic!("stderr is not one JSON document ({e}): {stderr:?}"));
+    assert_eq!(envelope["ok"], serde_json::Value::Bool(false));
+    assert!(envelope["error"]["code"].is_string(), "{envelope}");
+    let _ = std::fs::remove_dir_all(&home);
+    let _ = std::fs::remove_dir_all(&root);
+}

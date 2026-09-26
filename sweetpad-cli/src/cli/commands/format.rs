@@ -153,8 +153,12 @@ fn format(ctx: &mut Context, paths: &[PathBuf], tool: Tool, check: bool) -> Comm
 }
 
 /// swift-format, preferring the Xcode-bundled copy (`xcrun swift-format`).
+/// The probe captures both streams: a miss is `xcrun: error: unable to find
+/// utility …` on stderr, which reads as a failure right before the copy on
+/// PATH runs fine.
 fn swift_format_command(check: bool, recursive: bool) -> (String, Vec<String>) {
-    let bundled = process::capture("xcrun", &["--find", "swift-format"], None).is_ok();
+    let bundled = process::run_captured("xcrun", &["--find", "swift-format"], None)
+        .is_ok_and(|run| run.success);
     let (program, mut args) = if bundled {
         ("xcrun".to_string(), vec!["swift-format".to_string()])
     } else {

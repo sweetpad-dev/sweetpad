@@ -372,10 +372,18 @@ pub fn update(container: &Container, name: Option<&str>, quiet: bool) -> Result<
 
 /// The toolchain's major Swift version (`swift --version`), for gating features
 /// like `swift package add-dependency` (Swift 6+). `None` if it can't be read.
+///
+/// Both streams are captured: the version is on stdout, and the driver writes
+/// `swift-driver version: 1.168.6 ` to stderr with no newline (Swift 6.4),
+/// which would otherwise run into the next line sweetpad writes there — under
+/// `--json`, the error envelope.
 #[must_use]
 pub fn swift_major_version() -> Option<u32> {
-    let out = process::capture("swift", &["--version"], None).ok()?;
-    parse_swift_major(&out)
+    let run = process::run_captured("swift", &["--version"], None).ok()?;
+    if !run.success {
+        return None;
+    }
+    parse_swift_major(&run.combined)
 }
 
 /// Parse the major version from `swift --version` output, e.g. "Apple Swift
