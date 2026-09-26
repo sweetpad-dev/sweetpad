@@ -305,11 +305,13 @@ even under `--json`. The command reports what it parses but refuses: a flag
 on a verb it means nothing to (`test build --failed`, `build diagnostics
 --clean`), two flags that can't go together (`--on` with `--destination`,
 `--gh-annotations` with `-o json`), a flag value out of range (`--pid 0`).
-Those take the envelope with `code: "usage_error"`. The flags alone decide
-it, including a committed default such as `[run] hot`; a refusal that the
-default causes says so and names the flag that overrides it (`--no-hot`),
-since there is no typed `--hot` to leave off. A flag refused because
-of what the project or destination turns out to be (`--scheme` on a Swift
+Those take the envelope with `code: "usage_error"`. The typed flags alone
+decide it, and a committed default never causes one: `[run] hot = true`
+yields to the flags a hot session would refuse (`--no-logs`, `--detach`,
+`--wait-for-debugger`) with a one-line note, since the flags were typed for
+this run and the default was not, and only a typed `--hot` refuses them. So
+the agent-facing `run --no-logs` works in every project. A flag refused
+because of what the project or destination turns out to be (`--scheme` on a Swift
 package, `--keep-sandbox` off macOS) keeps its own code, since the same flags
 work in another project.
 
@@ -1152,7 +1154,10 @@ dropped along with XCTest; the promoted feature is app UI/code reload (SwiftUI/U
   so a typed `--hot` with none fails at once, exit 5 (`tool_missing`), naming
   `build.sh` or `SWEETPAD_HOTRELOAD_DYLIB` for the SDKs a release bundles and
   `InjectionNext.app` for the rest. A `[run] hot = true` default yields with a
-  warning instead, as it does to a busy `:8887`.
+  warning instead, as it does to a busy `:8887`. It yields with a note to
+  `--no-logs`, `--detach` and `--wait-for-debugger` too, which ask for a run a
+  hot session can't be (launch and return, or start suspended); a typed
+  `--hot` refuses those, exit 2.
 - **Drop-in UX preserved** — no project edit, no `InjectionNext.app` required. The
   SwiftUI `@ObserveInjection`/`.enableInjection()` annotations remain the user's to
   add (UIKit reloads without them).

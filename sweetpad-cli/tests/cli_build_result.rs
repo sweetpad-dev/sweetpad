@@ -596,6 +596,104 @@ fn a_hot_run_with_no_injection_client_fails_before_building() {
     assert!(!stderr.contains("building"), "{stderr}");
 }
 
+/// `app run <flags>` on a simulator in a project whose sweetpad.toml sets
+/// `[run] hot = true`, against stubs: xcodebuild fails the build, `xcrun`
+/// lists one booted simulator and answers everything else, and `open` does
+/// nothing, so no Simulator window comes up.
+fn hot_default_run(tag: &str, flags: &[&str], json: bool) -> Output {
+    use std::os::unix::fs::PermissionsExt;
+
+    let cwd = tmp(&format!("{tag}-project"));
+    let copied = std::process::Command::new("cp")
+        .arg("-R")
+        .arg(project())
+        .arg(&*cwd)
+        .status()
+        .unwrap();
+    assert!(copied.success());
+    std::fs::write(cwd.join("sweetpad.toml"), "[run]\nhot = true\n").unwrap();
+    let project = cwd.join("SweetpadCIApp.xcodeproj");
+    let mut args = vec![
+        "app",
+        "run",
+        "--project",
+        project.to_str().unwrap(),
+        "--scheme",
+        "SweetpadCIApp",
+        "--configuration",
+        "Debug",
+        "--destination",
+        "platform=iOS Simulator,id=AAAAAAAA-0000-0000-0000-000000000000",
+        "--non-interactive",
+    ];
+    args.extend_from_slice(flags);
+    if json {
+        args.push("--json");
+    }
+    let (mut cmd, _home, stub) = stub_command(tag, BROKEN, 65, &args);
+    let executable = |name: &str, body: &str| {
+        let path = stub.join("bin").join(name);
+        std::fs::write(&path, body).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    };
+    executable(
+        "xcrun",
+        "#!/bin/sh\n\
+         if [ \"$2\" = list ]; then\n\
+         echo '{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.iOS-26-0\":[{\"udid\":\
+         \"AAAAAAAA-0000-0000-0000-000000000000\",\"name\":\"iPhone 17\",\"state\":\"Booted\",\
+         \"isAvailable\":true}]}}'\n\
+         fi\n",
+    );
+    executable("open", "#!/bin/sh\n");
+    let client = stub.join("client.dylib");
+    std::fs::write(&client, b"").unwrap();
+    cmd.env("SWEETPAD_HOTRELOAD_DYLIB", &client)
+        .output()
+        .expect("failed to run the sweetpad binary")
+}
+
+/// A committed `[run] hot = true` yields to the flags that ask for a run a
+/// hot session can't be, with a note, so the agent-facing `--no-logs` builds
+/// in any project instead of being refused. A typed '--hot' still refuses.
+#[test]
+fn the_hot_default_yields_to_no_logs_detach_and_wait_for_debugger() {
+    for (tag, flags) in [
+        ("yield-no-logs", &["--no-logs"][..]),
+        ("yield-detach", &["--detach"][..]),
+        ("yield-debugger", &["--wait-for-debugger"][..]),
+    ] {
+        let out = hot_default_run(tag, flags, false);
+        // The run went on to build, which the stub fails.
+        assert_eq!(out.status.code(), Some(3), "{tag}: {out:?}");
+        let stderr = String::from_utf8(out.stderr).unwrap();
+        assert!(
+            stderr.contains(&format!(
+                "hot reload off for this run: the '[run] hot = true' default yields to '{}'",
+                flags[0]
+            )),
+            "{tag}: {stderr}"
+        );
+        assert!(!stderr.contains("isn't supported"), "{tag}: {stderr}");
+        assert!(!stderr.contains("hot reload on"), "{tag}: {stderr}");
+    }
+
+    // The machine form carries no note, just the build's own error.
+    let out = hot_default_run("yield-json", &["--no-logs"], true);
+    assert_eq!(out.status.code(), Some(3), "{out:?}");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(!stderr.contains("hot reload off"), "{stderr}");
+    assert!(stderr.contains("\"code\":\"build_failure\""), "{stderr}");
+
+    let out = hot_default_run("typed-hot", &["--hot", "--no-logs"], false);
+    assert_eq!(out.status.code(), Some(2), "{out:?}");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        stderr.contains("--no-logs isn't supported with --hot"),
+        "{stderr}"
+    );
+}
+
 /// The session's build closes on the same banner as `build`'s, whether
 /// xcodebuild printed one (a compile error) or not (a destination error).
 #[test]

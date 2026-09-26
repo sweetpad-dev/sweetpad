@@ -957,8 +957,9 @@ struct RunOpts<'a> {
     detach: bool,
     hot: bool,
     /// Whether `--hot` was typed (vs. the `[run] hot` config default) — a
-    /// config default is silently ignored for non-simulator targets instead
-    /// of erroring on a committed file.
+    /// config default is silently ignored for non-simulator targets, and
+    /// yields to the flags a hot session refuses, instead of erroring on a
+    /// committed file.
     hot_explicit: bool,
     hot_mode: Mode,
     hot_selfcheck: Option<&'a Path>,
@@ -1063,21 +1064,34 @@ fn session_hot(hot: bool, explicit: bool, target: &Target) -> bool {
     hot && (explicit || matches!(target, Target::Simulator(_)))
 }
 
-/// Refuse `flag`, which a hot session can't honor, with the way out that fits
-/// where hot reload came from. A typed `--hot` gets `typed`, the reason or
-/// the fix; the `[run] hot = true` default from sweetpad.toml gets pointed at
-/// '--no-hot', which lets the run `purpose`, since there is no flag to leave
-/// off.
-fn refuse_under_hot(explicit: bool, flag: &str, typed: &str, purpose: &str) -> CliError {
-    let message = if explicit {
-        format!("{flag} isn't supported with --hot; {typed}")
-    } else {
+/// Refuse `flag`, which a typed `--hot` session can't honor, with `why`: the
+/// reason or the fix. The `[run] hot = true` default never gets here; it
+/// yields to these flags instead ([`hot_default_yields_to`]).
+fn refuse_under_hot(flag: &str, why: &str) -> CliError {
+    CliError::new(format!("{flag} isn't supported with --hot; {why}")).kind(ErrorKind::Usage)
+}
+
+/// The note for a `[run] hot = true` default that yields to the run's own
+/// flags, or `None` when none of them asks for a run a hot session can't be:
+/// `--no-logs` and `--detach` launch and return, and `--wait-for-debugger`
+/// starts the app suspended. The flags were typed for this run and the
+/// default was not, so the run they ask for wins, as it does over a busy
+/// port or a missing injection client.
+fn hot_default_yields_to(no_logs: bool, detach: bool, wait_for_debugger: bool) -> Option<String> {
+    let flags: Vec<&str> = [
+        (no_logs, "'--no-logs'"),
+        (detach, "'--detach'"),
+        (wait_for_debugger, "'--wait-for-debugger'"),
+    ]
+    .into_iter()
+    .filter_map(|(set, flag)| set.then_some(flag))
+    .collect();
+    (!flags.is_empty()).then(|| {
         format!(
-            "{flag} isn't supported with hot reload, which sweetpad.toml turns on \
-             ('[run] hot = true'); pass '--no-hot' to {purpose}"
+            "hot reload off for this run: the '[run] hot = true' default yields to {}",
+            flags.join(" and ")
         )
-    };
-    CliError::new(message).kind(ErrorKind::Usage)
+    })
 }
 
 /// Why a hot session of `plan` would have no injection client, found without
@@ -1126,6 +1140,18 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
     // reload on" tag.
     let mut hot = session_hot(opts.hot, opts.hot_explicit, &plan.target);
 
+    // A committed default yields to the flags that ask for a run a hot
+    // session can't be, so the agent-facing `--no-logs` works in any
+    // project. Only a typed `--hot` refuses them, below.
+    if hot
+        && !opts.hot_explicit
+        && let Some(note) =
+            hot_default_yields_to(opts.no_logs, opts.detach, plan.launch.wait_for_debugger)
+    {
+        ctx.out.note(&note);
+        hot = false;
+    }
+
     // The same rule applied to a busy injection port: one `--hot` session owns
     // `:8887`, and a committed default must not turn "another session is
     // already running" into a failed run. A typed `--hot` still fails loudly
@@ -1155,22 +1181,18 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
     let plan = plan;
 
     // The hot session launches without debugger suspension and owns the log
-    // stream as part of its UI — reject the flags it can't honor instead of
-    // silently dropping them.
+    // stream as part of its UI. A typed `--hot` is refused the flags it can't
+    // honor instead of silently dropping them; the default yielded above.
     if hot && plan.launch.wait_for_debugger {
         return Err(refuse_under_hot(
-            opts.hot_explicit,
             "--wait-for-debugger",
             "run without --hot to attach a debugger at launch",
-            "attach a debugger at launch",
         ));
     }
     if hot && opts.no_logs {
         return Err(refuse_under_hot(
-            opts.hot_explicit,
             "--no-logs",
             "the hot session streams logs as part of its UI",
-            "build, install, launch, and exit",
         ));
     }
     if (opts.keep_sandbox || opts.hot_entitlements.is_some()) && !matches!(plan.target, Target::Mac)
@@ -1182,11 +1204,9 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
     }
     if hot && opts.detach {
         return Err(refuse_under_hot(
-            opts.hot_explicit,
             "--detach",
             "hot reload has to stay attached to recompile and inject (press 'd' in the \
              session to detach and leave it running)",
-            "launch and leave the app running",
         ));
     }
 
@@ -7278,24 +7298,42 @@ mod tests {
         assert!(udid("platform=iOS Simulator,name=iPhone 15").is_err());
     }
 
-    /// A flag hot reload can't honor is refused either way, but the way out
-    /// depends on where hot reload came from: a typed '--hot' is dropped,
-    /// while the sweetpad.toml default takes '--no-hot'.
+    /// A flag a typed '--hot' can't honor is a usage error that says why.
     #[test]
-    fn a_hot_refusal_names_where_hot_reload_came_from() {
-        let typed = refuse_under_hot(true, "--no-logs", "the reason", "exit");
+    fn a_typed_hot_refuses_what_it_cant_honor() {
+        let typed = refuse_under_hot("--no-logs", "the reason");
         assert_eq!(typed.error_kind(), ErrorKind::Usage);
         assert_eq!(
             typed.to_string(),
             "--no-logs isn't supported with --hot; the reason"
         );
-        let default = refuse_under_hot(false, "--no-logs", "the reason", "exit");
-        assert_eq!(default.error_kind(), ErrorKind::Usage);
-        let message = default.to_string();
-        assert!(message.contains("sweetpad.toml"), "{message}");
-        assert!(message.contains("'[run] hot = true'"), "{message}");
-        assert!(message.ends_with("pass '--no-hot' to exit"), "{message}");
-        assert!(!message.contains("with --hot"), "{message}");
+    }
+
+    /// The sweetpad.toml default gives way to '--no-logs', '--detach' and
+    /// '--wait-for-debugger' with a note naming what it yielded to, so the
+    /// agent-facing forms work in a project that turns hot reload on.
+    #[test]
+    fn the_hot_default_yields_to_the_runs_own_flags() {
+        assert_eq!(hot_default_yields_to(false, false, false), None);
+        assert_eq!(
+            hot_default_yields_to(true, false, false).as_deref(),
+            Some(
+                "hot reload off for this run: the '[run] hot = true' default yields to '--no-logs'"
+            )
+        );
+        assert_eq!(
+            hot_default_yields_to(false, true, false).as_deref(),
+            Some(
+                "hot reload off for this run: the '[run] hot = true' default yields to '--detach'"
+            )
+        );
+        assert_eq!(
+            hot_default_yields_to(true, false, true).as_deref(),
+            Some(
+                "hot reload off for this run: the '[run] hot = true' default yields to \
+                 '--no-logs' and '--wait-for-debugger'"
+            )
+        );
     }
 
     #[test]

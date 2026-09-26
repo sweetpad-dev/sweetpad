@@ -88,9 +88,15 @@ hot = true
 ```
 
 `--no-hot` overrides that for a single run, which is what you want when you're checking real
-cold-start behavior. It's also what `--no-logs`, `--detach`, and `--wait-for-debugger` need on a
-simulator: hot reload can't honor them, so with the default on, `sweetpad run` refuses them and
-tells you to pass `--no-hot`.
+cold-start behavior. You don't need it for `--no-logs`, `--detach`, or `--wait-for-debugger`: a hot
+session can't honor those, so the default steps aside for them, and the run says so in one line:
+
+```console
+$ sweetpad run --no-logs
+hot reload off for this run: the '[run] hot = true' default yields to '--no-logs'
+```
+
+Only a typed `--hot` refuses them.
 
 ## Choosing a recompiler
 

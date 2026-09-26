@@ -145,8 +145,9 @@ launched app from SweetPad's record of the launch, with no flags or with
 `--scheme`/`--on` that name the same launch.
 
 In a project whose `sweetpad.toml` sets `[run] hot = true`, a simulator run
-is a hot session, which refuses `--no-logs`, `--detach`, and
-`--wait-for-debugger` (exit 2). Add `--no-hot` to those runs.
+defaults to a hot session. That default gives way to `--no-logs`, `--detach`,
+and `--wait-for-debugger`, and the run notes it on stderr, so those forms work
+as they do anywhere else. A typed `--hot` still refuses them (exit 2).
 
 If a run fails with `cannot bind 127.0.0.1:8887 for hot reload`, a dead session
 left the listener behind: `sweetpad hot status` names the holder and
