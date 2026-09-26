@@ -187,7 +187,8 @@ fn parse_task(line: &str, t: &str) -> Event {
         return Event::Other(line.to_string());
     }
     let stripped = strip_target_annotation(t);
-    match t.split_whitespace().next().unwrap_or("") {
+    let verb = t.split_whitespace().next().unwrap_or("");
+    match verb {
         "CompileSwift" | "SwiftCompile" | "CompileC" | "CompileXIB" | "CompileStoryboard" => {
             match swift_batch_len(t) {
                 // A one-file batch header names the same file as the per-file
@@ -199,8 +200,17 @@ fn parse_task(line: &str, t: &str) -> Event {
                 Some(n) => Event::Compile {
                     name: format!("{n} files"),
                 },
-                None => Event::Compile {
-                    name: source_name(t).unwrap_or_else(|| "source".to_string()),
+                None => match source_name(t) {
+                    Some(name) => Event::Compile { name },
+                    // Xcode 27 opens each target's Swift work with a bare
+                    // `SwiftCompile normal arm64 (in target …)` that names no
+                    // file; the per-file lines behind it announce the work.
+                    None if matches!(verb, "CompileSwift" | "SwiftCompile") => {
+                        Event::Other(line.to_string())
+                    }
+                    None => Event::Compile {
+                        name: "source".to_string(),
+                    },
                 },
             }
         }
@@ -1116,6 +1126,16 @@ The following build commands failed:
                 name: "3 files".to_string()
             }
         );
+    }
+
+    #[test]
+    fn a_swift_compile_that_names_no_file_is_not_a_compile_line() {
+        // Xcode 27 prints this once per target ahead of the per-file lines.
+        let bare =
+            "SwiftCompile normal arm64 (in target 'SweetpadCIApp' from project 'SweetpadCIApp')";
+        assert_eq!(parse_line(bare), Event::Other(bare.to_string()));
+        assert!(render(&parse_line(bare), false, false, false).is_none());
+        assert!(event_json(&parse_line(bare)).is_none());
     }
 
     #[test]
