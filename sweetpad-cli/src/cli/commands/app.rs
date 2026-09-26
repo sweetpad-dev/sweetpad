@@ -3090,7 +3090,7 @@ fn session_screenshot(ctx: &Context, plan: &RunPlan) {
             simctl::screenshot(udid, &path.display().to_string()).map(|()| path)
         }
         Target::Mac => plan.app_bundle().and_then(|app| {
-            let shot = mac_shot_for(&app.executable, &app.bundle_id)?;
+            let shot = mac_shot_for(ctx, &app.executable, &app.bundle_id)?;
             let path = super::simulator::default_screenshot_path(&shot.name);
             if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
                 let _ = std::fs::create_dir_all(parent);
@@ -4323,7 +4323,7 @@ fn simple_logs(
     {
         ctx.out.step("Booting simulator", || simctl::boot(&udid))?;
         if filters.exits {
-            return exits_report(&exits::Source::Simulator(&udid), &app, filters);
+            return exits_report(ctx, &exits::Source::Simulator(&udid), &app, filters);
         }
         stream_logs(ctx, &LogSource::Simulator(&udid), &app, filters)?;
         return Ok(Rendered::Streamed);
@@ -4351,11 +4351,13 @@ fn simple_logs(
             // "device is not booted" when the simulator is shut down.
             ctx.out.step("Booting simulator", || simctl::boot(udid))?;
             if filters.exits {
-                return exits_report(&exits::Source::Simulator(udid), &app, filters);
+                return exits_report(ctx, &exits::Source::Simulator(udid), &app, filters);
             }
             stream_logs(ctx, &LogSource::Simulator(udid), &app, filters)?;
         }
-        Target::Mac if filters.exits => return exits_report(&exits::Source::Mac, &app, filters),
+        Target::Mac if filters.exits => {
+            return exits_report(ctx, &exits::Source::Mac, &app, filters);
+        }
         // The host's own `log stream`, the same source `app run --mac` uses.
         Target::Mac => stream_logs(ctx, &LogSource::Mac, &app, filters)?,
         Target::Device(_) if filters.exits => {
@@ -4869,6 +4871,54 @@ impl Render for DiagnoseReport {
     }
 }
 
+/// The command a hint tells the user to run next, quoted for the message:
+/// `sweetpad <verb>`, the project and target flags this invocation resolved
+/// its app with, then `rest`, which names the destination. A typed `--scheme`
+/// is not remembered, so a hint that drops it can stop at "no scheme
+/// specified". `--on`/`--destination` are left out because `rest` replaces
+/// them.
+fn follow_up(ctx: &Context, verb: &str, rest: &[&str]) -> String {
+    let t = &ctx.targeting;
+    let path = |p: &Option<std::path::PathBuf>| p.as_ref().map(|p| p.display().to_string());
+    let mut words = vec!["sweetpad".to_string()];
+    if let Some(dir) = path(&ctx.global.chdir) {
+        words.extend(["-C".to_string(), hint_quote(&dir)]);
+    }
+    words.push(verb.to_string());
+    for (flag, value) in [
+        ("--workspace", path(&t.workspace)),
+        ("--project", path(&t.project)),
+        ("--scheme", t.scheme.clone()),
+        ("--configuration", t.configuration.clone()),
+        ("--sdk", t.sdk.clone()),
+    ] {
+        if let Some(value) = value {
+            words.extend([flag.to_string(), hint_quote(&value)]);
+        }
+    }
+    words.extend(rest.iter().map(|w| hint_quote(w)));
+    format!("'{}'", words.join(" "))
+}
+
+/// Double-quote a word of a [`follow_up`] command when the shell would split
+/// or expand it. The command sits in single quotes, so nesting those would
+/// read as the end of it.
+fn hint_quote(word: &str) -> String {
+    let plain = |c: char| c.is_ascii_alphanumeric() || "-_./=:,+@%".contains(c);
+    if !word.is_empty() && word.chars().all(plain) {
+        return word.to_string();
+    }
+    let mut quoted = String::from('"');
+    for c in word.chars() {
+        if matches!(c, '"' | '\\' | '$' | '`') {
+            quoted.push('\\');
+        }
+        quoted.push(c);
+    }
+    quoted.push('"');
+    quoted
+}
+
 /// Whether the invocation named its target explicitly (scheme, configuration,
 /// destination, or `--on`) — the last-launched fast paths yield to it.
 /// Container flags don't count: the recorded launch is already keyed per
@@ -5010,7 +5060,7 @@ fn screenshot(ctx: &mut Context, args: &ScreenshotArgs) -> CommandResult {
         match last.kind.as_str() {
             "macos" => {
                 if let Some(exe) = mac_executable(&last) {
-                    let shot = mac_shot_for(&exe, &last.bundle_identifier)?;
+                    let shot = mac_shot_for(ctx, &exe, &last.bundle_identifier)?;
                     return mac_screenshot(ctx, &shot, args);
                 }
                 // No executable recorded (an older state file) — fall through
@@ -5050,7 +5100,7 @@ fn screenshot(ctx: &mut Context, args: &ScreenshotArgs) -> CommandResult {
     match &plan.target {
         Target::Mac => {
             let app = plan.app_bundle()?;
-            let shot = mac_shot_for(&app.executable, &app.bundle_id)?;
+            let shot = mac_shot_for(ctx, &app.executable, &app.bundle_id)?;
             mac_screenshot(ctx, &shot, args)
         }
         Target::Simulator(udid) => simulator_screenshot(ctx, udid, args),
@@ -5065,11 +5115,12 @@ fn screenshot(ctx: &mut Context, args: &ScreenshotArgs) -> CommandResult {
 }
 
 /// Build the [`MacShot`] for an executable path, erroring when nothing runs.
-fn mac_shot_for(executable: &Path, bundle_id: &str) -> Result<MacShot, CliError> {
+fn mac_shot_for(ctx: &Context, executable: &Path, bundle_id: &str) -> Result<MacShot, CliError> {
     let pids = macwin::pids_for_executable(executable)?;
     if pids.is_empty() {
         return Err(CliError::new(format!(
-            "{bundle_id} isn't running — launch it with `sweetpad app run --mac --no-logs`"
+            "{bundle_id} isn't running — launch it with {}",
+            follow_up(ctx, "app run", &["--mac", "--no-logs"])
         )));
     }
     Ok(MacShot {
@@ -5129,6 +5180,9 @@ struct SampleReport {
     seconds: u64,
     report_path: String,
     analysis: sample::Analysis,
+    /// The `app diagnose` command a swallowed exception points at, for the
+    /// human flag line; not serialized.
+    diagnose: String,
 }
 
 impl Render for SampleReport {
@@ -5207,7 +5261,8 @@ impl Render for SampleReport {
             match flag {
                 sample::Flag::SwallowedException { thread } => out.line(&format!(
                     "flag: AppKit swallowed an Objective-C exception and kept running \
-                     (thread '{thread}'); 'sweetpad app diagnose' stops at the throw"
+                     (thread '{thread}'); {} stops at the throw",
+                    self.diagnose
                 )),
             }
         }
@@ -5285,7 +5340,7 @@ fn sample(ctx: &mut Context, args: &SampleArgs) -> CommandResult {
         {
             return Err(CliError::new(format!("no process with pid {pid}")));
         }
-        return sample_pid(ctx, pid, &format!("pid {pid}"), None, args);
+        return sample_pid(ctx, pid, &format!("pid {pid}"), None, &[], args);
     }
 
     if !explicit_targeting(ctx)
@@ -5294,14 +5349,14 @@ fn sample(ctx: &mut Context, args: &SampleArgs) -> CommandResult {
         match last.kind.as_str() {
             "macos" => {
                 if let Some(exe) = mac_executable(&last) {
-                    let shot = mac_shot_for(&exe, &last.bundle_identifier)?;
-                    return sample_shot(ctx, &shot, args);
+                    let shot = mac_shot_for(ctx, &exe, &last.bundle_identifier)?;
+                    return sample_shot(ctx, &shot, &["--mac"], args);
                 }
             }
             "simulator" => {
                 if let (Some(udid), Some(exe)) = (&last.simulator_udid, &last.executable_name) {
-                    let shot = sim_shot_for(udid, &last.bundle_identifier, exe)?;
-                    return sample_shot(ctx, &shot, args);
+                    let shot = sim_shot_for(ctx, udid, &last.bundle_identifier, exe)?;
+                    return sample_shot(ctx, &shot, &["--on", udid], args);
                 }
             }
             "device" => return Err(sample_not_local()),
@@ -5328,13 +5383,13 @@ fn sample(ctx: &mut Context, args: &SampleArgs) -> CommandResult {
     match &plan.target {
         Target::Mac => {
             let app = plan.app_bundle()?;
-            let shot = mac_shot_for(&app.executable, &app.bundle_id)?;
-            sample_shot(ctx, &shot, args)
+            let shot = mac_shot_for(ctx, &app.executable, &app.bundle_id)?;
+            sample_shot(ctx, &shot, &["--mac"], args)
         }
         Target::Simulator(udid) => {
             let app = plan.app_bundle()?;
-            let shot = sim_shot_for(udid, &app.bundle_id, &process_name_of(&app.executable))?;
-            sample_shot(ctx, &shot, args)
+            let shot = sim_shot_for(ctx, udid, &app.bundle_id, &process_name_of(&app.executable))?;
+            sample_shot(ctx, &shot, &["--on", udid], args)
         }
         Target::Device(_) => Err(sample_not_local()),
         Target::SpmRun(_) => Err(CliError::new(
@@ -5347,18 +5402,25 @@ fn sample(ctx: &mut Context, args: &SampleArgs) -> CommandResult {
 /// A simulator app's host process: the simulator runs it on this Mac, out of
 /// the installed bundle, so its executable path finds its pid the way a macOS
 /// app's does.
-fn sim_shot_for(udid: &str, bundle_id: &str, executable: &str) -> Result<MacShot, CliError> {
+fn sim_shot_for(
+    ctx: &Context,
+    udid: &str,
+    bundle_id: &str,
+    executable: &str,
+) -> Result<MacShot, CliError> {
     let bundle = simctl::app_container(udid, bundle_id, "app")
         .map_err(|e| e.context(format!("finding {bundle_id} on the simulator")))?
         .ok_or_else(|| {
             CliError::new(format!(
-                "{bundle_id} isn't installed on the simulator; install it with 'sweetpad app install'"
+                "{bundle_id} isn't installed on the simulator; install it with {}",
+                follow_up(ctx, "app install", &["--on", udid])
             ))
         })?;
     let pids = macwin::pids_for_executable(&Path::new(bundle.trim()).join(executable))?;
     if pids.is_empty() {
         return Err(CliError::new(format!(
-            "{bundle_id} isn't running on the simulator; start it with 'sweetpad app launch'"
+            "{bundle_id} isn't running on the simulator; start it with {}",
+            follow_up(ctx, "app launch", &["--on", udid])
         )));
     }
     Ok(MacShot {
@@ -5368,10 +5430,17 @@ fn sim_shot_for(udid: &str, bundle_id: &str, executable: &str) -> Result<MacShot
     })
 }
 
-fn sample_shot(ctx: &Context, shot: &MacShot, args: &SampleArgs) -> CommandResult {
+/// `destination` names where the app runs, as `--mac` or `--on <udid>`, for
+/// the report's pointer at `app diagnose`.
+fn sample_shot(
+    ctx: &Context,
+    shot: &MacShot,
+    destination: &[&str],
+    args: &SampleArgs,
+) -> CommandResult {
     let pid = one_pid(shot)?;
     let label = format!("{} (pid {pid})", shot.name);
-    sample_pid(ctx, pid, &label, shot.bundle_id.clone(), args)
+    sample_pid(ctx, pid, &label, shot.bundle_id.clone(), destination, args)
 }
 
 fn sample_pid(
@@ -5379,6 +5448,7 @@ fn sample_pid(
     pid: i32,
     label: &str,
     bundle_id: Option<String>,
+    destination: &[&str],
     args: &SampleArgs,
 ) -> CommandResult {
     let path = args.output_file.clone().unwrap_or_else(|| {
@@ -5400,6 +5470,7 @@ fn sample_pid(
         seconds: args.seconds,
         report_path: path.display().to_string(),
         analysis: sample::analyze(&sample::parse(&text)),
+        diagnose: follow_up(ctx, "app diagnose", destination),
     }))
 }
 
@@ -5581,10 +5652,9 @@ fn simulator_container(
     }
     let raw = simctl::app_container(&sim.udid, bundle_id, kind.as_str())?.ok_or_else(|| {
         CliError::new(format!(
-            "{bundle_id} isn't installed on {}; install it there with \
-             'sweetpad app install --on {}'",
+            "{bundle_id} isn't installed on {}; install it there with {}",
             sim.label(),
-            sim.udid
+            follow_up(ctx, "app install", &["--on", &sim.udid])
         ))
     })?;
     let found = match kind {
@@ -5613,8 +5683,9 @@ fn mac_container(
 ) -> CommandResult {
     if !app.exists() {
         return Err(CliError::new(format!(
-            "{} isn't built yet; build it with 'sweetpad build --on mac'",
-            app.display()
+            "{} isn't built yet; build it with {}",
+            app.display(),
+            follow_up(ctx, "build", &["--on", "mac"])
         )));
     }
     let home = || {
@@ -6002,7 +6073,7 @@ fn resolve_ui_app(ctx: &mut Context, pid: Option<i32>) -> Result<MacShot, CliErr
         match last.kind.as_str() {
             "macos" => {
                 if let Some(exe) = mac_executable(&last) {
-                    return mac_shot_for(&exe, &last.bundle_identifier);
+                    return mac_shot_for(ctx, &exe, &last.bundle_identifier);
                 }
             }
             "simulator" | "device" => return Err(ui_not_mac(&last.kind)),
@@ -6029,7 +6100,7 @@ fn resolve_ui_app(ctx: &mut Context, pid: Option<i32>) -> Result<MacShot, CliErr
     match &plan.target {
         Target::Mac => {
             let app = plan.app_bundle()?;
-            mac_shot_for(&app.executable, &app.bundle_id)
+            mac_shot_for(ctx, &app.executable, &app.bundle_id)
         }
         Target::Simulator(_) => Err(ui_not_mac("simulator")),
         Target::Device(_) => Err(ui_not_mac("device")),
@@ -6431,7 +6502,12 @@ const EXITS_QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 /// `app logs --exits`: the app's terminations over the window, each decoded
 /// from launchd's exit line (see [`exits`]), with the crash report the system
 /// wrote for a crash when there is one.
-fn exits_report(source: &exits::Source, app: &AppBundle, filters: &LogFilterArgs) -> CommandResult {
+fn exits_report(
+    ctx: &Context,
+    source: &exits::Source,
+    app: &AppBundle,
+    filters: &LogFilterArgs,
+) -> CommandResult {
     let window = filters.last.as_deref().unwrap_or(EXITS_WINDOW);
     let found = exits::query(
         source,
@@ -6455,11 +6531,16 @@ fn exits_report(source: &exits::Source, app: &AppBundle, filters: &LogFilterArgs
             (exit, report)
         })
         .collect();
+    let destination: &[&str] = match source {
+        exits::Source::Simulator(udid) => &["--on", udid],
+        exits::Source::Mac => &["--mac"],
+    };
     Ok(Rendered::data(ExitsReport {
         bundle_id: app.bundle_id.clone(),
         window: window.to_string(),
         mac: matches!(source, exits::Source::Mac),
         exits,
+        diagnose: follow_up(ctx, "app diagnose", destination),
     }))
 }
 
@@ -6470,6 +6551,9 @@ struct ExitsReport {
     window: String,
     mac: bool,
     exits: Vec<(exits::Exit, Option<std::path::PathBuf>)>,
+    /// The `app diagnose` command an unreported crash points at, for the
+    /// human note; not serialized.
+    diagnose: String,
 }
 
 impl Render for ExitsReport {
@@ -6510,10 +6594,11 @@ impl Render for ExitsReport {
             }
         }
         if unreported_crash {
-            out.note(
-                "no crash report found for a crash above; 'sweetpad app diagnose' runs the app \
-                 under lldb and stops at the fault",
-            );
+            out.note(&format!(
+                "no crash report found for a crash above; {} runs the app under lldb and \
+                 stops at the fault",
+                self.diagnose
+            ));
         }
     }
 
@@ -7278,5 +7363,39 @@ error: unable to evaluate expression while the process is exited\n\
         refused("ui", result.err());
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A hint's command carries the project and target flags that found the
+    /// app, so running it as printed reaches the same one. The destination is
+    /// the hint's own, and a value the shell would split is quoted without
+    /// closing the single quotes around the whole command.
+    #[test]
+    fn a_follow_up_command_carries_the_flags_that_found_the_app() {
+        let mut ctx = project_ctx(Path::new("ios/App.xcodeproj"));
+        assert_eq!(
+            follow_up(&ctx, "app install", &["--on", "AAAA-1111"]),
+            "'sweetpad app install --project ios/App.xcodeproj --on AAAA-1111'"
+        );
+
+        ctx.global.chdir = Some("My Apps".into());
+        ctx.targeting.scheme = Some("My App".into());
+        ctx.targeting.configuration = Some("Release".into());
+        ctx.targeting.sdk = Some("iphonesimulator".into());
+        ctx.targeting.on = Some("iPhone 17".into());
+        ctx.targeting.destination = Some("platform=iOS Simulator,name=iPhone 17".into());
+        assert_eq!(
+            follow_up(&ctx, "build", &["--on", "mac"]),
+            "'sweetpad -C \"My Apps\" build --project ios/App.xcodeproj --scheme \"My App\" \
+             --configuration Release --sdk iphonesimulator --on mac'"
+        );
+
+        ctx.targeting = crate::cli::Targeting::default();
+        ctx.global.chdir = None;
+        assert_eq!(
+            follow_up(&ctx, "app diagnose", &["--mac"]),
+            "'sweetpad app diagnose --mac'"
+        );
+        assert_eq!(hint_quote("a\"b$c"), "\"a\\\"b\\$c\"");
+        assert_eq!(hint_quote(""), "\"\"");
     }
 }

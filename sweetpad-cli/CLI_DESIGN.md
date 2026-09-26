@@ -2371,7 +2371,11 @@ place of `path`.
 simulator, because a shut-down one fails every lookup with a CoreSimulator
 state error. simctl reports an app that isn't installed as a bare ENOENT (`No
 such file or directory`), so that case is reworded to name the app and the
-simulator, with the `app install --on <udid>` that fixes it.
+simulator, with the `app install --on <udid>` that fixes it. The suggested
+command carries the `--scheme`, `--configuration` and container flags this
+lookup was given, since a typed scheme isn't remembered and the command would
+otherwise stop at "no scheme specified"; every `app` hint that names a
+follow-up command is spelled the same way.
 
 **On macOS** `app` is the built product, `data` is `~/Library/Containers/<bundle
 id>/Data`, and each id in `com.apple.security.application-groups` maps to
