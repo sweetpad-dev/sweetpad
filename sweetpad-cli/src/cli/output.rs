@@ -122,6 +122,25 @@ impl Output {
         !self.json && !self.ndjson && !self.non_interactive && std::io::stderr().is_terminal()
     }
 
+    /// Whether stdout and stderr are the same file: one terminal, or one
+    /// capture behind a `2>&1`. A line streamed to stdout then sits just
+    /// above an error printed after it on stderr, so the error need not
+    /// repeat it. With `2>err.log`, or stdout piped elsewhere, they part.
+    #[must_use]
+    pub fn streams_share_a_file() -> bool {
+        use std::os::fd::{AsFd, BorrowedFd};
+        use std::os::unix::fs::MetadataExt;
+
+        let identity = |fd: BorrowedFd<'_>| {
+            let meta = std::fs::File::from(fd.try_clone_to_owned().ok()?)
+                .metadata()
+                .ok()?;
+            Some((meta.dev(), meta.ino()))
+        };
+        let stdout = identity(std::io::stdout().as_fd());
+        stdout.is_some() && stdout == identity(std::io::stderr().as_fd())
+    }
+
     /// True when `-v`/`--verbose` was passed — surfaces raw/extra output.
     #[must_use]
     pub fn is_verbose(&self) -> bool {

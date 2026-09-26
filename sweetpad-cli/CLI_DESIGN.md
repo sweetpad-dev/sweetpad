@@ -1108,7 +1108,11 @@ JSON). The price is a second clone of the package graph, which SwiftPM's
 repository cache keeps short. Measured on Xcode 27.2 with a project of each
 format and a workspace. In human output the renderer shows the indented lines
 under an `xcodebuild: error:` header that ends in a colon, since that is where
-xcodebuild puts the reason a resolve failed.
+xcodebuild puts the reason a resolve failed. Those lines go to stdout and the
+error goes to stderr. When the two streams are different files (`2>err.log`,
+or stdout piped away), the error repeats the lines as xcodebuild printed them.
+On a terminal or behind `2>&1`, the reason already sits just above the error,
+which stays one line.
 
 > Supersedes the earlier "vendor full source, compile per Xcode" plan: the
 > from-source per-Xcode build (and its `~/.cache/.../<xcode-build>/` cache) existed

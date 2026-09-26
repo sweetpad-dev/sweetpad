@@ -435,6 +435,45 @@ fn opens_a_list(event: &Event) -> bool {
     )
 }
 
+/// The errors of a run as the tool printed them: each error diagnostic's
+/// line, and under one that announces a list ([`opens_a_list`]) the indented
+/// lines that follow it. These are the lines [`BuildProgress`] shows in red,
+/// kept for an error message that has to explain the failure where those
+/// streamed lines are not in front of it.
+#[derive(Debug, Default)]
+pub struct ErrorLines {
+    lines: Vec<String>,
+    continues: bool,
+}
+
+impl ErrorLines {
+    /// Take one line [`LogParser`] has parsed.
+    pub fn parsed(&mut self, parsed: &Parsed) {
+        let Parsed { raw, event } = parsed;
+        if self.continues {
+            if raw.starts_with(char::is_whitespace) && !raw.trim().is_empty() {
+                self.lines.push(format!("  {}", raw.trim()));
+                return;
+            }
+            self.continues = false;
+        }
+        if let Event::Diagnostic {
+            kind: DiagKind::Error,
+            ..
+        } = event
+        {
+            self.lines.push(raw.trim().to_string());
+            self.continues = opens_a_list(event);
+        }
+    }
+
+    /// The lines taken, in the order they came.
+    #[must_use]
+    pub fn into_lines(self) -> Vec<String> {
+        self.lines
+    }
+}
+
 /// One line of output and the event it parsed to.
 #[derive(Debug)]
 pub struct Parsed {
@@ -785,6 +824,30 @@ pub fn run(
     label: &str,
 ) -> Result<bool, CliError> {
     Ok(run_collecting(program, args, cwd, out, label)?.0)
+}
+
+/// Like [`run`], but also returns the error lines it showed ([`ErrorLines`]).
+pub fn run_keeping_errors(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    out: &Output,
+    label: &str,
+) -> Result<(bool, Vec<String>), CliError> {
+    let mut progress = BuildProgress::start(out, label);
+    let mut errors = ErrorLines::default();
+    let mut parser = LogParser::default();
+    let mut show = |parsed: &Parsed| {
+        errors.parsed(parsed);
+        if let Some(rendered) = progress.parsed(parsed) {
+            out.line(&rendered);
+        }
+    };
+    let ok = process::stream_lines(program, args, cwd, |line| {
+        parser.push(line).iter().for_each(&mut show);
+    })?;
+    parser.finish().iter().for_each(&mut show);
+    Ok((ok, errors.into_lines()))
 }
 
 /// Like [`run`], but also collects each diagnostic as its
@@ -1218,6 +1281,38 @@ The following build commands failed:
             shown,
             [
                 "error: xcodebuild: Could not resolve package dependencies:",
+                "  Disabled default traits on package 'swift-collections' that declares no traits.",
+                "  fatalError",
+            ]
+        );
+    }
+
+    /// The error lines kept for an error message are the ones shown in red,
+    /// as the tool printed them: no warning, no source excerpt, and the
+    /// reason under a header that ends in a colon.
+    #[test]
+    fn the_errors_kept_are_the_errors_shown() {
+        let mut parser = LogParser::default();
+        let mut errors = ErrorLines::default();
+        for line in [
+            "Resolve Package Graph",
+            "warning: 'swift-numerics': skipping cache due to an error",
+            "/src/Package.swift:12:5: error: cannot find 'x' in scope",
+            "    let y = x",
+            "xcodebuild: error: Could not resolve package dependencies:",
+            "  Disabled default traits on package 'swift-collections' that declares no traits.",
+            "  fatalError",
+            "Writing error result bundle",
+            "  still hidden",
+        ] {
+            parser.push(line).iter().for_each(|p| errors.parsed(p));
+        }
+        parser.finish().iter().for_each(|p| errors.parsed(p));
+        assert_eq!(
+            errors.into_lines(),
+            [
+                "/src/Package.swift:12:5: error: cannot find 'x' in scope",
+                "xcodebuild: error: Could not resolve package dependencies:",
                 "  Disabled default traits on package 'swift-collections' that declares no traits.",
                 "  fatalError",
             ]

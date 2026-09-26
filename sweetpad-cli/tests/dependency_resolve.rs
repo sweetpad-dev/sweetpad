@@ -30,6 +30,12 @@ struct Fixture {
 
 impl Fixture {
     fn new(tag: &str, status: i32) -> Self {
+        Self::saying(tag, status, "")
+    }
+
+    /// [`Fixture::new`], with a stub that writes `said` to stderr before it
+    /// exits, the way xcodebuild reports why a resolve failed.
+    fn saying(tag: &str, status: i32, said: &str) -> Self {
         use std::os::unix::fs::PermissionsExt;
 
         let root = tmp(tag);
@@ -38,6 +44,7 @@ impl Fixture {
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::create_dir_all(&temp).unwrap();
         std::fs::create_dir_all(root.join("App.xcodeproj")).unwrap();
+        std::fs::write(root.join("said.txt"), said).unwrap();
         std::fs::write(
             bin.join("xcodebuild"),
             format!(
@@ -56,8 +63,10 @@ impl Fixture {
                  exit 64\n\
                  fi\n\
                  mkdir -p \"$bundle\"\n\
+                 cat '{}' >&2\n\
                  exit {status}\n",
-                root.join("xcodebuild.log").display()
+                root.join("xcodebuild.log").display(),
+                root.join("said.txt").display()
             ),
         )
         .unwrap();
@@ -70,13 +79,19 @@ impl Fixture {
     }
 
     fn sweetpad(&self, args: &[&str]) -> Output {
+        self.command(args)
+            .output()
+            .expect("failed to run the sweetpad binary")
+    }
+
+    fn command(&self, args: &[&str]) -> Command {
         let path_env = format!(
             "{}:{}",
             self.root.join("bin").display(),
             std::env::var("PATH").unwrap_or_default()
         );
-        Command::new(env!("CARGO_BIN_EXE_sweetpad"))
-            .args(args)
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_sweetpad"));
+        cmd.args(args)
             .current_dir(&self.root)
             .env("HOME", &self.root)
             .env("XDG_STATE_HOME", &self.root)
@@ -84,8 +99,9 @@ impl Fixture {
             .env("XDG_CACHE_HOME", &self.root)
             .env("TMPDIR", &self.temp)
             .env("PATH", path_env)
-            .output()
-            .expect("failed to run the sweetpad binary")
+            .env_remove("FORCE_COLOR")
+            .env_remove("CLICOLOR_FORCE");
+        cmd
     }
 
     /// Each resolve's argv, one per line.
@@ -153,4 +169,63 @@ fn each_resolve_of_an_update_gets_a_fresh_result_bundle() {
         "{resolves:?}"
     );
     assert_eq!(fixture.left_in_temp(), Vec::<String>::new());
+}
+
+/// What Xcode prints when no version satisfies a requirement.
+const UNRESOLVABLE: &str = "\
+xcodebuild: error: Could not resolve package dependencies:
+  Dependencies could not be resolved because root depends on 'swift-collections' 99.0.0.
+  'swift-collections' 99.0.0 cannot be used because no versions of 'swift-collections' match the requirement 99.0.0.
+";
+
+/// The reason a resolve failed streams to stdout with the rest of its log, so
+/// with stderr apart from stdout (`2>err.log`) the error carries it too.
+#[test]
+fn a_failed_resolve_names_the_reason_in_its_error() {
+    let fixture = Fixture::saying("reason", 1, UNRESOLVABLE);
+    for verb in ["resolve", "update"] {
+        let out = fixture.sweetpad(&["dep", verb]);
+        assert!(
+            !out.status.success(),
+            "{verb}: expected the resolve to fail"
+        );
+        let stderr = String::from_utf8(out.stderr).unwrap();
+        let expected = "\
+error: resolving package dependencies
+  xcodebuild -resolvePackageDependencies exited with a non-zero status:
+  xcodebuild: error: Could not resolve package dependencies:
+    Dependencies could not be resolved because root depends on 'swift-collections' 99.0.0.
+    'swift-collections' 99.0.0 cannot be used because no versions of 'swift-collections' match the requirement 99.0.0.
+";
+        assert!(stderr.ends_with(expected), "{verb}:\n{stderr}");
+    }
+}
+
+/// With stdout and stderr in one file, the reason already sits just above the
+/// error, which does not repeat it.
+#[test]
+fn the_error_does_not_repeat_a_reason_just_above_it() {
+    let fixture = Fixture::saying("once", 1, UNRESOLVABLE);
+    let transcript = fixture.root.join("transcript.txt");
+    let file = std::fs::File::create(&transcript).unwrap();
+    let status = fixture
+        .command(&["dep", "resolve"])
+        .stdout(file.try_clone().unwrap())
+        .stderr(file)
+        .status()
+        .unwrap();
+    assert!(!status.success(), "expected the resolve to fail");
+    let shown = std::fs::read_to_string(&transcript).unwrap();
+    assert_eq!(
+        shown.matches("Dependencies could not be resolved").count(),
+        1,
+        "{shown}"
+    );
+    assert!(
+        shown.ends_with(
+            "error: resolving package dependencies\n  \
+             xcodebuild -resolvePackageDependencies exited with a non-zero status\n"
+        ),
+        "{shown}"
+    );
 }

@@ -1107,7 +1107,9 @@ fn resolve_packages(
     // Beautify like `build`: quiet/JSON captures both streams (so nothing
     // interleaves with the envelope; the tail rides back in the error), `-v`
     // passes raw output through, otherwise the buildlog renderer shows a clean
-    // "Resolving" spinner.
+    // "Resolving" spinner and the errors that explain a failure. Those go to
+    // stdout, so the error on stderr repeats them unless the two streams are
+    // one file and they already sit just above it.
     let mut failure_detail = String::new();
     let ok = if quiet || out.is_json() || out.is_ndjson() {
         let run = process::run_captured("xcodebuild", &arg_refs, cwd.as_deref())?;
@@ -1118,7 +1120,21 @@ fn resolve_packages(
     } else if out.is_verbose() {
         process::run("xcodebuild", &arg_refs, cwd.as_deref(), false)?
     } else {
-        buildlog::run("xcodebuild", &arg_refs, cwd.as_deref(), out, "Resolving")?
+        let (ok, errors) = buildlog::run_keeping_errors(
+            "xcodebuild",
+            &arg_refs,
+            cwd.as_deref(),
+            out,
+            "Resolving",
+        )?;
+        if !ok && !errors.is_empty() && !Output::streams_share_a_file() {
+            failure_detail = errors.iter().fold(":".to_string(), |mut detail, line| {
+                detail.push_str("\n  ");
+                detail.push_str(line);
+                detail
+            });
+        }
+        ok
     };
     if ok {
         Ok(())
