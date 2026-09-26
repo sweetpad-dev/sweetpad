@@ -44,6 +44,10 @@ Red tests exit with code `3`, the same code a failed build uses, since both mean
 the answer was no". A missing scheme or an unresolvable destination is code `4` instead, so a CI
 script can tell a genuine test failure apart from a broken invocation.
 
+On Xcode 26 and later, xcodebuild normally collects a system diagnostic report after a failed run,
+which can hold the run open for up to ten minutes. `sweetpad test` turns that off, so a failing run
+ends as soon as the tests do. To get the report, pass `-- -collect-test-diagnostics on-failure`.
+
 ### When the app goes away mid-test
 
 If the app under test crashes or is killed during a test, XCTest only reports that it's gone, with

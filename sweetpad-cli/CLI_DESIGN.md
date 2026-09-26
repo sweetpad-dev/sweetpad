@@ -2090,7 +2090,7 @@ URL, a test gets the XCTest spelling.
 
 ## 9m. v8 — failures that name their own fix
 
-Five more from §9k's family, all found by agents losing time rather than by
+Six more from §9k's family, all found by agents losing time rather than by
 anyone filing a bug: the CLI knew what had gone wrong and said something that
 did not help, or said nothing at all.
 
@@ -2217,6 +2217,18 @@ the restart exited cleanly 1.5s after the failure it caused.
 are timed (each costs an `xcresulttool` read). A failed query, a device
 destination, or a failure with no activity log leaves the field out rather
 than guessing.
+
+### A red suite that looked hung
+
+From Xcode 26 on, a test run that fails starts `simctl diagnose --timeout=600`
+before xcodebuild exits: a sysdiagnose-sized collection for the result bundle,
+which nobody asked for and which can take the full ten minutes. `test` printed
+nothing in that time, so every failing run looked like a hang, and three agents
+separately waited it out. `test` passes `-collect-test-diagnostics never` on
+Xcode 26 and later. Older Xcodes collect nothing by default and may not know the
+flag, so they get none. A `-collect-test-diagnostics` in the passthrough keeps
+its own value, so `-- -collect-test-diagnostics on-failure` brings the
+collection back.
 
 ## 9n. Direction — the run session as a server
 

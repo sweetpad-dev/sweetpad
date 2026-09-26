@@ -271,8 +271,24 @@ pub struct TestPlan<'a> {
     pub retry_flaky: Option<u32>,
     /// Collect code coverage (`-enableCodeCoverage YES`).
     pub coverage: bool,
+    /// Pass `-collect-test-diagnostics never` (see [`skips_test_diagnostics`]).
+    pub skip_test_diagnostics: bool,
     /// Extra xcodebuild arguments passed through verbatim (after `--`).
     pub passthrough: &'a [String],
+}
+
+/// Whether a test run on Xcode `major` should turn off the diagnostics
+/// xcodebuild collects after a failure. From Xcode 26 on, a failed run starts
+/// `simctl diagnose --timeout=600`, a sysdiagnose-sized collection that holds
+/// the run open for up to ten minutes with nothing on screen, so a red suite
+/// looks hung. Older Xcodes collect nothing by default, so they get no flag.
+/// A `-collect-test-diagnostics` in the passthrough keeps its own value.
+#[must_use]
+pub fn skips_test_diagnostics(major: u32, passthrough: &[String]) -> bool {
+    major >= 26
+        && !passthrough
+            .iter()
+            .any(|a| a.split('=').next() == Some("-collect-test-diagnostics"))
 }
 
 /// What a [`TestPlan::run`] produced: the raw pass/fail, plus — in the
@@ -324,6 +340,10 @@ impl TestPlan<'_> {
         if self.coverage {
             args.push("-enableCodeCoverage".into());
             args.push("YES".into());
+        }
+        if self.skip_test_diagnostics {
+            args.push("-collect-test-diagnostics".into());
+            args.push("never".into());
         }
         args.extend(container_args(self.container));
         for t in self.only_testing {
@@ -1919,6 +1939,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             sdk: None,
             retry_flaky: None,
             coverage: false,
+            skip_test_diagnostics: true,
             passthrough: &[],
         };
         assert_eq!(
@@ -1933,12 +1954,31 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
                 "/tmp/r.xcresult",
                 "-destination",
                 "platform=iOS Simulator,id=UDID",
+                "-collect-test-diagnostics",
+                "never",
                 "-project",
                 "/work/App.xcodeproj",
                 "-only-testing:AppTests/LoginTests",
                 "-skip-testing:AppTests/FlakyTests/testJitter",
             ]
         );
+    }
+
+    #[test]
+    fn a_failed_run_skips_the_diagnostics_wait_on_xcode_26_and_later() {
+        assert!(skips_test_diagnostics(26, &[]));
+        assert!(skips_test_diagnostics(27, &["-quiet".into()]));
+        // Xcode 16 collects nothing by default, and may not know the flag.
+        assert!(!skips_test_diagnostics(16, &[]));
+        // An unreadable version is left alone rather than guessed at.
+        assert!(!skips_test_diagnostics(0, &[]));
+        // The caller's own choice wins, in either spelling.
+        let own = ["-collect-test-diagnostics".to_string(), "on-failure".into()];
+        assert!(!skips_test_diagnostics(27, &own));
+        assert!(!skips_test_diagnostics(
+            27,
+            &["-collect-test-diagnostics=on-failure".into()]
+        ));
     }
 
     #[test]

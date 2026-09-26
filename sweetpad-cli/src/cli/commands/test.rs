@@ -368,6 +368,10 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         result_bundle: &run_bundle,
         retry_flaky: args.retry_flaky,
         coverage: args.coverage,
+        skip_test_diagnostics: xcodebuild::skips_test_diagnostics(
+            sweetpad_lib::xcode::active_install().major_version(),
+            args.passthrough,
+        ),
         passthrough: args.passthrough,
     };
 
