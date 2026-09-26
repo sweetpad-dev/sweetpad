@@ -83,24 +83,87 @@ pub enum Action {
     ///
     /// Its output matches 'sweetpad build', and 'sweetpad build diagnostics'
     /// reads its errors back afterwards.
-    Build,
+    Build(BuildArgs),
     /// Export the last run's attachments (screenshots, UI dumps) as files.
     Attachments(AttachmentsArgs),
     /// Show what the last run's tests printed, per test.
     Output(OutputArgs),
 }
 
-/// The flags of `test output`. Which tests to show comes from the global
-/// '--only-testing', so it reads the same as it does on a run.
+/// The run flags a build refuses, redeclared hidden on `test build` under the
+/// same ids. A subcommand's own arg keeps the resource's global one from
+/// propagating into it, so its help leaves them out; a stray one still parses,
+/// and its value reaches [`TestArgs`] for [`build`] to refuse.
+#[derive(Debug, clap::Args)]
+pub struct BuildArgs {
+    /// Recompile the test targets on every Swift save (Ctrl-C stops).
+    #[arg(long, conflicts_with = "show_command")]
+    pub watch: bool,
+
+    #[arg(long = "only-testing", hide = true)]
+    pub only_testing: Vec<String>,
+    #[arg(long = "skip-testing", hide = true)]
+    pub skip_testing: Vec<String>,
+    #[arg(long, hide = true)]
+    pub failed: bool,
+    #[arg(long, hide = true)]
+    pub result_bundle: Option<PathBuf>,
+    #[arg(long, hide = true)]
+    pub junit: Option<PathBuf>,
+    #[arg(long = "retry-flaky", hide = true)]
+    pub retry_flaky: Option<u32>,
+    #[arg(long, hide = true)]
+    pub coverage: bool,
+}
+
+/// The run flags that reading the last run back refuses, redeclared hidden on
+/// `test attachments` and `test output` the way [`BuildArgs`] does for `test
+/// build`.
+#[derive(Debug, clap::Args)]
+#[allow(clippy::struct_excessive_bools)] // mirrors TestArgs' toggles, none of them read here
+pub struct HiddenRunArgs {
+    #[arg(long = "skip-testing", hide = true)]
+    pub skip_testing: Vec<String>,
+    #[arg(long, hide = true)]
+    pub failed: bool,
+    #[arg(long, hide = true)]
+    pub junit: Option<PathBuf>,
+    #[arg(long, hide = true)]
+    pub watch: bool,
+    #[arg(long = "retry-flaky", hide = true)]
+    pub retry_flaky: Option<u32>,
+    #[arg(long, hide = true)]
+    pub coverage: bool,
+    #[arg(long, hide = true)]
+    pub show_command: bool,
+    #[arg(last = true, hide = true)]
+    pub passthrough: Vec<String>,
+}
+
+/// The flags of `test output`. '--only-testing' and '--result-bundle' keep the
+/// ids of the run's own, so their values land on [`TestArgs`] and read the
+/// same as they do on a run.
 #[derive(Debug, clap::Args)]
 pub struct OutputArgs {
     /// Show each test's output in full instead of its last few KB.
     #[arg(long)]
     pub full: bool,
+
+    /// Show only this test's output (Target[/Class[/method]]); repeatable.
+    #[arg(long = "only-testing")]
+    pub only_testing: Vec<String>,
+
+    /// The .xcresult bundle to read (default: the one the last 'sweetpad
+    /// test' kept for this project).
+    #[arg(long, value_name = "PATH")]
+    pub result_bundle: Option<PathBuf>,
+
+    #[command(flatten)]
+    pub run: HiddenRunArgs,
 }
 
-/// The flags of `test attachments`. Which tests to export comes from the
-/// global '--only-testing', so it reads the same as it does on a run.
+/// The flags of `test attachments`, with '--only-testing' and
+/// '--result-bundle' declared as on [`OutputArgs`].
 #[derive(Debug, clap::Args)]
 pub struct AttachmentsArgs {
     /// Where to write the files (default: a directory beside the retained
@@ -111,6 +174,19 @@ pub struct AttachmentsArgs {
     /// Export only the attachments recorded against a failing test.
     #[arg(long)]
     pub only_failures: bool,
+
+    /// Export only this test's attachments (Target[/Class[/method]]);
+    /// repeatable.
+    #[arg(long = "only-testing")]
+    pub only_testing: Vec<String>,
+
+    /// The .xcresult bundle to read (default: the one the last 'sweetpad
+    /// test' kept for this project).
+    #[arg(long, value_name = "PATH")]
+    pub result_bundle: Option<PathBuf>,
+
+    #[command(flatten)]
+    pub run: HiddenRunArgs,
 }
 
 /// The flags of one `test run`, bundled so helpers don't take eight params.
@@ -129,9 +205,15 @@ struct RunArgs<'a> {
 pub fn run(ctx: &mut Context, args: &TestArgs, action: Option<&Action>) -> CommandResult {
     ctx.targeting = args.target.clone().into();
     match action {
-        Some(Action::Attachments(opts)) => return attachments(ctx, args, opts),
-        Some(Action::Output(opts)) => return output(ctx, args, opts),
-        Some(Action::Build) => return build(ctx, args),
+        Some(Action::Attachments(opts)) => {
+            refuse_run_flags(&read_refused_flags(args), &read_reason("attachments"))?;
+            return attachments(ctx, args, opts);
+        }
+        Some(Action::Output(opts)) => {
+            refuse_run_flags(&read_refused_flags(args), &read_reason("output"))?;
+            return output(ctx, args, opts);
+        }
+        Some(Action::Build(_)) => return build(ctx, args),
         Some(Action::Run) | None => {}
     }
     let passthrough = ctx.xcodebuild_args(&args.passthrough)?;
@@ -164,19 +246,50 @@ pub fn run(ctx: &mut Context, args: &TestArgs, action: Option<&Action>) -> Comma
 /// is refusing the flags that only shape a run, which would otherwise parse —
 /// they are resource-global — and be silently dropped.
 fn build(ctx: &mut Context, args: &TestArgs) -> CommandResult {
-    let given = run_only_flags(args);
-    if let Some((last, rest)) = given.split_last() {
-        let (flags, verb) = if rest.is_empty() {
-            ((*last).to_string(), "applies")
-        } else {
-            (format!("{} and {last}", rest.join(", ")), "apply")
-        };
-        return Err(CliError::new(format!(
-            "{flags} {verb} to a test run, not a build: 'test build' compiles every test \
-             target in the scheme and runs none"
-        )));
-    }
+    refuse_run_flags(
+        &run_only_flags(args),
+        ", not a build: 'test build' compiles every test target in the scheme and runs none",
+    )?;
     super::build::for_testing(ctx, args.watch, args.show_command, &args.passthrough)
+}
+
+/// Refuse the run flags in `given` by name, since each one parsed on a verb it
+/// means nothing to and dropping it would not do what was asked. `why` follows
+/// "…apply to a test run" in the message.
+fn refuse_run_flags(given: &[&str], why: &str) -> Result<(), CliError> {
+    let Some((last, rest)) = given.split_last() else {
+        return Ok(());
+    };
+    let (flags, verb) = if rest.is_empty() {
+        ((*last).to_string(), "applies")
+    } else {
+        (format!("{} and {last}", rest.join(", ")), "apply")
+    };
+    Err(CliError::new(format!("{flags} {verb} to a test run{why}")))
+}
+
+/// Why `test <verb>` refuses a run flag.
+fn read_reason(verb: &str) -> String {
+    format!(": 'test {verb}' reads the last run's result bundle and runs nothing")
+}
+
+/// The flags on `args` that shape a test run and mean nothing to reading one
+/// back. `--only-testing` and `--result-bundle` are not among them: they pick
+/// the tests and the bundle to read.
+fn read_refused_flags(args: &TestArgs) -> Vec<&'static str> {
+    [
+        ("--skip-testing", !args.skip_testing.is_empty()),
+        ("--failed", args.failed),
+        ("--junit", args.junit.is_some()),
+        ("--watch", args.watch),
+        ("--retry-flaky", args.retry_flaky.is_some()),
+        ("--coverage", args.coverage),
+        ("--show-command", args.show_command),
+        ("'-- XCODEBUILD_ARGS'", !args.passthrough.is_empty()),
+    ]
+    .into_iter()
+    .filter_map(|(flag, given)| given.then_some(flag))
+    .collect()
 }
 
 /// The flags on `args` that shape a test run and mean nothing to a build.
@@ -1544,7 +1657,7 @@ mod tests {
             "--",
             "-skipMacroValidation",
         ]);
-        assert!(matches!(action, Some(Action::Build)));
+        assert!(matches!(action, Some(Action::Build(_))));
         assert!(args.show_command);
         assert_eq!(args.passthrough, ["-skipMacroValidation"]);
         assert!(run_only_flags(&args).is_empty());
@@ -1586,6 +1699,87 @@ mod tests {
                 "--coverage"
             ]
         );
+    }
+
+    #[test]
+    fn the_read_back_verbs_refuse_the_flags_that_only_shape_a_run() {
+        // Hidden on these verbs, but they still parse, on either side of the
+        // verb, and land on the resource's args to be named in the refusal.
+        for verb in ["attachments", "output"] {
+            let (args, _) = parse_test(&[verb, "--failed", "--junit", "j.xml"]);
+            assert_eq!(read_refused_flags(&args), ["--failed", "--junit"], "{verb}");
+            let (args, _) = parse_test(&["--coverage", verb, "--", "-quiet"]);
+            assert_eq!(
+                read_refused_flags(&args),
+                ["--coverage", "'-- XCODEBUILD_ARGS'"],
+                "{verb}"
+            );
+            let (args, _) = parse_test(&[
+                verb,
+                "--skip-testing",
+                "A",
+                "--watch",
+                "--retry-flaky",
+                "2",
+                "--show-command",
+            ]);
+            assert_eq!(
+                read_refused_flags(&args),
+                [
+                    "--skip-testing",
+                    "--watch",
+                    "--retry-flaky",
+                    "--show-command"
+                ],
+                "{verb}"
+            );
+        }
+        let (args, _) = parse_test(&["output", "--failed"]);
+        let err = refuse_run_flags(&read_refused_flags(&args), &read_reason("output"))
+            .expect_err("--failed was not refused");
+        assert_eq!(
+            err.to_string(),
+            "--failed applies to a test run: 'test output' reads the last run's result bundle \
+             and runs nothing"
+        );
+    }
+
+    #[test]
+    fn the_read_back_verbs_take_the_tests_and_the_bundle_to_read() {
+        // Declared on each verb, and still read off the resource's args, from
+        // either side of the verb.
+        for verb in ["attachments", "output"] {
+            for argv in [
+                [
+                    verb,
+                    "--only-testing",
+                    "AppTests",
+                    "--result-bundle",
+                    "r.xcresult",
+                ],
+                [
+                    "--only-testing",
+                    "AppTests",
+                    "--result-bundle",
+                    "r.xcresult",
+                    verb,
+                ],
+            ] {
+                let (args, _) = parse_test(&argv);
+                assert_eq!(args.only_testing, ["AppTests"], "{argv:?}");
+                assert_eq!(
+                    args.result_bundle.as_deref(),
+                    Some(Path::new("r.xcresult")),
+                    "{argv:?}"
+                );
+                assert!(read_refused_flags(&args).is_empty(), "{argv:?}");
+            }
+        }
+        // `test --failed` is still `test run --failed`.
+        let (args, action) = parse_test(&["--failed"]);
+        assert!(args.failed && action.is_none());
+        let (args, action) = parse_test(&["run", "--failed"]);
+        assert!(args.failed && matches!(action, Some(Action::Run)));
     }
 
     #[test]

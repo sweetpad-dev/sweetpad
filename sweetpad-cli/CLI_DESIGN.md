@@ -1968,6 +1968,13 @@ The shape repeats per artifact: the failure message says *what* failed, the
 bundle says *why*, and only the first was reachable. Both verbs below read the
 retained bundle, so they answer after the fact without re-running anything.
 
+`test run`'s flags are resource-global, so they also parse after `test
+attachments` and `test output`. Both verbs redeclare them hidden under the same
+ids, as `build diagnostics` does, so their help lists only what they take, and
+a run flag given anyway is refused by name instead of dropped. `--only-testing`
+and `--result-bundle` are redeclared visible, with help that says what they
+pick here: the tests and the bundle to read.
+
 ### `test attachments`
 
 For a UI test the two halves of a diagnosis live in different places: the failure
@@ -2388,7 +2395,8 @@ error in a target the filter leaves out still fails the build. A filter would
 promise a narrowing that never happens. The run flags (`--only-testing`,
 `--skip-testing`, `--failed`, `--result-bundle`, `--junit`, `--retry-flaky`,
 `--coverage`) are resource-global, so they parse after `build`; they are refused
-by name, not dropped.
+by name, not dropped. The verb redeclares them hidden, so `test build --help`
+leaves them out.
 
 `--watch` is `build --watch`'s loop unchanged. A Swift package runs `swift build
 --build-tests`.

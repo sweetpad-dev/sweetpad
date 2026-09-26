@@ -1781,6 +1781,59 @@ mod cli_definition_tests {
             other => panic!("parsed as {other:?}"),
         }
     }
+
+    /// `test attachments` and `test output` read the last run back and `test
+    /// build` compiles, so each one's help leaves out the `test run` flags it
+    /// refuses, while `test` and `test run` still list them all.
+    #[test]
+    fn test_verbs_help_lists_only_the_run_flags_they_take() {
+        use clap::CommandFactory;
+
+        let mut root = super::Cli::command();
+        root.build();
+        let test = root.find_subcommand_mut("test").expect("no test");
+        let help = |cmd: &mut clap::Command| cmd.render_long_help().to_string();
+        let mut verb = |name: &str| help(test.find_subcommand_mut(name).expect(name));
+        let (run, attachments, output, build) = (
+            verb("run"),
+            verb("attachments"),
+            verb("output"),
+            verb("build"),
+        );
+        let resource = help(test);
+
+        let chooses_what_to_read = ["--only-testing", "--result-bundle"];
+        let shapes_a_build = ["--watch", "--show-command", "XCODEBUILD_ARGS"];
+        let run_only = [
+            "--skip-testing",
+            "--failed",
+            "--junit",
+            "--retry-flaky",
+            "--coverage",
+        ];
+        for flag in chooses_what_to_read
+            .iter()
+            .chain(&shapes_a_build)
+            .chain(&run_only)
+        {
+            assert!(resource.contains(flag), "test --help lacks {flag}");
+            assert!(run.contains(flag), "test run --help lacks {flag}");
+        }
+        for (name, text) in [("attachments", &attachments), ("output", &output)] {
+            for flag in chooses_what_to_read {
+                assert!(text.contains(flag), "test {name} --help lacks {flag}");
+            }
+            for flag in shapes_a_build.iter().chain(&run_only) {
+                assert!(!text.contains(flag), "test {name} --help lists {flag}");
+            }
+        }
+        for flag in shapes_a_build {
+            assert!(build.contains(flag), "test build --help lacks {flag}");
+        }
+        for flag in chooses_what_to_read.iter().chain(&run_only) {
+            assert!(!build.contains(flag), "test build --help lists {flag}");
+        }
+    }
 }
 
 #[cfg(test)]
