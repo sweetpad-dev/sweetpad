@@ -2,6 +2,13 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.17] - 2026-09-26
+
+- Add support for Xcode 27.2's `project.xcproj` project format
+- Fix scheme refresh for projects with an incomplete embedded workspace ([#339](https://github.com/sweetpad-dev/sweetpad/issues/339), thanks [@lingmacker](https://github.com/lingmacker))
+- Fix physical device details with Xcode 27's devicectl
+- Fix `.build` folders appearing inside local Swift packages
+
 ## [0.2.16] - 2026-09-19
 
 - Fix launching apps on the simulator with Xcode 27 ([#337](https://github.com/sweetpad-dev/sweetpad/issues/337), thanks [@richardgroves](https://github.com/richardgroves))
