@@ -1,0 +1,37 @@
+Process 42569 stopped
+* thread #1, stop reason = signal SIGSTOP
+      frame #0: 0x0000000104d50bf0 dyld`_dyld_start
+dyld`_dyld_start:
+->  0x104d50bf0 <+0>:  mov    x0, sp
+    0x104d50bf4 <+4>:  and    sp, x0, #0xfffffffffffffff0
+    0x104d50bf8 <+8>:  mov    x29, #0x0                 ; =0 
+    0x104d50bfc <+12>: mov    x30, #0x0                 ; =0 
+Target 0: (SweetpadB5iOS) stopped.
+Executable binary set to "~/Library/Developer/CoreSimulator/Devices/*/data/Containers/Bundle/Application/*/SweetpadB5iOS.app/SweetpadB5iOS".
+Architecture set to: arm64-apple-ios-simulator.
+Breakpoint 1: no locations (pending).
+WARNING:  Unable to resolve breakpoint to any actual locations.
+1 location added to breakpoint 1
+Process 42569 resuming
+Process 42569 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x10)
+      frame #0: 0x0000000104a91610 SweetpadB5iOS.debug.dylib`sweetpadCrashHook() at SweetpadCIApp.swift:10:19
+   7   	    let args = CommandLine.arguments
+   8   	    if args.contains("crash-segv") {
+   9   	        let p = UnsafeMutablePointer<Int>(bitPattern: 0x10)!
+-> 10  	        p.pointee = 1
+    	                  ^
+   11  	    }
+   12  	    if args.contains("crash-fatal") {
+   13  	        fatalError("diagnose probe")
+Target 0: (SweetpadB5iOS) stopped.
+@@SWEETPAD_BT@@
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x10)
+  * frame #0: 0x0000000104a91610 SweetpadB5iOS.debug.dylib`sweetpadCrashHook() at SweetpadCIApp.swift:10:19
+    frame #1: 0x0000000104a91ad8 SweetpadB5iOS.debug.dylib`SweetpadCIApp.init() at SweetpadCIApp.swift:27:9
+    frame #3: 0x00000001c9b09740 SwiftUI`static App.main() + 132
+    frame #5: 0x0000000104a92324 SweetpadB5iOS.debug.dylib`main at SweetpadCIApp.swift:0
+    frame #6: 0x0000000104b38350 dyld_sim`start_sim + 20
+    frame #7: 0x0000000104d7de80 dyld`start + 6688
+@@SWEETPAD_END@@
+Process 42569 exited with status = 9 (0x00000009) killed

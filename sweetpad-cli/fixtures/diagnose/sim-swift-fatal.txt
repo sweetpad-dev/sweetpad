@@ -1,0 +1,41 @@
+Process 42682 stopped
+* thread #1, stop reason = signal SIGSTOP
+      frame #0: 0x0000000100d84bf0 dyld`_dyld_start
+dyld`_dyld_start:
+->  0x100d84bf0 <+0>:  mov    x0, sp
+    0x100d84bf4 <+4>:  and    sp, x0, #0xfffffffffffffff0
+    0x100d84bf8 <+8>:  mov    x29, #0x0                 ; =0 
+    0x100d84bfc <+12>: mov    x30, #0x0                 ; =0 
+Target 0: (SweetpadB5iOS) stopped.
+Executable binary set to "~/Library/Developer/CoreSimulator/Devices/*/data/Containers/Bundle/Application/*/SweetpadB5iOS.app/SweetpadB5iOS".
+Architecture set to: arm64-apple-ios-simulator.
+Breakpoint 1: no locations (pending).
+WARNING:  Unable to resolve breakpoint to any actual locations.
+1 location added to breakpoint 1
+Process 42682 resuming
+Process 42682 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = Fatal error: diagnose probe
+      frame #4: 0x0000000100ac16e8 SweetpadB5iOS.debug.dylib`sweetpadCrashHook() at SweetpadCIApp.swift:13:9
+   10  	        p.pointee = 1
+   11  	    }
+   12  	    if args.contains("crash-fatal") {
+-> 13  	        fatalError("diagnose probe")
+    	        ^
+   14  	    }
+   15  	    if args.contains("crash-index") {
+   16  	        let values = [1, 2, 3]
+Target 0: (SweetpadB5iOS) stopped.
+@@SWEETPAD_BT@@
+* thread #1, queue = 'com.apple.main-thread', stop reason = Fatal error: diagnose probe
+    frame #0: 0x00000001c162aef4 libswiftCore.dylib`_swift_runtime_on_report
+    frame #1: 0x00000001c169ce9c libswiftCore.dylib`_swift_stdlib_reportFatalErrorInFile + 200
+    frame #2: 0x00000001c16c4c58 libswiftCore.dylib`closure #1 in _assertionFailure(_:_:file:line:flags:) + 296
+    frame #3: 0x00000001c16c415c libswiftCore.dylib`_assertionFailure(_:_:file:line:flags:) + 208
+  * frame #4: 0x0000000100ac16e8 SweetpadB5iOS.debug.dylib`sweetpadCrashHook() at SweetpadCIApp.swift:13:9
+    frame #5: 0x0000000100ac1ad8 SweetpadB5iOS.debug.dylib`SweetpadCIApp.init() at SweetpadCIApp.swift:27:9
+    frame #7: 0x00000001c9b09740 SwiftUI`static App.main() + 132
+    frame #9: 0x0000000100ac2324 SweetpadB5iOS.debug.dylib`main at SweetpadCIApp.swift:0
+    frame #10: 0x0000000100b68350 dyld_sim`start_sim + 20
+    frame #11: 0x0000000100db1e80 dyld`start + 6688
+@@SWEETPAD_END@@
+Process 42682 exited with status = 9 (0x00000009) killed

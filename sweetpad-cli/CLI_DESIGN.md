@@ -2025,6 +2025,19 @@ sections and runs under `-Q` (no command echo), so a captured transcript splits
 cleanly even though lldb interleaves prompts, app `os_log` lines, and its own
 diagnostics.
 
+**A crash's backtrace comes from the `-k` commands.** `lldb -b` runs its `-o`
+commands only while the process stops normally. A breakpoint is a normal stop,
+so an Objective-C throw carries the chain on through the exception's name and
+reason, the backtrace, and the kill. A crash (a Mach exception, a signal, a
+Swift runtime failure) ends the chain after `run` or `continue`, and lldb runs
+the `-k` commands instead, which are the backtrace and the kill again. A clean
+exit ends it at the first `po`, which fails for want of a process. Transcripts
+captured for each of these, on macOS and on the iPhone 17 simulator, are the
+parser's test input (`fixtures/diagnose`). On a simulator lldb attaches to a
+process launched suspended, and the attach stops it with `signal SIGSTOP`
+before the `continue`. The parser skips that stop, which it would otherwise
+read as the result of every run.
+
 **A crash reads as its signal.** On Apple platforms lldb stops on the Mach
 exception, before the kernel turns it into a signal, so a crash's stop reason
 is `EXC_BAD_ACCESS (code=1, address=0x10)` rather than `signal SIGSEGV`
@@ -2035,12 +2048,17 @@ in words with the exception named after it: `crashed with SIGSEGV: a bad
 memory access at 0x10 (EXC_BAD_ACCESS)`. The mapping covers the four
 exceptions with one settled meaning: `EXC_BAD_ACCESS` is `SIGSEGV` for code 1
 (`KERN_INVALID_ADDRESS`) or an Intel general protection fault and `SIGBUS`
-for any other code, `EXC_BREAKPOINT` is `SIGTRAP` (how Swift's runtime checks
-and `fatalError` stop on arm64), `EXC_BAD_INSTRUCTION` is `SIGILL`, and
-`EXC_ARITHMETIC` is `SIGFPE`. Any other exception (`EXC_GUARD`,
-`EXC_RESOURCE`, …) leaves `signal` null and the raw stop reason as the
-verdict. `stopReason` is always lldb's text as printed. The human line is
-`<bundle id>: <verdict>`.
+for any other code, `EXC_BREAKPOINT` is `SIGTRAP` (a trap instruction),
+`EXC_BAD_INSTRUCTION` is `SIGILL`, and `EXC_ARITHMETIC` is `SIGFPE`. Any other
+exception (`EXC_GUARD`, `EXC_RESOURCE`, …) leaves `signal` null and the raw
+stop reason as the verdict. A Swift runtime failure stops before its trap
+instruction, as `Fatal error: <message>` where the runtime reports it
+(`fatalError`, a failed `precondition`, an index out of range in a Debug
+build) and as `Swift runtime failure: <message>` where an optimized build
+traps in place. Both are `SIGTRAP`, the signal the app dies of without a
+debugger, and read `crashed with SIGTRAP: Swift fatal error "<message>"`.
+`stopReason` is always lldb's text as printed. The human line is `<bundle id>:
+<verdict>`.
 
 **`app debug --batch`** is the raw escape hatch: `--cmd` forwards to lldb's
 `-o/--one-line` verbatim (sweetpad's own `-o` already selects the output format,

@@ -1,0 +1,14 @@
+Process 42942 stopped
+* thread #1, stop reason = signal SIGSTOP
+      frame #0: 0x00000001044d0bf0 dyld`_dyld_start
+dyld`_dyld_start:
+->  0x1044d0bf0 <+0>:  mov    x0, sp
+    0x1044d0bf4 <+4>:  and    sp, x0, #0xfffffffffffffff0
+    0x1044d0bf8 <+8>:  mov    x29, #0x0                 ; =0 
+    0x1044d0bfc <+12>: mov    x30, #0x0                 ; =0 
+Target 0: (SweetpadB5iOS) stopped.
+Executable binary set to "~/Library/Developer/CoreSimulator/Devices/*/data/Containers/Bundle/Application/*/SweetpadB5iOS.app/SweetpadB5iOS".
+Architecture set to: arm64-apple-ios-simulator.
+Breakpoint 1: no locations (pending).
+WARNING:  Unable to resolve breakpoint to any actual locations.
+1 location added to breakpoint 1

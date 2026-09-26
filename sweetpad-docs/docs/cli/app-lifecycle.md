@@ -234,8 +234,17 @@ com.example.MyApp: crashed with SIGSEGV: a bad memory access at 0x10 (EXC_BAD_AC
 
 In `-o json`, that line is `verdict`, the signal is `signal`, and lldb's own wording stays in
 `stopReason`. A bad access at an unmapped address is `SIGSEGV` and any other bad access is `SIGBUS`.
-`EXC_BREAKPOINT` is `SIGTRAP`, which is how a failed Swift check or `fatalError` stops the app.
-`EXC_BAD_INSTRUCTION` is `SIGILL`, and `EXC_ARITHMETIC` is `SIGFPE`.
+`EXC_BREAKPOINT` is `SIGTRAP`, `EXC_BAD_INSTRUCTION` is `SIGILL`, and `EXC_ARITHMETIC` is `SIGFPE`.
+
+lldb stops a Swift `fatalError`, a failed `precondition`, or an index out of range before the trap,
+with the message Swift gives it. The report names `SIGTRAP`, the signal the app dies of, and quotes
+the message:
+
+```text
+com.example.MyApp: crashed with SIGTRAP: Swift fatal error "Index out of range"
+```
+
+The report of a crash also lists its backtrace, with the frame lldb stopped in marked `*`.
 
 ## The app's files
 

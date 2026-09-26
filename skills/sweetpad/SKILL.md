@@ -192,7 +192,9 @@ bounded by `--timeout` (default 30s). With `-o json`, read `verdict` for what
 happened and `signal` for the signal the app died of: lldb reports a crash as
 its Mach exception (`EXC_BAD_ACCESS`, `EXC_BREAKPOINT`), and the report maps it
 to `SIGSEGV`/`SIGBUS`, `SIGTRAP`, and so on, keeping lldb's text in
-`stopReason`.
+`stopReason`. A Swift `fatalError` or failed runtime check reads as `SIGTRAP`
+with Swift's message in the verdict, and `backtrace` holds the frames at the
+crash.
 
 When the app is running but seems stuck, `sweetpad app sample -o json` samples
 it for 3 seconds (`--seconds` to change) and reports what the main thread was

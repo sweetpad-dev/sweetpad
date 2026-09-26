@@ -1,0 +1,22 @@
+Current executable set to '/tmp/*/trapO' (arm64).
+Breakpoint 1: where = libobjc.A.dylib`objc_exception_throw, address = 0x000000018041c5b4
+warning: trapO was compiled with optimization - stepping may behave oddly; variables may not be available.
+Process 30167 launched: '/tmp/*/trapO' (arm64)
+Process 30167 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = Swift runtime failure: Index out of range
+      frame #1: 0x0000000100000778 trapO`specialized Array._checkSubscript() at <compiler-generated>:0 [opt] [inlined]
+-> 1   	let args = CommandLine.arguments
+   2   	let values = [1, 2, 3]
+   3   	// An index past the end: a bounds check that traps.
+   4   	print(values[args.count + 5])
+note: This address is not associated with a specific line of code. This may be due to compiler optimizations.
+Target 0: (trapO) stopped.
+@@SWEETPAD_BT@@
+* thread #1, queue = 'com.apple.main-thread', stop reason = Swift runtime failure: Index out of range
+    frame #0: 0x0000000100000778 trapO`Swift runtime failure: Index out of range at <compiler-generated>:0 [opt] [inlined]
+  * frame #1: 0x0000000100000778 trapO`specialized Array._checkSubscript() at <compiler-generated>:0 [opt] [inlined]
+    frame #2: 0x0000000100000778 trapO`specialized Array.subscript.getter() at <compiler-generated>:0 [opt] [inlined]
+    frame #3: 0x0000000100000778 trapO`main at trap.swift:4:13 [opt]
+    frame #4: 0x000000019bb37e80 dyld`start + 6688
+@@SWEETPAD_END@@
+Process 30167 exited with status = 9 (0x00000009) killed

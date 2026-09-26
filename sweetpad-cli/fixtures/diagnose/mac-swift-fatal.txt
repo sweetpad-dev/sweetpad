@@ -1,0 +1,44 @@
+Current executable set to '~/Library/Developer/Xcode/DerivedData/SweetpadCIApp-*/Build/Products/Debug/SweetpadB5Mac.app/Contents/MacOS/SweetpadB5Mac' (arm64).
+Breakpoint 1: where = libobjc.A.dylib`objc_exception_throw, address = 0x000000018041c5b4
+2026-09-27 00:09:38.082270+0200 SweetpadB5Mac[41813:21584288] [PreviewsAgentExecutorLibrary] Looking up debug dylib relative path
+2026-09-27 00:09:38.082507+0200 SweetpadB5Mac[41813:21584288] [PreviewsAgentExecutorLibrary] Found debug dylib relative path string `SweetpadB5Mac.debug.dylib`
+2026-09-27 00:09:38.082514+0200 SweetpadB5Mac[41813:21584288] [PreviewsAgentExecutorLibrary] Looking up debug dylib entry point name
+2026-09-27 00:09:38.082517+0200 SweetpadB5Mac[41813:21584288] [PreviewsAgentExecutorLibrary] No debug dylib entry point name defined.
+2026-09-27 00:09:38.082521+0200 SweetpadB5Mac[41813:21584288] [PreviewsAgentExecutorLibrary] Looking up debug dylib install name
+2026-09-27 00:09:38.082524+0200 SweetpadB5Mac[41813:21584288] [PreviewsAgentExecutorLibrary] Found debug dylib install name string `@rpath/SweetpadB5Mac.debug.dylib`
+2026-09-27 00:09:38.082527+0200 SweetpadB5Mac[41813:21584288] [PreviewsAgentExecutorLibrary] Looking for Previews JIT link entry point.
+2026-09-27 00:09:38.082726+0200 SweetpadB5Mac[41813:21584288] [PreviewsAgentExecutorLibrary] No Previews JIT entry point found.
+2026-09-27 00:09:38.082731+0200 SweetpadB5Mac[41813:21584288] [PreviewsAgentExecutorLibrary] Gave PreviewsInjection a chance to run and it returned, continuing with debug dylib.
+2026-09-27 00:09:38.082734+0200 SweetpadB5Mac[41813:21584288] [PreviewsAgentExecutorLibrary] Looking for main entry point.
+2026-09-27 00:09:38.082738+0200 SweetpadB5Mac[41813:21584288] [PreviewsAgentExecutorLibrary] Opening debug dylib with '@rpath/SweetpadB5Mac.debug.dylib'
+2026-09-27 00:09:38.082761+0200 SweetpadB5Mac[41813:21584288] [PreviewsAgentExecutorLibrary] Debug dylib handle: 0x39ac65aa0
+2026-09-27 00:09:38.082774+0200 SweetpadB5Mac[41813:21584288] [PreviewsAgentExecutorLibrary] No entry point found. Checking for alias.
+2026-09-27 00:09:38.082779+0200 SweetpadB5Mac[41813:21584288] [PreviewsAgentExecutorLibrary] Calling provided entry point.
+SweetpadB5Mac/SweetpadCIApp.swift:13: Fatal error: diagnose probe
+2026-09-27 00:09:38.083087+0200 SweetpadB5Mac[41813:21584288] SweetpadB5Mac/SweetpadCIApp.swift:13: Fatal error: diagnose probe
+Process 41813 launched: '~/Library/Developer/Xcode/DerivedData/SweetpadCIApp-*/Build/Products/Debug/SweetpadB5Mac.app/Contents/MacOS/SweetpadB5Mac' (arm64)
+Process 41813 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = Fatal error: diagnose probe
+      frame #4: 0x000000010002566c SweetpadB5Mac.debug.dylib`sweetpadCrashHook() at SweetpadCIApp.swift:13:9
+   10  	        p.pointee = 1
+   11  	    }
+   12  	    if args.contains("crash-fatal") {
+-> 13  	        fatalError("diagnose probe")
+    	        ^
+   14  	    }
+   15  	    if args.contains("crash-index") {
+   16  	        let values = [1, 2, 3]
+Target 0: (SweetpadB5Mac) stopped.
+@@SWEETPAD_BT@@
+* thread #1, queue = 'com.apple.main-thread', stop reason = Fatal error: diagnose probe
+    frame #0: 0x00000001b04951a8 libswiftCore.dylib`_swift_runtime_on_report
+    frame #1: 0x00000001b05afaec libswiftCore.dylib`_swift_stdlib_reportFatalErrorInFile + 204
+    frame #2: 0x00000001b05d98c8 libswiftCore.dylib`closure #1 in _assertionFailure(_:_:file:line:flags:) + 300
+    frame #3: 0x00000001b05d8d4c libswiftCore.dylib`_assertionFailure(_:_:file:line:flags:) + 216
+  * frame #4: 0x000000010002566c SweetpadB5Mac.debug.dylib`sweetpadCrashHook() at SweetpadCIApp.swift:13:9
+    frame #5: 0x0000000100025a5c SweetpadB5Mac.debug.dylib`SweetpadCIApp.init() at SweetpadCIApp.swift:27:9
+    frame #7: 0x00000001d4c768a8 SwiftUI`static App.main() + 208
+    frame #9: 0x00000001000262f8 SweetpadB5Mac.debug.dylib`main at SweetpadCIApp.swift:0
+    frame #10: 0x000000019bb37e80 dyld`start + 6688
+@@SWEETPAD_END@@
+Process 41813 exited with status = 9 (0x00000009) killed

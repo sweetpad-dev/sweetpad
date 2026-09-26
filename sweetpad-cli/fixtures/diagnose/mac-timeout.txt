@@ -1,0 +1,20 @@
+Current executable set to '~/Library/Developer/Xcode/DerivedData/SweetpadCIApp-*/Build/Products/Debug/SweetpadB5Mac.app/Contents/MacOS/SweetpadB5Mac' (arm64).
+Breakpoint 1: where = libobjc.A.dylib`objc_exception_throw, address = 0x000000018041c5b4
+2026-09-27 00:09:47.825975+0200 SweetpadB5Mac[41976:21585055] [PreviewsAgentExecutorLibrary] Looking up debug dylib relative path
+2026-09-27 00:09:47.826223+0200 SweetpadB5Mac[41976:21585055] [PreviewsAgentExecutorLibrary] Found debug dylib relative path string `SweetpadB5Mac.debug.dylib`
+2026-09-27 00:09:47.826229+0200 SweetpadB5Mac[41976:21585055] [PreviewsAgentExecutorLibrary] Looking up debug dylib entry point name
+2026-09-27 00:09:47.826234+0200 SweetpadB5Mac[41976:21585055] [PreviewsAgentExecutorLibrary] No debug dylib entry point name defined.
+2026-09-27 00:09:47.826237+0200 SweetpadB5Mac[41976:21585055] [PreviewsAgentExecutorLibrary] Looking up debug dylib install name
+2026-09-27 00:09:47.826240+0200 SweetpadB5Mac[41976:21585055] [PreviewsAgentExecutorLibrary] Found debug dylib install name string `@rpath/SweetpadB5Mac.debug.dylib`
+2026-09-27 00:09:47.826244+0200 SweetpadB5Mac[41976:21585055] [PreviewsAgentExecutorLibrary] Looking for Previews JIT link entry point.
+2026-09-27 00:09:47.826422+0200 SweetpadB5Mac[41976:21585055] [PreviewsAgentExecutorLibrary] No Previews JIT entry point found.
+2026-09-27 00:09:47.826428+0200 SweetpadB5Mac[41976:21585055] [PreviewsAgentExecutorLibrary] Gave PreviewsInjection a chance to run and it returned, continuing with debug dylib.
+2026-09-27 00:09:47.826432+0200 SweetpadB5Mac[41976:21585055] [PreviewsAgentExecutorLibrary] Looking for main entry point.
+2026-09-27 00:09:47.826436+0200 SweetpadB5Mac[41976:21585055] [PreviewsAgentExecutorLibrary] Opening debug dylib with '@rpath/SweetpadB5Mac.debug.dylib'
+2026-09-27 00:09:47.826454+0200 SweetpadB5Mac[41976:21585055] [PreviewsAgentExecutorLibrary] Debug dylib handle: 0x39ac65aa0
+2026-09-27 00:09:47.826470+0200 SweetpadB5Mac[41976:21585055] [PreviewsAgentExecutorLibrary] No entry point found. Checking for alias.
+2026-09-27 00:09:47.826475+0200 SweetpadB5Mac[41976:21585055] [PreviewsAgentExecutorLibrary] Calling provided entry point.
+2026-09-27 00:09:48.587970+0200 SweetpadB5Mac[41976:21585134] [Connection] Unable to get synchronousRemoteObjectProxy, error: Error Domain=NSCocoaErrorDomain Code=4097 "connection to service named com.apple.linkd.autoShortcut" UserInfo={NSDebugDescription=connection to service named com.apple.linkd.autoShortcut}
+2026-09-27 00:09:48.588003+0200 SweetpadB5Mac[41976:21585134] [Application] Error registering app with intents framework: Error Domain=NSCocoaErrorDomain Code=4097 "connection to service named com.apple.linkd.autoShortcut" UserInfo={NSDebugDescription=connection to service named com.apple.linkd.autoShortcut}
+2026-09-27 00:09:48.588321+0200 SweetpadB5Mac[41976:21585151] [Connection] Unable to get synchronousRemoteObjectProxy, error: Error Domain=NSCocoaErrorDomain Code=4097 "connection to service named com.apple.linkd.autoShortcut" UserInfo={NSDebugDescription=connection to service named com.apple.linkd.autoShortcut}
+2026-09-27 00:09:49.994279+0200 SweetpadB5Mac[41976:21585055] ApplePersistenceIgnoreState: Existing state will not be touched. New state will be written to $TMPDIR/dev.sweetpad.b5app.mac.savedState

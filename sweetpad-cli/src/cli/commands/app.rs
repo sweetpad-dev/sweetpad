@@ -4942,6 +4942,12 @@ fn push_one_line(args: &mut Vec<String>, cmd: &str) {
     args.push(cmd.to_string());
 }
 
+/// Push an lldb on-crash command (`-k <cmd>`) onto an argv.
+fn push_on_crash(args: &mut Vec<String>, cmd: &str) {
+    args.push("-k".to_string());
+    args.push(cmd.to_string());
+}
+
 /// Sentinels `app diagnose` prints (via `script print`) between the sections
 /// of its lldb chain, so a captured transcript splits into clean pieces even
 /// though lldb interleaves prompts and diagnostics. `-Q` suppresses lldb's
@@ -4957,6 +4963,13 @@ const SENTINEL_END: &str = "@@SWEETPAD_END@@";
 /// before killing it. `$arg1` is `objc_exception_throw`'s first argument — the
 /// `NSException` — valid only at that breakpoint, so the caller ignores those
 /// fields for a plain signal crash or a clean exit.
+///
+/// Batch mode runs the `-o` chain only while the process stops normally. A
+/// breakpoint (the Objective-C throw) is a normal stop, so the chain goes on
+/// and dumps the exception. A crash (a Mach exception, a signal, a Swift
+/// runtime failure) ends it after the start verb and runs the `-k` commands
+/// instead, which dump the backtrace and kill the app. A clean exit runs the
+/// chain until the first `po` fails for want of a process, which ends it too.
 fn diagnose_lldb_args(target: &LldbTarget) -> Vec<String> {
     let mut a = vec!["-b".to_string(), "-Q".to_string()];
     a.extend(target.attach_flag());
@@ -4966,11 +4979,19 @@ fn diagnose_lldb_args(target: &LldbTarget) -> Vec<String> {
     push_one_line(&mut a, "po (id)[(id)$arg1 name]");
     push_one_line(&mut a, &format!("script print('{SENTINEL_REASON}')"));
     push_one_line(&mut a, "po (id)[(id)$arg1 reason]");
-    push_one_line(&mut a, &format!("script print('{SENTINEL_BT}')"));
-    push_one_line(&mut a, "bt");
-    push_one_line(&mut a, &format!("script print('{SENTINEL_END}')"));
-    push_one_line(&mut a, "process kill");
-    push_one_line(&mut a, "quit");
+    let backtrace_and_kill = [
+        format!("script print('{SENTINEL_BT}')"),
+        "bt".to_string(),
+        format!("script print('{SENTINEL_END}')"),
+        "process kill".to_string(),
+        "quit".to_string(),
+    ];
+    for cmd in &backtrace_and_kill {
+        push_one_line(&mut a, cmd);
+    }
+    for cmd in &backtrace_and_kill {
+        push_on_crash(&mut a, cmd);
+    }
     a.extend(target.launch_suffix());
     a
 }
@@ -4984,8 +5005,7 @@ fn batch_lldb_args(target: &LldbTarget, cmds: &[String], on_crash: &[String]) ->
         push_one_line(&mut a, c);
     }
     for c in on_crash {
-        a.push("-k".to_string());
-        a.push(c.clone());
+        push_on_crash(&mut a, c);
     }
     a.extend(target.launch_suffix());
     a
@@ -5004,6 +5024,8 @@ struct DiagnoseOutcome {
     signal: Option<String>,
     /// A Mach exception stop, read into plain words.
     fault: Option<MachFault>,
+    /// The message of a Swift runtime failure stop (see [`swift_failure`]).
+    swift_failure: Option<String>,
     exit_status: Option<i32>,
     exception_name: Option<String>,
     exception_reason: Option<String>,
@@ -5019,9 +5041,12 @@ impl DiagnoseOutcome {
 /// Parse an `app diagnose` lldb transcript into an outcome. The first
 /// `stop reason = …` is the real stop — the trailing `exited with status = 9
 /// killed` from our own `process kill` carries none, so it never masquerades
-/// as the result. Section extraction is best-effort; the raw transcript is
-/// always carried alongside for the cases parsing can't cover.
-fn parse_diagnose(transcript: &str) -> DiagnoseOutcome {
+/// as the result. `attached` says lldb attached to a process launched
+/// suspended (the simulator path): attaching stops it with `signal SIGSTOP`
+/// before the `continue`, and that stop is skipped. Section extraction is
+/// best-effort; the raw transcript is always carried alongside for the cases
+/// parsing can't cover.
+fn parse_diagnose(transcript: &str, attached: bool) -> DiagnoseOutcome {
     // lldb's status lines start the line; the app's own log lines carry its
     // pid too, but inside a `Name[pid:tid]` prefix, never after `Process `.
     let pid = transcript.lines().find_map(|l| {
@@ -5033,21 +5058,30 @@ fn parse_diagnose(transcript: &str) -> DiagnoseOutcome {
         )
         .then_some(pid)
     });
-    let stop_reason = transcript.lines().find_map(|l| {
+    let mut stop_reasons = transcript.lines().filter_map(|l| {
         l.split_once("stop reason = ")
             .map(|(_, r)| r.trim().to_string())
     });
+    let stop_reason = match stop_reasons.next() {
+        Some(first) if attached && first == "signal SIGSTOP" => stop_reasons.next(),
+        first => first,
+    };
     let is_objc = stop_reason
         .as_deref()
         .is_some_and(|r| r.contains("Objective-C exception"));
     let fault = stop_reason.as_deref().and_then(mach_fault);
+    let swift_failure = stop_reason
+        .as_deref()
+        .and_then(swift_failure)
+        .map(str::to_string);
     let signal = stop_reason
         .as_deref()
         .and_then(|r| {
             r.strip_prefix("signal ")
                 .map(|s| s.split_whitespace().next().unwrap_or(s).to_string())
         })
-        .or_else(|| fault.as_ref().and_then(|f| f.signal).map(str::to_string));
+        .or_else(|| fault.as_ref().and_then(|f| f.signal).map(str::to_string))
+        .or_else(|| swift_failure.as_ref().map(|_| "SIGTRAP".to_string()));
     // A clean exit only counts when nothing stopped us first.
     let exit_status = if stop_reason.is_none() {
         transcript
@@ -5095,6 +5129,7 @@ fn parse_diagnose(transcript: &str) -> DiagnoseOutcome {
         stop_reason,
         signal,
         fault,
+        swift_failure,
         exit_status,
         exception_name,
         exception_reason,
@@ -5167,6 +5202,18 @@ fn mach_fault(reason: &str) -> Option<MachFault> {
         signal,
         what,
     })
+}
+
+/// The message of a stop lldb reports for a Swift runtime failure, which it
+/// catches before the trap instruction that ends the app: `Fatal error:
+/// <message>` where the runtime reports one (`fatalError`, a failed
+/// `precondition`, a nil force-unwrap, an index out of range in a Debug
+/// build), and `Swift runtime failure: <message>` where an optimized build
+/// traps in place. Either way the app dies of `SIGTRAP` without a debugger.
+fn swift_failure(reason: &str) -> Option<&str> {
+    reason
+        .strip_prefix("Fatal error: ")
+        .or_else(|| reason.strip_prefix("Swift runtime failure: "))
 }
 
 /// A `--timeout <secs>` value as a `Duration`; `0` means unbounded.
@@ -5334,7 +5381,7 @@ fn diagnose_mac(ctx: &mut Context, plan: &RunPlan, timeout_secs: u64) -> Command
             killed.borrow_mut().clone_from(&pids);
             pids
         })?;
-    let outcome = parse_diagnose(&transcript);
+    let outcome = parse_diagnose(&transcript, false);
     let pid = outcome.pid.or_else(|| {
         killed
             .borrow()
@@ -5370,7 +5417,7 @@ fn diagnose_sim(ctx: &mut Context, plan: &RunPlan, udid: &str, timeout_secs: u64
         pid: Some(pid),
         timed_out,
         timeout_secs,
-        outcome: parse_diagnose(&transcript),
+        outcome: parse_diagnose(&transcript, true),
         transcript,
     }))
 }
@@ -5409,9 +5456,14 @@ impl DiagnoseReport {
                 let reason = outcome.exception_reason.as_deref().unwrap_or("<no reason>");
                 format!("caught Objective-C exception {name}: {reason}")
             }
-            (None, Some(sig), _) => match &outcome.fault {
-                Some(fault) => format!("crashed with {sig}: {} ({})", fault.what, fault.exception),
-                None => format!("crashed with {sig}"),
+            (None, Some(sig), _) => match (&outcome.fault, &outcome.swift_failure) {
+                (Some(fault), _) => {
+                    format!("crashed with {sig}: {} ({})", fault.what, fault.exception)
+                }
+                (None, Some(message)) => {
+                    format!("crashed with {sig}: Swift fatal error \"{message}\"")
+                }
+                (None, None) => format!("crashed with {sig}"),
             },
             (None, None, Some(status)) => {
                 format!("exited cleanly (status {status}) — no exception or crash observed")
@@ -7772,7 +7824,7 @@ mod tests {
 * frame #0: 0x0001 libobjc.A.dylib`objc_exception_throw\n    \
 frame #1: 0x0002 CoreFoundation`+[NSException raise:format:] + 128\n\
 @@SWEETPAD_END@@\nProcess 67090 exited with status = 9 (0x00000009) killed\n";
-        let o = parse_diagnose(t);
+        let o = parse_diagnose(t, false);
         assert_eq!(o.pid, Some(67090));
         assert!(o.stopped());
         assert_eq!(o.stop_reason.as_deref(), Some("hit Objective-C exception"));
@@ -7785,23 +7837,6 @@ frame #1: 0x0002 CoreFoundation`+[NSException raise:format:] + 128\n\
     }
 
     #[test]
-    fn parse_clean_exit_transcript() {
-        // No stop reason; the `po` sections carry lldb errors we must drop.
-        let t = "Process 67104 launched: '/tmp/okbin' (arm64)\n\
-Process 67104 exited with status = 0 (0x00000000)\n\
-@@SWEETPAD_EXC@@\n\
-error: unable to evaluate expression while the process is exited\n\
-@@SWEETPAD_REASON@@\n@@SWEETPAD_BT@@\n@@SWEETPAD_END@@\n";
-        let o = parse_diagnose(t);
-        assert_eq!(o.pid, Some(67104));
-        assert!(!o.stopped());
-        assert_eq!(o.exit_status, Some(0));
-        assert_eq!(o.exception_name, None);
-        assert_eq!(o.exception_reason, None);
-        assert!(o.backtrace.is_empty());
-    }
-
-    #[test]
     fn a_run_still_going_names_no_pid_from_the_apps_own_log() {
         // Captured from a `diagnose --mac` that timed out: lldb had not
         // returned from `run`, and the app's log lines carry its pid in their
@@ -7810,24 +7845,191 @@ error: unable to evaluate expression while the process is exited\n\
 Breakpoint 1: where = libobjc.A.dylib`objc_exception_throw, address = 0x01\n\
 2026-09-26 20:19:01.084636+0200 App[67475:20392328] [Connection] Unable to re-register with \
 Process Instance Registry, error: Error Domain=NSCocoaErrorDomain Code=4097\r\n";
-        assert_eq!(parse_diagnose(t).pid, None);
+        assert_eq!(parse_diagnose(t, false).pid, None);
+    }
+
+    /// A real `app diagnose` lldb transcript from `fixtures/diagnose`: the CI
+    /// fixture app, given launch-argument crash hooks, on macOS and on the
+    /// iPhone 17 simulator, and a Swift probe built with `-O`, with the
+    /// machine's paths globbed.
+    fn diagnose_fixture(name: &str) -> String {
+        let path = format!(
+            "{}/fixtures/diagnose/{name}.txt",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"))
     }
 
     #[test]
-    fn parse_signal_crash_transcript() {
-        // A plain signal crash (not an ObjC throw): signal set, no exception.
-        let t = "Process 30835 stopped\n\
-* thread #1, queue = 'com.apple.main-thread', stop reason = signal SIGABRT\n\
-@@SWEETPAD_EXC@@\nerror: no Objective-C exception\n\
-@@SWEETPAD_REASON@@\n@@SWEETPAD_BT@@\n  \
-* frame #0: 0x00 libsystem_kernel.dylib`__pthread_kill + 8\n\
-@@SWEETPAD_END@@\n";
-        let o = parse_diagnose(t);
-        assert_eq!(o.pid, Some(30835));
-        assert!(o.stopped());
-        assert_eq!(o.signal.as_deref(), Some("SIGABRT"));
-        assert_eq!(o.exception_name, None); // not an ObjC exception → no $arg1
-        assert_eq!(o.backtrace.len(), 1);
+    fn the_crash_path_runs_as_on_crash_commands() {
+        let on = |flag: &str, args: &[String]| -> Vec<String> {
+            args.windows(2)
+                .filter(|w| w[0] == flag)
+                .map(|w| w[1].clone())
+                .collect()
+        };
+        let tail = [
+            "script print('@@SWEETPAD_BT@@')",
+            "bt",
+            "script print('@@SWEETPAD_END@@')",
+            "process kill",
+            "quit",
+        ];
+        for kind in ["mac", "sim"] {
+            let args = plan_args(kind);
+            // A crash ends the `-o` chain after the start verb, so the
+            // backtrace and the kill it needs are the `-k` commands.
+            assert_eq!(on("-k", &args), tail, "{kind}");
+            // An Objective-C throw is a breakpoint, which the chain goes on
+            // from: the exception, then the same backtrace and kill.
+            let one_line = on("-o", &args);
+            assert_eq!(
+                one_line[..6],
+                [
+                    "breakpoint set -n objc_exception_throw",
+                    if kind == "mac" { "run" } else { "continue" },
+                    "script print('@@SWEETPAD_EXC@@')",
+                    "po (id)[(id)$arg1 name]",
+                    "script print('@@SWEETPAD_REASON@@')",
+                    "po (id)[(id)$arg1 reason]",
+                ],
+                "{kind}"
+            );
+            assert_eq!(one_line[6..], tail, "{kind}");
+        }
+    }
+
+    #[test]
+    fn a_crash_reports_the_backtrace_the_on_crash_commands_print() {
+        let cases = [
+            (
+                "mac-segv",
+                false,
+                "EXC_BAD_ACCESS (code=1, address=0x10)",
+                "crashed with SIGSEGV: a bad memory access at 0x10 (EXC_BAD_ACCESS)",
+                "sweetpadCrashHook() at SweetpadCIApp.swift:10:19",
+            ),
+            (
+                "sim-segv",
+                true,
+                "EXC_BAD_ACCESS (code=1, address=0x10)",
+                "crashed with SIGSEGV: a bad memory access at 0x10 (EXC_BAD_ACCESS)",
+                "sweetpadCrashHook() at SweetpadCIApp.swift:10:19",
+            ),
+            (
+                "mac-swift-fatal",
+                false,
+                "Fatal error: diagnose probe",
+                "crashed with SIGTRAP: Swift fatal error \"diagnose probe\"",
+                "_swift_runtime_on_report",
+            ),
+            (
+                "sim-swift-fatal",
+                true,
+                "Fatal error: diagnose probe",
+                "crashed with SIGTRAP: Swift fatal error \"diagnose probe\"",
+                "_swift_runtime_on_report",
+            ),
+            (
+                "mac-swift-trap-optimized",
+                false,
+                "Swift runtime failure: Index out of range",
+                "crashed with SIGTRAP: Swift fatal error \"Index out of range\"",
+                "Swift runtime failure: Index out of range",
+            ),
+        ];
+        for (name, attached, stop, verdict, first_frame) in cases {
+            let t = diagnose_fixture(name);
+            // Nothing after the start verb in the `-o` chain ran.
+            assert!(!t.contains(SENTINEL_EXC), "{name}");
+            let o = parse_diagnose(&t, attached);
+            assert!(o.stopped(), "{name}");
+            assert_eq!(o.stop_reason.as_deref(), Some(stop), "{name}");
+            assert_eq!(o.exit_status, None, "{name}: killed by us, not an exit");
+            assert_eq!(o.exception_name, None, "{name}");
+            assert!(
+                o.backtrace[0].contains(first_frame),
+                "{name}: {:?}",
+                o.backtrace
+            );
+            assert!(
+                o.backtrace.last().unwrap().contains("dyld`start"),
+                "{name}: {:?}",
+                o.backtrace
+            );
+            let json = diagnose_report(o, &t).json();
+            assert_eq!(json["verdict"], verdict, "{name}");
+        }
+    }
+
+    #[test]
+    fn the_simulator_attach_stop_is_not_the_result() {
+        // Attaching to the suspended app stops it with SIGSTOP before the
+        // `continue`, and lldb reports that stop like any other.
+        let t = diagnose_fixture("sim-segv");
+        assert!(t.starts_with("Process 42569 stopped\n* thread #1, stop reason = signal SIGSTOP"));
+        let o = parse_diagnose(&t, true);
+        assert_eq!(o.pid, Some(42569));
+        assert_eq!(o.signal.as_deref(), Some("SIGSEGV"));
+
+        // A launch lldb owns has no attach stop to skip.
+        let o = parse_diagnose(&t, false);
+        assert_eq!(o.stop_reason.as_deref(), Some("signal SIGSTOP"));
+    }
+
+    #[test]
+    fn a_clean_exit_ends_the_chain_at_the_first_expression() {
+        // The `po` after a clean exit fails for want of a process, and a
+        // failed command ends the batch: no backtrace section, no kill.
+        for (name, attached, pid) in [
+            ("mac-clean-exit", false, 41939),
+            ("sim-clean-exit", true, 42802),
+        ] {
+            let t = diagnose_fixture(name);
+            assert!(
+                t.contains(SENTINEL_EXC) && !t.contains(SENTINEL_BT),
+                "{name}"
+            );
+            let o = parse_diagnose(&t, attached);
+            assert_eq!(o.pid, Some(pid), "{name}");
+            assert!(!o.stopped(), "{name}");
+            assert_eq!(o.exit_status, Some(0), "{name}");
+            assert_eq!(o.exception_name, None, "{name}");
+            assert!(o.backtrace.is_empty(), "{name}");
+            assert_eq!(
+                diagnose_report(o, &t).verdict(),
+                "exited cleanly (status 0) — no exception or crash observed",
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_timed_out_run_reports_no_stop() {
+        // lldb is killed while `run` or `continue` still blocks: the
+        // transcript ends before any stop of the app's own.
+        for (name, attached, pid) in [
+            ("mac-timeout", false, None),
+            ("sim-timeout", true, Some(42942)),
+        ] {
+            let t = diagnose_fixture(name);
+            let o = parse_diagnose(&t, attached);
+            assert_eq!(o.pid, pid, "{name}");
+            assert!(!o.stopped(), "{name}");
+            assert_eq!(o.signal, None, "{name}");
+            assert_eq!(o.exit_status, None, "{name}");
+            let report = DiagnoseReport {
+                timed_out: true,
+                ..diagnose_report(o, &t)
+            };
+            let json = report.json();
+            assert_eq!(json["stopped"], false, "{name}");
+            assert_eq!(
+                json["verdict"],
+                "no exception or crash within 30s — the app was still running and has been killed",
+                "{name}"
+            );
+        }
     }
 
     /// The head of a transcript `app diagnose`'s lldb chain printed for a C
@@ -7893,7 +8095,7 @@ Target 0: (crash) stopped.\n"
         ];
         for (stop, signal, verdict) in cases {
             let t = mach_stop_transcript(stop);
-            let o = parse_diagnose(&t);
+            let o = parse_diagnose(&t, false);
             assert_eq!(o.pid, Some(43073), "{stop}");
             assert!(o.stopped(), "{stop}");
             assert_eq!(o.stop_reason.as_deref(), Some(stop));
@@ -7919,7 +8121,7 @@ Target 0: (crash) stopped.\n"
         assert_eq!(mach_fault("signal SIGABRT"), None);
         assert_eq!(mach_fault("hit Objective-C exception"), None);
         let t = mach_stop_transcript("EXC_GUARD (code=0x1, subcode=0x2)");
-        let o = parse_diagnose(&t);
+        let o = parse_diagnose(&t, false);
         assert_eq!(o.signal, None);
         assert_eq!(
             diagnose_report(o, &t).verdict(),
