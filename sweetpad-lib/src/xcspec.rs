@@ -503,19 +503,31 @@ fn ingest_xcspec_entry(entry: &Value, file_domain: Option<&str>, catalog: &mut C
     }
 }
 
+/// Index every SDK under `dir`. Each `*.sdk` entry is read for its
+/// `SDKSettings.plist` and never descended into, since an SDK tree holds
+/// thousands of directories and no further SDK. The version-named symlinks
+/// beside an SDK are `*.sdk` entries too, so they are read as more names for it
+/// (see [`extract_sdksettings`]) but not walked. No other symlinked directory
+/// is followed.
 fn walk_sdksettings(dir: &Path, catalog: &mut Catalog) -> Result<(), Error> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Ok(());
     };
     // Sorted like `walk_xcspec`: several names reach the same SDK, and which
     // one `sdk_paths` keeps must not depend on directory order.
-    let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
-    paths.sort();
-    for p in paths {
-        if p.is_dir() {
-            walk_sdksettings(&p, catalog)?;
-        } else if p.file_name() == Some(OsStr::new("SDKSettings.plist")) {
-            extract_sdksettings(&p, catalog)?;
+    let mut entries: Vec<fs::DirEntry> = entries.flatten().collect();
+    entries.sort_by_key(fs::DirEntry::file_name);
+    for entry in entries {
+        let path = entry.path();
+        if path.extension() == Some(OsStr::new("sdk")) {
+            let plist = path.join("SDKSettings.plist");
+            if plist.is_file() {
+                extract_sdksettings(&plist, catalog)?;
+            }
+        } else if entry.file_type().is_ok_and(|t| t.is_dir()) {
+            walk_sdksettings(&path, catalog)?;
+        } else if entry.file_name() == "SDKSettings.plist" {
+            extract_sdksettings(&path, catalog)?;
         }
     }
     Ok(())
@@ -895,6 +907,35 @@ mod tests {
         let simulator_sdk = simulator.join("iPhoneSimulator27.0.sdk");
         assert_eq!(path("iphonesimulator27.0"), Some(simulator_sdk.clone()));
         assert_eq!(path("iphonesimulator"), Some(simulator_sdk));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn sdk_walk_reads_each_sdk_without_walking_its_tree() {
+        // A settings file deep inside an SDK, or behind a symlinked directory,
+        // is never reached: the walk stops at `*.sdk` and follows no links.
+        let root = std::env::temp_dir().join(format!("sweetpad-sdk-walk-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let cached = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("xcspec-cache/xcode-27.0.0/sdksettings/Platforms");
+        let plant = |platform: &str, sdk_dir: &Path| {
+            fs::create_dir_all(sdk_dir).unwrap();
+            let rel =
+                format!("{platform}.platform/Developer/SDKs/{platform}.sdk/SDKSettings.plist");
+            fs::copy(cached.join(rel), sdk_dir.join("SDKSettings.plist")).unwrap();
+        };
+        let platforms = root.join("Platforms");
+        let macos = platforms.join("MacOSX.platform/Developer/SDKs/MacOSX.sdk");
+        plant("MacOSX", &macos);
+        plant("iPhoneOS", &macos.join("usr/share/iPhoneOS.sdk"));
+        let elsewhere = root.join("elsewhere/WatchOS.platform");
+        plant("WatchOS", &elsewhere.join("Developer/SDKs/WatchOS.sdk"));
+        std::os::unix::fs::symlink(&elsewhere, platforms.join("WatchOS.platform")).unwrap();
+
+        let cat = load_catalog(&root.join("no-xcspecs"), Some(&platforms)).unwrap();
+        let names: Vec<&str> = cat.sdks.keys().map(String::as_str).collect();
+        assert_eq!(names, ["macosx27.0"]);
+        assert_eq!(cat.sdk_paths.get("macosx"), Some(&macos));
         let _ = fs::remove_dir_all(&root);
     }
 

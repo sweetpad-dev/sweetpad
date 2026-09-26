@@ -141,8 +141,8 @@ pub struct XcodeLayout {
     pub developer_dir: PathBuf,
     /// `…/Contents/SharedFrameworks` — recursively walked for `*.xcspec`.
     pub xcspec_root: PathBuf,
-    /// `…/Contents/Developer/Platforms` — recursively walked for
-    /// `SDKSettings.plist`.
+    /// `…/Contents/Developer/Platforms` — walked for the `SDKSettings.plist`
+    /// of each `*.sdk` directory, without descending into the SDKs.
     pub sdksettings_root: PathBuf,
     /// `CFBundleShortVersionString` (e.g. `26.5`); empty if unreadable.
     pub short_version: String,
