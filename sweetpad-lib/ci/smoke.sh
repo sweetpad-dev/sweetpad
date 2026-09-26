@@ -403,7 +403,9 @@ ok "pbxproj group remove refuses a group that still has children"
 out=$("$BIN" pbxproj membership list --target SweetpadCIApp --project "$TREE_PROJ" --json)
 assert_json "$out" "[e['phase'] for e in d['targets'][0]['explicit'] if 'Added' in e['path']]" "['sources']"
 assert_json "$out" "[e['phase'] for e in d['targets'][0]['explicit'] if 'Batched' in e['path']]" "['sources']"
-expect_code 1 "$BIN" pbxproj membership add --target SweetpadCIApp --phase sources \
+# Naming no file is a usage error; naming a group where a file reference goes
+# depends on the project, so it is not.
+expect_code 2 "$BIN" pbxproj membership add --target SweetpadCIApp --phase sources \
   --project "$TREE_PROJ"
 expect_code 1 "$BIN" pbxproj membership add --fileref "$GROUP" --target SweetpadCIApp \
   --phase sources --project "$TREE_PROJ"
@@ -647,8 +649,8 @@ assert_json "$out" "'generic/platform=macOS' in d['commands'][0]['command']" "Tr
 out=$("$BIN" archive --project "$APP" --scheme SweetpadCIApp --show-command --json)
 assert_json "$out" "'generic/platform=iOS' in d['commands'][0]['command']" "True"
 ok "archive auto-targets each scheme's own platform"
-expect_code 1 "$BIN" archive --project "$APP" --scheme SweetpadCIApp --on toaster --show-command
-ok "archive --on with a non-platform exits 1"
+expect_code 2 "$BIN" archive --project "$APP" --scheme SweetpadCIApp --on toaster --show-command
+ok "archive --on with a non-platform exits 2 (usage error)"
 
 expect_code_in "$SPM_DIR" 1 "$BIN" archive
 ok "archive refused for a Swift package"

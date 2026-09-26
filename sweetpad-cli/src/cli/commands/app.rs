@@ -4403,7 +4403,8 @@ fn debug(
         return Err(CliError::new(
             "'app debug --batch' streams lldb output and has no machine-readable form; use \
              'app diagnose -o json' for a structured exception/crash report",
-        ));
+        )
+        .kind(ErrorKind::Usage));
     }
     let opts = lldb_run_opts(stage_target, launch, passthrough);
     let plan = plan(ctx, &opts)?;
@@ -5613,6 +5614,11 @@ struct MacShot {
 /// `stop`: an explicit `--pid` wins, then the recorded last launch, then the
 /// resolved build target — no build, ever.
 fn screenshot(ctx: &mut Context, args: &ScreenshotArgs) -> CommandResult {
+    if args.window == Some(0) {
+        return Err(
+            CliError::new("--window is 1-based (1 is the frontmost)").kind(ErrorKind::Usage)
+        );
+    }
     if let Some(pid) = args.pid {
         if explicit_targeting(ctx) {
             return Err(CliError::new(
@@ -6089,11 +6095,6 @@ fn wait_for_window(
     shot: &MacShot,
     index: Option<usize>,
 ) -> Result<(macwin::WindowInfo, usize), CliError> {
-    if index == Some(0) {
-        return Err(
-            CliError::new("--window is 1-based (1 is the frontmost)").kind(ErrorKind::Usage)
-        );
-    }
     if !macwin::has_screen_capture_access() {
         if ctx.out.is_interactive() {
             macwin::request_screen_capture_access();
@@ -6575,6 +6576,9 @@ fn ui_act(
              the app exposes"
         ))
         .kind(ErrorKind::Usage));
+    }
+    if query.nth == Some(0) {
+        return Err(CliError::new("--nth is 1-based (1 is the first)").kind(ErrorKind::Usage));
     }
     let shot = resolve_ui_app(ctx, app.pid)?;
     let pid = ui_preflight(ctx, &shot)?;

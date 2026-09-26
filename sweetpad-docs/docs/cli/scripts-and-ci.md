@@ -64,8 +64,11 @@ $ sweetpad build --on "nope-does-not-exist" -o json
 `tool_missing`, or `user_cancel`. It mirrors the exit-code taxonomy, so a script can branch on either.
 
 `usage_error` goes with exit 2 when SweetPad parses a flag but won't take it, such as `--failed` on
-`test build` or `--on` together with `--destination`. A flag that doesn't parse at all also exits 2,
-but prints the argument parser's plain-text error, even under `-o json`.
+`test build` or `--on` together with `--destination`. It also covers an argument no project could
+make valid, such as `archive --on toaster` or a `pbxproj membership add` that names no file. SweetPad
+checks these before it looks for a project, so you get the same answer from any directory. A flag
+that doesn't parse at all also exits 2, but prints the argument parser's plain-text error, even under
+`-o json`.
 
 :::warning
 

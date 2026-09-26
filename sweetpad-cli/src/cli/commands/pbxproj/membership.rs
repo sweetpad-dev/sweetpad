@@ -26,7 +26,7 @@ use clap::{Args, Subcommand};
 
 use crate::cli::output::Output;
 use crate::cli::pbxedit::Editable;
-use crate::cli::{CliError, CommandResult, ContainerArgs, Context, Render, Rendered};
+use crate::cli::{CliError, CommandResult, ContainerArgs, Context, ErrorKind, Render, Rendered};
 use sweetpad_lib::membership::{
     Addition, ExcludeOutcome, FileEntry, IncludeOutcome, Phase, Removal, RootReport,
 };
@@ -346,9 +346,10 @@ impl Render for AddResult {
 
 fn add(ctx: &mut Context, args: &AddArgs) -> CommandResult {
     if args.paths.is_empty() && args.filerefs.is_empty() {
-        return Err(CliError::new(
-            "name at least one file, by path or by '--fileref <ID>'",
-        ));
+        return Err(
+            CliError::new("name at least one file, by path or by '--fileref <ID>'")
+                .kind(ErrorKind::Usage),
+        );
     }
     let (xcodeproj, mut document) =
         super::open_document_mut(ctx, &args.container, args.target.as_slice(), args.force)?;

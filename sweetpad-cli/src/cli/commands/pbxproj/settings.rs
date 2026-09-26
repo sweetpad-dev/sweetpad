@@ -29,7 +29,7 @@ use clap::{Args, Subcommand};
 
 use crate::cli::output::Output;
 use crate::cli::pbxedit::Editable;
-use crate::cli::{CliError, CommandResult, ContainerArgs, Context, Render, Rendered};
+use crate::cli::{CliError, CommandResult, ContainerArgs, Context, ErrorKind, Render, Rendered};
 use sweetpad_core::build_settings::{BuildSettingsOptions, resolve_build_settings};
 use sweetpad_lib::membership::ExcludeOutcome;
 use sweetpad_lib::stored_settings::{Assignment, Change, ConfigSettings, Op, Scope, Setting};
@@ -262,10 +262,10 @@ fn setting_json(setting: Option<&Setting>) -> serde_json::Value {
 }
 
 fn set(ctx: &mut Context, args: &SetArgs) -> CommandResult {
+    let assignments = parse_assignments(&args.assignments)?;
     let (xcodeproj, mut document) =
         super::open_document_mut(ctx, &args.container, &args.targets, args.force)?;
 
-    let assignments = parse_assignments(&args.assignments)?;
     let scopes = scopes_of(&args.targets);
     let mut changes = Vec::new();
     for scope in &scopes {
@@ -344,10 +344,10 @@ fn set(ctx: &mut Context, args: &SetArgs) -> CommandResult {
 }
 
 fn unset(ctx: &mut Context, args: &UnsetArgs) -> CommandResult {
+    let keys = parse_keys(&args.keys)?;
     let (xcodeproj, mut document) =
         super::open_document_mut(ctx, &args.container, &args.targets, args.force)?;
 
-    let keys = parse_keys(&args.keys)?;
     let scopes = scopes_of(&args.targets);
     let mut changes = Vec::new();
     for scope in &scopes {
@@ -510,7 +510,8 @@ fn split_assignment(input: &str) -> Result<(String, bool, String), CliError> {
     }
     Err(CliError::new(format!(
         "'{input}' is not a KEY=VALUE assignment (use KEY=VALUE, or KEY+=VALUE to append)"
-    )))
+    ))
+    .kind(ErrorKind::Usage))
 }
 
 fn parse_keys(inputs: &[String]) -> Result<Vec<String>, CliError> {
@@ -528,7 +529,8 @@ fn parse_keys(inputs: &[String]) -> Result<Vec<String>, CliError> {
                     '=' if depth == 0 => {
                         return Err(CliError::new(format!(
                             "'{k}' names a key to remove — pass the key only, without a value"
-                        )));
+                        ))
+                        .kind(ErrorKind::Usage));
                     }
                     _ => {}
                 }
@@ -541,14 +543,16 @@ fn parse_keys(inputs: &[String]) -> Result<Vec<String>, CliError> {
 
 fn validate_key(key: &str, input: &str) -> Result<(), CliError> {
     if key.is_empty() {
-        return Err(CliError::new(format!(
-            "'{input}' has no setting key before the '='"
-        )));
+        return Err(
+            CliError::new(format!("'{input}' has no setting key before the '='"))
+                .kind(ErrorKind::Usage),
+        );
     }
     if key.chars().any(char::is_whitespace) {
-        return Err(CliError::new(format!(
-            "setting key '{key}' contains whitespace"
-        )));
+        return Err(
+            CliError::new(format!("setting key '{key}' contains whitespace"))
+                .kind(ErrorKind::Usage),
+        );
     }
     Ok(())
 }
@@ -867,9 +871,12 @@ mod tests {
             split_assignment("DEVELOPMENT_TEAM=").unwrap(),
             ("DEVELOPMENT_TEAM".into(), false, String::new())
         );
-        assert!(split_assignment("NO_EQUALS_HERE").is_err());
-        assert!(split_assignment("=value").is_err());
-        assert!(split_assignment("BAD KEY=1").is_err());
+        // A malformed argument is refused on its own spelling, before any
+        // project is opened: a usage error.
+        for bad in ["NO_EQUALS_HERE", "=value", "BAD KEY=1"] {
+            let err = split_assignment(bad).expect_err(bad);
+            assert_eq!(err.error_kind(), ErrorKind::Usage, "{bad}");
+        }
     }
 
     #[test]
@@ -907,7 +914,8 @@ mod tests {
 
     #[test]
     fn unset_keys_reject_values() {
-        assert!(parse_keys(&["SWIFT_VERSION=5.0".into()]).is_err());
+        let err = parse_keys(&["SWIFT_VERSION=5.0".into()]).expect_err("a value was taken");
+        assert_eq!(err.error_kind(), ErrorKind::Usage);
         assert_eq!(
             parse_keys(&["CODE_SIGN_IDENTITY[sdk=iphoneos*]".into()]).unwrap(),
             vec!["CODE_SIGN_IDENTITY[sdk=iphoneos*]".to_string()]

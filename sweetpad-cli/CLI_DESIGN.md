@@ -306,14 +306,20 @@ Exit 2 has two sources. clap reports what it can't parse, in its own text
 even under `--json`. The command reports what it parses but refuses: a flag
 on a verb it means nothing to (`test build --failed`, `build diagnostics
 --clean`), two flags that can't go together (`--on` with `--destination`,
-`--gh-annotations` with `-o json`), a flag value out of range (`--pid 0`).
-Those take the envelope with `code: "usage_error"`. The typed flags alone
-decide it, and a committed default never causes one: `[run] hot = true`
-yields to the flags a hot session would refuse (`--no-logs`, `--detach`,
-`--wait-for-debugger`) with a one-line note, since the flags were typed for
-this run and the default was not, and only a typed `--hot` refuses them. So
-the agent-facing `run --no-logs` works in every project. A flag refused
-because of what the project or destination turns out to be (`--scheme` on a Swift
+`--gh-annotations` with `-o json`, `app debug --batch` with `-o json`), a
+flag value out of range (`--pid 0`, `--nth 0`, `archive --on toaster`), an
+argument no project could make valid (`pbxproj membership add` naming no
+file, a `pbxproj settings set` argument with no `=`, a `project new` name
+with a space, `context alias mac`, an unknown `help` topic). Those take the
+envelope with `code: "usage_error"`. Where the command line alone settles
+one, the command checks it before looking for a project, so the refusal is
+the same from any directory. The typed flags alone decide it, and a
+committed default never causes one: `[run] hot = true` yields to the flags
+a hot session would refuse (`--no-logs`, `--detach`, `--wait-for-debugger`)
+with a one-line note, since the flags were typed for this run and the
+default was not, and only a typed `--hot` refuses them. So the agent-facing
+`run --no-logs` works in every project. A flag refused because
+of what the project or destination turns out to be (`--scheme` on a Swift
 package, `--keep-sandbox` off macOS) keeps its own code, since the same flags
 work in another project.
 

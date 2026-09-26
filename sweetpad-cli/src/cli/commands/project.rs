@@ -69,6 +69,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
 fn new(ctx: &mut Context, args: &NewArgs) -> CommandResult {
     let interactive = ctx.out.is_interactive();
     let color = ctx.out.use_color();
+    validate_typed(args)?;
     let cwd = std::env::current_dir()
         .map_err(|e| CliError::new(format!("cannot read current directory: {e}")))?;
 
@@ -113,6 +114,24 @@ struct Answers {
     bundle_id: String,
     deployment_target: String,
     git: bool,
+}
+
+/// Refuse a typed name, bundle identifier, or deployment target that can't
+/// be used, before the wizard asks anything else. The command line alone
+/// decides it, so it is a usage error. A name taken from the current
+/// directory is checked later, with the rest of the answers.
+fn validate_typed(args: &NewArgs) -> Result<(), CliError> {
+    let usage = |e: String| CliError::new(e).kind(ErrorKind::Usage);
+    if let Some(name) = &args.name {
+        scaffold::validate_name(name).map_err(usage)?;
+    }
+    if let Some(bundle_id) = &args.bundle_id {
+        scaffold::validate_bundle_id(bundle_id).map_err(usage)?;
+    }
+    if let Some(target) = &args.deployment_target {
+        scaffold::validate_deployment_target(target).map_err(usage)?;
+    }
+    Ok(())
 }
 
 fn dir_basename(dir: &Path) -> Option<String> {

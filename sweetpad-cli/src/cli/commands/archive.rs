@@ -107,6 +107,10 @@ impl Render for ArchiveReport {
 
 pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
     ctx.targeting = args.target.clone().into();
+    resolve::reject_on_destination_conflict(ctx)?;
+    if let Some(on) = &ctx.targeting.on {
+        on_platform(on)?;
+    }
     let passthrough = ctx.xcodebuild_args(&args.passthrough)?;
     let mut resolved = resolve::resolve(ctx)?;
     if matches!(resolved.container, Container::SwiftPackage(_)) {
@@ -242,17 +246,14 @@ fn archive_configuration(
 }
 
 /// The archive's `-destination`: an explicit `--destination` passes through
-/// verbatim; `--on` takes a platform word (`mac`, `ios`, `watchos`, `tvos`,
-/// `visionos`) or `device` and maps it to the matching `generic/platform=…`;
-/// default iOS. Archives target device platforms, so a simulator reference
-/// is rejected rather than resolved.
+/// verbatim; `--on` names a platform ([`on_platform`]) and maps to the
+/// matching `generic/platform=…`; default iOS.
 fn archive_destination(
     ctx: &Context,
     resolved: &resolve::Resolved,
     scheme: &str,
     configuration: &str,
 ) -> Result<String, CliError> {
-    resolve::reject_on_destination_conflict(ctx)?;
     if let Some(dest) = &ctx.targeting.destination {
         return Ok(dest.clone());
     }
@@ -268,7 +269,16 @@ fn archive_destination(
             "generic/platform=iOS".to_string()
         });
     };
-    let platform = match on.to_ascii_lowercase().as_str() {
+    Ok(format!("generic/platform={}", on_platform(on)?))
+}
+
+/// The platform an archive's `--on` names: a platform word (`mac`, `ios`,
+/// `watchos`, `tvos`, `visionos`) or `device`. Archives target device
+/// platforms, so a simulator reference is refused rather than resolved. The
+/// word alone decides the refusal, so it is a usage error, and [`run`]
+/// checks it before looking for the project.
+fn on_platform(on: &str) -> Result<&'static str, CliError> {
+    Ok(match on.to_ascii_lowercase().as_str() {
         "mac" | "macos" => "macOS",
         "ios" | "iphone" | "ipad" | "device" => "iOS",
         "watchos" => "watchOS",
@@ -278,10 +288,10 @@ fn archive_destination(
             return Err(CliError::new(format!(
                 "archive targets a generic device platform; --on {other:?} doesn't name one \
                  (use mac, ios, watchos, tvos, or visionos — or --destination for the raw form)"
-            )));
+            ))
+            .kind(ErrorKind::Usage));
         }
-    };
-    Ok(format!("generic/platform={platform}"))
+    })
 }
 
 /// The `--show-command` payload: both xcodebuild invocations, and the
@@ -372,6 +382,17 @@ fn export_options_plist(method: ExportMethod) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A word that names no device platform is refused by the word alone,
+    /// so it exits 2 like the refusals clap makes itself.
+    #[test]
+    fn an_on_that_names_no_platform_is_a_usage_error() {
+        assert_eq!(on_platform("Mac").unwrap(), "macOS");
+        assert_eq!(on_platform("device").unwrap(), "iOS");
+        let err = on_platform("toaster").expect_err("toaster named a platform");
+        assert_eq!(err.error_kind(), ErrorKind::Usage);
+        assert!(err.to_string().contains("--on \"toaster\""), "{err}");
+    }
 
     #[test]
     fn export_options_carry_method_and_automatic_signing() {

@@ -258,7 +258,7 @@ pub fn run(_ctx: &mut Context, topic: Option<&str>) -> CommandResult {
                      'sweetpad {name} --help'",
                     names.join(", ")
                 ))
-                .kind(ErrorKind::Generic));
+                .kind(ErrorKind::Usage));
             };
             Ok(Rendered::data(HelpText {
                 body: topic.body.to_string(),

@@ -226,10 +226,12 @@ fn app_run_rejects_json() {
     parse_stderr_error(&out, args);
 }
 
-/// A flag clap parses but the verb refuses (a run flag on 'test build', a
-/// start flag on 'build diagnostics') is a usage error: exit 2, the code
-/// clap's own usage errors get, and a 'usage_error' envelope under '--json'.
-/// Each is refused before any project is looked for, so no fixture is needed.
+/// A command line clap parses but the command refuses on its own is a usage
+/// error: a flag on a verb it means nothing to (a run flag on 'test build', a
+/// start flag on 'build diagnostics'), an argument or flag value no project
+/// could make valid. Exit 2, the code clap's own usage errors get, and a
+/// 'usage_error' envelope under '--json'. Each is refused before any project
+/// is looked for, so no fixture is needed.
 #[test]
 fn a_refused_flag_is_a_usage_error() {
     let home = tmp("usage-home");
@@ -239,6 +241,42 @@ fn a_refused_flag_is_a_usage_error() {
         &["test", "attachments", "--junit", "x.xml"],
         &["test", "output", "--coverage"],
         &["build", "diagnostics", "--clean"],
+        &[
+            "pbxproj",
+            "membership",
+            "add",
+            "--target",
+            "App",
+            "--phase",
+            "sources",
+        ],
+        &["pbxproj", "settings", "set", "NO_EQUALS_SIGN"],
+        &["pbxproj", "settings", "unset", "SWIFT_VERSION=5.0"],
+        &["archive", "--on", "toaster"],
+        &["app", "ui", "click", "--label", "Save", "--nth", "0"],
+        &["app", "screenshot", "--window", "0"],
+        &["context", "alias", "mac", "iPhone 17"],
+        &["context", "set", "sdk", "iphoneos", "--testing"],
+        &["context", "select", "sdk", "--testing"],
+        &["context", "remove", "target"],
+        &["project", "new", "my app", "--no-git"],
+        &[
+            "project",
+            "new",
+            "App",
+            "--bundle-id",
+            "not a bundle id",
+            "--no-git",
+        ],
+        &[
+            "project",
+            "new",
+            "App",
+            "--deployment-target",
+            "latest",
+            "--no-git",
+        ],
+        &["help", "no-such-topic"],
     ];
     for args in refused {
         let human = sweetpad(args, &cwd, &home);
@@ -254,13 +292,25 @@ fn a_refused_flag_is_a_usage_error() {
     }
 
     // A flag that conflicts with the output mode is refused the same way.
-    let args: &[&str] = &["build", "--gh-annotations", "--json"];
-    let out = sweetpad(args, &cwd, &home);
-    assert_eq!(out.status.code(), Some(2), "{out:?}");
-    assert_eq!(
-        parse_stderr_error(&out, args)["error"]["code"],
-        "usage_error"
-    );
+    for args in [
+        &["build", "--gh-annotations", "--json"][..],
+        &["app", "debug", "--batch", "--json"],
+    ] {
+        let out = sweetpad(args, &cwd, &home);
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {out:?}");
+        assert_eq!(
+            parse_stderr_error(&out, args)["error"]["code"],
+            "usage_error",
+            "{args:?}"
+        );
+    }
+    // A refused scaffold wrote nothing into the working directory.
+    let left: Vec<_> = std::fs::read_dir(&*cwd)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .filter(|name| name != ".git")
+        .collect();
+    assert!(left.is_empty(), "a refused command wrote {left:?}");
 }
 
 /// 'build', 'test' and 'test build' take '--mac' as '--on mac', so a typed

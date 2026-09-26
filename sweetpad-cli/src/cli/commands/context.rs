@@ -243,9 +243,9 @@ fn show(ctx: &mut Context) -> CommandResult {
 /// sdk/target/destination are taken verbatim (a destination may name hardware
 /// that isn't currently attached).
 fn set(ctx: &mut Context, v: Variable, value: &str, scope: Scope) -> CommandResult {
+    ensure_in_scope(v, scope)?;
     let container = resolve::container(ctx)?;
     let key = container.key();
-    ensure_in_scope(v, scope)?;
     match v {
         Variable::Scheme => {
             resolve::validate_choice("scheme", value, &resolve::schemes(&container)?)?;
@@ -283,7 +283,8 @@ fn alias(ctx: &mut Context, name: &str, reference: Option<&str>, remove: bool) -
     {
         return Err(CliError::new(format!(
             "{name:?} is a built-in --on reference and can't be an alias name"
-        )));
+        ))
+        .kind(ErrorKind::Usage));
     }
     let key = resolve::container(ctx)?.key();
     let st = ctx.state.project_mut(&key);
@@ -301,6 +302,9 @@ fn alias(ctx: &mut Context, name: &str, reference: Option<&str>, remove: bool) -
 /// Interactively set one variable (or the core), persisting to state, then show
 /// the updated context.
 fn select(ctx: &mut Context, variable: Option<Variable>, scope: Scope) -> CommandResult {
+    if let Some(v) = variable {
+        ensure_in_scope(v, scope)?;
+    }
     // The generic strict-mode hint ("pass --scheme…") names flags this
     // command doesn't have — fail up front with the spelling that works
     // here.
@@ -315,10 +319,7 @@ fn select(ctx: &mut Context, variable: Option<Variable>, scope: Scope) -> Comman
     let key = container.key();
 
     let vars: Vec<Variable> = match variable {
-        Some(v) => {
-            ensure_in_scope(v, scope)?;
-            vec![v]
-        }
+        Some(v) => vec![v],
         None => Variable::CORE.to_vec(),
     };
     for v in vars {
@@ -359,6 +360,9 @@ impl Render for RemoveReport {
 
 /// Clear one variable, or the whole context with `--all`.
 fn remove(ctx: &mut Context, variable: Option<Variable>, all: bool, scope: Scope) -> CommandResult {
+    if let Some(v) = variable {
+        ensure_in_scope(v, scope)?;
+    }
     let key = resolve::container(ctx)?.key();
 
     if all {
@@ -387,9 +391,9 @@ fn remove(ctx: &mut Context, variable: Option<Variable>, all: bool, scope: Scope
         // Unreachable: clap requires VARIABLE unless --all (exit 2 up front).
         return Err(CliError::new(
             "specify a variable (scheme, configuration, sdk, destination, target) or --all",
-        ));
+        )
+        .kind(ErrorKind::Usage));
     };
-    ensure_in_scope(v, scope)?;
     if let Some(st) = ctx.state.projects.get_mut(&key) {
         set_field(st, scope, v, None);
     }
@@ -402,7 +406,8 @@ fn remove(ctx: &mut Context, variable: Option<Variable>, all: bool, scope: Scope
     }))
 }
 
-/// Reject a variable that doesn't belong to the chosen context.
+/// Reject a variable that doesn't belong to the chosen context. The variable
+/// and `--testing` decide it, so it is a usage error.
 fn ensure_in_scope(v: Variable, scope: Scope) -> Result<(), CliError> {
     if v.in_scope(scope) {
         Ok(())
@@ -411,7 +416,8 @@ fn ensure_in_scope(v: Variable, scope: Scope) -> Result<(), CliError> {
             "{} is not a {} context variable",
             v.name(),
             scope.label()
-        )))
+        ))
+        .kind(ErrorKind::Usage))
     }
 }
 
