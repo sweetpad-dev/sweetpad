@@ -19,12 +19,19 @@
 //!
 //! This is the evidence when there is no crash report: a host or watchdog
 //! kill writes none, and launchd's line is the only record of it.
+//!
+//! Two more accounts fill in what launchd misses. A crash report
+//! ([`crash_reports`]) names the signal and exception of any crash, however
+//! the app was started. sweetpad's own record ([`from_record`]) covers the
+//! macOS apps it spawns and waits on, whose clean exits and kills nothing else
+//! notes. [`merge`] folds the three into one list.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::Deserialize;
 
+use crate::cli::state::RecordedExit;
 use crate::cli::{CliError, process};
 
 /// Where the exit lines are read from: a simulator's own unified log (through
@@ -60,7 +67,31 @@ pub enum Cause {
     },
 }
 
-/// One termination of a launchd job.
+/// Which account an [`Exit`] was read from.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Origin {
+    /// launchd's exit line in the unified log.
+    #[default]
+    Launchd,
+    /// sweetpad's record of a process it spawned and waited on.
+    Sweetpad,
+    /// A crash report in `~/Library/Logs/DiagnosticReports`.
+    CrashReport,
+}
+
+impl Origin {
+    /// The name the JSON `source` field carries.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Origin::Launchd => "launchd",
+            Origin::Sweetpad => "sweetpad",
+            Origin::CrashReport => "crashReport",
+        }
+    }
+}
+
+/// One termination of an app's process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exit {
     /// launchd's timestamp as logged (`2026-09-26 17:33:10.087799+0200`).
@@ -75,6 +106,7 @@ pub struct Exit {
     pub ran_for_ms: Option<u64>,
     /// The whole message, for whatever the parse does not reach.
     pub message: String,
+    pub origin: Origin,
 }
 
 /// The fields of a `log show --style ndjson` entry this module reads.
@@ -239,6 +271,7 @@ pub fn parse_ndjson_line(line: &str, bundle_ids: &[&str]) -> Option<Exit> {
         explanation,
         ran_for_ms,
         message,
+        origin: Origin::Launchd,
     })
 }
 
@@ -500,6 +533,7 @@ impl Exit {
             "ranForMs": self.ran_for_ms,
             "crashReport": crash_report.map(|p| p.display().to_string()),
             "message": self.message,
+            "source": self.origin.as_str(),
         })
     }
 
@@ -594,6 +628,303 @@ fn report_is(text: &str, bundle_id: &str, pid: u32) -> bool {
             })
 }
 
+/// Every crash report the system wrote since `not_before` for one of
+/// `bundle_ids` (any app when empty) on `source`, as the exit it records,
+/// oldest first. Simulator reports land in the same directory as the Mac's;
+/// the process path tells them apart, since a simulator app runs out of
+/// `CoreSimulator/Devices/<udid>/`. Only files written since `not_before` are
+/// opened, and a report captured before it is dropped.
+#[must_use]
+pub fn crash_reports(
+    source: &Source,
+    bundle_ids: &[&str],
+    not_before: Option<SystemTime>,
+) -> Vec<(Exit, PathBuf)> {
+    let Some(dir) =
+        sweetpad_core::paths::home_dir().map(|h| h.join("Library/Logs/DiagnosticReports"))
+    else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let since = not_before.and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok());
+    let mut found: Vec<(Exit, PathBuf)> = entries
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "ips"))
+        .filter(|e| {
+            not_before.is_none_or(|t| {
+                e.metadata()
+                    .and_then(|m| m.modified())
+                    .is_ok_and(|m| m >= t)
+            })
+        })
+        .filter_map(|e| {
+            let text = std::fs::read_to_string(e.path()).ok()?;
+            let exit = report_exit(&text, source, bundle_ids)?;
+            since
+                .is_none_or(|s| exit.epoch_seconds().is_some_and(|t| t >= s.as_secs_f64()))
+                .then(|| (exit, e.path()))
+        })
+        .collect();
+    found.sort_by(|(a, _), (b, _)| by_time(a, b));
+    found
+}
+
+/// The exit an `.ips` crash report records, when it belongs to one of
+/// `bundle_ids` (any app when empty) on `source`: the signal that ended the
+/// process and who sent it, the exception type when it says more than
+/// `EXC_CRASH` does (a fault's `EXC_BAD_ACCESS` and address, a Swift trap's
+/// `EXC_BREAKPOINT`), and how long the process ran. The report is a one-line
+/// JSON header (`bundleID`) followed by a JSON body.
+fn report_exit(text: &str, source: &Source, bundle_ids: &[&str]) -> Option<Exit> {
+    use serde_json::Value;
+    let str_of = |v: &Value, key: &str| v.get(key).and_then(Value::as_str).map(str::to_string);
+    let (header, body) = text.split_once('\n')?;
+    let header: Value = serde_json::from_str(header).ok()?;
+    let bundle_id = str_of(&header, "bundleID")?;
+    if !bundle_ids.is_empty() && !bundle_ids.contains(&bundle_id.as_str()) {
+        return None;
+    }
+    let body: Value = serde_json::from_str(body).ok()?;
+    let path = str_of(&body, "procPath").unwrap_or_default();
+    let on_this_source = match source {
+        Source::Simulator(udid) => path.contains(&format!("/CoreSimulator/Devices/{udid}/")),
+        Source::Mac => !path.contains("/CoreSimulator/Devices/"),
+    };
+    if !on_this_source {
+        return None;
+    }
+    let pid = body
+        .get("pid")
+        .and_then(Value::as_u64)
+        .and_then(|p| u32::try_from(p).ok())?;
+    let null = Value::Null;
+    let exception = body.get("exception").unwrap_or(&null);
+    let termination = body.get("termination").unwrap_or(&null);
+    let namespace = str_of(termination, "namespace");
+    let indicator = str_of(termination, "indicator");
+    let name = str_of(exception, "signal").or_else(|| {
+        (namespace.as_deref() == Some("SIGNAL"))
+            .then(|| termination.get("code").and_then(Value::as_i64))
+            .flatten()
+            .and_then(|n| i32::try_from(n).ok())
+            .map(signal_name)
+    })?;
+    let sent_by = str_of(termination, "byProc").map(|by| {
+        match termination.get("byPid").and_then(Value::as_u64) {
+            Some(by_pid) => format!("{by}[{by_pid}]"),
+            None => by,
+        }
+    });
+    let explanation = match namespace.as_deref() {
+        // A signal's own indicator ("Abort trap: 6") repeats the signal; the
+        // exception type is what adds to it, unless it is the generic one.
+        Some("SIGNAL") | None => str_of(exception, "type")
+            .filter(|t| t != "EXC_CRASH")
+            .map(|t| match str_of(exception, "subtype") {
+                Some(subtype) => format!("{t} {subtype}"),
+                None => t,
+            }),
+        Some(other) => Some(match &indicator {
+            Some(indicator) => format!("{other} {indicator}"),
+            None => other.to_string(),
+        }),
+    };
+    let captured = str_of(&body, "captureTime").map(|t| log_style_time(&t))?;
+    let ran_for_ms = str_of(&body, "procLaunch").and_then(|launched| {
+        let secs = epoch_seconds(&captured)? - epoch_seconds(&log_style_time(&launched))?;
+        millis(secs)
+    });
+    Some(Exit {
+        time: captured,
+        bundle_id,
+        pid: Some(pid),
+        cause: Cause::Signal { name, sent_by },
+        explanation,
+        ran_for_ms,
+        message: indicator.unwrap_or_default(),
+        origin: Origin::CrashReport,
+    })
+}
+
+/// A crash report's `2026-09-26 19:29:39.3528 +0200` in the unified log's
+/// spelling, `2026-09-26 19:29:39.3528+0200`, so one parser reads both.
+fn log_style_time(time: &str) -> String {
+    match time.rsplit_once(' ') {
+        Some((clock, offset)) if offset.starts_with(['+', '-']) => format!("{clock}{offset}"),
+        _ => time.to_string(),
+    }
+}
+
+/// The exit sweetpad recorded for a macOS app it spawned and waited on, or
+/// `None` for a record that names neither a status nor a signal.
+#[must_use]
+pub fn from_record(record: &RecordedExit) -> Option<Exit> {
+    let cause = match (record.status, record.signal) {
+        (Some(status), _) => Cause::Status(status),
+        (None, Some(signal)) => Cause::Signal {
+            name: signal_name(signal),
+            sent_by: record.sent_by.clone(),
+        },
+        (None, None) => return None,
+    };
+    Some(Exit {
+        time: log_timestamp(record.ended),
+        bundle_id: record.bundle_identifier.clone(),
+        pid: Some(record.pid),
+        cause,
+        explanation: None,
+        ran_for_ms: millis(record.ended - record.started),
+        message: "recorded by sweetpad, the process's parent".to_string(),
+        origin: Origin::Sweetpad,
+    })
+}
+
+/// A span in seconds as whole milliseconds; `None` when it is negative.
+fn millis(secs: f64) -> Option<u64> {
+    let span = Duration::try_from_secs_f64(secs).ok()?;
+    u64::try_from(span.as_millis()).ok()
+}
+
+/// A signal's name from its number, as macOS numbers them; `signal N` past the
+/// table.
+#[must_use]
+pub fn signal_name(signal: i32) -> String {
+    const NAMES: [&str; 31] = [
+        "SIGHUP",
+        "SIGINT",
+        "SIGQUIT",
+        "SIGILL",
+        "SIGTRAP",
+        "SIGABRT",
+        "SIGEMT",
+        "SIGFPE",
+        "SIGKILL",
+        "SIGBUS",
+        "SIGSEGV",
+        "SIGSYS",
+        "SIGPIPE",
+        "SIGALRM",
+        "SIGTERM",
+        "SIGURG",
+        "SIGSTOP",
+        "SIGTSTP",
+        "SIGCONT",
+        "SIGCHLD",
+        "SIGTTIN",
+        "SIGTTOU",
+        "SIGIO",
+        "SIGXCPU",
+        "SIGXFSZ",
+        "SIGVTALRM",
+        "SIGPROF",
+        "SIGWINCH",
+        "SIGINFO",
+        "SIGUSR1",
+        "SIGUSR2",
+    ];
+    usize::try_from(signal)
+        .ok()
+        .and_then(|n| n.checked_sub(1))
+        .and_then(|i| NAMES.get(i))
+        .map_or_else(|| format!("signal {signal}"), |name| (*name).to_string())
+}
+
+/// Seconds since the epoch as a local unified-log timestamp,
+/// `2026-09-26 17:33:10.087799+0200`, so a recorded exit reads and sorts like
+/// launchd's.
+fn log_timestamp(epoch: f64) -> String {
+    let at = Duration::try_from_secs_f64(epoch).unwrap_or_default();
+    let t: libc::time_t = i64::try_from(at.as_secs()).unwrap_or(i64::MAX);
+    // SAFETY: `localtime_r` fills the caller-owned `tm` from `t`; the reentrant
+    // form, since exits are recorded from session threads.
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    unsafe {
+        libc::localtime_r(&raw const t, &raw mut tm);
+    }
+    let offset = tm.tm_gmtoff / 60;
+    let sign = if offset < 0 { '-' } else { '+' };
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}{sign}{:02}{:02}",
+        tm.tm_year + 1900,
+        tm.tm_mon + 1,
+        tm.tm_mday,
+        tm.tm_hour,
+        tm.tm_min,
+        tm.tm_sec,
+        at.subsec_micros(),
+        offset.abs() / 60,
+        offset.abs() % 60,
+    )
+}
+
+/// How far apart two accounts of one exit can be timed. A crash report is
+/// captured at the fault, launchd logs the exit once the report is written,
+/// and sweetpad notices at its next poll: seconds apart, while a pid is not
+/// reused that fast.
+const SAME_EXIT_WITHIN_SECS: f64 = 15.0;
+
+/// Whether two accounts describe the same termination: one pid, close in time.
+fn same_exit(a: &Exit, b: &Exit) -> bool {
+    a.pid.is_some()
+        && a.pid == b.pid
+        && match (a.epoch_seconds(), b.epoch_seconds()) {
+            (Some(x), Some(y)) => (x - y).abs() <= SAME_EXIT_WITHIN_SECS,
+            _ => true,
+        }
+}
+
+fn by_time(a: &Exit, b: &Exit) -> std::cmp::Ordering {
+    let at = |e: &Exit| e.epoch_seconds().unwrap_or_default();
+    at(a).total_cmp(&at(b))
+}
+
+/// The three accounts of an app's exits as one list, oldest first, each with
+/// the crash report behind it when there is one. A termination two accounts
+/// saw appears once: launchd's line over sweetpad's record over the crash
+/// report's reading. The report's path is carried onto whichever it matched,
+/// along with the sender and exception the other account lacks.
+#[must_use]
+pub fn merge(
+    launchd: Vec<Exit>,
+    recorded: Vec<Exit>,
+    reports: Vec<(Exit, PathBuf)>,
+) -> Vec<(Exit, Option<PathBuf>)> {
+    let mut merged: Vec<(Exit, Option<PathBuf>)> =
+        launchd.into_iter().map(|exit| (exit, None)).collect();
+    for exit in recorded {
+        if !merged.iter().any(|(seen, _)| same_exit(seen, &exit)) {
+            merged.push((exit, None));
+        }
+    }
+    for (exit, path) in reports {
+        match merged.iter_mut().find(|(seen, _)| same_exit(seen, &exit)) {
+            Some((seen, report)) => {
+                report.get_or_insert(path);
+                if let (
+                    Cause::Signal { name, sent_by },
+                    Cause::Signal {
+                        name: reported,
+                        sent_by: reported_by,
+                    },
+                ) = (&mut seen.cause, exit.cause)
+                    && *name == reported
+                    && sent_by.is_none()
+                {
+                    *sent_by = reported_by;
+                }
+                if seen.explanation.is_none() {
+                    seen.explanation = exit.explanation;
+                }
+            }
+            None => merged.push((exit, Some(path))),
+        }
+    }
+    merged.sort_by(|(a, _), (b, _)| by_time(a, b));
+    merged
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -630,6 +961,7 @@ mod tests {
             explanation,
             ran_for_ms,
             message: message.into(),
+            origin: Origin::Launchd,
         }
     }
 
@@ -855,6 +1187,7 @@ mod tests {
             explanation: None,
             ran_for_ms: None,
             message: String::new(),
+            origin: Origin::Launchd,
         };
         assert_eq!(
             reason(1, 0x6).label().as_deref(),
@@ -947,5 +1280,210 @@ mod tests {
         assert!(args.last().is_some_and(|p| p.contains(
             "(subsystem CONTAINS \"application.a.b\" OR subsystem CONTAINS \"application.c.d\")"
         )));
+    }
+
+    /// A macOS app's `abort()`, captured on macOS 27 from an app sweetpad
+    /// spawned directly (launchd logged no exit line for it), trimmed to the
+    /// fields read.
+    const MAC_ABORT_IPS: &str = r#"{"app_name":"PersistProbe","timestamp":"2026-09-26 19:29:40.00 +0200","platform":1,"bundleID":"dev.sweetpad.b2app.persistb3","bug_type":"309","os_version":"macOS 27.0 (26A428)","name":"PersistProbe"}
+{
+  "pid" : 43573,
+  "procName" : "PersistProbe",
+  "procPath" : "\/Users\/USER\/Library\/Developer\/Xcode\/DerivedData\/PersistProbe-fjzlintwqtbtdwdtshtsqveulyiq\/Build\/Products\/Debug\/PersistProbe.app\/Contents\/MacOS\/PersistProbe",
+  "parentPid" : 1,
+  "parentProc" : "launchd",
+  "captureTime" : "2026-09-26 19:29:39.3528 +0200",
+  "procLaunch" : "2026-09-26 19:29:38.7361 +0200",
+  "exception" : {"codes":"0x0000000000000000, 0x0000000000000000","rawCodes":[0,0],"type":"EXC_CRASH","signal":"SIGABRT"},
+  "termination" : {"flags":0,"code":6,"namespace":"SIGNAL","indicator":"Abort trap: 6","byProc":"PersistProbe","byPid":43573}
+}"#;
+
+    /// A null dereference in a simulator app, iOS 27 simulator, trimmed.
+    const SIM_FAULT_IPS: &str = r#"{"app_name":"ExitProbe","timestamp":"2026-09-26 17:33:30.00 +0200","platform":7,"bundleID":"dev.sweetpad.exitprobe.app","bug_type":"309","os_version":"macOS 27.0 (26A428)","name":"ExitProbe"}
+{
+  "pid" : 60122,
+  "procName" : "ExitProbe",
+  "procPath" : "\/Users\/USER\/Library\/Developer\/CoreSimulator\/Devices\/554432FC-9FD7-4A7F-8217-46BAEA425896\/data\/Containers\/Bundle\/Application\/3B250438-8B5C-4636-BD2C-4AB7229BF846\/ExitProbe.app\/ExitProbe",
+  "parentProc" : "launchd_sim",
+  "captureTime" : "2026-09-26 17:33:29.9195 +0200",
+  "procLaunch" : "2026-09-26 17:33:28.4565 +0200",
+  "exception" : {"codes":"0x0000000000000001, 0x0000000000000010","rawCodes":[1,16],"type":"EXC_BAD_ACCESS","signal":"SIGSEGV","subtype":"KERN_INVALID_ADDRESS at 0x0000000000000010"},
+  "termination" : {"flags":0,"code":11,"namespace":"SIGNAL","indicator":"Segmentation fault: 11","byProc":"exc handler","byPid":60122}
+}"#;
+
+    const SIM_UDID: &str = "554432FC-9FD7-4A7F-8217-46BAEA425896";
+
+    #[test]
+    fn a_crash_report_reads_as_the_signal_that_ended_the_app() {
+        let exit = report_exit(MAC_ABORT_IPS, &Source::Mac, &[]).expect("a crash");
+        assert_eq!(exit.bundle_id, "dev.sweetpad.b2app.persistb3");
+        assert_eq!(exit.pid, Some(43573));
+        assert_eq!(exit.origin, Origin::CrashReport);
+        assert_eq!(exit.time, "2026-09-26 19:29:39.3528+0200");
+        assert_eq!(exit.ran_for_ms, Some(616));
+        // `EXC_CRASH` is how every abort reads, so it adds nothing.
+        assert_eq!(exit.explanation, None);
+        assert_eq!(
+            exit.summary(),
+            "crashed with SIGABRT (sent by PersistProbe[43573])"
+        );
+        assert_eq!(exit.json(None)["source"], "crashReport");
+        // A Mac app's report is not a simulator's, nor another bundle's.
+        assert!(report_exit(MAC_ABORT_IPS, &Source::Simulator(SIM_UDID), &[]).is_none());
+        assert!(report_exit(MAC_ABORT_IPS, &Source::Mac, &["dev.sweetpad.other"]).is_none());
+    }
+
+    #[test]
+    fn a_simulator_fault_keeps_its_exception_and_its_device() {
+        let exit = report_exit(
+            SIM_FAULT_IPS,
+            &Source::Simulator(SIM_UDID),
+            &["dev.sweetpad.exitprobe.app"],
+        )
+        .expect("a crash");
+        assert_eq!(
+            exit.summary(),
+            "crashed with SIGSEGV (sent by exc handler[60122] EXC_BAD_ACCESS \
+             KERN_INVALID_ADDRESS at 0x0000000000000010)"
+        );
+        assert_eq!(exit.ran_for_ms, Some(1463));
+        assert!(report_exit(SIM_FAULT_IPS, &Source::Simulator("OTHER-UDID"), &[]).is_none());
+        assert!(report_exit(SIM_FAULT_IPS, &Source::Mac, &[]).is_none());
+    }
+
+    #[test]
+    fn a_report_ended_outside_the_signal_namespace_says_which() {
+        // tccd's real termination block (a SIGTERM that timed out, iOS 27
+        // simulator) under an app's header: tccd's own report carries no
+        // bundle id, so it is no app's crash at all.
+        let body = r#"{
+  "pid" : 2666,
+  "procPath" : "\/Library\/Developer\/CoreSimulator\/Volumes\/iOS_24A5\/usr\/libexec\/tccd",
+  "captureTime" : "2026-09-26 18:49:01.7371 +0200",
+  "procLaunch" : "2026-09-26 18:48:31.8163 +0200",
+  "exception" : {"codes":"0x0000000000000000, 0x0000000000000000","rawCodes":[0,0],"type":"EXC_CRASH","signal":"SIGKILL"},
+  "termination" : {"flags":6,"code":4,"namespace":"LIBXPC","indicator":"XPC_EXIT_REASON_SIGTERM_TIMEOUT"}
+}"#;
+        let tccd = format!(
+            "{}\n{body}",
+            r#"{"app_name":"tccd","platform":7,"bug_type":"309","name":"tccd"}"#
+        );
+        assert!(report_exit(&tccd, &Source::Mac, &[]).is_none());
+        let app = format!("{}\n{body}", r#"{"bundleID":"dev.sweetpad.app"}"#);
+        let exit = report_exit(&app, &Source::Mac, &[]).expect("an exit");
+        assert_eq!(
+            exit.summary(),
+            "SIGKILL (LIBXPC XPC_EXIT_REASON_SIGTERM_TIMEOUT)"
+        );
+        assert!(!exit.is_crash());
+    }
+
+    fn recorded(pid: u32, ended: f64, status: Option<i32>, signal: Option<i32>) -> RecordedExit {
+        RecordedExit {
+            bundle_identifier: "dev.sweetpad.app".into(),
+            pid,
+            started: ended - 2.5,
+            ended,
+            status,
+            signal,
+            sent_by: None,
+        }
+    }
+
+    #[test]
+    fn a_recorded_exit_reads_like_launchds() {
+        let ended = 1_790_443_780.25;
+        let exit = from_record(&recorded(44746, ended, Some(3), None)).expect("an exit");
+        assert_eq!(exit.summary(), "exited with status 3");
+        assert_eq!(exit.ran_for_ms, Some(2500));
+        assert_eq!(exit.origin, Origin::Sweetpad);
+        // The local timestamp reads back as the same instant.
+        let back = exit.epoch_seconds().expect("a log-style time");
+        assert!((back - ended).abs() < 1e-3, "{} → {back}", exit.time);
+
+        let crash = from_record(&recorded(1, ended, None, Some(6))).expect("an exit");
+        assert_eq!(crash.summary(), "crashed with SIGABRT");
+        assert!(crash.is_crash());
+        let mut killed = recorded(2, ended, None, Some(9));
+        killed.sent_by = Some("sweetpad".into());
+        let killed = from_record(&killed).expect("an exit");
+        assert_eq!(killed.summary(), "SIGKILL (sent by sweetpad)");
+        assert_eq!(killed.json(None)["source"], "sweetpad");
+        assert!(from_record(&recorded(3, ended, None, None)).is_none());
+        assert_eq!(signal_name(15), "SIGTERM");
+        assert_eq!(signal_name(40), "signal 40");
+    }
+
+    #[test]
+    fn one_termination_seen_twice_is_listed_once() {
+        let at = |epoch: f64| log_timestamp(epoch);
+        let launchd = |pid: u32, epoch: f64| Exit {
+            time: at(epoch),
+            pid: Some(pid),
+            ..exit_of("exited due to SIGABRT | sent by App[1], ran for 900ms")
+        };
+        let report = |pid: u32, epoch: f64, name: &str| {
+            let mut exit = from_record(&recorded(pid, epoch, None, Some(6))).expect("an exit");
+            exit.origin = Origin::CrashReport;
+            (exit, PathBuf::from(name))
+        };
+        let merged = merge(
+            vec![launchd(100, 1000.0)],
+            vec![
+                // launchd saw this one too: launchd's line wins.
+                from_record(&recorded(100, 1001.0, None, Some(6))).expect("an exit"),
+                // Only sweetpad saw this one.
+                from_record(&recorded(200, 2000.0, Some(3), None)).expect("an exit"),
+            ],
+            vec![
+                report(100, 999.5, "a.ips"),
+                report(200, 2000.2, "b.ips"),
+                // A crash only its report knows of.
+                report(300, 1500.0, "c.ips"),
+                // Pid 100 again, much later: a different process.
+                report(100, 5000.0, "d.ips"),
+            ],
+        );
+        let seen: Vec<(Option<u32>, Origin, Option<&str>)> = merged
+            .iter()
+            .map(|(exit, path)| {
+                (
+                    exit.pid,
+                    exit.origin,
+                    path.as_deref().and_then(Path::to_str),
+                )
+            })
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                (Some(100), Origin::Launchd, Some("a.ips")),
+                (Some(300), Origin::CrashReport, Some("c.ips")),
+                (Some(200), Origin::Sweetpad, Some("b.ips")),
+                (Some(100), Origin::CrashReport, Some("d.ips")),
+            ]
+        );
+
+        // sweetpad saw the signal; the report adds who sent it and why.
+        let (mut fault, path) = report(400, 3000.0, "e.ips");
+        fault.cause = Cause::Signal {
+            name: "SIGABRT".into(),
+            sent_by: Some("App[400]".into()),
+        };
+        fault.explanation = Some("EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x10".into());
+        let merged = merge(
+            Vec::new(),
+            vec![from_record(&recorded(400, 3000.5, None, Some(6))).expect("an exit")],
+            vec![(fault, path)],
+        );
+        let [(exit, Some(path))] = merged.as_slice() else {
+            panic!("{merged:?}");
+        };
+        assert_eq!(exit.origin, Origin::Sweetpad);
+        assert_eq!(path, Path::new("e.ips"));
+        assert_eq!(
+            exit.summary(),
+            "crashed with SIGABRT (sent by App[400] EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x10)"
+        );
     }
 }

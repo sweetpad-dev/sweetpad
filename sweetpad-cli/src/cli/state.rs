@@ -290,6 +290,114 @@ impl State {
 /// How many destination recents (and their usage entries) a project keeps.
 const MAX_RECENTS: usize = 12;
 
+/// How one macOS app process sweetpad spawned and waited on ended. launchd
+/// keeps no exit record for a process it didn't start, so this is the only
+/// account of a clean exit or a kill; `app logs --exits` reads it back. Times
+/// are seconds since the epoch.
+#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct RecordedExit {
+    pub bundle_identifier: String,
+    pub pid: u32,
+    pub started: f64,
+    pub ended: f64,
+    /// The status it passed to `exit`, when it exited.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<i32>,
+    /// The signal that ended it, when one did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signal: Option<i32>,
+    /// Who sent that signal, when sweetpad knows: `sweetpad` for its own kill.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sent_by: Option<String>,
+}
+
+/// The [`RecordedExit`]s per project key: `<state>/sweetpad/exits.toml`.
+///
+/// A file of its own rather than a [`ProjectState`] field: a session records
+/// an exit mid-run, while `state.toml` is rewritten whole from each process's
+/// copy loaded at startup, so the next save, by that session or any other
+/// command, would drop the record. Each [`record`](ExitLog::record) reads the
+/// file fresh and writes it back at once.
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ExitLog {
+    pub projects: BTreeMap<String, Vec<RecordedExit>>,
+}
+
+/// How many recorded exits a project keeps, newest last.
+const MAX_RECORDED_EXITS: usize = 20;
+
+/// How long a recorded exit is kept: past the windows `--exits` is asked for,
+/// and past what the unified log itself retains of launchd's lines.
+const RECORDED_EXIT_MAX_AGE_SECS: f64 = 7.0 * 24.0 * 3600.0;
+
+impl ExitLog {
+    fn path() -> Option<PathBuf> {
+        state_dir().map(|d| d.join("sweetpad").join("exits.toml"))
+    }
+
+    /// The recorded exits. A missing, unreadable or malformed file reads as
+    /// none: the records are evidence, not settings, and a broken file is
+    /// replaced by the next [`record`](ExitLog::record).
+    #[must_use]
+    pub fn load() -> Self {
+        Self::path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|text| toml::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// Add `exit` to `project`'s records and write the file, dropping the
+    /// records past [`MAX_RECORDED_EXITS`] or older than
+    /// [`RECORDED_EXIT_MAX_AGE_SECS`]. Written to a temp file and renamed
+    /// into place, like [`State::save`].
+    pub fn record(project: &str, exit: RecordedExit) -> Result<(), String> {
+        let Some(path) = Self::path() else {
+            return Ok(());
+        };
+        let mut log = Self::load();
+        let ended = exit.ended;
+        log.projects
+            .entry(project.to_string())
+            .or_default()
+            .push(exit);
+        log.prune(ended);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        let text = toml::to_string_pretty(&log).map_err(|e| e.to_string())?;
+        let tmp = path.with_extension(format!("toml.tmp.{}", std::process::id()));
+        std::fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
+        std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    /// Drop what is older than the max age as of `now`, then all but each
+    /// project's newest [`MAX_RECORDED_EXITS`].
+    fn prune(&mut self, now: f64) {
+        for exits in self.projects.values_mut() {
+            exits.retain(|e| now - e.ended <= RECORDED_EXIT_MAX_AGE_SECS);
+            if exits.len() > MAX_RECORDED_EXITS {
+                let excess = exits.len() - MAX_RECORDED_EXITS;
+                exits.drain(..excess);
+            }
+        }
+        self.projects.retain(|_, exits| !exits.is_empty());
+    }
+
+    /// `project`'s records for `bundle_id` that ended at or after `since`.
+    #[must_use]
+    pub fn for_bundle(&self, project: &str, bundle_id: &str, since: f64) -> Vec<RecordedExit> {
+        self.projects
+            .get(project)
+            .into_iter()
+            .flatten()
+            .filter(|e| e.bundle_identifier == bundle_id && e.ended >= since)
+            .cloned()
+            .collect()
+    }
+}
+
 /// A quarantine path that never clobbers an earlier backup: `state.toml.corrupt`,
 /// then `.corrupt.1`, `.corrupt.2`, … — the first backup may hold the only
 /// surviving copy of the remembered context.
@@ -480,5 +588,47 @@ mod tests {
             state.projects.get("/x").unwrap().configuration.as_deref(),
             Some("Release")
         );
+    }
+
+    fn recorded(pid: u32, ended: f64) -> RecordedExit {
+        RecordedExit {
+            bundle_identifier: "dev.sweetpad.app".into(),
+            pid,
+            started: ended - 1.0,
+            ended,
+            status: Some(0),
+            signal: None,
+            sent_by: None,
+        }
+    }
+
+    /// The exit log stays small: each project keeps its newest records, and
+    /// none past the max age.
+    #[test]
+    fn the_exit_log_keeps_each_projects_newest_records() {
+        let now = 1_790_443_780.0;
+        let mut log = ExitLog::default();
+        let exits: Vec<RecordedExit> = (0..25)
+            .map(|n| recorded(n, now - 25.0 + f64::from(n)))
+            .collect();
+        log.projects.insert("/a".into(), exits);
+        log.projects.insert(
+            "/old".into(),
+            vec![recorded(1, now - RECORDED_EXIT_MAX_AGE_SECS - 1.0)],
+        );
+        log.prune(now);
+        let kept: Vec<u32> = log.projects["/a"].iter().map(|e| e.pid).collect();
+        assert_eq!(kept, (5..25).collect::<Vec<_>>());
+        assert!(!log.projects.contains_key("/old"));
+
+        let text = toml::to_string_pretty(&log).unwrap();
+        let back: ExitLog = toml::from_str(&text).unwrap();
+        assert_eq!(back.projects["/a"], log.projects["/a"]);
+        assert_eq!(
+            back.for_bundle("/a", "dev.sweetpad.app", now - 3.0).len(),
+            3
+        );
+        assert!(back.for_bundle("/a", "dev.sweetpad.other", 0.0).is_empty());
+        assert!(back.for_bundle("/b", "dev.sweetpad.app", 0.0).is_empty());
     }
 }

@@ -807,8 +807,8 @@ fn terminations(
 }
 
 /// Every app exit launchd logged on the test destination since the run
-/// started. `None` for a destination with no exit records to read (a device)
-/// or a query that failed.
+/// started, plus the crashes only a crash report records. `None` for a
+/// destination with no exit records to read (a device) or a query that failed.
 fn exits_during(run: &RunContext) -> Option<Vec<exits::Exit>> {
     let destination = &run.target.destination;
     let field = |key: &str| {
@@ -837,7 +837,14 @@ fn exits_during(run: &RunContext) -> Option<Vec<exits::Exit>> {
         start: epoch_seconds(run.started) - EXIT_QUERY_LEAD,
         end: epoch_seconds(SystemTime::now()) + 1.0,
     };
-    exits::query(&source, &[], &window, EXIT_QUERY_TIMEOUT).ok()
+    let launchd = exits::query(&source, &[], &window, EXIT_QUERY_TIMEOUT).ok()?;
+    let reports = exits::crash_reports(&source, &[], Some(run.started));
+    Some(
+        exits::merge(launchd, Vec::new(), reports)
+            .into_iter()
+            .map(|(exit, _)| exit)
+            .collect(),
+    )
 }
 
 /// The bundle id of the app the scheme builds, through the in-process

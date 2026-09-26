@@ -310,12 +310,13 @@ pub struct LogFilterArgs {
     pub timeout: Option<Duration>,
 
     /// List the app's recent terminations instead of its logs: when each
-    /// process ended and why, read from launchd's exit records. A crash shows
-    /// its signal, a watchdog or host kill its reason code and explanation, an
-    /// exit its status. Covers the last 10m unless '--last' says otherwise.
-    /// Simulator and macOS only. On macOS, launchd records only apps started
-    /// through LaunchServices ('open', the Finder), not an app 'app run --mac'
-    /// spawned directly.
+    /// process ended and why, read from launchd's exit records and the
+    /// system's crash reports, and on macOS from sweetpad's own record of the
+    /// apps it ran attached. A crash shows its signal, a watchdog or host kill
+    /// its reason code and explanation, an exit its status. Covers the last 10m
+    /// unless '--last' says otherwise. Simulator and macOS only. On macOS, a
+    /// detached launch that exits cleanly or is killed from outside leaves no
+    /// record.
     #[arg(
         long,
         conflicts_with_all = ["until", "timeout", "subsystem", "category", "predicate", "level", "source"]
@@ -1852,7 +1853,7 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
         if detach {
             ctx.out
                 .note(&format!("detached — {} keeps running", r.name));
-            if matches!(r.kind, RunningKind::Mac) {
+            if matches!(r.kind, RunningKind::Mac { .. }) {
                 ctx.out.warn(
                     "the macOS app's output pipes close when sweetpad exits — its next \
                      print may terminate it; relaunch from Finder for a long-lived detach",
@@ -2052,7 +2053,7 @@ fn run_hot_session(
     // Hot reload has no live filter UI; use the default threshold, never cycled.
     let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
     let mut hot_app = HotApp::new(&plan.target, Arc::clone(&filter));
-    hot_app.launch(ctx, &app, &launch_env, &plan.launch.args)?;
+    hot_app.launch(ctx, plan, &app, &launch_env)?;
 
     // A mac app that never dials back is running uninjected (something undid
     // the insert env); surface that instead of leaving a silently dead session.
@@ -2340,6 +2341,8 @@ enum HotApp<'a> {
         child: Option<Child>,
         reap_slot: Option<usize>,
         filter: Arc<AtomicU8>,
+        /// Records how the running `child` ends; `None` once it has.
+        recorder: Option<ExitRecorder>,
     },
 }
 
@@ -2351,6 +2354,7 @@ impl HotApp<'_> {
                 child: None,
                 reap_slot: None,
                 filter,
+                recorder: None,
             },
             Target::Device(_) | Target::SpmRun(_) => {
                 unreachable!("hot sessions run on a simulator or the mac")
@@ -2363,24 +2367,27 @@ impl HotApp<'_> {
     fn launch(
         &mut self,
         ctx: &Context,
+        plan: &RunPlan,
         app: &AppBundle,
         env: &[(String, String)],
-        args: &[String],
     ) -> CliResult {
+        let args = &plan.launch.args;
         match self {
             HotApp::Sim { udid } => launch_hot(ctx, udid, app, env, args),
             HotApp::Mac {
                 child,
                 reap_slot,
                 filter,
+                recorder,
             } => {
-                terminate_mac_child(child, reap_slot);
+                terminate_mac_child(child, reap_slot, recorder);
                 let mut cmd = std::process::Command::new(app.executable.as_os_str());
                 cmd.args(args)
                     .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
                     .stdin(std::process::Stdio::null())
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped());
+                let started = ExitRecorder::new(plan, app);
                 let mut c = ctx.out.step("Launching app", || {
                     cmd.spawn().map_err(|e| {
                         CliError::new(format!("failed to run '{}': {e}", app.executable.display()))
@@ -2389,6 +2396,7 @@ impl HotApp<'_> {
                 render_console(&mut c, ctx.out.use_color(), filter);
                 *reap_slot = crate::cli::signals::register_child(c.id());
                 *child = Some(c);
+                *recorder = Some(started);
                 ctx.out.note(&format!("Launched {}", app.bundle_id));
                 Ok(())
             }
@@ -2402,8 +2410,37 @@ impl HotApp<'_> {
                 let _ = simctl::terminate(udid, &app.bundle_id);
             }
             HotApp::Mac {
-                child, reap_slot, ..
-            } => terminate_mac_child(child, reap_slot),
+                child,
+                reap_slot,
+                recorder,
+                ..
+            } => terminate_mac_child(child, reap_slot, recorder),
+        }
+    }
+
+    /// Record the mac app's exit when it has ended on its own, polled while the
+    /// session idles so the record carries the time it ended. A simulator app
+    /// isn't sweetpad's child, so there is nothing to poll.
+    fn poll_exit(&mut self) {
+        if let HotApp::Mac {
+            child: Some(c),
+            reap_slot,
+            recorder,
+            ..
+        } = self
+            && recorder.is_some()
+        {
+            // Deregistered around the probe, as in `check_exit`: a reaped pid
+            // can be recycled.
+            crate::cli::signals::unregister_child(reap_slot.take());
+            match c.try_wait() {
+                Ok(Some(status)) => {
+                    if let Some(r) = recorder.take() {
+                        r.record(c.id(), status, false);
+                    }
+                }
+                _ => *reap_slot = crate::cli::signals::register_child(c.id()),
+            }
         }
     }
 
@@ -2461,12 +2498,16 @@ impl HotApp<'_> {
 }
 
 /// Kill and reap a mac hot-session child, deregistering it first so the signal
-/// handler never signals a recycled pid.
-fn terminate_mac_child(child: &mut Option<Child>, reap_slot: &mut Option<usize>) {
+/// handler never signals a recycled pid, and record how it ended unless that
+/// is already recorded.
+fn terminate_mac_child(
+    child: &mut Option<Child>,
+    reap_slot: &mut Option<usize>,
+    recorder: &mut Option<ExitRecorder>,
+) {
     crate::cli::signals::unregister_child(reap_slot.take());
     if let Some(mut c) = child.take() {
-        let _ = c.kill();
-        let _ = c.wait();
+        reap_mac_child(&mut c, recorder.take().as_ref());
     }
 }
 
@@ -2512,7 +2553,7 @@ fn hot_key_loop(
                     hot_app.terminate(&app);
                     match build(plan, &ctx.out, Some(build_log)) {
                         BuildOutcome::Ok => {
-                            if let Err(e) = hot_app.launch(ctx, &app, env, &plan.launch.args) {
+                            if let Err(e) = hot_app.launch(ctx, plan, &app, env) {
                                 ctx.out.error(&e);
                             }
                         }
@@ -2537,11 +2578,71 @@ fn hot_key_loop(
                 // The hot session has no in-session filter keys — ignore them.
                 SessionKey::Filter(_) | SessionKey::Ignore => {}
             },
-            rawmode::Input::Idle => {}
+            rawmode::Input::Idle => hot_app.poll_exit(),
             rawmode::Input::Closed => break,
         }
     }
     true
+}
+
+/// What sweetpad needs to record how a macOS app process it spawned ended.
+/// launchd keeps no exit record for a process it didn't start, so for an app
+/// `app run --mac` runs attached, this is what `app logs --exits` reads.
+struct ExitRecorder {
+    project: String,
+    bundle_id: String,
+    started: std::time::SystemTime,
+}
+
+impl ExitRecorder {
+    /// Start the clock for a process of `app` about to be spawned.
+    fn new(plan: &RunPlan, app: &AppBundle) -> Self {
+        ExitRecorder {
+            project: plan.resolved.container.key(),
+            bundle_id: app.bundle_id.clone(),
+            started: std::time::SystemTime::now(),
+        }
+    }
+
+    /// Record that `pid` ended with `status`, `killed` when the signal was
+    /// sweetpad's own. Best effort: a record that can't be written costs only
+    /// a line of `--exits`.
+    fn record(&self, pid: u32, status: std::process::ExitStatus, killed: bool) {
+        use std::os::unix::process::ExitStatusExt as _;
+        let epoch = |t: std::time::SystemTime| {
+            t.duration_since(std::time::UNIX_EPOCH)
+                .map_or(0.0, |d| d.as_secs_f64())
+        };
+        let signal = status.signal();
+        let _ = crate::cli::state::ExitLog::record(
+            &self.project,
+            crate::cli::state::RecordedExit {
+                bundle_identifier: self.bundle_id.clone(),
+                pid,
+                started: epoch(self.started),
+                ended: epoch(std::time::SystemTime::now()),
+                status: status.code(),
+                signal,
+                sent_by: (killed && signal.is_some()).then(|| "sweetpad".to_string()),
+            },
+        );
+    }
+}
+
+/// Stop and reap a macOS app child sweetpad spawned, recording how it ended
+/// when `recorder` is given: on its own if it already had, else by the
+/// SIGKILL sent here.
+fn reap_mac_child(child: &mut Child, recorder: Option<&ExitRecorder>) {
+    let pid = child.id();
+    let (status, killed) = if let Ok(Some(status)) = child.try_wait() {
+        (Some(status), false)
+    } else {
+        let _ = child.kill();
+        (child.wait().ok(), true)
+    };
+    if let (Some(recorder), Some(status)) = (recorder, status) {
+        recorder.record(pid, status, killed);
+    }
 }
 
 /// A launched app in the interactive session, plus what's needed to terminate it
@@ -2570,7 +2671,7 @@ enum RunningKind {
     /// path (there is no terminate-by-bundle-id).
     Device { id: String, app_dir: String },
     /// The streamed child *is* the macOS app; killing it stops the app.
-    Mac,
+    Mac { recorder: ExitRecorder },
 }
 
 /// The session's os_log stream — the simulator's (via `simctl spawn`) or a macOS
@@ -2683,6 +2784,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped());
+            let recorder = ExitRecorder::new(plan, &app);
             let mut child = cmd.spawn().map_err(|e| {
                 CliError::new(format!("failed to run '{}': {e}", app.executable.display()))
             })?;
@@ -2693,7 +2795,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
             let reap_slot = crate::cli::signals::register_child(child.id());
             Ok(Running {
                 stream: Some(child),
-                kind: RunningKind::Mac,
+                kind: RunningKind::Mac { recorder },
                 name: app.bundle_id,
                 reported_exit: false,
                 reap_slot,
@@ -2718,7 +2820,7 @@ fn detach_app(running: Running) {
     } = running;
     crate::cli::signals::unregister_child(reap_slot);
     match kind {
-        RunningKind::Mac => drop(stream),
+        RunningKind::Mac { .. } => drop(stream),
         RunningKind::Simulator { .. } | RunningKind::Device { .. } => {
             if let Some(mut stream) = stream {
                 let _ = stream.kill();
@@ -2743,6 +2845,7 @@ fn terminate_app(running: Running) {
         stream,
         kind,
         reap_slot,
+        reported_exit,
         ..
     } = running;
     crate::cli::signals::unregister_child(reap_slot);
@@ -2755,8 +2858,14 @@ fn terminate_app(running: Running) {
         RunningKind::Device { id, app_dir } => {
             let _ = devicectl::terminate(&id, &app_dir);
         }
-        // The macOS app *is* the streamed child — killing it below stops it.
-        RunningKind::Mac => {}
+        // The macOS app *is* the streamed child, so reaping it stops it; an
+        // exit `check_exit` already recorded isn't recorded twice.
+        RunningKind::Mac { recorder } => {
+            if let Some(mut stream) = stream {
+                reap_mac_child(&mut stream, (!reported_exit).then_some(&recorder));
+            }
+            return;
+        }
     }
     if let Some(mut stream) = stream {
         let _ = stream.kill();
@@ -2963,13 +3072,17 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
             }
             // Direct spawn (inherited stdio) so --arg/--env reach the process.
             let env = plan.launch.env_pairs("")?;
-            let status = std::process::Command::new(app.executable.as_os_str())
+            let recorder = ExitRecorder::new(plan, &app);
+            let failed = |e: std::io::Error| {
+                CliError::new(format!("failed to run '{}': {e}", app.executable.display()))
+            };
+            let mut child = std::process::Command::new(app.executable.as_os_str())
                 .args(&plan.launch.args)
                 .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
-                .status()
-                .map_err(|e| {
-                    CliError::new(format!("failed to run '{}': {e}", app.executable.display()))
-                })?;
+                .spawn()
+                .map_err(failed)?;
+            let status = child.wait().map_err(failed)?;
+            recorder.record(child.id(), status, false);
             if status.success() {
                 Ok(())
             } else {
@@ -3301,9 +3414,12 @@ fn check_exit(ctx: &Context, running: &mut Running) {
     // for the pid space to wrap. Not-exited re-registers (a microsecond
     // window, same class as the accepted spawn→register gap).
     crate::cli::signals::unregister_child(running.reap_slot.take());
-    if matches!(child.try_wait(), Ok(Some(_))) {
+    if let Ok(Some(status)) = child.try_wait() {
         ctx.out.alert(&format!("✗ {} exited", running.name));
         running.reported_exit = true;
+        if let RunningKind::Mac { recorder } = &running.kind {
+            recorder.record(child.id(), status, false);
+        }
     } else {
         running.reap_slot = crate::cli::signals::register_child(child.id());
     }
@@ -4362,7 +4478,7 @@ fn simple_logs(
     {
         ctx.out.step("Booting simulator", || simctl::boot(&udid))?;
         if filters.exits {
-            return exits_report(ctx, &exits::Source::Simulator(&udid), &app, filters);
+            return exits_report(ctx, &exits::Source::Simulator(&udid), &app, None, filters);
         }
         stream_logs(ctx, &LogSource::Simulator(&udid), &app, filters)?;
         return Ok(Rendered::Streamed);
@@ -4390,12 +4506,13 @@ fn simple_logs(
             // "device is not booted" when the simulator is shut down.
             ctx.out.step("Booting simulator", || simctl::boot(udid))?;
             if filters.exits {
-                return exits_report(ctx, &exits::Source::Simulator(udid), &app, filters);
+                return exits_report(ctx, &exits::Source::Simulator(udid), &app, None, filters);
             }
             stream_logs(ctx, &LogSource::Simulator(udid), &app, filters)?;
         }
         Target::Mac if filters.exits => {
-            return exits_report(ctx, &exits::Source::Mac, &app, filters);
+            let project = plan.resolved.container.key();
+            return exits_report(ctx, &exits::Source::Mac, &app, Some(&project), filters);
         }
         // The host's own `log stream`, the same source `app run --mac` uses.
         Target::Mac => stream_logs(ctx, &LogSource::Mac, &app, filters)?,
@@ -6538,38 +6655,40 @@ const EXITS_WINDOW: &str = "10m";
 /// takes 2 to 3s, so this bounds a wedged query rather than a slow one.
 const EXITS_QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// `app logs --exits`: the app's terminations over the window, each decoded
-/// from launchd's exit line (see [`exits`]), with the crash report the system
-/// wrote for a crash when there is one.
+/// `app logs --exits`: the app's terminations over the window, from every
+/// account there is (see [`exits`]): launchd's exit lines, the crash reports
+/// the system wrote, and, for a macOS app, sweetpad's record of the processes
+/// it spawned for `project`. Each crash carries its report when there is one.
 fn exits_report(
     ctx: &Context,
     source: &exits::Source,
     app: &AppBundle,
+    project: Option<&str>,
     filters: &LogFilterArgs,
 ) -> CommandResult {
     let window = filters.last.as_deref().unwrap_or(EXITS_WINDOW);
-    let found = exits::query(
+    let launchd = exits::query(
         source,
         &[&app.bundle_id],
         &exits::Window::Last(window),
         EXITS_QUERY_TIMEOUT,
     )
     .context("reading the app's exits from the unified log")?;
-    // A crash report is written a few seconds after the exit it records, so
-    // one older than the window cannot belong to an exit inside it.
     let not_before = parse_duration(window)
         .ok()
         .and_then(|d| std::time::SystemTime::now().checked_sub(d));
-    let exits = found
-        .into_iter()
-        .map(|exit| {
-            let report = exit
-                .is_crash()
-                .then(|| exits::crash_report(&exit, not_before))
-                .flatten();
-            (exit, report)
-        })
-        .collect();
+    let recorded = project.map_or_else(Vec::new, |project| {
+        let since = not_before
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0.0, |d| d.as_secs_f64());
+        crate::cli::state::ExitLog::load()
+            .for_bundle(project, &app.bundle_id, since)
+            .iter()
+            .filter_map(exits::from_record)
+            .collect()
+    });
+    let reports = exits::crash_reports(source, &[&app.bundle_id], not_before);
+    let exits = exits::merge(launchd, recorded, reports);
     let destination: &[&str] = match source {
         exits::Source::Simulator(udid) => &["--on", udid],
         exits::Source::Mac => &["--mac"],
@@ -6604,9 +6723,8 @@ impl Render for ExitsReport {
             ));
             if self.mac {
                 out.note(
-                    "launchd records only apps started through LaunchServices ('open', the \
-                     Finder); an app 'app run --mac' or 'app launch --mac' spawned directly \
-                     leaves no exit record",
+                    "a detached launch ('app launch --mac', 'app run --mac --detach') leaves a \
+                     record only when it crashes; a clean exit or an outside kill goes unseen",
                 );
             }
             return;

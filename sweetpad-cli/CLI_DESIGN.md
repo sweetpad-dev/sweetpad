@@ -1890,7 +1890,35 @@ spawn`, a Mac app's from the host `log`. On macOS launchd records only the jobs
 it started, meaning apps opened through LaunchServices. `app run --mac` and `app
 launch --mac` spawn the executable directly, so their processes have no job and
 no exit line; `runningboardd` notes only `termination reported by proc_exit`,
-with no status. An empty macOS result says so. A physical device is refused.
+with no status. A physical device is refused.
+
+**Two more accounts fill that gap.** Each exit carries a `source`:
+
+- `crashReport`: every `.ips` in `~/Library/Logs/DiagnosticReports` for the
+  bundle captured inside the window, whatever started the app. The body names
+  the pid, the signal and who sent it (`termination.byProc`/`byPid`), and the
+  exception when it says more than `EXC_CRASH` (`EXC_BAD_ACCESS
+  KERN_INVALID_ADDRESS at 0x10`, a Swift trap's `EXC_BREAKPOINT`). Simulator
+  reports land in the same directory, so the process path picks the device:
+  a simulator app runs out of `CoreSimulator/Devices/<udid>/`.
+- `sweetpad`: a macOS app sweetpad spawns and waits on (`run --mac` attached,
+  its session, `--hot`) has sweetpad as its parent, so its exit status or
+  signal is recorded with the pid and start and end times, including the
+  SIGKILL sweetpad itself sends on rebuild or quit (`sent by sweetpad`). The
+  records live in `<state>/sweetpad/exits.toml`, 20 per project for at most 7
+  days. They are not in `state.toml`: a session writes one mid-run, and
+  `state.toml` is rewritten whole from each process's startup copy, so the
+  next save would drop it.
+
+The same termination seen twice (one pid, within 15s) is listed once: launchd's
+line over sweetpad's record over the report's reading, with the report's path,
+sender and exception carried onto the entry kept. `app debug` and `app
+diagnose` leave no sweetpad record, since lldb is the app's parent there, and a
+detached launch (`app launch --mac`, `run --detach`) has no parent left to see
+it end. Only a clean exit or an outside kill of a detached launch goes
+unrecorded, and the empty macOS result says so. A test failure's
+`terminationReason` reads crash reports the same way; a test's app is never
+sweetpad's child, so it has no sweetpad record.
 
 **Bounded.** One `log show` over the window, killed after 30s. Over an hour of
 history it took 2 to 3s.

@@ -91,7 +91,8 @@ did". On its own, `--timeout` just bounds the follow and exits 0.
 
 `--exits` lists the app's recent terminations instead of its logs, each with when it happened and
 why. The answer comes from the record launchd keeps when a process ends, so it covers deaths that
-leave no crash report, like a watchdog or the simulator host ending the app.
+leave no crash report, like a watchdog or the simulator host ending the app. Crash reports add any
+crash launchd didn't log, and on macOS SweetPad adds its own record of the apps it runs attached.
 
 ```bash
 sweetpad app logs --exits              # the last ten minutes
@@ -110,13 +111,16 @@ is one:
 ```
 
 A plain-words label appears only when the meaning is well known, such as a crash signal, memory
-pressure, or a watchdog timeout. Other codes show as they are.
+pressure, or a watchdog timeout. Other codes show as they are. In `-o json`, each exit's `source`
+says where it came from: `launchd`, `crashReport`, or `sweetpad`.
 
 :::note
 
 `--exits` works for simulators and macOS apps, not physical devices. On macOS, launchd keeps a
-record only for apps started through LaunchServices, like `open` or the Finder. An app that `sweetpad
-run --mac` starts directly leaves none.
+record only for apps started through LaunchServices, like `open` or the Finder. For an app that
+`sweetpad run --mac` starts and stays attached to, SweetPad records the exit itself. A detached
+launch (`app launch --mac`, `run --detach`) shows up only if it crashes, through its crash report. A
+clean exit or an outside kill of one leaves no record.
 
 :::
 
