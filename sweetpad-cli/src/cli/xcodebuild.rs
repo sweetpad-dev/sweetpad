@@ -1910,6 +1910,11 @@ const VALUE_FLAGS: [&str; 22] = [
 /// function: one locator, so the CLI cannot report one bundle and install
 /// another.
 pub fn resolved_settings(plan: &BuildPlan<'_>) -> Result<Vec<TargetBuildSettings>, CliError> {
+    resolve_options(&settings_options(plan)?)
+}
+
+/// The resolver options [`resolved_settings`] resolves `plan` with.
+fn settings_options(plan: &BuildPlan<'_>) -> Result<BuildSettingsOptions, CliError> {
     let (project, workspace) = match plan.container {
         Container::Project(p) => (Some(p.clone()), None),
         Container::Workspace(p) => (None, Some(p.clone())),
@@ -1947,7 +1952,12 @@ pub fn resolved_settings(plan: &BuildPlan<'_>) -> Result<Vec<TargetBuildSettings
         read_xcode_locations: true,
         keys: None,
     };
-    let resolved = resolve_build_settings(&opts).map_err(CliError::new)?;
+    Ok(opts)
+}
+
+/// Resolve `opts` into each target's settings.
+fn resolve_options(opts: &BuildSettingsOptions) -> Result<Vec<TargetBuildSettings>, CliError> {
+    let resolved = resolve_build_settings(opts).map_err(CliError::new)?;
     Ok(resolved
         .into_iter()
         .map(|t| TargetBuildSettings {
@@ -2833,7 +2843,13 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             result_bundle: None,
             passthrough,
         };
-        app_bundle(&resolved_settings(&plan).unwrap(), plan.destination).unwrap()
+        // The options the locator builds, with the catalog it parses out of
+        // the active Xcode cached in a directory of the test's own rather than
+        // the user's `~/.cache/sweetpad`.
+        let cache = crate::cli::testdir::TempDir::new("sweetpad-locator-catalog");
+        let mut opts = settings_options(&plan).unwrap();
+        opts.catalog_cache = Some(cache.join("catalog.bin"));
+        app_bundle(&resolve_options(&opts).unwrap(), plan.destination).unwrap()
     }
 
     #[test]

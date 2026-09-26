@@ -26,6 +26,16 @@ fn b_swift_uri() -> String {
     )
 }
 
+/// A `bsp-server` command whose catalog cache is in Cargo's scratch space for
+/// integration tests: the server resolves against the active Xcode, and the
+/// parsed catalog it caches would otherwise land in the user's
+/// `~/.cache/sweetpad`.
+fn bsp_server() -> Command {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_bsp-server"));
+    cmd.env("SWEETPAD_CACHE_DIR", env!("CARGO_TARGET_TMPDIR"));
+    cmd
+}
+
 fn frame(msg: &Value) -> Vec<u8> {
     let body = msg.to_string();
     format!("Content-Length: {}\r\n\r\n{body}", body.len()).into_bytes()
@@ -77,7 +87,7 @@ fn run_session_env(
     for m in messages {
         input.extend(frame(m));
     }
-    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
+    let mut child = bsp_server()
         .args(["bsp", "--project", project])
         .args(extra)
         .envs(env.iter().copied())
@@ -1048,7 +1058,7 @@ fn bsp_starts_from_extension_bsp_json() {
     for m in &messages {
         input.extend(frame(m));
     }
-    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
+    let mut child = bsp_server()
         .arg("bsp")
         .arg("--config")
         .arg(&config_path)
@@ -1137,7 +1147,7 @@ fn bsp_discovers_config_from_cwd_index() {
         input.extend(frame(m));
     }
     // No --config: discovery falls back to the cwd + index.
-    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
+    let mut child = bsp_server()
         .arg("bsp")
         .current_dir(&workspace)
         .env("XDG_STATE_HOME", &state_home)
@@ -1196,7 +1206,7 @@ fn bsp_replies_parse_error_on_malformed_frame() {
     ] {
         input.extend(frame(&m));
     }
-    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
+    let mut child = bsp_server()
         .args(["bsp", "--project", &proj])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -1243,7 +1253,7 @@ fn bsp_framing_header_robustness() {
     let body = json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}).to_string();
     let mut input = format!("content-length: {}\r\n\r\n{body}", body.len()).into_bytes();
     input.extend(frame(&json!({"jsonrpc":"2.0","method":"build/exit"})));
-    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
+    let mut child = bsp_server()
         .args(["bsp", "--project", &proj])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -1271,7 +1281,7 @@ fn bsp_framing_header_robustness() {
 
     // Unparseable length: the frame boundary is unrecoverable — exit non-zero
     // without panicking (a panic would abort with a signal, not a code).
-    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
+    let mut child = bsp_server()
         .args(["bsp", "--project", &proj])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -1299,7 +1309,7 @@ fn bsp_framing_header_robustness() {
 #[test]
 fn bsp_rejects_oversized_content_length() {
     let proj = project();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
+    let mut child = bsp_server()
         .args(["bsp", "--project", &proj])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())

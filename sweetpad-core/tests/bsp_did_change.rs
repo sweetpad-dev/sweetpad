@@ -27,6 +27,16 @@ fn copy_dir(src: &Path, dst: &Path) {
     }
 }
 
+/// A `bsp-server` command whose catalog cache is in Cargo's scratch space for
+/// integration tests: the server resolves against the active Xcode, and the
+/// parsed catalog it caches would otherwise land in the user's
+/// `~/.cache/sweetpad`.
+fn bsp_server() -> Command {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_bsp-server"));
+    cmd.env("SWEETPAD_CACHE_DIR", env!("CARGO_TARGET_TMPDIR"));
+    cmd
+}
+
 #[test]
 fn buildtarget_did_change_on_pbxproj_edit() {
     let src =
@@ -37,7 +47,7 @@ fn buildtarget_did_change_on_pbxproj_edit() {
     let proj = tmp.join("MultiModule.xcodeproj");
     let pbxproj = proj.join("project.pbxproj");
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
+    let mut child = bsp_server()
         .args(["bsp", "--project", proj.to_str().unwrap()])
         .env("SWEETPAD_BSP_WATCH_MS", "100")
         .stdin(Stdio::piped())

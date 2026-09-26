@@ -12,7 +12,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use sweetpad_core::build_settings::{BuildSettingsOptions, resolve_build_settings};
+use sweetpad_core::build_settings::{self, BuildSettingsOptions, TargetSettings};
 use sweetpad_core::scratch::ScratchDir;
 use sweetpad_lib::destination::parse_destination_arg;
 
@@ -34,9 +34,20 @@ fn xcconfig_fixture(name: &str) -> PathBuf {
     ))
 }
 
+/// [`build_settings::resolve_build_settings`] with the catalog cached in
+/// Cargo's scratch space for integration tests. These resolve against the
+/// active Xcode, whose parsed catalog would otherwise be cached in the user's
+/// `~/.cache/sweetpad`.
+fn resolve_build_settings(mut opts: BuildSettingsOptions) -> Result<Vec<TargetSettings>, String> {
+    opts.catalog_cache.get_or_insert_with(|| {
+        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("sweetpad-catalog.bin")
+    });
+    build_settings::resolve_build_settings(&opts)
+}
+
 /// Resolve a single target and return its settings map.
 fn resolve_one(opts: BuildSettingsOptions) -> BTreeMap<String, String> {
-    let mut out = resolve_build_settings(&opts).unwrap();
+    let mut out = resolve_build_settings(opts).unwrap();
     assert_eq!(out.len(), 1, "expected exactly one resolved target");
     out.remove(0).settings
 }
@@ -247,7 +258,7 @@ fn unknown_target_errors() {
         target: Some("Nonexistent".to_string()),
         ..scratch_opts()
     };
-    let err = resolve_build_settings(&opts).unwrap_err();
+    let err = resolve_build_settings(opts).unwrap_err();
     assert!(err.contains("no target named"), "err: {err}");
 }
 
@@ -343,7 +354,7 @@ fn scheme_build_excludes_test_only_entries() {
         destination: parse_destination_arg("platform=macOS"),
         ..Default::default()
     };
-    let out = resolve_build_settings(&opts).unwrap();
+    let out = resolve_build_settings(opts).unwrap();
     let targets: Vec<&str> = out.iter().map(|t| t.target.as_str()).collect();
     assert_eq!(targets, vec!["Alamofire macOS"]);
 }
@@ -421,7 +432,7 @@ fn unknown_scheme_errors_when_other_scheme_files_exist() {
         arch: "arm64".to_string(),
         ..Default::default()
     };
-    let err = resolve_build_settings(&opts).unwrap_err();
+    let err = resolve_build_settings(opts).unwrap_err();
     assert!(err.contains("does not contain a scheme"), "err: {err}");
 }
 
@@ -436,7 +447,7 @@ fn unknown_scheme_with_no_matching_target_errors() {
         arch: "arm64".to_string(),
         ..Default::default()
     };
-    let err = resolve_build_settings(&opts).unwrap_err();
+    let err = resolve_build_settings(opts).unwrap_err();
     assert!(err.contains("no target named"), "err: {err}");
 }
 
@@ -539,7 +550,7 @@ fn workspace_member_with_malformed_xcconfig_surfaces_the_real_error() {
         arch: "arm64".to_string(),
         ..Default::default()
     };
-    let err = resolve_build_settings(&opts).unwrap_err();
+    let err = resolve_build_settings(opts).unwrap_err();
     assert!(
         err.contains("Broken.xcodeproj") && err.contains("xcconfig"),
         "the error must name the broken member and the xcconfig: {err}"
@@ -576,7 +587,7 @@ fn workspace_broken_member_without_the_target_is_still_skipped() {
         arch: "arm64".to_string(),
         ..Default::default()
     };
-    let err = resolve_build_settings(&opts).unwrap_err();
+    let err = resolve_build_settings(opts).unwrap_err();
     assert!(err.contains("no target matched"), "err: {err}");
 }
 

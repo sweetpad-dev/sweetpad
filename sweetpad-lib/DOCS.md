@@ -151,6 +151,11 @@ another.
 
 - `cargo test` runs the unit tests plus every oracle, which scores the full
   pipeline against every committed capture.
+- `cargo test` writes nothing into the user's `~/.cache/sweetpad`. A test that
+  resolves against the active Xcode caches the parsed catalog in Cargo's
+  `CARGO_TARGET_TMPDIR` (`SWEETPAD_CACHE_DIR` for a spawned `bsp-server`,
+  `catalog_cache` for an in-process resolve) or, as a unit test, in a temp
+  directory of its own.
 - After **every** capture or resolver change, re-run the full oracle suite on
   **all** captured versions — a fix for one version must not silently regress
   another.

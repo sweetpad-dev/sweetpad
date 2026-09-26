@@ -242,6 +242,16 @@ fn the_bsp_server_answers_the_same_for_both_formats() {
     assert_eq!(pbx.1, xc.1, "compiler arguments");
 }
 
+/// A `bsp-server` command whose catalog cache is in Cargo's scratch space for
+/// integration tests: the server resolves against the active Xcode, and the
+/// parsed catalog it caches would otherwise land in the user's
+/// `~/.cache/sweetpad`.
+fn bsp_server() -> std::process::Command {
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_bsp-server"));
+    cmd.env("SWEETPAD_CACHE_DIR", env!("CARGO_TARGET_TMPDIR"));
+    cmd
+}
+
 /// A scripted session asking for the project's targets and for the compiler
 /// arguments of one source file: the target uris, and the arguments with the
 /// two copies' own paths masked out.
@@ -270,7 +280,7 @@ fn bsp_session(project: &Path) -> (Vec<String>, Vec<String>) {
         input.extend(format!("Content-Length: {}\r\n\r\n{body}", body.len()).into_bytes());
     }
 
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_bsp-server"))
+    let mut child = bsp_server()
         .args(["bsp", "--project", &project.display().to_string()])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
