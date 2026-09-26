@@ -1864,14 +1864,16 @@ pub fn built_in_settings(
     let archs_before_27_drop = archs;
     let archs: Vec<&'static str> = match legacy_secondary_arch {
         Some((slice, target_key)) if xcode27plus => {
-            // An unauthored deployment target takes the SDK's own default,
-            // which on 27 is past the cutoff: tuist's fixtures author none and
-            // drop the slice, Alamofire authors 3.0/6.0/10.12 and keeps it.
+            // The slice stays for a deployment target below 27: measured on
+            // Xcode 27.0 and 27.2, macOS 26.4 keeps `x86_64` and watchOS 26.4
+            // keeps `arm64_32`, and both go at 27.0. An unauthored deployment
+            // target takes the SDK's own default, which on 27 is past the
+            // cutoff: tuist's fixtures author none and drop the slice.
             let keeps = authored
                 .get(target_key)
                 .and_then(|v| v.split('.').next())
                 .and_then(|major| major.trim().parse::<u32>().ok())
-                .is_some_and(|major| major < 26);
+                .is_some_and(|major| major < 27);
             if keeps {
                 archs.to_vec()
             } else {
@@ -5087,6 +5089,47 @@ mod tests {
         assert_eq!(get("SKIP_INSTALL"), Some("YES"));
         assert_eq!(get("TAPI_VERIFY_MODE"), Some("ErrorsOnly"));
         assert_eq!(get("ENABLE_HARDENED_RUNTIME"), Some("YES"));
+    }
+
+    /// Xcode 27 drops macOS's `x86_64` and watchOS's `arm64_32` from
+    /// `ARCHS_STANDARD` only for a deployment target of 27 or later: measured
+    /// on 27.0 and 27.2, 26.4 keeps both.
+    #[test]
+    fn xcode_27_keeps_the_legacy_slice_below_a_27_deployment_target() {
+        let archs_standard = |sdk: &str, key: &str, target: &str| {
+            let out = built_in_settings(
+                Path::new("/tmp/App.xcodeproj"),
+                "App",
+                "Release",
+                Some("com.apple.product-type.application"),
+                sdk,
+                None,
+                false,
+                false,
+                None,
+                None,
+                &authored_map(&[("SDKROOT", sdk), (key, target)]),
+                None,
+                None,
+                false,
+                Some("27.0"),
+                None,
+                None,
+                None,
+                false,
+                crate::scheme::SanitizerEnables::default(),
+            );
+            out.iter()
+                .rev()
+                .find(|a| a.key == "ARCHS_STANDARD")
+                .map(|a| a.value.clone())
+        };
+        let mac = |t| archs_standard("macosx", "MACOSX_DEPLOYMENT_TARGET", t);
+        let watch = |t| archs_standard("watchos", "WATCHOS_DEPLOYMENT_TARGET", t);
+        assert_eq!(mac("26.4").as_deref(), Some("arm64 x86_64"));
+        assert_eq!(mac("27.0").as_deref(), Some("arm64"));
+        assert_eq!(watch("26.0").as_deref(), Some("arm64 arm64_32"));
+        assert_eq!(watch("27.0").as_deref(), Some("arm64"));
     }
 
     #[test]
