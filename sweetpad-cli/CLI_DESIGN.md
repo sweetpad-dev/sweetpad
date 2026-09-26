@@ -114,7 +114,7 @@ sweetpad app <run|install|launch|debug|diagnose|uninstall|logs|stop|open-url|
 sweetpad merge <install|run>      semantic conflict resolution (pbxproj/spm
                                   are hidden aliases)
 sweetpad context <show|select|set|alias|remove>
-sweetpad settings show            resolved build settings (porcelain; §9f/§9g)
+sweetpad settings show [-- XCODEBUILD_ARGS]   resolved build settings (porcelain; §9f/§9g)
 sweetpad pbxproj <resolve|settings|folder|membership|fileref|group>  plumbing (§9g)
 ```
 
@@ -133,7 +133,8 @@ the app the CLI installs is the one the build just wrote, and `app launch`
 takes the same location as `--derived-data-path` (§9s). The resolver takes
 the tail's `KEY=VALUE` settings and `-xcconfig` too, so a `SYMROOT=`,
 `OBJROOT=` or `CONFIGURATION_BUILD_DIR=` that moves the product is followed
-like any other setting (§9s). A
+like any other setting (§9s). `settings show` takes the tail too, which
+reaches no `xcodebuild` but previews what a build given it resolves. A
 project that always needs the same argument writes it in `sweetpad.toml`'s
 `[xcodebuild] args` instead of typing it each time (§6).
 
@@ -3099,8 +3100,19 @@ assignments), and handed to each caller from the arguments it has:
 - the recompiler, from the `--hot` build's passthrough, with this machine's
   Xcode locations, so a recompiled file's search paths name the products that
   build wrote;
-- `settings show`, from the file's `[xcodebuild] args`. It takes no `--` tail,
-  so a typed one-off reaches the build and not this view.
+- `settings show`, from the file's `[xcodebuild] args` and a `--` tail of its
+  own, merged the way a build merges them, so a one-off `KEY=VALUE` or
+  `-xcconfig` can be previewed before a build is spent on it;
+- `pbxproj settings set`/`unset`, from the file's `[xcodebuild] args`: the
+  effect rows they print after an edit are what a build resolves, and a
+  touched key the file also sets, directly or in its `-xcconfig`, is warned
+  about, since it outranks the stored layer and the edit changes nothing the
+  build sees;
+- the BSP server `bsp init` configures, from the file's `[xcodebuild] args`,
+  read once at startup, for the editor's compiler arguments and the
+  `buildTarget/prepare` build (the settings go before prepare's own
+  `CODE_SIGNING_ALLOWED=NO`, which wins). A file `build` would refuse is
+  warned about on stderr and left out, so the index keeps working.
 
 A path resolves against the directory `xcodebuild` runs from, as the build
 reads it. `xcodebuild` takes one `-xcconfig` and fails on a second, so a
@@ -3112,7 +3124,12 @@ $(inherited) x` and `SWIFT_VERSION = 6.0`, to `FOO = cli x` and
 of a key the overlay also sets just below the overlay, and keeps every other
 override on top. Against `xcodebuild -showBuildSettings` on the fixture, with
 that file and those settings, `settings show` differs in the same keys as
-with none: a `/tmp` versus `/private/tmp` spelling and `CODE_SIGN_IDENTITY`.
+with none: a `/tmp` versus `/private/tmp` spelling. `CODE_SIGN_IDENTITY`
+differed too, and the reason was not the fixture's `CODE_SIGNING_ALLOWED =
+NO`: Xcode 27 reports `-` for a macOS app with no `DEVELOPMENT_TEAM` and no
+authored identity whatever `CODE_SIGNING_ALLOWED` or `CODE_SIGN_STYLE` say,
+and `Apple Development` once a team is set. The resolver applies that to
+macOS apps, as it already did to macOS test bundles and tools.
 
 With the overlay reaching the locator, the warning that an `-xcconfig` "can
 move the build output … the launched bundle may be stale or missing" had
@@ -3122,9 +3139,16 @@ like any xcconfig `SYMROOT` (the `symroot_override_oracle` capture): a `build
 the file's `SYMROOT`, where the build wrote it, instead of a stale one under
 `dd`.
 
-The plumbing view `pbxproj settings` echoes the effect of an edit to the
-stored layer and keeps resolving without the command line, and the BSP index
-takes its inputs from `buildServer.json`, not from `sweetpad.toml`.
+The BSP server the VS Code extension configures sees none of this. The
+extension's `buildServer.json` runs `sweetpad bsp serve --config <bsp.json>`,
+and the container, configuration and DerivedData come from that `bsp.json`,
+which has no field for command-line settings. `serve` reads no `sweetpad.toml`
+for it: the extension's own builds take its `sweetpad.build.args` setting, not
+the file, and discovery from the working directory could name a container
+other than the one `bsp.json` does. Making that index follow the extension's
+builds would take a `bsp.json` field the extension fills from
+`sweetpad.build.args`. The server also reads `sweetpad.toml` only at startup,
+so an edit to it reaches the index when the editor restarts the server.
 
 ### Settings that move the product are followed (decided)
 

@@ -408,7 +408,9 @@ the Apple xcspec/SDKSettings defaults. This includes signing settings that are
 pass-through or per-SDK/per-platform defaults: `DEVELOPMENT_TEAM` (resolved via
 self-reference inheritance — `KEY = $(KEY)` inherits the lower layer), the
 literal `CODE_SIGN_IDENTITY` per-SDK default (`-` on simulators,
-`Apple Development` on macOS), `CODE_SIGN_STYLE`, the
+`Apple Development` on macOS, and `-` for a macOS app, tool or test bundle
+with no `DEVELOPMENT_TEAM` and no authored identity, whatever
+`CODE_SIGNING_ALLOWED` says), `CODE_SIGN_STYLE`, the
 `ENABLE_HARDENED_RUNTIME` per-platform default, and the `maccatalyst.`
 `PRODUCT_BUNDLE_IDENTIFIER` prefix.
 

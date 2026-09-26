@@ -56,6 +56,15 @@ dev.sweetpad.ci.app
 BUNDLE_ID=$(sweetpad settings show --key PRODUCT_BUNDLE_IDENTIFIER)
 ```
 
+To preview a one-off before you build with it, pass it after `--` the way you would to `build`. The
+`KEY=VALUE` settings, `-xcconfig`, and `-derivedDataPath` you type there layer on top of the file's
+arguments, and a typed `-xcconfig` replaces the file's:
+
+```bash
+sweetpad settings show --key PRODUCT_NAME -- PRODUCT_NAME=Beta
+sweetpad settings show -- -xcconfig Config/Staging.xcconfig
+```
+
 That's the resolved value. To see what your project file actually *stores*, before Xcode's defaults
 and any xcconfig get layered on, use the plumbing command below.
 
@@ -181,6 +190,10 @@ CLANG_ANALYZER_NONNULL = YES
 CLANG_CXX_LANGUAGE_STANDARD = gnu++14
 …
 ```
+
+After `set` or `unset`, the command prints what each edited key now resolves to, with the settings in
+`sweetpad.toml`'s `[xcodebuild] args` applied the way a build applies them. When the file also sets
+the key, directly or in its `-xcconfig`, the build keeps the file's value, and a warning says so.
 
 The same generated-project guard applies here: these commands refuse to edit an XcodeGen or Tuist
 project without `--force`. See [Tuist and XcodeGen](./generated-projects.md).

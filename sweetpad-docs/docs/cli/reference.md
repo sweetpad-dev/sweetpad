@@ -38,7 +38,7 @@ The CLI describes itself, and that is the authority: `sweetpad --help` lists the
 | `sweetpad project info`     | Show targets, configurations, and schemes.                          |
 | `sweetpad project new`      | Scaffold a minimal SwiftUI app (see [options](#sweetpad-project-new)). |
 | `sweetpad scheme list`      | List the schemes SweetPad found.                                     |
-| `sweetpad settings show`    | Show resolved build settings. `--key NAME` prints one bare value for scripts. |
+| `sweetpad settings show`    | Show resolved build settings. `--key NAME` prints one bare value for scripts; a `--` tail previews xcodebuild arguments. |
 | `sweetpad dependency list`  | List SPM dependencies and their locked versions. Alias: `dep`.       |
 | `sweetpad dependency add`   | Add a package by URL and link a product to a target.                 |
 | `sweetpad dependency remove`| Remove a package, or unlink one product from one target.             |
@@ -107,7 +107,8 @@ sweetpad app launch --mac --derived-data-path build/dd
 bundle id SweetPad installs and launches, the same as it changes the build. So does an `-xcconfig`,
 including one that moves the product with its own `SYMROOT`. As in `xcodebuild`, a setting in the
 `-xcconfig` file wins over the same setting typed as `KEY=VALUE`. Hot reload recompiles with the same
-arguments, and `settings show` includes the ones in `sweetpad.toml`.
+arguments. `settings show` includes the ones in `sweetpad.toml` and takes a `--` tail of its own, so
+`sweetpad settings show -- PRODUCT_NAME=Beta` previews a one-off before you build with it.
 
 Settings that move the product are followed the same way. `-- SYMROOT=build` puts the app in
 `build/Debug-iphonesimulator` beside the project, and SweetPad installs it from there. Like

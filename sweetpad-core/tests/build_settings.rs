@@ -308,6 +308,51 @@ fn destination_supplies_platform() {
 }
 
 #[test]
+fn a_macos_app_without_a_team_signs_ad_hoc() {
+    // `xcodebuild -showBuildSettings -scheme SweetpadCIMac` on Xcode 27, for
+    // the CI fixture's macOS app, which sets no team and no identity and has
+    // `CODE_SIGNING_ALLOWED = NO`: `CODE_SIGN_IDENTITY = -`, with or without
+    // `-destination platform=macOS`, and the same with
+    // `CODE_SIGNING_ALLOWED=YES` or `CODE_SIGN_STYLE=Manual`. A team is what
+    // moves it: `DEVELOPMENT_TEAM=ABCDE12345` gives `Apple Development`.
+    let project =
+        fixtures_root().join("_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj");
+    let set = |k: &str, v: &str| (k.to_string(), v.to_string());
+    let cases = [
+        (vec![], None, "-"),
+        (vec![], Some("platform=macOS"), "-"),
+        (vec![set("CODE_SIGNING_ALLOWED", "YES")], None, "-"),
+        (vec![set("CODE_SIGN_STYLE", "Manual")], None, "-"),
+        (
+            vec![set("DEVELOPMENT_TEAM", "ABCDE12345")],
+            None,
+            "Apple Development",
+        ),
+        (
+            vec![set("DEVELOPMENT_TEAM", "ABCDE12345")],
+            Some("platform=macOS"),
+            "Apple Development",
+        ),
+    ];
+    for (overrides, destination, identity) in cases {
+        let opts = BuildSettingsOptions {
+            project: Some(project.clone()),
+            scheme: Some("SweetpadCIMac".to_string()),
+            configuration: "Debug".to_string(),
+            destination: destination.and_then(parse_destination_arg),
+            overrides: overrides.clone(),
+            ..Default::default()
+        };
+        let s = resolve_one(opts);
+        assert_eq!(
+            s.get("CODE_SIGN_IDENTITY").map(String::as_str),
+            Some(identity),
+            "{overrides:?} {destination:?}"
+        );
+    }
+}
+
+#[test]
 fn invalid_destination_is_rejected_at_parse() {
     // Each caller parses the destination string; an unknown platform yields
     // `None` (the CLI surfaced this as "invalid --destination").

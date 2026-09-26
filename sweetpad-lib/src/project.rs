@@ -3374,23 +3374,26 @@ pub fn built_in_overrides(
     if !code_signing_required {
         push("CODE_SIGN_IDENTITY", "-");
     } else if (is_test_bundle_product_type(product_type)
-        || product_type == Some("com.apple.product-type.tool"))
+        || product_type == Some("com.apple.product-type.tool")
+        || (product_type == Some("com.apple.product-type.application") && !is_catalyst))
         && canonicalize_sdk_base(sdk_base) == "macosx"
         && user_code_sign_identity.is_none_or(str::is_empty)
         && user_development_team.is_none_or(str::is_empty)
     {
-        // A macOS unit/UI-test bundle or command-line tool with no signing
-        // team and no authored identity signs ad-hoc ("Sign to Run Locally"),
-        // which xcodebuild reports as CODE_SIGN_IDENTITY="-" even though
-        // CODE_SIGNING_REQUIRED stays YES for these product types (so the
-        // branch above doesn't fire). Our per-SDK default would otherwise
-        // surface the macOS SDKSettings literal "Apple Development". Scoped
-        // to macOS test bundles and tools — the product types the corpus
-        // proves this for (the synthetic xcconfig/custom-config Scratch tools
-        // report "-" in every capture) — and gated on no-team/no-identity so
-        // a team-set target keeps its resolved value. (macOS *apps* are
-        // deliberately left to the SDK default; see
-        // `code_sign_identity_forced_dash_when_signing_not_required`.)
+        // A macOS unit/UI-test bundle, command-line tool or app with no
+        // signing team and no authored identity signs ad-hoc ("Sign to Run
+        // Locally"), which xcodebuild reports as CODE_SIGN_IDENTITY="-" even
+        // though CODE_SIGNING_REQUIRED stays YES for these product types (so
+        // the branch above doesn't fire). Our per-SDK default would otherwise
+        // surface the macOS SDKSettings literal "Apple Development". The
+        // corpus proves this for tools (the synthetic xcconfig/custom-config
+        // Scratch tools report "-" in every capture) and has no macOS app
+        // without a team or an authored identity; Xcode 27 on the CI fixture's
+        // macOS app reports "-" with no team whatever CODE_SIGNING_ALLOWED
+        // and CODE_SIGN_STYLE say, and "Apple Development" once a team is
+        // set, so the gate is the team, not whether signing is allowed. A Mac
+        // Catalyst app keeps the SDK default: nothing captured says how one
+        // without a team reads.
         push("CODE_SIGN_IDENTITY", "-");
     }
     // Mac Catalyst targets that opt into
@@ -4875,32 +4878,46 @@ mod tests {
             crate::scheme::SanitizerEnables::default(),
         );
         assert_eq!(find(&unsigned, "CODE_SIGN_IDENTITY").as_deref(), Some("-"));
-        let signed = built_in_overrides(
-            26,
-            true,
-            false,
-            false,
-            None,
-            None,
-            app,
-            "macosx",
-            None,
-            false,
-            false,
-            true,
-            false,
-            None,
-            None,
-            None,
-            false,
-            false,
-            None,
-            None,
-            false,
-            false,
-            crate::scheme::SanitizerEnables::default(),
+        // A signable macOS app signs ad-hoc with no team (Xcode 27 on the CI
+        // fixture's app: `-` whatever CODE_SIGNING_ALLOWED says, `Apple
+        // Development` with `DEVELOPMENT_TEAM=ABCDE12345`), and a Mac Catalyst
+        // one keeps the SDK default.
+        let signed_app = |team: Option<&str>, is_catalyst: bool| {
+            built_in_overrides(
+                26,
+                true,
+                is_catalyst,
+                is_catalyst,
+                None,
+                None,
+                app,
+                "macosx",
+                None,
+                false,
+                false,
+                true,
+                false,
+                None,
+                team,
+                None,
+                false,
+                false,
+                None,
+                None,
+                false,
+                false,
+                crate::scheme::SanitizerEnables::default(),
+            )
+        };
+        assert_eq!(
+            find(&signed_app(None, false), "CODE_SIGN_IDENTITY").as_deref(),
+            Some("-")
         );
-        assert_eq!(find(&signed, "CODE_SIGN_IDENTITY"), None);
+        assert_eq!(
+            find(&signed_app(Some("ABCDE12345"), false), "CODE_SIGN_IDENTITY"),
+            None
+        );
+        assert_eq!(find(&signed_app(None, true), "CODE_SIGN_IDENTITY"), None);
     }
 
     #[test]

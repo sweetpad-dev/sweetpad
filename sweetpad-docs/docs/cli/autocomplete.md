@@ -60,6 +60,11 @@ When sourcekit-lsp opens the workspace it finds that file, runs the command in `
 each file's compiler arguments. You never run `bsp serve` yourself. It exists for sourcekit-lsp to
 exec.
 
+When the server starts, it reads the `KEY=VALUE` settings and the `-xcconfig` in `sweetpad.toml`'s
+`[xcodebuild] args`, so a condition such as `SWIFT_ACTIVE_COMPILATION_CONDITIONS` set there reaches the
+editor the way it reaches your builds. Restart the editor after you change the file. A server that the
+VS Code extension sets up doesn't read `sweetpad.toml`, just as the extension's own builds don't.
+
 `--output-file` puts the file somewhere else, for a layout where the container isn't where your editor
 opens the workspace:
 

@@ -85,9 +85,26 @@ pub fn write_config(args: &[String], serve_subcommand: &[&str]) -> Result<(), St
     Ok(())
 }
 
+/// Build settings the project's builds add above every project layer, from
+/// the command line they run `xcodebuild` with: an `-xcconfig` overlay and
+/// `KEY=VALUE` assignments, in order. The sweetpad CLI reads them from the
+/// project's `sweetpad.toml`; a server started from `bsp.json` has none.
+#[derive(Debug, Clone, Default)]
+pub struct CommandLine {
+    pub xcconfig: Option<PathBuf>,
+    pub overrides: Vec<(String, String)>,
+}
+
 /// Run the BSP server loop over stdin/stdout until EOF or `build/exit`.
 pub fn run(args: &[String]) -> Result<(), String> {
-    let server = Arc::new(Server::resolve(args)?);
+    run_with(args, CommandLine::default())
+}
+
+/// [`run`], resolving every target's settings with `command_line` on top, so
+/// the editor's compiler arguments and the `buildTarget/prepare` build agree
+/// with the project's own builds.
+pub fn run_with(args: &[String], command_line: CommandLine) -> Result<(), String> {
+    let server = Arc::new(Server::resolve(args, command_line)?);
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     // Each write locks stdout for one whole frame rather than holding the lock
@@ -220,6 +237,9 @@ struct Server {
     arch: Option<String>,
     xcode: Option<PathBuf>,
     derived_data_path: Option<PathBuf>,
+    /// The settings the project's builds pass on the command line, applied
+    /// to every resolution and to the prepare build.
+    command_line: CommandLine,
     /// Target names in pbxproj order (cached at startup).
     targets: Vec<String>,
     /// Debug log sink — the file named by `SWEETPAD_BSP_LOG`, else nothing.
@@ -521,14 +541,15 @@ impl Server {
     /// `--config` path `buildServer.json` carries (the extension writes this), or
     /// — when that's absent (an older or hand-written stub) — by discovering it
     /// from the cwd via the host-wide index the extension maintains. Either way it
-    /// is then read and watched for live changes.
-    fn resolve(args: &[String]) -> Result<Self, String> {
+    /// is then read and watched for live changes. `command_line` is layered on
+    /// every resolution either way.
+    fn resolve(args: &[String], command_line: CommandLine) -> Result<Self, String> {
         let flags = parse_flags(args);
         let log_level = Arc::new(AtomicU8::new(LogLevel::Info as u8));
 
         if let Some(root) = flags.get("workspace").or_else(|| flags.get("project")) {
             let config = ResolvedConfig::from_flags(PathBuf::from(root), &flags);
-            return Self::build(config, None, log_level);
+            return Self::build(config, None, log_level, command_line);
         }
 
         let config_file = match flags.get("config") {
@@ -536,13 +557,14 @@ impl Server {
             None => discover_config_from_cwd()?,
         };
         let config = ResolvedConfig::from_file(&config_file, &flags)?;
-        Self::build(config, Some(config_file), log_level)
+        Self::build(config, Some(config_file), log_level, command_line)
     }
 
     fn build(
         config: ResolvedConfig,
         config_path: Option<PathBuf>,
         log_level: Arc<AtomicU8>,
+        command_line: CommandLine,
     ) -> Result<Self, String> {
         // A `.xcworkspace` root expands to its member projects; a `.xcodeproj`
         // root is a one-element list. Targets are the union across members.
@@ -588,6 +610,7 @@ impl Server {
             arch: config.arch,
             xcode: config.xcode,
             derived_data_path: config.derived_data_path,
+            command_line,
             targets,
             log,
             telemetry: Mutex::new(None),
@@ -600,10 +623,12 @@ impl Server {
         };
         server.bind_telemetry(config.socket.as_deref());
         server.log(&format!(
-            "start: project={} xcode={:?} dd={:?} telemetry={} config_watch={:?} targets={:?}",
+            "start: project={} xcode={:?} dd={:?} command_line={:?} telemetry={} \
+             config_watch={:?} targets={:?}",
             server.project_path.display(),
             server.xcode,
             server.derived_data_path,
+            server.command_line,
             server.telemetry.lock().is_ok_and(|t| t.is_some()),
             server.config_path,
             server.targets,
@@ -1212,14 +1237,26 @@ impl Server {
             }
             format!("target {target} (-sdk {sdk} -arch {arch})")
         };
-        cmd.args(["-configuration", &self.configuration()])
-            // Prepare only needs modules, not a signed/launchable product, and
-            // must not stall on validation prompts in a headless run.
-            .args([
-                "CODE_SIGNING_ALLOWED=NO",
-                "-skipMacroValidation",
-                "-skipPackagePluginValidation",
-            ]);
+        cmd.args(["-configuration", &self.configuration()]);
+        // The settings the project's builds take, so the prepare build writes
+        // what the arguments above resolve against. Before the fixed ones
+        // below, which win: prepare never signs.
+        if let Some(xcconfig) = &self.command_line.xcconfig {
+            cmd.args(["-xcconfig".as_ref(), xcconfig.as_os_str()]);
+        }
+        cmd.args(
+            self.command_line
+                .overrides
+                .iter()
+                .map(|(k, v)| format!("{k}={v}")),
+        )
+        // Prepare only needs modules, not a signed/launchable product, and
+        // must not stall on validation prompts in a headless run.
+        .args([
+            "CODE_SIGNING_ALLOWED=NO",
+            "-skipMacroValidation",
+            "-skipPackagePluginValidation",
+        ]);
         (cmd, how)
     }
 
@@ -1611,13 +1648,15 @@ impl Server {
             sdk: sdk.to_string(),
             arch: arch.to_string(),
             destination: None,
-            xcconfig: None,
+            // The project's builds pass these on the command line, and the
+            // index has to read the target the way they build it.
+            xcconfig: self.command_line.xcconfig.clone(),
             xcode: self.xcode.clone(),
             xcspec_root: None,
             sdksettings_root: None,
             catalog_cache: None,
             derived_data_path: self.derived_data_path.clone(),
-            overrides: Vec::new(),
+            overrides: self.command_line.overrides.clone(),
             // The index must point at the same tree the editor's builds write
             // to, so honour whatever this machine's Xcode is configured with.
             read_xcode_locations: true,
@@ -1901,7 +1940,60 @@ fn editor_sdk_for(sdkroot: &str, supported_platforms: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{editor_sdk_for, path_from_uri};
+    use super::{
+        CommandLine, LogLevel, ResolvedConfig, Server, editor_sdk_for, parse_flags, path_from_uri,
+    };
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicU8;
+
+    #[test]
+    fn the_projects_command_line_reaches_resolution_and_the_prepare_build() {
+        let project = format!(
+            "{}/fixtures/_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj",
+            env!("SWEETPAD_LIB_DIR")
+        );
+        let flags = parse_flags(&["--project".to_string(), project.clone()]);
+        let command_line = CommandLine {
+            xcconfig: Some(PathBuf::from("/work/ci.xcconfig")),
+            overrides: vec![
+                (
+                    "SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(),
+                    "STAGING".into(),
+                ),
+                ("CODE_SIGNING_ALLOWED".into(), "YES".into()),
+            ],
+        };
+        let server = Server::build(
+            ResolvedConfig::from_flags(PathBuf::from(&project), &flags),
+            None,
+            Arc::new(AtomicU8::new(LogLevel::Info as u8)),
+            command_line.clone(),
+        )
+        .unwrap();
+
+        let opts = server.options_for("SweetpadCIMac", "macosx", "arm64");
+        assert_eq!(opts.xcconfig, command_line.xcconfig);
+        assert_eq!(opts.overrides, command_line.overrides);
+
+        // The prepare build takes them too, ahead of the settings prepare
+        // fixes for itself: a prepare never signs.
+        let (cmd, _) = server.prepare_command("SweetpadCIMac");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["-xcconfig", "/work/ci.xcconfig"]),
+            "{args:?}"
+        );
+        let at = |arg: &str| args.iter().position(|a| a == arg);
+        let staging = at("SWIFT_ACTIVE_COMPILATION_CONDITIONS=STAGING").expect("the setting");
+        let allowed = at("CODE_SIGNING_ALLOWED=YES").expect("the setting");
+        let unsigned = at("CODE_SIGNING_ALLOWED=NO").expect("prepare's own setting");
+        assert!(staging < unsigned && allowed < unsigned, "{args:?}");
+    }
 
     #[test]
     fn path_from_uri_survives_unencoded_non_ascii_after_percent() {

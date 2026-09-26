@@ -29,7 +29,10 @@ use clap::{Args, Subcommand};
 
 use crate::cli::output::Output;
 use crate::cli::pbxedit::Editable;
-use crate::cli::{CliError, CommandResult, ContainerArgs, Context, ErrorKind, Render, Rendered};
+use crate::cli::{
+    CliError, CommandResult, ContainerArgs, Context, ErrorKind, Render, Rendered, resolve,
+    xcodebuild,
+};
 use sweetpad_core::build_settings::{BuildSettingsOptions, resolve_build_settings};
 use sweetpad_lib::membership::ExcludeOutcome;
 use sweetpad_lib::stored_settings::{Assignment, Change, ConfigSettings, Op, Scope, Setting};
@@ -322,6 +325,8 @@ fn set(ctx: &mut Context, args: &SetArgs) -> CommandResult {
         &args.configurations,
         &keys,
     ));
+    let command_line = project_command_line(ctx)?;
+    warnings.extend(command_line_warnings(&command_line, &keys));
 
     document.write(&xcodeproj)?;
 
@@ -331,6 +336,7 @@ fn set(ctx: &mut Context, args: &SetArgs) -> CommandResult {
         &args.targets,
         &changes,
         &keys,
+        &command_line,
         &mut warnings,
     );
     Ok(Rendered::data(MutationResult {
@@ -361,6 +367,8 @@ fn unset(ctx: &mut Context, args: &UnsetArgs) -> CommandResult {
 
     let mut warnings =
         xcconfig_warnings(&document, &xcodeproj, &scopes, &args.configurations, &keys);
+    let command_line = project_command_line(ctx)?;
+    warnings.extend(command_line_warnings(&command_line, &keys));
 
     let touched = changes.iter().any(|c| c.old.is_some());
     if touched {
@@ -374,6 +382,7 @@ fn unset(ctx: &mut Context, args: &UnsetArgs) -> CommandResult {
             &args.targets,
             &changes,
             &keys,
+            &command_line,
             &mut warnings,
         )
     } else {
@@ -660,15 +669,64 @@ fn xcconfig_warnings(
     warnings
 }
 
+/// The settings the project's builds add above the stored layer: the
+/// `KEY=VALUE` settings and `-xcconfig` in `sweetpad.toml`'s `[xcodebuild]
+/// args`, so an effect row reads what a build of the project would use.
+fn project_command_line(ctx: &Context) -> Result<xcodebuild::CommandLineSettings, CliError> {
+    Ok(match resolve::container_silently(ctx) {
+        Some(container) => {
+            xcodebuild::CommandLineSettings::of(&ctx.xcodebuild_args(&[])?, &container)
+        }
+        None => xcodebuild::CommandLineSettings::default(),
+    })
+}
+
+/// Warn when `sweetpad.toml`'s `[xcodebuild] args` also set one of the edited
+/// keys: a command-line setting, or one in its `-xcconfig`, outranks the
+/// stored layer, so the build keeps that value whatever the edit wrote.
+fn command_line_warnings(
+    command_line: &xcodebuild::CommandLineSettings,
+    keys: &[String],
+) -> Vec<String> {
+    let overlay = command_line
+        .xcconfig
+        .as_deref()
+        .and_then(|path| Some((path, sweetpad_lib::xcconfig::parse_file(path).ok()?)));
+    let mut warnings = Vec::new();
+    for key in keys {
+        let base_key = key.split('[').next().unwrap_or(key);
+        if command_line.overrides.iter().any(|(k, _)| k == base_key) {
+            warnings.push(format!(
+                "sweetpad.toml's '[xcodebuild] args' also set {base_key}, which outranks the \
+                 stored layer"
+            ));
+        } else if let Some((path, xcconfig)) = &overlay
+            && xcconfig.entries.iter().any(
+                |e| matches!(e, sweetpad_lib::xcconfig::Entry::Assignment(a) if a.key == base_key),
+            )
+        {
+            warnings.push(format!(
+                "the '-xcconfig {}' in sweetpad.toml's '[xcodebuild] args' also assigns \
+                 {base_key}, which outranks the stored layer",
+                path.display()
+            ));
+        }
+    }
+    warnings
+}
+
 /// Re-resolve the touched keys after the write — the *effect* of the edit,
-/// per (target, configuration). A project-level edit applies to every target.
-/// Resolution failures degrade to a warning; the mutation itself stands.
+/// per (target, configuration), with the settings `command_line` adds, as a
+/// build of the project resolves them. A project-level edit applies to every
+/// target. Resolution failures degrade to a warning; the mutation itself
+/// stands.
 fn resolve_effects(
     xcodeproj: &Path,
     document: &Editable,
     targets: &[String],
     changes: &[Change],
     keys: &[String],
+    command_line: &xcodebuild::CommandLineSettings,
     warnings: &mut Vec<String>,
 ) -> Vec<ResolvedRow> {
     let affected: Vec<String> = if targets.is_empty() {
@@ -689,13 +747,13 @@ fn resolve_effects(
                 sdk: String::new(),
                 arch: String::new(),
                 destination: None,
-                xcconfig: None,
+                xcconfig: command_line.xcconfig.clone(),
                 xcode: None,
                 xcspec_root: None,
                 sdksettings_root: None,
                 catalog_cache: None,
-                derived_data_path: None,
-                overrides: Vec::new(),
+                derived_data_path: command_line.derived_data_path.clone(),
+                overrides: command_line.overrides.clone(),
                 read_xcode_locations: true,
                 keys: Some(keys.to_vec()),
             };
@@ -837,6 +895,39 @@ fn show(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_edit_the_projects_command_line_outranks_is_warned_about() {
+        let dir = crate::cli::testdir::TempDir::new("sweetpad-pbxproj-cmdline");
+        let overlay = dir.join("ci.xcconfig");
+        std::fs::write(&overlay, "OTHER_SWIFT_FLAGS = -DCI\n").unwrap();
+        let command_line = xcodebuild::CommandLineSettings {
+            derived_data_path: None,
+            xcconfig: Some(overlay.clone()),
+            overrides: vec![("SWIFT_VERSION".into(), "5.9".into())],
+        };
+        let keys = [
+            "SWIFT_VERSION".to_string(),
+            "OTHER_SWIFT_FLAGS[sdk=macosx*]".to_string(),
+            "PRODUCT_NAME".to_string(),
+        ];
+        assert_eq!(
+            command_line_warnings(&command_line, &keys),
+            [
+                "sweetpad.toml's '[xcodebuild] args' also set SWIFT_VERSION, which outranks the \
+                 stored layer"
+                    .to_string(),
+                format!(
+                    "the '-xcconfig {}' in sweetpad.toml's '[xcodebuild] args' also assigns \
+                     OTHER_SWIFT_FLAGS, which outranks the stored layer",
+                    overlay.display()
+                ),
+            ]
+        );
+        assert!(
+            command_line_warnings(&xcodebuild::CommandLineSettings::default(), &keys).is_empty()
+        );
+    }
 
     #[test]
     fn splits_assignments_and_appends() {

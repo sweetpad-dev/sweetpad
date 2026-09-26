@@ -247,8 +247,9 @@ sweetpad settings show -o json
 
 The fully resolved settings for the active scheme/target — the thing
 `xcodebuild -showBuildSettings` makes painful. They include the `KEY=VALUE`
-settings and `-xcconfig` in `sweetpad.toml`'s `[xcodebuild] args`, but not a
-`--` tail you type on a build.
+settings and `-xcconfig` in `sweetpad.toml`'s `[xcodebuild] args`. To preview a
+one-off before building with it, give `settings show` the same `--` tail:
+`sweetpad settings show --key PRODUCT_NAME -- PRODUCT_NAME=Beta`.
 
 ## See and set what would build
 

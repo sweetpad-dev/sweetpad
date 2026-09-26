@@ -1249,6 +1249,46 @@ fn a_typed_xcconfig_replaces_the_one_in_sweetpad_toml() {
     );
 }
 
+/// `settings show` takes a `--` tail the way a build does: a typed setting
+/// wins over the file's, and a typed `-xcconfig` replaces the file's.
+#[test]
+fn settings_show_previews_a_typed_tail() {
+    let project = RecordingProject::new(
+        "settings-tail",
+        "[xcodebuild]\nargs = [\"PRODUCT_NAME=Alpha\", \"-xcconfig\", \"a.xcconfig\"]\n",
+    );
+    std::fs::write(project.cwd.join("a.xcconfig"), "SWEETPAD_FROM = a\n").unwrap();
+    std::fs::write(project.cwd.join("b.xcconfig"), "SWEETPAD_FROM = b\n").unwrap();
+    let show = |key: &str, tail: &[&str]| {
+        let mut args = vec![
+            "settings",
+            "show",
+            "--scheme",
+            "SweetpadCIMac",
+            "--configuration",
+            "Debug",
+            "--non-interactive",
+            "--key",
+            key,
+        ];
+        if !tail.is_empty() {
+            args.push("--");
+            args.extend_from_slice(tail);
+        }
+        let out = project.run(&args);
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).unwrap().trim().to_string()
+    };
+    assert_eq!(show("PRODUCT_NAME", &[]), "Alpha");
+    assert_eq!(show("PRODUCT_NAME", &["PRODUCT_NAME=Beta"]), "Beta");
+    assert_eq!(show("SWEETPAD_FROM", &[]), "a");
+    assert_eq!(show("SWEETPAD_FROM", &["-xcconfig", "b.xcconfig"]), "b");
+}
+
 /// `clean` takes the file's arguments, which can move the products, and
 /// leaves out a flag `xcodebuild clean` fails on ("The flag
 /// -enableCodeCoverage is only supported when testing").

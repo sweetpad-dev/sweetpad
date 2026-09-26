@@ -55,9 +55,43 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
                 server_args.push(p.display().to_string());
             }
             server_args.extend(args.iter().cloned());
+            let command_line = serve_command_line(ctx);
             // The server owns stdio (JSON-RPC frames on stdout); no envelope.
-            sweetpad_core::bsp::run(&server_args).map_err(CliError::new)?;
+            sweetpad_core::bsp::run_with(&server_args, command_line).map_err(CliError::new)?;
             Ok(Rendered::Streamed)
+        }
+    }
+}
+
+/// The settings the server layers on every target: the `KEY=VALUE` settings
+/// and `-xcconfig` in the project's `sweetpad.toml` `[xcodebuild] args`, so
+/// the editor's arguments and prepare builds follow the project's builds.
+/// Only a config `bsp init` wrote names the container, and the file is read
+/// for that one. A server the extension's `bsp.json` configures gets none:
+/// the extension's builds take its own `sweetpad.build.args` rather than this
+/// file, and discovery from the working directory could name a container
+/// other than the one `bsp.json` does. A file `build` would refuse is warned
+/// about and left out, so the index keeps working.
+fn serve_command_line(ctx: &Context) -> sweetpad_core::bsp::CommandLine {
+    if ctx.targeting.workspace.is_none() && ctx.targeting.project.is_none() {
+        return sweetpad_core::bsp::CommandLine::default();
+    }
+    let Some(container) = resolve::container_silently(ctx) else {
+        return sweetpad_core::bsp::CommandLine::default();
+    };
+    match ctx.xcodebuild_args(&[]) {
+        Ok(args) => {
+            let settings = crate::cli::xcodebuild::CommandLineSettings::of(&args, &container);
+            sweetpad_core::bsp::CommandLine {
+                xcconfig: settings.xcconfig,
+                overrides: settings.overrides,
+            }
+        }
+        Err(e) => {
+            ctx.out.warn(&format!(
+                "{e}; the index resolves without sweetpad.toml's '[xcodebuild] args'"
+            ));
+            sweetpad_core::bsp::CommandLine::default()
         }
     }
 }
