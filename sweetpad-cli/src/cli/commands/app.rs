@@ -6195,23 +6195,24 @@ fn ui_act(
         role: query.role.clone(),
         nth: query.nth,
     };
+    let tree = ui_tree_command(ctx, app.pid);
     // An empty query would match the application element itself and press
     // something arbitrary; make the caller say what they meant.
     if query.is_empty() {
-        return Err(CliError::new(
-            "name the element with --label, or --role for a lone control; \
-             'sweetpad app ui tree' shows what the app exposes",
-        )
+        return Err(CliError::new(format!(
+            "name the element with --label, or --role for a lone control; {tree} shows what \
+             the app exposes"
+        ))
         .kind(ErrorKind::Usage));
     }
     let shot = resolve_ui_app(ctx, app.pid)?;
     let pid = ui_preflight(ctx, &shot)?;
     let root = ax::snapshot(pid, usize::MAX)?;
-    let target = ax::find(&root, &query).map_err(CliError::new)?;
+    let target = ax::find(&root, &query, &tree).map_err(CliError::new)?;
 
     match text {
-        Some(text) => ax::act(pid, target, &ax::Act::SetValue(text))?,
-        None => ax::act(pid, target, &ax::Act::Perform("AXPress"))?,
+        Some(text) => ax::act(pid, target, &ax::Act::SetValue(text), &tree)?,
+        None => ax::act(pid, target, &ax::Act::Perform("AXPress"), &tree)?,
     }
     Ok(Rendered::data(UiActReport {
         app: shot.name,
@@ -6221,6 +6222,21 @@ fn ui_act(
         path: target.path.clone(),
         text: text.map(str::to_string),
     }))
+}
+
+/// The `app ui tree` a `ui click`/`ui type` error sends the caller to, quoted
+/// and spelled with the flags that found this app: its `--pid`, else the
+/// destination it was named by, which [`follow_up`] leaves to `rest`.
+fn ui_tree_command(ctx: &Context, pid: Option<i32>) -> String {
+    let pid = pid.map(|p| p.to_string());
+    let t = &ctx.targeting;
+    let rest: Vec<&str> = match (&pid, &t.on, &t.destination) {
+        (Some(pid), _, _) => vec!["--pid", pid],
+        (None, Some(on), _) => vec!["--on", on],
+        (None, None, Some(destination)) => vec!["--destination", destination],
+        (None, None, None) => Vec::new(),
+    };
+    follow_up(ctx, "app ui tree", &rest)
 }
 
 /// Check the Accessibility grant and settle on one pid to drive.
@@ -7636,6 +7652,30 @@ error: unable to evaluate expression while the process is exited\n\
         );
         assert_eq!(hint_quote("a\"b$c"), "\"a\\\"b\\$c\"");
         assert_eq!(hint_quote(""), "\"\"");
+    }
+
+    /// `app ui`'s re-run hint names the app the failing verb drove: the pid it
+    /// was given, else the project, target and destination flags.
+    #[test]
+    fn a_ui_rerun_hint_keeps_the_pid_and_the_targeting_flags() {
+        let mut ctx = project_ctx(Path::new("App.xcodeproj"));
+        assert_eq!(
+            ui_tree_command(&ctx, Some(4242)),
+            "'sweetpad app ui tree --project App.xcodeproj --pid 4242'"
+        );
+        ctx.targeting.scheme = Some("AppMac".into());
+        ctx.targeting.on = Some("mac".into());
+        assert_eq!(
+            ui_tree_command(&ctx, None),
+            "'sweetpad app ui tree --project App.xcodeproj --scheme AppMac --on mac'"
+        );
+        ctx.targeting.on = None;
+        ctx.targeting.destination = Some("platform=macOS".into());
+        assert_eq!(
+            ui_tree_command(&ctx, None),
+            "'sweetpad app ui tree --project App.xcodeproj --scheme AppMac --destination \
+             platform=macOS'"
+        );
     }
 
     /// A macOS launch skips AppKit's window restoration unless asked not to,

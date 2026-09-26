@@ -357,8 +357,9 @@ fn label_matches(have: &str, want: &str, exact: bool) -> bool {
 /// prefers a "Save" button over a "Save As…" one instead of calling the pair
 /// ambiguous. Within a tier, matching nothing or several is an error rather
 /// than a pick — `--nth` is how a caller says which of a genuine tie it
-/// meant.
-pub fn find<'a>(root: &'a Node, query: &Query) -> Result<&'a Node, String> {
+/// meant. `tree` is the quoted `app ui tree` command a miss points at, spelled
+/// with the flags that found this app.
+pub fn find<'a>(root: &'a Node, query: &Query, tree: &str) -> Result<&'a Node, String> {
     for exact in [true, false] {
         let hits: Vec<&Node> = root.walk().filter(|n| query.matches(n, exact)).collect();
         if hits.is_empty() {
@@ -393,7 +394,7 @@ pub fn find<'a>(root: &'a Node, query: &Query) -> Result<&'a Node, String> {
         }
     }
     Err(format!(
-        "nothing matches {}; 'sweetpad app ui tree' shows what the app exposes",
+        "nothing matches {}; {tree} shows what the app exposes",
         describe_query(query),
     ))
 }
@@ -556,8 +557,10 @@ pub enum Act<'a> {
 /// The snapshot is pure data, so the live element has to be found again by
 /// index path. The role and label are re-checked on arrival: if the UI moved
 /// under us between snapshot and act, that is a clear error rather than a
-/// press landing on whatever now occupies the slot.
-pub fn act(pid: i32, target: &Node, action: &Act) -> Result<(), CliError> {
+/// press landing on whatever now occupies the slot. `tree` is the quoted
+/// `app ui tree` command that error tells the caller to re-run, as in
+/// [`find`].
+pub fn act(pid: i32, target: &Node, action: &Act, tree: &str) -> Result<(), CliError> {
     if !target.enabled {
         return Err(CliError::new(format!("{} is disabled", target.describe())));
     }
@@ -579,20 +582,20 @@ pub fn act(pid: i32, target: &Node, action: &Act) -> Result<(), CliError> {
         let mut children: CFTypeRef = std::ptr::null();
         let err = unsafe { AXUIElementCopyAttributeValue(current, key.0, &raw mut children) };
         if err != 0 || children.is_null() {
-            return Err(moved_error(target, depth));
+            return Err(moved_error(target, depth, tree));
         }
         let children = CFOwned(children);
         let Ok(slot) = CFIndex::try_from(*index) else {
-            return Err(moved_error(target, depth));
+            return Err(moved_error(target, depth, tree));
         };
         if unsafe { CFGetTypeID(children.0) } != unsafe { CFArrayGetTypeID() }
             || slot >= unsafe { CFArrayGetCount(children.0) }
         {
-            return Err(moved_error(target, depth));
+            return Err(moved_error(target, depth, tree));
         }
         let child = unsafe { CFArrayGetValueAtIndex(children.0, slot) };
         if child.is_null() {
-            return Err(moved_error(target, depth));
+            return Err(moved_error(target, depth, tree));
         }
         held.push(children);
         current = child;
@@ -601,8 +604,8 @@ pub fn act(pid: i32, target: &Node, action: &Act) -> Result<(), CliError> {
     let landed_role = unsafe { attr_string(current, "AXRole") }.unwrap_or_default();
     if landed_role != target.role {
         return Err(CliError::new(format!(
-            "the UI changed under us: expected {} at that position, found {}. Re-run \
-             'sweetpad app ui tree' and try again",
+            "the UI changed under us: expected {} at that position, found {}. Re-run {tree} \
+             and try again",
             target.describe(),
             if landed_role.is_empty() {
                 "nothing".to_string()
@@ -627,10 +630,10 @@ pub fn act(pid: i32, target: &Node, action: &Act) -> Result<(), CliError> {
     }
 }
 
-fn moved_error(target: &Node, depth: usize) -> CliError {
+fn moved_error(target: &Node, depth: usize, tree: &str) -> CliError {
     CliError::new(format!(
         "the UI changed under us: {} is no longer at that position (level {depth}). Re-run \
-         'sweetpad app ui tree' and try again",
+         {tree} and try again",
         target.describe(),
     ))
 }
@@ -723,6 +726,9 @@ mod tests {
         }
     }
 
+    /// The re-run command the caller spells for this app.
+    const TREE: &str = "'sweetpad app ui tree --pid 42'";
+
     #[test]
     fn walk_is_depth_first_front_to_back() {
         let labels: Vec<String> = tree().walk().map(Node::describe).collect();
@@ -744,14 +750,14 @@ mod tests {
         // "Save" is a substring of "Save As…" too; the exact tier must win
         // rather than the pair reading as ambiguous.
         let tree = tree();
-        let found = find(&tree, &label("Save")).expect("exact match");
+        let found = find(&tree, &label("Save"), TREE).expect("exact match");
         assert_eq!(found.path, vec![0, 0]);
     }
 
     #[test]
     fn label_match_is_case_insensitive() {
         assert_eq!(
-            find(&tree(), &label("save")).expect("match").path,
+            find(&tree(), &label("save"), TREE).expect("match").path,
             vec![0, 0]
         );
     }
@@ -759,14 +765,14 @@ mod tests {
     #[test]
     fn substring_matches_when_nothing_is_exact() {
         let tree = tree();
-        let found = find(&tree, &label("Save As")).expect("substring match");
+        let found = find(&tree, &label("Save As"), TREE).expect("substring match");
         assert_eq!(found.path, vec![0, 1]);
     }
 
     #[test]
     fn identifier_matches_and_is_preferred_as_the_label() {
         let tree = tree();
-        let found = find(&tree, &label("search-field")).expect("identifier match");
+        let found = find(&tree, &label("search-field"), TREE).expect("identifier match");
         assert_eq!(found.role, "AXTextField");
         assert_eq!(found.best_label(), Some("search-field"));
     }
@@ -778,7 +784,7 @@ mod tests {
             role: Some("button".into()),
             ..Query::default()
         };
-        assert_eq!(find(&tree(), &query).expect("match").path, vec![0, 0]);
+        assert_eq!(find(&tree(), &query, TREE).expect("match").path, vec![0, 0]);
     }
 
     #[test]
@@ -789,7 +795,10 @@ mod tests {
             role: Some("AXTextField".into()),
             ..Query::default()
         };
-        assert_eq!(find(&tree(), &query).expect("match").role, "AXTextField");
+        assert_eq!(
+            find(&tree(), &query, TREE).expect("match").role,
+            "AXTextField"
+        );
     }
 
     #[test]
@@ -798,7 +807,7 @@ mod tests {
             role: Some("AXButton".into()),
             ..Query::default()
         };
-        let err = find(&tree(), &query).expect_err("three buttons tie");
+        let err = find(&tree(), &query, TREE).expect_err("three buttons tie");
         assert!(err.contains("3 elements match"), "{err}");
         assert!(err.contains("--nth 1..3"), "{err}");
         assert!(err.contains("AXButton \"Save\""), "{err}");
@@ -811,7 +820,10 @@ mod tests {
             nth: Some(2),
             ..Query::default()
         };
-        assert_eq!(find(&tree(), &query).expect("second").path, vec![0, 1]);
+        assert_eq!(
+            find(&tree(), &query, TREE).expect("second").path,
+            vec![0, 1]
+        );
     }
 
     #[test]
@@ -821,7 +833,7 @@ mod tests {
             nth: Some(9),
             ..Query::default()
         };
-        let err = find(&tree(), &query).expect_err("only three");
+        let err = find(&tree(), &query, TREE).expect_err("only three");
         assert!(err.contains("only 3 elements match"), "{err}");
     }
 
@@ -832,17 +844,24 @@ mod tests {
             nth: Some(0),
             ..Query::default()
         };
-        assert!(find(&tree(), &query).expect_err("zero").contains("1-based"));
+        assert!(
+            find(&tree(), &query, TREE)
+                .expect_err("zero")
+                .contains("1-based")
+        );
     }
 
     #[test]
     fn no_match_points_at_the_tree_command() {
-        let err = find(&tree(), &label("Nonexistent")).expect_err("no such element");
+        let err = find(&tree(), &label("Nonexistent"), TREE).expect_err("no such element");
         assert!(
             err.contains("nothing matches --label \"Nonexistent\""),
             "{err}"
         );
-        assert!(err.contains("app ui tree"), "{err}");
+        assert!(
+            err.ends_with("; 'sweetpad app ui tree --pid 42' shows what the app exposes"),
+            "{err}"
+        );
     }
 
     #[test]
