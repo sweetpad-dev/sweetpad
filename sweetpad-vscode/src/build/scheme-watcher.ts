@@ -122,17 +122,18 @@ export class SchemeWatcher implements vscode.Disposable {
       this.watchers.push(tuistWatcher);
     }
 
-    // Watch for project.pbxproj files (changes inside .xcodeproj)
-    const pbxprojWatcher = vscode.workspace.createFileSystemWatcher(
-      "**/project.pbxproj",
+    // Watch the project document inside each .xcodeproj: project.pbxproj, or the project.xcproj
+    // Xcode 27.2 writes in its place. Converting between the two deletes one and creates the other.
+    const projectDocumentWatcher = vscode.workspace.createFileSystemWatcher(
+      "**/project.{pbxproj,xcproj}",
       false, // ignoreCreateEvents
       false, // ignoreChangeEvents
       false, // ignoreDeleteEvents
     );
-    pbxprojWatcher.onDidCreate((e) => this.handleChange(e, "project.pbxproj created"));
-    pbxprojWatcher.onDidChange((e) => this.handleChange(e, "project.pbxproj changed"));
-    pbxprojWatcher.onDidDelete((e) => this.handleChange(e, "project.pbxproj deleted"));
-    this.watchers.push(pbxprojWatcher);
+    projectDocumentWatcher.onDidCreate((e) => this.handleChange(e, `${path.basename(e.fsPath)} created`));
+    projectDocumentWatcher.onDidChange((e) => this.handleChange(e, `${path.basename(e.fsPath)} changed`));
+    projectDocumentWatcher.onDidDelete((e) => this.handleChange(e, `${path.basename(e.fsPath)} deleted`));
+    this.watchers.push(projectDocumentWatcher);
   }
 
   handleChange(e: vscode.Uri, reason: string) {
