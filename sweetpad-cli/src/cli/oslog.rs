@@ -5,9 +5,10 @@
 //! entry becomes a bold, color-coded `HH:MM:SS.sss L [category] message` line —
 //! the level as a single letter (D/I/N/E/F), the prefix tinted by severity, the
 //! message left in the terminal's default color. The `Filtering the log data …`
-//! banner `log stream` prints first is the tool's, not the app's, so it isn't
-//! shown; any other line that isn't JSON is shown as a blue `system` note
-//! carrying the raw text.
+//! banner `log stream` prints first and the `{"count":…,"finished":1}` summary
+//! `log show` closes with are the tool's, not the app's, so neither is shown;
+//! any other line that isn't JSON is shown as a blue `system` note carrying the
+//! raw text.
 
 use std::borrow::Cow;
 
@@ -22,6 +23,17 @@ struct Entry {
     category: Option<String>,
     #[serde(rename = "eventMessage")]
     event_message: Option<String>,
+    /// Set only on the summary `log show` closes with ([`is_query_summary`]).
+    finished: Option<serde_json::Value>,
+}
+
+impl Entry {
+    /// Whether this object is the `{"count":N,"finished":1}` summary rather
+    /// than a log entry. An entry always carries an `eventMessage`, which the
+    /// summary never does.
+    fn is_summary(&self) -> bool {
+        self.finished.is_some() && self.event_message.is_none()
+    }
 }
 
 /// os_log severity, ordered low→high so a live filter can compare against a
@@ -90,11 +102,13 @@ pub struct Line {
 }
 
 /// Render one ndjson line as a colored log line with its severity, or `None`
-/// for the banner `log stream` opens with ([`is_stream_banner`]). Other non-JSON
-/// input is shown as a blue `system` note at `Notice` level.
+/// for the banner `log stream` opens with ([`is_stream_banner`]) and the
+/// summary `log show` closes with ([`is_query_summary`]). Other non-JSON input
+/// is shown as a blue `system` note at `Notice` level.
 #[must_use]
 pub fn render_ndjson_line(line: &str, color: bool) -> Option<Line> {
     Some(match serde_json::from_str::<Entry>(line) {
+        Ok(entry) if entry.is_summary() => return None,
         Ok(entry) => render_fields(
             entry.timestamp.as_deref(),
             entry.message_type.as_deref().unwrap_or("Default"),
@@ -114,6 +128,17 @@ pub fn render_ndjson_line(line: &str, color: bool) -> Option<Line> {
 /// read as the app's own log line and match an `--until` for the app's name.
 fn is_stream_banner(line: &str) -> bool {
     line.starts_with("Filtering the log data")
+}
+
+/// Whether `line` is the `{"count":N,"finished":1}` object `log show --style
+/// ndjson` prints after its last entry. It counts what the query returned, so
+/// rendered it reads as an empty `N [?]` entry, and a consumer of the raw
+/// event stream would take it for one.
+#[must_use]
+pub fn is_query_summary(line: &str) -> bool {
+    // The substring test spares a parse of every entry on the raw stream.
+    line.contains("\"finished\"")
+        && serde_json::from_str::<Entry>(line).is_ok_and(|entry| entry.is_summary())
 }
 
 /// Render already-parsed log fields into a [`Line`], shared by [`render_ndjson_line`]
@@ -368,6 +393,28 @@ mod tests {
                       (sender == \"App\" OR sender == \"App.debug.dylib\")\"";
         assert!(render_ndjson_line(banner, false).is_none());
         assert!(render_ndjson_line(banner, true).is_none());
+    }
+
+    /// The object `log show --style ndjson` closes with counts the entries
+    /// it printed; it is none of them, so it renders as nothing rather than
+    /// an empty `N [?]` line.
+    #[test]
+    fn the_log_queries_closing_summary_is_dropped() {
+        let summary = r#"{"count":1264,"finished":1}"#;
+        assert!(is_query_summary(summary));
+        assert!(render_ndjson_line(summary, false).is_none());
+        assert!(render_ndjson_line(r#"{"count":0,"finished":1}"#, true).is_none());
+
+        // An entry is never the summary, even one whose message names it.
+        let entry = r#"{"timestamp":"2024-12-31 23:59:59.123456-0800","messageType":"Default","category":"app","eventMessage":"{\"count\":3,\"finished\":1}"}"#;
+        assert!(!is_query_summary(entry));
+        assert_eq!(
+            render_ndjson_line(entry, false).unwrap().text,
+            r#"23:59:59.123 N [app] {"count":3,"finished":1}"#
+        );
+        assert!(!is_query_summary(
+            "Filtering the log data using \"finished\""
+        ));
     }
 
     #[test]

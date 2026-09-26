@@ -6854,12 +6854,13 @@ fn until_result(
 /// Emit one `log stream` ndjson line: verbatim in json/ndjson mode (it is
 /// already one object per line), or rendered as a colored `HH:MM:SS.sss L [cat]`
 /// line otherwise. Shared by the live follow ([`stream_logs`]) and the backfill
-/// ([`backfill_logs`]).
+/// ([`backfill_logs`]). The log tool's own lines, its banner and the summary
+/// `log show` ends on, are dropped in both forms.
 #[allow(clippy::print_stdout)] // the point of `app logs` is stdout
 fn emit_log_line(line: &str, color: bool, json: bool) {
     if json {
         // Already one JSON object per line; emit the event verbatim.
-        if line.trim_start().starts_with('{') {
+        if line.trim_start().starts_with('{') && !oslog::is_query_summary(line) {
             println!("{line}");
         }
     } else if let Some(rendered) = oslog::render_ndjson_line(line, color) {

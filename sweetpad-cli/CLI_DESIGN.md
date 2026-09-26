@@ -661,7 +661,10 @@ sweetpad completions <shell>          clap_complete-generated scripts
   up. The `Filtering the log data using …` line `log stream` prints first is
   the tool restating sweetpad's predicate, so `oslog::render_ndjson_line` drops
   it wherever an os_log stream is rendered: the session, and `app logs`, where
-  it can't satisfy an `--until` that names the app either. The exit code
+  it can't satisfy an `--until` that names the app either. The
+  `{"count":N,"finished":1}` object `log show` closes an `app logs --last`
+  query with is the tool's too: rendered, it would read as an empty `N [?]`
+  entry, so it is dropped there and from the raw `--json` stream. The exit code
   follows how the session ended (§4):
   Ctrl-C during any of its builds is 6, and a quit is 0 once the app has run,
   else the last build's code (3 failed, 1 built but not launched).
@@ -1788,7 +1791,8 @@ ndjson`, `os_log` entries pass through as the raw `log stream` objects and
 captured lines are tagged `{"source":"stdout",…}`, so the two are
 distinguishable on one stream. `--last <dur>` (e.g. `2m`, `90s`, `1h`) swaps
 follow for a one-shot backfill — `log show --last` for the `os_log` history
-`log stream` can't replay, plus the captured file — for an app that has gone
+`log stream` can't replay (without the count `log show` ends on, which is no
+entry), plus the captured file — for an app that has gone
 quiet or already exited; it is refused for a physical device, whose syslog has
 no history query. `app status` prints the `detached log` path when the last
 launch was macOS, so the file is discoverable without catching the one launch
