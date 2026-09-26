@@ -68,9 +68,11 @@ pub struct RunArgs {
 
     /// Enable hot reload (iOS Simulator and native macOS apps): on each Swift
     /// save the file is recompiled and injected into the running app — no
-    /// relaunch, state preserved. Requires the injection client ('sweetpad
-    /// help hot-reload' covers the setup). A project can default this on via
-    /// '[run] hot = true' in sweetpad.toml.
+    /// relaunch, state preserved. Release builds of sweetpad include the
+    /// injection client; a build from source needs
+    /// 'sweetpad-cli/vendor/injection-client/build.sh' run first ('sweetpad
+    /// help hot-reload'). A project can default this on via '[run] hot =
+    /// true' in sweetpad.toml.
     // How the client ships and injects: CLI_DESIGN §9d.
     #[arg(long)]
     pub hot: bool,
