@@ -189,8 +189,14 @@ impl BuildPlan<'_> {
             parsed = false;
             process::run("xcodebuild", &args, cwd.as_deref(), false)?
         } else {
-            let (ok, d, b) =
-                buildlog::run_collecting("xcodebuild", &args, cwd.as_deref(), out, "Building")?;
+            let (ok, d, b) = buildlog::run_collecting(
+                "xcodebuild",
+                &args,
+                cwd.as_deref(),
+                out,
+                "Building",
+                buildlog::ResultKind::BuildFailed,
+            )?;
             diagnostics = d;
             blocker = b;
             streamed = true;
@@ -474,9 +480,15 @@ impl TestPlan<'_> {
                 streamed: false,
             }
         } else {
-            let (ok, diagnostics, blocker) =
-                buildlog::run_collecting("xcodebuild", &args, cwd.as_deref(), out, "Testing")
-                    .context("running the tests")?;
+            let (ok, diagnostics, blocker) = buildlog::run_collecting(
+                "xcodebuild",
+                &args,
+                cwd.as_deref(),
+                out,
+                "Testing",
+                buildlog::ResultKind::TestFailed,
+            )
+            .context("running the tests")?;
             TestRunOutcome {
                 passed: ok,
                 tail: None,

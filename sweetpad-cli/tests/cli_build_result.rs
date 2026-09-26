@@ -282,6 +282,63 @@ fn a_device_destination_error_ends_on_a_device_info_tip() {
     }
 }
 
+/// Xcode 27 given a device id that matches nothing (cut to a few entries):
+/// it waits about a minute, then fails with no `** BUILD FAILED **`.
+const DESTINATION_NOT_FOUND: &str = "\
+xcodebuild: error: Unable to find a device matching the provided destination specifier:
+\t\t{ platform:iOS, id:00008110-000A1B2C3D4E5F60 }
+
+\tThe requested device could not be found because no available devices matched the request.
+
+\tDestinations compatible with the \"SweetpadCIApp\" scheme:
+\t\t{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device }
+\t\t{ platform:iOS Simulator, arch:arm64, id:F13C004A-0824-4870-B4F2-29AAEE36636E, OS:27.0, name:iPhone 17 }
+";
+
+/// With no banner of xcodebuild's own, a destination error still closes on
+/// the `✗` line every other failed run ends on, for `build` and for `test`,
+/// and the tip that follows it on stderr stays the last word.
+#[test]
+fn a_destination_error_closes_on_the_failure_banner() {
+    let project = project();
+    let tip = "tip: run 'sweetpad device info 00008110-000A1B2C3D4E5F60' to see why the \
+               device isn't ready";
+    for (verb, banner) in [("build", "✗ Build failed"), ("test", "✗ Tests failed")] {
+        let out = sweetpad_with_stub(
+            &format!("not-found-{verb}"),
+            DESTINATION_NOT_FOUND,
+            70,
+            &[
+                verb,
+                "--project",
+                project.to_str().unwrap(),
+                "--scheme",
+                "SweetpadCIMac",
+                "--configuration",
+                "Debug",
+                "--destination",
+                "platform=iOS,id=00008110-000A1B2C3D4E5F60",
+                "--non-interactive",
+            ],
+        );
+        assert_eq!(out.status.code(), Some(3), "{verb}: {out:?}");
+        let stdout = String::from_utf8(out.stdout).unwrap();
+        assert!(
+            stdout.contains("Unable to find a device matching"),
+            "{verb}: {stdout}"
+        );
+        assert_eq!(stdout.lines().last(), Some(banner), "{verb}: {stdout}");
+        assert_eq!(
+            stdout.matches(banner).count(),
+            1,
+            "{verb}: one banner: {stdout}"
+        );
+        let stderr = String::from_utf8(out.stderr).unwrap();
+        assert_eq!(stderr.lines().last(), Some(tip), "{verb}: {stderr}");
+        assert!(!stderr.contains("error:"), "{verb}: {stderr}");
+    }
+}
+
 /// The same error on a destination that is not a physical device has no
 /// device to ask about.
 #[test]
@@ -318,15 +375,30 @@ fn session_with_stub(tag: &str, transcript: &str, status: i32) -> Output {
     )
 }
 
-/// The session's build closes on the same banner as `build`'s.
+/// The session's build closes on the same banner as `build`'s, whether
+/// xcodebuild printed one (a compile error) or not (a destination error).
 #[test]
 fn the_run_sessions_build_ends_on_the_banner_too() {
-    let out = session_with_stub("session", BROKEN, 65);
-    assert_eq!(out.status.code(), Some(3), "{out:?}");
-    let stdout = String::from_utf8(out.stdout).unwrap();
-    assert_eq!(stdout.lines().last(), Some("✗ Build failed"), "{stdout}");
-    let stderr = String::from_utf8(out.stderr).unwrap();
-    assert!(!stderr.contains("error:"), "{stderr}");
+    for (tag, transcript, status) in [
+        ("session", BROKEN, 65),
+        ("session-destination", DESTINATION_NOT_FOUND, 70),
+    ] {
+        let out = session_with_stub(tag, transcript, status);
+        assert_eq!(out.status.code(), Some(3), "{tag}: {out:?}");
+        let stdout = String::from_utf8(out.stdout).unwrap();
+        assert_eq!(
+            stdout.lines().last(),
+            Some("✗ Build failed"),
+            "{tag}: {stdout}"
+        );
+        assert_eq!(
+            stdout.matches("✗ Build failed").count(),
+            1,
+            "{tag}: {stdout}"
+        );
+        let stderr = String::from_utf8(out.stderr).unwrap();
+        assert!(!stderr.contains("error:"), "{tag}: {stderr}");
+    }
 }
 
 /// Xcode 26 failing on a package build-tool plugin nobody has approved, which

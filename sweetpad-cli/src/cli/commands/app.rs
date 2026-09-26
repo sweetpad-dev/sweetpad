@@ -2977,9 +2977,6 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
         parser.push(line).iter().for_each(&mut show);
     });
     parser.finish().iter().for_each(&mut show);
-    // Erase the spinner before the post-build notes in case nothing ever
-    // rendered (e.g. Ctrl-C during the silent prelude).
-    drop(progress);
 
     // The output stream has ended, so the build is exiting: clear the forward
     // target *before* the reap, or a signal in the gap could target a recycled
@@ -2990,6 +2987,18 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
     done.store(true, Ordering::Relaxed);
     let _ = watcher.join();
     let status = child.wait();
+
+    // A build that failed without xcodebuild's own banner (a destination
+    // error) closes on one, as `BuildPlan::run`'s stream does.
+    if !aborted.load(Ordering::Relaxed)
+        && matches!(&status, Ok(s) if !s.success())
+        && let Some(banner) = progress.close_failed(buildlog::ResultKind::BuildFailed)
+    {
+        out.line(&banner);
+    }
+    // Erase the spinner before the post-build notes in case nothing ever
+    // rendered (e.g. Ctrl-C during the silent prelude).
+    drop(progress);
 
     if aborted.load(Ordering::Relaxed) {
         out.note("Build cancelled");

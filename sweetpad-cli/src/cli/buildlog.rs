@@ -355,6 +355,8 @@ pub struct BuildProgress {
     /// The last line rendered was an error announcing a list of details, so
     /// the indented lines that follow belong to it (see [`opens_a_list`]).
     continues: bool,
+    /// A `✗` banner has closed the stream (see [`close_failed`](Self::close_failed)).
+    closed_failed: bool,
 }
 
 impl BuildProgress {
@@ -375,6 +377,7 @@ impl BuildProgress {
             quiet: out.is_quiet(),
             gh_annotations: out.gh_annotations(),
             continues: false,
+            closed_failed: false,
         }
     }
 
@@ -399,6 +402,12 @@ impl BuildProgress {
             }
             self.continues = false;
         }
+        if matches!(
+            event,
+            Event::Result(ResultKind::BuildFailed | ResultKind::TestFailed)
+        ) {
+            self.closed_failed = true;
+        }
         let mut rendered = render(event, self.color, self.verbose, self.quiet)?;
         self.continues = opens_a_list(event);
         // First line through — hand the terminal over from the spinner to the
@@ -416,6 +425,20 @@ impl BuildProgress {
             self.start.elapsed(),
             self.color,
         ))
+    }
+
+    /// The `kind` banner (`✗ Build failed`, `✗ Tests failed`) for a run that
+    /// failed without printing xcodebuild's own, or `None` once a failure
+    /// banner has gone by. A destination xcodebuild cannot use fails before
+    /// any build starts, so its output ends on the destination listing with
+    /// no `** BUILD FAILED **`; this closes it like every other failed run.
+    pub fn close_failed(&mut self, kind: ResultKind) -> Option<String> {
+        if self.closed_failed {
+            return None;
+        }
+        self.closed_failed = true;
+        self.spinner = None;
+        render(&Event::Result(kind), self.color, self.verbose, self.quiet)
     }
 }
 
@@ -823,7 +846,7 @@ pub fn run(
     out: &Output,
     label: &str,
 ) -> Result<bool, CliError> {
-    Ok(run_collecting(program, args, cwd, out, label)?.0)
+    Ok(stream(program, args, cwd, out, label, None)?.0)
 }
 
 /// Like [`run`], but also returns the error lines it showed ([`ErrorLines`]).
@@ -850,15 +873,28 @@ pub fn run_keeping_errors(
     Ok((ok, errors.into_lines()))
 }
 
-/// Like [`run`], but also collects each diagnostic as its
-/// [`event_json`]-shaped object — the input to the last-build diagnostics
-/// artifact.
+/// Like [`run`], for an xcodebuild build or test run: also collects each
+/// diagnostic as its [`event_json`]-shaped object (the input to the
+/// last-build diagnostics artifact), and a failed run whose output printed
+/// no failure banner closes on `failed`'s (see [`BuildProgress::close_failed`]).
 pub fn run_collecting(
     program: &str,
     args: &[&str],
     cwd: Option<&Path>,
     out: &Output,
     label: &str,
+    failed: ResultKind,
+) -> Result<(bool, Vec<serde_json::Value>, Option<String>), CliError> {
+    stream(program, args, cwd, out, label, Some(failed))
+}
+
+fn stream(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    out: &Output,
+    label: &str,
+    failed: Option<ResultKind>,
 ) -> Result<(bool, Vec<serde_json::Value>, Option<String>), CliError> {
     let mut progress = BuildProgress::start(out, label);
     let mut diagnostics = Vec::new();
@@ -879,6 +915,12 @@ pub fn run_collecting(
         parser.push(line).iter().for_each(&mut show);
     })?;
     parser.finish().iter().for_each(&mut show);
+    if !ok
+        && let Some(kind) = failed
+        && let Some(banner) = progress.close_failed(kind)
+    {
+        out.line(&banner);
+    }
     Ok((ok, diagnostics, watch.hint()))
 }
 
@@ -1257,7 +1299,28 @@ The following build commands failed:
             quiet: false,
             gh_annotations: false,
             continues: false,
+            closed_failed: false,
         }
+    }
+
+    /// A failed run gets its `✗` banner exactly once: from xcodebuild's own
+    /// `** … FAILED **` line when it printed one, else from `close_failed`.
+    #[test]
+    fn a_failed_run_closes_on_one_banner() {
+        let mut progress = plain_progress();
+        let _ = progress.line("xcodebuild: error: Unable to find a device matching …");
+        assert_eq!(
+            progress.close_failed(ResultKind::BuildFailed).as_deref(),
+            Some("✗ Build failed")
+        );
+        assert_eq!(progress.close_failed(ResultKind::BuildFailed), None);
+
+        let mut progress = plain_progress();
+        assert_eq!(
+            progress.line("** TEST FAILED **").as_deref(),
+            Some("✗ Tests failed")
+        );
+        assert_eq!(progress.close_failed(ResultKind::TestFailed), None);
     }
 
     /// `xcodebuild -resolvePackageDependencies` prints why it failed on the

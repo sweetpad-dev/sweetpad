@@ -200,10 +200,13 @@ builds it with real `xcodebuild`.
   `CLICOLOR_FORCE`/`FORCE_COLOR` force it back on when piped (an explicit
   `--no-color`/`NO_COLOR` still wins).
 - Errors: human messages on **stderr** by default; **structured error objects**
-  under `--json`. Meaningful exit codes. When a build or test fails on a
-  compile error that the streamed log already showed, output ends on the `✗`
-  line and no trailing error repeats it. The exit code still reports the
-  failure, and a failure with no parsed error still prints its message.
+  under `--json`. Meaningful exit codes. A failed build or test run's
+  streamed log closes on its `✗` line. When xcodebuild printed no
+  `** BUILD FAILED **` (a destination error stops it before any build
+  starts), sweetpad prints the line itself. When the log already showed the
+  error, output ends there and no trailing error repeats it. The exit code
+  still reports the failure, and a failure with no parsed error still prints
+  its message.
 - Help, errors, warnings and notes quote a command or value with 'single
   quotes', as clap does; a terminal prints backticks literally. A unit test
   walks the clap tree and fails on a backtick in any help text.
@@ -2321,6 +2324,11 @@ from `--on`, `--destination` or the `--` passthrough), the failure ends on
 errors get it: on Xcode 27 a device id that matches nothing xcodebuild can see
 waits about a minute and then reports `Unable to find a device`, not the
 timeout.
+
+xcodebuild prints no `** BUILD FAILED **` for either error, so human output
+would end on the listing with no verdict under it. The streamed log closes on
+`✗ Build failed` anyway (`✗ Tests failed` under `test`), in `build`, `test`
+and `app run`'s session alike, and the tip comes after it.
 
 ### A test whose app vanished says what ended it
 
