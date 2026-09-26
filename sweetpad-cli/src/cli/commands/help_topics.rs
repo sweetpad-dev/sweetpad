@@ -163,9 +163,10 @@ forms (usable with --destination or SWEETPAD_DESTINATION):
   platform=iOS,id=<device UDID>
   platform=macOS
 
-'sweetpad destination list' prints every runnable target with a ready
-specifier; 'simulator list' and 'device list' show each pool, and
-'device info' connects to a physical device to say whether it is ready.
+'sweetpad devices' prints every runnable target with a ready specifier;
+'sweetpad simulator list' and 'sweetpad device list' show each pool, and
+'sweetpad device info' connects to a physical device to say whether it is
+ready.
 
 When no destination is given, an interactive terminal gets the picker:
 ordered most-used-first (per project), then booted (marked ●), then the
@@ -290,5 +291,40 @@ mod tests {
                 "hot-reload"
             ]
         );
+    }
+
+    /// A command a topic points at is one `--help` lists: a hidden alias
+    /// works, but a reader who looks for it in the help finds nothing.
+    #[test]
+    fn the_topics_point_at_visible_commands() {
+        use clap::CommandFactory;
+        let root = crate::cli::Cli::command();
+        for topic in &TOPICS {
+            // Apostrophes rule out pairing every quote, so each quoted
+            // command runs from its "'sweetpad " to the next quote.
+            for (at, _) in topic.body.match_indices("'sweetpad ") {
+                let rest = &topic.body[at + 1..];
+                let quoted = &rest[..rest.find('\'').unwrap_or(rest.len())];
+                let words = &quoted["sweetpad ".len()..];
+                let mut cmd = &root;
+                for word in words.split_whitespace() {
+                    if word.starts_with(['-', '<']) {
+                        break;
+                    }
+                    let Some(sub) = cmd.find_subcommand(word) else {
+                        panic!(
+                            "topic {} names '{quoted}', and '{word}' is no command",
+                            topic.name
+                        );
+                    };
+                    assert!(
+                        !sub.is_hide_set() && sub.get_name() == word,
+                        "topic {} names '{quoted}', and '{word}' is hidden or an alias",
+                        topic.name
+                    );
+                    cmd = sub;
+                }
+            }
+        }
     }
 }
