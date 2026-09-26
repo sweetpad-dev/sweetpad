@@ -175,13 +175,17 @@ files on disk:
 
 ```bash
 sweetpad test attachments                      # everything, next to the result bundle
-sweetpad test attachments --only-failures      # only what a failing test recorded
+sweetpad test attachments --only-failures      # only the failed tests' files
 sweetpad test attachments --output-dir ./out   # somewhere you choose
 ```
 
 Without `--output-dir` the files land beside the retained result bundle, replacing the previous
 export. Each test gets its own directory, and the listing names tests in the same
 `Target/Class/method` form as the failure lines, so `--only-testing` takes any of them.
+
+`--only-failures` keeps everything a failed test attached, including the crash log and screen
+recording Xcode adds to a UI test whose app crashed. When nothing is left, the note says whether
+the run had no failures or its failing tests attached nothing.
 
 ## Tests in CI
 

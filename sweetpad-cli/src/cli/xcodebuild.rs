@@ -2,7 +2,7 @@
 //! argument vector (mirroring the VS Code extension's proven invocation) and
 //! reading back the build settings needed to locate and launch the built app.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -1039,6 +1039,9 @@ struct TestTargets {
     /// The target under each test's `test://` URL, which stays unique where
     /// one test identifier sits in two targets.
     by_url: BTreeMap<String, String>,
+    /// The tests that failed, as `-only-testing:` takes them with any `()`
+    /// trimmed, so a name spelled without its URL still matches.
+    failed: BTreeSet<String>,
 }
 
 impl TestTargets {
@@ -1047,7 +1050,12 @@ impl TestTargets {
         tree_cases(root, None, &mut cases);
         let mut by_test: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let mut by_url = BTreeMap::new();
+        let mut failed = BTreeSet::new();
         for case in cases {
+            if case.failed {
+                let selector = test_selector(case.target, case.identifier, case.url);
+                failed.insert(selector.trim_end_matches("()").to_string());
+            }
             if let Some(target) = case.target {
                 let targets = by_test
                     .entry(case.identifier.trim_end_matches("()").to_string())
@@ -1060,7 +1068,17 @@ impl TestTargets {
                 }
             }
         }
-        Self { by_test, by_url }
+        Self {
+            by_test,
+            by_url,
+            failed,
+        }
+    }
+
+    /// Whether the test `identifier` names (as [`Self::identifier`] gives it)
+    /// failed.
+    fn failed(&self, identifier: &str) -> bool {
+        self.failed.contains(identifier.trim_end_matches("()"))
     }
 
     /// `test` (`Class/method()`, `Suite/function()`, as the result bundle
@@ -1167,11 +1185,22 @@ pub struct ExportedAttachment {
     pub identifier: String,
     pub file: PathBuf,
     pub suggested_name: String,
-    /// Recorded against a test failure rather than a passing step.
+    /// Recorded against a test failure rather than a passing step, as
+    /// xcresulttool marks it. Xcode 27 marks nothing this way, not even the
+    /// crash log of a failed UI test.
     pub failure: bool,
+    /// The test that recorded it failed, as the test tree says.
+    pub failed_test: bool,
     /// Seconds since the epoch — the run order the test recorded them in,
     /// which the manifest's own order does not preserve.
     pub timestamp: f64,
+}
+
+/// What [`export_attachments`] staged, and how many of the run's tests failed.
+pub struct AttachmentExport {
+    pub attachments: Vec<ExportedAttachment>,
+    /// The failed tests the test tree lists; `None` when it can't be read.
+    pub failed_tests: Option<usize>,
 }
 
 /// The `manifest.json` `xcresulttool export attachments` writes beside the
@@ -1207,31 +1236,27 @@ impl Default for ManifestAttachment {
     }
 }
 
-/// Export a `.xcresult`'s attachments into `staging` and read the manifest
-/// back, flattened to one entry per file. `staging` must be empty: a second
-/// export into a populated directory writes `name (1).png` duplicates rather
-/// than replacing what is there.
-pub fn export_attachments(
-    bundle: &Path,
-    staging: &Path,
-    only_failures: bool,
-) -> Result<Vec<ExportedAttachment>, CliError> {
-    let mut owned = vec![
+/// Export all of a `.xcresult`'s attachments into `staging` and read the
+/// manifest back, flattened to one entry per file. `staging` must be empty: a
+/// second export into a populated directory writes `name (1).png` duplicates
+/// rather than replacing what is there.
+///
+/// xcresulttool's own `--only-failures` is never passed. It keeps only the
+/// files it marks as recorded against a failure, and on Xcode 27 that is none
+/// of them, so it exports nothing even from a red run. Each file says instead
+/// whether its test failed, for the caller to pick by.
+pub fn export_attachments(bundle: &Path, staging: &Path) -> Result<AttachmentExport, CliError> {
+    let bundle_arg = bundle.to_string_lossy();
+    let staging_arg = staging.to_string_lossy();
+    let argv = [
         "xcresulttool",
         "export",
         "attachments",
         "--path",
-        &bundle.to_string_lossy(),
+        &bundle_arg,
         "--output-path",
-        &staging.to_string_lossy(),
-    ]
-    .into_iter()
-    .map(String::from)
-    .collect::<Vec<_>>();
-    if only_failures {
-        owned.push("--only-failures".to_string());
-    }
-    let argv: Vec<&str> = owned.iter().map(String::as_str).collect();
+        &staging_arg,
+    ];
     // The command's own stdout just narrates each file; the manifest is the
     // part worth reading.
     process::capture("xcrun", &argv, None).context("exporting the test attachments")?;
@@ -1244,16 +1269,20 @@ pub fn export_attachments(
         ))
     })?;
     // The manifest names a test from its class on, like the rest of the
-    // bundle; the tree adds the target. When it can't be read, a test is
-    // named without one and its files are exported all the same.
-    let targets = test_tree(bundle)
-        .map(|root| TestTargets::from_tree(&root))
-        .unwrap_or_default();
-    parse_attachment_manifest(&manifest_json, staging, &targets)
+    // bundle; the tree adds the target and whether the test failed. When it
+    // can't be read, a test is named without a target, counts as passed, and
+    // its files are exported all the same.
+    let targets = test_tree(bundle).map(|root| TestTargets::from_tree(&root));
+    let failed_tests = targets.as_ref().ok().map(|t| t.failed.len());
+    let targets = targets.unwrap_or_default();
+    Ok(AttachmentExport {
+        attachments: parse_attachment_manifest(&manifest_json, staging, &targets)?,
+        failed_tests,
+    })
 }
 
 /// Flatten an attachment manifest to one entry per file, each test named by
-/// the target `targets` puts it under.
+/// the target `targets` puts it under and marked failed when it did.
 fn parse_attachment_manifest(
     manifest_json: &str,
     staging: &Path,
@@ -1267,6 +1296,7 @@ fn parse_attachment_manifest(
         .flat_map(|entry| {
             let identifier =
                 targets.identifier(&entry.test_identifier, entry.test_identifier_url.as_deref());
+            let failed_test = targets.failed(&identifier);
             let test = entry.test_identifier;
             entry
                 .attachments
@@ -1281,6 +1311,7 @@ fn parse_attachment_manifest(
                         a.suggested_human_readable_name
                     },
                     failure: a.is_associated_with_failure,
+                    failed_test,
                     timestamp: a.timestamp,
                 })
         })
@@ -2871,6 +2902,66 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         );
         // An attachment the test gave no name to keeps the exported one.
         assert_eq!(exported[1].suggested_name, "8B93D9DB.txt");
+    }
+
+    #[test]
+    fn a_failed_tests_attachments_say_so_whatever_the_manifest_marks() {
+        // Xcode 27 marks no attachment as recorded against a failure, not even
+        // the crash log and screen recording of a UI test whose app crashed.
+        // The tree is what says the test failed. Trimmed from that run.
+        let manifest = r#"[
+          { "testIdentifier": "AppUITests/testLaunchShowsNothing()",
+            "testIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppUITests/AppUITests/testLaunchShowsNothing",
+            "attachments": [
+              { "exportedFileName": "1721F03E.ips", "isAssociatedWithFailure": false,
+                "suggestedHumanReadableName": "Crash Log 2026-09-26 at 08.09.04 PM.ips", "timestamp": 1790446144.877 },
+              { "exportedFileName": "6A3B5911.mp4", "isAssociatedWithFailure": false,
+                "suggestedHumanReadableName": "Screen Recording 2026-09-26 at 08.08.49 PM.mp4", "timestamp": 1790446129.731 } ] },
+          { "testIdentifier": "GreetingSuite/suiteGreeting()",
+            "attachments": [ { "exportedFileName": "8B93D9DB.txt", "timestamp": 1790441857.306 } ] },
+          { "testIdentifier": "AppTests/testArithmetic()",
+            "testIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/AppTests/testArithmetic",
+            "attachments": [
+              { "exportedFileName": "FC88EDEC.txt", "isAssociatedWithFailure": false, "timestamp": 1790441857.045 },
+              { "exportedFileName": "0A8B57AD.txt", "isAssociatedWithFailure": true, "timestamp": 1790441857.046 } ] },
+          { "testIdentifier": "Gone/testElsewhere()",
+            "attachments": [ { "exportedFileName": "D00DFEED.txt", "timestamp": 1790441879.133 } ] }
+        ]"#;
+        let targets = TestTargets::from_tree(&tree());
+        assert_eq!(targets.failed.len(), 7);
+        let exported =
+            parse_attachment_manifest(manifest, Path::new("/staging"), &targets).unwrap();
+        let marks: Vec<(&str, bool, bool)> = exported
+            .iter()
+            .map(|a| (a.identifier.as_str(), a.failed_test, a.failure))
+            .collect();
+        assert_eq!(
+            marks,
+            [
+                (
+                    "SweetpadCIAppUITests/AppUITests/testLaunchShowsNothing",
+                    true,
+                    false
+                ),
+                (
+                    "SweetpadCIAppUITests/AppUITests/testLaunchShowsNothing",
+                    true,
+                    false
+                ),
+                // Found without a URL, where the name drops the `()` the
+                // tree's own spelling keeps.
+                (
+                    "SweetpadCIAppTests/GreetingSuite/suiteGreeting",
+                    true,
+                    false
+                ),
+                // A passing test, one of whose files is marked anyway.
+                ("SweetpadCIAppTests/AppTests/testArithmetic", false, false),
+                ("SweetpadCIAppTests/AppTests/testArithmetic", false, true),
+                // A test the tree doesn't list counts as passed.
+                ("Gone/testElsewhere", false, false),
+            ]
+        );
     }
 
     #[test]

@@ -172,7 +172,7 @@ pub struct AttachmentsArgs {
     #[arg(long, value_name = "DIR")]
     pub output_dir: Option<PathBuf>,
 
-    /// Export only the attachments recorded against a failing test.
+    /// Export only the attachments of the tests that failed.
     #[arg(long)]
     pub only_failures: bool,
 
@@ -1013,14 +1013,21 @@ fn attachments(ctx: &mut Context, args: &TestArgs, opts: &AttachmentsArgs) -> Co
     std::fs::create_dir_all(&staging)
         .map_err(|e| CliError::new(format!("failed to create {}: {e}", staging.display())))?;
 
-    let exported = xcodebuild::export_attachments(&bundle, &staging, opts.only_failures);
-    let mut exported = match exported {
-        Ok(list) => list,
+    let export = match xcodebuild::export_attachments(&bundle, &staging) {
+        Ok(export) => export,
         Err(e) => {
             let _ = std::fs::remove_dir_all(&staging);
             return Err(e);
         }
     };
+    let mut exported = export.attachments;
+    let attached_any = !exported.is_empty();
+    if opts.only_failures {
+        // A failed test's files, and any file xcresulttool marks as recorded
+        // against a failure. The mark alone would keep nothing on Xcode 27,
+        // which sets it on no file, a crash log included.
+        exported.retain(|a| a.failure || a.failed_test);
+    }
     let found_any = !exported.is_empty();
     if !args.only_testing.is_empty() {
         // Read off the full set before filtering: what a failed match needs to
@@ -1061,7 +1068,8 @@ fn attachments(ctx: &mut Context, args: &TestArgs, opts: &AttachmentsArgs) -> Co
         stamp(a).total_cmp(&stamp(b))
     });
 
-    let note = (!found_any).then(|| empty_note(opts.only_failures));
+    let note =
+        (!found_any).then(|| empty_note(opts.only_failures, export.failed_tests, attached_any));
     Ok(Rendered::data(AttachmentsReport {
         output_dir,
         tests,
@@ -1346,16 +1354,35 @@ fn cut_to_tail(text: &str, cap: usize) -> (String, bool) {
 /// Why an export came back empty. A run that attached nothing looks identical
 /// to one whose attachments were discarded, and the discard is the default:
 /// `XCTAttachment.lifetime` is `.deleteOnSuccess` unless a test says otherwise.
-fn empty_note(only_failures: bool) -> String {
-    if only_failures {
-        "no attachments were recorded against a failure (the run may have passed); drop \
-         '--only-failures' to export everything the run attached"
-            .to_string()
+///
+/// Under `--only-failures` the note goes by what the bundle says:
+/// `failed_tests` is how many tests the run's test tree lists as failed
+/// (`None` when it could not be read), and `attached_any` whether any test
+/// attached anything.
+fn empty_note(only_failures: bool, failed_tests: Option<usize>, attached_any: bool) -> String {
+    const DISCARDED: &str = "XCTAttachment.lifetime defaults to .deleteOnSuccess, so a \
+                             passing test's attachments are discarded — set \
+                             'attachment.lifetime = .keepAlways' to keep them";
+    let discarded = || format!("the run attached nothing that survived: {DISCARDED}");
+    if !only_failures {
+        return discarded();
+    }
+    let rest = if attached_any {
+        "; drop '--only-failures' to export what the passing tests attached"
     } else {
-        "the run attached nothing that survived: XCTAttachment.lifetime defaults to \
-         .deleteOnSuccess, so a passing test's attachments are discarded — set \
-         'attachment.lifetime = .keepAlways' to keep them"
-            .to_string()
+        ""
+    };
+    match failed_tests {
+        Some(0) if attached_any => format!("the run had no failing tests{rest}"),
+        Some(0) => format!("the run had no failing tests and kept no attachments: {DISCARDED}"),
+        Some(1) => format!("the run's one failing test attached nothing{rest}"),
+        Some(n) => format!("none of the run's {n} failing tests attached anything{rest}"),
+        None if attached_any => "xcresulttool marked no attachment as recorded against a \
+                                 failure, and sweetpad could not read which tests failed from \
+                                 the result bundle; drop '--only-failures' to export everything \
+                                 the run attached"
+            .to_string(),
+        None => discarded(),
     }
 }
 
@@ -2062,16 +2089,49 @@ mod tests {
 
     #[test]
     fn an_empty_export_says_which_emptiness_it_is() {
-        // Both cases look identical on disk, and neither is guessable: one is
-        // "the run was green", the other is a default that discards evidence.
-        let failures = empty_note(true);
-        assert!(failures.contains("--only-failures"), "{failures}");
-        let all = empty_note(false);
+        // Every case looks identical on disk, and none is guessable: a
+        // default that discards evidence, a green run, a red run whose
+        // failing tests attached nothing.
+        let all = empty_note(false, Some(3), false);
         assert!(all.contains(".keepAlways"), "{all}");
         assert!(all.contains("deleteOnSuccess"), "{all}");
+        assert_eq!(
+            empty_note(true, Some(0), true),
+            "the run had no failing tests; drop '--only-failures' to export what the passing \
+             tests attached"
+        );
+        let green = empty_note(true, Some(0), false);
+        assert!(green.starts_with("the run had no failing tests and kept no attachments: "));
+        assert!(green.contains(".keepAlways"), "{green}");
+        // A red run never reads as one that may have passed.
+        assert_eq!(
+            empty_note(true, Some(5), true),
+            "none of the run's 5 failing tests attached anything; drop '--only-failures' to \
+             export what the passing tests attached"
+        );
+        assert_eq!(
+            empty_note(true, Some(1), false),
+            "the run's one failing test attached nothing"
+        );
+        // Without the tree only xcresulttool's own mark was there to go by.
+        let unread = empty_note(true, None, true);
+        assert!(
+            unread.contains("could not read which tests failed"),
+            "{unread}"
+        );
+        assert_eq!(empty_note(true, None, false), all);
         // Backticks render literally in a terminal.
-        assert!(!failures.contains('`'), "{failures}");
-        assert!(!all.contains('`'), "{all}");
+        for (only_failures, failed, attached) in [
+            (false, None, false),
+            (true, Some(0), true),
+            (true, Some(0), false),
+            (true, Some(2), true),
+            (true, None, true),
+        ] {
+            let note = empty_note(only_failures, failed, attached);
+            assert!(!note.contains('`'), "{note}");
+            assert!(!note.contains("may have passed"), "{note}");
+        }
     }
 
     #[test]
@@ -2116,6 +2176,7 @@ mod tests {
                 file: staging.join("aaaa"),
                 suggested_name: "shot.png".into(),
                 failure: false,
+                failed_test: false,
                 timestamp: 1.0,
             },
             xcodebuild::ExportedAttachment {
@@ -2124,6 +2185,7 @@ mod tests {
                 file: staging.join("missing"),
                 suggested_name: "gone.png".into(),
                 failure: false,
+                failed_test: false,
                 timestamp: 2.0,
             },
         ];
