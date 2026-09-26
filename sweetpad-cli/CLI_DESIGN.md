@@ -207,6 +207,10 @@ builds it with real `xcodebuild`.
 - Help, errors, warnings and notes quote a command or value with 'single
   quotes', as clap does; a terminal prints backticks literally. A unit test
   walks the clap tree and fails on a backtick in any help text.
+- Help, errors, warnings and notes never cite this document: someone reading
+  `--help` has no `§9g` to look up. A reference that helps the next
+  maintainer goes in a plain `//` comment, which clap doesn't show. The same
+  tree walk fails on `§` or `CLI_DESIGN` in any help text.
 
 ### The JSON envelope
 

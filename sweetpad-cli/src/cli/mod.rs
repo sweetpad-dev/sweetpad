@@ -599,7 +599,8 @@ pub enum Resource {
         action: Option<commands::format::Action>,
     },
     /// Low-level 'project.pbxproj' editing: stored settings, synchronized
-    /// folders, per-file membership, merge resolution (plumbing; §9g).
+    /// folders, per-file membership, merge resolution.
+    // The namespace's design: CLI_DESIGN §9g.
     Pbxproj {
         #[command(subcommand)]
         action: commands::pbxproj::Action,
@@ -1856,15 +1857,15 @@ mod cli_definition_tests {
         );
     }
 
-    /// A terminal prints backticks literally, so help text quotes with
-    /// 'single quotes', as clap's own text does. Doc comments on the clap
-    /// types are that help text.
-    #[test]
-    fn help_text_quotes_without_backticks() {
+    /// Every text clap can print as help, each with the command (and arg)
+    /// it belongs to: a command's about and before/after help, an arg's help,
+    /// and a possible value's help. Doc comments on the clap types are this
+    /// text.
+    fn help_texts() -> Vec<(String, String)> {
         use clap::CommandFactory;
 
-        fn walk(cmd: &clap::Command, path: &str, found: &mut Vec<String>) {
-            let texts = [
+        fn walk(cmd: &clap::Command, path: &str, texts: &mut Vec<(String, String)>) {
+            let own = [
                 cmd.get_about(),
                 cmd.get_long_about(),
                 cmd.get_before_help(),
@@ -1872,10 +1873,8 @@ mod cli_definition_tests {
                 cmd.get_after_help(),
                 cmd.get_after_long_help(),
             ];
-            for text in texts.into_iter().flatten() {
-                if text.to_string().contains('`') {
-                    found.push(format!("{path}: {text}"));
-                }
+            for text in own.into_iter().flatten() {
+                texts.push((path.to_string(), text.to_string()));
             }
             for arg in cmd.get_arguments() {
                 let values = arg.get_possible_values();
@@ -1887,21 +1886,49 @@ mod cli_definition_tests {
                     .flatten()
                     .chain(value_help)
                 {
-                    if text.to_string().contains('`') {
-                        found.push(format!("{path} [{}]: {text}", arg.get_id()));
-                    }
+                    texts.push((format!("{path} [{}]", arg.get_id()), text.to_string()));
                 }
             }
             for sub in cmd.get_subcommands() {
-                walk(sub, &format!("{path} {}", sub.get_name()), found);
+                walk(sub, &format!("{path} {}", sub.get_name()), texts);
             }
         }
 
         let mut root = super::Cli::command();
         root.build();
-        let mut found = Vec::new();
-        walk(&root, "sweetpad", &mut found);
+        let mut texts = Vec::new();
+        walk(&root, "sweetpad", &mut texts);
+        texts
+    }
+
+    /// The help texts that contain any of `needles`, one line each, saying
+    /// where they appear.
+    fn help_texts_containing(needles: &[&str]) -> Vec<String> {
+        help_texts()
+            .into_iter()
+            .filter(|(_, text)| needles.iter().any(|n| text.contains(n)))
+            .map(|(at, text)| format!("{at}: {text}"))
+            .collect()
+    }
+
+    /// A terminal prints backticks literally, so help text quotes with
+    /// 'single quotes', as clap's own text does.
+    #[test]
+    fn help_text_quotes_without_backticks() {
+        let found = help_texts_containing(&["`"]);
         assert!(found.is_empty(), "backticks in help:\n{}", found.join("\n"));
+    }
+
+    /// Help is read without the design doc at hand, so it cites none of its
+    /// sections. Those references belong in comments clap doesn't show.
+    #[test]
+    fn help_text_cites_no_design_doc() {
+        let found = help_texts_containing(&["§", "CLI_DESIGN"]);
+        assert!(
+            found.is_empty(),
+            "design-doc references in help:\n{}",
+            found.join("\n")
+        );
     }
 
     /// The `-- XCODEBUILD_ARGS` tail follows the build: every `app` verb that
