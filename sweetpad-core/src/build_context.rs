@@ -65,6 +65,35 @@ pub struct BuildContext {
     pub read_xcode_locations: bool,
 }
 
+/// The SDK a target resolves against when a query names neither an SDK nor a
+/// destination: the platform its own `SDKROOT` names, which is what a plain
+/// `xcodebuild -showBuildSettings` picks. `auto`, an unset `SDKROOT` and
+/// anything that isn't a platform fall back to `macosx`, the SDK a
+/// multiplatform target's no-platform view resolves under.
+fn default_sdk(layers: &[Vec<Assignment>]) -> String {
+    const PLATFORMS: [&str; 10] = [
+        "macosx",
+        "iphoneos",
+        "iphonesimulator",
+        "appletvos",
+        "appletvsimulator",
+        "watchos",
+        "watchsimulator",
+        "xros",
+        "xrsimulator",
+        "driverkit",
+    ];
+    project::natural_sdkroot(layers)
+        .map(|sdkroot| {
+            // A path to an SDK names it by its directory, `iPhoneOS17.0.sdk`.
+            let name = sdkroot.rsplit('/').next().unwrap_or(&sdkroot);
+            let name = name.strip_suffix(".sdk").unwrap_or(name);
+            project::canonicalize_sdk_base(&name.to_ascii_lowercase())
+        })
+        .filter(|sdk| PLATFORMS.contains(&sdk.as_str()))
+        .unwrap_or_else(|| "macosx".to_string())
+}
+
 /// One resolution query against a [`BuildContext`].
 #[derive(Debug, Clone)]
 pub struct ResolveQuery {
@@ -73,7 +102,8 @@ pub struct ResolveQuery {
     /// Configuration name (e.g. `Debug`, `Release`).
     pub configuration: String,
     /// Canonical SDK base (e.g. `macosx`, `iphonesimulator`). Drives
-    /// `[sdk=...]` conditionals and platform-specific defaults.
+    /// `[sdk=...]` conditionals and platform-specific defaults. Empty, with
+    /// no destination either, means the SDK the target's own `SDKROOT` names.
     pub sdk: String,
     /// Active architecture (e.g. `arm64`). Drives `[arch=...]` conditionals.
     pub arch: String,
@@ -344,6 +374,16 @@ impl BuildContext {
             &query.target,
             &query.configuration,
         )?;
+        let defaulted;
+        let query = if query.sdk.is_empty() && query.destination.is_none() {
+            defaulted = ResolveQuery {
+                sdk: default_sdk(&bundle.layers),
+                ..query.clone()
+            };
+            &defaulted
+        } else {
+            query
+        };
         let probe = self.authored_probe(&bundle, query);
         let layers = self.build_layers(&bundle, query, &probe);
         let layer_refs: Vec<&[Assignment]> = layers.iter().map(Vec::as_slice).collect();

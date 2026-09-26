@@ -71,6 +71,60 @@ fn run_capture(
     Some(stats)
 }
 
+/// A query that names no SDK resolves each capture the way the capture's own
+/// platform does: xcodebuild's no-destination view picks the target's
+/// `SDKROOT`, and so does the resolver when `settings show` passes no
+/// `--destination`.
+#[test]
+fn no_sdk_resolves_the_platform_xcodebuild_picked() {
+    common::pin_capture_host();
+    let mut catalogs = CatalogCache::new();
+    let mut checked = 0;
+    for path in find_capture_files("_project_defaults") {
+        let Some(version) = capture_xcode_version(&path) else {
+            continue;
+        };
+        let catalog = catalogs.get(&version).clone();
+        for bs in read_build_settings(&path).unwrap_or_default() {
+            let (Some(project_name), Some(target), Some(config)) = (
+                bs.get("PROJECT_NAME"),
+                bs.get("TARGET_NAME"),
+                bs.get("CONFIGURATION"),
+            ) else {
+                continue;
+            };
+            let Some(xcodeproj) = find_xcodeproj_between(&path, "_project_defaults", project_name)
+            else {
+                continue;
+            };
+            let Ok(ctx) = BuildContext::open(&xcodeproj) else {
+                continue;
+            };
+            let ctx = ctx.with_xcspec(catalog.clone());
+            let sdk = bs.get("PLATFORM_NAME").map_or("macosx", String::as_str);
+            let named = ctx.resolve(&ResolveQuery::new(target, config, sdk, "arm64"));
+            let unnamed = ctx.resolve(&ResolveQuery::new(target, config, "", "arm64"));
+            let (Ok(named), Ok(unnamed)) = (named, unnamed) else {
+                continue;
+            };
+            assert_eq!(
+                unnamed.settings.get("PLATFORM_NAME"),
+                named.settings.get("PLATFORM_NAME"),
+                "{} {target}/{config}",
+                path.display()
+            );
+            assert!(
+                unnamed.settings == named.settings,
+                "{} {target}/{config}: settings differ",
+                path.display()
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 0, "no project-defaults capture was checked");
+    println!("{checked} captures resolve the same with no SDK named");
+}
+
 #[test]
 fn project_defaults_oracle_coverage() {
     common::pin_capture_host();
