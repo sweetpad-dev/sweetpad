@@ -9,7 +9,7 @@ use crate::cli::buildlog::{self, DiagKind};
 use crate::cli::output::Output;
 use crate::cli::xcodebuild::BuildAction;
 use crate::cli::{
-    CommandResult, Context, ErrorKind, Render, Rendered, resolve, swiftpm, xcodebuild,
+    CliError, CommandResult, Context, ErrorKind, Render, Rendered, resolve, swiftpm, xcodebuild,
 };
 
 /// The build flags, declared `global` at the `build` resource so they parse on
@@ -202,25 +202,34 @@ struct BuildReport {
     /// DerivedData path. Only the machine-readable modes resolve it (see
     /// [`product_path`]); `null` when the scheme builds no launchable product
     /// (a Swift package, a library-only scheme), for a test build, or when the
-    /// lookup failed.
-    product_path: Option<std::path::PathBuf>,
+    /// lookup failed. A failed lookup carries its reason, which the machine
+    /// modes report as `note` beside the `null`: their only account of a
+    /// missing product the caller could have fixed.
+    product: Result<Option<std::path::PathBuf>, String>,
 }
 
 impl Render for BuildReport {
     fn human(&self, _out: &Output) {}
 
     fn json(&self) -> serde_json::Value {
+        let (product_path, note) = match &self.product {
+            Ok(path) => (path.as_ref().map(|p| p.display().to_string()), None),
+            Err(note) => (None, Some(note)),
+        };
         let mut data = serde_json::json!({
             "built": true,
             "scheme": self.scheme,
             "configuration": self.configuration,
             "destination": self.destination,
-            "productPath": self.product_path.as_ref().map(|p| p.display().to_string()),
+            "productPath": product_path,
         });
         if let (Some(stats), Some(map)) = (&self.stats, data.as_object_mut()) {
             map.insert("errors".into(), stats.errors.into());
             map.insert("warnings".into(), stats.warnings.into());
             map.insert("durationMs".into(), stats.duration_ms.into());
+        }
+        if let (Some(note), Some(map)) = (note, data.as_object_mut()) {
+            map.insert("note".into(), note.clone().into());
         }
         data
     }
@@ -315,7 +324,7 @@ fn start(
             stats: None,
             // A Swift package builds an executable or a library, never a
             // `.app` bundle.
-            product_path: None,
+            product: Ok(None),
         }));
     }
 
@@ -364,14 +373,14 @@ fn start(
     let stats = plan
         .run(&ctx.out)
         .map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
-    let product = product_path(&ctx.out, &plan);
+    let product = product_path(ctx, &plan);
 
     Ok(Rendered::data(BuildReport {
         scheme: Some(target.scheme),
         configuration: target.configuration,
         destination: Some(target.destination),
         stats,
-        product_path: product,
+        product,
     }))
 }
 
@@ -380,19 +389,29 @@ fn start(
 /// Two guards keep this off the build's critical path. Locating the product
 /// costs a full build-settings resolution (seconds), and `BuildReport::human`
 /// renders nothing — so only the machine-readable modes pay for it. And a
-/// scheme can legitimately produce nothing launchable, so every failure maps to
-/// `None`: a build that succeeded must not fail over the path lookup.
+/// scheme can legitimately produce nothing launchable, so a failure comes back
+/// as the reason for a `null` product rather than as the build's error: a
+/// build that succeeded must not fail over the path lookup. A relocating
+/// setting from the project's `[xcodebuild] args` is named as the file's.
 ///
 /// A test build names none. What it wrote is the test bundles, and the app the
 /// locator would name is built only when a test target depends on it.
-fn product_path(out: &Output, plan: &xcodebuild::BuildPlan<'_>) -> Option<std::path::PathBuf> {
-    if !(out.is_json() || out.is_ndjson()) || plan.action == BuildAction::BuildForTesting {
-        return None;
+fn product_path(
+    ctx: &Context,
+    plan: &xcodebuild::BuildPlan<'_>,
+) -> Result<Option<std::path::PathBuf>, String> {
+    if !(ctx.out.is_json() || ctx.out.is_ndjson()) || plan.action == BuildAction::BuildForTesting {
+        return Ok(None);
     }
-    xcodebuild::resolved_settings(plan)
-        .and_then(|settings| xcodebuild::app_bundle(&settings, plan.destination))
-        .ok()
-        .map(|app| app.path)
+    let from_file = &ctx.project_file(plan.container).xcodebuild.args;
+    let located = || -> Result<std::path::PathBuf, CliError> {
+        xcodebuild::refuse_relocating_settings(plan.passthrough, from_file)?;
+        let settings = xcodebuild::resolved_settings(plan)?;
+        Ok(xcodebuild::app_bundle(&settings, plan.destination)?.path)
+    };
+    located()
+        .map(Some)
+        .map_err(|e| format!("the product couldn't be located: {e}"))
 }
 
 #[cfg(test)]
@@ -405,8 +424,18 @@ mod tests {
             configuration: "Debug".to_string(),
             destination: Some("platform=iOS Simulator,id=UDID".to_string()),
             stats: None,
-            product_path: product_path.map(std::path::PathBuf::from),
+            product: Ok(product_path.map(std::path::PathBuf::from)),
         }
+    }
+
+    #[test]
+    fn a_product_the_locator_cant_follow_says_why_it_is_null() {
+        let mut r = report(None);
+        assert!(r.json().get("note").is_none());
+        r.product = Err("the product couldn't be located: boom".to_string());
+        let json = r.json();
+        assert!(json["productPath"].is_null());
+        assert_eq!(json["note"], "the product couldn't be located: boom");
     }
 
     #[test]

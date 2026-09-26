@@ -108,9 +108,13 @@ build is spent on them. Use `-derivedDataPath` instead:
 
 ```bash
 sweetpad app install -- SYMROOT=/tmp/out
-# error: `-- SYMROOT=…` relocates the built product where the app locator
-#        can't follow; use `-- -derivedDataPath <dir>` instead
+# error: '-- SYMROOT=…' relocates the built product where the app locator
+#        can't follow; use '-- -derivedDataPath <dir>' instead
 ```
+
+The same setting in `sweetpad.toml` stops the `app` commands too, and the error names the file. A
+`build -o json` with one there still builds, but reports `productPath: null` with a `note` that says
+why.
 
 #### Writing them down for the whole repo
 

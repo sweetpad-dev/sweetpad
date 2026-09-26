@@ -1584,15 +1584,13 @@ fn bundle_of(t: &TargetBuildSettings) -> Option<AppBundle> {
 /// `xcodebuild` runs from [`working_dir`], so a relative path is joined onto
 /// that directory rather than onto the caller's: from a nested source
 /// directory the two differ, and the locator would name a bundle that isn't
-/// there. Product-relocating build settings the locator can't model
-/// (`SYMROOT=`, `OBJROOT=`, `CONFIGURATION_BUILD_DIR=`) are refused loudly:
-/// looking in the default DerivedData would name whatever stale `.app` an
-/// earlier plain build left there. Public so `app`'s run plan can spend the
-/// refusal before a build rather than after one.
+/// there. A product-relocating build setting is refused (see
+/// [`refuse_relocating_settings`]), with the passthrough's wording.
 pub fn passthrough_derived_data(
     passthrough: &[String],
     container: &Container,
 ) -> Result<Option<PathBuf>, CliError> {
+    refuse_relocating_settings(passthrough, &[])?;
     let mut derived_data = None;
     let mut iter = passthrough.iter().peekable();
     while let Some(arg) = iter.next() {
@@ -1604,16 +1602,41 @@ pub fn passthrough_derived_data(
                     _ => dir,
                 }
             });
-        } else if let Some((key, _)) = arg.split_once('=')
-            && matches!(key, "SYMROOT" | "OBJROOT" | "CONFIGURATION_BUILD_DIR")
-        {
-            return Err(CliError::new(format!(
-                "'-- {key}=…' relocates the built product where the app locator can't \
-                 follow; use '-- -derivedDataPath <dir>' instead"
-            )));
         }
     }
     Ok(derived_data)
+}
+
+/// The build settings that move the product somewhere the locator can't
+/// model.
+const RELOCATING_SETTINGS: [&str; 3] = ["SYMROOT", "OBJROOT", "CONFIGURATION_BUILD_DIR"];
+
+/// Refuse a product-relocating build setting in `args`: looking in the default
+/// DerivedData would name whatever stale `.app` an earlier plain build left
+/// there. `from_file` is the project's `[xcodebuild] args`, which `args` starts
+/// with. A setting found there is named as the file's, with a fix that works
+/// for it, because the verbs that find a built product take no `--` tail to
+/// fix it with. Public so `app`'s run plan can spend the refusal before a
+/// build rather than after one, and `build` can say why it has no product.
+pub fn refuse_relocating_settings(args: &[String], from_file: &[String]) -> Result<(), CliError> {
+    let Some((arg, key)) = args.iter().find_map(|arg| {
+        let (key, _) = arg.split_once('=')?;
+        RELOCATING_SETTINGS.contains(&key).then_some((arg, key))
+    }) else {
+        return Ok(());
+    };
+    Err(CliError::new(if from_file.contains(arg) {
+        format!(
+            "sweetpad.toml: '{key}=…' in [xcodebuild] args relocates the built product where \
+             the app locator can't follow; take it out and pass '-- -derivedDataPath <dir>' \
+             to the build instead"
+        )
+    } else {
+        format!(
+            "'-- {key}=…' relocates the built product where the app locator can't follow; \
+             use '-- -derivedDataPath <dir>' instead"
+        )
+    }))
 }
 
 /// Resolve every target's build settings for a plan through the in-process
@@ -2341,6 +2364,38 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             Some(PathBuf::from("dd"))
         );
         assert_eq!(passthrough_derived_data(&[], &nested).unwrap(), None);
+    }
+
+    #[test]
+    fn a_relocating_setting_is_refused_in_the_words_of_where_it_came_from() {
+        let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
+        let file = s(&["SYMROOT=/tmp/out"]);
+        let from_file = refuse_relocating_settings(&file, &file).unwrap_err();
+        assert!(
+            from_file
+                .message
+                .starts_with("sweetpad.toml: 'SYMROOT=…' in [xcodebuild] args"),
+            "{}",
+            from_file.message
+        );
+        assert!(!from_file.message.contains("'-- SYMROOT"));
+
+        let typed = refuse_relocating_settings(&s(&["-quiet", "OBJROOT=/o"]), &[]).unwrap_err();
+        assert!(
+            typed.message.starts_with("'-- OBJROOT=…' relocates"),
+            "{}",
+            typed.message
+        );
+        // Merged as the file's args, then the tail: the tail's own setting is
+        // still the tail's.
+        let merged = s(&["-skipMacroValidation", "CONFIGURATION_BUILD_DIR=/c"]);
+        let err = refuse_relocating_settings(&merged, &s(&["-skipMacroValidation"])).unwrap_err();
+        assert!(err.message.starts_with("'-- CONFIGURATION_BUILD_DIR=…'"));
+        for message in [&from_file.message, &typed.message, &err.message] {
+            assert!(!message.contains('`'), "{message}");
+        }
+
+        assert!(refuse_relocating_settings(&s(&["TARGET_NAME=x"]), &[]).is_ok());
     }
 
     #[test]

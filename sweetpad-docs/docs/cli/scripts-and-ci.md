@@ -227,7 +227,7 @@ the test targets without running them.
 Anything the CLI knows, it will hand over as JSON. A few patterns worth having:
 
 ```bash
-# The path to the built .app
+# The path to the built .app (null, with a "note" saying why, when it can't be found)
 sweetpad build -o json | jq -r '.data.productPath'
 
 # One build setting, as a bare string — no jq needed

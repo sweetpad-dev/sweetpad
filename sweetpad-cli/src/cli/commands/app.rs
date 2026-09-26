@@ -1328,9 +1328,12 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         launch: opts.launch.clone(),
         passthrough: opts.passthrough.to_vec(),
     };
-    // A product-relocating passthrough the app locator can't follow fails
-    // here, before a build is spent on it.
-    xcodebuild::passthrough_derived_data(&plan.passthrough, &plan.resolved.container)?;
+    // A product-relocating argument the app locator can't follow fails here,
+    // before a build is spent on it, naming the file when it came from there.
+    xcodebuild::refuse_relocating_settings(
+        &plan.passthrough,
+        &ctx.project_file(&plan.resolved.container).xcodebuild.args,
+    )?;
     // Settled on the plan, so every macOS launch it drives carries it: the
     // session's relaunches, a detached launch, and lldb's.
     if matches!(plan.target, Target::Mac) {

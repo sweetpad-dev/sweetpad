@@ -2715,6 +2715,23 @@ location changes. A macOS `launch` whose product is missing says it isn't
 built, names the `build` that makes it, and names the flag when it wasn't
 given.
 
+### A refused setting names where it came from
+
+The settings that relocate the product (`SYMROOT=`, `OBJROOT=`,
+`CONFIGURATION_BUILD_DIR=`) are refused before a build is spent on them (§3),
+and the refusal said `'-- SYMROOT=…'` even when the setting came from
+`sweetpad.toml`, on a verb that takes no `--` at all. The file's arguments
+lead the merged list, so the refusal can tell the two apart: one from the
+file reads `sweetpad.toml: 'SYMROOT=…' in [xcodebuild] args …` and says to
+take it out and pass `-- -derivedDataPath <dir>` to the build, and a typed one
+keeps the passthrough's wording.
+
+`build` itself still builds with such a file, and its product cannot be
+located. `-o json` reports `productPath: null` with a `note` naming the
+reason, since `null` alone reads the same as a scheme with nothing launchable.
+The same `note` explains any other failed lookup; a Swift package or a test
+build, which has no `.app` by design, gets none.
+
 ## 10. Testing
 
 The CLI modules carry inline `#[cfg(test)]` units that need no Xcode, so the
