@@ -113,7 +113,8 @@ A local package works too: pass a directory containing a `Package.swift` instead
 ### Updating and removing
 
 `update` with no requirement flags re-resolves to the latest versions your requirements allow. With
-one, it rewrites the requirement (a bump, a pin, or a downgrade) and then re-resolves:
+one, it rewrites the requirement (a bump, a pin, or a downgrade) and then re-resolves. Either way it
+prints each locked version that changed:
 
 ```bash
 sweetpad dependency update                              # everything

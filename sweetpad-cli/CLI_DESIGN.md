@@ -1064,6 +1064,26 @@ leaves the document byte for byte as it was. Verified end to end on Xcode 27.2
 for a local and a remote package: `add`, a resolve and a build that imports the
 product, `update`, and `remove`.
 
+**Amendment: `update` resolves into an empty clone directory first.**
+xcodebuild has no update, and on Xcode 27 pruning a pin (or the whole lockfile)
+before a resolve doesn't make one: the resolve keeps a checkout already in
+SourcePackages while it satisfies the requirement, and doesn't write the pruned
+pin back. So `update` prunes, then resolves with `-clonedSourcePackagesDirPath`
+pointed at an empty directory. That resolve has no checkout to keep, honours
+the pins still in the lockfile, and writes the newest allowed versions to
+`Package.resolved`. A normal resolve then checks them out in SourcePackages.
+The empty directory also gets past Xcode 27 refusing to move a package from a
+version that declares SwiftPM traits to one that declares none ("Disabled
+default traits … on package … that declares no traits"). A plain resolve hits
+that whenever a lockfile and a checkout of the old version both exist, with
+either project format. A requirement change takes the newest version the new
+requirement allows, and the report names every pin that moved (`changes` in
+JSON). The price is a second clone of the package graph, which SwiftPM's
+repository cache keeps short. Measured on Xcode 27.2 with a project of each
+format and a workspace. In human output the renderer shows the indented lines
+under an `xcodebuild: error:` header that ends in a colon, since that is where
+xcodebuild puts the reason a resolve failed.
+
 > Supersedes the earlier "vendor full source, compile per Xcode" plan: the
 > from-source per-Xcode build (and its `~/.cache/.../<xcode-build>/` cache) existed
 > only to keep XCTest's ABI matched against the active Xcode. Building the

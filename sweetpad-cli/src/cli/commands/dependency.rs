@@ -871,22 +871,22 @@ fn update(ctx: &mut Context, args: &UpdateArgs) -> CliResult {
     set_requirement(&mut document, &package_id, &spec)?;
     document.write(&xcodeproj)?;
 
+    let mut changes = Vec::new();
     if !args.no_resolve {
-        // Drop the stale pin so resolution re-pins to the new requirement
-        // (needed when downgrading), then resolve. A failed resolve rolls the
-        // whole update back — requirement edit and pin both — so an offline
-        // resolve or a bad requirement leaves the project as it was.
-        let snapshot = read_lockfile(&container);
-        remove_pin(&container, package);
-        if let Err(e) = resolve_packages(&container, None, &ctx.out, false) {
-            restore_lockfile(ctx, &container, snapshot);
-            let _ = pbxedit::write_atomic(&document_path, &pristine);
-            ctx.out
-                .note("rolled the requirement change back (the resolve failed)");
-            return Err(e);
+        // A failed resolve rolls the whole update back, requirement edit and
+        // pin both, so an offline resolve or a bad requirement leaves the
+        // project as it was.
+        match repin(ctx, &container, Some(package)) {
+            Ok(moved) => changes = moved,
+            Err(e) => {
+                let _ = pbxedit::write_atomic(&document_path, &pristine);
+                ctx.out
+                    .note("rolled the requirement change back (the resolve failed)");
+                return Err(e);
+            }
         }
     }
-    report_updated(ctx, package);
+    report_updated(ctx, Some(package), &changes, true);
     Ok(())
 }
 
@@ -911,8 +911,11 @@ fn restore_lockfile(ctx: &Context, container: &Container, snapshot: Option<Strin
 /// Plain update (no requirement change): bump pins to the latest the current
 /// requirements allow, for one package or everything.
 fn update_resolve(ctx: &mut Context, container: &Container, package: Option<&str>) -> CliResult {
-    if let Container::SwiftPackage(_) = container {
+    let changes = if let Container::SwiftPackage(_) = container {
+        let before = read_lockfile(container);
         swiftpm::update(container, package, ctx.out.is_json() || ctx.out.is_ndjson())?;
+        let after = read_lockfile(container).unwrap_or_default();
+        pin_changes(before.as_deref(), &after, package)
     } else {
         // Verify the named package is actually declared before pruning, so a
         // typo errors (with the did-you-mean hint) instead of reporting
@@ -922,20 +925,9 @@ fn update_resolve(ctx: &mut Context, container: &Container, package: Option<&str
             let document = Editable::parse(&xcodeproj)?;
             find_package_or_hint(&document, container, p, &xcodeproj)?;
         }
-        // xcodebuild has no "update"; drop the pin(s) so the resolve re-pins to
-        // the latest allowed — one package, or the whole lockfile. Snapshot
-        // first: a failed resolve (offline) must not destroy the lockfile.
-        let snapshot = read_lockfile(container);
-        match package {
-            Some(p) => remove_pin(container, p),
-            None => delete_lockfile(container),
-        }
-        if let Err(e) = resolve_packages(container, None, &ctx.out, false) {
-            restore_lockfile(ctx, container, snapshot);
-            return Err(e);
-        }
-    }
-    report_updated(ctx, package.unwrap_or("all packages"));
+        repin(ctx, container, package)?
+    };
+    report_updated(ctx, package, &changes, false);
     Ok(())
 }
 
@@ -944,12 +936,115 @@ fn delete_lockfile(container: &Container) {
     let _ = std::fs::remove_file(resolved_path(container));
 }
 
-fn report_updated(ctx: &Context, what: &str) {
+/// Re-pin `package`, or every package when `None`, to the newest version its
+/// requirement allows, keeping the others on their pins while those still fit.
+/// Returns the pins that moved.
+///
+/// xcodebuild has no update, and pruning the pin is not enough on Xcode 27: a
+/// resolve keeps a checkout already in SourcePackages while it satisfies the
+/// requirement, and then doesn't write the pruned pin back. A resolve into an
+/// empty clone directory has no checkout to keep and still writes its pins to
+/// `Package.resolved`, so this runs one of those, then a normal resolve that
+/// checks the new pins out. The empty directory also gets past Xcode 27
+/// refusing to move a package from a version that declares SwiftPM traits to
+/// one that declares none ("Disabled default traits … on package … that
+/// declares no traits"), which it does when both a lockfile and a checkout of
+/// the old version are there. Measured on Xcode 27.2 with both project formats.
+///
+/// A failed resolve puts the lockfile back the way it was.
+fn repin(
+    ctx: &Context,
+    container: &Container,
+    package: Option<&str>,
+) -> Result<Vec<PinChange>, CliError> {
+    let snapshot = read_lockfile(container);
+    match package {
+        Some(p) => remove_pin(container, p),
+        None => delete_lockfile(container),
+    }
+    let clone = clone_dir();
+    let resolved = resolve_packages(container, Some(&clone), &ctx.out, false)
+        .and_then(|()| resolve_packages(container, None, &ctx.out, false));
+    let _ = std::fs::remove_dir_all(&clone);
+    if let Err(e) = resolved {
+        if snapshot.is_some() {
+            restore_lockfile(ctx, container, snapshot);
+        } else {
+            delete_lockfile(container);
+        }
+        return Err(e);
+    }
+    let after = read_lockfile(container).unwrap_or_default();
+    Ok(pin_changes(snapshot.as_deref(), &after, package))
+}
+
+/// A locked version an update moved.
+#[derive(Debug, PartialEq, Eq)]
+struct PinChange {
+    package: String,
+    from: Option<String>,
+    to: Option<String>,
+}
+
+impl PinChange {
+    /// `identity old → new`, with `—` for a side that has no pin.
+    fn display(&self) -> String {
+        let side = |v: &Option<String>| v.clone().unwrap_or_else(|| "—".to_string());
+        format!("{} {} → {}", self.package, side(&self.from), side(&self.to))
+    }
+}
+
+/// The pins that differ between two `Package.resolved` texts, `first`'s ahead
+/// of the rest, which follow in identity order.
+fn pin_changes(before: Option<&str>, after: &str, first: Option<&str>) -> Vec<PinChange> {
+    let before = before.map(parse_resolved).unwrap_or_default();
+    let after = parse_resolved(after);
+    let mut ids: Vec<&String> = before.keys().chain(after.keys()).collect();
+    ids.sort();
+    ids.dedup();
+    let mut changes: Vec<PinChange> = ids
+        .into_iter()
+        .filter_map(|id| {
+            let from = before.get(id).map(Pin::display);
+            let to = after.get(id).map(Pin::display);
+            (from != to).then(|| PinChange {
+                package: id.clone(),
+                from,
+                to,
+            })
+        })
+        .collect();
+    if let Some(first) = first.map(identity_from_url) {
+        changes.sort_by_key(|c| c.package != first);
+    }
+    changes
+}
+
+/// Report an update: the pins that moved, or that none did. `requirement` is
+/// whether the package's requirement was rewritten, which is an update even
+/// when its pin stays.
+fn report_updated(ctx: &Context, package: Option<&str>, changes: &[PinChange], requirement: bool) {
     if ctx.out.is_json() || ctx.out.is_ndjson() {
-        ctx.out
-            .result_value(&serde_json::json!({ "updated": what }));
+        let changes: Vec<serde_json::Value> = changes
+            .iter()
+            .map(|c| serde_json::json!({ "package": c.package, "from": c.from, "to": c.to }))
+            .collect();
+        ctx.out.result_value(&serde_json::json!({
+            "updated": package.unwrap_or("all packages"),
+            "changes": changes,
+        }));
+    } else if !changes.is_empty() {
+        let moved: Vec<String> = changes.iter().map(PinChange::display).collect();
+        ctx.out.note(&format!("updated {}", moved.join(", ")));
+    } else if let Some(package) = package.filter(|_| requirement) {
+        ctx.out.note(&format!("updated {package}"));
+    } else if let Some(package) = package {
+        ctx.out.note(&format!(
+            "{package} is already on the newest version its requirement allows"
+        ));
     } else {
-        ctx.out.note(&format!("updated {what}"));
+        ctx.out
+            .note("every package is already on the newest version its requirement allows");
     }
 }
 
@@ -970,8 +1065,8 @@ fn resolve_action(ctx: &mut Context) -> CliResult {
 }
 
 /// Resolve a container's package dependencies. `clone_dir` relocates the
-/// checkouts (used during `add` discovery); `quiet` discards stdout (for `--json`
-/// and the discovery step).
+/// checkouts (for `add` discovery and [`repin`]); `quiet` discards stdout (for
+/// `--json` and the discovery step).
 fn resolve_packages(
     container: &Container,
     clone_dir: Option<&Path>,
@@ -1590,11 +1685,15 @@ fn resolved_path(container: &Container) -> PathBuf {
 /// Parse `Package.resolved` into `identity -> Pin`. A missing/unreadable file is
 /// an empty map (the locked column just shows `—`).
 fn read_resolved(path: &Path) -> HashMap<String, Pin> {
+    std::fs::read_to_string(path)
+        .map(|text| parse_resolved(&text))
+        .unwrap_or_default()
+}
+
+/// [`read_resolved`] over text already in hand.
+fn parse_resolved(text: &str) -> HashMap<String, Pin> {
     let mut map = HashMap::new();
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return map;
-    };
-    let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(text) else {
         return map;
     };
     // v2/v3 store `pins` at the top level; v1 nested them under `object`.
@@ -1649,4 +1748,76 @@ fn read_resolved(path: &Path) -> HashMap<String, Pin> {
         );
     }
     map
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lockfile(pins: &[(&str, &str)]) -> String {
+        let pins: Vec<serde_json::Value> = pins
+            .iter()
+            .map(|(identity, version)| {
+                serde_json::json!({
+                    "identity": identity,
+                    "kind": "remoteSourceControl",
+                    "location": format!("https://github.com/apple/{identity}.git"),
+                    "state": { "revision": format!("rev-{version}"), "version": version },
+                })
+            })
+            .collect();
+        sweetpad_lib::spm_resolved::serialize(&serde_json::json!({
+            "originHash": "fresh",
+            "pins": pins,
+            "version": 3,
+        }))
+    }
+
+    #[test]
+    fn the_updated_package_leads_the_pins_that_moved() {
+        let before = lockfile(&[
+            ("swift-algorithms", "1.0.0"),
+            ("swift-collections", "1.0.0"),
+            ("swift-numerics", "1.0.2"),
+        ]);
+        let after = lockfile(&[
+            ("swift-algorithms", "1.2.1"),
+            ("swift-collections", "1.0.0"),
+            ("swift-numerics", "1.1.1"),
+        ]);
+        let changes = pin_changes(
+            Some(&before),
+            &after,
+            Some("https://github.com/apple/swift-numerics.git"),
+        );
+        let shown: Vec<String> = changes.iter().map(PinChange::display).collect();
+        assert_eq!(
+            shown,
+            [
+                "swift-numerics 1.0.2 → 1.1.1",
+                "swift-algorithms 1.0.0 → 1.2.1"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_pin_that_appears_or_goes_is_a_change() {
+        let before = lockfile(&[("swift-numerics", "1.0.2")]);
+        let after = lockfile(&[("swift-algorithms", "1.2.1")]);
+        let shown: Vec<String> = pin_changes(Some(&before), &after, None)
+            .iter()
+            .map(PinChange::display)
+            .collect();
+        assert_eq!(
+            shown,
+            ["swift-algorithms — → 1.2.1", "swift-numerics 1.0.2 → —"]
+        );
+        assert_eq!(pin_changes(None, &after, None).len(), 1);
+    }
+
+    #[test]
+    fn identical_lockfiles_have_no_changes() {
+        let pins = lockfile(&[("swift-collections", "1.1.4")]);
+        assert_eq!(pin_changes(Some(&pins), &pins, None), []);
+    }
 }
