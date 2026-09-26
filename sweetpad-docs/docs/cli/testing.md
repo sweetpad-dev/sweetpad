@@ -76,7 +76,8 @@ record of how the process ended and prints it under the failure:
 
 This also covers kills that leave no crash report, such as the simulator host ending the app. With
 `-o json`, the same failure carries a `terminationReason` object with the raw reason, code, and
-explanation, plus the crash report's path when there is one. Other failures get no such field.
+explanation, plus the crash report's path and the fault it names (`exception`) when there is one.
+Other failures get no such field.
 `sweetpad app logs --exits` shows the same records outside a test run.
 
 ## Compiling the tests without running them

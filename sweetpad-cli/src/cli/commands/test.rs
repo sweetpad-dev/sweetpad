@@ -2373,6 +2373,35 @@ mod tests {
     }
 
     #[test]
+    fn a_faults_sender_and_exception_read_apart() {
+        // launchd's line for a fault, with the exception its crash report adds.
+        let line = serde_json::json!({
+            "timestamp": "2026-09-26 20:37:03.524000+0200",
+            "subsystem": "user/503/UIKitApplication:dev.sweetpad.ci.app[1a2b][rb-legacy] [91599]",
+            "eventMessage": "exited due to SIGSEGV | sent by exc handler[91599], ran for 371ms",
+        })
+        .to_string();
+        let mut exit = exits::parse_ndjson_line(&line, &[]).expect("an exit");
+        exit.exception = Some("EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x10".into());
+        let termination = Termination {
+            exit,
+            crash_report: Some(PathBuf::from("/tmp/App.ips")),
+        };
+        assert_eq!(
+            termination.line(),
+            "app terminated: crashed with SIGSEGV (sent by exc handler[91599]; EXC_BAD_ACCESS \
+             KERN_INVALID_ADDRESS at 0x10)"
+        );
+        let json = failed_report(vec![Some(termination)]).json();
+        let reason = &json["failures"][0]["terminationReason"];
+        assert_eq!(reason["sentBy"], "exc handler[91599]");
+        assert_eq!(
+            reason["exception"],
+            "EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x10"
+        );
+    }
+
+    #[test]
     fn a_termination_rides_on_its_failure_and_nowhere_else() {
         // `simctl terminate` of the app while a UI test waited on it.
         let line = serde_json::json!({

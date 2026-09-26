@@ -109,11 +109,15 @@ is one:
 17:33:10.087  pid 59571  crashed with SIGABRT (sent by ExitProbe[59571]), ran 1.4s
     crash report: /Users/you/Library/Logs/DiagnosticReports/ExitProbe-2026-09-26-173313.ips
 17:33:23.131  pid 59915  exited with status 3, ran 1.4s
+20:37:03.524  pid 91599  crashed with SIGSEGV (sent by exc handler[91599]; EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x0000000000000010), ran 371ms
+    crash report: /Users/you/Library/Logs/DiagnosticReports/SweetpadCIApp-2026-09-26-203704.ips
 ```
 
 A plain-words label appears only when the meaning is well known, such as a crash signal, memory
-pressure, or a watchdog timeout. Other codes show as they are. In `-o json`, each exit's `source`
-says where it came from: `launchd`, `crashReport`, or `sweetpad`.
+pressure, or a watchdog timeout. Other codes show as they are. When a crash report names the fault,
+it follows the sender after a semicolon. In `-o json`, the sender is `sentBy`, the fault is
+`exception`, and each exit's `source` says where it came from: `launchd`, `crashReport`, or
+`sweetpad`.
 
 :::note
 

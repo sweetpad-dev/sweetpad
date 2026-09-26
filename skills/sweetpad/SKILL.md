@@ -184,7 +184,8 @@ report is saved, and `reportPath` says where.
 
 When the app already died and you need to know why, `sweetpad app logs --exits
 -o json` lists its recent terminations (the last 10m, or `--last`) from
-launchd's exit records: the signal of a crash with its crash report, or the
+launchd's exit records: the signal of a crash with its crash report and the
+fault it names (`exception`, e.g. `EXC_BAD_ACCESS`), or the
 reason code and explanation of a kill that left no report, such as
 `Termination requested by simulator host`. Simulator and macOS only.
 

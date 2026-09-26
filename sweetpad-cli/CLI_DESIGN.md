@@ -1945,7 +1945,11 @@ with no status. A physical device is refused.
   bundle captured inside the window, whatever started the app. The body names
   the pid, the signal and who sent it (`termination.byProc`/`byPid`), and the
   exception when it says more than `EXC_CRASH` (`EXC_BAD_ACCESS
-  KERN_INVALID_ADDRESS at 0x10`, a Swift trap's `EXC_BREAKPOINT`). Simulator
+  KERN_INVALID_ADDRESS at 0x10`, a Swift trap's `EXC_BREAKPOINT`). The
+  exception is its own field (`exception` in JSON), not launchd's
+  `explanation`, and the human line gives it after a `;`: `crashed with
+  SIGSEGV (sent by exc handler[60122]; EXC_BAD_ACCESS …)`. Run together, the
+  sender's name and the exception read as one phrase. Simulator
   reports land in the same directory, so the process path picks the device:
   a simulator app runs out of `CoreSimulator/Devices/<udid>/`.
 - `sweetpad`: a macOS app sweetpad spawns and waits on (`run --mac` attached,
@@ -2353,7 +2357,7 @@ attaches:
 
 Under `-o json` and ndjson the failure gains `terminationReason`, the same
 object `app logs --exits` reports per exit: `namespace`, `code`, `reason`,
-`label`, `explanation`, and the rest. The field is additive, so `schema` stays.
+`label`, `explanation`, `exception`, and the rest. The field is additive, so `schema` stays.
 
 **Which failures, in Xcode's words.** Each wording was reproduced against a
 scratch app on Xcode 27. `<id> crashed` and `… application <id> is not running`

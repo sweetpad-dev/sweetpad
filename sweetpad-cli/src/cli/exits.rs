@@ -103,6 +103,11 @@ pub struct Exit {
     /// Why, in launchd's words: a terminate context's `explanation:`, or the
     /// circumstance a plain exit carries (`during system shutdown`).
     pub explanation: Option<String>,
+    /// The Mach exception a crash report names when it says more than
+    /// `EXC_CRASH` (`EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x10`). Kept apart
+    /// from [`explanation`](Self::explanation) because it is the fault, not
+    /// launchd's account of the exit.
+    pub exception: Option<String>,
     pub ran_for_ms: Option<u64>,
     /// The whole message, for whatever the parse does not reach.
     pub message: String,
@@ -269,6 +274,7 @@ pub fn parse_ndjson_line(line: &str, bundle_ids: &[&str]) -> Option<Exit> {
         pid: job_pid(&subsystem),
         cause,
         explanation,
+        exception: None,
         ran_for_ms,
         message,
         origin: Origin::Launchd,
@@ -473,39 +479,42 @@ impl Exit {
     }
 
     /// One line: the label (or launchd's explanation, or the bare reason),
-    /// then the raw reason in parentheses — `Termination requested by simulator
-    /// host (OS_REASON_SPRINGBOARD 0xfbfbfbfb)`, `crashed with SIGABRT (sent by
-    /// ExitProbe[62583])`.
+    /// then the raw reason in parentheses, and the exception after a `;` —
+    /// `Termination requested by simulator host (OS_REASON_SPRINGBOARD
+    /// 0xfbfbfbfb)`, `crashed with SIGSEGV (sent by exc handler[60122];
+    /// EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x10)`. A signal's circumstance
+    /// stays after its sender, the way launchd wrote them (`sent by
+    /// launchd_sim[36695] during teardown of …`).
     #[must_use]
     pub fn summary(&self) -> String {
         let label = self.label();
-        match &self.cause {
-            Cause::Reason { name, code, .. } => {
-                let headline = label
+        let (headline, lead) = match &self.cause {
+            Cause::Reason { name, code, .. } => (
+                label
                     .or_else(|| self.explanation.clone())
-                    .unwrap_or_else(|| name.clone());
-                format!("{headline} ({name} {code:#x})")
-            }
-            Cause::Signal { name, sent_by } => {
-                let mut detail: Vec<String> = Vec::new();
-                if let Some(sender) = sent_by {
-                    detail.push(format!("sent by {sender}"));
-                }
-                detail.extend(self.explanation.clone());
-                let headline = label.unwrap_or_else(|| name.clone());
-                if detail.is_empty() {
-                    headline
-                } else {
-                    format!("{headline} ({})", detail.join(" "))
-                }
-            }
-            Cause::Status(_) => {
-                let headline = label.unwrap_or_else(|| self.reason());
-                match &self.explanation {
-                    Some(circumstance) => format!("{headline} ({circumstance})"),
-                    None => headline,
-                }
-            }
+                    .unwrap_or_else(|| name.clone()),
+                Some(format!("{name} {code:#x}")),
+            ),
+            Cause::Signal { name, sent_by } => (
+                label.unwrap_or_else(|| name.clone()),
+                match (sent_by, &self.explanation) {
+                    (Some(sender), Some(circumstance)) => {
+                        Some(format!("sent by {sender} {circumstance}"))
+                    }
+                    (Some(sender), None) => Some(format!("sent by {sender}")),
+                    (None, circumstance) => circumstance.clone(),
+                },
+            ),
+            Cause::Status(_) => (
+                label.unwrap_or_else(|| self.reason()),
+                self.explanation.clone(),
+            ),
+        };
+        let detail: Vec<String> = lead.into_iter().chain(self.exception.clone()).collect();
+        if detail.is_empty() {
+            headline
+        } else {
+            format!("{headline} ({})", detail.join("; "))
         }
     }
 
@@ -529,6 +538,7 @@ impl Exit {
             "exitStatus": exit_status,
             "sentBy": sent_by,
             "explanation": self.explanation,
+            "exception": self.exception,
             "label": self.label(),
             "ranForMs": self.ran_for_ms,
             "crashReport": crash_report.map(|p| p.display().to_string()),
@@ -717,19 +727,25 @@ fn report_exit(text: &str, source: &Source, bundle_ids: &[&str]) -> Option<Exit>
             None => by,
         }
     });
-    let explanation = match namespace.as_deref() {
+    let (explanation, exception) = match namespace.as_deref() {
         // A signal's own indicator ("Abort trap: 6") repeats the signal; the
         // exception type is what adds to it, unless it is the generic one.
-        Some("SIGNAL") | None => str_of(exception, "type")
-            .filter(|t| t != "EXC_CRASH")
-            .map(|t| match str_of(exception, "subtype") {
-                Some(subtype) => format!("{t} {subtype}"),
-                None => t,
+        Some("SIGNAL") | None => (
+            None,
+            str_of(exception, "type")
+                .filter(|t| t != "EXC_CRASH")
+                .map(|t| match str_of(exception, "subtype") {
+                    Some(subtype) => format!("{t} {subtype}"),
+                    None => t,
+                }),
+        ),
+        Some(other) => (
+            Some(match &indicator {
+                Some(indicator) => format!("{other} {indicator}"),
+                None => other.to_string(),
             }),
-        Some(other) => Some(match &indicator {
-            Some(indicator) => format!("{other} {indicator}"),
-            None => other.to_string(),
-        }),
+            None,
+        ),
     };
     let captured = str_of(&body, "captureTime").map(|t| log_style_time(&t))?;
     let ran_for_ms = str_of(&body, "procLaunch").and_then(|launched| {
@@ -742,6 +758,7 @@ fn report_exit(text: &str, source: &Source, bundle_ids: &[&str]) -> Option<Exit>
         pid: Some(pid),
         cause: Cause::Signal { name, sent_by },
         explanation,
+        exception,
         ran_for_ms,
         message: indicator.unwrap_or_default(),
         origin: Origin::CrashReport,
@@ -775,6 +792,7 @@ pub fn from_record(record: &RecordedExit) -> Option<Exit> {
         pid: Some(record.pid),
         cause,
         explanation: None,
+        exception: None,
         ran_for_ms: millis(record.ended - record.started),
         message: "recorded by sweetpad, the process's parent".to_string(),
         origin: Origin::Sweetpad,
@@ -917,6 +935,9 @@ pub fn merge(
                 if seen.explanation.is_none() {
                     seen.explanation = exit.explanation;
                 }
+                if seen.exception.is_none() {
+                    seen.exception = exit.exception;
+                }
             }
             None => merged.push((exit, Some(path))),
         }
@@ -959,6 +980,7 @@ mod tests {
             pid: None,
             cause,
             explanation,
+            exception: None,
             ran_for_ms,
             message: message.into(),
             origin: Origin::Launchd,
@@ -1185,6 +1207,7 @@ mod tests {
                 name: String::new(),
             },
             explanation: None,
+            exception: None,
             ran_for_ms: None,
             message: String::new(),
             origin: Origin::Launchd,
@@ -1224,6 +1247,10 @@ mod tests {
         assert_eq!(json["label"], "crashed with SIGABRT");
         assert_eq!(json["crashReport"], "/tmp/ExitProbe-2026-09-26-173313.ips");
         assert!(json["namespace"].is_null() && json["code"].is_null());
+        assert!(
+            json.get("exception")
+                .is_some_and(serde_json::Value::is_null)
+        );
         let status = parse(SIM_JOB, "exited due to exit(3), ran for 1361ms").json(None);
         assert_eq!(status["kind"], "exit");
         assert_eq!(status["exitStatus"], 3);
@@ -1341,11 +1368,19 @@ mod tests {
             &["dev.sweetpad.exitprobe.app"],
         )
         .expect("a crash");
+        // The sender and the fault read apart, in both forms.
         assert_eq!(
             exit.summary(),
-            "crashed with SIGSEGV (sent by exc handler[60122] EXC_BAD_ACCESS \
+            "crashed with SIGSEGV (sent by exc handler[60122]; EXC_BAD_ACCESS \
              KERN_INVALID_ADDRESS at 0x0000000000000010)"
         );
+        let json = exit.json(None);
+        assert_eq!(json["sentBy"], "exc handler[60122]");
+        assert_eq!(
+            json["exception"],
+            "EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x0000000000000010"
+        );
+        assert!(json["explanation"].is_null());
         assert_eq!(exit.ran_for_ms, Some(1463));
         assert!(report_exit(SIM_FAULT_IPS, &Source::Simulator("OTHER-UDID"), &[]).is_none());
         assert!(report_exit(SIM_FAULT_IPS, &Source::Mac, &[]).is_none());
@@ -1470,7 +1505,7 @@ mod tests {
             name: "SIGABRT".into(),
             sent_by: Some("App[400]".into()),
         };
-        fault.explanation = Some("EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x10".into());
+        fault.exception = Some("EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x10".into());
         let merged = merge(
             Vec::new(),
             vec![from_record(&recorded(400, 3000.5, None, Some(6))).expect("an exit")],
@@ -1483,7 +1518,22 @@ mod tests {
         assert_eq!(path, Path::new("e.ips"));
         assert_eq!(
             exit.summary(),
-            "crashed with SIGABRT (sent by App[400] EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x10)"
+            "crashed with SIGABRT (sent by App[400]; EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x10)"
         );
+    }
+
+    #[test]
+    fn a_launchd_circumstance_stays_with_its_sender_and_the_fault_follows() {
+        let mut exit = exit_of(
+            "exited due to SIGKILL | sent by launchd_sim[36695] during teardown, ran for 3ms",
+        );
+        exit.exception = Some("EXC_BAD_ACCESS".into());
+        assert_eq!(
+            exit.summary(),
+            "SIGKILL (sent by launchd_sim[36695] during teardown; EXC_BAD_ACCESS)"
+        );
+        let mut unsent = exit_of("exited due to SIGSEGV, ran for 3ms");
+        unsent.exception = Some("EXC_BAD_ACCESS".into());
+        assert_eq!(unsent.summary(), "crashed with SIGSEGV (EXC_BAD_ACCESS)");
     }
 }
