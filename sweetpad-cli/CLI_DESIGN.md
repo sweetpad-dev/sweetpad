@@ -570,7 +570,10 @@ sweetpad completions <shell>          clap_complete-generated scripts
   killing the macOS process) so the relaunch is always a fresh process picking up
   the new binary — `simctl launch` alone would just foreground the stale one — and
   the app is likewise terminated on quit. A failed rebuild keeps the session alive;
-  fix and press `r` again.
+  fix and press `r` again. A session that never had the app running still exits
+  non-zero, and the code follows its last build: 3 if it failed (the code
+  `build` uses), 6 if Ctrl-C cancelled it, and 1 if it succeeded but the launch
+  failed.
 
   The reader uses a hand-rolled raw mode (`libc`, unix-only) that flips only
   stdin's line discipline (`ICANON`/`ECHO`/`ISIG`/`IEXTEN`), leaving the terminal's

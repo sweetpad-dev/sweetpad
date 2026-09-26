@@ -2,8 +2,9 @@
 //! xcodebuild replays a canned transcript, so the result is checked end to end
 //! without compiling anything.
 
+use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, ExitStatus, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
@@ -50,6 +51,15 @@ fn build_with_stub(tag: &str, transcript: &str, status: i32, mode: &[&str]) -> O
 /// `sweetpad <args>` against a stub xcodebuild that prints `transcript` and
 /// exits with `status`.
 fn sweetpad_with_stub(tag: &str, transcript: &str, status: i32, args: &[&str]) -> Output {
+    stub_command(tag, transcript, status, args)
+        .0
+        .output()
+        .expect("failed to run the sweetpad binary")
+}
+
+/// The command [`sweetpad_with_stub`] runs, and the directory it uses as home
+/// and state dir.
+fn stub_command(tag: &str, transcript: &str, status: i32, args: &[&str]) -> (Command, PathBuf) {
     use std::os::unix::fs::PermissionsExt;
 
     let home = tmp(&format!("{tag}-home"));
@@ -70,8 +80,8 @@ fn sweetpad_with_stub(tag: &str, transcript: &str, status: i32, args: &[&str]) -
     let developer_dir = cwd.join("Developer");
     std::fs::create_dir_all(&developer_dir).unwrap();
 
-    Command::new(env!("CARGO_BIN_EXE_sweetpad"))
-        .args(args)
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_sweetpad"));
+    cmd.args(args)
         .current_dir(&cwd)
         .env("HOME", &home)
         .env("XDG_STATE_HOME", &home)
@@ -88,9 +98,8 @@ fn sweetpad_with_stub(tag: &str, transcript: &str, status: i32, args: &[&str]) -
         )
         .env_remove("NO_COLOR")
         .env_remove("FORCE_COLOR")
-        .env_remove("CLICOLOR_FORCE")
-        .output()
-        .expect("failed to run the sweetpad binary")
+        .env_remove("CLICOLOR_FORCE");
+    (cmd, home)
 }
 
 const WARNED: &str = "\
@@ -353,4 +362,126 @@ fn a_blocked_build_names_the_flag_in_the_run_session_too() {
             "{stderr}"
         );
     }
+}
+
+/// A 24x80 pty: the master end, and the slave end a child takes as its
+/// terminal.
+fn pty() -> (std::fs::File, OwnedFd) {
+    use std::os::fd::FromRawFd;
+
+    let (mut master, mut slave) = (0, 0);
+    let mut size = libc::winsize {
+        ws_row: 24,
+        ws_col: 80,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    // Safety: openpty(3) writes two fresh fds on success, each owned by the
+    // wrapper built from it below.
+    let rc = unsafe {
+        libc::openpty(
+            &raw mut master,
+            &raw mut slave,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &raw mut size,
+        )
+    };
+    assert_eq!(rc, 0, "openpty: {}", std::io::Error::last_os_error());
+    unsafe {
+        (
+            std::fs::File::from_raw_fd(master),
+            OwnedFd::from_raw_fd(slave),
+        )
+    }
+}
+
+/// Run `cmd` on a pty for its stdin, stdout and stderr, typing `keys` once
+/// `prompt` shows. Returns the exit status and everything the child wrote.
+/// CI's own variables are dropped, since they make every run non-interactive.
+fn on_pty(mut cmd: Command, prompt: &str, keys: &[u8]) -> (ExitStatus, String) {
+    use std::io::{Read, Write};
+    use std::process::Stdio;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    let (mut master, slave) = pty();
+    cmd.env_remove("CI")
+        .env_remove("SWEETPAD_NONINTERACTIVE")
+        .stdin(Stdio::from(slave.try_clone().unwrap()))
+        .stdout(Stdio::from(slave.try_clone().unwrap()))
+        .stderr(Stdio::from(slave));
+    let mut child = cmd.spawn().unwrap();
+    // The master reads end of file only once no slave end is open, and `cmd`
+    // still holds the parent's copies.
+    drop(cmd);
+    let transcript = Arc::new(Mutex::new(Vec::new()));
+    let reader = {
+        let transcript = Arc::clone(&transcript);
+        let mut master = master.try_clone().unwrap();
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            while let Ok(n @ 1..) = master.read(&mut buf) {
+                transcript.lock().unwrap().extend_from_slice(&buf[..n]);
+            }
+        })
+    };
+    let shown = || String::from_utf8_lossy(&transcript.lock().unwrap()).into_owned();
+
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut typed = false;
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            panic!("still running after a minute:\n{}", shown());
+        }
+        if !typed && shown().contains(prompt) {
+            master.write_all(keys).unwrap();
+            typed = true;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    reader.join().unwrap();
+    (status, shown())
+}
+
+/// Quitting a session whose only build failed exits 3, the code `build` gives
+/// the same failure. The one-time tip waits for a command that succeeds rather
+/// than printing under the error.
+#[test]
+fn quitting_a_session_whose_build_failed_exits_as_a_failed_build() {
+    let project = project();
+    let (session, home) = stub_command(
+        "quit",
+        BROKEN,
+        65,
+        &[
+            "app",
+            "run",
+            "--mac",
+            "--project",
+            project.to_str().unwrap(),
+            "--scheme",
+            "SweetpadCIMac",
+            "--configuration",
+            "Debug",
+        ],
+    );
+    let (status, shown) = on_pty(session, "q quit", b"q");
+    assert_eq!(status.code(), Some(3), "{shown}");
+    assert!(
+        shown.contains("the last build failed, so nothing was launched"),
+        "{shown}"
+    );
+    let tip = "(this tip shows once)";
+    assert!(!shown.contains(tip), "{shown}");
+
+    let (mut help, _) = stub_command("quit-help", "", 0, &["help"]);
+    help.env("XDG_STATE_HOME", &home);
+    let (status, shown) = on_pty(help, "", b"");
+    assert!(status.success(), "{shown}");
+    assert!(shown.contains(tip), "{shown}");
 }

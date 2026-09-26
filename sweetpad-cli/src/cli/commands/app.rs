@@ -1755,8 +1755,10 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
     // the error and press `r`, instead of being dropped back to the shell.
     let started = Instant::now();
     let mut ever_launched = false;
+    let mut last_build;
     let mut running = match build(plan, &ctx.out, None) {
         BuildOutcome::Ok => {
+            last_build = LastBuild::Succeeded;
             // Finish the background boot before installing; start_app's own boot then
             // confirms it (a fast no-op now the device is already up).
             let _ = boot.wait();
@@ -1773,6 +1775,7 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
             }
         }
         BuildOutcome::Failed(e) => {
+            last_build = LastBuild::Failed;
             ctx.out.error(&e);
             // Nothing launched, but the session stays open to fix and rebuild. Finish
             // the boot so the log stream ([`start_logs`]) attaches to a booted device
@@ -1804,14 +1807,18 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
         match rawmode::poll_key() {
             rawmode::Input::Key(ch) => match classify_key(ch) {
                 SessionKey::Rebuild => match do_rebuild(ctx, plan, &mut running, &filter) {
-                    RebuildOutcome::Continue { launched } => {
+                    RebuildOutcome::Continue { build, launched } => {
+                        last_build = build;
                         ever_launched |= launched;
                         session_hint(ctx, filterable);
                     }
                     // Ctrl-C during the rebuild cancels the whole run; fall
                     // through to the shared teardown so a session that never
                     // launched anything still exits non-zero.
-                    RebuildOutcome::Quit => break,
+                    RebuildOutcome::Quit => {
+                        last_build = LastBuild::Cancelled;
+                        break;
+                    }
                 },
                 SessionKey::Quit => break,
                 // `d`: stop watching but leave the app running.
@@ -1864,16 +1871,33 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
             terminate_app(r);
         }
     }
-    // A session that never produced a running app (the build kept failing) exits
-    // non-zero, so a script or wrapper around `app run` sees the failure even
-    // though the session stayed open for you to retry.
+    session_result(ever_launched, last_build)
+}
+
+/// How the session's most recent build ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LastBuild {
+    Succeeded,
+    Failed,
+    /// Ctrl-C during the build.
+    Cancelled,
+}
+
+/// The session's exit. One that never had the app running exits non-zero, so a
+/// script or wrapper around `app run` sees the failure even though the session
+/// stayed open for a retry. The code follows the last build: 3 if it failed
+/// (the code `build` uses), 6 if Ctrl-C cancelled it, and 1 if it succeeded
+/// but the launch failed.
+fn session_result(ever_launched: bool, last_build: LastBuild) -> CliResult {
     if ever_launched {
-        Ok(())
-    } else {
-        Err(CliError::new(
-            "app run ended without a successful build — nothing was launched",
-        ))
+        return Ok(());
     }
+    Err(match last_build {
+        LastBuild::Failed => CliError::new("the last build failed, so nothing was launched")
+            .kind(ErrorKind::BuildFailure),
+        LastBuild::Cancelled => CliError::new("cancelled").kind(ErrorKind::UserCancel),
+        LastBuild::Succeeded => CliError::new("the app was built but failed to launch"),
+    })
 }
 
 /// `app run --hot` — the built-in hot-reload session (iOS Simulator and native
@@ -3311,9 +3335,10 @@ fn set_filter(ctx: &Context, filter: &AtomicU8, choice: LogFilter) {
 
 /// What an `r` rebuild asks the session to do next.
 enum RebuildOutcome {
-    /// Carry on; `launched` records whether the app came back up (a failed build
-    /// keeps the session open with nothing running).
-    Continue { launched: bool },
+    /// Carry on; `build` records how the build ended and `launched` whether the
+    /// app came back up (a failed build keeps the session open with nothing
+    /// running).
+    Continue { build: LastBuild, launched: bool },
     /// Ctrl-C during the rebuild: cancel the whole session.
     Quit,
 }
@@ -3337,17 +3362,26 @@ fn do_rebuild(
             Ok(r) => {
                 *running = Some(r);
                 note_launch(ctx, "Relaunched", started);
-                RebuildOutcome::Continue { launched: true }
+                RebuildOutcome::Continue {
+                    build: LastBuild::Succeeded,
+                    launched: true,
+                }
             }
             Err(e) => {
                 ctx.out.error(&e);
-                RebuildOutcome::Continue { launched: false }
+                RebuildOutcome::Continue {
+                    build: LastBuild::Succeeded,
+                    launched: false,
+                }
             }
         },
         // Failed build: nothing runs until the next rebuild; the session stays open.
         BuildOutcome::Failed(e) => {
             ctx.out.error(&e);
-            RebuildOutcome::Continue { launched: false }
+            RebuildOutcome::Continue {
+                build: LastBuild::Failed,
+                launched: false,
+            }
         }
         BuildOutcome::Aborted => RebuildOutcome::Quit,
     }
@@ -6957,6 +6991,27 @@ mod tests {
         let mut boot = BgBoot::start(&Target::Mac);
         assert!(boot.wait().is_ok());
         assert!(boot.wait().is_ok());
+    }
+
+    /// A session that never had the app running exits with the code its last
+    /// build earned; one that did exits 0 however its last build went.
+    #[test]
+    fn a_session_that_launched_nothing_exits_with_its_last_builds_code() {
+        let code = |launched, last| {
+            session_result(launched, last)
+                .err()
+                .map(|e| e.error_kind().exit_code())
+        };
+        assert_eq!(code(false, LastBuild::Failed), Some(3));
+        assert_eq!(code(false, LastBuild::Cancelled), Some(6));
+        assert_eq!(code(false, LastBuild::Succeeded), Some(1));
+        for last in [
+            LastBuild::Succeeded,
+            LastBuild::Failed,
+            LastBuild::Cancelled,
+        ] {
+            assert_eq!(code(true, last), None, "{last:?}");
+        }
     }
 
     #[test]

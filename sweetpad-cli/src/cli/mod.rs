@@ -983,7 +983,11 @@ pub fn run(argv: &[String]) -> ExitCode {
     };
 
     let code = render_result(&ctx, result);
-    first_run_hint(&ctx.out);
+    // A failure's own message is the last thing it prints; the tip waits for
+    // the first invocation that succeeds.
+    if code == ExitCode::SUCCESS {
+        first_run_hint(&ctx.out);
+    }
     code
 }
 
@@ -1426,9 +1430,10 @@ fn early_error(out: &output::Output, e: &CliError) -> ExitCode {
     ExitCode::from(e.error_kind().exit_code())
 }
 
-/// A one-time tip after the very first invocation, pointing at the setup
-/// commands. A marker file in the state dir suppresses every later showing;
-/// interactive-only, so scripts, CI, and `--json` consumers never see it.
+/// A one-time tip after the first invocation that exits 0, pointing at the
+/// setup commands. A marker file in the state dir suppresses every later
+/// showing; interactive-only, so scripts, CI, and `--json` consumers never see
+/// it.
 fn first_run_hint(out: &output::Output) {
     if !out.is_interactive() || out.is_quiet() {
         return;

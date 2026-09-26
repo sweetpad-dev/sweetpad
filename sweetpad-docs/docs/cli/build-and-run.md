@@ -35,6 +35,10 @@ While the app is running and the logs are following, two keys work:
 - **`r`** rebuilds and relaunches, the same loop again, without leaving the command.
 - **`q`** quits.
 
+A build that fails keeps the session open, so you can fix the error and press `r`. If the app never
+launched and you quit after a failed build, `run` exits with code `3`, the same code a failed
+`sweetpad build` uses.
+
 ## Building without running
 
 `sweetpad build` compiles and stops there. It's the right command for a pre-commit hook, a quick
