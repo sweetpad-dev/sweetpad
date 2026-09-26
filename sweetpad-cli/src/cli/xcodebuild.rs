@@ -551,7 +551,9 @@ fn captured_failure_detail(
 /// Summarize diagnostics for a one-line error message: the first error (falling
 /// back to the first diagnostic of any severity) plus a count of the rest, so
 /// the headline names the actual cause and the full set rides in the error
-/// object's `diagnostics`.
+/// object's `diagnostics`. Only the diagnostic's first line is used: a
+/// destination error carries xcodebuild's listing on the lines after it (see
+/// [`buildlog::LogParser`]), and the colon that introduced them goes too.
 pub(crate) fn diagnostics_summary(diagnostics: &[serde_json::Value]) -> Option<String> {
     let errors: Vec<&serde_json::Value> = diagnostics
         .iter()
@@ -565,7 +567,10 @@ pub(crate) fn diagnostics_summary(diagnostics: &[serde_json::Value]) -> Option<S
         .as_str()
         .map(|l| format!("{l}: "))
         .unwrap_or_default();
-    let message = first["message"].as_str().unwrap_or("(no message)");
+    let message = first["message"]
+        .as_str()
+        .and_then(|m| m.lines().next())
+        .map_or("(no message)", |line| line.trim_end_matches(':'));
     let more = match total {
         0 | 1 => String::new(),
         n => format!(" (and {} more)", n - 1),
@@ -1787,6 +1792,23 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             Some("A.swift:1:1: unused variable 'x'")
         );
         assert_eq!(diagnostics_summary(&[]), None);
+    }
+
+    #[test]
+    fn a_destination_errors_listing_stays_out_of_the_summary() {
+        // The listing is the diagnostic's own detail; the headline keeps the
+        // error's first line, without the colon that introduced the listing.
+        let not_found = vec![diag(
+            "error",
+            None,
+            "xcodebuild: Unable to find a device matching the provided destination specifier:\n  \
+             { platform:iOS, id:00008110-000A1B2C3D4E5F60 }\n  \
+             (26 other destinations omitted)",
+        )];
+        assert_eq!(
+            diagnostics_summary(&not_found).as_deref(),
+            Some("xcodebuild: Unable to find a device matching the provided destination specifier")
+        );
     }
 
     /// Build `TargetBuildSettings` from a `-showBuildSettings -json` payload,

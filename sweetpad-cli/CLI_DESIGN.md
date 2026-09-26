@@ -2220,6 +2220,10 @@ incompatible side's errors are left out on purpose. Every entry there has one,
 and it says the platform does not match the scheme, which is true of all of
 them and explains nothing.
 
+The listing stays in the diagnostic. `-o json`'s `error.message` names only the
+error's first line, without the colon that introduced the listing, and then the
+full log, so the headline stays on one line.
+
 ### A test whose app vanished says what ended it
 
 When the app under a UI test dies mid-test, XCTest reports only that it is

@@ -193,6 +193,42 @@ fn a_streamed_compile_error_still_reaches_the_machine_modes() {
     }
 }
 
+/// Xcode 27 building for a locked iPhone, from `buildlog`'s captured case.
+const DESTINATION_TIMEOUT: &str = "\
+xcodebuild: error: Timed out waiting for all destinations matching the provided destination specifier to become available
+
+
+\tDestinations compatible with the \"SweetpadCIApp\" scheme:
+\t\t{ platform:iOS, arch:arm64, id:00008110-000559182E90401E, name:Iphone 13, error:Iphone 13 needs to be unlocked to enable development services Please unlock the device. }
+";
+
+/// The destination listing is the diagnostic's detail, so `error.message`
+/// stays one line and ends on the log it names.
+#[test]
+fn a_destination_errors_headline_is_one_line() {
+    let out = build_with_stub("destination", DESTINATION_TIMEOUT, 70, &["-o", "json"]);
+    assert_eq!(out.status.code(), Some(3), "{out:?}");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    let envelope: Value = serde_json::from_str(stderr.lines().last().unwrap()).unwrap();
+    let message = envelope["error"]["message"].as_str().unwrap();
+    assert!(!message.contains('\n'), "{message}");
+    assert!(
+        message.starts_with(
+            "building the project: xcodebuild exited with a non-zero status: xcodebuild: \
+             Timed out waiting for all destinations matching the provided destination \
+             specifier to become available; full log: "
+        ),
+        "{message}"
+    );
+    let diagnostic = envelope["error"]["diagnostics"][0]["message"]
+        .as_str()
+        .unwrap();
+    assert!(
+        diagnostic.contains("needs to be unlocked to enable development services"),
+        "{diagnostic}"
+    );
+}
+
 /// `app run`'s session builds through its own runner rather than `build`'s,
 /// and closes on the same banner. `--hot --mac` reaches that runner without a
 /// terminal, since the hot session builds before it launches anything.
