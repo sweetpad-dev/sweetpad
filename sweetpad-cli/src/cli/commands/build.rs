@@ -41,13 +41,29 @@ pub enum Action {
     /// Compile the resolved scheme (the default action: 'sweetpad build').
     Start,
     /// Show the errors/warnings from the last build, without rebuilding.
-    Diagnostics,
+    Diagnostics(DiagnosticsArgs),
+}
+
+/// The start-only flags, redeclared hidden on `build diagnostics` under the
+/// same ids. A subcommand's own arg keeps the resource's global one from
+/// propagating into it, so its help leaves out flags that don't apply; a stray
+/// one still parses, and its value reaches [`StartArgs`] for [`run`] to refuse.
+#[derive(Debug, clap::Args)]
+pub struct DiagnosticsArgs {
+    #[arg(long, hide = true)]
+    pub clean: bool,
+    #[arg(long, hide = true)]
+    pub watch: bool,
+    #[arg(long, hide = true)]
+    pub show_command: bool,
+    #[arg(last = true, hide = true)]
+    pub passthrough: Vec<String>,
 }
 
 pub fn run(ctx: &mut Context, args: &StartArgs, action: Option<&Action>) -> CommandResult {
     ctx.targeting = args.target.clone().into();
     match action {
-        Some(Action::Diagnostics) => {
+        Some(Action::Diagnostics(_)) => {
             // The resource-global build flags parse here too; accepting and
             // ignoring them would silently not do what was asked.
             if args.clean || args.watch || args.show_command || !args.passthrough.is_empty() {

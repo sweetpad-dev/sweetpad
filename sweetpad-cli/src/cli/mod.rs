@@ -1730,6 +1730,53 @@ mod cli_definition_tests {
             assert!(parse(verb).is_err(), "app {verb} accepted a `--` tail");
         }
     }
+
+    /// `build diagnostics` re-reads a record, so its help leaves out the
+    /// start-only flags that `build` and `build start` list, while a stray one
+    /// still parses onto the resource's args for the refusal to catch.
+    #[test]
+    fn build_diagnostics_help_lists_no_start_flags() {
+        use clap::{CommandFactory, Parser};
+
+        let mut root = super::Cli::command();
+        root.build();
+        let build = root.find_subcommand_mut("build").expect("no build");
+        let help = |cmd: &mut clap::Command| cmd.render_long_help().to_string();
+        let start_flags = ["--clean", "--watch", "--show-command", "XCODEBUILD_ARGS"];
+
+        let resource = help(build);
+        let start = help(build.find_subcommand_mut("start").expect("no start"));
+        let diagnostics = help(
+            build
+                .find_subcommand_mut("diagnostics")
+                .expect("no diagnostics"),
+        );
+        for flag in start_flags {
+            assert!(resource.contains(flag), "build --help lacks {flag}");
+            assert!(start.contains(flag), "build start --help lacks {flag}");
+            assert!(
+                !diagnostics.contains(flag),
+                "build diagnostics --help lists {flag}"
+            );
+        }
+
+        for argv in [
+            &["sweetpad", "build", "diagnostics", "--clean"][..],
+            &["sweetpad", "build", "--clean", "diagnostics"],
+        ] {
+            match super::Cli::try_parse_from(argv).expect("rejected").resource {
+                Some(super::Resource::Build { args, .. }) => assert!(args.clean, "{argv:?}"),
+                other => panic!("{argv:?} parsed as {other:?}"),
+            }
+        }
+        match super::Cli::try_parse_from(["sweetpad", "build", "diagnostics", "--", "-quiet"])
+            .expect("rejected")
+            .resource
+        {
+            Some(super::Resource::Build { args, .. }) => assert_eq!(args.passthrough, ["-quiet"]),
+            other => panic!("parsed as {other:?}"),
+        }
+    }
 }
 
 #[cfg(test)]
