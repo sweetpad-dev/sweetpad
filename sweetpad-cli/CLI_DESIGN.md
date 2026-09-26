@@ -210,7 +210,10 @@ builds it with real `xcodebuild`.
 - Success: `{"schema": 1, "ok": true, "data": …}` on **stdout**,
   pretty-printed. Errors: `{"schema": 1, "ok": false, "error": {code,
   message}}` on **stderr**, compact single-line by design (robust to scrape
-  even when child-process stderr interleaves).
+  even when child-process stderr interleaves). A build failure adds the
+  parsed `diagnostics`; a failure that points at a next command adds it as
+  `tip`, which human output prints as its closing `tip:` line even when the
+  streamed log already showed the error.
 - **`ok` means "the command executed"**, not "the outcome was good": a red
   test suite is `ok: true` with `data.passed: false` (exit 3), `doctor` with
   problems is `ok: true` with per-check statuses (exit 1), `device info` on a
@@ -2223,6 +2226,15 @@ them and explains nothing.
 The listing stays in the diagnostic. `-o json`'s `error.message` names only the
 error's first line, without the colon that introduced the listing, and then the
 full log, so the headline stays on one line.
+
+When the requested destination is a physical device (`platform=iOS,id=…`,
+from `--on`, `--destination` or the `--` passthrough), the failure ends on
+`tip: run 'sweetpad device info <udid>' to see why the device isn't ready`
+(`error.tip` in the machine modes). The listing says what xcodebuild saw;
+`device info` (§9q) connects and names the first thing to fix. Both destination
+errors get it: on Xcode 27 a device id that matches nothing xcodebuild can see
+waits about a minute and then reports `Unable to find a device`, not the
+timeout.
 
 ### A test whose app vanished says what ended it
 

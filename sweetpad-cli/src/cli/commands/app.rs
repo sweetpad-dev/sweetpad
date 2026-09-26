@@ -2826,7 +2826,8 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
             // errors that caused it, as `BuildPlan::run`'s does.
             let err = CliError::new("xcodebuild exited with a non-zero status")
                 .context("building the app")
-                .kind(ErrorKind::BuildFailure);
+                .kind(ErrorKind::BuildFailure)
+                .tip(xcodebuild::device_tip(&parts, &diagnostics));
             BuildOutcome::Failed(if xcodebuild::streamed_an_error(true, &diagnostics) {
                 err.shown()
             } else {

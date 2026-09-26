@@ -212,13 +212,57 @@ impl BuildPlan<'_> {
                 || format!("xcodebuild exited with a non-zero status{failure_detail}"),
                 |hint| format!("the build is blocked, not broken: {hint}"),
             );
+            let tip = device_tip(&parts, &diagnostics);
             let err = CliError::new(headline)
                 .kind(ErrorKind::BuildFailure)
                 .diagnostics(diagnostics)
+                .tip(tip)
                 .context("building the project");
             Err(if shown { err.shown() } else { err })
         }
     }
+}
+
+/// Where to look next when xcodebuild could not use a physical device it was
+/// asked to build for: `device info` connects to the device and names what to
+/// fix (a lock, Developer Mode, pairing), which the destination error only
+/// hints at. `None` for any other failure, and for a simulator destination.
+/// The device is named by its `id=`, else its `name=`.
+pub(crate) fn device_tip(args: &[String], diagnostics: &[serde_json::Value]) -> Option<String> {
+    let destination_error = diagnostics.iter().any(|d| {
+        d["severity"] == "error"
+            && d["location"].is_null()
+            && d["message"]
+                .as_str()
+                .is_some_and(buildlog::is_destination_error)
+    });
+    if !destination_error {
+        return None;
+    }
+    let spec = args
+        .windows(2)
+        .filter(|pair| pair[0] == "-destination")
+        .map(|pair| pair[1].as_str())
+        .find(|spec| crate::cli::resolve::is_device_destination(spec))?;
+    let key = |k: &str| {
+        spec.split(',')
+            .find_map(|kv| kv.trim().strip_prefix(k))
+            .map(str::trim)
+    };
+    let device = key("id=")
+        .or_else(|| key("name="))
+        .map_or_else(String::new, |d| {
+            // The tip is single-quoted, so a name that needs quoting gets double
+            // quotes inside it.
+            if shell_quote(d) == d {
+                format!(" {d}")
+            } else {
+                format!(" \"{d}\"")
+            }
+        });
+    Some(format!(
+        "run 'sweetpad device info{device}' to see why the device isn't ready"
+    ))
 }
 
 /// Whether a `-destination` specifier targets native macOS (the platform whose
@@ -1792,6 +1836,71 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             Some("A.swift:1:1: unused variable 'x'")
         );
         assert_eq!(diagnostics_summary(&[]), None);
+    }
+
+    fn destination_args(specs: &[&str]) -> Vec<String> {
+        let mut args = vec!["build".to_string()];
+        for spec in specs {
+            args.push("-destination".into());
+            args.push((*spec).into());
+        }
+        args
+    }
+
+    const TIMEOUT: &str = "xcodebuild: Timed out waiting for all destinations matching the \
+                           provided destination specifier to become available";
+
+    #[test]
+    fn a_device_destination_error_points_at_device_info() {
+        let timeout = vec![diag("error", None, TIMEOUT)];
+        assert_eq!(
+            device_tip(
+                &destination_args(&["platform=iOS,id=00008110-000559182E90401E"]),
+                &timeout
+            )
+            .as_deref(),
+            Some(
+                "run 'sweetpad device info 00008110-000559182E90401E' to see why the device \
+                 isn't ready"
+            )
+        );
+        // A device passed through after sweetpad's own simulator destination
+        // is still the one named, and a name stands in for a missing id.
+        assert_eq!(
+            device_tip(
+                &destination_args(&[
+                    "platform=iOS Simulator,id=SIM",
+                    "platform=iOS,name=Iphone 13"
+                ]),
+                &timeout
+            )
+            .as_deref(),
+            Some("run 'sweetpad device info \"Iphone 13\"' to see why the device isn't ready")
+        );
+    }
+
+    #[test]
+    fn only_a_device_destination_error_gets_the_tip() {
+        let timeout = vec![diag("error", None, TIMEOUT)];
+        for spec in [
+            "platform=iOS Simulator,id=SIM",
+            "platform=macOS",
+            "generic/platform=iOS",
+        ] {
+            assert_eq!(
+                device_tip(&destination_args(&[spec]), &timeout),
+                None,
+                "{spec}"
+            );
+        }
+        let compile = vec![diag(
+            "error",
+            Some("A.swift:1:1"),
+            "cannot find 'x' in scope",
+        )];
+        let device = destination_args(&["platform=iOS,id=00008110-000559182E90401E"]);
+        assert_eq!(device_tip(&device, &compile), None);
+        assert_eq!(device_tip(&device, &[]), None);
     }
 
     #[test]

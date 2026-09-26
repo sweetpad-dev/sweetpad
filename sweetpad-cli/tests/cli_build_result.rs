@@ -229,6 +229,59 @@ fn a_destination_errors_headline_is_one_line() {
     );
 }
 
+/// A destination error on a physical device closes on the command that says
+/// why the device isn't ready, in every mode.
+#[test]
+fn a_device_destination_error_ends_on_a_device_info_tip() {
+    let project = project();
+    let build = |tag: &str, mode: &[&str]| {
+        let mut args = vec![
+            "build",
+            "--project",
+            project.to_str().unwrap(),
+            "--scheme",
+            "SweetpadCIMac",
+            "--configuration",
+            "Debug",
+            "--destination",
+            "platform=iOS,id=00008110-000559182E90401E",
+            "--non-interactive",
+        ];
+        args.extend_from_slice(mode);
+        sweetpad_with_stub(tag, DESTINATION_TIMEOUT, 70, &args)
+    };
+    let tip = "run 'sweetpad device info 00008110-000559182E90401E' to see why the device \
+               isn't ready";
+
+    let human = build("device-human", &[]);
+    assert_eq!(human.status.code(), Some(3), "{human:?}");
+    let stderr = String::from_utf8(human.stderr).unwrap();
+    assert_eq!(
+        stderr.lines().last(),
+        Some(format!("tip: {tip}").as_str()),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("error:"), "{stderr}");
+
+    for mode in [["-o", "json"], ["-o", "ndjson"]] {
+        let out = build(&format!("device-{}", mode[1]), &mode);
+        assert_eq!(out.status.code(), Some(3), "{mode:?}: {out:?}");
+        let stderr = String::from_utf8(out.stderr).unwrap();
+        let envelope: Value = serde_json::from_str(stderr.lines().last().unwrap()).unwrap();
+        assert_eq!(envelope["error"]["tip"], tip, "{mode:?}");
+    }
+}
+
+/// The same error on a destination that is not a physical device has no
+/// device to ask about.
+#[test]
+fn a_destination_error_off_a_device_gets_no_tip() {
+    let out = build_with_stub("mac", DESTINATION_TIMEOUT, 70, &["-o", "json"]);
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    let envelope: Value = serde_json::from_str(stderr.lines().last().unwrap()).unwrap();
+    assert!(envelope["error"].get("tip").is_none(), "{envelope}");
+}
+
 /// `app run`'s session builds through its own runner rather than `build`'s,
 /// and closes on the same banner. `--hot --mac` reaches that runner without a
 /// terminal, since the hot session builds before it launches anything.

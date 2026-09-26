@@ -582,7 +582,8 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         } else {
             let _ = std::fs::remove_dir_all(&run_bundle);
         }
-        return Err(build_step_failure(&resolved.container, outcome));
+        let tip = xcodebuild::device_tip(&plan.command().0, &outcome.diagnostics);
+        return Err(build_step_failure(&resolved.container, outcome).tip(tip));
     }
     // The scratch run is the project's latest real result: promote it to the
     // retained slot.

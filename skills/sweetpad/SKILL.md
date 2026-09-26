@@ -69,6 +69,8 @@ sweetpad device info "<name or UDID>" -o json
 It connects to the device and returns `ready` and a `reason` that names the fix
 (locked, Developer Mode off, not paired, unreachable). It waits at most
 `--timeout` seconds (10 by default) and exits 1 when the device isn't ready.
+When a build or test can't reach a device, its error carries this command in
+`error.tip`.
 
 Target one with `--on <ref>`: a fuzzy name (`"iPhone 16 Pro"`), `booted`, `mac`,
 `device`, a platform word (`ios`, `watchos`, …), a UDID, or a saved context

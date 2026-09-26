@@ -479,7 +479,7 @@ impl LogParser {
                 kind: DiagKind::Error,
                 location: None,
                 message,
-            } if message.contains("provided destination specifier") => {
+            } if is_destination_error(message) => {
                 self.held = Some((line.to_string(), DestinationListing::new(message)));
             }
             _ => done.push(Parsed {
@@ -504,6 +504,15 @@ impl LogParser {
             },
         })
     }
+}
+
+/// Whether a location-less error's message is xcodebuild failing to use the
+/// requested destination: `Timed out waiting for all destinations matching the
+/// provided destination specifier …`, `Unable to find a device matching the
+/// provided destination specifier:`.
+#[must_use]
+pub fn is_destination_error(message: &str) -> bool {
+    message.contains("provided destination specifier")
 }
 
 /// How many listed destinations a destination error carries at most.

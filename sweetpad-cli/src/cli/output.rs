@@ -253,7 +253,8 @@ impl Output {
     /// underlying [`detail`](CliError::detail) follows on the next line, dimmed
     /// and indented two spaces — so "what we were doing" reads at a glance and
     /// the raw tool output sits quietly beneath it. A failure the terminal
-    /// already shows ([`CliError::shown`]) prints nothing in human mode.
+    /// already shows ([`CliError::shown`]) prints nothing in human mode but
+    /// its [`tip`](CliError::tip), which closes the output either way.
     pub fn error(&self, err: &CliError) {
         if self.json || self.ndjson {
             let payload = serde_json::json!({
@@ -266,23 +267,25 @@ impl Output {
             }
             return;
         }
-        if err.is_shown() {
-            return;
-        }
-        let prefix = if self.color_stderr {
-            "\x1b[31merror:\x1b[0m"
-        } else {
-            "error:"
-        };
         let stderr = std::io::stderr();
-        match err.headline() {
-            Some(headline) => {
-                let _ = writeln!(&stderr, "{prefix} {}", self.bold(headline));
-                let _ = writeln!(&stderr, "  {}", self.dim(err.detail()));
+        if !err.is_shown() {
+            let prefix = if self.color_stderr {
+                "\x1b[31merror:\x1b[0m"
+            } else {
+                "error:"
+            };
+            match err.headline() {
+                Some(headline) => {
+                    let _ = writeln!(&stderr, "{prefix} {}", self.bold(headline));
+                    let _ = writeln!(&stderr, "  {}", self.dim(err.detail()));
+                }
+                None => {
+                    let _ = writeln!(&stderr, "{prefix} {}", err.detail());
+                }
             }
-            None => {
-                let _ = writeln!(&stderr, "{prefix} {}", err.detail());
-            }
+        }
+        if let Some(tip) = err.tip_text() {
+            let _ = writeln!(&stderr, "tip: {tip}");
         }
     }
 

@@ -1311,8 +1311,10 @@ fn recover_stale(
 ///
 /// Used to decide staleness conservatively: when `devicectl` can't answer (not
 /// installed, no Developer Mode, device asleep), a device pin must survive
-/// rather than be cleared as if it were a deleted simulator.
-fn is_device_destination(spec: &str) -> bool {
+/// rather than be cleared as if it were a deleted simulator. Also picks the
+/// destination errors that end on a `device info` tip
+/// ([`xcodebuild::device_tip`](crate::cli::xcodebuild::device_tip)).
+pub(crate) fn is_device_destination(spec: &str) -> bool {
     spec.split(',')
         .filter_map(|part| part.trim().strip_prefix("platform="))
         .any(|platform| {

@@ -121,14 +121,17 @@ that went stale when the checkout moved. [Editor autocomplete](./autocomplete.md
 
 A connected iPhone has to be unlocked, trusted, and in Developer Mode before xcodebuild can reach it.
 When it can't reach it, the build waits about a minute and then fails. The error includes the reason
-xcodebuild gave for that device:
+xcodebuild gave for that device, followed by the command that checks the device:
 
 ```console
 $ sweetpad build --on "Iphone 13"
 error: xcodebuild: Timed out waiting for all destinations matching the provided destination specifier to become available
   Destinations compatible with the "MyApp" scheme:
     { platform:iOS, arch:arm64, id:00008110-000559182E90401E, name:Iphone 13, error:Iphone 13 needs to be unlocked to enable development services Please unlock the device. }
+tip: run 'sweetpad device info 00008110-000559182E90401E' to see why the device isn't ready
 ```
+
+Under `-o json` the same suggestion is in the error's `tip` field.
 
 To check a device before spending a build on it, run `sweetpad device info`. It connects to the
 device, checks pairing, Developer Mode, and the lock, and says what to fix first:

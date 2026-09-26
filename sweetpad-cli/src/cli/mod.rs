@@ -1508,6 +1508,11 @@ pub struct CliError {
     /// prints nothing more; the exit code and the machine-readable error
     /// object are unaffected.
     shown: bool,
+    /// The command to run next, when the failure points at one its message
+    /// does not name. Human output closes on it as a `tip:` line, even when
+    /// the failure is [`shown`](CliError::shown); the error object carries it
+    /// as `tip`.
+    tip: Option<String>,
 }
 
 impl std::fmt::Display for CliError {
@@ -1529,6 +1534,7 @@ impl CliError {
             kind: ErrorKind::Generic,
             diagnostics: Vec::new(),
             shown: false,
+            tip: None,
         }
     }
 
@@ -1574,6 +1580,7 @@ impl CliError {
             kind: self.kind,
             diagnostics: self.diagnostics,
             shown: self.shown,
+            tip: self.tip,
         }
     }
 
@@ -1602,19 +1609,38 @@ impl CliError {
         self.shown
     }
 
+    /// Point this failure at the command to run next; `None` leaves it
+    /// without one. It survives [`context`](CliError::context).
+    #[must_use]
+    pub fn tip(mut self, tip: Option<String>) -> Self {
+        self.tip = tip;
+        self
+    }
+
+    /// The command this failure points at, if any (see
+    /// [`tip`](CliError::tip)).
+    #[must_use]
+    pub fn tip_text(&self) -> Option<&str> {
+        self.tip.as_deref()
+    }
+
     /// The machine-readable error object: the taxonomy code, the flattened
-    /// message, and — when the failure carried any — the parsed diagnostics.
-    /// The single shape every `--json`/`-o ndjson` error surface renders.
+    /// message, and — when the failure carried them — the parsed diagnostics
+    /// and the tip. The single shape every `--json`/`-o ndjson` error surface
+    /// renders.
     #[must_use]
     pub fn json(&self) -> serde_json::Value {
         let mut value = serde_json::json!({
             "code": self.kind.code_str(),
             "message": self.to_string(),
         });
-        if !self.diagnostics.is_empty()
-            && let Some(map) = value.as_object_mut()
-        {
-            map.insert("diagnostics".into(), self.diagnostics.clone().into());
+        if let Some(map) = value.as_object_mut() {
+            if !self.diagnostics.is_empty() {
+                map.insert("diagnostics".into(), self.diagnostics.clone().into());
+            }
+            if let Some(tip) = &self.tip {
+                map.insert("tip".into(), tip.clone().into());
+            }
         }
         value
     }
@@ -2219,5 +2245,18 @@ mod error_tests {
             "building the project: xcodebuild exited with a non-zero status"
         );
         assert!(!CliError::new("boom").is_shown());
+    }
+
+    #[test]
+    fn a_tip_rides_through_context_into_the_error_object() {
+        let e = CliError::new("xcodebuild exited with a non-zero status")
+            .tip(Some("run 'sweetpad device info X'".into()))
+            .context("building the project");
+        assert_eq!(e.tip_text(), Some("run 'sweetpad device info X'"));
+        assert_eq!(e.json()["tip"], "run 'sweetpad device info X'");
+        // No tip, no key: the object keeps its old shape.
+        let plain = CliError::new("boom").tip(None);
+        assert_eq!(plain.tip_text(), None);
+        assert!(plain.json().get("tip").is_none());
     }
 }
