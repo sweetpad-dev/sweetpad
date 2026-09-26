@@ -32,10 +32,12 @@ pub struct CleanArgs {
     pub purge: bool,
 }
 
-/// The clean outcome: what was cleaned, and any DerivedData folders purged.
+/// The clean outcome: what was cleaned, any DerivedData folders purged, and
+/// the note naming the same-named folders `--purge` kept.
 struct CleanReport {
     cleaned: &'static str,
     purged: Vec<String>,
+    others_note: Option<String>,
 }
 
 impl Render for CleanReport {
@@ -43,6 +45,9 @@ impl Render for CleanReport {
         out.note(&format!("cleaned ({})", self.cleaned));
         for p in &self.purged {
             out.note(&format!("purged {p}"));
+        }
+        if let Some(note) = &self.others_note {
+            out.note(note);
         }
     }
 
@@ -138,8 +143,10 @@ pub fn run(ctx: &mut Context, purge: bool) -> CommandResult {
     };
 
     // `--purge` is explicit consent on the command line — it deletes only this
-    // project's DerivedData folder(s), never the whole store.
+    // project's DerivedData folder(s), never the whole store, and never the
+    // folder another checkout of the same project wrote.
     let mut purged = Vec::new();
+    let mut others_note = None;
     if purge {
         // A Swift package builds into `.build/` beside `Package.swift`, not
         // DerivedData — purging only the DerivedData store would report
@@ -155,12 +162,18 @@ pub fn run(ctx: &mut Context, purge: bool) -> CommandResult {
                 purged.push(build_dir.display().to_string());
             }
         }
-        for path in super::derived_data::project_paths(ctx)? {
-            std::fs::remove_dir_all(&path)
+        let scope = super::derived_data::project_scope(ctx)?;
+        for path in &scope.own {
+            std::fs::remove_dir_all(path)
                 .map_err(|e| CliError::new(format!("failed to remove {}: {e}", path.display())))?;
             purged.push(path.display().to_string());
         }
+        others_note = scope.others_note("kept");
     }
 
-    Ok(Rendered::data(CleanReport { cleaned, purged }))
+    Ok(Rendered::data(CleanReport {
+        cleaned,
+        purged,
+        others_note,
+    }))
 }

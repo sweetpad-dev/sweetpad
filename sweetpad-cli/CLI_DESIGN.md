@@ -709,9 +709,19 @@ Notes / heuristics:
   `swift --version` (here and in the Swift 6 check of `dependency add`) runs
   with a `TMPDIR` that sweetpad removes afterwards, as does the `dump-package`
   that reads a local package's schemes.
-- DerivedData scoping matches Xcode's `<Name>-<hash>` folders by the
-  container's file-stem (exact name or `<Name>-` prefix), tested against
-  prefix-collision cases (`MyApp` must not match `MyAppHelper-…`).
+- DerivedData scoping is by container, not by name. Every checkout, worktree
+  and copy of a project writes its own `<Name>-<hash>` folder, so the
+  container's file-stem (exact name or `<Name>-` prefix, tested against
+  prefix collisions: `MyApp` must not match `MyAppHelper-…`) only finds the
+  candidates. A candidate is this project's when its hash is the one Xcode
+  takes over the container's standardized path (the `.xcodeproj` or
+  `.xcworkspace`, or a package's directory), or when the `info.plist` Xcode
+  writes into a folder it builds in names the container as its
+  `WorkspacePath`. `path`, `size`, `purge`, `clean --purge` and `open dd` act
+  on those alone. The rest are reported, never touched: `path` and `purge`
+  list them as `others` in JSON, and human output counts them in a note
+  (`kept 2 other 'MyApp-*' folder(s) from other checkouts or same-named
+  projects`).
 - the side-effecting `simulator`/`app open-url` actions share one
   simulator picker (`resolve::select_simulator`): explicit name/UDID wins, else
   the lone booted sim, else prompt (booted set, or the full list) / strict

@@ -59,8 +59,10 @@ sweetpad clean            # xcodebuild clean
 sweetpad clean --purge    # and delete this project's DerivedData
 ```
 
-`--purge` is scoped to the current project and doesn't prompt; the flag itself is the consent. For the
-whole store there's a separate group, which does prompt:
+`--purge` is scoped to the current project and doesn't prompt; the flag itself is the consent. The
+scope is this copy of the project. Another clone or worktree writes its own DerivedData folder with the
+same name prefix, and `--purge` leaves that folder alone and says how many it kept. For the whole store
+there's a separate group, which does prompt:
 
 ```bash
 sweetpad derived-data size     # how much is it costing you?

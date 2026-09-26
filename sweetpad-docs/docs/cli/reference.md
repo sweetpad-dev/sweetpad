@@ -205,7 +205,7 @@ Alias: `sim`. Most take an optional target (name or UDID) and default to the boo
 | ------------------------------- | ---------------------------------------------------------------------- |
 | `sweetpad derived-data path`    | Print this project's DerivedData folder (`--all` for the whole store). Alias: `dd`. |
 | `sweetpad derived-data size`    | Report DerivedData's on-disk size.                                    |
-| `sweetpad derived-data purge`   | Delete DerivedData (`--yes` skips the prompt).                        |
+| `sweetpad derived-data purge`   | Delete this project's DerivedData folder, or the whole store with `--all` (`--yes` skips the prompt). |
 | `sweetpad merge install`        | Register git merge drivers that resolve `.pbxproj` and `Package.resolved` conflicts semantically (`--global` for all repos). |
 | `sweetpad merge run`            | Resolve conflicted project files in the current merge by hand.        |
 | `sweetpad bsp init`             | Write `buildServer.json` so SourceKit-LSP autocomplete works in any editor. |

@@ -141,8 +141,11 @@ fn apply(
     }
 }
 
-/// The `<Name>-<hash>` folder a hash-keyed DerivedData location writes.
-fn hashed_folder(name: &str, hash: &str) -> String {
+/// The `<Name>-<hash>` folder a hash-keyed DerivedData location writes for a
+/// container named `name` whose path hashes to `hash` (see
+/// [`crate::xcode_hash`]).
+#[must_use]
+pub fn hashed_folder(name: &str, hash: &str) -> String {
     format!("{}-{hash}", hashed_name(name))
 }
 
@@ -316,18 +319,7 @@ fn user_data_dir(xcuserdata: &Path) -> Option<PathBuf> {
 /// unreadable yields the stock layout rather than an error — a malformed
 /// settings file shouldn't stop a build from resolving.
 fn parse_workspace_settings(path: &Path) -> WorkspaceSettings {
-    let Ok(bytes) = std::fs::read(path) else {
-        return WorkspaceSettings::default();
-    };
-    let pairs = if bytes.starts_with(b"bplist00") {
-        binary_plist_strings(&bytes)
-    } else {
-        std::str::from_utf8(&bytes)
-            .ok()
-            .and_then(|text| crate::xcscheme::parse(text).ok())
-            .map(|root| xml_plist_strings(&root))
-            .unwrap_or_default()
-    };
+    let pairs = plist_strings(path);
     let get = |key: &str| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
     WorkspaceSettings {
         derived_data_style: get("DerivedDataLocationStyle"),
@@ -336,6 +328,35 @@ fn parse_workspace_settings(path: &Path) -> WorkspaceSettings {
         build_location_type: get("CustomBuildLocationType"),
         products_path: get("CustomBuildProductsPath"),
         intermediates_path: get("CustomBuildIntermediatesPath"),
+    }
+}
+
+/// The container a DerivedData folder was written for: the `WorkspacePath` its
+/// `info.plist` records, spelled the way Xcode hashed it (a standardized
+/// `.xcodeproj`, `.xcworkspace`, or package directory). Xcode writes the file
+/// once it builds, so a folder only ever resolved has none, and `None` then
+/// says nothing about whose folder it is.
+#[must_use]
+pub fn workspace_path(folder: &Path) -> Option<PathBuf> {
+    plist_strings(&folder.join("info.plist"))
+        .into_iter()
+        .find_map(|(key, value)| (key == "WorkspacePath").then(|| PathBuf::from(value)))
+}
+
+/// Every string-valued top-level key of the plist at `path`, XML or binary.
+/// An unreadable or malformed file has none.
+fn plist_strings(path: &Path) -> Vec<(String, String)> {
+    let Ok(bytes) = std::fs::read(path) else {
+        return Vec::new();
+    };
+    if bytes.starts_with(b"bplist00") {
+        binary_plist_strings(&bytes)
+    } else {
+        std::str::from_utf8(&bytes)
+            .ok()
+            .and_then(|text| crate::xcscheme::parse(text).ok())
+            .map(|root| xml_plist_strings(&root))
+            .unwrap_or_default()
     }
 }
 
@@ -780,6 +801,40 @@ mod tests {
             read_workspace_settings(&container),
             WorkspaceSettings::default()
         );
+    }
+
+    /// The record Xcode writes into a DerivedData folder it built into, as
+    /// captured from one.
+    #[test]
+    fn reads_the_container_a_folder_was_written_for() {
+        let folder = std::env::temp_dir().join(format!(
+            "sweetpad-dd-{}-info/MacGen-cdprgyivuobbvbdieefufitplmbl",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("create folder");
+        std::fs::write(
+            folder.join("info.plist"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>LastAccessedDate</key>
+	<date>2026-09-26T19:00:39Z</date>
+	<key>WorkspacePath</key>
+	<string>/tmp/R&amp;D/MacGen/MacGen.xcodeproj</string>
+</dict>
+</plist>
+"#,
+        )
+        .expect("write info.plist");
+        assert_eq!(
+            workspace_path(&folder),
+            Some(PathBuf::from("/tmp/R&D/MacGen/MacGen.xcodeproj"))
+        );
+        std::fs::remove_file(folder.join("info.plist")).expect("remove info.plist");
+        assert_eq!(workspace_path(&folder), None);
+        let _ = std::fs::remove_dir_all(folder.parent().expect("scratch root"));
     }
 
     #[test]

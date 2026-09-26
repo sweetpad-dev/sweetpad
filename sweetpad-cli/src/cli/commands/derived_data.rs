@@ -3,7 +3,10 @@
 //! DerivedData (`~/Library/Developer/Xcode/DerivedData`) accumulates module
 //! caches, indexes, and build products; "delete DerivedData" is the iOS
 //! developer's most common reset. `path`/`size` inspect it, `purge` clears it —
-//! whole, or scoped to the resolved project's `<Name>-<hash>` folder(s).
+//! whole, or scoped to the resolved project's own `<Name>-<hash>` folder. A
+//! folder with the same name that another checkout, worktree or copy of the
+//! project wrote (or another project with the same name) is not this
+//! project's, so the scoped verbs leave it alone and say how many they left.
 
 use std::path::{Path, PathBuf};
 
@@ -47,21 +50,59 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     }
 }
 
+/// What a scoped command acts on: this container's own DerivedData folder(s),
+/// and the folders that only share its name.
+pub(crate) struct Scope {
+    /// The folders this container's builds wrote (the store's root under
+    /// `--all`).
+    pub(crate) own: Vec<PathBuf>,
+    /// Folders named like this project's that another container wrote: another
+    /// checkout, worktree or copy of the project, or another project with the
+    /// same name. Never acted on.
+    pub(crate) others: Vec<PathBuf>,
+    /// The `<Name>-*` pattern both sets match, for messages.
+    pattern: String,
+}
+
+impl Scope {
+    /// The note naming the same-named folders a scoped command passed over,
+    /// led by what it did with them ("kept", "skipped"); `None` when there
+    /// were none.
+    pub(crate) fn others_note(&self, done: &str) -> Option<String> {
+        (!self.others.is_empty()).then(|| {
+            format!(
+                "{done} {} other '{}' folder(s) from other checkouts or same-named projects",
+                self.others.len(),
+                self.pattern
+            )
+        })
+    }
+}
+
+fn display_all(paths: &[PathBuf]) -> Vec<String> {
+    paths.iter().map(|p| p.display().to_string()).collect()
+}
+
 /// The resolved DerivedData folder(s): one path per line in human mode (or a
-/// "none found" note when empty), or `{ "root", "paths" }` in the JSON envelope.
+/// "none found" note when empty), or `{ "root", "paths", "others" }` in the
+/// JSON envelope.
 struct PathResult {
     root: String,
     paths: Vec<String>,
+    others: Vec<String>,
+    others_note: Option<String>,
 }
 
 impl Render for PathResult {
     fn human(&self, out: &Output) {
         if self.paths.is_empty() {
             out.note("no matching DerivedData folders found");
-            return;
         }
         for p in &self.paths {
             out.line(p);
+        }
+        if let Some(note) = &self.others_note {
+            out.note(note);
         }
     }
 
@@ -69,6 +110,7 @@ impl Render for PathResult {
         serde_json::json!({
             "root": self.root,
             "paths": self.paths,
+            "others": self.others,
         })
     }
 }
@@ -78,6 +120,7 @@ impl Render for PathResult {
 struct SizeResult {
     bytes: u64,
     folders: usize,
+    others_note: Option<String>,
 }
 
 impl Render for SizeResult {
@@ -87,6 +130,9 @@ impl Render for SizeResult {
             format_size(self.bytes),
             self.folders
         ));
+        if let Some(note) = &self.others_note {
+            out.note(note);
+        }
     }
 
     fn json(&self) -> serde_json::Value {
@@ -98,55 +144,71 @@ impl Render for SizeResult {
     }
 }
 
-/// The outcome of a purge: a status note in human mode, or `{ "removed" }` in
-/// JSON. `note` is what human mode prints — "purged N folder(s)" on a real
-/// purge, or "nothing to purge"/"aborted" on the early paths (which carry an
-/// empty `removed`, so `--json` still reports an outcome).
+/// The outcome of a purge: status notes in human mode, or `{ "removed",
+/// "others" }` in JSON. `note` is what human mode prints — "purged N
+/// folder(s)" on a real purge, or "nothing to purge" on the early path (which
+/// carries an empty `removed`, so `--json` still reports an outcome) — and
+/// `others_note` follows it when same-named folders were kept.
 struct PurgeResult {
     removed: Vec<String>,
+    others: Vec<String>,
     note: String,
+    others_note: Option<String>,
 }
 
 impl Render for PurgeResult {
     fn human(&self, out: &Output) {
         out.note(&self.note);
+        if let Some(note) = &self.others_note {
+            out.note(note);
+        }
     }
 
     fn json(&self) -> serde_json::Value {
-        serde_json::json!({ "removed": self.removed })
+        serde_json::json!({
+            "removed": self.removed,
+            "others": self.others,
+        })
     }
 }
 
 fn path(ctx: &mut Context, all: bool) -> CommandResult {
     let root = root()?;
-    let targets = targets(ctx, &root, all)?;
+    let scope = scope(ctx, &root, all)?;
 
-    let paths: Vec<String> = targets.iter().map(|p| p.display().to_string()).collect();
     Ok(Rendered::data(PathResult {
         root: root.display().to_string(),
-        paths,
+        paths: display_all(&scope.own),
+        others: display_all(&scope.others),
+        others_note: scope.others_note("skipped"),
     }))
 }
 
 fn size(ctx: &mut Context, all: bool) -> CommandResult {
     let root = root()?;
-    let targets = targets(ctx, &root, all)?;
-    let bytes: u64 = targets.iter().map(|p| dir_size(p)).sum();
+    let scope = scope(ctx, &root, all)?;
+    let bytes: u64 = scope.own.iter().map(|p| dir_size(p)).sum();
 
     Ok(Rendered::data(SizeResult {
         bytes,
-        folders: targets.len(),
+        folders: scope.own.len(),
+        others_note: scope.others_note("skipped"),
     }))
 }
 
 fn purge(ctx: &mut Context, all: bool, yes: bool) -> CommandResult {
     let root = root()?;
-    let targets = targets(ctx, &root, all)?;
+    let scope = scope(ctx, &root, all)?;
+    let others = display_all(&scope.others);
+    let others_note = scope.others_note("kept");
+    let targets = scope.own;
 
     if targets.is_empty() {
         return Ok(Rendered::data(PurgeResult {
             removed: Vec::new(),
+            others,
             note: "nothing to purge".to_string(),
+            others_note,
         }));
     }
 
@@ -199,14 +261,18 @@ fn purge(ctx: &mut Context, all: bool, yes: bool) -> CommandResult {
     }
 
     let note = format!("purged {} folder(s)", removed.len());
-    Ok(Rendered::data(PurgeResult { removed, note }))
+    Ok(Rendered::data(PurgeResult {
+        removed,
+        others,
+        note,
+        others_note,
+    }))
 }
 
-/// The project-scoped DerivedData folder(s) — shared with `sweetpad clean
-/// --purge`.
-pub(crate) fn project_paths(ctx: &Context) -> Result<Vec<PathBuf>, CliError> {
+/// This project's DerivedData scope — shared with `sweetpad clean --purge`.
+pub(crate) fn project_scope(ctx: &Context) -> Result<Scope, CliError> {
     let root = root()?;
-    targets(ctx, &root, false)
+    scope(ctx, &root, false)
 }
 
 /// The DerivedData root, honoring `$HOME`.
@@ -222,15 +288,19 @@ fn derived_data_root(home: &Path) -> PathBuf {
     home.join("Library/Developer/Xcode/DerivedData")
 }
 
-/// The paths a command acts on: `--all` is the whole store — just `[root]`
-/// (when it exists); the default is each `<Name>-<hash>` folder matching the
-/// resolved container's base name.
-fn targets(ctx: &Context, root: &Path, all: bool) -> Result<Vec<PathBuf>, CliError> {
+/// What a command acts on: `--all` is the whole store — just `[root]` (when
+/// it exists); the default is the resolved container's own folder(s), apart
+/// from the others sharing its name ([`classify`]).
+fn scope(ctx: &Context, root: &Path, all: bool) -> Result<Scope, CliError> {
     if all {
-        return Ok(if root.is_dir() {
-            vec![root.to_path_buf()]
-        } else {
-            Vec::new()
+        return Ok(Scope {
+            own: if root.is_dir() {
+                vec![root.to_path_buf()]
+            } else {
+                Vec::new()
+            },
+            others: Vec::new(),
+            pattern: String::new(),
         });
     }
 
@@ -238,20 +308,65 @@ fn targets(ctx: &Context, root: &Path, all: bool) -> Result<Vec<PathBuf>, CliErr
     let base = project_base_name(&container).ok_or_else(|| {
         CliError::new("could not determine the project name to scope DerivedData")
     })?;
+    Ok(classify(root, &base, &keyed_path(&container)))
+}
 
-    let mut matches = Vec::new();
+/// The path Xcode keys a container's DerivedData folder by, standardized the
+/// way it hashes it (see [`sweetpad_lib::project::standardize`]): the
+/// `.xcodeproj` or `.xcworkspace` itself, or a Swift package's directory.
+fn keyed_path(container: &Container) -> PathBuf {
+    let path = match container {
+        Container::SwiftPackage(manifest) => manifest
+            .parent()
+            .filter(|dir| !dir.as_os_str().is_empty())
+            .unwrap_or(Path::new(".")),
+        Container::Workspace(p) | Container::Project(p) => p,
+    };
+    sweetpad_lib::project::standardize(path)
+}
+
+/// Split the folders under `root` named for `base` into the ones the container
+/// at `keyed` wrote and the rest. A name alone cannot tell them apart: every
+/// checkout of a project writes a `<Name>-<hash>` folder, with the hash taken
+/// over its own path. So a folder is this container's when its name carries
+/// the hash of `keyed`, or when the `info.plist` Xcode records in it names
+/// `keyed` as the workspace it was written for.
+fn classify(root: &Path, base: &str, keyed: &Path) -> Scope {
+    use sweetpad_lib::derived_data::{hashed_folder, hashed_name, workspace_path};
+
+    let own_name = hashed_folder(
+        base,
+        &sweetpad_lib::xcode_hash::derived_data_hash(&keyed.display().to_string()),
+    );
+    let mut own = Vec::new();
+    let mut others = Vec::new();
     if let Ok(entries) = std::fs::read_dir(root) {
         for entry in entries.flatten() {
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                let name = entry.file_name();
-                if matches_project(&name.to_string_lossy(), &base) {
-                    matches.push(entry.path());
-                }
+            if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !matches_project(&name, base) {
+                continue;
+            }
+            let path = entry.path();
+            let written_here = name == own_name
+                || workspace_path(&path)
+                    .is_some_and(|wp| sweetpad_lib::project::standardize(&wp) == keyed);
+            if written_here {
+                own.push(path);
+            } else {
+                others.push(path);
             }
         }
     }
-    matches.sort();
-    Ok(matches)
+    own.sort();
+    others.sort();
+    Scope {
+        own,
+        others,
+        pattern: format!("{}-*", hashed_name(base)),
+    }
 }
 
 /// The container's base name — the stem Xcode prefixes DerivedData folders
@@ -269,7 +384,8 @@ fn project_base_name(container: &Container) -> Option<String> {
     Some(name)
 }
 
-/// Xcode names a hash-keyed DerivedData folder `<Name>-<hash>`, collapsing
+/// Whether a folder is named for the project `base`, whoever wrote it: Xcode
+/// names a hash-keyed DerivedData folder `<Name>-<hash>`, collapsing
 /// whitespace runs in the name to `_` (`My App` → `My_App-<hash>`; see
 /// [`sweetpad_lib::derived_data::hashed_name`]). A workspace-relative location
 /// writes the bare name instead, which is the exact match below.
@@ -327,6 +443,7 @@ fn format_size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::testdir::TempDir;
 
     #[test]
     fn root_is_the_standard_xcode_path() {
@@ -360,6 +477,159 @@ mod tests {
         assert!(matches_project("My-App-abcdef123", "My-App"));
         assert!(!matches_project("My_App-abcdef123", "My-App"));
         assert!(!matches_project("My_AppHelper-abc", "My App"));
+    }
+
+    /// A DerivedData root holding the folders two copies of one project wrote,
+    /// each named `<Name>-<hash of its own path>`, beside a prefix collision
+    /// and an unrelated project.
+    struct TwoCopies {
+        root: TempDir,
+        first: PathBuf,
+        second: PathBuf,
+    }
+
+    impl TwoCopies {
+        fn new(tag: &str, name: &str) -> Self {
+            let root = TempDir::new(&format!("sweetpad-dd-{tag}"));
+            let mut keyed = Vec::new();
+            for copy in ["first", "second"] {
+                let project = root.join(copy).join(format!("{name}.xcodeproj"));
+                std::fs::create_dir_all(&project).unwrap();
+                keyed.push(keyed_path(&Container::Project(project)));
+            }
+            let second = keyed.pop().unwrap();
+            let first = keyed.pop().unwrap();
+            let store = root.join("DerivedData");
+            for path in [&first, &second] {
+                std::fs::create_dir_all(store.join(folder_for(name, path))).unwrap();
+            }
+            std::fs::create_dir_all(store.join(format!("{name}Helper-abc"))).unwrap();
+            std::fs::create_dir_all(store.join("Other-abc")).unwrap();
+            Self {
+                root,
+                first,
+                second,
+            }
+        }
+
+        fn store(&self) -> PathBuf {
+            self.root.join("DerivedData")
+        }
+    }
+
+    fn folder_for(name: &str, keyed: &Path) -> String {
+        sweetpad_lib::derived_data::hashed_folder(
+            name,
+            &sweetpad_lib::xcode_hash::derived_data_hash(&keyed.display().to_string()),
+        )
+    }
+
+    fn names(paths: &[PathBuf]) -> Vec<String> {
+        paths
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// Two copies of one project (two checkouts, a worktree, a temp copy)
+    /// write folders with the same name prefix, and each copy's scope is its
+    /// own folder alone.
+    #[test]
+    fn each_copy_of_a_project_owns_only_its_own_folder() {
+        let copies = TwoCopies::new("copies", "MyApp");
+        let first = folder_for("MyApp", &copies.first);
+        let second = folder_for("MyApp", &copies.second);
+        assert_ne!(first, second);
+
+        let scope = classify(&copies.store(), "MyApp", &copies.first);
+        assert_eq!(names(&scope.own), std::slice::from_ref(&first));
+        assert_eq!(names(&scope.others), std::slice::from_ref(&second));
+        assert_eq!(
+            scope.others_note("kept").as_deref(),
+            Some("kept 1 other 'MyApp-*' folder(s) from other checkouts or same-named projects")
+        );
+
+        let scope = classify(&copies.store(), "MyApp", &copies.second);
+        assert_eq!(names(&scope.own), [second]);
+        assert_eq!(names(&scope.others), [first]);
+    }
+
+    /// A folder whose name does not carry this container's hash is still its
+    /// own when the `info.plist` Xcode wrote into it names the container, and
+    /// another's when it names another.
+    #[test]
+    fn the_recorded_workspace_path_claims_a_folder() {
+        let copies = TwoCopies::new("recorded", "MyApp");
+        let record = |folder: &str, workspace: &Path| {
+            let dir = copies.store().join(folder);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("info.plist"),
+                format!(
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n\
+                     \t<key>WorkspacePath</key>\n\t<string>{}</string>\n</dict>\n</plist>\n",
+                    workspace.display()
+                ),
+            )
+            .unwrap();
+        };
+        record("MyApp-recordedforfirst", &copies.first);
+        record("MyApp-recordedforsecond", &copies.second);
+
+        let scope = classify(&copies.store(), "MyApp", &copies.first);
+        let mut own = vec![
+            "MyApp-recordedforfirst".to_string(),
+            folder_for("MyApp", &copies.first),
+        ];
+        own.sort();
+        assert_eq!(names(&scope.own), own);
+        assert!(
+            names(&scope.others).contains(&"MyApp-recordedforsecond".to_string()),
+            "{:?}",
+            scope.others
+        );
+    }
+
+    /// The collapsed spelling of a name with spaces is the one both sets
+    /// match, and the one the note names.
+    #[test]
+    fn a_name_with_spaces_scopes_by_its_folder_spelling() {
+        let copies = TwoCopies::new("spaces", "My App");
+        let scope = classify(&copies.store(), "My App", &copies.first);
+        assert_eq!(names(&scope.own), [folder_for("My App", &copies.first)]);
+        assert!(names(&scope.own)[0].starts_with("My_App-"));
+        assert_eq!(names(&scope.others), [folder_for("My App", &copies.second)]);
+        assert!(scope.others_note("kept").unwrap().contains("'My_App-*'"));
+    }
+
+    /// Xcode keys a package's folder by the package directory, not its
+    /// manifest: `xcodebuild -list` in a package at this path wrote
+    /// `HashProbeLib-ddiyxpwzwovtfpgqlinqmouqyzjg`.
+    #[test]
+    fn a_package_is_keyed_by_its_directory() {
+        let dir = "/tmp/claude-503/-Users-hyzyla-home-Developer-sweetpad/\
+                   e7fd5499-ae07-4b48-b81b-2d5c20c73fc0/scratchpad/spmprobe/HashProbeLib";
+        let package = Container::SwiftPackage(PathBuf::from(format!("{dir}/Package.swift")));
+        let keyed = keyed_path(&package);
+        assert_eq!(keyed, PathBuf::from(dir));
+        assert_eq!(
+            folder_for("HashProbeLib", &keyed),
+            "HashProbeLib-ddiyxpwzwovtfpgqlinqmouqyzjg"
+        );
+    }
+
+    /// No folder of this project's name, or none at all, is an empty scope
+    /// with nothing to note.
+    #[test]
+    fn a_missing_store_is_an_empty_scope() {
+        let dir = TempDir::new("sweetpad-dd-missing");
+        let scope = classify(
+            &dir.join("DerivedData"),
+            "MyApp",
+            &dir.join("MyApp.xcodeproj"),
+        );
+        assert!(scope.own.is_empty() && scope.others.is_empty());
+        assert_eq!(scope.others_note("kept"), None);
     }
 
     #[test]
