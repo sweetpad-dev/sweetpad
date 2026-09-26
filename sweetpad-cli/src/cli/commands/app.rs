@@ -2362,11 +2362,10 @@ enum HotApp<'a> {
         udid: &'a str,
     },
     Mac {
-        child: Option<Child>,
-        reap_slot: Option<usize>,
+        /// Held as the plain session holds its app, so the same
+        /// [`check_exit`] notices and records the app's exit.
+        running: Option<Running>,
         filter: Arc<AtomicU8>,
-        /// Records how the running `child` ends; `None` once it has.
-        recorder: Option<ExitRecorder>,
     },
 }
 
@@ -2375,10 +2374,8 @@ impl HotApp<'_> {
         match target {
             Target::Simulator(udid) => HotApp::Sim { udid },
             Target::Mac => HotApp::Mac {
-                child: None,
-                reap_slot: None,
+                running: None,
                 filter,
-                recorder: None,
             },
             Target::Device(_) | Target::SpmRun(_) => {
                 unreachable!("hot sessions run on a simulator or the mac")
@@ -2398,29 +2395,31 @@ impl HotApp<'_> {
         let args = &plan.launch.args;
         match self {
             HotApp::Sim { udid } => launch_hot(ctx, udid, app, env, args),
-            HotApp::Mac {
-                child,
-                reap_slot,
-                filter,
-                recorder,
-            } => {
-                terminate_mac_child(child, reap_slot, recorder);
+            HotApp::Mac { running, filter } => {
+                if let Some(old) = running.take() {
+                    terminate_app(old);
+                }
                 let mut cmd = std::process::Command::new(app.executable.as_os_str());
                 cmd.args(args)
                     .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
                     .stdin(std::process::Stdio::null())
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped());
-                let started = ExitRecorder::new(plan, app);
-                let mut c = ctx.out.step("Launching app", || {
+                let recorder = ExitRecorder::new(plan, app);
+                let mut child = ctx.out.step("Launching app", || {
                     cmd.spawn().map_err(|e| {
                         CliError::new(format!("failed to run '{}': {e}", app.executable.display()))
                     })
                 })?;
-                render_console(&mut c, ctx.out.use_color(), filter);
-                *reap_slot = crate::cli::signals::register_child(c.id());
-                *child = Some(c);
-                *recorder = Some(started);
+                render_console(&mut child, ctx.out.use_color(), filter);
+                let reap_slot = crate::cli::signals::register_child(child.id());
+                *running = Some(Running {
+                    stream: Some(child),
+                    kind: RunningKind::Mac { recorder },
+                    name: app.bundle_id.clone(),
+                    reported_exit: false,
+                    reap_slot,
+                });
                 ctx.out.note(&format!("Launched {}", app.bundle_id));
                 Ok(())
             }
@@ -2433,38 +2432,24 @@ impl HotApp<'_> {
             HotApp::Sim { udid } => {
                 let _ = simctl::terminate(udid, &app.bundle_id);
             }
-            HotApp::Mac {
-                child,
-                reap_slot,
-                recorder,
-                ..
-            } => terminate_mac_child(child, reap_slot, recorder),
+            HotApp::Mac { running, .. } => {
+                if let Some(r) = running.take() {
+                    terminate_app(r);
+                }
+            }
         }
     }
 
-    /// Record the mac app's exit when it has ended on its own, polled while the
-    /// session idles so the record carries the time it ended. A simulator app
-    /// isn't sweetpad's child, so there is nothing to poll.
-    fn poll_exit(&mut self) {
+    /// Say that the mac app exited on its own and record the exit, through the
+    /// plain session's [`check_exit`]. Polled while the session idles, so the
+    /// record carries the time the app ended. A simulator app isn't sweetpad's
+    /// child, so there is nothing to poll.
+    fn poll_exit(&mut self, ctx: &Context) {
         if let HotApp::Mac {
-            child: Some(c),
-            reap_slot,
-            recorder,
-            ..
+            running: Some(r), ..
         } = self
-            && recorder.is_some()
         {
-            // Deregistered around the probe, as in `check_exit`: a reaped pid
-            // can be recycled.
-            crate::cli::signals::unregister_child(reap_slot.take());
-            match c.try_wait() {
-                Ok(Some(status)) => {
-                    if let Some(r) = recorder.take() {
-                        r.record(c.id(), status, false);
-                    }
-                }
-                _ => *reap_slot = crate::cli::signals::register_child(c.id()),
-            }
+            check_exit(ctx, r);
         }
     }
 
@@ -2472,12 +2457,10 @@ impl HotApp<'_> {
     /// handle is dropped without killing; it leaves the signal registry so a
     /// SIGTERM to the CLI no longer reaps it.
     fn detach(&mut self) {
-        if let HotApp::Mac {
-            child, reap_slot, ..
-        } = self
+        if let HotApp::Mac { running, .. } = self
+            && let Some(r) = running.take()
         {
-            crate::cli::signals::unregister_child(reap_slot.take());
-            drop(child.take());
+            detach_app(r);
         }
     }
 
@@ -2518,20 +2501,6 @@ impl HotApp<'_> {
                 "r rebuild+relaunch · s screenshot · o focus app · c clear · d detach · q quit"
             }
         }
-    }
-}
-
-/// Kill and reap a mac hot-session child, deregistering it first so the signal
-/// handler never signals a recycled pid, and record how it ended unless that
-/// is already recorded.
-fn terminate_mac_child(
-    child: &mut Option<Child>,
-    reap_slot: &mut Option<usize>,
-    recorder: &mut Option<ExitRecorder>,
-) {
-    crate::cli::signals::unregister_child(reap_slot.take());
-    if let Some(mut c) = child.take() {
-        reap_mac_child(&mut c, recorder.take().as_ref());
     }
 }
 
@@ -2602,7 +2571,7 @@ fn hot_key_loop(
                 // The hot session has no in-session filter keys — ignore them.
                 SessionKey::Filter(_) | SessionKey::Ignore => {}
             },
-            rawmode::Input::Idle => hot_app.poll_exit(),
+            rawmode::Input::Idle => hot_app.poll_exit(ctx),
             rawmode::Input::Closed => break,
         }
     }
@@ -2673,7 +2642,8 @@ fn reap_mac_child(child: &mut Child, recorder: Option<&ExitRecorder>) {
 /// between rebuilds and on quit. `stream` is the child whose stdout/stderr *is* the
 /// app's console output: the simulator's `simctl launch --console-pty`, the device
 /// console, or (macOS) the app process itself. Its exit signals the app's own exit
-/// ([`check_exit`]); os_log is streamed separately ([`LogStream`]).
+/// ([`check_exit`]); os_log is streamed separately ([`LogStream`]). The `--hot`
+/// session holds its macOS app as one too ([`HotApp`]).
 struct Running {
     stream: Option<Child>,
     kind: RunningKind,

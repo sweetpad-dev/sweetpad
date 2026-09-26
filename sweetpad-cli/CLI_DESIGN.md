@@ -813,7 +813,10 @@ the signing posture differ:
 - **Direct spawn, raw env.** The mac app is our own child process — the same
   injection env as the simulator's but unprefixed (no `SIMCTL_CHILD_`, no
   install step), stdout/stderr piped through the session console. `r` kills and
-  respawns the child; `d` detaches leaving it running.
+  respawns the child; `d` detaches leaving it running. The session holds the
+  child the way the plain session holds its app (`Running`), so an app that
+  exits on its own gets the same `✗ <bundle id> exited` notice from the same
+  check, which also records the exit for `app logs --exits`.
 - **Bundled mac client.** `vendor/injection-client/build.sh` produces a second
   prebuilt (`SweetpadInjectionClientMac.dylib`, the upstream SPM product built
   for `generic/platform=macOS`), embedded alongside the simulator client and

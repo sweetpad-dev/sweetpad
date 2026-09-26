@@ -119,6 +119,9 @@ injection preflight, which prints the manual fix.
 your home Library rather than in the container it normally uses, so a hot session won't see data a
 sandboxed run wrote, and vice versa.
 
+If the app exits on its own, the session prints `✗ <bundle id> exited`, as a plain `sweetpad run`
+does, and `sweetpad app logs --exits` shows how it ended. `r` rebuilds and relaunches it.
+
 ## When the port is stuck
 
 One hot-reload session owns the injection port at a time. A session that died without cleaning up, whether a killed terminal or a crash, can leave the listener bound, and the next `--hot` run then fails with
