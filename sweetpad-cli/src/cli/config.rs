@@ -315,9 +315,21 @@ pub struct XcodebuildDefaults {
     pub args: Vec<String>,
 }
 
+/// The effective `xcodebuild` passthrough for one invocation, and the file's
+/// arguments the typed tail replaced in it.
+#[derive(Debug, PartialEq, Eq)]
+pub struct MergedXcodebuildArgs {
+    pub args: Vec<String>,
+    /// Each file argument left out for a flag the tail also gives, as
+    /// `[flag, value]`: see [`SINGLE_USE_FLAGS`].
+    pub replaced: Vec<[String; 2]>,
+}
+
 /// The effective `xcodebuild` passthrough for one invocation: the committed
 /// `[xcodebuild] args` first, then the `--` tail typed on the command line, so
-/// a typed argument wins under `xcodebuild`'s last-one-wins.
+/// a typed argument wins under `xcodebuild`'s last-one-wins. A flag
+/// `xcodebuild` takes only once ([`SINGLE_USE_FLAGS`]) has no last one to
+/// win, so when the tail gives it, the file's copy and its value are left out.
 ///
 /// The file's arguments are refused when they name something the CLI already
 /// owns — [`configured_arg_refusal`] explains each case. Refusing is an error
@@ -326,7 +338,7 @@ pub struct XcodebuildDefaults {
 pub fn effective_xcodebuild_args(
     configured: &[String],
     tail: &[String],
-) -> Result<Vec<String>, String> {
+) -> Result<MergedXcodebuildArgs, String> {
     if let Some((arg, fix)) = configured
         .iter()
         .find_map(|a| configured_arg_refusal(a).map(|fix| (a, fix)))
@@ -335,10 +347,63 @@ pub fn effective_xcodebuild_args(
             "sweetpad.toml: '{arg}' in [xcodebuild] args — {fix}"
         ));
     }
-    let mut merged = configured.to_vec();
-    merged.extend(tail.iter().cloned());
-    Ok(merged)
+    let mut args = Vec::with_capacity(configured.len() + tail.len());
+    let mut replaced = Vec::new();
+    let mut iter = configured.iter();
+    while let Some(arg) = iter.next() {
+        if SINGLE_USE_FLAGS.contains(&arg.as_str()) && tail.contains(arg) {
+            let value = iter.next().cloned().unwrap_or_default();
+            replaced.push([arg.clone(), value]);
+        } else {
+            args.push(arg.clone());
+        }
+    }
+    args.extend(tail.iter().cloned());
+    Ok(MergedXcodebuildArgs { args, replaced })
 }
+
+/// The `xcodebuild` flags that fail a second copy ("option '-xcconfig' may
+/// only be provided once"), each of which takes a value, as Xcode 27 refuses
+/// them. The single-use flags [`configured_arg_refusal`] keeps out of the file
+/// (`-scheme`, `-derivedDataPath`, …) are not listed, and neither are the
+/// value flags a build may repeat (`-destination`, `-arch`, `-toolchain`,
+/// `-packageCachePath`).
+const SINGLE_USE_FLAGS: [&str; 34] = [
+    "-xcconfig",
+    "-jobs",
+    "-destination-timeout",
+    "-clonedSourcePackagesDirPath",
+    "-resultStreamPath",
+    "-resultBundleVersion",
+    "-xctestrun",
+    "-testProductsPath",
+    "-archivePath",
+    "-exportPath",
+    "-exportOptionsPlist",
+    "-enableCodeCoverage",
+    "-enableAddressSanitizer",
+    "-enableThreadSanitizer",
+    "-enableUndefinedBehaviorSanitizer",
+    "-enablePerformanceTestsDiagnostics",
+    "-enableCodesizeProfile",
+    "-codesizeProfileOutputDir",
+    "-testLanguage",
+    "-testRegion",
+    "-test-iterations",
+    "-test-repetition-relaunch-enabled",
+    "-test-timeouts-enabled",
+    "-default-test-execution-time-allowance",
+    "-maximum-test-execution-time-allowance",
+    "-parallel-testing-enabled",
+    "-parallel-testing-worker-count",
+    "-maximum-parallel-testing-workers",
+    "-maximum-concurrent-test-device-destinations",
+    "-maximum-concurrent-test-simulator-destinations",
+    "-authenticationKeyPath",
+    "-authenticationKeyID",
+    "-authenticationKeyIssuerID",
+    "-scmProvider",
+];
 
 /// Why a given argument can't live in a committed `[xcodebuild] args`, if it
 /// can't. Three groups: the inputs the resolver settles and passes itself (a
@@ -749,13 +814,60 @@ mod tests {
         // Committed first, typed second — xcodebuild takes the last one, so a
         // typed argument beats the file's.
         assert_eq!(
-            effective_xcodebuild_args(&s(&["-skipMacroValidation"]), &s(&["FOO=1"])).unwrap(),
+            effective_xcodebuild_args(&s(&["-skipMacroValidation"]), &s(&["FOO=1"]))
+                .unwrap()
+                .args,
             ["-skipMacroValidation", "FOO=1"]
         );
         // Either side alone.
-        assert_eq!(effective_xcodebuild_args(&s(&["-a"]), &[]).unwrap(), ["-a"]);
-        assert_eq!(effective_xcodebuild_args(&[], &s(&["-b"])).unwrap(), ["-b"]);
-        assert!(effective_xcodebuild_args(&[], &[]).unwrap().is_empty());
+        assert_eq!(
+            effective_xcodebuild_args(&s(&["-a"]), &[]).unwrap().args,
+            ["-a"]
+        );
+        assert_eq!(
+            effective_xcodebuild_args(&[], &s(&["-b"])).unwrap().args,
+            ["-b"]
+        );
+        assert!(effective_xcodebuild_args(&[], &[]).unwrap().args.is_empty());
+    }
+
+    #[test]
+    fn a_typed_single_use_flag_replaces_the_files_copy() {
+        let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
+
+        // Xcode 27 fails a second copy: "xcodebuild: error: option '-xcconfig'
+        // may only be provided once". The typed one is the one the caller
+        // asked for, so the file's goes, value and all.
+        let merged = effective_xcodebuild_args(
+            &s(&["-xcconfig", "a.xcconfig", "-skipMacroValidation", "FOO=1"]),
+            &s(&["-xcconfig", "b.xcconfig"]),
+        )
+        .unwrap();
+        assert_eq!(
+            merged.args,
+            ["-skipMacroValidation", "FOO=1", "-xcconfig", "b.xcconfig"]
+        );
+        assert_eq!(
+            merged.replaced,
+            [["-xcconfig".to_string(), "a.xcconfig".to_string()]]
+        );
+
+        // Every listed flag, and only when the tail gives it.
+        for flag in SINGLE_USE_FLAGS {
+            let merged =
+                effective_xcodebuild_args(&s(&[flag, "file"]), &s(&[flag, "typed"])).unwrap();
+            assert_eq!(merged.args, [flag, "typed"], "{flag}");
+            let kept = effective_xcodebuild_args(&s(&[flag, "file"]), &s(&["FOO=1"])).unwrap();
+            assert_eq!(kept.args, [flag, "file", "FOO=1"], "{flag}");
+            assert!(kept.replaced.is_empty(), "{flag}");
+        }
+
+        // A value flag a build may repeat keeps both copies, the way
+        // xcodebuild takes them.
+        let merged =
+            effective_xcodebuild_args(&s(&["-arch", "arm64"]), &s(&["-arch", "x86_64"])).unwrap();
+        assert_eq!(merged.args, ["-arch", "arm64", "-arch", "x86_64"]);
+        assert!(merged.replaced.is_empty());
     }
 
     #[test]
@@ -791,7 +903,9 @@ mod tests {
         // Typing one is still the caller's own business — only the committed
         // file is policed, since everyone else inherits it unseen.
         assert_eq!(
-            effective_xcodebuild_args(&[], &s(&["-derivedDataPath", "/tmp/dd"])).unwrap(),
+            effective_xcodebuild_args(&[], &s(&["-derivedDataPath", "/tmp/dd"]))
+                .unwrap()
+                .args,
             ["-derivedDataPath", "/tmp/dd"]
         );
     }

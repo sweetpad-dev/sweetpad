@@ -140,6 +140,10 @@ value for a repeated flag or setting:
 sweetpad build -- SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG   # beats the file's value
 ```
 
+Most flags that take a value, such as `-xcconfig`, `-jobs`, and `-enableCodeCoverage`, fail when
+`xcodebuild` gets them twice. When you type one of those after `--`, SweetPad leaves the file's copy
+out, and `-v` says so.
+
 `sweetpad status` prints the effective list, so a build shaped by a file you didn't write still says
 where it came from.
 

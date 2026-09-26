@@ -1112,6 +1112,143 @@ fn the_session_hides_appkits_note_about_the_argument_sweetpad_added() {
     assert!(shown.contains(note), "{shown}");
 }
 
+/// Copy the directory tree at `from` to `to`.
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), &target).unwrap();
+        }
+    }
+}
+
+/// A copy of [`project`] beside a `sweetpad.toml`, and a stub xcodebuild
+/// that records its arguments, one per line, in `argv.txt`. The stub fails
+/// a second '-xcconfig' with the message xcodebuild gives it and otherwise
+/// succeeds.
+struct RecordingProject {
+    home: TempDir,
+    cwd: TempDir,
+}
+
+impl RecordingProject {
+    fn new(tag: &str, sweetpad_toml: &str) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+
+        let home = tmp(&format!("{tag}-home"));
+        let cwd = tmp(&format!("{tag}-cwd"));
+        copy_dir(&project(), &cwd.join("SweetpadCIApp.xcodeproj"));
+        std::fs::write(cwd.join("sweetpad.toml"), sweetpad_toml).unwrap();
+        std::fs::create_dir_all(cwd.join("bin")).unwrap();
+        std::fs::create_dir_all(cwd.join("Developer")).unwrap();
+        let stub = cwd.join("bin/xcodebuild");
+        std::fs::write(
+            &stub,
+            format!(
+                "#!/bin/sh\n\
+                 printf '%s\\n' \"$@\" > '{}'\n\
+                 n=0\n\
+                 for a in \"$@\"; do [ \"$a\" = -xcconfig ] && n=$((n + 1)); done\n\
+                 if [ $n -gt 1 ]; then\n\
+                 echo \"xcodebuild: error: option '-xcconfig' may only be provided once\" >&2\n\
+                 exit 64\n\
+                 fi\n\
+                 echo '** BUILD SUCCEEDED **'\n",
+                cwd.join("argv.txt").display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+        Self { home, cwd }
+    }
+
+    fn run(&self, args: &[&str]) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_sweetpad"))
+            .args(args)
+            .current_dir(&self.cwd)
+            .env("HOME", &self.home)
+            .env("XDG_STATE_HOME", &self.home)
+            .env("XDG_CONFIG_HOME", &self.home)
+            .env("XDG_CACHE_HOME", &self.home)
+            .env("DEVELOPER_DIR", self.cwd.join("Developer"))
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    self.cwd.join("bin").display(),
+                    std::env::var("PATH").unwrap_or_default()
+                ),
+            )
+            .output()
+            .unwrap()
+    }
+
+    /// The arguments the stub xcodebuild was last run with.
+    fn argv(&self) -> Vec<String> {
+        std::fs::read_to_string(self.cwd.join("argv.txt"))
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+}
+
+/// xcodebuild fails a second '-xcconfig' with "option '-xcconfig' may only be
+/// provided once", which the stub replays for any repeat. The one typed after
+/// '--' replaces the one in `sweetpad.toml`, the rest of the file's arguments
+/// still reach the build, and '-v' says what was left out.
+#[test]
+fn a_typed_xcconfig_replaces_the_one_in_sweetpad_toml() {
+    let project = RecordingProject::new(
+        "single-use",
+        "[xcodebuild]\nargs = [\"-xcconfig\", \"a.xcconfig\", \"-skipMacroValidation\"]\n",
+    );
+    let build = |mode: &str| {
+        project.run(&[
+            "build",
+            "--scheme",
+            "SweetpadCIMac",
+            "--configuration",
+            "Debug",
+            "--destination",
+            "platform=macOS",
+            "--non-interactive",
+            mode,
+            "--",
+            "-xcconfig",
+            "b.xcconfig",
+        ])
+    };
+
+    let out = build("--json");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    let passed = project.argv();
+    let at = passed.iter().position(|a| a == "-xcconfig").unwrap();
+    assert_eq!(passed[at + 1], "b.xcconfig", "{passed:?}");
+    assert_eq!(passed.iter().filter(|a| *a == "-xcconfig").count(), 1);
+    assert!(
+        passed.iter().any(|a| a == "-skipMacroValidation"),
+        "{passed:?}"
+    );
+    assert!(!stderr.contains("leaving out"), "{stderr}");
+
+    let out = build("-v");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    assert!(
+        stderr.contains(
+            "leaving out sweetpad.toml's '-xcconfig a.xcconfig': the '-xcconfig' typed after \
+             '--' replaces it, and xcodebuild takes '-xcconfig' only once"
+        ),
+        "{stderr}"
+    );
+}
+
 /// A session exits by how it ends. Ctrl-C while a build runs cancels it,
 /// exit 6, whether or not the app ran before; a quit at the prompt, by 'q'
 /// or by Ctrl-C, exits 0 once the app has run.

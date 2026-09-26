@@ -499,7 +499,13 @@ args = ["-skipMacroValidation"]   # added to every command that builds
   it lives. The typed tail is appended *after* the file's arguments, so typing
   one wins under xcodebuild's last-one-wins, and `status` prints the effective
   list — a build shaped by a file the caller never opened must still say where
-  that came from. The `app` verbs that find an already-built product instead
+  that came from. Some flags have no last one to win: `xcodebuild` fails a
+  second `-xcconfig` ("option '-xcconfig' may only be provided once"), and
+  Xcode 27 refuses a repeat of nearly every flag that takes a value
+  (`-jobs`, `-enableCodeCoverage`, `-test-iterations`, …; `-destination`,
+  `-arch`, `-toolchain` and `-packageCachePath` repeat). When the tail gives
+  one of those, the merge leaves out the file's copy and its value, and `-v`
+  names what it left out, so the typed tail still wins. The `app` verbs that find an already-built product instead
   of building one (`launch`, `stop`, `uninstall`, `logs`, `container`,
   `screenshot`, `sample`, `ui`) plan with the same list, so a file `build`
   refuses stops them too, and a setting that moves the product, such as
@@ -3092,8 +3098,9 @@ assignments), and handed to each caller from the arguments it has:
   so a typed one-off reaches the build and not this view.
 
 A path resolves against the directory `xcodebuild` runs from, as the build
-reads it. `xcodebuild` takes one `-xcconfig` and fails on a second, so the
-last one wins. `-xcconfig` sits above the command line: Xcode 27 resolves
+reads it. `xcodebuild` takes one `-xcconfig` and fails on a second, so a
+typed one replaces the file's (§6) and the build and the resolver read the
+same one. `-xcconfig` sits above the command line: Xcode 27 resolves
 `-xcconfig X.xcconfig FOO=cli SWIFT_VERSION=5.9`, with the file holding `FOO =
 $(inherited) x` and `SWIFT_VERSION = 6.0`, to `FOO = cli x` and
 `SWIFT_VERSION = 6.0`, as its man page says. The resolver places an override

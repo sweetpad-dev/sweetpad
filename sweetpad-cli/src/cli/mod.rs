@@ -795,7 +795,9 @@ impl Context {
     /// inside `app run`/`install`/`debug`/`diagnose` as well as
     /// `build`/`test`/`archive`. The `app` verbs that find an already-built
     /// product (`launch`, `stop`, `logs`, `container`, …) read it too, with an
-    /// empty tail, so they look where the build put the `.app`.
+    /// empty tail, so they look where the build put the `.app`. A file
+    /// argument the tail replaces (a flag `xcodebuild` takes once) is named
+    /// under `-v`.
     pub fn xcodebuild_args(&self, tail: &[String]) -> Result<Vec<String>, CliError> {
         // Silent resolution: this runs *before* the command resolves for real,
         // and `container` narrates its discovery ("using X (found below …)") —
@@ -812,7 +814,16 @@ impl Context {
             return Ok(tail.to_vec());
         }
         let configured = self.project_file(&container).xcodebuild.args.clone();
-        config::effective_xcodebuild_args(&configured, tail).map_err(CliError::new)
+        let merged = config::effective_xcodebuild_args(&configured, tail).map_err(CliError::new)?;
+        if self.out.is_verbose() {
+            for [flag, value] in &merged.replaced {
+                self.out.note(&format!(
+                    "leaving out sweetpad.toml's '{flag} {value}': the '{flag}' typed after '--' \
+                     replaces it, and xcodebuild takes '{flag}' only once"
+                ));
+            }
+        }
+        Ok(merged.args)
     }
 }
 

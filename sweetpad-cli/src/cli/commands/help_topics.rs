@@ -60,7 +60,9 @@ down once instead of typed each time:
   args = [\"-skipMacroValidation\"]
 
 A typed '--' tail is appended after it, so it wins for anything both set
-(xcodebuild takes the last value). 'sweetpad status' prints the effective
+(xcodebuild takes the last value). A flag xcodebuild takes only once, such
+as -xcconfig, is left out of the file's list when the tail gives it, and -v
+says so. 'sweetpad status' prints the effective
 list. The arguments sweetpad settles itself are refused there, naming the key
 to use instead: -scheme, -configuration, -destination, -sdk, -workspace,
 -project, -resultBundlePath, and -derivedDataPath (a relative value would
