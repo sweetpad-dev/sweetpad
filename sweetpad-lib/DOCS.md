@@ -1595,12 +1595,11 @@ reading both copies gives the same targets, configurations and schemes on all
 61 projects. Four differ in configuration *order* only, and there the converted
 document is what `xcodebuild -list` reports for it: Xcode's converter sorts
 `Debug, Release, Profile` into `Debug, Profile, Release`. Resolved settings
-match on 255 of 270 target × configuration pairs. The other 15 are all one
-rewrite the converter performs, `SWIFT_OPTIMIZATION_LEVEL = -Owholemodule`
-becoming `-O` plus `SWIFT_COMPILATION_MODE = wholemodule`; `-showBuildSettings`
-reports the split pair for **both** copies, so the pbxproj path is the one that
-drifts from the oracle there, and the resolver should normalize the deprecated
-value.
+agree everywhere, as measured below. The converter keeps
+`SWIFT_OPTIMIZATION_LEVEL = -Owholemodule` as written, whether it sits at
+project level, at target level or in an xcconfig, and `-showBuildSettings` on
+Xcode 27.0 and 27.2 reports it unchanged for either format, with no
+`SWIFT_COMPILATION_MODE` implied. So the resolver passes it through as stored.
 
 Copy whole project directories for this measurement, not the `.xcodeproj`
 bundles. A bare bundle silently loses every local Swift package and nested
@@ -1627,12 +1626,12 @@ list rather than in `files`, and carries membership just the same. A linked
 package product is on the target under `package-product-members`, which is a
 different list from the `{ kind: package }` dependency edge.
 
-**Measuring the graph queries turned up three bugs in the pbxproj path, not the
+**Measuring the graph queries turned up two bugs in the pbxproj path, not the
 new one.** Across 931 comparisons (seven queries × every target of all 61
 projects) 889 agree. 40 of the 42 differences are order only, the converter
 having replaced each phase's order with navigator order — information the
 document simply no longer carries, so each reader is faithful to its own file.
-Two of the three bugs are fixed:
+Both bugs are fixed:
 
 - **Synchronized-folder inclusions were read as exclusions.**
   `membershipExceptions` is one list whose sense depends on whether the target
@@ -1650,7 +1649,6 @@ Two of the three bugs are fixed:
   Tuist's `xcode_project_with_registry_and_alamofire` links Alamofire with only
   the second. The oracle totals are unchanged by the fix, since no scored
   capture reaches the `ALLOW_TARGET_PLATFORM_SPECIALIZATION` gate this way.
-- The `-Owholemodule` normalization above is still open.
 
 The two remaining set differences are not a bug on either side: converting
 NetNewsWire puts `Tests/NetNewsWire-iOSTests/ActivityItemSourceTests.swift` in
@@ -1665,13 +1663,14 @@ pbxproj tree, which is what carries the format past this library: `settings
 show`, `build`, `test`, `archive`, `app run` and the BSP server all resolve
 through that single cached parse, and a `project.xcproj` project builds.
 
-Resolving both formats of the same project is the measurement. Over the 61
-convertible projects — 270 target × configuration resolutions, 52,639 setting
-comparisons — the two agree on all but 76, and both groups of those are
-accounted for. 46 are the `_synthetic-spm-graph` copy sitting without the
-`Graph.xcworkspace` that names its DerivedData container; put the sibling back
-and that project agrees on all 372. The other 30 are the `-Owholemodule`
-rewrite above. Nothing left is attributable to either reader.
+Resolving both formats of the same project is the measurement. Every project
+under `corpus/` and `fixtures/_synthetic-*` that Xcode 27.2 (27B5019j) converts,
+57 of them, gives 232 target × configuration resolutions and 44,938 setting
+comparisons, and the two formats agree on all of them. The comparison masks
+each copy's own directory and the DerivedData hash derived from it. Copy whole
+directories here too: `_synthetic-spm-graph` copied without the sibling
+`Graph.xcworkspace` that names its DerivedData container differs on 46 settings
+for that reason alone.
 `tests/xcproj_parity.rs` holds one project's worth of that in the suite: the
 fixture document is Xcode's conversion of `_synthetic-objectversion-110`, so
 the test copies that tree, swaps the document in, and compares the resolved
@@ -1994,3 +1993,14 @@ lives in the sections above and in the named commits.
   corpus also pinned the key order Xcode writes a node with, which is
   positional rather than alphabetical; `target-membership` and a fresh
   membership exception were landing in the wrong place before.
+
+- **2026-09-26 — no `-Owholemodule` rewrite after all.** §11.3 put the
+  remaining settings the two formats disagreed on down to Xcode's converter
+  splitting `-Owholemodule` into `-O` plus `SWIFT_COMPILATION_MODE =
+  wholemodule`, and planned to make the resolver do the same. Neither half
+  holds on Xcode 27.2 (27B5019j). The converter keeps the value at project
+  level, at target level and in an xcconfig, and `-showBuildSettings` on 27.0
+  and 27.2 reports it unchanged for either format. Rerunning the sweep found no
+  difference left at all, 0 of 44,938 settings over 57 projects, so the
+  normalization would only have made the resolver disagree with Xcode, and it
+  is dropped.
