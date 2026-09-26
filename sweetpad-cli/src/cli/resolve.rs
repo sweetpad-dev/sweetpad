@@ -1533,6 +1533,36 @@ fn scheme_build_targets(
     container: &Container,
     scheme: &str,
 ) -> Option<std::collections::BTreeSet<String>> {
+    let parsed = parse_scheme(container, scheme)?;
+    let names: std::collections::BTreeSet<String> = parsed
+        .build_entries
+        .iter()
+        .map(|e| e.buildable.blueprint_name.clone())
+        .collect();
+    (!names.is_empty()).then_some(names)
+}
+
+/// The arguments `scheme`'s Run action launches the app with: the enabled
+/// rows only, each split on whitespace as Xcode splits it. Empty when there is
+/// no scheme file to read.
+#[must_use]
+pub fn scheme_launch_arguments(container: &Container, scheme: &str) -> Vec<String> {
+    parse_scheme(container, scheme)
+        .map(|parsed| {
+            parsed
+                .launch_arguments
+                .iter()
+                .filter(|a| a.is_enabled)
+                .flat_map(|a| a.argument.split_whitespace().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The parsed file behind `scheme`, or `None` when there is none to read — an
+/// autocreated scheme Xcode never materialized, or a name that doesn't
+/// resolve.
+fn parse_scheme(container: &Container, scheme: &str) -> Option<sweetpad_lib::scheme::Scheme> {
     // A workspace scheme lives either in the workspace itself or in one of its
     // member projects, so both are candidates.
     let mut candidates = vec![container.path().to_path_buf()];
@@ -1544,13 +1574,7 @@ fn scheme_build_targets(
     let file = candidates
         .iter()
         .find_map(|c| sweetpad_lib::scheme::find_scheme_file(c, scheme))?;
-    let parsed = sweetpad_lib::scheme::parse_file(&file).ok()?;
-    let names: std::collections::BTreeSet<String> = parsed
-        .build_entries
-        .iter()
-        .map(|e| e.buildable.blueprint_name.clone())
-        .collect();
-    (!names.is_empty()).then_some(names)
+    sweetpad_lib::scheme::parse_file(&file).ok()
 }
 
 impl SupportedPlatforms {
@@ -1974,6 +1998,39 @@ mod tests {
         // Workspace beats project.
         assert!(matches!(discover(&dir), Some(Container::Workspace(_))));
 
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A scheme's launch arguments come back the way Xcode passes them: the
+    /// enabled rows only, each split on whitespace.
+    #[test]
+    fn scheme_launch_arguments_are_the_enabled_rows_split_on_whitespace() {
+        let dir = temp_dir("launch-args");
+        let project = dir.join("App.xcodeproj");
+        let schemes = project.join("xcshareddata/xcschemes");
+        std::fs::create_dir_all(&schemes).unwrap();
+        std::fs::write(
+            schemes.join("App.xcscheme"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Scheme LastUpgradeVersion="1600" version="1.7">
+   <BuildAction/>
+   <LaunchAction buildConfiguration="Debug">
+      <CommandLineArguments>
+         <CommandLineArgument argument="-ApplePersistenceIgnoreState NO" isEnabled="YES"/>
+         <CommandLineArgument argument="-Disabled YES" isEnabled="NO"/>
+         <CommandLineArgument argument="-Plain"/>
+      </CommandLineArguments>
+   </LaunchAction>
+</Scheme>
+"#,
+        )
+        .unwrap();
+        let container = Container::Project(project);
+        assert_eq!(
+            scheme_launch_arguments(&container, "App"),
+            ["-ApplePersistenceIgnoreState", "NO", "-Plain"]
+        );
+        assert!(scheme_launch_arguments(&container, "Missing").is_empty());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

@@ -36,6 +36,17 @@ it, rather than swallow arguments that would reach no build.
 
 :::
 
+## Windows from the last run
+
+SweetPad launches macOS apps with `-ApplePersistenceIgnoreState YES`, so the app opens fresh
+instead of reopening the windows it had last time. Without it, a relaunch after a crash can stop at
+AppKit's question about reopening the app's windows, and the app's main thread waits on that dialog
+until someone answers. The app looks launched but does nothing, and `app sample` reports it as idle.
+
+To get the app's own behavior back, pass `--restore-state` to `run`, `app launch`, `app debug`, or
+`app diagnose`. SweetPad also leaves the argument out if you set `-ApplePersistenceIgnoreState`
+yourself, with `--arg` or in the scheme's launch arguments. Simulators and devices aren't affected.
+
 ## Logs
 
 `sweetpad app logs` is the most useful verb in the group, because a running app's output is otherwise

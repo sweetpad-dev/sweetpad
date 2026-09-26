@@ -1632,6 +1632,16 @@ launch detached, return. On a simulator or device the app already outlives
 the CLI, so `--detach` there is `--no-logs`. It is rejected with `--hot`,
 which has to stay attached to recompile and inject.
 
+Every macOS launch sweetpad drives (`run --mac` and its session's
+relaunches, `--hot`, `app launch --mac`, `app debug --mac`, `app diagnose
+--mac`) passes `-ApplePersistenceIgnoreState YES` ahead of the `--arg`s.
+Without it, a relaunch after a crash can open AppKit's "reopen windows?"
+alert, a modal loop on the main thread that nobody at the terminal sees: the
+app is up and does nothing, and `app sample` reads it as idle. The pair is
+settled once on the run plan, so every launch that plan drives carries it.
+`--restore-state` leaves it out, as does an `--arg` or a scheme launch
+argument that already sets the key; simulators and devices never get it.
+
 A macOS app logs to two disjoint places — plain stdout/stderr (`print`,
 `NSLog`'s stderr leg, C `printf`) and the unified log (`os_log`/`Logger`) —
 so `app logs` on macOS follows *both*: the captured

@@ -126,7 +126,7 @@ pub struct XcodebuildArgs {
 
 /// Launch inputs shared by `run` and `launch`: process arguments,
 /// environment, and wait-for-debugger. Simulator and macOS targets honor all
-/// three; physical devices don't yet.
+/// three; physical devices don't yet. `--restore-state` is macOS-only.
 #[derive(Debug, Clone, Default, clap::Args)]
 pub struct LaunchArgs {
     /// Argument passed to the app process (repeatable). A value may start with
@@ -150,6 +150,37 @@ pub struct LaunchArgs {
     /// Launch suspended, waiting for a debugger to attach ('lldb -p <pid>').
     #[arg(long = "wait-for-debugger")]
     pub wait_for_debugger: bool,
+
+    /// Let the app restore its previous windows and state on launch (sweetpad
+    /// launches macOS apps with '-ApplePersistenceIgnoreState YES' otherwise).
+    #[arg(long = "restore-state")]
+    pub restore_state: bool,
+}
+
+/// The user-defaults argument that stops a macOS app from restoring its
+/// previous windows. After a crash AppKit asks whether to reopen them, in a
+/// modal alert that holds the main queue, so a relaunch from the terminal
+/// comes up idle behind a dialog nobody asked for.
+const IGNORE_PERSISTENCE: [&str; 2] = ["-ApplePersistenceIgnoreState", "YES"];
+
+/// The process arguments for a macOS app sweetpad launches: the
+/// [`IGNORE_PERSISTENCE`] pair ahead of the caller's own, unless
+/// `--restore-state` asked for the app's own behavior, or the caller's
+/// arguments or the scheme's (read only when needed) already set the key.
+fn mac_launch_args(
+    args: &[String],
+    restore_state: bool,
+    scheme_args: impl FnOnce() -> Vec<String>,
+) -> Vec<String> {
+    let names_it = |args: &[String]| args.iter().any(|a| a == IGNORE_PERSISTENCE[0]);
+    if restore_state || names_it(args) || names_it(&scheme_args()) {
+        return args.to_vec();
+    }
+    IGNORE_PERSISTENCE
+        .iter()
+        .map(|a| (*a).to_string())
+        .chain(args.iter().cloned())
+        .collect()
 }
 
 /// An `--arg` value: anything but a bare `--`, which `--arg` would otherwise
@@ -1272,6 +1303,13 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
     // A product-relocating passthrough the app locator can't follow fails
     // here, before a build is spent on it.
     xcodebuild::passthrough_derived_data(&plan.passthrough)?;
+    // Settled on the plan, so every macOS launch it drives carries it: the
+    // session's relaunches, a detached launch, and lldb's.
+    if matches!(plan.target, Target::Mac) {
+        plan.launch.args = mac_launch_args(&plan.launch.args, plan.launch.restore_state, || {
+            resolve::scheme_launch_arguments(&plan.resolved.container, &plan.scheme)
+        });
+    }
     // A hot macOS build may need to sign with an ephemeral sandbox-stripped
     // entitlements file (§9d zero-config sandbox stripping) — settled here so
     // every session build (including `r` rebuilds) carries the override.
@@ -7398,5 +7436,81 @@ error: unable to evaluate expression while the process is exited\n\
         );
         assert_eq!(hint_quote("a\"b$c"), "\"a\\\"b\\$c\"");
         assert_eq!(hint_quote(""), "\"\"");
+    }
+
+    /// A macOS launch skips AppKit's window restoration unless asked not to,
+    /// and never sets the key twice or over a value someone else chose.
+    #[test]
+    fn a_mac_launch_ignores_persistent_state_unless_told_otherwise() {
+        let argv = |args: &[&str]| args.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
+        let no_scheme = Vec::new;
+
+        assert_eq!(
+            mac_launch_args(&argv(&["-MyFlag", "YES"]), false, no_scheme),
+            ["-ApplePersistenceIgnoreState", "YES", "-MyFlag", "YES"]
+        );
+        assert_eq!(
+            mac_launch_args(&[], false, no_scheme),
+            ["-ApplePersistenceIgnoreState", "YES"]
+        );
+        // '--restore-state' leaves the app to its own behavior.
+        assert_eq!(
+            mac_launch_args(&argv(&["-MyFlag", "YES"]), true, || {
+                unreachable!("the scheme is read only when its answer matters")
+            }),
+            ["-MyFlag", "YES"]
+        );
+        // The caller's own value wins, whatever it is.
+        let own = argv(&["-ApplePersistenceIgnoreState", "NO"]);
+        assert_eq!(mac_launch_args(&own, false, no_scheme), own);
+        // So does the scheme's.
+        assert_eq!(
+            mac_launch_args(&argv(&["-MyFlag", "YES"]), false, || argv(&[
+                "-ApplePersistenceIgnoreState",
+                "NO"
+            ])),
+            ["-MyFlag", "YES"]
+        );
+    }
+
+    /// '--restore-state' belongs to every verb that launches the app.
+    #[test]
+    fn restore_state_is_a_flag_of_the_verbs_that_launch() {
+        use clap::Parser;
+
+        let launch = |argv: &[&str]| -> Option<LaunchArgs> {
+            let cli = crate::cli::Cli::try_parse_from(argv).ok()?;
+            match cli.resource? {
+                crate::cli::Resource::Run(args) => Some(args.launch),
+                crate::cli::Resource::App { action } => match action? {
+                    Action::Run(args) => Some(args.launch),
+                    Action::Launch { launch, .. }
+                    | Action::Debug { launch, .. }
+                    | Action::Diagnose { launch, .. } => Some(launch),
+                    _ => None,
+                },
+                _ => None,
+            }
+        };
+        for verb in [
+            &["run"][..],
+            &["app", "run"],
+            &["app", "launch"],
+            &["app", "debug"],
+            &["app", "diagnose"],
+        ] {
+            let argv: Vec<&str> = ["sweetpad"]
+                .iter()
+                .chain(verb)
+                .chain(&["--mac", "--restore-state"])
+                .copied()
+                .collect();
+            let parsed = launch(&argv).unwrap_or_else(|| panic!("{argv:?} rejected"));
+            assert!(parsed.restore_state, "{argv:?}");
+        }
+        assert!(
+            crate::cli::Cli::try_parse_from(["sweetpad", "app", "stop", "--restore-state"])
+                .is_err()
+        );
     }
 }
