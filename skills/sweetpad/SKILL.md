@@ -136,6 +136,10 @@ alike. `--detach` (`app run` only) leaves the app running after the CLI exits.
 it again. If a macOS build ran with `-- -derivedDataPath <dir>`, pass
 `app launch --mac --derived-data-path <dir>` so it finds that build.
 
+In a project whose `sweetpad.toml` sets `[run] hot = true`, a simulator run
+is a hot session, which refuses `--no-logs`, `--detach`, and
+`--wait-for-debugger` (exit 2). Add `--no-hot` to those runs.
+
 If a run fails with `cannot bind 127.0.0.1:8887 for hot reload`, a dead session
 left the listener behind: `sweetpad hot status` names the holder and
 `sweetpad hot reset` clears it. Prefer that over `--no-hot`, which works by

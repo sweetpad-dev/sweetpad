@@ -298,7 +298,9 @@ on a verb it means nothing to (`test build --failed`, `build diagnostics
 --clean`), two flags that can't go together (`--on` with `--destination`,
 `--gh-annotations` with `-o json`), a flag value out of range (`--pid 0`).
 Those take the envelope with `code: "usage_error"`. The flags alone decide
-it, including a committed default such as `[run] hot`. A flag refused because
+it, including a committed default such as `[run] hot`; a refusal that the
+default causes says so and names the flag that overrides it (`--no-hot`),
+since there is no typed `--hot` to leave off. A flag refused because
 of what the project or destination turns out to be (`--scheme` on a Swift
 package, `--keep-sandbox` off macOS) keeps its own code, since the same flags
 work in another project.

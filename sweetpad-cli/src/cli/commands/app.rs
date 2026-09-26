@@ -1057,6 +1057,23 @@ fn session_hot(hot: bool, explicit: bool, target: &Target) -> bool {
     hot && (explicit || matches!(target, Target::Simulator(_)))
 }
 
+/// Refuse `flag`, which a hot session can't honor, with the way out that fits
+/// where hot reload came from. A typed `--hot` gets `typed`, the reason or
+/// the fix; the `[run] hot = true` default from sweetpad.toml gets pointed at
+/// '--no-hot', which lets the run `purpose`, since there is no flag to leave
+/// off.
+fn refuse_under_hot(explicit: bool, flag: &str, typed: &str, purpose: &str) -> CliError {
+    let message = if explicit {
+        format!("{flag} isn't supported with --hot; {typed}")
+    } else {
+        format!(
+            "{flag} isn't supported with hot reload, which sweetpad.toml turns on \
+             ('[run] hot = true'); pass '--no-hot' to {purpose}"
+        )
+    };
+    CliError::new(message).kind(ErrorKind::Usage)
+}
+
 /// Why a hot session of `plan` would have no injection client, found without
 /// building. `None` when there is one, or when the destination isn't one hot
 /// reload injects into ([`run_hot_session`] refuses those itself).
@@ -1135,18 +1152,20 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
     // stream as part of its UI — reject the flags it can't honor instead of
     // silently dropping them.
     if hot && plan.launch.wait_for_debugger {
-        return Err(CliError::new(
-            "--wait-for-debugger isn't supported with --hot; run without --hot to \
-             attach a debugger at launch",
-        )
-        .kind(ErrorKind::Usage));
+        return Err(refuse_under_hot(
+            opts.hot_explicit,
+            "--wait-for-debugger",
+            "run without --hot to attach a debugger at launch",
+            "attach a debugger at launch",
+        ));
     }
     if hot && opts.no_logs {
-        return Err(CliError::new(
-            "--no-logs isn't supported with --hot; the hot session streams logs \
-             as part of its UI",
-        )
-        .kind(ErrorKind::Usage));
+        return Err(refuse_under_hot(
+            opts.hot_explicit,
+            "--no-logs",
+            "the hot session streams logs as part of its UI",
+            "build, install, launch, and exit",
+        ));
     }
     if (opts.keep_sandbox || opts.hot_entitlements.is_some()) && !matches!(plan.target, Target::Mac)
     {
@@ -1156,11 +1175,13 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
         ));
     }
     if hot && opts.detach {
-        return Err(CliError::new(
-            "--detach isn't supported with --hot; hot reload has to stay attached to \
-             recompile and inject (press 'd' in the session to detach and leave it running)",
-        )
-        .kind(ErrorKind::Usage));
+        return Err(refuse_under_hot(
+            opts.hot_explicit,
+            "--detach",
+            "hot reload has to stay attached to recompile and inject (press 'd' in the \
+             session to detach and leave it running)",
+            "launch and leave the app running",
+        ));
     }
 
     // The rest is settled by the resolved plan: a hot session streams by
@@ -7162,6 +7183,26 @@ mod tests {
         assert_eq!(udid("platform=iOS Simulator,id=ABCD").unwrap(), "ABCD");
         assert_eq!(udid("id=XYZ,platform=iOS Simulator").unwrap(), "XYZ");
         assert!(udid("platform=iOS Simulator,name=iPhone 15").is_err());
+    }
+
+    /// A flag hot reload can't honor is refused either way, but the way out
+    /// depends on where hot reload came from: a typed '--hot' is dropped,
+    /// while the sweetpad.toml default takes '--no-hot'.
+    #[test]
+    fn a_hot_refusal_names_where_hot_reload_came_from() {
+        let typed = refuse_under_hot(true, "--no-logs", "the reason", "exit");
+        assert_eq!(typed.error_kind(), ErrorKind::Usage);
+        assert_eq!(
+            typed.to_string(),
+            "--no-logs isn't supported with --hot; the reason"
+        );
+        let default = refuse_under_hot(false, "--no-logs", "the reason", "exit");
+        assert_eq!(default.error_kind(), ErrorKind::Usage);
+        let message = default.to_string();
+        assert!(message.contains("sweetpad.toml"), "{message}");
+        assert!(message.contains("'[run] hot = true'"), "{message}");
+        assert!(message.ends_with("pass '--no-hot' to exit"), "{message}");
+        assert!(!message.contains("with --hot"), "{message}");
     }
 
     #[test]
