@@ -25,6 +25,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::cli::resolve::Container;
+use crate::cli::xcodebuild::CommandLineSettings;
 use sweetpad_core::build_settings::{BuildSettingsOptions, resolve_compiler_arguments};
 use sweetpad_lib::compiler_args::TargetCompilerArguments;
 
@@ -67,6 +68,10 @@ pub struct Recompiler {
     workspace: Option<PathBuf>,
     scheme: String,
     configuration: String,
+    /// What the `--hot` build's arguments add to its settings, so the
+    /// recompiled file sees the same settings and search paths it was built
+    /// with.
+    command_line: CommandLineSettings,
     /// Cached per-target compiler args; rebuilt on a miss (e.g. a new file).
     resolved: Mutex<Option<Vec<TargetCompilerArguments>>>,
     /// Recovered single-file frontend commands, keyed by canonical source path.
@@ -87,6 +92,7 @@ impl Recompiler {
         container: &Container,
         scheme: String,
         configuration: String,
+        command_line: CommandLineSettings,
         sdk: String,
         arch: String,
         developer_dir: String,
@@ -109,6 +115,7 @@ impl Recompiler {
             workspace,
             scheme,
             configuration,
+            command_line,
             resolved: Mutex::new(None),
             frontend_cache: Mutex::new(HashMap::new()),
             build_log,
@@ -317,6 +324,12 @@ impl Recompiler {
             configuration: self.configuration.clone(),
             sdk: self.sdk.clone(),
             arch: self.arch.clone(),
+            xcconfig: self.command_line.xcconfig.clone(),
+            derived_data_path: self.command_line.derived_data_path.clone(),
+            overrides: self.command_line.overrides.clone(),
+            // The search paths name the products the `--hot` build wrote,
+            // wherever this machine's Xcode puts them.
+            read_xcode_locations: true,
             ..Default::default()
         };
         resolve_compiler_arguments(&opts)

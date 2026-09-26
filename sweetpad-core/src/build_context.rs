@@ -12,10 +12,13 @@
 //! 2. Computed built-in settings (`PROJECT_DIR`, `ARCHS`, `BUILD_DIR`, …).
 //! 3. The four user-authored layers from the project document (project
 //!    xcconfig, project settings, target xcconfig, target settings).
-//! 4. The extra `.xcconfig` overlay (when [`with_extra_xcconfig`] is set).
+//! 4. The extra `.xcconfig` overlay (when [`with_extra_xcconfig`] is set),
+//!    with the command-line overrides of the keys it also sets just below
+//!    it (see [`BuildContext::split_overrides`]).
 //! 5. Forced xcodebuild overrides (e.g. config-derived `ENABLE_PREVIEWS`).
 //! 6. SDKROOT in its absolute-path form when the catalog supplied one.
-//! 7. Command-line `KEY=VALUE` overrides from [`ResolveQuery::overrides`].
+//! 7. Command-line `KEY=VALUE` overrides from [`ResolveQuery::overrides`],
+//!    the rest of them.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -366,6 +369,23 @@ impl BuildContext {
         Ok(self)
     }
 
+    /// Split the command-line overrides around the `-xcconfig` overlay:
+    /// `(below, above)`. xcodebuild applies the overlay above command-line
+    /// `KEY=VALUE` settings (its man page: the file's settings "override all
+    /// other settings, including settings passed individually on the command
+    /// line"). With `-xcconfig X.xcconfig FOO=cli SWIFT_VERSION=5.9` and
+    /// `X.xcconfig` holding `FOO = $(inherited) x` and `SWIFT_VERSION = 6.0`,
+    /// Xcode 27 resolves `FOO = cli x` and `SWIFT_VERSION = 6.0`. So an
+    /// override of a key the overlay assigns goes just below the overlay,
+    /// where the overlay's `$(inherited)` reads it; every other override stays
+    /// on top of all the layers.
+    fn split_overrides(&self, overrides: &[Assignment]) -> (Vec<Assignment>, Vec<Assignment>) {
+        overrides
+            .iter()
+            .cloned()
+            .partition(|o| self.extra_xcconfig.iter().any(|a| a.key == o.key))
+    }
+
     /// Resolve build settings for one `(target, config, sdk, arch, …)` tuple.
     /// Cheap to call repeatedly against the same context.
     pub fn resolve(&self, query: &ResolveQuery) -> Result<Resolved, Error> {
@@ -501,9 +521,16 @@ impl BuildContext {
         if !self.extra_xcconfig.is_empty() {
             sans_overrides_layers.push(self.extra_xcconfig.clone());
         }
-        let mut layers = sans_overrides_layers.clone();
-        if !query.overrides.is_empty() {
-            layers.push(query.overrides.clone());
+        let (below_overlay, above) = self.split_overrides(&query.overrides);
+        let mut layers = bundle.layers.clone();
+        if !below_overlay.is_empty() {
+            layers.push(below_overlay);
+        }
+        if !self.extra_xcconfig.is_empty() {
+            layers.push(self.extra_xcconfig.clone());
+        }
+        if !above.is_empty() {
+            layers.push(above);
         }
         // xcodebuild binds `[sdk=...]` conditionals against the resolved
         // SDK's canonical (versioned) name, e.g. `macosx26.0` — that's why
@@ -759,6 +786,10 @@ impl BuildContext {
 
         layers.extend(bundle.layers.iter().cloned());
 
+        let (below_overlay, above_overrides) = self.split_overrides(&query.overrides);
+        if !below_overlay.is_empty() {
+            layers.push(below_overlay);
+        }
         if !self.extra_xcconfig.is_empty() {
             layers.push(self.extra_xcconfig.clone());
         }
@@ -830,8 +861,8 @@ impl BuildContext {
             layers.push(sdk_layer);
         }
 
-        if !query.overrides.is_empty() {
-            layers.push(query.overrides.clone());
+        if !above_overrides.is_empty() {
+            layers.push(above_overrides);
         }
 
         layers

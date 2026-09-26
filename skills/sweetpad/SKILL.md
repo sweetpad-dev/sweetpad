@@ -233,7 +233,9 @@ sweetpad settings show -o json
 ```
 
 The fully resolved settings for the active scheme/target — the thing
-`xcodebuild -showBuildSettings` makes painful.
+`xcodebuild -showBuildSettings` makes painful. They include the `KEY=VALUE`
+settings and `-xcconfig` in `sweetpad.toml`'s `[xcodebuild] args`, but not a
+`--` tail you type on a build.
 
 ## See and set what would build
 

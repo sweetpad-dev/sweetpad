@@ -137,6 +137,37 @@ fn layers_extra_xcconfig_iphoneos() {
 }
 
 #[test]
+fn the_extra_xcconfig_overrides_the_command_line_settings_it_shares() {
+    // `xcodebuild -xcconfig Over.xcconfig FX_C=cli SWIFT_VERSION=5.9 FX_D=only`
+    // on Xcode 27, with the file holding the two assignments below, resolves
+    // `FX_C = cli fromxc`, `SWIFT_VERSION = 6.0` and `FX_D = only`: the file
+    // sits above the command line, and its `$(inherited)` reads the
+    // command-line value.
+    let dir = std::env::temp_dir().join(format!("sweetpad-overlay-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let xcconfig = dir.join("Over.xcconfig");
+    std::fs::write(
+        &xcconfig,
+        "FX_C = $(inherited) fromxc\nSWIFT_VERSION = 6.0\n",
+    )
+    .unwrap();
+    let opts = BuildSettingsOptions {
+        xcconfig: Some(xcconfig),
+        overrides: vec![
+            ("FX_C".to_string(), "cli".to_string()),
+            ("SWIFT_VERSION".to_string(), "5.9".to_string()),
+            ("FX_D".to_string(), "only".to_string()),
+        ],
+        ..scratch_opts()
+    };
+    let s = resolve_one(opts);
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert_eq!(s.get("FX_C").map(String::as_str), Some("cli fromxc"));
+    assert_eq!(s.get("SWIFT_VERSION").map(String::as_str), Some("6.0"));
+    assert_eq!(s.get("FX_D").map(String::as_str), Some("only"));
+}
+
+#[test]
 fn sdk_conditions_match_the_versioned_canonical_name() {
     // xcodebuild binds `[sdk=...]` conditionals against the resolved SDK's
     // canonical name (e.g. `macosx26.0`), so the ubiquitous trailing-star

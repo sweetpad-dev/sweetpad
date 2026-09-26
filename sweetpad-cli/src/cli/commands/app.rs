@@ -1245,29 +1245,6 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
     result
 }
 
-/// The first passthrough flag that moves xcodebuild's output past where the
-/// in-process app locator looks, if any. `-derivedDataPath` is not one of
-/// them — [`xcodebuild::passthrough_derived_data`] follows it, and refuses the
-/// relocating build settings outright — and neither is a `KEY=VALUE` such as
-/// `TARGET_BUILD_DIR=`, which the locator resolves with the build's other
-/// command-line settings. What it can neither follow nor recognize is an
-/// `-xcconfig`, free to set any of them from a file.
-fn passthrough_moves_output(passthrough: &[String]) -> Option<&String> {
-    passthrough.iter().find(|t| *t == "-xcconfig")
-}
-
-/// Say so when the build's products land somewhere the install step won't
-/// look: installing a stale bundle from default DerivedData would silently
-/// run old code.
-fn warn_if_passthrough_moves_output(ctx: &Context, passthrough: &[String]) {
-    if let Some(flag) = passthrough_moves_output(passthrough) {
-        ctx.out.warn(&format!(
-            "{flag} can move the build output, but the app is installed from the \
-             default build location — the launched bundle may be stale or missing"
-        ));
-    }
-}
-
 /// Resolve a full run plan, choosing a simulator (default), a device, or macOS.
 #[allow(clippy::too_many_lines)] // one linear ladder per target mode
 fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
@@ -1372,8 +1349,6 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
             (destination, Target::Simulator(udid))
         }
     };
-
-    warn_if_passthrough_moves_output(ctx, opts.passthrough);
 
     let mut plan = RunPlan {
         resolved,
@@ -2138,6 +2113,7 @@ fn run_hot_session(
         &plan.resolved.container,
         plan.scheme.clone(),
         plan.configuration.clone(),
+        xcodebuild::CommandLineSettings::of(&plan.passthrough, &plan.resolved.container),
         sdk.to_string(),
         inject::host_arch(),
         developer_dir,
@@ -7231,39 +7207,6 @@ mod tests {
         // Never worth failing a launch that already succeeded.
         assert_eq!(launched_pid(""), None);
         assert_eq!(launched_pid("com.example.App: not-a-pid"), None);
-    }
-
-    /// The warning covers what the locator can neither follow nor refuse.
-    /// Warning about the rest reads as "this may not work" over cases that
-    /// either work or fail loudly a few lines later.
-    #[test]
-    fn only_the_relocations_the_locator_misses_are_warned_about() {
-        let argv = |args: &[&str]| args.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
-
-        // Followed: the resolver takes the same -derivedDataPath and
-        // command-line settings the build does.
-        assert!(passthrough_moves_output(&argv(&["-derivedDataPath", "/tmp/dd"])).is_none());
-        assert!(passthrough_moves_output(&argv(&["TARGET_BUILD_DIR=/tmp/t"])).is_none());
-        // Refused outright by `xcodebuild::passthrough_derived_data`.
-        for relocating in [
-            "SYMROOT=/tmp/s",
-            "OBJROOT=/tmp/o",
-            "CONFIGURATION_BUILD_DIR=/tmp/c",
-        ] {
-            assert!(
-                passthrough_moves_output(&argv(&[relocating])).is_none(),
-                "{relocating}"
-            );
-            let project = resolve::Container::Project("/work/App.xcodeproj".into());
-            assert!(
-                xcodebuild::passthrough_derived_data(&argv(&[relocating]), &project).is_err(),
-                "{relocating}"
-            );
-        }
-        // Neither followed nor refused — the warning's whole remit.
-        assert!(passthrough_moves_output(&argv(&["-xcconfig", "Over.xcconfig"])).is_some());
-        // An ordinary flag says nothing about the products dir.
-        assert!(passthrough_moves_output(&argv(&["-allowProvisioningUpdates"])).is_none());
     }
 
     #[test]

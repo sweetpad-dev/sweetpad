@@ -104,7 +104,10 @@ sweetpad app launch --mac --derived-data-path build/dd
 ```
 
 `KEY=VALUE` overrides count too, so `-- PRODUCT_BUNDLE_IDENTIFIER=com.example.beta` changes the
-bundle id SweetPad installs and launches, the same as it changes the build.
+bundle id SweetPad installs and launches, the same as it changes the build. So does an `-xcconfig`,
+including one that moves the product with its own `SYMROOT`. As in `xcodebuild`, a setting in the
+`-xcconfig` file wins over the same setting typed as `KEY=VALUE`. Hot reload recompiles with the same
+arguments, and `settings show` includes the ones in `sweetpad.toml`.
 
 Overrides that move the product somewhere the locator can't follow are rejected up front, before a
 build is spent on them. Use `-derivedDataPath` instead:

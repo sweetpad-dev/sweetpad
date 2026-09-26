@@ -1776,20 +1776,55 @@ pub fn passthrough_derived_data(
     container: &Container,
 ) -> Result<Option<PathBuf>, CliError> {
     refuse_relocating_settings(passthrough, &[])?;
-    let mut derived_data = None;
+    Ok(passthrough_path(passthrough, "-derivedDataPath", container))
+}
+
+/// The value after the last `flag` in a passthrough, as a path, joined onto
+/// [`working_dir`] when relative, the way `xcodebuild` running there reads it.
+fn passthrough_path(passthrough: &[String], flag: &str, container: &Container) -> Option<PathBuf> {
+    let mut found = None;
     let mut iter = passthrough.iter().peekable();
     while let Some(arg) = iter.next() {
-        if arg == "-derivedDataPath" {
-            derived_data = iter.peek().map(|dir| {
-                let dir = PathBuf::from(dir);
+        if arg == flag {
+            found = iter.peek().map(|value| {
+                let path = PathBuf::from(value);
                 match working_dir(container) {
-                    Some(base) if dir.is_relative() => base.join(dir),
-                    _ => dir,
+                    Some(base) if path.is_relative() => base.join(path),
+                    _ => path,
                 }
             });
         }
     }
-    Ok(derived_data)
+    found
+}
+
+/// What a passthrough adds to the build settings `xcodebuild` resolves, above
+/// every project layer: the `-derivedDataPath` that places the build, the
+/// `-xcconfig` overlay, and the `KEY=VALUE` assignments. Each caller that
+/// resolves settings for a build reads them from the same arguments the build
+/// takes, so the locator, `settings show` and the hot-reload recompiler agree
+/// with it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CommandLineSettings {
+    pub derived_data_path: Option<PathBuf>,
+    /// `xcodebuild` takes one `-xcconfig` and refuses a second, so this is
+    /// the last one given.
+    pub xcconfig: Option<PathBuf>,
+    pub overrides: Vec<(String, String)>,
+}
+
+impl CommandLineSettings {
+    /// Read them from `passthrough`, which is the project's `[xcodebuild]
+    /// args` followed by the typed `--` tail. Relative paths resolve against
+    /// the directory `xcodebuild` runs from, as the build reads them.
+    #[must_use]
+    pub fn of(passthrough: &[String], container: &Container) -> Self {
+        Self {
+            derived_data_path: passthrough_path(passthrough, "-derivedDataPath", container),
+            xcconfig: passthrough_path(passthrough, "-xcconfig", container),
+            overrides: passthrough_settings(passthrough),
+        }
+    }
 }
 
 /// The `KEY=VALUE` build settings in a passthrough, in order: what
@@ -1874,8 +1909,7 @@ pub fn refuse_relocating_settings(args: &[String], from_file: &[String]) -> Resu
 
 /// Resolve every target's build settings for a plan through the in-process
 /// resolver (the engine behind `settings show`), with no `xcodebuild` spawn —
-/// including a passthrough's `-derivedDataPath` and its `KEY=VALUE` build
-/// settings. Feed the result to
+/// including a passthrough's [`CommandLineSettings`]. Feed the result to
 /// [`app_bundle`] to name the product a build of this plan writes. Swift
 /// packages build no `.app`, so they have nothing to resolve here.
 ///
@@ -1890,6 +1924,8 @@ pub fn resolved_settings(plan: &BuildPlan<'_>) -> Result<Vec<TargetBuildSettings
             return Err(CliError::new("Swift packages have no .app bundle"));
         }
     };
+    refuse_relocating_settings(plan.passthrough, &[])?;
+    let command_line = CommandLineSettings::of(plan.passthrough, plan.container);
     let opts = BuildSettingsOptions {
         project,
         workspace,
@@ -1903,15 +1939,16 @@ pub fn resolved_settings(plan: &BuildPlan<'_>) -> Result<Vec<TargetBuildSettings
         destination: plan
             .destination
             .and_then(sweetpad_lib::destination::parse_destination_arg),
-        xcconfig: None,
+        // The build takes them too: a `PRODUCT_BUNDLE_IDENTIFIER=` or
+        // `PRODUCT_NAME=`, on the command line or in an `-xcconfig`, changes
+        // what gets installed and launched.
+        xcconfig: command_line.xcconfig,
         xcode: None,
         xcspec_root: None,
         sdksettings_root: None,
         catalog_cache: None,
-        derived_data_path: passthrough_derived_data(plan.passthrough, plan.container)?,
-        // The build takes them too: a `PRODUCT_BUNDLE_IDENTIFIER=` or
-        // `PRODUCT_NAME=` changes what gets installed and launched.
-        overrides: passthrough_settings(plan.passthrough),
+        derived_data_path: command_line.derived_data_path,
+        overrides: command_line.overrides,
         // Callers install, launch, and report what this resolves, so it has to
         // name the bundle `xcodebuild` actually wrote — including when the user
         // has moved Derived Data in Xcode (issue #306).
@@ -2677,6 +2714,50 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             Some(PathBuf::from("dd"))
         );
         assert_eq!(passthrough_derived_data(&[], &nested).unwrap(), None);
+    }
+
+    /// Every build-settings caller reads the build's `-derivedDataPath`,
+    /// `-xcconfig` and `KEY=VALUE` arguments the same way: paths from the
+    /// directory xcodebuild runs in, settings in order.
+    #[test]
+    fn the_command_line_settings_are_read_the_way_xcodebuild_reads_them() {
+        let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
+        let nested = Container::Project(PathBuf::from("/work/ios/App.xcodeproj"));
+        let read = CommandLineSettings::of(
+            &s(&[
+                "-xcconfig",
+                "Config/Over.xcconfig",
+                "-derivedDataPath",
+                "dd",
+                "-destination",
+                "OS=17.0,platform=iOS Simulator",
+                "PRODUCT_BUNDLE_IDENTIFIER=com.example.x",
+                "-skipMacroValidation",
+                "SWIFT_VERSION=6.0",
+            ]),
+            &nested,
+        );
+        assert_eq!(
+            read,
+            CommandLineSettings {
+                derived_data_path: Some(PathBuf::from("/work/ios/dd")),
+                xcconfig: Some(PathBuf::from("/work/ios/Config/Over.xcconfig")),
+                overrides: vec![
+                    (
+                        "PRODUCT_BUNDLE_IDENTIFIER".to_string(),
+                        "com.example.x".to_string()
+                    ),
+                    ("SWIFT_VERSION".to_string(), "6.0".to_string()),
+                ],
+            }
+        );
+        // An absolute path stays as typed, and none given is none.
+        let absolute = CommandLineSettings::of(&s(&["-xcconfig", "/x/Over.xcconfig"]), &nested);
+        assert_eq!(absolute.xcconfig, Some(PathBuf::from("/x/Over.xcconfig")));
+        assert_eq!(
+            CommandLineSettings::of(&[], &nested),
+            CommandLineSettings::default()
+        );
     }
 
     #[test]

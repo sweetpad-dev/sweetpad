@@ -36,7 +36,9 @@ See [Starting a project](./project-new.md).
 ## Build settings
 
 `sweetpad settings show` prints the fully resolved build settings for the scheme: the same values
-xcodebuild will use, after every xcconfig, target, and project layer has been folded together:
+xcodebuild will use, after every xcconfig, target, and project layer has been folded together. That
+includes the `KEY=VALUE` settings and the `-xcconfig` in `sweetpad.toml`'s `[xcodebuild] args`, which
+every build takes:
 
 ```bash
 sweetpad settings show

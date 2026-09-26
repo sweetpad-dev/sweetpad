@@ -98,7 +98,9 @@ Each save has to be turned back into compiled code, and there are two ways to wo
 arguments for one file. `--hot-recompiler` picks between them:
 
 - **`resolver`** (the default) resolves the build settings itself and does a whole-module compile.
-  Slower per save, but it doesn't depend on anything left over from an earlier build.
+  Slower per save, but it doesn't depend on anything left over from an earlier build. It resolves
+  them with the build's `KEY=VALUE`, `-xcconfig`, and `-derivedDataPath` arguments, from
+  `sweetpad.toml` and the `--` tail alike.
 - **`buildlog`** recovers the single-file compile from the build transcript. Noticeably faster, and
   the right choice once a project is building cleanly and you're iterating hard.
 

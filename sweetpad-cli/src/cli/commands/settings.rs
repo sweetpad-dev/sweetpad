@@ -3,7 +3,8 @@
 //! specialty.
 //!
 //! This is the porcelain view: what the build will actually use, after
-//! xcconfig files, SDK defaults, and `$(inherited)` chains. The *stored*
+//! xcconfig files, SDK defaults, `$(inherited)` chains, and the settings the
+//! project's `sweetpad.toml` `[xcodebuild] args` add to every build. The *stored*
 //! pbxproj layer — and everything that edits it — is plumbing:
 //! `sweetpad pbxproj settings show/set/unset` (CLI_DESIGN §9g).
 
@@ -13,12 +14,14 @@ use clap::Subcommand;
 
 use crate::cli::output::Output;
 use crate::cli::resolve::{self, Container};
-use crate::cli::{BuildTargetArgs, CliError, CommandResult, Context, Render, Rendered};
+use crate::cli::{BuildTargetArgs, CliError, CommandResult, Context, Render, Rendered, xcodebuild};
 use sweetpad_core::build_settings::{BuildSettingsOptions, TargetSettings, resolve_build_settings};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
-    /// Show resolved build settings for the resolved scheme/target.
+    /// Show resolved build settings for the resolved scheme/target, including
+    /// the 'KEY=VALUE' settings and '-xcconfig' in sweetpad.toml's
+    /// '[xcodebuild] args'.
     Show {
         #[command(flatten)]
         build: BuildTargetArgs,
@@ -146,6 +149,10 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CommandRe
         .as_deref()
         .or(resolved.destination.as_deref())
         .and_then(sweetpad_lib::destination::parse_destination_arg);
+    // The settings the project's builds resolve: its `[xcodebuild] args`
+    // carry command-line settings and an `-xcconfig` every build takes.
+    let command_line =
+        xcodebuild::CommandLineSettings::of(&ctx.xcodebuild_args(&[])?, &resolved.container);
 
     let opts = BuildSettingsOptions {
         project,
@@ -156,13 +163,13 @@ fn show(ctx: &mut Context, target: Option<&str>, key: Option<&str>) -> CommandRe
         sdk: resolved.sdk.clone().unwrap_or_default(),
         arch: String::new(),
         destination,
-        xcconfig: None,
+        xcconfig: command_line.xcconfig,
         xcode: None,
         xcspec_root: None,
         sdksettings_root: None,
         catalog_cache: None,
-        derived_data_path: None,
-        overrides: Vec::new(),
+        derived_data_path: command_line.derived_data_path,
+        overrides: command_line.overrides,
         // Report the paths this machine would really build into, so the output
         // can be compared against `xcodebuild -showBuildSettings`.
         read_xcode_locations: true,

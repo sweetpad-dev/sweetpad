@@ -2954,10 +2954,46 @@ Simulator'` is a specifier, not a setting named `OS`. The flags are a fixed
 list; one missing from it reads as a switch, which costs at most one setting
 read from its value.
 
-A `TARGET_BUILD_DIR=` override is followed through the same layer, so the
-warning about output the locator cannot find is left to `-xcconfig`. The
-relocating settings stay refused: whether the resolver models a command-line
-`SYMROOT` the way `xcodebuild` does has not been checked against a capture.
+A `TARGET_BUILD_DIR=` override is followed through the same layer.
+
+### Every build-settings caller sees the build's arguments
+
+The locator was the only resolver caller that took the command line, so
+`settings show` and the `--hot` recompiler could disagree with the build they
+describe. The arguments are read once, as `xcodebuild::CommandLineSettings`
+(the `-derivedDataPath`, the `-xcconfig` overlay, the `KEY=VALUE`
+assignments), and handed to each caller from the arguments it has:
+
+- the locator, from the plan's passthrough (the file's `[xcodebuild] args`,
+  then the typed tail);
+- the recompiler, from the `--hot` build's passthrough, with this machine's
+  Xcode locations, so a recompiled file's search paths name the products that
+  build wrote;
+- `settings show`, from the file's `[xcodebuild] args`. It takes no `--` tail,
+  so a typed one-off reaches the build and not this view.
+
+A path resolves against the directory `xcodebuild` runs from, as the build
+reads it. `xcodebuild` takes one `-xcconfig` and fails on a second, so the
+last one wins. `-xcconfig` sits above the command line: Xcode 27 resolves
+`-xcconfig X.xcconfig FOO=cli SWIFT_VERSION=5.9`, with the file holding `FOO =
+$(inherited) x` and `SWIFT_VERSION = 6.0`, to `FOO = cli x` and
+`SWIFT_VERSION = 6.0`, as its man page says. The resolver places an override
+of a key the overlay also sets just below the overlay, and keeps every other
+override on top. Against `xcodebuild -showBuildSettings` on the fixture, with
+that file and those settings, `settings show` differs in the same keys as
+with none: a `/tmp` versus `/private/tmp` spelling and `CODE_SIGN_IDENTITY`.
+
+With the overlay reaching the locator, the warning that an `-xcconfig` "can
+move the build output … the launched bundle may be stale or missing" had
+nothing left to cover and is gone. An overlay setting `SYMROOT` is followed
+like any xcconfig `SYMROOT` (the `symroot_override_oracle` capture): a `build
+-o json -- -xcconfig sym.xcconfig -derivedDataPath dd` names the `.app` under
+the file's `SYMROOT`, where the build wrote it, instead of a stale one under
+`dd`.
+
+The plumbing view `pbxproj settings` echoes the effect of an edit to the
+stored layer and keeps resolving without the command line, and the BSP index
+takes its inputs from `buildServer.json`, not from `sweetpad.toml`.
 
 ## 10. Testing
 
