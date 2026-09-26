@@ -504,15 +504,32 @@ fn ingest_xcspec_entry(entry: &Value, file_domain: Option<&str>, catalog: &mut C
     }
 }
 
-/// Index every SDK under `dir`. Each `*.sdk` entry is read for its
-/// `SDKSettings.plist` and never descended into, since an SDK tree holds
-/// thousands of directories and no further SDK. The version-named symlinks
-/// beside an SDK are `*.sdk` entries too, so they are read as more names for it
-/// (see [`extract_sdksettings`]) but not walked. No other symlinked directory
-/// is followed.
+/// Index every SDK under `dir`, from the files [`sdksettings_files`] lists.
 fn walk_sdksettings(dir: &Path, catalog: &mut Catalog) -> Result<(), Error> {
+    for plist in sdksettings_files(dir) {
+        extract_sdksettings(&plist, catalog)?;
+    }
+    Ok(())
+}
+
+/// The `SDKSettings.plist` files [`load_catalog`] reads under `dir`, in the
+/// order it reads them. Each `*.sdk` entry contributes its `SDKSettings.plist`
+/// and is never descended into, since an SDK tree holds thousands of
+/// directories and no further SDK. The version-named symlinks beside an SDK are
+/// `*.sdk` entries too, so their plist is listed as more names for it (see
+/// [`extract_sdksettings`]) but not walked. No other symlinked directory is
+/// followed. The catalog cache stats these same files for its fingerprint, so
+/// validating a cache walks no more of the tree than parsing it does.
+#[must_use]
+pub fn sdksettings_files(dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    collect_sdksettings(dir, &mut out);
+    out
+}
+
+fn collect_sdksettings(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
-        return Ok(());
+        return;
     };
     // Sorted like `walk_xcspec`: several names reach the same SDK, and which
     // one `sdk_paths` keeps must not depend on directory order.
@@ -523,15 +540,14 @@ fn walk_sdksettings(dir: &Path, catalog: &mut Catalog) -> Result<(), Error> {
         if path.extension() == Some(OsStr::new("sdk")) {
             let plist = path.join("SDKSettings.plist");
             if plist.is_file() {
-                extract_sdksettings(&plist, catalog)?;
+                out.push(plist);
             }
         } else if entry.file_type().is_ok_and(|t| t.is_dir()) {
-            walk_sdksettings(&path, catalog)?;
+            collect_sdksettings(&path, out);
         } else if entry.file_name() == "SDKSettings.plist" {
-            extract_sdksettings(&path, catalog)?;
+            out.push(path);
         }
     }
-    Ok(())
 }
 
 fn extract_sdksettings(path: &Path, catalog: &mut Catalog) -> Result<(), Error> {

@@ -268,22 +268,19 @@ fn write_cache(path: &Path, bytes: &[u8]) -> io::Result<()> {
 }
 
 /// Cheap fingerprint of the spec sources: an FNV-1a hash over the sorted set of
-/// `(path, len, mtime)` for every `*.xcspec` and `SDKSettings.plist` under the
-/// roots. Stat-only — it never reads file *contents* (that's the parse cost
-/// we're avoiding), so a mismatch means "specs changed → rebuild."
+/// `(path, len, mtime)` for every `*.xcspec` under `xcspec_root` and every
+/// `SDKSettings.plist` the catalog reads under `sdksettings_root`
+/// ([`xcspec::sdksettings_files`], which stops at each `*.sdk`). Stat-only — it
+/// never reads file *contents* (that's the parse cost we're avoiding), so a
+/// mismatch means "specs changed → rebuild."
 fn source_fingerprint(xcspec_root: &Path, sdksettings_root: Option<&Path>) -> u64 {
     let mut entries: BTreeSet<(String, u64, u128)> = BTreeSet::new();
-    collect_stats(
-        xcspec_root,
-        &|p| p.extension() == Some(OsStr::new("xcspec")),
-        &mut entries,
-    );
+    collect_xcspec_stats(xcspec_root, &mut entries);
     if let Some(root) = sdksettings_root {
-        collect_stats(
-            root,
-            &|p| p.file_name() == Some(OsStr::new("SDKSettings.plist")),
-            &mut entries,
-        );
+        for plist in xcspec::sdksettings_files(root) {
+            let meta = fs::metadata(&plist).ok();
+            entries.insert(stat_entry(&plist, meta.as_ref()));
+        }
     }
     let mut h = FNV_OFFSET;
     for (path, len, mtime) in &entries {
@@ -294,28 +291,27 @@ fn source_fingerprint(xcspec_root: &Path, sdksettings_root: Option<&Path>) -> u6
     h
 }
 
-fn collect_stats(
-    dir: &Path,
-    keep: &dyn Fn(&Path) -> bool,
-    out: &mut BTreeSet<(String, u64, u128)>,
-) {
+fn collect_xcspec_stats(dir: &Path, out: &mut BTreeSet<(String, u64, u128)>) {
     let Ok(rd) = fs::read_dir(dir) else {
         return;
     };
     for entry in rd.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect_stats(&path, keep, out);
-        } else if keep(&path) {
-            let meta = entry.metadata().ok();
-            let len = meta.as_ref().map_or(0, fs::Metadata::len);
-            let mtime = meta
-                .and_then(|m| m.modified().ok())
-                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map_or(0, |d| d.as_nanos());
-            out.insert((path.to_string_lossy().into_owned(), len, mtime));
+            collect_xcspec_stats(&path, out);
+        } else if path.extension() == Some(OsStr::new("xcspec")) {
+            out.insert(stat_entry(&path, entry.metadata().ok().as_ref()));
         }
     }
+}
+
+fn stat_entry(path: &Path, meta: Option<&fs::Metadata>) -> (String, u64, u128) {
+    let len = meta.map_or(0, fs::Metadata::len);
+    let mtime = meta
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_nanos());
+    (path.to_string_lossy().into_owned(), len, mtime)
 }
 
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
@@ -793,6 +789,42 @@ mod tests {
         // Another spelling of the same root shares the file.
         let respelled = root.join("../xcode-27.0.0");
         assert_eq!(cache_path_in(dir, &respelled, FORMAT_VERSION), ours);
+    }
+
+    /// The fingerprint stats exactly the settings files the catalog reads: a
+    /// change to one deep inside an SDK, or behind a symlinked directory,
+    /// reaches neither.
+    #[test]
+    fn fingerprint_stats_only_the_sdk_settings_the_catalog_reads() {
+        let root = std::env::temp_dir().join(format!("sweetpad-fp-walk-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let plant = |sdk_dir: &Path| {
+            fs::create_dir_all(sdk_dir).unwrap();
+            let plist = sdk_dir.join("SDKSettings.plist");
+            fs::write(&plist, "settings").unwrap();
+            plist
+        };
+        let platforms = root.join("Platforms");
+        let macos = plant(&platforms.join("MacOSX.platform/Developer/SDKs/MacOSX.sdk"));
+        let nested = plant(
+            &platforms.join("MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/share/iPhoneOS.sdk"),
+        );
+        let elsewhere = root.join("elsewhere/WatchOS.platform");
+        let linked = plant(&elsewhere.join("Developer/SDKs/WatchOS.sdk"));
+        std::os::unix::fs::symlink(&elsewhere, platforms.join("WatchOS.platform")).unwrap();
+        assert_eq!(
+            xcspec::sdksettings_files(&platforms),
+            std::slice::from_ref(&macos)
+        );
+
+        let no_specs = root.join("no-xcspecs");
+        let before = source_fingerprint(&no_specs, Some(&platforms));
+        fs::write(&nested, "changed settings").unwrap();
+        fs::write(&linked, "changed settings").unwrap();
+        assert_eq!(source_fingerprint(&no_specs, Some(&platforms)), before);
+        fs::write(&macos, "changed settings").unwrap();
+        assert_ne!(source_fingerprint(&no_specs, Some(&platforms)), before);
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
