@@ -47,7 +47,9 @@ expect_code_in() {
   [ "$rc" -eq "$want" ] || fail "expected exit $want in $dir, got $rc: $*"
 }
 
-# Run a streaming command for N seconds, then stop it (SIGTERM is success).
+# Run a streaming command for N seconds, then stop it (SIGTERM is success). One
+# still running 30s after the SIGTERM is killed and fails the run, instead of
+# hanging the job until its timeout.
 run_briefly() {
   local secs="$1"
   shift
@@ -55,7 +57,13 @@ run_briefly() {
   local pid=$!
   sleep "$secs"
   kill "$pid" 2>/dev/null || true
-  wait "$pid" 2>/dev/null || true
+  ( sleep 30; kill -KILL "$pid" 2>/dev/null ) &
+  local watchdog=$!
+  local rc=0
+  wait "$pid" 2>/dev/null || rc=$?
+  kill "$watchdog" 2>/dev/null || true
+  wait "$watchdog" 2>/dev/null || true
+  [ "$rc" -ne 137 ] || fail "still running 30s after SIGTERM: $*"
 }
 
 # A JSON field assertion via python3: <json> <python-expr over `d`> <expected>.
