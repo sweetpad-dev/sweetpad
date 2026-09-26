@@ -42,8 +42,10 @@ use crate::xcspec::{self, Catalog, CliArgs, CompilerOption, ProductTypeDefaults}
 const MAGIC: &[u8; 4] = b"SPC1";
 /// Bump whenever the serialized layout (or the [`Catalog`] shape) changes, so a
 /// sweetpad upgrade transparently rebuilds disk caches and the embedded blob is
-/// rejected if stale.
-const FORMAT_VERSION: u8 = 8;
+/// rejected if stale. Bump it too when ingestion extracts something different
+/// from the same Xcode (e.g. which alias `sdk_paths` keeps): a disk cache is
+/// keyed by the Xcode it was parsed from, not by the sweetpad that wrote it.
+const FORMAT_VERSION: u8 = 9;
 
 #[derive(Debug)]
 pub enum Error {

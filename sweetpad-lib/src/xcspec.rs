@@ -507,8 +507,11 @@ fn walk_sdksettings(dir: &Path, catalog: &mut Catalog) -> Result<(), Error> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Ok(());
     };
-    for entry in entries.flatten() {
-        let p = entry.path();
+    // Sorted like `walk_xcspec`: several names reach the same SDK, and which
+    // one `sdk_paths` keeps must not depend on directory order.
+    let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+    paths.sort();
+    for p in paths {
         if p.is_dir() {
             walk_sdksettings(&p, catalog)?;
         } else if p.file_name() == Some(OsStr::new("SDKSettings.plist")) {
@@ -540,23 +543,51 @@ fn extract_sdksettings(path: &Path, catalog: &mut Catalog) -> Result<(), Error> 
     // parent directory IS the SDK root. Map both the version-qualified
     // canonical name and its base prefix so `sdk_paths.get("macosx")` works
     // alongside `sdk_paths.get("macosx26.0")`.
+    //
+    // Xcode ships each SDK as one directory (`MacOSX.sdk`) plus symlinks to
+    // it named for its version (`MacOSX27.0.sdk`, and on Xcode 27 also a
+    // major-only `MacOSX27.sdk`), so the walk reads the same plist under
+    // every name. xcodebuild reports the name that spells the canonical one,
+    // so that directory takes the entry from any sibling; otherwise the
+    // first name visited keeps it.
     if let Some(sdk_dir) = path.parent() {
-        catalog
-            .sdk_paths
-            .insert(canonical.clone(), sdk_dir.to_path_buf());
-        let base: String = canonical
-            .chars()
-            .take_while(|c| !c.is_ascii_digit())
-            .collect();
-        if !base.is_empty() && base != canonical {
+        let previous = catalog.sdk_paths.get(&canonical).cloned();
+        let takes_entry = previous.as_deref().is_none_or(|prev| {
+            names_canonical_sdk(sdk_dir, &canonical) && !names_canonical_sdk(prev, &canonical)
+        });
+        if takes_entry {
             catalog
                 .sdk_paths
-                .entry(base)
-                .or_insert_with(|| sdk_dir.to_path_buf());
+                .insert(canonical.clone(), sdk_dir.to_path_buf());
+            let base: String = canonical
+                .chars()
+                .take_while(|c| !c.is_ascii_digit())
+                .collect();
+            // The base follows its canonical entry, unless another SDK of the
+            // same platform claimed it first.
+            if !base.is_empty()
+                && base != canonical
+                && catalog
+                    .sdk_paths
+                    .get(&base)
+                    .is_none_or(|p| Some(p) == previous.as_ref())
+            {
+                catalog.sdk_paths.insert(base, sdk_dir.to_path_buf());
+            }
         }
     }
     catalog.sdks.insert(canonical, defaults);
     Ok(())
+}
+
+/// Whether an SDK directory's name spells its canonical name, ignoring case:
+/// `MacOSX27.0.sdk` for `macosx27.0`, where `MacOSX.sdk` and `MacOSX27.sdk`
+/// do not.
+fn names_canonical_sdk(sdk_dir: &Path, canonical: &str) -> bool {
+    sdk_dir
+        .file_stem()
+        .and_then(OsStr::to_str)
+        .is_some_and(|stem| stem.eq_ignore_ascii_case(canonical))
 }
 
 fn dict_to_assignments(dict: &Dict) -> Vec<Assignment> {
@@ -827,6 +858,44 @@ mod tests {
         let layer = cat.layer_for(None, Some("macosx"));
         let keys: std::collections::BTreeSet<&str> = layer.iter().map(|a| a.key.as_str()).collect();
         assert!(keys.contains("PLATFORM_NAME"));
+    }
+
+    #[test]
+    fn sdk_path_is_the_alias_named_for_the_canonical_name() {
+        // Xcode 27's layout: one real directory per SDK and version-named
+        // symlinks to it, all reading the same SDKSettings.plist. xcodebuild
+        // reports `MacOSX27.0.sdk` for `macosx27.0`, never `MacOSX.sdk` (walked
+        // before it) or the major-only `MacOSX27.sdk` (walked after it).
+        let root = std::env::temp_dir().join(format!("sweetpad-sdk-alias-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let cached = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("xcspec-cache/xcode-27.0.0/sdksettings/Platforms");
+        let lay_out = |platform: &str, sdk: &str, aliases: &[&str]| -> PathBuf {
+            let rel = format!("{platform}.platform/Developer/SDKs");
+            let plist = format!("{sdk}.sdk/SDKSettings.plist");
+            let sdks = root.join(&rel);
+            fs::create_dir_all(sdks.join(format!("{sdk}.sdk"))).unwrap();
+            fs::copy(cached.join(&rel).join(&plist), sdks.join(&plist)).unwrap();
+            for alias in aliases {
+                std::os::unix::fs::symlink(format!("{sdk}.sdk"), sdks.join(alias)).unwrap();
+            }
+            sdks
+        };
+        let macos = lay_out("MacOSX", "MacOSX", &["MacOSX27.0.sdk", "MacOSX27.sdk"]);
+        let simulator = lay_out(
+            "iPhoneSimulator",
+            "iPhoneSimulator",
+            &["iPhoneSimulator27.0.sdk"],
+        );
+
+        let cat = load_catalog(&root.join("no-xcspecs"), Some(&root)).unwrap();
+        let path = |name: &str| cat.sdk_paths.get(name).cloned();
+        assert_eq!(path("macosx27.0"), Some(macos.join("MacOSX27.0.sdk")));
+        assert_eq!(path("macosx"), Some(macos.join("MacOSX27.0.sdk")));
+        let simulator_sdk = simulator.join("iPhoneSimulator27.0.sdk");
+        assert_eq!(path("iphonesimulator27.0"), Some(simulator_sdk.clone()));
+        assert_eq!(path("iphonesimulator"), Some(simulator_sdk));
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
