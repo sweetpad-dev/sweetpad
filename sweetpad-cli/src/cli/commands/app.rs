@@ -2942,10 +2942,12 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
 
     // Beautify xcodebuild's merged output on this thread (the same path as
     // [`buildlog::run`], inlined so we own the child for the watcher), also
-    // collecting diagnostics for the last-build artifact. Lossy decoding —
-    // one bad byte from a run-script must not end the stream and SIGPIPE a
-    // still-writing xcodebuild.
+    // collecting diagnostics for the last-build artifact and watching for a
+    // build blocked on plugin approval. Lossy decoding — one bad byte from a
+    // run-script must not end the stream and SIGPIPE a still-writing
+    // xcodebuild.
     let mut diagnostics: Vec<serde_json::Value> = Vec::new();
+    let mut blocker = buildlog::BlockerWatch::default();
     let mut parser = buildlog::LogParser::default();
     let mut show = |parsed: &buildlog::Parsed| {
         if matches!(parsed.event, buildlog::Event::Diagnostic { .. })
@@ -2961,6 +2963,7 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
         if let Some(file) = capture_file.as_mut() {
             let _ = writeln!(file, "{line}");
         }
+        blocker.line(line);
         parser.push(line).iter().for_each(&mut show);
     });
     parser.finish().iter().for_each(&mut show);
@@ -2989,19 +2992,13 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
     );
     match status {
         Ok(s) if s.success() => BuildOutcome::Ok,
-        Ok(_) => {
-            // The stream above already closed on `✗ Build failed` under the
-            // errors that caused it, as `BuildPlan::run`'s does.
-            let err = CliError::new("xcodebuild exited with a non-zero status")
-                .context("building the app")
-                .kind(ErrorKind::BuildFailure)
-                .tip(xcodebuild::device_tip(&parts, &diagnostics));
-            BuildOutcome::Failed(if xcodebuild::streamed_an_error(true, &diagnostics) {
-                err.shown()
-            } else {
-                err
-            })
-        }
+        // The stream above already closed on `✗ Build failed` under the errors
+        // that caused it, as `BuildPlan::run`'s does, and the failure reads the
+        // same as there.
+        Ok(_) => BuildOutcome::Failed(
+            xcodebuild::build_failure(&parts, diagnostics, blocker.hint(), true, "")
+                .context("building the app"),
+        ),
         Err(e) => BuildOutcome::Failed(
             CliError::new(format!("failed to wait for xcodebuild: {e}"))
                 .context("building the app"),

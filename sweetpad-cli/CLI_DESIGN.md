@@ -2205,7 +2205,11 @@ once the plugin is trusted. So it counts only where it appears under `The
 following build commands failed:`, which makes the watcher stateful; matching
 the line anywhere would tell every healthy build to pass a flag it does not
 need. Detection sits on the line stream rather than the transcript, so it works
-in the human and ndjson paths that never assemble one.
+in the human and ndjson paths that never assemble one. `app run`'s session
+spawns xcodebuild itself so Ctrl-C can cancel the build. It feeds its lines
+through the same watcher and builds its error with the same function
+(`xcodebuild::build_failure`), so a blocked build under `run` or `run --hot`
+ends on the same hint as under `build`.
 
 ### A path guessed at positionally
 

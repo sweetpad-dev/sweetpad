@@ -207,20 +207,38 @@ impl BuildPlan<'_> {
             // Classified here, the one chokepoint every build goes through, so
             // `build start` and `app run`'s build step both exit 3 on a failed
             // compile instead of the generic 1.
-            let shown = blocker.is_none() && streamed_an_error(streamed, &diagnostics);
-            let headline = blocker.map_or_else(
-                || format!("xcodebuild exited with a non-zero status{failure_detail}"),
-                |hint| format!("the build is blocked, not broken: {hint}"),
-            );
-            let tip = device_tip(&parts, &diagnostics);
-            let err = CliError::new(headline)
-                .kind(ErrorKind::BuildFailure)
-                .diagnostics(diagnostics)
-                .tip(tip)
-                .context("building the project");
-            Err(if shown { err.shown() } else { err })
+            Err(
+                build_failure(&parts, diagnostics, blocker, streamed, &failure_detail)
+                    .context("building the project"),
+            )
         }
     }
+}
+
+/// The error a failed build reports, for [`BuildPlan::run`] and for the
+/// interactive `app run` session, which spawns xcodebuild itself. A blocked
+/// build ([`buildlog::BlockerWatch`]) leads with the way past it, and stays on
+/// the terminal even under a streamed log, since no diagnostic in that log
+/// explains it. `detail` is what a captured run appends to the headline, and
+/// `streamed` says whether the beautified log already rendered the errors.
+pub(crate) fn build_failure(
+    args: &[String],
+    diagnostics: Vec<serde_json::Value>,
+    blocker: Option<String>,
+    streamed: bool,
+    detail: &str,
+) -> CliError {
+    let shown = blocker.is_none() && streamed_an_error(streamed, &diagnostics);
+    let headline = blocker.map_or_else(
+        || format!("xcodebuild exited with a non-zero status{detail}"),
+        |hint| format!("the build is blocked, not broken: {hint}"),
+    );
+    let tip = device_tip(args, &diagnostics);
+    let err = CliError::new(headline)
+        .kind(ErrorKind::BuildFailure)
+        .diagnostics(diagnostics)
+        .tip(tip);
+    if shown { err.shown() } else { err }
 }
 
 /// Where to look next when xcodebuild could not use a physical device it was

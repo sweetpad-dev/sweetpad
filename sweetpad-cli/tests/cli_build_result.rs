@@ -282,16 +282,16 @@ fn a_destination_error_off_a_device_gets_no_tip() {
     assert!(envelope["error"].get("tip").is_none(), "{envelope}");
 }
 
-/// `app run`'s session builds through its own runner rather than `build`'s,
-/// and closes on the same banner. `--hot --mac` reaches that runner without a
-/// terminal, since the hot session builds before it launches anything.
-#[test]
-fn the_run_sessions_build_ends_on_the_banner_too() {
+/// `app run`'s session build against a stub xcodebuild. The session builds
+/// through its own runner rather than `build`'s, and `--hot --mac` reaches that
+/// runner without a terminal, since the hot session builds before it launches
+/// anything.
+fn session_with_stub(tag: &str, transcript: &str, status: i32) -> Output {
     let project = project();
-    let out = sweetpad_with_stub(
-        "session",
-        BROKEN,
-        65,
+    sweetpad_with_stub(
+        tag,
+        transcript,
+        status,
         &[
             "app",
             "run",
@@ -305,10 +305,52 @@ fn the_run_sessions_build_ends_on_the_banner_too() {
             "Debug",
             "--non-interactive",
         ],
-    );
+    )
+}
+
+/// The session's build closes on the same banner as `build`'s.
+#[test]
+fn the_run_sessions_build_ends_on_the_banner_too() {
+    let out = session_with_stub("session", BROKEN, 65);
     assert_eq!(out.status.code(), Some(3), "{out:?}");
     let stdout = String::from_utf8(out.stdout).unwrap();
     assert_eq!(stdout.lines().last(), Some("✗ Build failed"), "{stdout}");
     let stderr = String::from_utf8(out.stderr).unwrap();
     assert!(!stderr.contains("error:"), "{stderr}");
+}
+
+/// Xcode 26 failing on a package build-tool plugin nobody has approved, which
+/// it names only in the list of failed commands.
+const BLOCKED: &str = "\
+Prepare packages
+Validate plug-in \u{201c}SwiftLintPlugin\u{201d} in package \u{201c}swiftlint\u{201d}
+** BUILD FAILED **
+
+The following build commands failed:
+\tValidate plug-in \u{201c}SwiftLintPlugin\u{201d} in package \u{201c}swiftlint\u{201d}
+\tBuilding workspace SweetpadCIApp with scheme SweetpadCIMac and configuration Debug
+(2 failures)
+";
+
+/// No diagnostic explains a build blocked on plugin approval, so both `build`
+/// and the run session end on the flag that gets past it.
+#[test]
+fn a_blocked_build_names_the_flag_in_the_run_session_too() {
+    let build = build_with_stub("blocked-build", BLOCKED, 65, &[]);
+    let session = session_with_stub("blocked-session", BLOCKED, 65);
+    for out in [build, session] {
+        assert_eq!(out.status.code(), Some(3), "{out:?}");
+        let stderr = String::from_utf8(out.stderr).unwrap();
+        assert!(
+            stderr.contains(
+                "the build is blocked, not broken: SwiftLintPlugin build-tool plugin must be \
+                 approved before it can run"
+            ),
+            "{stderr}"
+        );
+        assert!(
+            stderr.contains("retry with '-- -skipPackagePluginValidation'"),
+            "{stderr}"
+        );
+    }
 }
