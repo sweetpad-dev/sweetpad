@@ -542,9 +542,10 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
     ctx.out.note(&format!("added package {}", args.url));
 
     let linked = (|| -> Result<(Vec<String>, Vec<String>), CliError> {
-        // 2. Resolve to fetch the package (needed to discover its products).
+        // 2. Resolve to fetch the package (needed to discover a remote
+        //    package's products).
         let need_discovery = args.products.is_empty();
-        if !args.no_resolve || need_discovery {
+        if !args.no_resolve || (need_discovery && remote) {
             ctx.out.step("Resolving package dependencies", || {
                 swiftpm::resolve(container, ctx.out.is_json() || ctx.out.is_ndjson())
             })?;
@@ -557,7 +558,7 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
         // fails the next resolve with "unknown package".
         let package_name = package_display_name(&args.url);
         let products = if need_discovery {
-            let available = package_products(container, &args.url)?;
+            let available = package_products(container, &args.url, remote)?;
             choose("product", &available, &args.products, ctx)?
         } else {
             args.products.clone()
@@ -682,9 +683,18 @@ fn discover_products(
     Ok(product_names(&swiftpm::manifest_at(&checkout)?))
 }
 
-/// For a `Package.swift` add: resolve, then read the just-added package's
-/// products from its `.build` checkout.
-fn package_products(container: &Container, url: &str) -> Result<Vec<String>, CliError> {
+/// For a `Package.swift` add: read the just-added package's products from its
+/// `.build` checkout, which the resolve before this made. A local package has
+/// no checkout, since SwiftPM reads a path dependency in place, so its
+/// products come straight from its directory.
+fn package_products(
+    container: &Container,
+    url: &str,
+    remote: bool,
+) -> Result<Vec<String>, CliError> {
+    if !remote {
+        return Ok(product_names(&swiftpm::manifest_at(Path::new(url))?));
+    }
     let pkg_dir = swiftpm::package_dir(container).unwrap_or_else(|| PathBuf::from("."));
     let checkout = resolve_checkout(&pkg_dir.join(".build"), url).ok_or_else(|| {
         CliError::new("could not locate the resolved package checkout to read its products")
