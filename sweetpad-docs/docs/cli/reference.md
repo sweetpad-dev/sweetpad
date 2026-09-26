@@ -55,7 +55,7 @@ The CLI describes itself, and that is the authority: `sweetpad --help` lists the
 | `sweetpad app launch`     | Launch an already-installed app.                           |
 | `sweetpad app debug`      | Run under lldb, attached to a suspended simulator launch, or owning the launch on macOS. `--batch` with `--cmd` drives lldb from a script. |
 | `sweetpad app diagnose`   | Run under lldb, catch the first crash or Objective-C exception, print a structured report, and quit. Bounded by `--timeout`; `-o json` for the machine-readable form. |
-| `sweetpad app logs`       | Follow the running app's logs on a simulator, device, or macOS, where os_log and a detached launch's captured stdout arrive on one stream. `--last <dur>` prints history instead; `--until <text>` stops at a match. |
+| `sweetpad app logs`       | Follow the running app's logs on a simulator, device, or macOS, where os_log and a detached launch's captured stdout arrive on one stream. `--last <dur>` prints history instead; `--until <text>` stops at a match; `--exits` lists when the app's processes ended and why. |
 | `sweetpad app stop`       | Terminate the running app.                                 |
 | `sweetpad app uninstall`  | Remove the app from a simulator or device.                 |
 | `sweetpad app open-url`   | Open a URL on a simulator, including deep links and universal links. |

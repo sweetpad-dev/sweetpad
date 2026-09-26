@@ -39,8 +39,8 @@ non-interactively:
 
 - `sweetpad run` **without** `--no-logs` follows the app's logs until it exits.
 - `build --watch`, `test --watch`, `run --hot` — long-lived watch/session modes.
-- `app logs` **without** `--last`, `--until`, or `--timeout` — an unbounded
-  stream that follows until killed.
+- `app logs` **without** `--last`, `--until`, `--timeout`, or `--exits` — an
+  unbounded stream that follows until killed.
 
 Prefer the finite forms below. If you genuinely need a live stream, run it in the
 background with your own timeout.
@@ -175,6 +175,12 @@ doing. `idle` means it is waiting for events and isn't hung, so look for a
 callback or queue that never fired. `blocked` names the wait and your function
 that waits, and `busy` lists the functions the time went to. The full `sample`
 report is saved, and `reportPath` says where.
+
+When the app already died and you need to know why, `sweetpad app logs --exits
+-o json` lists its recent terminations (the last 10m, or `--last`) from
+launchd's exit records: the signal of a crash with its crash report, or the
+reason code and explanation of a kill that left no report, such as
+`Termination requested by simulator host`. Simulator and macOS only.
 
 ## Test
 

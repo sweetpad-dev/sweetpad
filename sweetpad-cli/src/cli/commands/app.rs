@@ -23,7 +23,7 @@ use crate::cli::state::LastLaunchedApp;
 use crate::cli::xcodebuild::{self, AppBundle};
 use crate::cli::{
     CliError, CliResult, CommandResult, Context, ErrorContext, ErrorKind, Render, Rendered,
-    buildlog, devicectl, oslog, process, pymobiledevice3, rawmode, simctl,
+    buildlog, devicectl, exits, oslog, process, pymobiledevice3, rawmode, simctl,
 };
 
 /// The `app run` flags — also the top-level `sweetpad run`'s, so the flagship
@@ -255,6 +255,19 @@ pub struct LogFilterArgs {
     /// match, and missing it exits non-zero.
     #[arg(long, value_name = "DUR", conflicts_with = "last", value_parser = parse_duration)]
     pub timeout: Option<Duration>,
+
+    /// List the app's recent terminations instead of its logs: when each
+    /// process ended and why, read from launchd's exit records. A crash shows
+    /// its signal, a watchdog or host kill its reason code and explanation, an
+    /// exit its status. Covers the last 10m unless '--last' says otherwise.
+    /// Simulator and macOS only. On macOS, launchd records only apps started
+    /// through LaunchServices ('open', the Finder), not an app 'app run --mac'
+    /// spawned directly.
+    #[arg(
+        long,
+        conflicts_with_all = ["until", "timeout", "subsystem", "category", "predicate", "level", "source"]
+    )]
+    pub exits: bool,
 }
 
 /// Parse a `30s` / `2m` / `1h` duration; a bare number is seconds.
@@ -418,8 +431,9 @@ pub enum Action {
     /// last-launched app when one is recorded; otherwise resolves the build
     /// target. On macOS it follows both the app's os_log and the stdout/stderr a
     /// detached launch captured ('--source' narrows this); '--last <dur>' prints
-    /// recent history and exits instead of following. With --json, emits one
-    /// JSON object per line instead of the rendered text.
+    /// recent history and exits instead of following, and '--exits' lists when
+    /// the app's processes ended and why. With --json, emits one JSON object
+    /// per line instead of the rendered text ('--exits' emits one report).
     Logs {
         #[command(flatten)]
         target: crate::cli::BuildTargetArgs,
@@ -4266,6 +4280,9 @@ fn simple_logs(
         && let Some((udid, app)) = last_launched_sim(ctx)
     {
         ctx.out.step("Booting simulator", || simctl::boot(&udid))?;
+        if filters.exits {
+            return exits_report(&exits::Source::Simulator(&udid), &app, filters);
+        }
         stream_logs(ctx, &LogSource::Simulator(&udid), &app, filters)?;
         return Ok(Rendered::Streamed);
     }
@@ -4291,10 +4308,20 @@ fn simple_logs(
             // Boot first so the stream attaches instead of failing with
             // "device is not booted" when the simulator is shut down.
             ctx.out.step("Booting simulator", || simctl::boot(udid))?;
+            if filters.exits {
+                return exits_report(&exits::Source::Simulator(udid), &app, filters);
+            }
             stream_logs(ctx, &LogSource::Simulator(udid), &app, filters)?;
         }
+        Target::Mac if filters.exits => return exits_report(&exits::Source::Mac, &app, filters),
         // The host's own `log stream`, the same source `app run --mac` uses.
         Target::Mac => stream_logs(ctx, &LogSource::Mac, &app, filters)?,
+        Target::Device(_) if filters.exits => {
+            return Err(CliError::new(
+                "app logs --exits isn't supported for a physical device; it reads launchd's \
+                 exit records from a simulator's or this Mac's unified log",
+            ));
+        }
         Target::Device(_) => {
             return Err(CliError::new(
                 "app logs can't follow a physical device yet — a device's os_log needs \
@@ -6350,6 +6377,125 @@ fn backfill_logs(
         }
     }
     Ok(())
+}
+
+/// How far back `app logs --exits` looks when `--last` is not given.
+const EXITS_WINDOW: &str = "10m";
+
+/// The longest `app logs --exits` waits on its `log show`. An hour of history
+/// takes 2 to 3s, so this bounds a wedged query rather than a slow one.
+const EXITS_QUERY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// `app logs --exits`: the app's terminations over the window, each decoded
+/// from launchd's exit line (see [`exits`]), with the crash report the system
+/// wrote for a crash when there is one.
+fn exits_report(source: &exits::Source, app: &AppBundle, filters: &LogFilterArgs) -> CommandResult {
+    let window = filters.last.as_deref().unwrap_or(EXITS_WINDOW);
+    let found = exits::query(
+        source,
+        &[&app.bundle_id],
+        &exits::Window::Last(window),
+        EXITS_QUERY_TIMEOUT,
+    )
+    .context("reading the app's exits from the unified log")?;
+    // A crash report is written a few seconds after the exit it records, so
+    // one older than the window cannot belong to an exit inside it.
+    let not_before = parse_duration(window)
+        .ok()
+        .and_then(|d| std::time::SystemTime::now().checked_sub(d));
+    let exits = found
+        .into_iter()
+        .map(|exit| {
+            let report = exit
+                .is_crash()
+                .then(|| exits::crash_report(&exit, not_before))
+                .flatten();
+            (exit, report)
+        })
+        .collect();
+    Ok(Rendered::data(ExitsReport {
+        bundle_id: app.bundle_id.clone(),
+        window: window.to_string(),
+        mac: matches!(source, exits::Source::Mac),
+        exits,
+    }))
+}
+
+/// The result of `app logs --exits`: one line per termination in human mode,
+/// `{bundleId, window, exits}` as JSON.
+struct ExitsReport {
+    bundle_id: String,
+    window: String,
+    mac: bool,
+    exits: Vec<(exits::Exit, Option<std::path::PathBuf>)>,
+}
+
+impl Render for ExitsReport {
+    fn human(&self, out: &Output) {
+        if self.exits.is_empty() {
+            out.note(&format!(
+                "no terminations of {} in the last {}",
+                self.bundle_id, self.window
+            ));
+            if self.mac {
+                out.note(
+                    "launchd records only apps started through LaunchServices ('open', the \
+                     Finder); an app 'app run --mac' or 'app launch --mac' spawned directly \
+                     leaves no exit record",
+                );
+            }
+            return;
+        }
+        out.note(&format!(
+            "{} termination{} of {} in the last {}",
+            self.exits.len(),
+            if self.exits.len() == 1 { "" } else { "s" },
+            self.bundle_id,
+            self.window
+        ));
+        let mut unreported_crash = false;
+        for (exit, report) in &self.exits {
+            let time = oslog::clock_time(&exit.time).unwrap_or_else(|| exit.time.clone());
+            let pid = exit.pid.map_or_else(|| "?".to_string(), |p| p.to_string());
+            let ran = exit
+                .ran_for_ms
+                .map_or_else(String::new, |ms| format!(", ran {}", ran_for(ms)));
+            out.line(&format!("{time}  pid {pid}  {}{ran}", exit.summary()));
+            if let Some(path) = report {
+                out.line(&format!("    crash report: {}", path.display()));
+            } else if exit.is_crash() {
+                unreported_crash = true;
+            }
+        }
+        if unreported_crash {
+            out.note(
+                "no crash report found for a crash above; 'sweetpad app diagnose' runs the app \
+                 under lldb and stops at the fault",
+            );
+        }
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let exits: Vec<serde_json::Value> = self
+            .exits
+            .iter()
+            .map(|(exit, report)| exit.json(report.as_deref()))
+            .collect();
+        serde_json::json!({
+            "bundleId": self.bundle_id,
+            "window": self.window,
+            "exits": exits,
+        })
+    }
+}
+
+/// A run time in the unit that reads naturally: `850ms`, `3.8s`, `12m`.
+fn ran_for(ms: u64) -> String {
+    match ms {
+        0..1_000 => format!("{ms}ms"),
+        1_000..60_000 => format!("{:.1}s", Duration::from_millis(ms).as_secs_f64()),
+        _ => format!("{}m", ms / 60_000),
+    }
 }
 
 /// Extract the simulator UDID from a `platform=…,id=<udid>` destination.

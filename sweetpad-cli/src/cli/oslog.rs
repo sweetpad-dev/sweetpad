@@ -184,7 +184,7 @@ fn format_line(
 /// Extract `HH:MM:SS.sss` from an Apple timestamp like
 /// `2024-12-31 23:59:59.000000-0800`. Returns `None` if the shape doesn't match,
 /// so the caller falls back to a time-less prefix.
-fn clock_time(timestamp: &str) -> Option<String> {
+pub(crate) fn clock_time(timestamp: &str) -> Option<String> {
     // The clock portion follows the date: "HH:MM:SS.ffffff±zzzz".
     let (hms, frac) = timestamp.split(' ').nth(1)?.split_once('.')?;
     let mut parts = hms.split(':');

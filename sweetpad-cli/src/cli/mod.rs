@@ -27,6 +27,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 pub mod buildlog;
 pub mod config;
 pub mod devicectl;
+pub mod exits;
 pub mod inject;
 pub mod merge;
 pub mod oslog;

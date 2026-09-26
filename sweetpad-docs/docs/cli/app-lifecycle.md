@@ -76,6 +76,39 @@ The match is a plain substring against the rendered line, so what you see is wha
 `--timeout`, missing the deadline exits non-zero, so a script can tell "it happened" from "it never
 did". On its own, `--timeout` just bounds the follow and exits 0.
 
+### Why the app stopped
+
+`--exits` lists the app's recent terminations instead of its logs, each with when it happened and
+why. The answer comes from the record launchd keeps when a process ends, so it covers deaths that
+leave no crash report, like a watchdog or the simulator host ending the app.
+
+```bash
+sweetpad app logs --exits              # the last ten minutes
+sweetpad app logs --exits --last 1h
+sweetpad app logs --exits -o json
+```
+
+Each line shows the process id, the raw reason with its code, and launchd's explanation when there
+is one:
+
+```text
+17:31:15.990  pid 57171  Termination requested by simulator host (OS_REASON_SPRINGBOARD 0xfbfbfbfb), ran 3.8s
+17:33:10.087  pid 59571  crashed with SIGABRT (sent by ExitProbe[59571]), ran 1.4s
+    crash report: /Users/you/Library/Logs/DiagnosticReports/ExitProbe-2026-09-26-173313.ips
+17:33:23.131  pid 59915  exited with status 3, ran 1.4s
+```
+
+A plain-words label appears only when the meaning is well known, such as a crash signal, memory
+pressure, or a watchdog timeout. Other codes show as they are.
+
+:::note
+
+`--exits` works for simulators and macOS apps, not physical devices. On macOS, launchd keeps a
+record only for apps started through LaunchServices, like `open` or the Finder. An app that `sweetpad
+run --mac` starts directly leaves none.
+
+:::
+
 ### macOS: two streams
 
 A macOS app produces two separate kinds of output, and by default you get both, interleaved as they

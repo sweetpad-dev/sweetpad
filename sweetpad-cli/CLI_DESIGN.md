@@ -109,7 +109,8 @@ sweetpad app <run|install|launch|debug|diagnose|uninstall|logs|stop|open-url|
                                         ui: drive a macOS app's UI, §9i;
                                         debug --batch / diagnose: scriptable lldb, §9j;
                                         logs: os_log + captured stdout on macOS, --source/--last, §9h;
-                                        container: the app's data/.app/App Group paths, §9o)
+                                        container: the app's data/.app/App Group paths, §9o;
+                                        logs --exits: why the app's processes ended, §9j)
 sweetpad merge <install|run>      semantic conflict resolution (pbxproj/spm
                                   are hidden aliases)
 sweetpad context <show|select|set|alias|remove>
@@ -226,7 +227,8 @@ builds it with real `xcodebuild`.
   verb, because `--no-logs` is exactly the agent-facing form. `app logs --json`
   emits a *stream* of raw
   `log stream` NDJSON events (one JSON object per line, no envelope; on macOS,
-  captured stdout/stderr lines are `{"source":"stdout",…}`);
+  captured stdout/stderr lines are `{"source":"stdout",…}`), except under
+  `--exits`, whose finite report takes the envelope like any other;
   `completions` ignores it. Clap usage errors (exit 2) print clap's human
   text on stderr regardless of `--json`.
 
@@ -1823,6 +1825,58 @@ transcript plus a best-effort frame-line list is enough for v1), a device path
 exception-catching. The stack snapshot for "wedged or merely idle?" inspects a
 *running* pid rather than owning a launch, so it sits with `screenshot`/`ui`
 under the observe verbs as `app sample` (§9r), not here.
+
+### `app logs --exits`
+
+`diagnose` catches a crash in a launch it owns. It cannot explain a death after
+the fact, and the deaths that need explaining often leave no crash report. A UI
+test failed with `Failed to application com.hyzyla.reflow is not running`;
+DiagnosticReports was empty, and the answer was only in the simulator's unified
+log, as launchd's exit line for the app: `exited with exit reason (namespace: 10
+code: 0xfbfbfbfb) - OS_REASON_SPRINGBOARD | … explanation:Termination requested
+by simulator host`. The host had killed it; nothing had crashed. Finding that
+took `simctl spawn <udid> log show`, a hand-picked window, and a grep.
+
+```
+sweetpad app logs --exits [--last DUR]
+```
+
+It is a preset on `app logs`. The app resolves the way `app logs` resolves it
+(the recorded last launch, else the build target), and `--last` sets the
+window, 10 minutes by default. launchd writes one line when a job ends, in
+three shapes, all captured on Xcode 27:
+
+- `exited due to exit(3)`: a status.
+- `exited due to SIGABRT | sent by App[pid]`: a signal and its sender
+  (`exc handler[pid]` for a fault).
+- `exited with exit reason (namespace: N code: 0x…) - OS_REASON_… | <…
+  explanation:…>`: the system ended it and said why.
+
+The job's label and pid are in the entry's `subsystem`, not its message, so the
+query matches the bundle id there. The parser then checks the label exactly,
+because a predicate `CONTAINS` for `com.app` also matches `com.app.widget`.
+
+**A label only where the meaning is settled.** Every exit carries its raw
+namespace, code, reason name and launchd's explanation. A plain-words label is
+added only where the meaning is well established: a status (`exited normally`,
+`exited with status 3`), a fault or abort signal (`crashed with SIGABRT`, plus
+the crash report when the system wrote one, matched by bundle id and pid),
+jetsam, `0x8badf00d`, `0xdead10cc`. Everything else gets no label rather than a
+guess. For `0xfbfbfbfb`, launchd's own "Termination requested by simulator host"
+says more than a label could.
+
+**Simulator and macOS, not devices.** A simulator's log is read through `simctl
+spawn`, a Mac app's from the host `log`. On macOS launchd records only the jobs
+it started, meaning apps opened through LaunchServices. `app run --mac` and `app
+launch --mac` spawn the executable directly, so their processes have no job and
+no exit line; `runningboardd` notes only `termination reported by proc_exit`,
+with no status. An empty macOS result says so. A physical device is refused.
+
+**Bounded.** One `log show` over the window, killed after 30s. Over an hour of
+history it took 2 to 3s.
+
+*Deliberately not built:* a device path, and following exits live. `app logs`
+already follows, and an exit is a question asked after the fact.
 
 ## 9k. v8 — bounded follows, listener recovery, honest compile counts
 
