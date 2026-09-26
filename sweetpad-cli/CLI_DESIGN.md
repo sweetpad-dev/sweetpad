@@ -1051,10 +1051,12 @@ the Swift 6 `swift package add-dependency`/`add-target-dependency`/`resolve`.
   `--up-to-next-minor-from`/`--branch`/`--revision`, plus `--to` for a range),
   resolves the package to read its real products, then prompts for the
   product(s)/target(s) to link (or takes `--product`/`--target`; strict-errors
-  off a TTY). Auto-resolves afterward unless `--no-resolve`. Supports remote git
-  URLs and local paths (`XCLocalSwiftPackageReference`); the product is linked via
-  a Frameworks `PBXBuildFile`, or a `PBXTargetDependency` for static-library
-  targets.
+  off a TTY). When the package declares no products, `add` fails before the
+  prompt with "the package declares no products to link" and rolls the
+  package back out. Auto-resolves afterward unless `--no-resolve`. Supports
+  remote git URLs and local paths (`XCLocalSwiftPackageReference`); the
+  product is linked via a Frameworks `PBXBuildFile`, or a
+  `PBXTargetDependency` for static-library targets.
 - **`remove`** drops the whole package (reference, product dependencies, target
   links, build files, and its `Package.resolved` pin) by name/URL/identity, or
   narrows to unlinking one product from one target with `--product`/`--target`.

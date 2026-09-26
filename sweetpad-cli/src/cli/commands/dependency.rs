@@ -634,9 +634,6 @@ fn resolve_products(
         ));
     }
     let available = discover_products(ctx, container, url, remote)?;
-    if available.is_empty() {
-        return Err(CliError::new("the package declares no products to link"));
-    }
     choose("product", &available, &[], ctx)
 }
 
@@ -670,8 +667,7 @@ fn discover_products(
     remote: bool,
 ) -> Result<Vec<String>, CliError> {
     if !remote {
-        let manifest = swiftpm::manifest_at(Path::new(url))?;
-        return Ok(product_names(&manifest));
+        return products_to_link(&swiftpm::manifest_at(Path::new(url))?);
     }
     let clone = CloneDir::new();
     ctx.out.step("Resolving package dependencies", || {
@@ -680,7 +676,7 @@ fn discover_products(
     let checkout = resolve_checkout(&clone.path, url).ok_or_else(|| {
         CliError::new("could not locate the resolved package checkout to read its products")
     })?;
-    Ok(product_names(&swiftpm::manifest_at(&checkout)?))
+    products_to_link(&swiftpm::manifest_at(&checkout)?)
 }
 
 /// For a `Package.swift` add: read the just-added package's products from its
@@ -693,14 +689,24 @@ fn package_products(
     remote: bool,
 ) -> Result<Vec<String>, CliError> {
     if !remote {
-        return Ok(product_names(&swiftpm::manifest_at(Path::new(url))?));
+        return products_to_link(&swiftpm::manifest_at(Path::new(url))?);
     }
     let pkg_dir = swiftpm::package_dir(container).unwrap_or_else(|| PathBuf::from("."));
     let checkout = resolve_checkout(&pkg_dir.join(".build"), url).ok_or_else(|| {
         CliError::new("could not locate the resolved package checkout to read its products")
     })?;
-    let manifest = swiftpm::manifest_at(&checkout)?;
-    Ok(product_names(&manifest))
+    products_to_link(&swiftpm::manifest_at(&checkout)?)
+}
+
+/// The products an added package offers for the product picker, on either
+/// kind of project. A package that declares none has nothing to link, which
+/// is an error here rather than a picker with nothing in it.
+fn products_to_link(manifest: &swiftpm::Manifest) -> Result<Vec<String>, CliError> {
+    let names = product_names(manifest);
+    if names.is_empty() {
+        return Err(CliError::new("the package declares no products to link"));
+    }
+    Ok(names)
 }
 
 // ---------------------------------------------------------------------------
@@ -1242,6 +1248,13 @@ fn choose(
 }
 
 fn multi_select(kind: &str, items: &[String], color: bool) -> Result<Vec<String>, CliError> {
+    // dialoguer answers an empty list with a bare IO error, so a project with
+    // no targets gets a message instead.
+    if items.is_empty() {
+        return Err(CliError::new(format!(
+            "there are no {kind}s to choose from"
+        )));
+    }
     let theme: Box<dyn dialoguer::theme::Theme> = if color {
         Box::new(dialoguer::theme::ColorfulTheme::default())
     } else {
@@ -1904,6 +1917,23 @@ mod tests {
             ["swift-algorithms — → 1.2.1", "swift-numerics 1.0.2 → —"]
         );
         assert_eq!(pin_changes(None, &after, None).len(), 1);
+    }
+
+    /// Both kinds of project read an added package's products through this,
+    /// so neither opens the product picker with nothing in it.
+    #[test]
+    fn a_package_with_no_products_has_nothing_to_link() {
+        let manifest: swiftpm::Manifest =
+            serde_json::from_str(r#"{"name":"Empty","products":[],"targets":[]}"#).unwrap();
+        let err = products_to_link(&manifest).unwrap_err();
+        assert_eq!(err.to_string(), "the package declares no products to link");
+    }
+
+    #[test]
+    fn a_picker_with_nothing_to_offer_is_an_error() {
+        let err = multi_select("target", &[], false).unwrap_err();
+        assert_eq!(err.to_string(), "there are no targets to choose from");
+        assert_eq!(err.error_kind(), ErrorKind::Generic);
     }
 
     #[test]

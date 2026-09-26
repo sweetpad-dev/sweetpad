@@ -1,4 +1,4 @@
-//! `dependency add` on a Swift package, driven against stub `swift` scripts
+//! `dependency add` of a local package, driven against stub `swift` scripts
 //! that log their argv: the argv shows how a local dependency reaches SwiftPM
 //! and which product gets linked, and a stub that fails every package command
 //! exercises the early exits that must not leave the crash-safe manifest
@@ -282,6 +282,87 @@ fn an_interactive_local_add_picks_from_the_packages_manifest() {
         calls.contains("package add-target-dependency DepKit App --package Dep\n"),
         "{calls}"
     );
+    let _ = std::fs::remove_dir_all(&home);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A local package that declares no products has nothing to link, and an
+/// interactive add says so instead of opening an empty product picker, into
+/// a Package.swift and into an Xcode project alike. Either way the add is
+/// rolled back.
+#[test]
+fn an_interactive_add_of_a_package_with_no_products_says_so() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = tmp("empty-home");
+    let root = tmp("empty-root");
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let empty_dump = r#"{"name":"Empty","products":[],"targets":[]}"#;
+    let app_dump = r#"{"name":"App","products":[],"targets":[{"name":"App","type":"regular"}]}"#;
+    std::fs::write(
+        bin.join("swift"),
+        format!(
+            "#!/bin/sh\n\
+             case \"$*\" in\n\
+             --version) echo 'Apple Swift version 6.4' ;;\n\
+             'package dump-package --package-path ../Empty') echo '{empty_dump}' ;;\n\
+             'package dump-package') echo '{app_dump}' ;;\n\
+             esac\n"
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(bin.join("swift"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::create_dir_all(root.join("Empty")).unwrap();
+    let package = root.join("App");
+    std::fs::create_dir_all(&package).unwrap();
+    std::fs::write(
+        package.join("Package.swift"),
+        "// swift-tools-version: 6.0\n",
+    )
+    .unwrap();
+    let project = root.join("Project");
+    std::fs::create_dir_all(project.join("App.xcodeproj")).unwrap();
+    std::fs::copy(
+        Path::new(env!("SWEETPAD_LIB_DIR")).join(
+            "fixtures/_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj/project.pbxproj",
+        ),
+        project.join("App.xcodeproj/project.pbxproj"),
+    )
+    .unwrap();
+
+    for (cwd, document) in [
+        (&package, package.join("Package.swift")),
+        (&project, project.join("App.xcodeproj/project.pbxproj")),
+    ] {
+        let before = std::fs::read_to_string(&document).unwrap();
+        let mut cmd = sweetpad_command(
+            &["dep", "add", "../Empty", "--target", "App"],
+            cwd,
+            &home,
+            &bin,
+        );
+        cmd.env_remove("CI").env_remove("SWEETPAD_NONINTERACTIVE");
+        // Escape, should a picker open anyway.
+        let (status, shown) = answer_on_pty(cmd, "Select product(s)", b"\x1b");
+        assert!(!status.success(), "{}: expected a failure", cwd.display());
+        assert!(
+            shown.contains("the package declares no products to link"),
+            "{}:\n{shown}",
+            cwd.display()
+        );
+        assert!(
+            !shown.contains("prompt failed"),
+            "{}:\n{shown}",
+            cwd.display()
+        );
+        assert_eq!(
+            std::fs::read_to_string(&document).unwrap(),
+            before,
+            "{}: not rolled back",
+            document.display()
+        );
+    }
     let _ = std::fs::remove_dir_all(&home);
     let _ = std::fs::remove_dir_all(&root);
 }

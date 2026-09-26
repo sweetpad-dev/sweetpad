@@ -95,7 +95,8 @@ sweetpad dependency add https://github.com/apple/swift-collections \
   --from 1.1.0 --product Collections --target MyApp
 ```
 
-Both flags repeat, for a package whose products go into several targets.
+Both flags repeat, for a package whose products go into several targets. A package that declares no
+products has nothing to link, so `add` stops with an error and leaves the project as it was.
 
 The requirement flags mirror SwiftPM's own:
 
