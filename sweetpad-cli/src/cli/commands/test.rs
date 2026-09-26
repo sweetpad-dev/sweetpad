@@ -612,7 +612,12 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
             let _ = std::fs::remove_dir_all(&run_bundle);
         }
         let tip = xcodebuild::device_tip(&plan.command().0, &outcome.diagnostics);
-        return Err(build_step_failure(&resolved.container, outcome).tip(tip));
+        return Err(build_step_failure(
+            &resolved.container,
+            outcome,
+            !Output::streams_share_a_file(),
+        )
+        .tip(tip));
     }
     // The scratch run is the project's latest real result: promote it to the
     // retained slot.
@@ -685,7 +690,16 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
 /// is parked in the project's artifact slot and named, rather than quoted in
 /// full. A run with nothing parseable (a bad destination, a signing refusal)
 /// keeps the tail, which is then the only account of what happened.
-fn build_step_failure(container: &Container, outcome: xcodebuild::TestRunOutcome) -> CliError {
+///
+/// A human run streamed the errors to stdout. `stderr_apart` says stderr is a
+/// different file (`2>err.log`), where they are not in front of this error, so
+/// it repeats the first few ([`xcodebuild::repeated_errors`]) rather than
+/// leaving the stream to explain it.
+fn build_step_failure(
+    container: &Container,
+    outcome: xcodebuild::TestRunOutcome,
+    stderr_apart: bool,
+) -> CliError {
     // A blocked build is not a compile failure: no diagnostic describes it and
     // no edit fixes it, so the flag that unblocks it is the whole answer.
     if let Some(hint) = outcome.blocker {
@@ -693,12 +707,18 @@ fn build_step_failure(container: &Container, outcome: xcodebuild::TestRunOutcome
             .kind(crate::cli::ErrorKind::BuildFailure)
             .context("running the tests");
     }
-    let shown = xcodebuild::streamed_an_error(outcome.streamed, &outcome.diagnostics);
+    let streamed_error = xcodebuild::streamed_an_error(outcome.streamed, &outcome.diagnostics);
+    let shown = streamed_error && !stderr_apart;
     let log = outcome
         .transcript
         .as_deref()
         .and_then(|text| xcodebuild::record_failure_transcript(container, "-test.log", text));
     let detail = match xcodebuild::diagnostics_summary(&outcome.diagnostics) {
+        // The rest stay on stdout: a test run records no build for
+        // `build diagnostics` to read back.
+        Some(_) if streamed_error && stderr_apart => {
+            xcodebuild::repeated_errors(&outcome.diagnostics, " in the log on stdout")
+        }
         Some(summary) => {
             let log = log.map_or_else(String::new, |p| format!("; full log: {}", p.display()));
             format!(": {summary}{log}")
@@ -2198,7 +2218,7 @@ mod tests {
             blocker: None,
             streamed: false,
         };
-        let err = build_step_failure(&container, outcome);
+        let err = build_step_failure(&container, outcome, false);
 
         let json = err.json();
         assert_eq!(json["code"], "build_failure");
@@ -2238,7 +2258,7 @@ mod tests {
             blocker: None,
             streamed: true,
         };
-        let err = build_step_failure(&container, outcome);
+        let err = build_step_failure(&container, outcome, false);
         assert!(err.to_string().contains("Unable to find a destination"));
         assert!(err.json().get("diagnostics").is_none());
         // Nothing on the stream explained it, so the terminal needs this error.
@@ -2258,7 +2278,7 @@ mod tests {
             blocker: blocker.map(str::to_string),
             streamed,
         };
-        let err = build_step_failure(&container, outcome(true, None));
+        let err = build_step_failure(&container, outcome(true, None), false);
         assert!(err.is_shown());
         // The machine-readable object and the exit code still carry it.
         assert_eq!(err.json()["diagnostics"].as_array().map(Vec::len), Some(1));
@@ -2266,8 +2286,41 @@ mod tests {
 
         // The captured modes showed nothing, and a blocker's hint says what
         // the stream did not.
-        assert!(!build_step_failure(&container, outcome(false, None)).is_shown());
-        assert!(!build_step_failure(&container, outcome(true, Some("approve it"))).is_shown());
+        assert!(!build_step_failure(&container, outcome(false, None), false).is_shown());
+        assert!(
+            !build_step_failure(&container, outcome(true, Some("approve it")), false).is_shown()
+        );
+    }
+
+    /// With stderr in another file than the stream, the error carries the
+    /// streamed errors itself, and says the rest are on stdout, since a test
+    /// run records nothing for 'build diagnostics' to read back.
+    #[test]
+    fn a_streamed_compile_error_is_repeated_on_a_stderr_apart() {
+        let container = Container::Project(PathBuf::from("/work/App.xcodeproj"));
+        let transcript = (1..=5)
+            .map(|n| format!("/work/App/Picker.swift:{n}:11: error: cannot find 'M{n}' in scope\n"))
+            .collect::<Vec<_>>()
+            .concat();
+        let outcome = xcodebuild::TestRunOutcome {
+            passed: false,
+            tail: None,
+            diagnostics: crate::cli::buildlog::diagnostics_from_transcript(&transcript),
+            transcript: None,
+            blocker: None,
+            streamed: true,
+        };
+        let err = build_step_failure(&container, outcome, true);
+        assert!(!err.is_shown());
+        assert_eq!(
+            err.to_string(),
+            "running the tests: xcodebuild test failed before any test ran:\n  \
+             error: /work/App/Picker.swift:1:11: cannot find 'M1' in scope\n  \
+             error: /work/App/Picker.swift:2:11: cannot find 'M2' in scope\n  \
+             error: /work/App/Picker.swift:3:11: cannot find 'M3' in scope\n  \
+             and 2 more error(s) in the log on stdout"
+        );
+        assert_eq!(err.tip_text(), None);
     }
 
     #[test]

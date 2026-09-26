@@ -213,10 +213,15 @@ impl BuildPlan<'_> {
             // Classified here, the one chokepoint every build goes through, so
             // `build start` and `app run`'s build step both exit 3 on a failed
             // compile instead of the generic 1.
-            Err(
-                build_failure(&parts, diagnostics, blocker, streamed, &failure_detail)
-                    .context("building the project"),
+            Err(build_failure(
+                &parts,
+                diagnostics,
+                blocker,
+                streamed,
+                !Output::streams_share_a_file(),
+                &failure_detail,
             )
+            .context("building the project"))
         }
     }
 }
@@ -227,19 +232,38 @@ impl BuildPlan<'_> {
 /// the terminal even under a streamed log, since no diagnostic in that log
 /// explains it. `detail` is what a captured run appends to the headline, and
 /// `streamed` says whether the beautified log already rendered the errors.
+/// It rendered them to stdout, so they sit just above this error only while
+/// stderr writes to the same file. `stderr_apart` says it does not
+/// (`2>err.log`, or stdout piped away; see [`Output::streams_share_a_file`]),
+/// and the error then repeats the first few ([`repeated_errors`]) and points
+/// at `build diagnostics` for the rest instead of being
+/// [`shown`](CliError::shown).
 pub(crate) fn build_failure(
     args: &[String],
     diagnostics: Vec<serde_json::Value>,
     blocker: Option<String>,
     streamed: bool,
+    stderr_apart: bool,
     detail: &str,
 ) -> CliError {
-    let shown = blocker.is_none() && streamed_an_error(streamed, &diagnostics);
+    let streamed_error = blocker.is_none() && streamed_an_error(streamed, &diagnostics);
+    let shown = streamed_error && !stderr_apart;
+    let repeated = (streamed_error && stderr_apart).then(|| repeated_errors(&diagnostics, ""));
     let headline = blocker.map_or_else(
-        || format!("xcodebuild exited with a non-zero status{detail}"),
+        || {
+            format!(
+                "xcodebuild exited with a non-zero status{}",
+                repeated.as_deref().unwrap_or(detail)
+            )
+        },
         |hint| format!("the build is blocked, not broken: {hint}"),
     );
-    let tip = device_tip(args, &diagnostics);
+    // A device's own reason for failing outranks the list of every error.
+    let tip = device_tip(args, &diagnostics).or_else(|| {
+        repeated
+            .is_some()
+            .then(|| "run 'sweetpad build diagnostics' to see every error and warning".to_string())
+    });
     let err = CliError::new(headline)
         .kind(ErrorKind::BuildFailure)
         .diagnostics(diagnostics)
@@ -663,6 +687,44 @@ pub(crate) fn diagnostics_summary(diagnostics: &[serde_json::Value]) -> Option<S
         n => format!(" (and {} more)", n - 1),
     };
     Some(format!("{location}{message}{more}"))
+}
+
+/// How many of the errors a log streamed to stdout [`repeated_errors`] repeats.
+const REPEATED_ERRORS: usize = 3;
+
+/// The errors a beautified log streamed to stdout, for an error that stderr
+/// prints somewhere else (`2>err.log`), where those lines are not in front of
+/// it: `:` and then the first [`REPEATED_ERRORS`] distinct errors, one per
+/// indented line as `build diagnostics` prints them, then a count of the rest
+/// followed by `rest_are`, which says where they are. Only the first line of
+/// a message is kept, as in [`diagnostics_summary`].
+pub(crate) fn repeated_errors(diagnostics: &[serde_json::Value], rest_are: &str) -> String {
+    use std::fmt::Write as _;
+
+    let mut errors: Vec<(Option<&str>, &str)> = Vec::new();
+    for d in diagnostics.iter().filter(|d| d["severity"] == "error") {
+        let message = d["message"]
+            .as_str()
+            .and_then(|m| m.lines().next())
+            .map_or("(no message)", |line| line.trim_end_matches(':'));
+        let error = (d["location"].as_str(), message);
+        if !errors.contains(&error) {
+            errors.push(error);
+        }
+    }
+    let mut detail = String::from(":");
+    for (location, message) in errors.iter().take(REPEATED_ERRORS) {
+        let line = buildlog::diagnostic_line(&buildlog::DiagKind::Error, *location, message, false);
+        let _ = write!(detail, "\n  {line}");
+    }
+    if errors.len() > REPEATED_ERRORS {
+        let _ = write!(
+            detail,
+            "\n  and {} more error(s){rest_are}",
+            errors.len() - REPEATED_ERRORS
+        );
+    }
+    detail
 }
 
 /// Whether a failed run's own log already told the user why: the beautified
@@ -2076,6 +2138,82 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             Some("A.swift:1:1: unused variable 'x'")
         );
         assert_eq!(diagnostics_summary(&[]), None);
+    }
+
+    /// The repeat of a streamed log's errors keeps each distinct error once,
+    /// the first line of its message, and no warning, and counts what it
+    /// leaves out.
+    #[test]
+    fn the_repeated_errors_are_the_first_distinct_ones() {
+        let diagnostics = vec![
+            diag("warning", Some("A.swift:1:1"), "unused variable 'x'"),
+            diag("error", Some("B.swift:9:3"), "cannot find 'foo' in scope"),
+            diag("error", Some("B.swift:9:3"), "cannot find 'foo' in scope"),
+            diag(
+                "error",
+                None,
+                "xcodebuild: Unable to find a device matching the provided destination:\n\
+                 \t\t{ platform:iOS }",
+            ),
+            diag("error", Some("C.swift:2:1"), "expected '}'"),
+            diag("error", Some("D.swift:4:1"), "expected ')'"),
+        ];
+        assert_eq!(
+            repeated_errors(&diagnostics, " elsewhere"),
+            ":\n  \
+             error: B.swift:9:3: cannot find 'foo' in scope\n  \
+             error: xcodebuild: Unable to find a device matching the provided destination\n  \
+             error: C.swift:2:1: expected '}'\n  \
+             and 1 more error(s) elsewhere"
+        );
+        assert_eq!(
+            repeated_errors(&diagnostics[..2], ""),
+            ":\n  error: B.swift:9:3: cannot find 'foo' in scope"
+        );
+    }
+
+    /// A streamed compile error is left to the stream while stderr shares its
+    /// file, and repeated, with 'build diagnostics' as the tip, once it does
+    /// not. Neither changes what the machine modes read.
+    #[test]
+    fn a_build_failure_repeats_streamed_errors_only_on_a_stderr_apart() {
+        let diagnostics = || {
+            vec![diag(
+                "error",
+                Some("B.swift:9:3"),
+                "cannot find 'foo' in scope",
+            )]
+        };
+        let args = vec!["build".to_string()];
+
+        let beside = build_failure(&args, diagnostics(), None, true, false, "");
+        assert!(beside.is_shown());
+        assert_eq!(
+            beside.to_string(),
+            "xcodebuild exited with a non-zero status"
+        );
+        assert_eq!(beside.tip_text(), None);
+
+        let apart = build_failure(&args, diagnostics(), None, true, true, "");
+        assert!(!apart.is_shown());
+        assert_eq!(
+            apart.to_string(),
+            "xcodebuild exited with a non-zero status:\n  \
+             error: B.swift:9:3: cannot find 'foo' in scope"
+        );
+        assert_eq!(
+            apart.tip_text(),
+            Some("run 'sweetpad build diagnostics' to see every error and warning")
+        );
+        assert_eq!(apart.json()["diagnostics"], beside.json()["diagnostics"]);
+
+        // A captured run was never streamed, so it keeps its own detail.
+        let captured = build_failure(&args, diagnostics(), None, false, true, ": the detail");
+        assert_eq!(
+            captured.to_string(),
+            "xcodebuild exited with a non-zero status: the detail"
+        );
+        assert_eq!(captured.tip_text(), None);
     }
 
     fn destination_args(specs: &[&str]) -> Vec<String> {

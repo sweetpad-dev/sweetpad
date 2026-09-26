@@ -87,6 +87,23 @@ error: /path/to/Sources/App/ContentView.swift:12:14: cannot find 'greeting' in s
 A failed build exits with code `3`, which is how a script tells "the build broke" apart from "the
 scheme doesn't exist" or "Xcode isn't installed". Run `sweetpad help exit-codes` for the full list.
 
+The build log, errors included, goes to stdout. When stderr goes to its own file, as in
+`sweetpad build 2>err.log`, the error there repeats the first few errors and points at
+`sweetpad build diagnostics`, so the file says why the build failed:
+
+```console
+$ sweetpad build 2>err.log
+  Compiling ContentView.swift
+error: /path/to/Sources/App/ContentView.swift:12:14: cannot find 'greeting' in scope
+✗ Build failed
+$ cat err.log
+building SweetpadCIApp (Debug) for platform=iOS Simulator,id=F92801F8-…
+error: building the project
+  xcodebuild exited with a non-zero status:
+  error: /path/to/Sources/App/ContentView.swift:12:14: cannot find 'greeting' in scope
+tip: run 'sweetpad build diagnostics' to see every error and warning
+```
+
 If you've scrolled past the errors, or something else has since filled your terminal, you can ask for
 them again without rebuilding:
 

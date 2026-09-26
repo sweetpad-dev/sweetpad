@@ -145,20 +145,165 @@ The following build commands failed:
 (1 failure)
 ";
 
+/// The build arguments [`build_with_stub`] passes, for a caller that needs
+/// the command itself.
+fn build_args(project: &Path) -> Vec<&str> {
+    vec![
+        "build",
+        "--project",
+        project.to_str().unwrap(),
+        "--scheme",
+        "SweetpadCIMac",
+        "--configuration",
+        "Debug",
+        "--destination",
+        "platform=macOS",
+        "--non-interactive",
+    ]
+}
+
+/// Run `cmd` with stdout and stderr in one file under `dir`, the way a
+/// terminal or a `2>&1` capture holds them. Returns the exit code and what
+/// the file holds.
+fn in_one_file(mut cmd: Command, dir: &Path) -> (Option<i32>, String) {
+    let transcript = dir.join("one-file.txt");
+    let file = std::fs::File::create(&transcript).unwrap();
+    let status = cmd
+        .stdout(file.try_clone().unwrap())
+        .stderr(file)
+        .status()
+        .unwrap();
+    (status.code(), std::fs::read_to_string(&transcript).unwrap())
+}
+
 /// The streamed log already names the compile error and closes on `✗ Build
-/// failed`, so human output ends there; the exit code still says it failed.
+/// failed`, so where stderr shares its file, output ends there; the exit code
+/// still says it failed.
 #[test]
 fn a_streamed_compile_error_ends_human_output_at_the_banner() {
-    let out = build_with_stub("broken", BROKEN, 65, &[]);
+    let project = project();
+    let (cmd, _home, cwd) = stub_command("broken", BROKEN, 65, &build_args(&project));
+    let (code, shown) = in_one_file(cmd, &cwd);
+    assert_eq!(code, Some(3), "{shown}");
+    assert_eq!(shown.lines().last(), Some("✗ Build failed"), "{shown}");
+    assert!(
+        shown.contains("error: /src/App/ContentView.swift:17:19: cannot find"),
+        "{shown}"
+    );
+    assert_eq!(
+        shown.matches("cannot find 'undefinedSymbol'").count(),
+        1,
+        "{shown}"
+    );
+    assert!(!shown.contains("error: building"), "{shown}");
+}
+
+/// Every verb that builds streams its errors to stdout, and with stderr in
+/// one file beside it none of them repeats the errors after the banner.
+#[test]
+fn no_build_verb_repeats_errors_the_log_just_showed() {
+    let project = project();
+    let project = project.to_str().unwrap();
+    let target = [
+        "--project",
+        project,
+        "--scheme",
+        "SweetpadCIMac",
+        "--configuration",
+        "Debug",
+    ];
+    let with = |verb: &[&'static str], rest: &[&'static str]| -> Vec<&str> {
+        let mut args: Vec<&str> = verb.to_vec();
+        args.extend_from_slice(&target);
+        args.extend_from_slice(rest);
+        args.push("--non-interactive");
+        args
+    };
+    let mac = ["--destination", "platform=macOS"];
+    for (tag, args) in [
+        ("once-test", with(&["test"], &mac)),
+        ("once-test-build", with(&["test", "build"], &mac)),
+        ("once-session", with(&["app", "run", "--hot", "--mac"], &[])),
+    ] {
+        let (mut cmd, _home, cwd) = stub_command(tag, BROKEN, 65, &args);
+        // The hot session checks for an injection client before it builds.
+        let client = cwd.join("client.dylib");
+        std::fs::write(&client, b"").unwrap();
+        cmd.env("SWEETPAD_HOTRELOAD_DYLIB", &client);
+        let (code, shown) = in_one_file(cmd, &cwd);
+        assert_eq!(code, Some(3), "{tag}: {shown}");
+        assert_eq!(
+            shown.matches("cannot find 'undefinedSymbol'").count(),
+            1,
+            "{tag}: {shown}"
+        );
+        assert!(!shown.contains("error: building"), "{tag}: {shown}");
+        assert!(!shown.contains("error: running"), "{tag}: {shown}");
+    }
+}
+
+/// With stderr in a file of its own (`2>err.log`), the streamed errors are
+/// not in front of the error, so it repeats them and names the command that
+/// reads them back.
+#[test]
+fn a_redirected_stderr_gets_the_errors_the_log_showed() {
+    let out = build_with_stub("redirected", BROKEN, 65, &[]);
     assert_eq!(out.status.code(), Some(3), "{out:?}");
     let stdout = String::from_utf8(out.stdout).unwrap();
     assert_eq!(stdout.lines().last(), Some("✗ Build failed"), "{stdout}");
-    assert!(
-        stdout.contains("error: /src/App/ContentView.swift:17:19: cannot find"),
-        "{stdout}"
-    );
     let stderr = String::from_utf8(out.stderr).unwrap();
-    assert!(!stderr.contains("error:"), "{stderr}");
+    assert!(
+        stderr.ends_with(
+            "error: building the project\n  \
+             xcodebuild exited with a non-zero status:\n  \
+             error: /src/App/ContentView.swift:17:19: cannot find 'undefinedSymbol' in scope\n\
+             tip: run 'sweetpad build diagnostics' to see every error and warning\n"
+        ),
+        "{stderr}"
+    );
+}
+
+/// Past the first few errors, the repeat counts the rest. `test` records no
+/// build for 'build diagnostics' to read back, so it says they stay on stdout.
+#[test]
+fn a_redirected_stderr_counts_the_errors_it_leaves_out() {
+    let broken = (1..=5)
+        .map(|n| format!("/src/App/ContentView.swift:{n}:9: error: cannot find 'x{n}' in scope\n"))
+        .chain(["** BUILD FAILED **\n".to_string()])
+        .collect::<Vec<_>>()
+        .concat();
+    let first_three = (1..=3)
+        .map(|n| {
+            format!("  error: /src/App/ContentView.swift:{n}:9: cannot find 'x{n}' in scope\n")
+        })
+        .collect::<Vec<_>>()
+        .concat();
+
+    let build = build_with_stub("many-build", &broken, 65, &[]);
+    let stderr = String::from_utf8(build.stderr).unwrap();
+    assert!(
+        stderr.ends_with(&format!(
+            "xcodebuild exited with a non-zero status:\n{first_three}  \
+             and 2 more error(s)\n\
+             tip: run 'sweetpad build diagnostics' to see every error and warning\n"
+        )),
+        "{stderr}"
+    );
+
+    let project = project();
+    let mut args = build_args(&project);
+    args[0] = "test";
+    let test = sweetpad_with_stub("many-test", &broken, 65, &args);
+    assert_eq!(test.status.code(), Some(3), "{test:?}");
+    let stderr = String::from_utf8(test.stderr).unwrap();
+    assert!(
+        stderr.ends_with(&format!(
+            "error: running the tests\n  \
+             xcodebuild test failed before any test ran:\n{first_three}  \
+             and 2 more error(s) in the log on stdout\n"
+        )),
+        "{stderr}"
+    );
 }
 
 /// With nothing on the stream to explain it, the trailing error is the only
@@ -263,6 +408,8 @@ fn a_device_destination_error_ends_on_a_device_info_tip() {
     let tip = "run 'sweetpad device info 00008110-000559182E90401E' to see why the device \
                isn't ready";
 
+    // A stderr of its own repeats the destination error, and the device's
+    // tip still closes it.
     let human = build("device-human", &[]);
     assert_eq!(human.status.code(), Some(3), "{human:?}");
     let stderr = String::from_utf8(human.stderr).unwrap();
@@ -271,7 +418,37 @@ fn a_device_destination_error_ends_on_a_device_info_tip() {
         Some(format!("tip: {tip}").as_str()),
         "{stderr}"
     );
-    assert!(!stderr.contains("error:"), "{stderr}");
+    assert!(
+        stderr.contains("  error: xcodebuild: Timed out waiting for all destinations"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("build diagnostics"), "{stderr}");
+
+    let (cmd, _home, cwd) = stub_command(
+        "device-one-file",
+        DESTINATION_TIMEOUT,
+        70,
+        &[
+            "build",
+            "--project",
+            project.to_str().unwrap(),
+            "--scheme",
+            "SweetpadCIMac",
+            "--configuration",
+            "Debug",
+            "--destination",
+            "platform=iOS,id=00008110-000559182E90401E",
+            "--non-interactive",
+        ],
+    );
+    let (code, shown) = in_one_file(cmd, &cwd);
+    assert_eq!(code, Some(3), "{shown}");
+    assert_eq!(
+        shown.lines().last(),
+        Some(format!("tip: {tip}").as_str()),
+        "{shown}"
+    );
+    assert!(!shown.contains("error: building"), "{shown}");
 
     for mode in [["-o", "json"], ["-o", "ndjson"]] {
         let out = build(&format!("device-{}", mode[1]), &mode);
@@ -335,7 +512,13 @@ fn a_destination_error_closes_on_the_failure_banner() {
         );
         let stderr = String::from_utf8(out.stderr).unwrap();
         assert_eq!(stderr.lines().last(), Some(tip), "{verb}: {stderr}");
-        assert!(!stderr.contains("error:"), "{verb}: {stderr}");
+        assert!(
+            stderr.contains(
+                "  error: xcodebuild: Unable to find a device matching the provided \
+                 destination specifier\n"
+            ),
+            "{verb}: {stderr}"
+        );
     }
 }
 
@@ -435,7 +618,12 @@ fn the_run_sessions_build_ends_on_the_banner_too() {
             "{tag}: {stdout}"
         );
         let stderr = String::from_utf8(out.stderr).unwrap();
-        assert!(!stderr.contains("error:"), "{tag}: {stderr}");
+        assert!(
+            stderr.contains(
+                "error: building the app\n  xcodebuild exited with a non-zero status:\n  error: "
+            ),
+            "{tag}: {stderr}"
+        );
     }
 }
 

@@ -207,7 +207,14 @@ builds it with real `xcodebuild`.
   starts), sweetpad prints the line itself. When the log already showed the
   error, output ends there and no trailing error repeats it. The exit code
   still reports the failure, and a failure with no parsed error still prints
-  its message.
+  its message. That holds while stdout and stderr are one file (a terminal,
+  or `2>&1`), because the streamed log goes to stdout. When they are
+  different files (`2>err.log`, or stdout piped away), the error on stderr
+  repeats the first three distinct errors, one per line, and counts the rest.
+  `build`, `test build` and the run session's build then close on `tip: run
+  'sweetpad build diagnostics' to see every error and warning` (a device's
+  own tip wins). `test` records no build for that command to read back, so
+  its count says the rest are in the log on stdout.
 - Help, errors, warnings and notes quote a command or value with 'single
   quotes', as clap does; a terminal prints backticks literally. A unit test
   walks the clap tree and fails on a backtick in any help text.

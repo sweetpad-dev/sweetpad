@@ -3126,8 +3126,15 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
         // that caused it, as `BuildPlan::run`'s does, and the failure reads the
         // same as there.
         Ok(_) => BuildOutcome::Failed(
-            xcodebuild::build_failure(&parts, diagnostics, blocker.hint(), true, "")
-                .context("building the app"),
+            xcodebuild::build_failure(
+                &parts,
+                diagnostics,
+                blocker.hint(),
+                true,
+                !Output::streams_share_a_file(),
+                "",
+            )
+            .context("building the app"),
         ),
         Err(e) => BuildOutcome::Failed(
             CliError::new(format!("failed to wait for xcodebuild: {e}"))
