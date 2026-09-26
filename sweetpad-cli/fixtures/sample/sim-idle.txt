@@ -1,0 +1,50 @@
+Analysis of sampling SweetpadCIApp (pid 78259) every 1 millisecond
+Process:         SweetpadCIApp [78259]
+Path:            /Users/USER/Library/Developer/CoreSimulator/Devices/F13C004A-0824-4870-B4F2-29AAEE36636E/data/Containers/Bundle/Application/47F78302-CFDA-4371-BFD8-8882B8FC6597/SweetpadCIApp.app/SweetpadCIApp
+Load Address:    0x102f30000
+Identifier:      dev.sweetpad.ci.app
+Version:         0
+Code Type:       ARM64
+Platform:        iOS Simulator
+Parent Process:  launchd_sim [69658]
+Target Type:     live task (Roots Present)
+
+Date/Time:       2026-09-26 17:53:12.775 +0200
+Launch Time:     2026-09-26 17:52:49.338 +0200
+OS Version:      macOS 27.0 (26A428)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         13.8M
+Physical footprint (peak):  14.1M
+Idle exit:                  untracked
+----
+
+Call graph:
+    2636 Thread_19703514   DispatchQueue_1: com.apple.main-thread  (serial)
+    + 2636 start  (in dyld) + 6688  [0x1030c9e80]
+    +   2636 start_sim  (in dyld_sim) + 20  [0x103214350]
+    +     2636 __debug_main_executable_dylib_entry_point  (in SweetpadCIApp.debug.dylib) + 12  [0x102f55dd0]  SweetpadCIApp.swift:0
+    +       2636 static SweetpadCIApp.$main()  (in SweetpadCIApp.debug.dylib) + 40  [0x102f55d28]  /<compiler-generated>:0
+    +         2636 static App.main()  (in SwiftUI) + 148  [0x1c9b09750]
+    +           2636 runApp<A>(_:)  (in SwiftUI) + 204  [0x1c9d8b784]
+    +             2636 closure #1 in KitRendererCommon(_:)  (in SwiftUI) + 164  [0x1c9d8b908]
+    +               2636 UIApplicationMain  (in UIKitCore) + 124  [0x1c5535e30]
+    +                 2636 GSEventRunModal  (in GraphicsServices) + 116  [0x2219199ac]
+    +                   2636 _CFRunLoopRunSpecificWithOptions  (in CoreFoundation) + 496  [0x1c01de040]
+    +                     2636 __CFRunLoopRun  (in CoreFoundation) + 1100  [0x1c01e31e0]
+    +                       2636 __CFRunLoopServiceMachPort  (in CoreFoundation) + 156  [0x1c01e4010]
+    +                         2636 mach_msg  (in libsystem_kernel.dylib) + 20  [0x102f74edc]
+    +                           2636 mach_msg_overwrite  (in libsystem_kernel.dylib) + 484  [0x102f7cc58]
+    +                             2636 mach_msg2_internal  (in libsystem_kernel.dylib) + 72  [0x102f860e4]
+    +                               2636 mach_msg2_trap  (in libsystem_kernel.dylib) + 8  [0x102f74b5c]
+    2636 Thread_19703577
+      2636 start_wqthread  (in libsystem_pthread.dylib) + 8  [0x10304da7c]
+        2636 _pthread_wqthread  (in libsystem_pthread.dylib) + 364  [0x10304ecc8]
+          2636 __workq_kernreturn  (in libsystem_kernel.dylib) + 8  [0x102f7668c]
+
+Binary Images:
+       0x102f30000 -        0x102f3346f +dev.sweetpad.ci.app (0) <799F81F4-0414-3A0D-A417-F0894A3DD362> /Users/*/Library/Developer/CoreSimulator/Devices/F13C004A-0824-4870-B4F2-29AAEE36636E/data/Containers/Bundle/Application/47F78302-CFDA-4371-BFD8-8882B8FC6597/SweetpadCIApp.app/SweetpadCIApp
+       0x102f54000 -        0x102f56cd3 +SweetpadCIApp.debug.dylib (0) <3C2878B2-540F-38D8-88BC-554F2C316FED> /Users/*/Library/Developer/CoreSimulator/Devices/F13C004A-0824-4870-B4F2-29AAEE36636E/data/Containers/Bundle/Application/47F78302-CFDA-4371-BFD8-8882B8FC6597/SweetpadCIApp.app/SweetpadCIApp.debug.dylib
+       0x102f74000 -        0x102fb03fb  libsystem_kernel.dylib (13432.1.9) <B07862D0-C2DE-3AED-898C-88190E38064E> /usr/lib/system/libsystem_kernel.dylib
+       0x1c014a000 -        0x1c04b620f +CoreFoundation (5027.0.69) <D2C8AA56-482C-35EA-B4D3-54C2B5F58ADC> /Volumes/*/CoreFoundation.framework/CoreFoundation

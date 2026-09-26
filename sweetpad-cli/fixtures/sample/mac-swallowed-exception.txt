@@ -1,0 +1,70 @@
+Analysis of sampling SampleProbe (pid 75842) every 1 millisecond
+Process:         SampleProbe [75842]
+Path:            /private/tmp/*/SampleProbe.app/Contents/MacOS/SampleProbe
+Load Address:    0x104590000
+Identifier:      com.example.SampleProbe
+Version:         1.0 (1)
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  launchd [1]
+Target Type:     live task
+
+Date/Time:       2026-09-26 17:50:26.007 +0200
+Launch Time:     2026-09-26 17:50:22.042 +0200
+OS Version:      macOS 27.0 (26A428)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         21.9M
+Physical footprint (peak):  22.4M
+Idle exit:                  untracked
+----
+
+Call graph:
+    2607 Thread_19682457   DispatchQueue_1: com.apple.main-thread  (serial)
+    + 2607 start  (in dyld) + 6688  [0x19bb37e80]
+    +   2607 __debug_main_executable_dylib_entry_point  (in SampleProbe.debug.dylib) + 12  [0x1045c9184]  SampleProbeApp.swift:0
+    +     2607 static SampleProbeApp.$main()  (in SampleProbe.debug.dylib) + 40  [0x1045c9144]  /<compiler-generated>:0
+    +       2607 static App.main()  (in SwiftUI) + 224  [0x1d4c768b8]
+    +         2607 runApp<A>(_:)  (in SwiftUI) + 108  [0x1d499bc68]
+    +           2607 specialized runApp(_:)  (in SwiftUI) + 140  [0x1d4588c84]
+    +             2607 NSApplicationMain  (in AppKit) + 880  [0x1a054fc4c]
+    +               2607 -[NSApplication run]  (in AppKit) + 396  [0x1a057790c]
+    +                 2607 -[NSApplication(NSEventRouting) nextEventMatchingMask:untilDate:inMode:dequeue:]  (in AppKit) + 292  [0x1a0dfc26c]
+    +                   2607 -[NSApplication(NSEventRouting) _nextEventMatchingEventMask:untilDate:inMode:dequeue:]  (in AppKit) + 780  [0x1a0dfc748]
+    +                     2607 _DPSNextEvent  (in AppKit) + 580  [0x1a05844fc]
+    +                       2607 _DPSBlockUntilNextEventMatchingListInMode  (in AppKit) + 292  [0x1a08c729c]
+    +                         2607 _BlockUntilNextEventMatchingListInMode  (in HIToolbox) + 48  [0x1a9586380]
+    +                           2607 ReceiveNextEventCommon  (in HIToolbox) + 492  [0x1a940391c]
+    +                             2607 RunCurrentEventLoopInMode  (in HIToolbox) + 320  [0x1a9400590]
+    +                               2607 _CFRunLoopRunSpecificWithOptions  (in CoreFoundation) + 536  [0x19c0a782c]
+    +                                 2606 __CFRunLoopRun  (in CoreFoundation) + 1172  [0x19bfcd334]
+    +                                 ! 2606 __CFRunLoopServiceMachPort  (in CoreFoundation) + 160  [0x19bfceaec]
+    +                                 !   2606 mach_msg  (in libsystem_kernel.dylib) + 24  [0x19bec8fac]
+    +                                 !     2606 mach_msg_overwrite  (in libsystem_kernel.dylib) + 480  [0x19bed1a28]
+    +                                 !       2606 mach_msg2_internal  (in libsystem_kernel.dylib) + 76  [0x19bedb8e0]
+    +                                 !         2606 mach_msg2_trap  (in libsystem_kernel.dylib) + 8  [0x19bec8c20]
+    +                                 1 __CFRunLoopRun  (in CoreFoundation) + 1852  [0x19bfcd5dc]
+    +                                   1 __CFRunLoopDoTimers  (in CoreFoundation) + 280  [0x19bfe80d8]
+    +                                     1 __CFRunLoopDoTimer  (in CoreFoundation) + 1160  [0x19bfe8614]
+    +                                       1 CFRunLoopTimerInvalidate  (in CoreFoundation) + 348  [0x19bfe8a34]
+    +                                         1 CFBasicHashGetElements  (in CoreFoundation) + 124  [0x19bfbfb28]
+    +                                           1 CFBasicHashGetBucket  (in CoreFoundation) + 44  [0x19bf92624]
+    2607 Thread_19682492
+    + 2607 start_wqthread  (in libsystem_pthread.dylib) + 8  [0x19bf08ce0]
+    +   2607 _pthread_wqthread  (in libsystem_pthread.dylib) + 368  [0x19bf09fe8]
+    +     2607 __workq_kernreturn  (in libsystem_kernel.dylib) + 8  [0x19beca9ec]
+    2607 Thread_19682903: HIE: M_ 8bb450dcefffa491 2026-09-26 17:50:23.629
+    + 2607 thread_start  (in libsystem_pthread.dylib) + 8  [0x19bf08cec]
+    +   2607 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x19bf0dd00]
+    +     2607 __NSThread__start__  (in Foundation) + 732  [0x19d6caca8]
+    +       2607 SOME_OTHER_THREAD_SWALLOWED_AT_LEAST_ONE_EXCEPTION  (in HIServices) + 20  [0x1a353aeb4]
+    +         2607 thread_suspend  (in libsystem_kernel.dylib) + 108  [0x19bef9784]
+    +           2607 mach_msg2_internal  (in libsystem_kernel.dylib) + 76  [0x19bedb8e0]
+    +             2607 mach_msg2_trap  (in libsystem_kernel.dylib) + 8  [0x19bec8c20]
+
+Binary Images:
+       0x104590000 -        0x104593457 +com.example.SampleProbe (1.0 - 1) <4D2CEBF3-9969-3150-9A67-0C21B730859E> /tmp/*/SampleProbe.app/Contents/MacOS/SampleProbe
+       0x1045c4000 -        0x1045cbf5f +SampleProbe.debug.dylib (0) <C9E9417B-0954-312E-B32D-851E959BD795> /tmp/*/SampleProbe.app/Contents/MacOS/SampleProbe.debug.dylib
+       0x19bec8000 -        0x19bf069ab  libsystem_kernel.dylib (13432.1.9) <F63BF418-8F75-34A4-AAF1-8CAF2B9B6A05> /usr/lib/system/libsystem_kernel.dylib
+       0x19bf4d000 -        0x19c3dde9f  com.apple.CoreFoundation (6.9 - 5027.0.69) <727E905E-F344-3823-8E13-E7A096388321> /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation

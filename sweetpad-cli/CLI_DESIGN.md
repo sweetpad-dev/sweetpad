@@ -104,7 +104,8 @@ sweetpad status / open / doctor / self-update / help <topic>
 sweetpad simulator <boot|create|delete|clone|push|privacy|status-bar|
                     location|media-add|record|screenshot|…>   (alias: sim)
 sweetpad app <run|install|launch|debug|diagnose|uninstall|logs|stop|open-url|
-              container|screenshot|ui> (screenshot: simulator or macOS window, §9h;
+              container|screenshot|sample|ui> (screenshot: simulator or macOS window, §9h;
+                                        sample: main-thread verdict, §9r;
                                         ui: drive a macOS app's UI, §9i;
                                         debug --batch / diagnose: scriptable lldb, §9j;
                                         logs: os_log + captured stdout on macOS, --source/--last, §9h;
@@ -1819,10 +1820,9 @@ already draws the line.
 *Deliberately not built:* parsed backtrace *frames* (SB/Python API — the
 transcript plus a best-effort frame-line list is enough for v1), a device path
 (needs `debugserver` plumbing, like the interactive verb), and any preset beyond
-exception-catching (a `--sample`/stack-snapshot sibling for "wedged or merely
-idle?" is a natural follow-on, noted in the jiraffe field log, but it inspects a
-*running* pid rather than owning a launch, so it belongs with `screenshot`/`ui`
-under the observe verbs, not here).
+exception-catching. The stack snapshot for "wedged or merely idle?" inspects a
+*running* pid rather than owning a launch, so it sits with `screenshot`/`ui`
+under the observe verbs as `app sample` (§9r), not here.
 
 ## 9k. v8 — bounded follows, listener recovery, honest compile counts
 
@@ -2314,6 +2314,94 @@ way, and a device that is not ready exits 1, as `doctor` does with a problem.
 - **Read-only**, apart from what connecting does: the details request may
   try to mount the developer disk image, as xcodebuild does before a build.
 
+## 9r. v8 — `app sample` — wedged or merely idle?
+
+An app that looks alive but has stopped doing work raises one question first:
+is the main thread stuck, or waiting for something that never came? Answering
+it meant finding the pid by hand, although sweetpad already records it for `app
+stop`, and then running `sample <pid>`, whose call graph is the hard part to
+read. The two answers lead in opposite directions. A wedged main thread is a
+deadlock or a hot loop, and the stack shows where. An idle one is not hung at
+all; the bug is a callback, completion handler or queue that never fired.
+
+```
+sweetpad app sample [--seconds N] [--output-file PATH] [--pid PID]
+```
+
+**Target resolution** is §9h's ladder: `--pid`, then the recorded last launch,
+then the resolved build target, and never a build. A simulator app is a process
+on this Mac, so it samples the same way a macOS app does; its pid comes from
+matching `ps` against the executable in the bundle `simctl get_app_container`
+names. A physical device's app is out of reach, and the error says so. An app
+with several processes is refused with their pids, as `ui` refuses it.
+
+**Capture** is `/usr/bin/sample <pid> <secs> -file <path>`. `spindump` would
+add the kernel's view but needs root. Sampling defaults to 3 seconds and
+accepts 1 to 60; `sample` then has 60 more seconds to symbolicate before it is
+killed, so the verb always returns. The full report is always written and its
+path is part of the result. By default it goes to
+`<state>/sweetpad/samples/<app>-<time>.txt` rather than the working directory,
+because it is evidence to read back, not a file the project keeps.
+
+**The verdict reads the main thread only**, with rules narrow enough to pin
+against real captures. Every sample's stack lands in one of four buckets:
+
+- *run-loop wait*: the top of the stack is `mach_msg` stubs directly under
+  `__CFRunLoopServiceMachPort`. AppKit's loop, UIKit's `GSEventRunModal` and a
+  modal alert's nested loop all end there;
+- *waiting*: the top is in the kernel, and a known wait primitive sits below it
+  before any app frame: a mutex, condition variable, rwlock, semaphore,
+  `dispatch_sync`, dispatch group or once, `os_unfair_lock`, a sleep, or a
+  synchronous IPC reply;
+- *running*: the top is in user space;
+- *syscall*: any other kernel call (`read`, `open`), which no rule claims.
+
+`idle` needs run-loop waits in at least 90% of the samples. A responsive app
+still services the odd timer while it is sampled, and below that line "idle"
+would hide real work. `blocked` and `busy` need two thirds, so the named state
+outweighs everything else twice over. `blocked` names the wait and the
+innermost app frame on its heaviest stack; `busy` lists the app frames the
+samples were spent in. Anything else is `unclassified`, reported with its split
+rather than a guess. The human line for `idle` says outright that the app is not
+hung and to look for what never fired, because an idle main thread in a stopped
+app reads as a hang.
+
+**The wait is named by the most specific marker nearest the top.** On macOS 27
+a `dispatch_sync` onto a stuck queue ends in `kevent_id` under
+`__DISPATCH_WAIT_FOR_QUEUE__`, not in a ulock, and an `os_unfair_lock` ends in
+`__ulock_wait2`, which a dispatch group and `pthread_join` also end in. So the
+scan walks down from the top of the stack, takes the first specific marker, and
+falls back to a generic one (`__ulock_wait*`, a bare `mach_msg`) only when
+nothing more specific is there. It stops at the first app frame or callout
+boundary, since a marker below that belongs to a different call.
+
+**App frames come from the bundle, not from `sample`'s `+` marker.** `sample`
+marks every image outside the host OS with `+`, which in a simulator includes
+the whole iOS runtime. The images inside the sampled process's `.app` are the
+app's: its executable, `.debug.dylib`, embedded frameworks. `sample` redacts
+directory names (`/tmp/*/App.app/…`), so the bundle is matched by name. Entry
+points and Swift thunks are skipped when a frame is named, because every
+main-thread stack has them.
+
+**A swallowed exception is flagged.** When AppKit catches an Objective-C
+exception and keeps running, HIServices records the first one by parking a
+thread named `HIE: M_ <hash> <time>` in a function called
+`SOME_OTHER_THREAD_SWALLOWED_AT_LEAST_ONE_EXCEPTION`. Either one in the report
+raises the flag. The fixture is a real capture of an exception thrown from a
+timer callback (one thrown from a dispatch block terminates the app instead).
+The flag points at `app diagnose`, which stops at the throw.
+
+`-o json` emits `{pid, bundleId, seconds, reportPath, mainThread: {state,
+samples, breakdown, topFrames: [{symbol, image, samples}], wait?}, flags:
+[{kind, thread}]}`, with `wait` (`{kind, symbol, caller, samples}`) present when
+blocked. As with `app diagnose`, the exit code reports the capture, not the
+finding: a clean sample exits 0 whatever state the app was in.
+
+*Deliberately not built:* verdicts on threads other than the main one (the full
+report has them, and a background deadlock matters to this question once the
+main thread waits on it); `spindump`; physical devices; and telling a nested run
+loop from the top-level one, since a modal alert is idle and reads as idle.
+
 ## 10. Testing
 
 The CLI modules carry inline `#[cfg(test)]` units that need no Xcode, so the
@@ -2325,7 +2413,11 @@ tool-spawning code is pinned without a Mac:
   summary, and `-showBuildSettings` JSON parsed from captured-shape payloads
   (this caught a missing `rename_all` on the devicectl device struct), and the
   `app diagnose` lldb transcript → outcome parse (§9j) against real `lldb -b -Q`
-  output for an ObjC throw, a signal crash, and a clean exit.
+  output for an ObjC throw, a signal crash, and a clean exit. The `app sample`
+  verdict (§9r) runs against trimmed real `sample` reports in
+  `fixtures/sample/`: idle on macOS, in a simulator and under a modal alert;
+  busy; blocked on a semaphore, mutex, unfair lock, condition and
+  `dispatch_sync`; and a swallowed exception.
 - **Pure logic** — resolution precedence, config/state TOML round-trips,
   `choose` fallback branches, destination/`udid` parsing, and the session
   key → action mapping (`r` rebuild / `q`·Ctrl-C·EOF quit / else ignore).

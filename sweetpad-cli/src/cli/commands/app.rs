@@ -12,6 +12,7 @@ use clap::Subcommand;
 
 mod ax;
 mod macwin;
+mod sample;
 
 use crate::cli::inject::recompiler::{Mode, Recompiler};
 use crate::cli::inject::server::{InjectServer, Logger};
@@ -460,6 +461,11 @@ pub enum Action {
     /// Save a PNG screenshot of the running app: a macOS app's window, or
     /// the simulator it launched on.
     Screenshot(ScreenshotArgs),
+    /// Sample the running app for a few seconds and say what its main thread
+    /// was doing: idle in its run loop, blocked on a lock or queue, or busy
+    /// running code. The full 'sample' report is saved too. macOS and
+    /// simulator apps.
+    Sample(SampleArgs),
     /// Inspect or drive a running macOS app's UI through accessibility
     /// ('ui' alone runs 'ui tree').
     Ui {
@@ -570,6 +576,32 @@ pub struct ScreenshotArgs {
     /// Also copy the screenshot to the clipboard.
     #[arg(long)]
     pub clipboard: bool,
+}
+
+/// Flags for `app sample` (CLI_DESIGN §9r).
+#[derive(Debug, clap::Args)]
+pub struct SampleArgs {
+    #[command(flatten)]
+    pub target: crate::cli::BuildTargetArgs,
+
+    /// How long to sample for, in seconds (1 to 60).
+    #[arg(
+        long,
+        value_name = "SECS",
+        default_value_t = 3,
+        value_parser = clap::value_parser!(u64).range(1..=60)
+    )]
+    pub seconds: u64,
+
+    /// File to write the full 'sample' report to (default: a timestamped file
+    /// under sweetpad's state directory).
+    #[arg(long = "output-file")]
+    pub output_file: Option<std::path::PathBuf>,
+
+    /// Sample this process directly, skipping app resolution (for processes
+    /// sweetpad didn't launch).
+    #[arg(long, value_name = "PID")]
+    pub pid: Option<i32>,
 }
 
 impl Action {
@@ -762,6 +794,10 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         Action::Screenshot(args) => {
             ctx.targeting = args.target.clone().into();
             screenshot(ctx, args)
+        }
+        Action::Sample(args) => {
+            ctx.targeting = args.target.clone().into();
+            sample(ctx, args)
         }
         Action::Ui { action } => ui(ctx, action.as_ref()),
     }
@@ -5014,6 +5050,309 @@ fn mac_screenshot(ctx: &Context, shot: &MacShot, args: &ScreenshotArgs) -> Comma
     }))
 }
 
+/// The `app sample` payload: the verdict on the main thread, anything else
+/// the report showed, and where the full report is.
+struct SampleReport {
+    pid: i32,
+    /// What was sampled, for the human note; not serialized.
+    label: String,
+    bundle_id: Option<String>,
+    seconds: u64,
+    report_path: String,
+    analysis: sample::Analysis,
+}
+
+impl Render for SampleReport {
+    fn human(&self, out: &Output) {
+        let main = &self.analysis.main_thread;
+        let of = |part: u64| format!("{part} of {} samples", main.samples);
+        match main.state {
+            _ if main.samples == 0 => {
+                out.line("main thread: unclassified — the report has no call graph to read");
+            }
+            sample::State::Idle => {
+                out.line(&format!(
+                    "main thread: idle — waiting for events in its run loop ({})",
+                    of(main.breakdown.run_loop)
+                ));
+                out.line(
+                    "  not hung: if work stopped, look for a callback, completion handler or \
+                     queue that never fired",
+                );
+            }
+            sample::State::Blocked => {
+                let (what, from, samples) = main.wait.as_ref().map_or(
+                    ("a wait", String::new(), main.breakdown.waiting),
+                    |w| {
+                        let from = w
+                            .caller
+                            .as_ref()
+                            .map_or(String::new(), |c| format!(" in {}", c.symbol));
+                        (w.kind.describe(), from, w.samples)
+                    },
+                );
+                out.line(&format!(
+                    "main thread: blocked — waiting on {what}{from} ({})",
+                    of(samples)
+                ));
+            }
+            sample::State::Busy => {
+                out.line(&format!(
+                    "main thread: busy — running code ({})",
+                    of(main.breakdown.running)
+                ));
+            }
+            sample::State::Unclassified => {
+                let pct = |part: u64| part * 100 / main.samples;
+                let parts: Vec<String> = [
+                    (main.breakdown.run_loop, "run-loop wait"),
+                    (main.breakdown.waiting, "waiting"),
+                    (main.breakdown.running, "running"),
+                    (main.breakdown.syscall, "other system calls"),
+                ]
+                .into_iter()
+                .filter(|(n, _)| *n > 0)
+                .map(|(n, what)| format!("{}% {what}", pct(n)))
+                .collect();
+                out.line(&format!(
+                    "main thread: unclassified — no state holds most of its {} samples ({})",
+                    main.samples,
+                    parts.join(", ")
+                ));
+            }
+        }
+        // The frames say where the time went; for idle and blocked the verdict
+        // line already says it.
+        if matches!(
+            main.state,
+            sample::State::Busy | sample::State::Unclassified
+        ) {
+            for top in main.top_frames.iter().take(3) {
+                out.line(&format!(
+                    "  {:>6}  {}  ({})",
+                    top.samples, top.frame.symbol, top.frame.image
+                ));
+            }
+        }
+        for flag in &self.analysis.flags {
+            match flag {
+                sample::Flag::SwallowedException { thread } => out.line(&format!(
+                    "flag: AppKit swallowed an Objective-C exception and kept running \
+                     (thread '{thread}'); 'sweetpad app diagnose' stops at the throw"
+                )),
+            }
+        }
+        out.note(&format!(
+            "saved the full sample of {} to {}",
+            self.label, self.report_path
+        ));
+    }
+
+    fn json(&self) -> serde_json::Value {
+        let main = &self.analysis.main_thread;
+        let frame = |f: &sample::Frame| serde_json::json!({"symbol": f.symbol, "image": f.image});
+        let mut main_thread = serde_json::json!({
+            "state": main.state.as_str(),
+            "samples": main.samples,
+            "breakdown": {
+                "runLoop": main.breakdown.run_loop,
+                "waiting": main.breakdown.waiting,
+                "running": main.breakdown.running,
+                "syscall": main.breakdown.syscall,
+            },
+            "topFrames": main.top_frames.iter().map(|t| serde_json::json!({
+                "symbol": t.frame.symbol,
+                "image": t.frame.image,
+                "samples": t.samples,
+            })).collect::<Vec<_>>(),
+        });
+        if let Some(wait) = &main.wait {
+            main_thread["wait"] = serde_json::json!({
+                "kind": wait.kind.as_str(),
+                "symbol": wait.symbol,
+                "caller": wait.caller.as_ref().map(frame),
+                "samples": wait.samples,
+            });
+        }
+        let flags: Vec<serde_json::Value> = self
+            .analysis
+            .flags
+            .iter()
+            .map(|flag| match flag {
+                sample::Flag::SwallowedException { thread } => serde_json::json!({
+                    "kind": "swallowedException",
+                    "thread": thread,
+                }),
+            })
+            .collect();
+        serde_json::json!({
+            "pid": self.pid,
+            "bundleId": self.bundle_id,
+            "seconds": self.seconds,
+            "reportPath": self.report_path,
+            "mainThread": main_thread,
+            "flags": flags,
+        })
+    }
+}
+
+/// `app sample` — sample the running app and read its main thread back as a
+/// verdict (CLI_DESIGN §9r). Resolution is `screenshot`'s: an explicit
+/// `--pid`, then the recorded last launch, then the resolved build target —
+/// never a build. A simulator app is a process on this Mac, so it samples like
+/// a macOS one; a physical device's processes are out of reach.
+fn sample(ctx: &mut Context, args: &SampleArgs) -> CommandResult {
+    if let Some(pid) = args.pid {
+        if explicit_targeting(ctx) {
+            return Err(CliError::new(
+                "--pid samples a process directly; scheme/destination flags don't apply",
+            ));
+        }
+        if pid <= 0 {
+            return Err(CliError::new("--pid takes a positive process id"));
+        }
+        if unsafe { libc::kill(pid, 0) } != 0
+            && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+        {
+            return Err(CliError::new(format!("no process with pid {pid}")));
+        }
+        return sample_pid(ctx, pid, &format!("pid {pid}"), None, args);
+    }
+
+    if !explicit_targeting(ctx)
+        && let Some(last) = last_launched(ctx)
+    {
+        match last.kind.as_str() {
+            "macos" => {
+                if let Some(exe) = mac_executable(&last) {
+                    let shot = mac_shot_for(&exe, &last.bundle_identifier)?;
+                    return sample_shot(ctx, &shot, args);
+                }
+            }
+            "simulator" => {
+                if let (Some(udid), Some(exe)) = (&last.simulator_udid, &last.executable_name) {
+                    let shot = sim_shot_for(udid, &last.bundle_identifier, exe)?;
+                    return sample_shot(ctx, &shot, args);
+                }
+            }
+            "device" => return Err(sample_not_local()),
+            _ => {}
+        }
+    }
+
+    let opts = RunOpts {
+        device: false,
+        device_id: None,
+        mac: false,
+        no_logs: true,
+        detach: false,
+        hot: false,
+        hot_explicit: false,
+        hot_mode: Mode::Resolver,
+        hot_selfcheck: None,
+        keep_sandbox: false,
+        hot_entitlements: None,
+        launch: &LaunchArgs::default(),
+        passthrough: &[],
+    };
+    let plan = plan(ctx, &opts)?;
+    match &plan.target {
+        Target::Mac => {
+            let app = plan.app_bundle()?;
+            let shot = mac_shot_for(&app.executable, &app.bundle_id)?;
+            sample_shot(ctx, &shot, args)
+        }
+        Target::Simulator(udid) => {
+            let app = plan.app_bundle()?;
+            let shot = sim_shot_for(udid, &app.bundle_id, &process_name_of(&app.executable))?;
+            sample_shot(ctx, &shot, args)
+        }
+        Target::Device(_) => Err(sample_not_local()),
+        Target::SpmRun(_) => Err(CliError::new(
+            "a Swift package executable has no app bundle to find; use --pid for the process \
+             it started",
+        )),
+    }
+}
+
+/// A simulator app's host process: the simulator runs it on this Mac, out of
+/// the installed bundle, so its executable path finds its pid the way a macOS
+/// app's does.
+fn sim_shot_for(udid: &str, bundle_id: &str, executable: &str) -> Result<MacShot, CliError> {
+    let bundle = simctl::app_container(udid, bundle_id, "app")
+        .map_err(|e| e.context(format!("finding {bundle_id} on the simulator")))?
+        .ok_or_else(|| {
+            CliError::new(format!(
+                "{bundle_id} isn't installed on the simulator; install it with 'sweetpad app install'"
+            ))
+        })?;
+    let pids = macwin::pids_for_executable(&Path::new(bundle.trim()).join(executable))?;
+    if pids.is_empty() {
+        return Err(CliError::new(format!(
+            "{bundle_id} isn't running on the simulator; start it with 'sweetpad app launch'"
+        )));
+    }
+    Ok(MacShot {
+        pids,
+        name: executable.to_string(),
+        bundle_id: Some(bundle_id.to_string()),
+    })
+}
+
+fn sample_shot(ctx: &Context, shot: &MacShot, args: &SampleArgs) -> CommandResult {
+    let pid = one_pid(shot)?;
+    let label = format!("{} (pid {pid})", shot.name);
+    sample_pid(ctx, pid, &label, shot.bundle_id.clone(), args)
+}
+
+fn sample_pid(
+    ctx: &Context,
+    pid: i32,
+    label: &str,
+    bundle_id: Option<String>,
+    args: &SampleArgs,
+) -> CommandResult {
+    let path = args.output_file.clone().unwrap_or_else(|| {
+        let name = label.split(" (pid").next().unwrap_or(label);
+        default_sample_path(name)
+    });
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let text = ctx
+        .out
+        .step(&format!("Sampling {label} for {}s", args.seconds), || {
+            sample::capture(pid, args.seconds, &path)
+        })?;
+    Ok(Rendered::data(SampleReport {
+        pid,
+        label: label.to_string(),
+        bundle_id,
+        seconds: args.seconds,
+        report_path: path.display().to_string(),
+        analysis: sample::analyze(&sample::parse(&text)),
+    }))
+}
+
+/// `<state>/sweetpad/samples/<app>-<epoch-millis>.txt`. Unlike a screenshot,
+/// a report is evidence to read back rather than a file to keep beside the
+/// project, so it stays out of the working directory.
+fn default_sample_path(name: &str) -> std::path::PathBuf {
+    let file = super::simulator::timestamped_file_name(name, "txt");
+    sweetpad_core::paths::sweetpad_state_dir().map_or_else(
+        || std::env::temp_dir().join(&file),
+        |dir| dir.join("samples").join(&file),
+    )
+}
+
+/// Why a physical device's app can't be sampled.
+fn sample_not_local() -> CliError {
+    CliError::new(
+        "'app sample' needs a process on this Mac: a macOS app, or an app in a simulator. \
+         An app on a physical device runs on the device, where 'sample' can't reach it",
+    )
+}
+
 /// The window-poll + permission half of [`mac_screenshot`], shared with the
 /// session's `s` key. Fails fast on a missing Screen Recording permission —
 /// without it `screencapture` silently produces the wallpaper — requesting
@@ -5542,6 +5881,12 @@ fn ui_preflight(ctx: &Context, shot: &MacShot) -> Result<i32, CliError> {
         }
         return Err(ax::permission_error());
     }
+    one_pid(shot)
+}
+
+/// The app's one live process, refusing to pick among several: `ui` has no
+/// frontmost element tree to prefer, and `sample` no frontmost main thread.
+fn one_pid(shot: &MacShot) -> Result<i32, CliError> {
     match shot.pids.as_slice() {
         [pid] => Ok(*pid),
         [] => Err(CliError::new(format!("{} isn't running", shot.name))),

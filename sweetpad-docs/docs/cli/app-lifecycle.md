@@ -22,6 +22,7 @@ simulators, and most work on physical devices and native macOS apps too.
 | `sweetpad app debug`      | Run it under lldb.                                               |
 | `sweetpad app diagnose`   | Run it under lldb, catch the first crash, report, and quit.      |
 | `sweetpad app screenshot` | Capture the app: a macOS window, or the simulator it's on.       |
+| `sweetpad app sample`     | Sample it and say whether its main thread is idle or stuck.      |
 | `sweetpad app ui`         | Read and drive a macOS app's UI through accessibility.           |
 
 SweetPad remembers which app it last launched, so most of these need no arguments. `app stop` stops
@@ -184,6 +185,37 @@ the built app, and for an app without it the command reports that there is no co
 
 A physical device's containers stay on the device. For those, the error names the
 `xcrun devicectl device copy to` and `copy from` commands to use.
+
+## Is it hung, or just idle?
+
+When an app looks alive but has stopped doing anything, `sweetpad app sample` samples it for a few
+seconds and tells you what its main thread was doing:
+
+```bash
+sweetpad app sample
+sweetpad app sample --seconds 10
+sweetpad app sample -o json
+```
+
+The verdict is one of four:
+
+- `idle`: the main thread is waiting for events in its run loop, so the app isn't hung. If work
+  stopped, something it was waiting for never arrived: a callback, a completion handler, or a queue
+  that never ran.
+- `blocked`: the main thread is stuck on a lock, a semaphore, or a dispatch_sync. The verdict says
+  which, and names the function in your code that's waiting.
+- `busy`: the main thread is running code, and the verdict lists your functions the time went to.
+- `unclassified`: no single state accounts for most of the samples, so you get the split instead of
+  a guess.
+
+It also warns when AppKit swallowed an Objective-C exception earlier in the run. The app keeps
+running after that, but whatever the exception interrupted never finished. `app diagnose` stops at
+the exception where it's thrown.
+
+The full report from macOS's sample tool is saved every time, and its path is printed with the
+verdict. Sampling works for macOS apps and for simulator apps, because a simulated app runs as a
+process on your Mac. An app on a physical device can't be sampled. `--pid` samples a process
+SweetPad didn't launch.
 
 ## Screenshots of the app
 

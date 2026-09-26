@@ -169,6 +169,13 @@ To catch a crash or Objective-C exception without a terminal, `sweetpad app
 diagnose` runs the app under lldb, prints a structured report, and quits —
 bounded by `--timeout` (default 30s).
 
+When the app is running but seems stuck, `sweetpad app sample -o json` samples
+it for 3 seconds (`--seconds` to change) and reports what the main thread was
+doing. `idle` means it is waiting for events and isn't hung, so look for a
+callback or queue that never fired. `blocked` names the wait and your function
+that waits, and `busy` lists the functions the time went to. The full `sample`
+report is saved, and `reportPath` says where.
+
 ## Test
 
 `sweetpad test` runs the scheme's tests and returns a report.

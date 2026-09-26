@@ -140,7 +140,7 @@ instead of following, and `--until "some text"` follows until a line matches and
 in a script that needs to wait for the app to reach a known state.
 
 [App lifecycle and debugging](./app-lifecycle.md) covers every verb, including the debugging ones
-(`app debug`, `app diagnose`) and the macOS-only `app screenshot` and `app ui`.
+(`app debug`, `app diagnose`, `app sample`) and the macOS-only `app screenshot` and `app ui`.
 
 ## Seeing the exact xcodebuild command
 

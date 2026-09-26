@@ -1,0 +1,80 @@
+Analysis of sampling SampleProbe (pid 63294) every 1 millisecond
+Process:         SampleProbe [63294]
+Path:            /private/tmp/*/SampleProbe.app/Contents/MacOS/SampleProbe
+Load Address:    0x102c64000
+Identifier:      com.example.SampleProbe
+Version:         1.0 (1)
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  launchd [1]
+Target Type:     live task
+
+Date/Time:       2026-09-26 17:37:36.438 +0200
+Launch Time:     2026-09-26 17:37:32.249 +0200
+OS Version:      macOS 27.0 (26A428)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         21.4M
+Physical footprint (peak):  21.9M
+Idle exit:                  untracked
+----
+
+Call graph:
+    2530 Thread_19581123   DispatchQueue_1: com.apple.main-thread  (serial)
+    + 2530 start  (in dyld) + 6688  [0x19bb37e80]
+    +   2530 __debug_main_executable_dylib_entry_point  (in SampleProbe.debug.dylib) + 12  [0x102c98924]  SampleProbeApp.swift:0
+    +     2530 static SampleProbeApp.$main()  (in SampleProbe.debug.dylib) + 40  [0x102c988e4]  /<compiler-generated>:0
+    +       2530 static App.main()  (in SwiftUI) + 224  [0x1d4c768b8]
+    +         2530 runApp<A>(_:)  (in SwiftUI) + 108  [0x1d499bc68]
+    +           2530 specialized runApp(_:)  (in SwiftUI) + 140  [0x1d4588c84]
+    +             2530 NSApplicationMain  (in AppKit) + 880  [0x1a054fc4c]
+    +               2530 -[NSApplication run]  (in AppKit) + 396  [0x1a057790c]
+    +                 2530 -[NSApplication(NSEventRouting) nextEventMatchingMask:untilDate:inMode:dequeue:]  (in AppKit) + 292  [0x1a0dfc26c]
+    +                   2530 -[NSApplication(NSEventRouting) _nextEventMatchingEventMask:untilDate:inMode:dequeue:]  (in AppKit) + 780  [0x1a0dfc748]
+    +                     2530 _DPSNextEvent  (in AppKit) + 580  [0x1a05844fc]
+    +                       2530 _DPSBlockUntilNextEventMatchingListInMode  (in AppKit) + 292  [0x1a08c729c]
+    +                         2530 _BlockUntilNextEventMatchingListInMode  (in HIToolbox) + 48  [0x1a9586380]
+    +                           2530 ReceiveNextEventCommon  (in HIToolbox) + 492  [0x1a940391c]
+    +                             2530 RunCurrentEventLoopInMode  (in HIToolbox) + 320  [0x1a9400590]
+    +                               2530 _CFRunLoopRunSpecificWithOptions  (in CoreFoundation) + 536  [0x19c0a782c]
+    +                                 2530 __CFRunLoopRun  (in CoreFoundation) + 1980  [0x19bfcd65c]
+    +                                   2530 __CFRUNLOOP_IS_SERVICING_THE_MAIN_DISPATCH_QUEUE__  (in CoreFoundation) + 16  [0x19c00b9cc]
+    +                                     2530 _dispatch_main_queue_callback_4CF  (in libdispatch.dylib) + 44  [0x19bd5ba4c]
+    +                                       2530 _dispatch_main_queue_drain  (in libdispatch.dylib) + 176  [0x19bd5bb0c]
+    +                                         2530 _dispatch_main_queue_drain.cold.6  (in libdispatch.dylib) + 612  [0x19bd848bc]
+    +                                           2530 _dispatch_source_invoke  (in libdispatch.dylib) + 848  [0x19bd62f7c]
+    +                                             2530 _dispatch_source_latch_and_call  (in libdispatch.dylib) + 392  [0x19bd642a8]
+    +                                               2530 _dispatch_continuation_pop  (in libdispatch.dylib) + 596  [0x19bd511b4]
+    +                                                 2530 _dispatch_client_callout  (in libdispatch.dylib) + 16  [0x19bd665a0]
+    +                                                   2530 thunk for @escaping @callee_guaranteed () -> ()  (in SampleProbe.debug.dylib) + 48  [0x102c97aac]  /<compiler-generated>:0
+    +                                                     2530 closure #1 in static Probe.start()  (in SampleProbe.debug.dylib) + 36  [0x102c97664]  SampleProbeApp.swift:21
+    +                                                       2530 static Probe.run(_:)  (in SampleProbe.debug.dylib) + 172  [0x102c97764]  SampleProbeApp.swift:26
+    +                                                         2522 static Probe.crunchForever()  (in SampleProbe.debug.dylib) + 68  [0x102c97c14]  SampleProbeApp.swift:42
+    +                                                         ! 882 static Probe.isPrime(_:)  (in SampleProbe.debug.dylib) + 120  [0x102c982d8]  SampleProbeApp.swift:52
+    +                                                         ! 810 static Probe.isPrime(_:)  (in SampleProbe.debug.dylib) + 136,152,...  [0x102c982e8,0x102c982f8,...]  SampleProbeApp.swift:0
+    +                                                         ! 421 static Probe.isPrime(_:)  (in SampleProbe.debug.dylib) + 244,240  [0x102c98354,0x102c98350]  /<compiler-generated>:0
+    +                                                         ! 371 static Probe.isPrime(_:)  (in SampleProbe.debug.dylib) + 288,312  [0x102c98380,0x102c98398]  SampleProbeApp.swift:54
+    +                                                         ! 32 static Probe.isPrime(_:)  (in SampleProbe.debug.dylib) + 264,248  [0x102c98368,0x102c98358]  SampleProbeApp.swift:53
+    +                                                         ! 4 static Probe.isPrime(_:)  (in SampleProbe.debug.dylib) + 340  [0x102c983b4]  SampleProbeApp.swift:57
+    +                                                         ! 2 static Probe.isPrime(_:)  (in SampleProbe.debug.dylib) + 24,36  [0x102c98278,0x102c98284]  SampleProbeApp.swift:49
+    +                                                         5 static Probe.crunchForever()  (in SampleProbe.debug.dylib) + 128  [0x102c97c50]  SampleProbeApp.swift:43
+    +                                                         2 static Probe.crunchForever()  (in SampleProbe.debug.dylib) + 256  [0x102c97cd0]  SampleProbeApp.swift:0
+    +                                                         1 static Probe.crunchForever()  (in SampleProbe.debug.dylib) + 68  [0x102c97c14]  SampleProbeApp.swift:42
+    2530 Thread_19581152: com.apple.NSEventThread
+    + 2530 thread_start  (in libsystem_pthread.dylib) + 8  [0x19bf08cec]
+    +   2530 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x19bf0dd00]
+    +     2530 _NSEventThread  (in AppKit) + 184  [0x1a06a8844]
+    +       2530 _CFRunLoopRunSpecificWithOptions  (in CoreFoundation) + 536  [0x19c0a782c]
+    +         2530 __CFRunLoopRun  (in CoreFoundation) + 1172  [0x19bfcd334]
+    +           2530 __CFRunLoopServiceMachPort  (in CoreFoundation) + 160  [0x19bfceaec]
+    +             2530 mach_msg  (in libsystem_kernel.dylib) + 24  [0x19bec8fac]
+    +               2530 mach_msg_overwrite  (in libsystem_kernel.dylib) + 480  [0x19bed1a28]
+    +                 2530 mach_msg2_internal  (in libsystem_kernel.dylib) + 76  [0x19bedb8e0]
+    +                   2530 mach_msg2_trap  (in libsystem_kernel.dylib) + 8  [0x19bec8c20]
+
+Binary Images:
+       0x102c64000 -        0x102c67457 +com.example.SampleProbe (1.0 - 1) <4D2CEBF3-9969-3150-9A67-0C21B730859E> /tmp/*/SampleProbe.app/Contents/MacOS/SampleProbe
+       0x102c94000 -        0x102c9a42f +SampleProbe.debug.dylib (0) <F424CAF6-CE5E-3654-843F-EA4CDF71210D> /tmp/*/SampleProbe.app/Contents/MacOS/SampleProbe.debug.dylib
+       0x19bec8000 -        0x19bf069ab  libsystem_kernel.dylib (13432.1.9) <F63BF418-8F75-34A4-AAF1-8CAF2B9B6A05> /usr/lib/system/libsystem_kernel.dylib
+       0x19bf4d000 -        0x19c3dde9f  com.apple.CoreFoundation (6.9 - 5027.0.69) <727E905E-F344-3823-8E13-E7A096388321> /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation

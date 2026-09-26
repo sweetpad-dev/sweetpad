@@ -1,0 +1,103 @@
+Analysis of sampling SampleProbe (pid 74510) every 1 millisecond
+Process:         SampleProbe [74510]
+Path:            /private/tmp/*/SampleProbe.app/Contents/MacOS/SampleProbe
+Load Address:    0x100174000
+Identifier:      com.example.SampleProbe
+Version:         1.0 (1)
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  launchd [1]
+Target Type:     live task
+
+Date/Time:       2026-09-26 17:48:51.002 +0200
+Launch Time:     2026-09-26 17:48:47.621 +0200
+OS Version:      macOS 27.0 (26A428)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         22.4M
+Physical footprint (peak):  22.9M
+Idle exit:                  untracked
+----
+
+Call graph:
+    2596 Thread_19668656   DispatchQueue_1: com.apple.main-thread  (serial)
+    + 2596 start  (in dyld) + 6688  [0x19bb37e80]
+    +   2596 __debug_main_executable_dylib_entry_point  (in SampleProbe.debug.dylib) + 12  [0x1001ad184]  SampleProbeApp.swift:0
+    +     2596 static SampleProbeApp.$main()  (in SampleProbe.debug.dylib) + 40  [0x1001ad144]  /<compiler-generated>:0
+    +       2596 static App.main()  (in SwiftUI) + 224  [0x1d4c768b8]
+    +         2596 runApp<A>(_:)  (in SwiftUI) + 108  [0x1d499bc68]
+    +           2596 specialized runApp(_:)  (in SwiftUI) + 140  [0x1d4588c84]
+    +             2596 NSApplicationMain  (in AppKit) + 880  [0x1a054fc4c]
+    +               2596 -[NSApplication run]  (in AppKit) + 396  [0x1a057790c]
+    +                 2596 -[NSApplication(NSEventRouting) nextEventMatchingMask:untilDate:inMode:dequeue:]  (in AppKit) + 292  [0x1a0dfc26c]
+    +                   2596 -[NSApplication(NSEventRouting) _nextEventMatchingEventMask:untilDate:inMode:dequeue:]  (in AppKit) + 780  [0x1a0dfc748]
+    +                     2596 _DPSNextEvent  (in AppKit) + 1288  [0x1a05847c0]
+    +                       2596 AEProcessAppleEvent  (in HIToolbox) + 68  [0x1a935b454]
+    +                         2596 aeProcessAppleEvent  (in AE) + 484  [0x1a475da0c]
+    +                           2596 ???  (in AE)  load address 0x1a4759000 + 0xaf9c  [0x1a4763f9c]
+    +                             2596 ???  (in AE)  load address 0x1a4759000 + 0xb53c  [0x1a476453c]
+    +                               2596 _NSAppleEventManagerGenericHandler  (in Foundation) + 80  [0x19d6a9004]
+    +                                 2596 -[NSAppleEventManager dispatchRawAppleEvent:withRawReply:handlerRefCon:]  (in Foundation) + 316  [0x19d6a920c]
+    +                                   2596 -[NSApplication(NSAppleEventHandling) _handleCoreEvent:withReplyEvent:]  (in AppKit) + 488  [0x1a058aa94]
+    +                                     2596 -[NSApplication(NSAppleEventHandling) _handleAEOpenEvent:]  (in AppKit) + 480  [0x1a058ae78]
+    +                                       2596 -[NSApplication _reopenWindowsAsNecessaryIncludingRestorableState:withFullFidelity:completionHandler:]  (in AppKit) + 200  [0x1a0925f18]
+    +                                         2596 -[NSPersistentUIManager promptToIgnorePersistentState]  (in AppKit) + 60  [0x1a058afb0]
+    +                                           2596 -[NSPersistentUIRestorer promptToIgnorePersistentStateWithCrashHistory:]  (in AppKit) + 240  [0x1a1320d74]
+    +                                             2596 -[NSApplication _suppressFinishLaunchingFromEventHandlersWhilePerformingBlock:]  (in AppKit) + 48  [0x1a058b010]
+    +                                               2596 __72-[NSPersistentUIRestorer promptToIgnorePersistentStateWithCrashHistory:]_block_invoke  (in AppKit) + 908  [0x1a132115c]
+    +                                                 2596 -[NSAlert runModal]  (in AppKit) + 196  [0x1a081b2d4]
+    +                                                   2596 _NSTryRunModal  (in AppKit) + 100  [0x1a07ae280]
+    +                                                     2596 __19-[NSAlert runModal]_block_invoke.172  (in AppKit) + 36  [0x1a090a294]
+    +                                                       2596 __19-[NSAlert runModal]_block_invoke  (in AppKit) + 192  [0x1a090a034]
+    +                                                         2596 -[NSApplication runModalForWindow:]  (in AppKit) + 276  [0x1a07ae15c]
+    +                                                           2596 _NSTryRunModal  (in AppKit) + 100  [0x1a07ae280]
+    +                                                             2596 __35-[NSApplication runModalForWindow:]_block_invoke  (in AppKit) + 108  [0x1a07ae9d0]
+    +                                                               2596 __35-[NSApplication runModalForWindow:]_block_invoke_2  (in AppKit) + 56  [0x1a07aea24]
+    +                                                                 2596 -[NSApplication _doModalLoop:peek:]  (in AppKit) + 216  [0x1a07afda8]
+    +                                                                   2596 -[NSApplication(NSEventRouting) nextEventMatchingMask:untilDate:inMode:dequeue:]  (in AppKit) + 292  [0x1a0dfc26c]
+    +                                                                     2596 -[NSApplication(NSEventRouting) _nextEventMatchingEventMask:untilDate:inMode:dequeue:]  (in AppKit) + 780  [0x1a0dfc748]
+    +                                                                       2596 _DPSNextEvent  (in AppKit) + 580  [0x1a05844fc]
+    +                                                                         2596 _DPSBlockUntilNextEventMatchingListInMode  (in AppKit) + 292  [0x1a08c729c]
+    +                                                                           2596 _BlockUntilNextEventMatchingListInMode  (in HIToolbox) + 48  [0x1a9586380]
+    +                                                                             2596 ReceiveNextEventCommon  (in HIToolbox) + 492  [0x1a940391c]
+    +                                                                               2596 RunCurrentEventLoopInMode  (in HIToolbox) + 320  [0x1a9400590]
+    +                                                                                 2596 _CFRunLoopRunSpecificWithOptions  (in CoreFoundation) + 536  [0x19c0a782c]
+    +                                                                                   2595 __CFRunLoopRun  (in CoreFoundation) + 1172  [0x19bfcd334]
+    +                                                                                   ! 2595 __CFRunLoopServiceMachPort  (in CoreFoundation) + 160  [0x19bfceaec]
+    +                                                                                   !   2595 mach_msg  (in libsystem_kernel.dylib) + 24  [0x19bec8fac]
+    +                                                                                   !     2595 mach_msg_overwrite  (in libsystem_kernel.dylib) + 480  [0x19bed1a28]
+    +                                                                                   !       2595 mach_msg2_internal  (in libsystem_kernel.dylib) + 76  [0x19bedb8e0]
+    +                                                                                   !         2595 mach_msg2_trap  (in libsystem_kernel.dylib) + 8  [0x19bec8c20]
+    +                                                                                   1 __CFRunLoopRun  (in CoreFoundation) + 1852  [0x19bfcd5dc]
+    +                                                                                     1 __CFRunLoopDoTimers  (in CoreFoundation) + 280  [0x19bfe80d8]
+    +                                                                                       1 __CFRunLoopDoTimer  (in CoreFoundation) + 1084  [0x19bfe85c8]
+    +                                                                                         1 __CFRUNLOOP_IS_CALLING_OUT_TO_A_TIMER_CALLBACK_FUNCTION__  (in CoreFoundation) + 32  [0x19bfe88cc]
+    +                                                                                           1 -[NSApplication(NSQuietSafeQuit) _updateCanQuitQuietlyAndSafely]  (in AppKit) + 216  [0x1a06b77c8]
+    +                                                                                             1 _LSSetApplicationInformationItem  (in LaunchServices) + 212  [0x19c3eaf6c]
+    +                                                                                               1 _LSSetApplicationInformation  (in LaunchServices) + 304  [0x19c3e5ab0]
+    +                                                                                                 1 LSClientToServerConnection::sendWithReply(void*)  (in LaunchServices) + 68  [0x19c3e5260]
+    +                                                                                                   1 xpc_connection_send_message_with_reply_sync  (in libxpc.dylib) + 328  [0x19bbd6588]
+    +                                                                                                     1 dispatch_mach_send_with_result_and_wait_for_reply  (in libdispatch.dylib) + 60  [0x19bd680f4]
+    +                                                                                                       1 _dispatch_mach_send_and_wait_for_reply  (in libdispatch.dylib) + 548  [0x19bd67d54]
+    +                                                                                                         1 mach_msg  (in libsystem_kernel.dylib) + 24  [0x19bec8fac]
+    +                                                                                                           1 mach_msg_overwrite  (in libsystem_kernel.dylib) + 480  [0x19bed1a28]
+    +                                                                                                             1 mach_msg2_internal  (in libsystem_kernel.dylib) + 76  [0x19bedb8e0]
+    +                                                                                                               1 mach_msg2_trap  (in libsystem_kernel.dylib) + 8  [0x19bec8c20]
+    2596 Thread_19668711: com.apple.NSEventThread
+    + 2596 thread_start  (in libsystem_pthread.dylib) + 8  [0x19bf08cec]
+    +   2596 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x19bf0dd00]
+    +     2596 _NSEventThread  (in AppKit) + 184  [0x1a06a8844]
+    +       2596 _CFRunLoopRunSpecificWithOptions  (in CoreFoundation) + 536  [0x19c0a782c]
+    +         2596 __CFRunLoopRun  (in CoreFoundation) + 1172  [0x19bfcd334]
+    +           2596 __CFRunLoopServiceMachPort  (in CoreFoundation) + 160  [0x19bfceaec]
+    +             2596 mach_msg  (in libsystem_kernel.dylib) + 24  [0x19bec8fac]
+    +               2596 mach_msg_overwrite  (in libsystem_kernel.dylib) + 480  [0x19bed1a28]
+    +                 2596 mach_msg2_internal  (in libsystem_kernel.dylib) + 76  [0x19bedb8e0]
+    +                   2596 mach_msg2_trap  (in libsystem_kernel.dylib) + 8  [0x19bec8c20]
+
+Binary Images:
+       0x100174000 -        0x100177457 +com.example.SampleProbe (1.0 - 1) <4D2CEBF3-9969-3150-9A67-0C21B730859E> /tmp/*/SampleProbe.app/Contents/MacOS/SampleProbe
+       0x1001a8000 -        0x1001aff5f +SampleProbe.debug.dylib (0) <C9E9417B-0954-312E-B32D-851E959BD795> /tmp/*/SampleProbe.app/Contents/MacOS/SampleProbe.debug.dylib
+       0x19bec8000 -        0x19bf069ab  libsystem_kernel.dylib (13432.1.9) <F63BF418-8F75-34A4-AAF1-8CAF2B9B6A05> /usr/lib/system/libsystem_kernel.dylib
+       0x19bf4d000 -        0x19c3dde9f  com.apple.CoreFoundation (6.9 - 5027.0.69) <727E905E-F344-3823-8E13-E7A096388321> /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation

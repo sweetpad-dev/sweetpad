@@ -628,11 +628,18 @@ impl Render for SimAppearance {
 /// with the run session's `s` key. Millisecond resolution so two quick
 /// captures (double-tapping `s`) don't overwrite each other.
 pub(crate) fn default_screenshot_path(device_name: &str) -> PathBuf {
+    PathBuf::from("sweetpad-shots").join(timestamped_file_name(device_name, "png"))
+}
+
+/// `<slug>-<epoch-millis>.<extension>` — `name` lowercased with anything but
+/// ASCII letters and digits turned into `-`. Shared with `app sample`'s
+/// default report name.
+pub(crate) fn timestamped_file_name(name: &str, extension: &str) -> String {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or_default();
-    let slug: String = device_name
+    let slug: String = name
         .chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() {
@@ -642,7 +649,7 @@ pub(crate) fn default_screenshot_path(device_name: &str) -> PathBuf {
             }
         })
         .collect();
-    PathBuf::from("sweetpad-shots").join(format!("{slug}-{millis}.png"))
+    format!("{slug}-{millis}.{extension}")
 }
 
 #[cfg(test)]
