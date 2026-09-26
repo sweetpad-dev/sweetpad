@@ -687,7 +687,7 @@ impl BuildContext {
             .or(catalog_code_signing_required)
             .is_none_or(|v| !v.eq_ignore_ascii_case("NO"));
 
-        layers.push(project::built_in_settings(
+        let mut built_in = project::built_in_settings(
             &self.project.path,
             &query.target,
             &query.configuration,
@@ -716,7 +716,17 @@ impl BuildContext {
             self.xcspec.as_ref().and_then(|c| c.host_macos.as_deref()),
             macos_destination_unbound,
             query.scheme_sanitizers,
-        ));
+        );
+        // `built_in_settings` never sees the project document, so it reports
+        // `en`; xcodebuild reports the project's own development region.
+        if let Some(region) = &bundle.development_region
+            && let Some(language) = built_in
+                .iter_mut()
+                .find(|a| a.key == "DEVELOPMENT_LANGUAGE")
+        {
+            language.value.clone_from(region);
+        }
+        layers.push(built_in);
 
         // Target-graph derived settings (parent-app / test-host edges).
         // Sits between built-ins and user layers so an explicit user value

@@ -173,6 +173,60 @@ fn a_test_bundle_builds_into_its_host() {
     }
 }
 
+/// Both formats carry the project's development region through to
+/// `DEVELOPMENT_LANGUAGE`, as xcodebuild reports it for a project that isn't
+/// in English.
+#[test]
+fn the_development_region_names_the_development_language() {
+    let root = std::env::temp_dir().join(format!("sweetpad-region-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let mut projects = Vec::new();
+    for (tag, from, document, before, after) in [
+        (
+            "pbxproj",
+            pbxproj_project(),
+            "project.pbxproj",
+            "developmentRegion = en;",
+            "developmentRegion = zh_CN;",
+        ),
+        (
+            "xcproj",
+            xcproj_project().to_path_buf(),
+            "project.xcproj",
+            r#""development": "en""#,
+            r#""development": "zh_CN""#,
+        ),
+    ] {
+        let copy = root.join(tag);
+        copy_tree(from.parent().unwrap(), &copy);
+        let project = copy.join("SweetpadCIApp.xcodeproj");
+        let path = project.join(document);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains(before), "{tag} fixture changed");
+        std::fs::write(&path, text.replace(before, after)).unwrap();
+        projects.push(project);
+    }
+    for project in &projects {
+        let settings = BuildContext::open(project)
+            .unwrap()
+            .resolve(&ResolveQuery::new(
+                "SweetpadCIApp",
+                "Debug",
+                "macosx",
+                "arm64",
+            ))
+            .unwrap()
+            .settings;
+        assert_eq!(
+            settings.get("DEVELOPMENT_LANGUAGE").map(String::as_str),
+            Some("zh_CN"),
+            "{}",
+            project.display()
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// The BSP server answers the same way for both formats.
 ///
 /// It is the one consumer that reaches past [`BuildContext`] on its own — it

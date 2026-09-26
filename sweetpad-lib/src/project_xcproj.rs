@@ -342,6 +342,12 @@ pub(crate) fn build_settings_from_value(
         target_isa: isa_for(target).to_string(),
         has_package_product_dependencies: links_a_package_product(target),
         test_host_target: test_host_target(value, target),
+        development_region: value
+            .get("localizations")
+            .and_then(|l| l.get("development"))
+            .and_then(Value::as_str)
+            .filter(|r| !r.is_empty())
+            .map(String::from),
     })
 }
 

@@ -729,6 +729,10 @@ pub struct BuildSettingsContext {
     /// synthesize the subpath when the bundle doesn't author `TEST_TARGET_NAME`
     /// (see [`crate::build_context`]'s `target_graph_layer`).
     pub test_host_target: Option<String>,
+    /// The project's development region (`developmentRegion` in a pbxproj,
+    /// `localizations.development` in a `project.xcproj`), which xcodebuild
+    /// reports as `DEVELOPMENT_LANGUAGE`. `None` when the document names none.
+    pub development_region: Option<String>,
 }
 
 /// Extract the four user-authored build-settings layers for a target +
@@ -810,6 +814,11 @@ pub fn build_settings_from_value(
         target_isa,
         has_package_product_dependencies,
         test_host_target,
+        development_region: project_obj
+            .get("developmentRegion")
+            .and_then(Value::as_str)
+            .filter(|r| !r.is_empty())
+            .map(String::from),
     })
 }
 
