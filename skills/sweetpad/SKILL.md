@@ -134,7 +134,10 @@ alike. `--detach` (`app run` only) leaves the app running after the CLI exits.
 
 `app launch` starts the installed app (on macOS, the built one) without building
 it again. If a macOS build ran with `-- -derivedDataPath <dir>`, pass
-`app launch --mac --derived-data-path <dir>` so it finds that build.
+`app launch --mac --derived-data-path <dir>` so it finds that build. After
+that, `app stop`, `logs`, `container`, `screenshot`, `sample` and `ui` find the
+launched app from SweetPad's record of the launch, with no flags or with
+`--scheme`/`--on` that name the same launch.
 
 In a project whose `sweetpad.toml` sets `[run] hot = true`, a simulator run
 is a hot session, which refuses `--no-logs`, `--detach`, and

@@ -2887,7 +2887,18 @@ absolute path to a bundle that exists.
 
 **Only `launch` takes it.** The verbs that act on a running app (`stop`,
 `logs`, `screenshot`, `sample`, `ui`, `container`) read the recorded last
-launch first, and that record carries the path `launch` started. `uninstall`
+launch first, and that record carries the path `launch` started. Targeting
+flags keep the record when they name the same launch: the record carries the
+scheme, configuration and `-destination` it was planned with, so `app ui
+click --scheme AppMac --on mac` after `app launch --mac --derived-data-path
+dd` finds the app running out of `dd`. Each typed flag has to agree with the
+record. `--scheme`, `--configuration` and `--destination` compare as typed,
+`--mac`/`--device` compare the record's kind, and `--on` compares `mac` or a
+UDID directly and resolves anything else against the simulator list as the
+plan would. A flag that names another scheme, configuration or destination
+resolves that app instead, and so does a typed `--scheme`, `--configuration`
+or `--destination` against a record that lacks the field (an older state
+file). `uninstall`
 and a simulator `launch` need only the bundle id, which no DerivedData
 location changes. A macOS `launch` whose product is missing says it isn't
 built, names the `build` that makes it, and names the flag when it wasn't

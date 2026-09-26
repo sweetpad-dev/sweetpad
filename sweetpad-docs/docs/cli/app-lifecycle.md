@@ -26,7 +26,9 @@ simulators, and most work on physical devices and native macOS apps too.
 | `sweetpad app ui`         | Read and drive a macOS app's UI through accessibility.           |
 
 SweetPad remembers which app it last launched, so most of these need no arguments. `app stop` stops
-the thing you just started.
+the thing you just started. Flags that describe that same launch, such as `--scheme MyAppMac --on mac`
+after `app launch --mac`, still find it, even when it runs out of a `--derived-data-path` build. Flags
+that name a different scheme, configuration, or destination look up that app instead.
 
 :::note
 

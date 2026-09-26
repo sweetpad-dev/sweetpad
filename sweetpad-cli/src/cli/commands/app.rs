@@ -1615,6 +1615,9 @@ fn record_last_launched(ctx: &mut Context, plan: &RunPlan) {
         simulator_udid,
         destination_id,
         destination_type,
+        scheme: Some(plan.scheme.clone()),
+        configuration: Some(plan.configuration.clone()),
+        destination: Some(plan.destination.clone()),
     };
     let key = plan.resolved.container.key();
     ctx.state.project_mut(&key).last_launched_app = Some(last);
@@ -4023,13 +4026,12 @@ fn simple(
     let on_device = stage_target.device || stage_target.device_id.is_some();
     // `stop` acts on the *running* app: when a launch is recorded, use it
     // directly instead of resolving (and possibly prompting for, and
-    // remembering) a whole build target just to kill a process. Explicit
-    // targeting flags opt out — `app stop --scheme Other` means that scheme's
-    // app, not whatever launched last.
+    // remembering) a whole build target just to kill a process. Targeting
+    // flags that name another app opt out: `app stop --scheme Other` means
+    // that scheme's app, not whatever launched last.
     if matches!(stage, Stage::Stop)
-        && !on_device
-        && !explicit_targeting(ctx)
-        && let Some(result) = simple_from_last_launched(ctx, stage)
+        && let Some(last) = matching_last_launch(ctx, stage_target)
+        && let Some(result) = stop_recorded(ctx, &last)
     {
         return result;
     }
@@ -4594,18 +4596,10 @@ fn stage_report(
     }
 }
 
-/// Serve `app stop` from the recorded last launch when it targeted a
-/// simulator or macOS — no scheme resolution, no build-settings query, no
-/// prompting. `None` (fall back to the full plan) when nothing was recorded
-/// or the record is for a device run.
-fn simple_from_last_launched(ctx: &mut Context, stage: Stage) -> Option<CommandResult> {
-    match stage {
-        Stage::Stop => {}
-        Stage::Install | Stage::Launch | Stage::Uninstall => {
-            unreachable!("gated to Stop by the caller")
-        }
-    }
-    let last = last_launched(ctx)?;
+/// Serve `app stop` from the recorded last launch: no scheme resolution, no
+/// build-settings query, no prompting. `None` (fall back to the full plan)
+/// when the record lacks what its kind needs to find the process.
+fn stop_recorded(ctx: &Context, last: &LastLaunchedApp) -> Option<CommandResult> {
     match last.kind.as_str() {
         "simulator" => {
             let udid = last.simulator_udid.clone()?;
@@ -4627,7 +4621,7 @@ fn simple_from_last_launched(ctx: &mut Context, stage: Stage) -> Option<CommandR
             )
         }
         "macos" => {
-            let exe = mac_executable(&last)?;
+            let exe = mac_executable(last)?;
             Some(stop_mac(ctx, &exe, &last.bundle_identifier).map(Rendered::data))
         }
         "device" => {
@@ -4657,14 +4651,85 @@ fn simple_from_last_launched(ctx: &mut Context, stage: Stage) -> Option<CommandR
     }
 }
 
-/// The recorded last launch for this project, whatever it targeted.
-fn last_launched(ctx: &Context) -> Option<LastLaunchedApp> {
-    let container = resolve::container(ctx).ok()?;
-    ctx.state
-        .projects
-        .get(&container.key())?
-        .last_launched_app
-        .clone()
+/// The recorded last launch for this project, when it is the app this
+/// invocation names. The verbs that act on a running app read the record
+/// before resolving a build target because it carries what the launch
+/// started, including a product under a typed `-derivedDataPath` that a fresh
+/// resolve of the same flags would look for in the default DerivedData. So
+/// targeting flags keep the record when they agree with it and yield to a
+/// full resolve when they name another scheme, configuration or destination
+/// (see [`launch_matches`]). `stage` carries the mode flags of the verbs that
+/// take them; the rest pass the default.
+fn matching_last_launch(ctx: &Context, stage: &StageTargetArgs) -> Option<LastLaunchedApp> {
+    let key = resolve::container(ctx).ok()?.key();
+    let last = ctx.state.projects.get(&key)?.last_launched_app.clone()?;
+    launch_matches(ctx, &key, &last, stage).then_some(last)
+}
+
+/// Whether every targeting flag this invocation was given agrees with the
+/// recorded launch. An absent flag agrees with anything. A typed scheme,
+/// configuration or raw `--destination` must equal the recorded one, so a
+/// record written before those were kept never matches one. `--mac`,
+/// `--device` and `--device-id` must name the record's kind, and `--on` must
+/// resolve to its Mac, simulator or device: a UDID or `mac` is compared
+/// directly, and any other reference is resolved against the live simulator
+/// list the way the plan would resolve it.
+fn launch_matches(
+    ctx: &Context,
+    key: &str,
+    last: &LastLaunchedApp,
+    stage: &StageTargetArgs,
+) -> bool {
+    let t = &ctx.targeting;
+    let agrees =
+        |typed: &Option<String>, recorded: &Option<String>| typed.is_none() || typed == recorded;
+    if !agrees(&t.scheme, &last.scheme)
+        || !agrees(&t.configuration, &last.configuration)
+        || !agrees(&t.destination, &last.destination)
+    {
+        return false;
+    }
+    let kind = last.kind.as_str();
+    if stage.mac && kind != "macos" {
+        return false;
+    }
+    if (stage.device || stage.device_id.is_some()) && kind != "device" {
+        return false;
+    }
+    if let Some(id) = &stage.device_id
+        && !last
+            .destination_id
+            .as_deref()
+            .is_some_and(|recorded| recorded.eq_ignore_ascii_case(id))
+    {
+        return false;
+    }
+    let Some(reference) = t.on.as_deref() else {
+        return true;
+    };
+    if resolve::on_is_mac(ctx, key, reference) {
+        return kind == "macos";
+    }
+    let recorded = match kind {
+        "simulator" => last.simulator_udid.as_deref(),
+        "device" => last.destination_id.as_deref(),
+        _ => None,
+    };
+    let Some(recorded) = recorded else {
+        return false;
+    };
+    if reference.eq_ignore_ascii_case(recorded) {
+        return true;
+    }
+    let Ok(sims) = simctl::list() else {
+        return false;
+    };
+    match resolve::resolve_on(ctx, key, reference, &sims) {
+        Ok(resolve::OnTarget::Simulator { udid, .. } | resolve::OnTarget::Device { udid, .. }) => {
+            udid.eq_ignore_ascii_case(recorded)
+        }
+        _ => false,
+    }
 }
 
 /// The executable path inside a recorded macOS launch's `.app` bundle.
@@ -4685,13 +4750,10 @@ fn simple_logs(
     stage_target: &StageTargetArgs,
     filters: &LogFilterArgs,
 ) -> CommandResult {
-    // An explicit --mac/--device names the target, so the simulator fast path
-    // must yield to it just as explicit targeting does.
-    if !explicit_targeting(ctx)
-        && !stage_target.mac
-        && !stage_target.device
-        && stage_target.device_id.is_none()
-        && let Some((udid, app)) = last_launched_sim(ctx)
+    // The simulator fast path serves a recorded simulator launch that the
+    // targeting flags, `--mac` and `--device` included, agree with.
+    if let Some(last) = matching_last_launch(ctx, stage_target)
+        && let Some((udid, app)) = recorded_sim(&last)
     {
         ctx.out.step("Booting simulator", || simctl::boot(&udid))?;
         if filters.exits {
@@ -5319,9 +5381,8 @@ fn hint_quote(word: &str) -> String {
 }
 
 /// Whether the invocation named its target explicitly (scheme, configuration,
-/// destination, or `--on`) — the last-launched fast paths yield to it.
-/// Container flags don't count: the recorded launch is already keyed per
-/// container.
+/// destination, or `--on`), which a `--pid` that skips app resolution
+/// refuses. Container flags don't count: they only say where to look.
 fn explicit_targeting(ctx: &Context) -> bool {
     ctx.targeting.scheme.is_some()
         || ctx.targeting.configuration.is_some()
@@ -5329,9 +5390,8 @@ fn explicit_targeting(ctx: &Context) -> bool {
         || ctx.targeting.on.is_some()
 }
 
-/// The recorded last launch, when it targeted a simulator: `(udid, bundle)`.
-fn last_launched_sim(ctx: &Context) -> Option<(String, AppBundle)> {
-    let last = last_launched(ctx)?;
+/// A recorded launch's `(udid, bundle)`, when it targeted a simulator.
+fn recorded_sim(last: &LastLaunchedApp) -> Option<(String, AppBundle)> {
     if last.kind != "simulator" {
         return None;
     }
@@ -5452,11 +5512,9 @@ fn screenshot(ctx: &mut Context, args: &ScreenshotArgs) -> CommandResult {
         );
     }
 
-    // The recorded last launch serves the no-flags case with no scheme
-    // resolution and no prompting, exactly like `stop`.
-    if !explicit_targeting(ctx)
-        && let Some(last) = last_launched(ctx)
-    {
+    // The recorded last launch serves the flags that agree with it, with no
+    // scheme resolution and no prompting, exactly like `stop`.
+    if let Some(last) = matching_last_launch(ctx, &StageTargetArgs::default()) {
         match last.kind.as_str() {
             "macos" => {
                 if let Some(exe) = mac_executable(&last) {
@@ -5744,9 +5802,7 @@ fn sample(ctx: &mut Context, args: &SampleArgs) -> CommandResult {
         return sample_pid(ctx, pid, &format!("pid {pid}"), None, &[], args);
     }
 
-    if !explicit_targeting(ctx)
-        && let Some(last) = last_launched(ctx)
-    {
+    if let Some(last) = matching_last_launch(ctx, &StageTargetArgs::default()) {
         match last.kind.as_str() {
             "macos" => {
                 if let Some(exe) = mac_executable(&last) {
@@ -5969,14 +6025,9 @@ fn simulator_screenshot(ctx: &Context, udid: &str, args: &ScreenshotArgs) -> Com
 /// §9o). Resolution mirrors `stop`: the recorded last launch unless a flag
 /// names another target, else the resolved build target — no build, ever.
 fn container(ctx: &mut Context, stage: &StageTargetArgs, kind: ContainerKind) -> CommandResult {
-    // An explicit --mac/--device names the target, so the recorded launch
-    // yields to it just as it does to explicit targeting.
-    if !explicit_targeting(ctx)
-        && !stage.mac
-        && !stage.device
-        && stage.device_id.is_none()
-        && let Some(last) = last_launched(ctx)
-    {
+    // The recorded launch serves the targeting flags, `--mac` and `--device`
+    // included, that agree with it.
+    if let Some(last) = matching_last_launch(ctx, stage) {
         match last.kind.as_str() {
             "simulator" => {
                 if let Some(udid) = &last.simulator_udid {
@@ -6488,9 +6539,7 @@ fn resolve_ui_app(ctx: &mut Context, pid: Option<i32>) -> Result<MacShot, CliErr
         });
     }
 
-    if !explicit_targeting(ctx)
-        && let Some(last) = last_launched(ctx)
-    {
+    if let Some(last) = matching_last_launch(ctx, &StageTargetArgs::default()) {
         match last.kind.as_str() {
             "macos" => {
                 if let Some(exe) = mac_executable(&last) {
@@ -7859,6 +7908,117 @@ Process Instance Registry, error: Error Domain=NSCocoaErrorDomain Code=4097\r\n"
         refused("sample", result.err());
         let result = resolve_ui_app(&mut project_ctx(&project), None);
         refused("ui", result.err());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Targeting flags that name the recorded launch keep it: after 'app
+    /// launch --mac --derived-data-path dd', 'app ui click --scheme AppMac
+    /// --on mac' has to find the app that launch started, which a fresh resolve
+    /// would look for in the default DerivedData. Flags that name anything
+    /// else yield to the resolve.
+    #[test]
+    fn targeting_flags_that_agree_with_the_recorded_launch_keep_it() {
+        let dir = std::env::temp_dir().join(format!(
+            "sweetpad-app-record-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let project = dir.join("App.xcodeproj");
+        std::fs::create_dir_all(&project).unwrap();
+        let mac = LastLaunchedApp {
+            kind: "macos".into(),
+            app_path: "/work/dd/Build/Products/Debug/AppMac.app".into(),
+            bundle_identifier: "com.example.mac".into(),
+            executable_name: Some("AppMac".into()),
+            scheme: Some("AppMac".into()),
+            configuration: Some("Debug".into()),
+            destination: Some("platform=macOS".into()),
+            ..LastLaunchedApp::default()
+        };
+        let sim = LastLaunchedApp {
+            kind: "simulator".into(),
+            app_path: "/dd/App.app".into(),
+            bundle_identifier: "com.example.app".into(),
+            simulator_udid: Some("AAAA-1111".into()),
+            scheme: Some("App".into()),
+            configuration: Some("Debug".into()),
+            destination: Some("platform=iOS Simulator,id=AAAA-1111".into()),
+            ..LastLaunchedApp::default()
+        };
+        let matches = |record: &LastLaunchedApp,
+                       targeting: crate::cli::Targeting,
+                       stage: &StageTargetArgs| {
+            let mut ctx = project_ctx(&project);
+            let key = resolve::container(&ctx).unwrap().key();
+            ctx.state.project_mut(&key).last_launched_app = Some(record.clone());
+            ctx.targeting = crate::cli::Targeting {
+                project: Some(project.clone()),
+                ..targeting
+            };
+            matching_last_launch(&ctx, stage).is_some()
+        };
+        let flags = |scheme: Option<&str>, on: Option<&str>| crate::cli::Targeting {
+            scheme: scheme.map(str::to_string),
+            on: on.map(str::to_string),
+            ..crate::cli::Targeting::default()
+        };
+        let none = StageTargetArgs::default();
+        let mac_flag = StageTargetArgs {
+            mac: true,
+            ..StageTargetArgs::default()
+        };
+
+        // No flags, and flags that name the recorded launch, keep it.
+        assert!(matches(&mac, flags(None, None), &none));
+        assert!(matches(&mac, flags(Some("AppMac"), Some("mac")), &none));
+        assert!(matches(&mac, flags(Some("AppMac"), None), &mac_flag));
+        assert!(matches(
+            &mac,
+            crate::cli::Targeting {
+                configuration: Some("Debug".into()),
+                destination: Some("platform=macOS".into()),
+                ..crate::cli::Targeting::default()
+            },
+            &none
+        ));
+        // A simulator named by its UDID needs no simulator list.
+        assert!(matches(&sim, flags(Some("App"), Some("aaaa-1111")), &none));
+
+        // Another scheme, configuration, or kind of destination is another app.
+        assert!(!matches(&mac, flags(Some("Other"), Some("mac")), &none));
+        assert!(!matches(
+            &mac,
+            crate::cli::Targeting {
+                configuration: Some("Release".into()),
+                ..crate::cli::Targeting::default()
+            },
+            &none
+        ));
+        assert!(!matches(&sim, flags(None, Some("mac")), &none));
+        assert!(!matches(&sim, flags(None, None), &mac_flag));
+        assert!(!matches(
+            &mac,
+            flags(None, None),
+            &StageTargetArgs {
+                device: true,
+                ..StageTargetArgs::default()
+            }
+        ));
+        // A record kept before the scheme was can't answer a typed one.
+        let unscoped = LastLaunchedApp {
+            scheme: None,
+            ..mac.clone()
+        };
+        assert!(matches(&unscoped, flags(None, Some("mac")), &none));
+        assert!(!matches(
+            &unscoped,
+            flags(Some("AppMac"), Some("mac")),
+            &none
+        ));
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

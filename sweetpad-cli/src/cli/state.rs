@@ -140,6 +140,15 @@ pub struct LastLaunchedApp {
     pub destination_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub destination_type: Option<String>,
+    /// The scheme, configuration and `-destination` specifier the launch was
+    /// planned with, so a verb given targeting flags can tell whether they
+    /// name this launch.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheme: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub configuration: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination: Option<String>,
 }
 
 impl State {
