@@ -129,7 +129,8 @@ and the `app` verbs that spawn `xcodebuild` — `run`, `install`, `debug`,
 (`launch`, `uninstall`, `logs`, `stop`) refuse it, because args that reach no
 `xcodebuild` would be accepted and silently dropped. A passthrough
 `-derivedDataPath` is read back out and handed to the in-process resolver, so
-the app the CLI installs is the one the build just wrote; the settings that
+the app the CLI installs is the one the build just wrote, and `app launch`
+takes the same location as `--derived-data-path` (§9s); the settings that
 relocate the product where the resolver cannot follow (`SYMROOT=`, `OBJROOT=`,
 `CONFIGURATION_BUILD_DIR=`) are refused before a build is spent on them. A
 project that always needs the same argument writes it in `sweetpad.toml`'s
@@ -455,7 +456,9 @@ args = ["-skipMacroValidation"]   # added to every command that builds
   xcodebuild honors), `-resultBundlePath` (the CLI writes and reads back its
   own), and `-derivedDataPath` — whose relative value would resolve against the
   working directory while every other path in this file resolves against the
-  file, so one committed line would name a different directory per caller. A
+  file, so one committed line would name a different directory per caller.
+  It is passed per command instead: a build's `--` tail, and
+  `--derived-data-path` for `app launch` (§9s). A
   refusal is an error rather than a warning: the alternative is handing
   xcodebuild two answers to one question. Swift packages ignore the table
   entirely — `swift build` knows none of these flags.
@@ -2664,6 +2667,53 @@ finding: a clean sample exits 0 whatever state the app was in.
 report has them, and a background deadlock matters to this question once the
 main thread waits on it); `spindump`; physical devices; and telling a nested run
 loop from the top-level one, since a modal alert is idle and reads as idle.
+
+## 9s. v8 — the locator sees what the build saw
+
+The `app` verbs find the product through the in-process resolver (§9h), which
+has to reach the answer `xcodebuild` reached from the same arguments. Where it
+did not, a verb launched a stale bundle, reported the wrong bundle id, or could
+not launch at all.
+
+### A product built under a typed `-derivedDataPath`
+
+After `sweetpad build --on mac -- -derivedDataPath build/dd`, nothing could
+launch the app: `app launch` refuses the `--` tail (§3), `sweetpad.toml`
+refuses `-derivedDataPath` (§6), and the locator looked in the default
+DerivedData.
+
+```
+sweetpad app launch --mac --derived-data-path build/dd
+```
+
+**A flag, not the tail, and not a record.** Three shapes were on the table:
+
+- A `--` tail on `launch` that takes only `-derivedDataPath`. Everywhere else
+  the tail means "arguments for xcodebuild", and here it would mean one
+  argument that reaches no xcodebuild. `launch` would also lose the
+  parse-time refusal that §3 gives every verb that builds nothing.
+- Reading the product path the last `build` recorded. That remembers a typed
+  one-off, which §5 rules out for a scheme and which holds just as well for a
+  location. A later build from Xcode, or of another scheme, would leave the
+  record naming the wrong bundle, and nothing would say so.
+- A flag, typed per command like the build's own `-derivedDataPath`. This is
+  the one built.
+
+**A relative path resolves where xcodebuild ran.** sweetpad runs xcodebuild
+from the directory holding the container, so `-- -derivedDataPath build/dd`
+typed in a nested source directory writes beside the project, not below the
+working directory. The locator joins a relative path onto that same
+directory, for the passthrough and the flag alike. The same text then names
+the same place on both commands, and `build -o json`'s `productPath` is an
+absolute path to a bundle that exists.
+
+**Only `launch` takes it.** The verbs that act on a running app (`stop`,
+`logs`, `screenshot`, `sample`, `ui`, `container`) read the recorded last
+launch first, and that record carries the path `launch` started. `uninstall`
+and a simulator `launch` need only the bundle id, which no DerivedData
+location changes. A macOS `launch` whose product is missing says it isn't
+built, names the `build` that makes it, and names the flag when it wasn't
+given.
 
 ## 10. Testing
 

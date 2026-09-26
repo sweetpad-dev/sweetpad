@@ -1581,17 +1581,29 @@ fn bundle_of(t: &TargetBuildSettings) -> Option<AppBundle> {
 
 /// The `-derivedDataPath` a passthrough hands `xcodebuild`, if any — the
 /// product locator has to look where the build actually put the bundle.
-/// Product-relocating build settings the locator can't model (`SYMROOT=`,
-/// `OBJROOT=`, `CONFIGURATION_BUILD_DIR=`) are refused loudly: looking in the
-/// default DerivedData would name whatever stale `.app` an earlier plain build
-/// left there. Public so `app`'s run plan can spend the refusal before a build
-/// rather than after one.
-pub fn passthrough_derived_data(passthrough: &[String]) -> Result<Option<PathBuf>, CliError> {
+/// `xcodebuild` runs from [`working_dir`], so a relative path is joined onto
+/// that directory rather than onto the caller's: from a nested source
+/// directory the two differ, and the locator would name a bundle that isn't
+/// there. Product-relocating build settings the locator can't model
+/// (`SYMROOT=`, `OBJROOT=`, `CONFIGURATION_BUILD_DIR=`) are refused loudly:
+/// looking in the default DerivedData would name whatever stale `.app` an
+/// earlier plain build left there. Public so `app`'s run plan can spend the
+/// refusal before a build rather than after one.
+pub fn passthrough_derived_data(
+    passthrough: &[String],
+    container: &Container,
+) -> Result<Option<PathBuf>, CliError> {
     let mut derived_data = None;
     let mut iter = passthrough.iter().peekable();
     while let Some(arg) = iter.next() {
         if arg == "-derivedDataPath" {
-            derived_data = iter.peek().map(PathBuf::from);
+            derived_data = iter.peek().map(|dir| {
+                let dir = PathBuf::from(dir);
+                match working_dir(container) {
+                    Some(base) if dir.is_relative() => base.join(dir),
+                    _ => dir,
+                }
+            });
         } else if let Some((key, _)) = arg.split_once('=')
             && matches!(key, "SYMROOT" | "OBJROOT" | "CONFIGURATION_BUILD_DIR")
         {
@@ -1639,7 +1651,7 @@ pub fn resolved_settings(plan: &BuildPlan<'_>) -> Result<Vec<TargetBuildSettings
         xcspec_root: None,
         sdksettings_root: None,
         catalog_cache: None,
-        derived_data_path: passthrough_derived_data(plan.passthrough)?,
+        derived_data_path: passthrough_derived_data(plan.passthrough, plan.container)?,
         // Callers install, launch, and report what this resolves, so it has to
         // name the bundle `xcodebuild` actually wrote — including when the user
         // has moved Derived Data in Xcode (issue #306).
@@ -2307,6 +2319,28 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             working_dir(&Container::Project(PathBuf::from("/work/App.xcodeproj"))),
             Some(PathBuf::from("/work"))
         );
+    }
+
+    #[test]
+    fn a_relative_derived_data_path_resolves_where_xcodebuild_runs() {
+        let args = |dir: &str| vec!["-derivedDataPath".to_string(), dir.to_string()];
+        let nested = Container::Project(PathBuf::from("/work/ios/App.xcodeproj"));
+        // xcodebuild runs from the project's directory, whatever the caller's.
+        assert_eq!(
+            passthrough_derived_data(&args("build/dd"), &nested).unwrap(),
+            Some(PathBuf::from("/work/ios/build/dd"))
+        );
+        assert_eq!(
+            passthrough_derived_data(&args("/tmp/dd"), &nested).unwrap(),
+            Some(PathBuf::from("/tmp/dd"))
+        );
+        // A project named relative to the cwd runs xcodebuild in the cwd.
+        let here = Container::Project(PathBuf::from("App.xcodeproj"));
+        assert_eq!(
+            passthrough_derived_data(&args("dd"), &here).unwrap(),
+            Some(PathBuf::from("dd"))
+        );
+        assert_eq!(passthrough_derived_data(&[], &nested).unwrap(), None);
     }
 
     #[test]

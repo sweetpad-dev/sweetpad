@@ -32,7 +32,8 @@ the thing you just started.
 
 The verbs that build (`run`, `install`, `debug`, `diagnose`) accept a `--` tail of xcodebuild
 arguments. The ones that only act on an installed app (`launch`, `stop`, `logs`, `uninstall`) reject
-it, rather than swallow arguments that would reach no build.
+it, rather than swallow arguments that would reach no build. If you built with
+`-- -derivedDataPath <dir>`, launch that build with `app launch --derived-data-path <dir>`.
 
 :::
 

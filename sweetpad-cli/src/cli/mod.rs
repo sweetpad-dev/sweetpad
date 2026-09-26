@@ -1961,6 +1961,36 @@ mod cli_definition_tests {
         }
     }
 
+    /// `app launch` builds nothing, so where a `-- -derivedDataPath` build put
+    /// the product arrives as its own flag rather than as a `--` tail.
+    #[test]
+    fn app_launch_takes_the_derived_data_path_as_a_flag() {
+        use crate::cli::commands::app;
+        use clap::Parser;
+
+        let cli = super::Cli::try_parse_from([
+            "sweetpad",
+            "app",
+            "launch",
+            "--mac",
+            "--derived-data-path",
+            "build/dd",
+        ])
+        .expect("--derived-data-path rejected");
+        match cli.resource {
+            Some(super::Resource::App {
+                action:
+                    Some(app::Action::Launch {
+                        derived_data_path, ..
+                    }),
+            }) => assert_eq!(
+                derived_data_path.as_deref(),
+                Some(std::path::Path::new("build/dd"))
+            ),
+            other => panic!("parsed as {other:?}"),
+        }
+    }
+
     /// `--arg` takes a value that starts with `-` (user-defaults arguments
     /// like `-AppleLanguages` do) on every verb that launches the app, while
     /// the flag after it and a `--` tail keep their own meaning.

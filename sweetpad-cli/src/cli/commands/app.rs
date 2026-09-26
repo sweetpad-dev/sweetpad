@@ -452,6 +452,11 @@ pub enum Action {
         stage: StageTargetArgs,
         #[command(flatten)]
         launch: LaunchArgs,
+        /// Where the build put its products, for a build that ran with
+        /// '-- -derivedDataPath DIR'. A relative DIR resolves the way the
+        /// build's did, against the directory holding the project.
+        #[arg(long = "derived-data-path", value_name = "DIR")]
+        derived_data_path: Option<std::path::PathBuf>,
     },
     /// Debug under lldb: on a simulator, launch suspended and attach; on
     /// macOS, hand the executable to lldb and 'run' it. '--batch' drives lldb
@@ -812,10 +817,16 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
             target,
             stage,
             launch,
+            derived_data_path,
         } => {
             ctx.targeting = target.clone().into();
             settle_stage_mode(ctx, stage)?;
-            simple(ctx, Stage::Launch, launch, stage, &[])
+            // Planned with, never passed on: `launch` spawns no xcodebuild.
+            let located: Vec<String> = derived_data_path
+                .iter()
+                .flat_map(|dir| ["-derivedDataPath".to_string(), dir.display().to_string()])
+                .collect();
+            simple(ctx, Stage::Launch, launch, stage, &located)
         }
         Action::Debug {
             target,
@@ -1319,7 +1330,7 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
     };
     // A product-relocating passthrough the app locator can't follow fails
     // here, before a build is spent on it.
-    xcodebuild::passthrough_derived_data(&plan.passthrough)?;
+    xcodebuild::passthrough_derived_data(&plan.passthrough, &plan.resolved.container)?;
     // Settled on the plan, so every macOS launch it drives carries it: the
     // session's relaunches, a detached launch, and lldb's.
     if matches!(plan.target, Target::Mac) {
@@ -3833,8 +3844,9 @@ fn project_xcodebuild_args(ctx: &Context) -> Result<Vec<String>, CliError> {
     ctx.xcodebuild_args(&[])
 }
 
-/// `tail` is the `--` passthrough typed on this invocation, which only
-/// `install` takes.
+/// `tail` is what this invocation adds to the project's arguments: the `--`
+/// passthrough `install` builds with, or the `-derivedDataPath` that `launch
+/// --derived-data-path` locates the product by.
 fn simple(
     ctx: &mut Context,
     stage: Stage,
@@ -3955,6 +3967,19 @@ fn launch_mac(
     plan: &RunPlan,
     app: &AppBundle,
 ) -> Result<AppStageReport, CliError> {
+    if !app.executable.exists() {
+        let elsewhere = if plan.passthrough.iter().any(|a| a == "-derivedDataPath") {
+            ""
+        } else {
+            ", or pass '--derived-data-path <dir>' if it was built with \
+             '-- -derivedDataPath <dir>'"
+        };
+        return Err(CliError::new(format!(
+            "{} isn't built yet; build it with {}{elsewhere}",
+            app.path.display(),
+            follow_up(ctx, "build", &["--on", "mac"])
+        )));
+    }
     let (pid, log) = spawn_detached_mac(ctx, plan, app)?;
     Ok(AppStageReport {
         action: "launched",
@@ -6889,8 +6914,9 @@ mod tests {
                 passthrough_moves_output(&argv(&[relocating])).is_none(),
                 "{relocating}"
             );
+            let project = resolve::Container::Project("/work/App.xcodeproj".into());
             assert!(
-                xcodebuild::passthrough_derived_data(&argv(&[relocating])).is_err(),
+                xcodebuild::passthrough_derived_data(&argv(&[relocating]), &project).is_err(),
                 "{relocating}"
             );
         }

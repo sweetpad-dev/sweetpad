@@ -132,6 +132,10 @@ Pass arguments and environment to the app with `--arg` and `--env KEY=VALUE`
 (both repeatable) — both work on `app run`, `app debug`, and `app diagnose`
 alike. `--detach` (`app run` only) leaves the app running after the CLI exits.
 
+`app launch` starts the installed app (on macOS, the built one) without building
+it again. If a macOS build ran with `-- -derivedDataPath <dir>`, pass
+`app launch --mac --derived-data-path <dir>` so it finds that build.
+
 If a run fails with `cannot bind 127.0.0.1:8887 for hot reload`, a dead session
 left the listener behind: `sweetpad hot status` names the holder and
 `sweetpad hot reset` clears it. Prefer that over `--no-hot`, which works by
