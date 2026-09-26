@@ -5,10 +5,22 @@
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
+use std::process::{Output, Stdio};
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
 use crate::cli::{CliError, ErrorContext, process};
+
+/// How long an install, launch or terminate may run before the simulator
+/// counts as stuck. A healthy simulator answers each in under a second: a
+/// launch or terminate in about 0.2s, an install in about 0.5s even for a
+/// 2 GB bundle, which APFS clones rather than copies. The slow case is the
+/// first launch on a freshly booted simulator, which a loaded CI machine can
+/// hold for tens of seconds. A wedged simulator never answers, and without a
+/// bound the run waits on it forever; two minutes clears the slow case with
+/// room to spare and still ends a hung run.
+const STEP_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// `simctl list --json devices` output: runtime identifier → its devices.
 #[derive(Debug, Deserialize)]
@@ -210,6 +222,102 @@ pub fn find<'a>(sims: &'a [Simulator], query: &str) -> Option<&'a Simulator> {
     by_name.first().copied()
 }
 
+/// Run one `xcrun simctl` step on `udid` to completion with its output
+/// captured, within [`STEP_TIMEOUT`].
+fn bounded_step(argv: &[&str], env: &[(String, String)], udid: &str) -> Result<Output, CliError> {
+    bounded_step_within("xcrun", argv, env, udid, STEP_TIMEOUT)
+}
+
+/// [`bounded_step`] with the program and its limit given. A step still
+/// running at `limit` is killed and reported as stuck ([`stuck`]).
+fn bounded_step_within(
+    program: &str,
+    argv: &[&str],
+    env: &[(String, String)],
+    udid: &str,
+    limit: Duration,
+) -> Result<Output, CliError> {
+    let verb = argv.get(1).copied().unwrap_or_default();
+    let failed =
+        |e: std::io::Error| CliError::new(format!("failed to run 'xcrun simctl {verb}': {e}"));
+    match output_within(program, argv, env, limit) {
+        Ok(Some(output)) => Ok(output),
+        Ok(None) => Err(stuck(verb, udid, limit)),
+        Err(e) => Err(failed(e)),
+    }
+}
+
+/// Run `program` with stdout and stderr captured, as `Command::output` does,
+/// killing it once `limit` has passed. `Ok(None)` means it was killed. The
+/// pipes are drained on their own threads so a full pipe can't stall the
+/// child. A grandchild can hold them open past the child's exit, so once the
+/// child is gone they get a short grace rather than a wait for their end.
+fn output_within(
+    program: &str,
+    argv: &[&str],
+    env: &[(String, String)],
+    limit: Duration,
+) -> std::io::Result<Option<Output>> {
+    use std::io::Read;
+    use std::sync::mpsc;
+
+    fn drain(pipe: Option<impl Read + Send + 'static>) -> mpsc::Receiver<Vec<u8>> {
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut buf);
+            }
+            let _ = tx.send(buf);
+        });
+        rx
+    }
+
+    let deadline = Instant::now() + limit;
+    let mut child = std::process::Command::new(program)
+        .args(argv)
+        .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let stdout = drain(child.stdout.take());
+    let stderr = drain(child.stderr.take());
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(None);
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let collect =
+        |rx: mpsc::Receiver<Vec<u8>>| rx.recv_timeout(Duration::from_secs(2)).unwrap_or_default();
+    Ok(Some(Output {
+        status,
+        stdout: collect(stdout),
+        stderr: collect(stderr),
+    }))
+}
+
+/// The error for a step a simulator never answered: which one, how long it
+/// waited, and how to get the simulator back. A wedged simulator answers
+/// nothing until it restarts, so the tip names the two commands that restart
+/// it. Exit 1: the destination resolved, and the simulator failed at it.
+fn stuck(verb: &str, udid: &str, limit: Duration) -> CliError {
+    CliError::new(format!(
+        "'xcrun simctl {verb}' didn't finish within {}s, so the simulator looks stuck",
+        limit.as_secs()
+    ))
+    .tip(Some(format!(
+        "restart the simulator with 'sweetpad simulator shutdown {udid}' and \
+         'sweetpad simulator boot {udid}', then run the command again"
+    )))
+}
+
 /// Boot a simulator. Already-booted is treated as success so the run/install
 /// pipeline is idempotent; already-*booting* (Simulator.app just opened it, a
 /// concurrent run racing this one) waits for the boot to finish instead of
@@ -235,10 +343,18 @@ pub fn boot(udid: &str) -> Result<(), CliError> {
     )))
 }
 
-/// Install an `.app` bundle onto a booted simulator.
+/// Install an `.app` bundle onto a booted simulator, within [`STEP_TIMEOUT`].
 pub fn install(udid: &str, app_path: &str) -> Result<(), CliError> {
-    process::stream("xcrun", &["simctl", "install", udid, app_path], None)
-        .context("installing the app on the simulator")
+    let output = bounded_step(&["simctl", "install", udid, app_path], &[], udid)
+        .context("installing the app on the simulator")?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(CliError::new(format!(
+        "simctl install failed: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    ))
+    .context("installing the app on the simulator"))
 }
 
 /// Launch an installed app by bundle id; returns simctl's stdout (`bundle: pid`).
@@ -246,18 +362,7 @@ pub fn install(udid: &str, app_path: &str) -> Result<(), CliError> {
 /// freshly-installed build actually starts — a plain `simctl launch` attaches to the
 /// existing process and the new binary never runs.
 pub fn launch(udid: &str, bundle_id: &str) -> Result<String, CliError> {
-    process::capture(
-        "xcrun",
-        &[
-            "simctl",
-            "launch",
-            "--terminate-running-process",
-            udid,
-            bundle_id,
-        ],
-        None,
-    )
-    .context("launching the app on the simulator")
+    launch_opts(udid, bundle_id, &LaunchOptions::default())
 }
 
 /// Extra launch inputs: process arguments, environment pairs (forwarded via
@@ -289,10 +394,12 @@ pub fn launch_with_env(
     )
 }
 
-/// Launch with [`LaunchOptions`]. Returns stdout (`<bundle>: <pid>`).
-/// `--terminate-running-process` forces a fresh launch: forwarded env and args
-/// only take effect on a new process, so an already-running instance must be
-/// replaced or they silently never apply.
+/// Launch with [`LaunchOptions`], within [`STEP_TIMEOUT`]. Returns stdout
+/// (`<bundle>: <pid>`). `--terminate-running-process` forces a fresh launch:
+/// forwarded env and args only take effect on a new process, so an
+/// already-running instance must be replaced or they silently never apply.
+/// `--wait-for-debugger` returns once the app is started suspended, so it
+/// fits the same bound.
 pub fn launch_opts(udid: &str, bundle_id: &str, opts: &LaunchOptions) -> Result<String, CliError> {
     let mut argv: Vec<&str> = vec!["simctl", "launch", "--terminate-running-process"];
     if opts.wait_for_debugger {
@@ -301,11 +408,8 @@ pub fn launch_opts(udid: &str, bundle_id: &str, opts: &LaunchOptions) -> Result<
     argv.push(udid);
     argv.push(bundle_id);
     argv.extend(opts.args.iter().map(String::as_str));
-    let output = std::process::Command::new("xcrun")
-        .args(&argv)
-        .envs(opts.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
-        .output()
-        .map_err(|e| CliError::new(format!("failed to run 'xcrun simctl launch': {e}")))?;
+    let output =
+        bounded_step(&argv, opts.env, udid).context("launching the app on the simulator")?;
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
@@ -350,15 +454,14 @@ pub fn spawn_console(
         .map_err(|e| CliError::new(format!("failed to run 'xcrun simctl launch': {e}")))
 }
 
-/// Terminate a running app by bundle id. Already-stopped is treated as success
-/// (idempotent, mirroring [`boot`]/[`shutdown`]): `simctl` errors with "found
-/// nothing to terminate" when the app isn't running, which is not a failure for
-/// `app stop` / session teardown.
+/// Terminate a running app by bundle id, within [`STEP_TIMEOUT`].
+/// Already-stopped is treated as success (idempotent, mirroring
+/// [`boot`]/[`shutdown`]): `simctl` errors with "found nothing to terminate"
+/// when the app isn't running, which is not a failure for `app stop` /
+/// session teardown.
 pub fn terminate(udid: &str, bundle_id: &str) -> Result<(), CliError> {
-    let output = std::process::Command::new("xcrun")
-        .args(["simctl", "terminate", udid, bundle_id])
-        .output()
-        .map_err(|e| CliError::new(format!("failed to run 'xcrun simctl terminate': {e}")))?;
+    let output = bounded_step(&["simctl", "terminate", udid, bundle_id], &[], udid)
+        .context("terminating the app on the simulator")?;
     if output.status.success() {
         return Ok(());
     }
@@ -960,6 +1063,70 @@ group.com.apple.stocks\t/Users/someone/Library/Developer/CoreSimulator/Devices/F
                 .display()
                 .to_string()
         );
+    }
+
+    /// A stand-in for `xcrun` that runs `body`, in a directory that goes
+    /// when the returned guard drops.
+    fn stub_xcrun(tag: &str, body: &str) -> (crate::cli::testdir::TempDir, String) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = crate::cli::testdir::TempDir::new(&format!("sweetpad-test-{tag}"));
+        let stub = dir.join("xcrun");
+        std::fs::write(&stub, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let path = stub.display().to_string();
+        (dir, path)
+    }
+
+    /// A wedged simulator never answers a launch. The step is killed at its
+    /// limit and fails naming the step and how to restart the simulator,
+    /// rather than holding the run forever.
+    #[test]
+    fn a_simctl_step_that_never_returns_is_stopped_at_its_limit() {
+        let (_dir, xcrun) = stub_xcrun("simctl-stuck", "exec sleep 30");
+        let argv = [
+            "simctl",
+            "launch",
+            "--terminate-running-process",
+            "UDID",
+            "dev.app",
+        ];
+        let started = Instant::now();
+        let err =
+            bounded_step_within(&xcrun, &argv, &[], "UDID", Duration::from_secs(1)).unwrap_err();
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "{:?}",
+            started.elapsed()
+        );
+        assert_eq!(err.error_kind(), crate::cli::ErrorKind::Generic);
+        assert_eq!(
+            err.to_string(),
+            "'xcrun simctl launch' didn't finish within 1s, so the simulator looks stuck"
+        );
+        assert_eq!(
+            err.tip_text(),
+            Some(
+                "restart the simulator with 'sweetpad simulator shutdown UDID' and \
+                 'sweetpad simulator boot UDID', then run the command again"
+            )
+        );
+        assert!(!format!("{err} {:?}", err.tip_text()).contains('`'));
+    }
+
+    /// A step that answers in time comes back whole: its exit status and both
+    /// streams, with the environment it was given.
+    #[test]
+    fn a_simctl_step_that_answers_keeps_its_output() {
+        let (_dir, xcrun) = stub_xcrun(
+            "simctl-answers",
+            "echo \"dev.app: $SIMCTL_CHILD_PORT\"\necho 'a note' >&2\nexit 3",
+        );
+        let env = [("SIMCTL_CHILD_PORT".to_string(), "4242".to_string())];
+        let output =
+            bounded_step_within(&xcrun, &["simctl", "launch"], &env, "UDID", STEP_TIMEOUT).unwrap();
+        assert_eq!(output.status.code(), Some(3));
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "dev.app: 4242\n");
+        assert_eq!(String::from_utf8_lossy(&output.stderr), "a note\n");
     }
 
     #[test]

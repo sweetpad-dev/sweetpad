@@ -149,6 +149,23 @@ not ready: Iphone 13 is locked; unlock it so Xcode can start its development ser
 report. Device builds also need signing settings that a simulator build doesn't. See
 [Destinations and devices](./destinations.md#physical-devices).
 
+## A simulator run stalls at "Launching app"
+
+A simulator can get wedged: it stays booted, but an install, launch, or terminate sent to it never
+comes back. SweetPad gives each of those steps two minutes. If one takes longer, the command fails
+with exit code 1, names the step, and prints the commands that restart the simulator:
+
+```console
+$ sweetpad run --no-logs --on "iPhone 17"
+▶ MyApp · Debug · iPhone 17
+✓ Build succeeded (1.6s)
+error: launching the app on the simulator
+  'xcrun simctl launch' didn't finish within 120s, so the simulator looks stuck
+tip: restart the simulator with 'sweetpad simulator shutdown F13C004A-…' and 'sweetpad simulator boot F13C004A-…', then run the command again
+```
+
+Under `-o json` the restart commands are in the error's `tip` field.
+
 ## I need to see what xcodebuild actually said
 
 Three levels, in increasing order of noise:

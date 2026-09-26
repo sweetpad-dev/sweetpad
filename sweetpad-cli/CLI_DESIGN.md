@@ -682,6 +682,21 @@ sweetpad completions <shell>          clap_complete-generated scripts
   with piped stdout fed through the [`buildlog`] beautifier. Non-interactive /
   piped runs (and `--no-logs`) fall back to a one-shot launch + inline follow.
 
+- **bounded simulator steps** — `simctl install`, `launch` and `terminate`
+  each get two minutes (`simctl::STEP_TIMEOUT`). A wedged simulator accepts
+  those calls and never answers, and an unbounded call would hold
+  `run --no-logs` at "Launching app" for good, and an agent's loop with it.
+  A healthy simulator answers in
+  under a second (an install too, since APFS clones the bundle), so the
+  bound only has to clear a freshly booted simulator's slow first launch.
+  A step that runs out is killed and fails with exit 1 (the destination
+  resolved; the simulator failed at it), naming the step, with a `tip`
+  pointing at `simulator shutdown` and `simulator boot` for that UDID. This
+  covers every verb that goes through those three, `app install`/`launch`/
+  `stop` included. `simctl boot` stays unbounded, since a first boot after a
+  runtime update can legitimately take minutes. The session's console launch
+  (`--console-pty`) stays unbounded too: it lives as long as the app does.
+
 `destination list` aggregates **macOS + simulators + connected devices**, each
 with a ready `-destination` specifier. SPM containers are supported for
 `scheme`/`build`/`test`/`run`: schemes are read straight from the manifest via

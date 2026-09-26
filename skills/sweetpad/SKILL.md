@@ -132,6 +132,11 @@ Pass arguments and environment to the app with `--arg` and `--env KEY=VALUE`
 (both repeatable) — both work on `app run`, `app debug`, and `app diagnose`
 alike. `--detach` (`app run` only) leaves the app running after the CLI exits.
 
+A wedged simulator never answers an install, launch, or terminate. SweetPad
+gives each of those steps two minutes, then fails with exit 1 and a `tip`
+naming `sweetpad simulator shutdown <udid>` and `sweetpad simulator boot
+<udid>`. Run those two, then retry the command.
+
 `app launch` starts the installed app (on macOS, the built one) without building
 it again. If a macOS build ran with `-- -derivedDataPath <dir>`, pass
 `app launch --mac --derived-data-path <dir>` so it finds that build. After
