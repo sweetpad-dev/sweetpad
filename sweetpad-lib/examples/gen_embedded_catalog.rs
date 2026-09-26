@@ -2,7 +2,7 @@
 //!
 //! Run after refreshing the corpus to a newer Xcode (see
 //! `DOCS.md` §10 (updating Xcode versions)). It parses the chosen `xcspec-cache/xcode-<ver>`
-//! into a [`Catalog`] and serializes it with [`catalog_cache::serialize`].
+//! into a [`Catalog`] and serializes it with [`catalog_cache::serialize_embedded`].
 //!
 //! ```sh
 //! cargo run --release --example gen_embedded_catalog            # defaults to latest below
@@ -10,7 +10,10 @@
 //! ```
 //!
 //! The fingerprint is written as `0`: the embedded blob isn't tied to an
-//! on-disk source, so [`catalog_cache::embedded`] ignores it.
+//! on-disk source, so [`catalog_cache::embedded`] ignores it. SDK paths are
+//! written relative to the capture's `sdksettings` root (see
+//! [`catalog_cache::serialize_embedded`]), so the blob is the same whichever
+//! checkout or machine regenerates it.
 
 #![allow(clippy::cast_precision_loss)] // human-facing KB readout in a dev tool
 
@@ -39,7 +42,7 @@ fn main() {
 
     let catalog = xcspec::load_catalog(&root, Some(&sdksettings))
         .unwrap_or_else(|e| panic!("parse {}: {e}", root.display()));
-    let bytes = catalog_cache::serialize(&catalog, 0);
+    let bytes = catalog_cache::serialize_embedded(&catalog, &sdksettings);
     std::fs::write(&out, &bytes).unwrap_or_else(|e| panic!("write {}: {e}", out.display()));
 
     let assignments: usize = catalog.universal.len()

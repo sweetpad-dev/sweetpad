@@ -1461,12 +1461,13 @@ A full library audit (line references against `54c40a1`) landed with commit
 - No PR/push CI for the extension (`ci.yaml` triggers only on tags) — add a PR
   workflow on `macos-latest`: `npm ci && npm run check:all && npm test && npm
   run build`.
-- Embedded-catalog staleness unguarded: no test calls
-  `catalog_cache::embedded()`; bumping `FORMAT_VERSION` or refreshing
-  `xcspec-cache/` without regenerating ships stale defaults with green CI. Add
-  a byte-equality test against a fresh serialize; default
-  `examples/gen_embedded_catalog.rs` to the newest `xcspec-cache/xcode-*`
-  instead of a hardcoded version.
+- Embedded-catalog staleness is guarded only for the Xcode it names:
+  `catalog_cache::tests::the_embedded_blob_regenerates_byte_for_byte` fails
+  on a `FORMAT_VERSION` bump or a refreshed capture of that version, but
+  adding a newer `xcspec-cache/xcode-*` without regenerating still ships the
+  older defaults with green CI. Default `examples/gen_embedded_catalog.rs`
+  (and that test) to the newest `xcspec-cache/xcode-*` instead of a hardcoded
+  version.
 - Stale universal `.node` shadows fresh debug builds
   (`rolldown.config.mjs` prefers any lingering `*universal*.node`): delete
   `sweetpad-lib/*.node` before debug builds or pick by newest mtime.
