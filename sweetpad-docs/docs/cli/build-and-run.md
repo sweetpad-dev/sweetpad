@@ -36,7 +36,8 @@ While the app is running and the logs are following, two keys matter most:
 - **`q`** quits.
 
 **`h`** lists the rest for the target you're running on. On a simulator or a Mac, `s` takes a
-screenshot and `o` brings the app forward: the Simulator window, or the macOS app itself. A device
+screenshot and `o` brings the app forward: the Simulator window, or the macOS app itself. If the
+macOS app has exited, `o` tells you so instead of opening it again outside the session. A device
 has no window on your Mac, so its list leaves both out.
 
 A build that fails keeps the session open, so you can fix the error and press `r`. If the app never

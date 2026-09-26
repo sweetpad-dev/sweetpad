@@ -649,8 +649,9 @@ sweetpad completions <shell>          clap_complete-generated scripts
   the other keys for the target. `s` (screenshot) and `o` (bring the app forward:
   the Simulator window, or the running macOS app itself) are offered only where
   there is a window to act on, so a device's list leaves them out and `o` there
-  says why. `o` on macOS activates only an app that is still running, since
-  `open` on a stopped bundle would launch it outside the session. On each `r`
+  says why. `o` on macOS activates only an app that is still running, in the
+  plain and `--hot` sessions alike, since `open` on a stopped bundle would
+  launch it outside the session and without its arguments. On each `r`
   the running app is **terminated first** (`simctl`/`devicectl terminate`, or
   killing the macOS process) so the relaunch is always a fresh process picking up
   the new binary — `simctl launch` alone would just foreground the stale one — and
@@ -924,7 +925,9 @@ the signing posture differ:
   respawns the child; `d` detaches leaving it running. The session holds the
   child the way the plain session holds its app (`Running`), so an app that
   exits on its own gets the same `✗ <bundle id> exited` notice from the same
-  check, which also records the exit for `app logs --exits`.
+  check, which also records the exit for `app logs --exits`. `o` asks the same
+  check before `open`, so an app that has exited is not relaunched outside the
+  session.
 - **Bundled mac client.** `vendor/injection-client/build.sh` produces a second
   prebuilt (`SweetpadInjectionClientMac.dylib`, the upstream SPM product built
   for `generic/platform=macOS`), embedded alongside the simulator client and

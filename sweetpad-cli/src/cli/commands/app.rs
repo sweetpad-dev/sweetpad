@@ -2543,13 +2543,18 @@ impl HotApp<'_> {
     }
 
     /// Bring the app's UI forward (the `o` key): the Simulator window, or the
-    /// mac app itself (`open` on the bundle activates the running instance).
-    fn foreground(&self, app: &AppBundle) {
+    /// mac app itself while it is still running (`open` on the bundle
+    /// activates the running instance, and would launch a stopped one).
+    fn foreground(&mut self, ctx: &Context, app: &AppBundle) {
         match self {
             HotApp::Sim { .. } => {
                 let _ = simctl::open_app();
             }
-            HotApp::Mac { .. } => focus_mac_app(&app.path),
+            HotApp::Mac { running, .. } => {
+                if mac_app_still_running(ctx, running.as_mut()) {
+                    focus_mac_app(&app.path);
+                }
+            }
         }
     }
 
@@ -2636,7 +2641,7 @@ fn hot_key_loop(
                     return HotLoopEnd::Detach;
                 }
                 SessionKey::Screenshot => session_screenshot(ctx, plan),
-                SessionKey::Foreground => hot_app.foreground(app),
+                SessionKey::Foreground => hot_app.foreground(ctx, app),
                 SessionKey::Clear => ctx.out.line("\x1b[2J\x1b[H"),
                 SessionKey::Help => ctx.out.note(hot_app.help_note()),
                 SessionKey::Suspend => {
@@ -3361,16 +3366,7 @@ fn session_foreground(ctx: &Context, plan: &RunPlan, running: Option<&mut Runnin
             let _ = simctl::open_app();
         }
         Target::Mac => {
-            // `open` on a bundle that isn't running launches it, outside the
-            // session and without its launch arguments, so only a live app is
-            // brought forward.
-            let live = running.is_some_and(|r| {
-                check_exit(ctx, r);
-                !r.reported_exit
-            });
-            if !live {
-                ctx.out
-                    .note("the app isn't running; press 'r' to rebuild and launch it");
+            if !mac_app_still_running(ctx, running) {
                 return;
             }
             match plan.app_bundle() {
@@ -3384,6 +3380,24 @@ fn session_foreground(ctx: &Context, plan: &RunPlan, running: Option<&mut Runnin
             );
         }
     }
+}
+
+/// Whether the session's macOS app is still running, checked before `o`
+/// brings it forward. `open` on a bundle that isn't running launches it,
+/// outside the session and without its launch arguments, so an app that has
+/// exited gets a note instead, and its exit is reported through
+/// [`check_exit`] if the idle poll hasn't reported it yet. Shared by the
+/// plain session and the `--hot` one.
+fn mac_app_still_running(ctx: &Context, running: Option<&mut Running>) -> bool {
+    let live = running.is_some_and(|r| {
+        check_exit(ctx, r);
+        !r.reported_exit
+    });
+    if !live {
+        ctx.out
+            .note("the app isn't running; press 'r' to rebuild and launch it");
+    }
+    live
 }
 
 /// Bring a running macOS app forward. `open` on its bundle activates the
@@ -7305,6 +7319,49 @@ mod tests {
 
         // No hot at all (or `--no-hot`, already folded in by the caller) wins.
         assert!(!session_hot(false, true, &sim));
+    }
+
+    /// `o` brings a macOS app forward only while it runs, since `open` on a
+    /// stopped bundle launches it outside the session. The plain session and
+    /// the `--hot` one both ask this.
+    #[test]
+    fn o_brings_forward_only_a_mac_app_that_is_still_running() {
+        let ctx = project_ctx(Path::new("/nonexistent/App.xcodeproj"));
+        // Before any launch, and after a rebuild that failed.
+        assert!(!mac_app_still_running(&ctx, None));
+
+        // The kind decides only what an exit records; a simulator one records
+        // nothing, so the test writes no state.
+        let running = |child: std::process::Child| Running {
+            stream: Some(child),
+            kind: RunningKind::Simulator {
+                udid: "UDID".into(),
+                bundle_id: "dev.sweetpad.app".into(),
+            },
+            name: "dev.sweetpad.app".into(),
+            reported_exit: false,
+            reap_slot: None,
+        };
+        let spawn = |program: &str, args: &[&str]| {
+            std::process::Command::new(program)
+                .args(args)
+                .spawn()
+                .unwrap()
+        };
+
+        let mut done = spawn("true", &[]);
+        done.wait().unwrap();
+        let mut exited = running(done);
+        assert!(!mac_app_still_running(&ctx, Some(&mut exited)));
+        assert!(exited.reported_exit, "the exit is reported on the way");
+
+        let mut live = running(spawn("sleep", &["30"]));
+        assert!(mac_app_still_running(&ctx, Some(&mut live)));
+        assert!(!live.reported_exit);
+        crate::cli::signals::unregister_child(live.reap_slot.take());
+        let mut child = live.stream.take().unwrap();
+        let _ = child.kill();
+        let _ = child.wait();
     }
 
     #[test]
