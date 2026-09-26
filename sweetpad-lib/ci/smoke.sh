@@ -538,9 +538,10 @@ fi
 expect_code 1 "$BIN" app install --project "$APP" --scheme SweetpadCIMac --mac
 ok "app install --mac still refused (built in place)"
 
-# --detach and --hot are contradictory: hot reload must stay attached.
-expect_code 1 "$BIN" app run --project "$APP" --scheme SweetpadCIMac --mac --detach --hot
-ok "--detach with --hot rejected"
+# --detach and --hot are contradictory: hot reload must stay attached. The
+# command line alone decides that, so it is a usage error.
+expect_code 2 "$BIN" app run --project "$APP" --scheme SweetpadCIMac --mac --detach --hot
+ok "--detach with --hot rejected (usage error)"
 
 # A committed `[run] hot = true` must not send a macOS run down the hot path —
 # the config default applies to simulators, and on macOS you type `--hot`. The
@@ -713,7 +714,7 @@ section "error paths"
 expect_code 2 "$BIN" bogus-command
 ok "unknown command exits 2"
 # Unknown scheme / simulator / missing container are all TargetResolution
-# errors, which the CLI's exit-code taxonomy maps to 4 (Generic is 1,
+# errors, which the CLI's exit-code taxonomy maps to 4 (Generic is 1, Usage 2,
 # BuildFailure 3, TargetResolution 4, ToolMissing 5 — see ErrorKind::exit_code).
 expect_code 4 "$BIN" build start --project "$APP" --scheme NoSuchScheme --destination "$DEST"
 ok "unknown scheme exits 4 (target resolution)"
