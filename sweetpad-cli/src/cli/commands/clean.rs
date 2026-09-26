@@ -25,9 +25,9 @@ pub struct CleanArgs {
     )]
     pub configuration: Option<String>,
 
-    /// Also delete this project's DerivedData folder(s). The flag itself is
-    /// the consent — it only ever touches this project's folders, unlike the
-    /// store-wide 'derived-data purge' (which prompts).
+    /// Also delete this project's DerivedData folder(s), without a prompt:
+    /// the flag is the consent. 'derived-data purge' deletes the same folders,
+    /// or every project's with '--all', and asks first unless given '--yes'.
     #[arg(long)]
     pub purge: bool,
 }

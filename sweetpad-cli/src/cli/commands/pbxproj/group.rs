@@ -143,8 +143,9 @@ pub struct LinkArgs {
     #[command(flatten)]
     pub container: ContainerArgs,
 
-    /// The group whose children list changes, by id or by resolved directory
-    /// ('Sources/App'); 'pbxproj group list' shows both.
+    /// The group whose children list changes: its id, its navigator path, or
+    /// its resolved directory ('Sources/App'). 'pbxproj group list' prints
+    /// each group's id and directory.
     #[arg(long)]
     pub group: String,
 

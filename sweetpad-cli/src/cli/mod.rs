@@ -2187,6 +2187,326 @@ mod cli_definition_tests {
     }
 }
 
+/// Errors, warnings and notes are built in code rather than in the clap tree,
+/// so the help tests can't see them. These read the string literals out of the
+/// sources instead: every crate whose text the CLI prints, since the libraries'
+/// `String` errors reach the terminal verbatim through `CliError::new`.
+#[cfg(test)]
+mod message_source_tests {
+    use std::path::{Path, PathBuf};
+
+    const SOURCES: [&str; 3] = ["sweetpad-cli/src", "sweetpad-core/src", "sweetpad-lib/src"];
+
+    /// A string literal found in the sources: `path:line` and its text as
+    /// written, escapes included.
+    struct Literal {
+        at: String,
+        text: String,
+    }
+
+    /// One file's string literals outside comments and `#[cfg(test)]` items,
+    /// and the modules a `#[cfg(test)] mod name;` pulls in from other files.
+    #[derive(Default)]
+    struct Lexed {
+        literals: Vec<(usize, String)>,
+        test_modules: Vec<String>,
+    }
+
+    /// A small Rust lexer, enough to tell a string literal from a comment, a
+    /// char literal, or a lifetime, and to track braces so a `#[cfg(test)]`
+    /// item can be skipped whole.
+    fn lex(src: &str) -> Lexed {
+        const CFG_TEST: &str = "#[cfg(test)]";
+        let bytes = src.as_bytes();
+        let mut lexed = Lexed::default();
+        let (mut i, mut line, mut depth) = (0, 1, 0usize);
+        // A `#[cfg(test)]` waits at its brace depth, with where its item
+        // starts, until the item opens a block or ends at a `;`. An opened
+        // block is skipped until its brace closes.
+        let mut pending: Option<(usize, usize)> = None;
+        let mut skipping: Option<usize> = None;
+        while i < bytes.len() {
+            let in_test = pending.is_some() || skipping.is_some();
+            if let Some(end) = comment_end(src, i) {
+                line += src[i..end].matches('\n').count();
+                i = end;
+                continue;
+            }
+            if src[i..].starts_with(CFG_TEST) {
+                if !in_test {
+                    pending = Some((depth, i + CFG_TEST.len()));
+                }
+                i += CFG_TEST.len();
+                continue;
+            }
+            if let Some((body, end)) = string_at(src, i) {
+                let literal = &src[body];
+                if !in_test {
+                    lexed.literals.push((line, literal.to_string()));
+                }
+                line += literal.matches('\n').count();
+                i = end;
+                continue;
+            }
+            if let Some(end) = char_literal_end(src, i) {
+                i = end;
+                continue;
+            }
+            match bytes[i] {
+                b'{' => {
+                    if skipping.is_none()
+                        && let Some((at, _)) = pending
+                        && at == depth
+                    {
+                        skipping = Some(depth);
+                        pending = None;
+                    }
+                    depth += 1;
+                }
+                b'}' => {
+                    depth = depth.saturating_sub(1);
+                    if skipping == Some(depth) {
+                        skipping = None;
+                    }
+                }
+                b';' => {
+                    if let Some((at, start)) = pending
+                        && at == depth
+                    {
+                        let item = src[start..i].split_whitespace().collect::<Vec<_>>();
+                        if let [.., "mod", name] = item.as_slice() {
+                            lexed.test_modules.push((*name).to_string());
+                        }
+                        pending = None;
+                    }
+                }
+                b'\n' => line += 1,
+                _ => {}
+            }
+            i += 1;
+        }
+        lexed
+    }
+
+    /// Where the comment starting at `i` ends, if one does: a line comment
+    /// (rustdoc included) at its newline, a block comment past its nested
+    /// closing `*/`.
+    fn comment_end(src: &str, i: usize) -> Option<usize> {
+        let rest = &src[i..];
+        if rest.starts_with("//") {
+            return Some(i + rest.find('\n').unwrap_or(rest.len()));
+        }
+        if !rest.starts_with("/*") {
+            return None;
+        }
+        let (mut nested, mut j) = (0usize, i);
+        while j < src.len() {
+            if src[j..].starts_with("/*") {
+                nested += 1;
+                j += 2;
+            } else if src[j..].starts_with("*/") {
+                nested -= 1;
+                j += 2;
+                if nested == 0 {
+                    break;
+                }
+            } else {
+                j += 1;
+            }
+        }
+        Some(j)
+    }
+
+    /// The string literal starting at `i`, plain or raw: the range of its
+    /// text between the quotes, and where the literal ends. A byte string's
+    /// `b` reads as code, and its quote as the start of a plain one.
+    fn string_at(src: &str, i: usize) -> Option<(std::ops::Range<usize>, usize)> {
+        let bytes = src.as_bytes();
+        let rest = &src[i..];
+        if rest.starts_with('"') {
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j] != b'"' {
+                j += if bytes[j] == b'\\' { 2 } else { 1 };
+            }
+            return Some((i + 1..j, j + 1));
+        }
+        if i > 0 && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_') {
+            return None;
+        }
+        let prefixed = rest.strip_prefix("br").or_else(|| rest.strip_prefix('r'))?;
+        let hashes = prefixed.len() - prefixed.trim_start_matches('#').len();
+        if !prefixed[hashes..].starts_with('"') {
+            return None;
+        }
+        let open = i + (rest.len() - prefixed.len()) + hashes + 1;
+        let close = format!("\"{}", "#".repeat(hashes));
+        let len = src[open..].find(&close).unwrap_or(src.len() - open);
+        Some((open..open + len, open + len + close.len()))
+    }
+
+    /// Where the char literal starting at `i` ends, if it is one rather than
+    /// a lifetime or a label, which have no closing quote.
+    fn char_literal_end(src: &str, i: usize) -> Option<usize> {
+        let bytes = src.as_bytes();
+        if bytes[i] != b'\'' {
+            return None;
+        }
+        if bytes.get(i + 1) == Some(&b'\\') {
+            return Some(i + 3 + src[i + 3..].find('\'')? + 1);
+        }
+        let width = src[i + 1..].chars().next()?.len_utf8();
+        (bytes.get(i + 1 + width) == Some(&b'\'')).then_some(i + width + 2)
+    }
+
+    fn rust_files(dir: &Path, files: &mut Vec<PathBuf>) {
+        let entries = std::fs::read_dir(dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
+        for entry in entries {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                rust_files(&path, files);
+            } else if path.extension().is_some_and(|x| x == "rs") {
+                files.push(path);
+            }
+        }
+    }
+
+    /// Every string literal outside test code under `SOURCES`.
+    fn literals() -> Vec<Literal> {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut files = Vec::new();
+        for dir in SOURCES {
+            rust_files(&workspace.join(dir), &mut files);
+        }
+        let lexed: Vec<(PathBuf, Lexed)> = files
+            .into_iter()
+            .map(|path| {
+                let src = std::fs::read_to_string(&path).unwrap();
+                let lexed = lex(&src);
+                (path, lexed)
+            })
+            .collect();
+        // A test module's file sits beside a `mod.rs`/`lib.rs`, or in the
+        // directory named after any other file that declares it.
+        let mut test_paths = Vec::new();
+        for (path, lexed) in &lexed {
+            let stem = path.file_stem().unwrap_or_default();
+            let dir = path.parent().unwrap_or(Path::new(""));
+            let dir = if ["mod", "lib", "main"].iter().any(|s| stem == *s) {
+                dir.to_path_buf()
+            } else {
+                dir.join(stem)
+            };
+            for name in &lexed.test_modules {
+                test_paths.push(dir.join(name));
+            }
+        }
+        let is_test = |path: &Path| {
+            test_paths
+                .iter()
+                .any(|t| path.starts_with(t) || path == t.with_extension("rs"))
+        };
+        let mut found = Vec::new();
+        for (path, lexed) in lexed {
+            if is_test(&path) {
+                continue;
+            }
+            let shown = path
+                .strip_prefix(&workspace)
+                .unwrap_or(&path)
+                .display()
+                .to_string();
+            for (line, text) in lexed.literals {
+                found.push(Literal {
+                    at: format!("{shown}:{line}"),
+                    text,
+                });
+            }
+        }
+        found
+    }
+
+    /// The literals that contain any of `needles`, one line each, saying
+    /// where they are. A scan that found none of the messages it is meant
+    /// to read fails rather than passing on nothing.
+    fn literals_containing(needles: &[&str]) -> Vec<String> {
+        let literals = literals();
+        assert!(
+            literals
+                .iter()
+                .any(|l| l.text.contains("name at least one file")),
+            "the scan missed a message it should read"
+        );
+        literals
+            .into_iter()
+            .filter(|l| needles.iter().any(|n| l.text.contains(n)))
+            .map(|l| format!("{}: {}", l.at, l.text))
+            .collect()
+    }
+
+    /// A terminal prints backticks literally, so messages quote a command or
+    /// value with 'single quotes', as the help does.
+    #[test]
+    fn messages_quote_without_backticks() {
+        let found = literals_containing(&["`"]);
+        assert!(
+            found.is_empty(),
+            "backticks in messages:\n{}",
+            found.join("\n")
+        );
+    }
+
+    /// Someone reading an error has no design doc to look a section up in.
+    #[test]
+    fn messages_cite_no_design_doc() {
+        let found = literals_containing(&["§", "CLI_DESIGN"]);
+        assert!(
+            found.is_empty(),
+            "design-doc references in messages:\n{}",
+            found.join("\n")
+        );
+    }
+
+    /// The lexer finds the literals a message is made of, and none of the
+    /// backticks around them: not in comments or rustdoc, not in a char
+    /// literal or after a lifetime, and not in test code.
+    #[test]
+    fn the_lexer_reads_only_the_literals_outside_test_code() {
+        let src = r##"
+//! Module docs with `code`.
+/// Rustdoc with `code`.
+fn f<'a>(s: &'a str) -> char {
+    let tick = '`';
+    let quote = '\'';
+    let arrow = '→';
+    /* block `comment` /* nested `one` */ still */
+    let raw = r#"raw "quoted" text"#;
+    let escaped = "say \"hi\" \\";
+    message("run 'sweetpad build'")
+}
+#[cfg(test)]
+mod tests {
+    fn g() { panic!("`test`"); }
+}
+#[cfg(test)]
+mod testdir;
+fn after() { let _ = "{after}"; }
+"##;
+        let lexed = lex(src);
+        let texts: Vec<&str> = lexed.literals.iter().map(|(_, t)| t.as_str()).collect();
+        assert_eq!(
+            texts,
+            [
+                "raw \"quoted\" text",
+                r#"say \"hi\" \\"#,
+                "run 'sweetpad build'",
+                "{after}"
+            ]
+        );
+        assert_eq!(lexed.literals[2].0, 11, "the line a literal starts on");
+        assert_eq!(lexed.test_modules, ["testdir"]);
+    }
+}
+
 #[cfg(test)]
 mod targeting_tests {
     use super::disambiguate_container;

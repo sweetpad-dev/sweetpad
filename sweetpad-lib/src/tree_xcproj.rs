@@ -241,12 +241,12 @@ pub fn remove_fileref(
     let node = find_node(root, address)?;
     if node.is_container {
         return Err(format!(
-            "{address} is a group, not a file — delete it with `pbxproj group remove`"
+            "{address} is a group, not a file — delete it with 'pbxproj group remove'"
         ));
     }
     if node.is_folder {
         return Err(format!(
-            "{address} is a synchronized folder — detach it with `pbxproj folder remove`"
+            "{address} is a synchronized folder — detach it with 'pbxproj folder remove'"
         ));
     }
     let members = node
@@ -257,7 +257,7 @@ pub fn remove_fileref(
     if members > 0 && !force {
         return Err(format!(
             "{address} is still built by {members} target membership{}: drop them with \
-             `pbxproj membership remove`, or pass --dangling to delete the node and its \
+             'pbxproj membership remove', or pass --dangling to delete the node and its \
              memberships together",
             if members == 1 { "" } else { "s" }
         ));
@@ -285,7 +285,7 @@ pub fn remove_group(root: &mut Value, address: &str, force: bool) -> Result<Remo
     let node = find_node(root, address)?;
     if !node.is_container {
         return Err(format!(
-            "{address} is a file, not a group — delete it with `pbxproj fileref remove`"
+            "{address} is a file, not a group — delete it with 'pbxproj fileref remove'"
         ));
     }
     let children: Vec<String> = children_of(node.value)
@@ -296,9 +296,9 @@ pub fn remove_group(root: &mut Value, address: &str, force: bool) -> Result<Remo
         let hint = if force {
             "--orphan-children cannot apply in the project.xcproj format: these children are \
              nested inside the group rather than listed by it, so deleting it deletes them. \
-             Move them out first with `pbxproj group move`"
+             Move them out first with 'pbxproj group move'"
         } else {
-            "move them out first with `pbxproj group move`"
+            "move them out first with 'pbxproj group move'"
         };
         return Err(format!(
             "{address} still holds {} child node(s): {hint}",
@@ -507,8 +507,8 @@ fn missing(root: &Value, address: &str) -> String {
         return format!(
             "{address} looks like a pbxproj object id, and this project is in the \
              project.xcproj format, where a node is named by its navigator path (for \
-             example `Sources/App/ContentView.swift`) — `pbxproj fileref list` and \
-             `pbxproj group list` print them"
+             example 'Sources/App/ContentView.swift') — 'pbxproj fileref list' and \
+             'pbxproj group list' print them"
         );
     }
     let near: Vec<String> = nodes(root)

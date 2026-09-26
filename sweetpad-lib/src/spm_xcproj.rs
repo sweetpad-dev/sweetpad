@@ -144,7 +144,7 @@ fn add_package(root: &mut Value, kind: &PackageKind, entry: Object) -> Result<St
         .filter_map(package_kind)
         .any(|existing| package_name(&existing).eq_ignore_ascii_case(&name));
     if taken {
-        return Err(format!("a package named `{name}` is already declared"));
+        return Err(format!("a package named '{name}' is already declared"));
     }
     let document = root
         .as_object_mut()
@@ -179,7 +179,7 @@ pub fn set_requirement(
                 .find(|entry| package_kind(entry).is_some_and(|kind| package_name(&kind) == name))
         })
         .and_then(Value::as_object_mut)
-        .ok_or_else(|| format!("no package named `{name}`"))?;
+        .ok_or_else(|| format!("no package named '{name}'"))?;
     if entry.get("kind").and_then(Value::as_str) != Some("remote") {
         return Err("a local package has no version requirement to change".to_string());
     }
@@ -217,7 +217,7 @@ pub fn link_product(
         .filter_map(package_kind)
         .any(|kind| package_name(&kind) == name)
     {
-        return Err(format!("no package named `{name}`"));
+        return Err(format!("no package named '{name}'"));
     }
     let target = targets_mut(root)
         .and_then(|targets| {
@@ -226,7 +226,7 @@ pub fn link_product(
                 .find(|t| t.get("name").and_then(Value::as_str) == Some(target_name))
         })
         .and_then(Value::as_object_mut)
-        .ok_or_else(|| format!("no target named `{target_name}` in the project"))?;
+        .ok_or_else(|| format!("no target named '{target_name}' in the project"))?;
 
     if is_static_library(target) || !has_frameworks_phase(target) {
         let mut dependency = Object::new();

@@ -220,11 +220,16 @@ builds it with real `xcodebuild`.
   diagnostics mix the build's with the tests' own `error:` lines.
 - Help, errors, warnings and notes quote a command or value with 'single
   quotes', as clap does; a terminal prints backticks literally. A unit test
-  walks the clap tree and fails on a backtick in any help text.
+  walks the clap tree and fails on a backtick in any help text. Messages are
+  built in code, so a second test reads the string literals out of the
+  sources of `sweetpad-cli`, `sweetpad-core` and `sweetpad-lib` (the
+  libraries' `String` errors reach the terminal verbatim), skipping comments
+  and `#[cfg(test)]` code, and fails on a backtick in any of them.
 - Help, errors, warnings and notes never cite this document: someone reading
   `--help` has no `§9g` to look up. A reference that helps the next
   maintainer goes in a plain `//` comment, which clap doesn't show. The same
-  tree walk fails on `§` or `CLI_DESIGN` in any help text.
+  tree walk fails on `§` or `CLI_DESIGN` in any help text, and the source
+  scan in any message.
 
 ### The JSON envelope
 

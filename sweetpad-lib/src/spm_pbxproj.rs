@@ -209,7 +209,7 @@ pub fn link_product(
 ) -> Result<(), String> {
     let objects = objects_mut(root)?;
     let target_guid = find_target_guid(objects, target_name)
-        .ok_or_else(|| format!("no target named `{target_name}` in the project"))?;
+        .ok_or_else(|| format!("no target named '{target_name}' in the project"))?;
     let product_type = objects
         .get(&target_guid)
         .and_then(|t| t.get("productType"))

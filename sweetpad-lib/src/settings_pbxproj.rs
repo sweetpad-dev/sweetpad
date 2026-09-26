@@ -234,7 +234,7 @@ fn selected_configurations(
         } else {
             let known: Vec<&str> = all.iter().map(|(n, _)| n.as_str()).collect();
             return Err(format!(
-                "no configuration named `{wanted}` (project has: {})",
+                "no configuration named '{wanted}' (project has: {})",
                 known.join(", ")
             ));
         }
@@ -262,7 +262,7 @@ fn scope_configurations(
             .ok_or_else(|| {
                 let known = target_names(root);
                 format!(
-                    "no target named `{name}` (project has: {})",
+                    "no target named '{name}' (project has: {})",
                     known.join(", ")
                 )
             })?,

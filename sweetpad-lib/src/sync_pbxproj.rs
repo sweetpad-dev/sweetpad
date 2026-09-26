@@ -179,10 +179,10 @@ pub fn exclude(root: &mut Value, target: &str, path: &str) -> Result<ExcludeOutc
             .map(|g| root_dir(objects_ref, g))
             .collect();
         Err(if dirs.is_empty() {
-            format!("target `{target}` has no synchronized folders")
+            format!("target '{target}' has no synchronized folders")
         } else {
             format!(
-                "{} is not inside a synchronized folder of target `{target}` \
+                "{} is not inside a synchronized folder of target '{target}' \
                  (folders: {})",
                 normalize(path),
                 dirs.join(", ")
@@ -481,7 +481,7 @@ fn find_target_guid(objects: &Dict, name: &str) -> Result<String, String> {
                 .filter_map(|(_, o)| str_field(o, "name"))
                 .collect();
             format!(
-                "no target named `{name}` (project has: {})",
+                "no target named '{name}' (project has: {})",
                 known.join(", ")
             )
         })

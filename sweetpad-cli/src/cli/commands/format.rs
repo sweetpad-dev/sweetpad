@@ -15,6 +15,17 @@ pub enum Tool {
     Swiftlint,
 }
 
+impl Tool {
+    /// The tool's own name, which is also how '--tool' and '[format] tool'
+    /// spell it.
+    fn name(self) -> &'static str {
+        match self {
+            Tool::SwiftFormat => "swift-format",
+            Tool::Swiftlint => "swiftlint",
+        }
+    }
+}
+
 /// The format flags — `--tool`/`--check` are global at the `format` resource
 /// so `sweetpad format --check` and `sweetpad format run --check` both parse;
 /// the positional paths (which can't be global) are declared at both levels.
@@ -116,8 +127,9 @@ fn format(ctx: &mut Context, paths: &[PathBuf], tool: Tool, check: bool) -> Comm
 
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     ctx.out.note(&format!(
-        "{} with {tool:?}",
-        if check { "checking" } else { "formatting" }
+        "{} with {}",
+        if check { "checking" } else { "formatting" },
+        tool.name()
     ));
 
     // JSON/ndjson reserve stdout for the result, so run the tool quietly —
@@ -127,7 +139,7 @@ fn format(ctx: &mut Context, paths: &[PathBuf], tool: Tool, check: bool) -> Comm
     if ctx.out.is_json() || ctx.out.is_ndjson() {
         let passed = process::run(&program, &arg_refs, None, true)?;
         let report = FormatReport {
-            tool: format!("{tool:?}"),
+            tool: tool.name().to_string(),
             check,
             passed,
         };
@@ -146,7 +158,7 @@ fn format(ctx: &mut Context, paths: &[PathBuf], tool: Tool, check: bool) -> Comm
             "formatting Swift sources"
         })?;
     Ok(Rendered::data(FormatReport {
-        tool: format!("{tool:?}"),
+        tool: tool.name().to_string(),
         check,
         passed: true,
     }))
@@ -195,4 +207,20 @@ fn swiftlint_command(check: bool) -> (String, Vec<String>) {
         vec!["--fix".to_string(), "--quiet".to_string()]
     };
     ("swiftlint".to_string(), args)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Tool;
+    use clap::ValueEnum;
+
+    /// The name a run reports is the one '--tool' takes, so the note and the
+    /// JSON 'tool' field read back as a valid '--tool' value.
+    #[test]
+    fn a_tool_is_named_the_way_tool_spells_it() {
+        for tool in Tool::value_variants() {
+            let flag = tool.to_possible_value().expect("every tool has a value");
+            assert_eq!(tool.name(), flag.get_name());
+        }
+    }
 }

@@ -605,11 +605,11 @@ fn project_root(value: &Value) -> Result<(&Dict, &Value), Error> {
     let objects = root
         .get("objects")
         .and_then(Value::as_dict)
-        .ok_or_else(|| Error::BadProject("no `objects` dict".into()))?;
+        .ok_or_else(|| Error::BadProject("no 'objects' dict".into()))?;
     let root_id = root
         .get("rootObject")
         .and_then(Value::as_str)
-        .ok_or_else(|| Error::BadProject("no `rootObject` reference".into()))?;
+        .ok_or_else(|| Error::BadProject("no 'rootObject' reference".into()))?;
     let project_obj = objects
         .get(root_id)
         .ok_or_else(|| Error::BadProject(format!("rootObject {root_id} not found in objects")))?;

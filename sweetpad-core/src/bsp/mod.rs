@@ -413,7 +413,7 @@ fn discover_config_from_cwd() -> Result<PathBuf, String> {
         .and_then(Value::as_str)
         .map(PathBuf::from)
         .ok_or_else(|| {
-            "no --config <bsp.json> given and no bspConfig registered for this directory; the SweetPad extension writes buildServer.json with --config, or use `bsp init` for a standalone config".to_string()
+            "no --config <bsp.json> given and no bspConfig registered for this directory; the SweetPad extension writes buildServer.json with --config, or use 'sweetpad bsp init' for a standalone config".to_string()
         })
 }
 

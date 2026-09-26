@@ -117,10 +117,10 @@ pub fn exclude(root: &mut Value, target: &str, path: &str) -> Result<ExcludeOutc
         .map(|f| f.dir)
         .collect();
     Err(if dirs.is_empty() {
-        format!("target `{target}` has no synchronized folders")
+        format!("target '{target}' has no synchronized folders")
     } else {
         format!(
-            "{} is not inside a synchronized folder of target `{target}` (folders: {})",
+            "{} is not inside a synchronized folder of target '{target}' (folders: {})",
             normalize(path),
             dirs.join(", ")
         )

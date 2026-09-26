@@ -219,7 +219,7 @@ pub fn add_membership(
             n => {
                 return Err(format!(
                     "{path} matches {n} file references ({}); pass the one you mean as \
-                     `--fileref <ID>`",
+                     '--fileref <ID>'",
                     hits.join(", ")
                 ));
             }
@@ -266,7 +266,7 @@ pub fn ref_path(root: &Value, id: &str) -> Result<String, String> {
 fn ref_path_in(objects: &Dict, id: &str) -> Result<String, String> {
     let node = objects
         .get(id)
-        .ok_or_else(|| format!("no object with id {id}; `pbxproj fileref list` shows them"))?;
+        .ok_or_else(|| format!("no object with id {id}; 'pbxproj fileref list' shows them"))?;
     if !REF_ISAS.contains(&isa(node)) {
         return Err(format!("{id} is a {}, not a file reference", isa(node)));
     }
@@ -287,9 +287,9 @@ fn fileref_add_hint(path: &str) -> String {
         .and_then(Path::to_str)
         .filter(|dir| !dir.is_empty())
     {
-        Some(dir) => format!("`pbxproj fileref add {base} --group {dir}`"),
+        Some(dir) => format!("'pbxproj fileref add {base} --group {dir}'"),
         // No directory to name a group with: anchor it at the project instead.
-        None => format!("`pbxproj fileref add {base} --source-tree SOURCE_ROOT`"),
+        None => format!("'pbxproj fileref add {base} --source-tree SOURCE_ROOT'"),
     }
 }
 
@@ -569,7 +569,7 @@ fn find_target_guid(objects: &Dict, name: &str) -> Result<String, String> {
                 .filter_map(|(_, o)| str_field(o, "name"))
                 .collect();
             format!(
-                "no target named `{name}` (project has: {})",
+                "no target named '{name}' (project has: {})",
                 known.join(", ")
             )
         })
@@ -1081,7 +1081,7 @@ mod tests {
         // Not the whole path: a `<group>`-anchored reference stores the
         // basename, so echoing the input back would resolve to App/App/Nope.swift.
         assert!(
-            err.contains("`pbxproj fileref add Nope.swift --group App`"),
+            err.contains("'pbxproj fileref add Nope.swift --group App'"),
             "{err}"
         );
 

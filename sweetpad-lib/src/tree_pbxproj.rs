@@ -259,7 +259,7 @@ pub fn remove_fileref(root: &mut Value, guid: &str, force: bool) -> Result<Remov
     if used > 0 && !force {
         return Err(format!(
             "{guid} is still built by {used} build-file entr{}: drop the membership with \
-             `pbxproj membership remove`, or pass --dangling to delete it anyway",
+             'pbxproj membership remove', or pass --dangling to delete it anyway",
             if used == 1 { "y" } else { "ies" }
         ));
     }
@@ -297,7 +297,7 @@ pub fn remove_group(root: &mut Value, guid: &str, force: bool) -> Result<RemoveO
     let children = children_of(objects_ref, guid);
     if !children.is_empty() && !force {
         return Err(format!(
-            "{guid} still lists {} child object(s): detach them with `pbxproj group detach`, \
+            "{guid} still lists {} child object(s): detach them with 'pbxproj group detach', \
              or pass --orphan-children to delete it anyway",
             children.len()
         ));
@@ -554,7 +554,7 @@ fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
     match hits.len() {
         1 => Ok(hits.into_iter().next().unwrap_or_default()),
         0 => Err(format!(
-            "no group with id, navigator path, or directory {spec}; `pbxproj group list` \
+            "no group with id, navigator path, or directory {spec}; 'pbxproj group list' \
              shows all three"
         )),
         n => Err(format!(

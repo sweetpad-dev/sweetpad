@@ -674,7 +674,7 @@ impl<'a> Parser<'a> {
             self.pos += word.len();
             Ok(value)
         } else {
-            Err(self.error(format!("expected `{word}`")))
+            Err(self.error(format!("expected '{word}'")))
         }
     }
 
@@ -692,7 +692,7 @@ impl<'a> Parser<'a> {
         let lexeme = std::str::from_utf8(&self.input[start..self.pos])
             .map_err(|_| self.error("number is not valid UTF-8"))?;
         if lexeme.parse::<f64>().is_err() {
-            return Err(self.error(format!("malformed number `{lexeme}`")));
+            return Err(self.error(format!("malformed number '{lexeme}'")));
         }
         Ok(Value::Number(lexeme.to_string()))
     }
@@ -740,7 +740,7 @@ impl<'a> Parser<'a> {
             b't' => '\t',
             b'u' => return self.parse_unicode_escape(out),
             other => {
-                return Err(self.error(format!("unknown escape `\\{}`", other as char)));
+                return Err(self.error(format!("unknown escape '\\{}'", other as char)));
             }
         };
         out.push(c);
@@ -766,7 +766,7 @@ impl<'a> Parser<'a> {
             first
         };
         let c = char::from_u32(scalar)
-            .ok_or_else(|| self.error(format!("`\\u{scalar:04X}` is not a character")))?;
+            .ok_or_else(|| self.error(format!("'\\u{scalar:04X}' is not a character")))?;
         out.push(c);
         Ok(())
     }
@@ -774,12 +774,12 @@ impl<'a> Parser<'a> {
     fn parse_hex4(&mut self) -> Result<u32, ParseError> {
         let end = self.pos + 4;
         if end > self.input.len() {
-            return Err(self.error("truncated `\\u` escape"));
+            return Err(self.error("truncated '\\u' escape"));
         }
         let digits = std::str::from_utf8(&self.input[self.pos..end])
             .ok()
             .and_then(|s| u32::from_str_radix(s, 16).ok())
-            .ok_or_else(|| self.error("`\\u` escape needs four hex digits"))?;
+            .ok_or_else(|| self.error("'\\u' escape needs four hex digits"))?;
         self.pos = end;
         Ok(digits)
     }
@@ -808,7 +808,7 @@ impl<'a> Parser<'a> {
                     self.pos += 1;
                     return Ok(self.finish_array(items, open));
                 }
-                _ => return Err(self.error("expected `,` or `]` in array")),
+                _ => return Err(self.error("expected ',' or ']' in array")),
             }
         }
     }
@@ -847,7 +847,7 @@ impl<'a> Parser<'a> {
             let key = self.parse_string()?;
             self.skip_trivia();
             if self.peek() != Some(b':') {
-                return Err(self.error("expected `:` after object key"));
+                return Err(self.error("expected ':' after object key"));
             }
             self.pos += 1;
             self.skip_trivia();
@@ -861,7 +861,7 @@ impl<'a> Parser<'a> {
                     object.compact = self.was_on_one_line(open);
                     return Ok(Value::Object(object));
                 }
-                _ => return Err(self.error("expected `,` or `}` in object")),
+                _ => return Err(self.error("expected ',' or '}' in object")),
             }
         }
     }

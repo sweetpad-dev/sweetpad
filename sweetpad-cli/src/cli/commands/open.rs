@@ -66,7 +66,7 @@ pub fn run(ctx: &mut Context, what: What) -> CommandResult {
                 }
                 std::fs::write(
                     &path,
-                    "# sweetpad configuration — see `sweetpad help config`\n",
+                    "# sweetpad configuration — see 'sweetpad help config'\n",
                 )
                 .map_err(|e| CliError::new(format!("failed to create {}: {e}", path.display())))?;
             }
