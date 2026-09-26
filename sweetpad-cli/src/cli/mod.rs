@@ -44,6 +44,8 @@ pub mod signals;
 pub mod simctl;
 pub mod state;
 pub mod swiftpm;
+#[cfg(test)]
+pub(crate) mod testdir;
 pub mod xcodebuild;
 
 pub mod commands;

@@ -5,17 +5,15 @@
 //! given, and refuses a path that already exists. The stub writes a bundle on
 //! every run, so a path reused across two resolves fails the second.
 
+mod common;
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::time::{SystemTime, UNIX_EPOCH};
 
-fn tmp(tag: &str) -> PathBuf {
-    let n = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!("sweetpad-dep-resolve-{tag}-{n}"));
-    std::fs::create_dir_all(&dir).unwrap();
+use common::TempDir;
+
+fn tmp(tag: &str) -> TempDir {
+    let dir = TempDir::new(&format!("sweetpad-dep-resolve-{tag}"));
     // Stop walk-up discovery at this directory.
     std::fs::create_dir_all(dir.join(".git")).unwrap();
     dir
@@ -24,7 +22,7 @@ fn tmp(tag: &str) -> PathBuf {
 /// A project directory with a stub `xcodebuild` on `PATH` that logs its argv
 /// and exits with `status`, and an empty directory for the run's `TMPDIR`.
 struct Fixture {
-    root: PathBuf,
+    root: TempDir,
     temp: PathBuf,
 }
 
@@ -115,12 +113,6 @@ impl Fixture {
 
     fn left_in_temp(&self) -> Vec<String> {
         entries(&self.temp)
-    }
-}
-
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
     }
 }
 

@@ -2,20 +2,17 @@
 //! xcodebuild replays a canned transcript, so the result is checked end to end
 //! without compiling anything.
 
+mod common;
+
 use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Output};
-use std::time::{SystemTime, UNIX_EPOCH};
 
+use common::TempDir;
 use serde_json::Value;
 
-fn tmp(tag: &str) -> PathBuf {
-    let n = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!("sweetpad-build-{tag}-{n}"));
-    std::fs::create_dir_all(&dir).unwrap();
+fn tmp(tag: &str) -> TempDir {
+    let dir = TempDir::new(&format!("sweetpad-build-{tag}"));
     // Stop walk-up discovery at this directory.
     std::fs::create_dir_all(dir.join(".git")).unwrap();
     dir
@@ -51,15 +48,19 @@ fn build_with_stub(tag: &str, transcript: &str, status: i32, mode: &[&str]) -> O
 /// `sweetpad <args>` against a stub xcodebuild that prints `transcript` and
 /// exits with `status`.
 fn sweetpad_with_stub(tag: &str, transcript: &str, status: i32, args: &[&str]) -> Output {
-    stub_command(tag, transcript, status, args)
-        .0
-        .output()
-        .expect("failed to run the sweetpad binary")
+    let (mut cmd, _home, _cwd) = stub_command(tag, transcript, status, args);
+    cmd.output().expect("failed to run the sweetpad binary")
 }
 
-/// The command [`sweetpad_with_stub`] runs, and the directory it uses as home
-/// and state dir.
-fn stub_command(tag: &str, transcript: &str, status: i32, args: &[&str]) -> (Command, PathBuf) {
+/// The command [`sweetpad_with_stub`] runs, the directory it uses as home and
+/// state dir, and the working directory that holds the stub. Both directories
+/// go when their guards drop, so a caller keeps them until the command ends.
+fn stub_command(
+    tag: &str,
+    transcript: &str,
+    status: i32,
+    args: &[&str],
+) -> (Command, TempDir, TempDir) {
     use std::os::unix::fs::PermissionsExt;
 
     let home = tmp(&format!("{tag}-home"));
@@ -99,7 +100,7 @@ fn stub_command(tag: &str, transcript: &str, status: i32, args: &[&str]) -> (Com
         .env_remove("NO_COLOR")
         .env_remove("FORCE_COLOR")
         .env_remove("CLICOLOR_FORCE");
-    (cmd, home)
+    (cmd, home, cwd)
 }
 
 const WARNED: &str = "\
@@ -454,7 +455,7 @@ fn on_pty(mut cmd: Command, prompt: &str, keys: &[u8]) -> (ExitStatus, String) {
 #[test]
 fn quitting_a_session_whose_build_failed_exits_as_a_failed_build() {
     let project = project();
-    let (session, home) = stub_command(
+    let (session, home, _cwd) = stub_command(
         "quit",
         BROKEN,
         65,
@@ -479,8 +480,8 @@ fn quitting_a_session_whose_build_failed_exits_as_a_failed_build() {
     let tip = "(this tip shows once)";
     assert!(!shown.contains(tip), "{shown}");
 
-    let (mut help, _) = stub_command("quit-help", "", 0, &["help"]);
-    help.env("XDG_STATE_HOME", &home);
+    let (mut help, _help_home, _help_cwd) = stub_command("quit-help", "", 0, &["help"]);
+    help.env("XDG_STATE_HOME", &*home);
     let (status, shown) = on_pty(help, "", b"");
     assert!(status.success(), "{shown}");
     assert!(shown.contains(tip), "{shown}");

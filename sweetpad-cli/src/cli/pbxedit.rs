@@ -383,25 +383,28 @@ fn member_list(members: &[PathBuf]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::testdir::TempDir;
 
-    fn temp_dir(marker: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("sweetpad-genguard-{}-{marker}", std::process::id()))
+    fn temp_dir(marker: &str) -> TempDir {
+        TempDir::new(&format!("sweetpad-genguard-{marker}"))
     }
 
-    fn temp_project(marker: &str, spec: Option<&str>) -> PathBuf {
+    /// An `App.xcodeproj` in a fresh directory, with `spec` beside it when
+    /// given. The directory goes when the returned guard drops.
+    fn temp_project(marker: &str, spec: Option<&str>) -> (TempDir, PathBuf) {
         let dir = temp_dir(marker);
         let xcodeproj = dir.join("App.xcodeproj");
         std::fs::create_dir_all(&xcodeproj).unwrap();
         if let Some(name) = spec {
             std::fs::write(dir.join(name), "# spec").unwrap();
         }
-        xcodeproj
+        (dir, xcodeproj)
     }
 
-    fn generated_project(marker: &str, spec: &str, spec_is_newer: bool) -> PathBuf {
-        let xcodeproj = temp_project(marker, None);
+    fn generated_project(marker: &str, spec: &str, spec_is_newer: bool) -> (TempDir, PathBuf) {
+        let (dir, xcodeproj) = temp_project(marker, None);
         generate(&xcodeproj, spec, spec_is_newer);
-        xcodeproj
+        (dir, xcodeproj)
     }
 
     /// Write `project.pbxproj`, then the spec beside the bundle, in that order
@@ -436,7 +439,7 @@ mod tests {
     #[test]
     fn a_spec_edited_since_the_last_generate_is_reported_stale() {
         let pf = ProjectFile::default();
-        let stale = generated_project("stale", "project.yml", true);
+        let (_dir, stale) = generated_project("stale", "project.yml", true);
         let warning = stale_generated(&pf, &stale).expect("expected a staleness warning");
         assert!(
             warning.contains("project.yml is newer than App.xcodeproj"),
@@ -449,7 +452,7 @@ mod tests {
     #[test]
     fn a_freshly_generated_project_is_quiet() {
         let pf = ProjectFile::default();
-        let fresh = generated_project("fresh", "project.yml", false);
+        let (_dir, fresh) = generated_project("fresh", "project.yml", false);
         assert_eq!(stale_generated(&pf, &fresh), None);
     }
 
@@ -458,7 +461,7 @@ mod tests {
         // No spec beside it and none declared: nothing regenerates it, so an
         // mtime comparison would be meaningless.
         let pf = ProjectFile::default();
-        let plain = temp_project("stale-plain", None);
+        let (_dir, plain) = temp_project("stale-plain", None);
         std::fs::write(plain.join("project.pbxproj"), "hand-written").unwrap();
         assert_eq!(stale_generated(&pf, &plain), None);
     }
@@ -472,7 +475,7 @@ mod tests {
             generator: Some("xcodegen".into()),
             ..ProjectFile::default()
         };
-        let stale = generated_project("declared", "project.yaml", true);
+        let (_dir, stale) = generated_project("declared", "project.yaml", true);
         let warning = stale_generated(&pf, &stale).expect("expected a staleness warning");
         assert!(warning.contains("project.yaml is newer"), "{warning}");
     }
@@ -482,7 +485,7 @@ mod tests {
         // An XcodeGen project opened through a workspace beside it, listed a
         // second time through a group that spells the path differently.
         let pf = ProjectFile::default();
-        let xcodeproj = generated_project("ws-member", "project.yml", true);
+        let (_dir, xcodeproj) = generated_project("ws-member", "project.yml", true);
         let dir = xcodeproj.parent().unwrap();
         std::fs::create_dir_all(dir.join("Sub")).unwrap();
         let container = workspace(
@@ -530,7 +533,7 @@ mod tests {
     #[test]
     fn an_embedded_workspace_checks_the_project_around_it() {
         let pf = ProjectFile::default();
-        let xcodeproj = generated_project("ws-embedded", "project.yml", true);
+        let (_dir, xcodeproj) = generated_project("ws-embedded", "project.yml", true);
         let container = workspace(
             &xcodeproj.join("project.xcworkspace"),
             "<FileRef location = \"self:\"></FileRef>",
@@ -546,15 +549,15 @@ mod tests {
     #[test]
     fn generator_detection_by_sibling_spec() {
         let pf = ProjectFile::default();
-        let xcodegen = temp_project("xcodegen", Some("project.yml"));
+        let (_xcodegen_dir, xcodegen) = temp_project("xcodegen", Some("project.yml"));
         let found = generator_for(&pf, &xcodegen).unwrap();
         assert_eq!(found.tool, "XcodeGen");
         assert_eq!(found.regenerate, "xcodegen generate");
 
-        let tuist = temp_project("tuist", Some("Project.swift"));
+        let (_tuist_dir, tuist) = temp_project("tuist", Some("Project.swift"));
         assert_eq!(generator_for(&pf, &tuist).unwrap().tool, "Tuist");
 
-        let plain = temp_project("plain", None);
+        let (_plain_dir, plain) = temp_project("plain", None);
         assert!(generator_for(&pf, &plain).is_none());
     }
 
@@ -564,7 +567,7 @@ mod tests {
             generator: Some("xcodegen".into()),
             ..ProjectFile::default()
         };
-        let plain = temp_project("config", None);
+        let (_dir, plain) = temp_project("config", None);
         let found = generator_for(&pf, &plain).unwrap();
         assert_eq!(found.tool, "XcodeGen");
         // A free-form tool still guards, with generic wording.
@@ -578,7 +581,7 @@ mod tests {
     #[test]
     fn guard_refuses_without_force_and_yields_with_it() {
         let pf = ProjectFile::default();
-        let xcodeproj = temp_project("guard", Some("project.yml"));
+        let (_dir, xcodeproj) = temp_project("guard", Some("project.yml"));
         let err = guard_generated(&pf, &xcodeproj, false).unwrap_err();
         let text = err.to_string();
         assert!(text.contains("App.xcodeproj"), "{text}");
@@ -587,7 +590,7 @@ mod tests {
         assert!(text.contains("--force"), "{text}");
         assert!(guard_generated(&pf, &xcodeproj, true).is_ok());
 
-        let plain = temp_project("guard-plain", None);
+        let (_plain_dir, plain) = temp_project("guard-plain", None);
         assert!(guard_generated(&pf, &plain, false).is_ok());
     }
 }

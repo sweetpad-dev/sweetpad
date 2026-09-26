@@ -928,22 +928,21 @@ group.com.apple.stocks\t/Users/someone/Library/Developer/CoreSimulator/Devices/F
         ));
     }
 
-    fn fake_xcode(tag: &str, bundle: &str) -> std::path::PathBuf {
-        let n = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let xcode = std::env::temp_dir().join(format!("sweetpad-test-{tag}-{n}/Xcode.app"));
+    /// An `Xcode.app` in a fresh directory, holding `bundle` unless it is
+    /// empty. The directory goes when the returned guard drops.
+    fn fake_xcode(tag: &str, bundle: &str) -> (crate::cli::testdir::TempDir, std::path::PathBuf) {
+        let dir = crate::cli::testdir::TempDir::new(&format!("sweetpad-test-{tag}"));
+        let xcode = dir.join("Xcode.app");
         std::fs::create_dir_all(xcode.join("Contents/Developer")).unwrap();
         if !bundle.is_empty() {
             std::fs::create_dir_all(xcode.join(bundle)).unwrap();
         }
-        xcode
+        (dir, xcode)
     }
 
     #[test]
     fn simulator_app_finds_the_bundle_in_the_developer_dir() {
-        let xcode = fake_xcode("sim26", "Contents/Developer/Applications/Simulator.app");
+        let (_dir, xcode) = fake_xcode("sim26", "Contents/Developer/Applications/Simulator.app");
         let dev = xcode.join("Contents/Developer");
         assert_eq!(
             simulator_app_in(&dev),
@@ -953,7 +952,7 @@ group.com.apple.stocks\t/Users/someone/Library/Developer/CoreSimulator/Devices/F
 
     #[test]
     fn simulator_app_finds_device_hub_beside_the_developer_dir() {
-        let xcode = fake_xcode("sim27", "Contents/Applications/DeviceHub.app");
+        let (_dir, xcode) = fake_xcode("sim27", "Contents/Applications/DeviceHub.app");
         assert_eq!(
             simulator_app_in(&xcode.join("Contents/Developer")),
             xcode
@@ -965,7 +964,7 @@ group.com.apple.stocks\t/Users/someone/Library/Developer/CoreSimulator/Devices/F
 
     #[test]
     fn simulator_app_falls_back_to_the_bare_name() {
-        let xcode = fake_xcode("simnone", "");
+        let (_dir, xcode) = fake_xcode("simnone", "");
         assert_eq!(
             simulator_app_in(&xcode.join("Contents/Developer")),
             "Simulator"

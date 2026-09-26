@@ -6,14 +6,18 @@
 //! all break the single-value parse below — so this is the regression net for the
 //! "render once, centrally" design.
 
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
-use std::time::{SystemTime, UNIX_EPOCH};
+mod common;
 
+use std::path::Path;
+use std::process::{Command, Output};
+
+use common::TempDir;
 use serde_json::Value;
 
 /// Run the `sweetpad` binary with an isolated XDG/HOME so the test never reads
 /// the developer's real config/state and DerivedData resolution is deterministic.
+/// `TMPDIR` points into the home too: `swift --version`, which `doctor` runs,
+/// leaves a `TemporaryDirectory.*` there, and it goes with the home.
 fn sweetpad(args: &[&str], cwd: &Path, home: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_sweetpad"))
         .args(args)
@@ -22,6 +26,7 @@ fn sweetpad(args: &[&str], cwd: &Path, home: &Path) -> Output {
         .env("XDG_STATE_HOME", home)
         .env("XDG_CONFIG_HOME", home)
         .env("XDG_CACHE_HOME", home)
+        .env("TMPDIR", home)
         .env_remove("NO_COLOR")
         .env_remove("FORCE_COLOR")
         .env_remove("CLICOLOR_FORCE")
@@ -30,13 +35,8 @@ fn sweetpad(args: &[&str], cwd: &Path, home: &Path) -> Output {
         .expect("failed to run the sweetpad binary")
 }
 
-fn tmp(tag: &str) -> PathBuf {
-    let n = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!("sweetpad-json-{tag}-{n}"));
-    std::fs::create_dir_all(&dir).unwrap();
+fn tmp(tag: &str) -> TempDir {
+    let dir = TempDir::new(&format!("sweetpad-json-{tag}"));
     // A `.git` marker stops walk-up discovery at this directory — without it
     // the CLI would walk into the shared temp root, where concurrently-running
     // tests drop `.xcodeproj` fixtures.

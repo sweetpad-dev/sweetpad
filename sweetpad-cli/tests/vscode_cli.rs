@@ -6,19 +6,18 @@
 //! error envelope, and the exit codes (0 ok / 1 RPC error / 2 client error)
 //! the JS CLI established.
 
+mod common;
+
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use common::TempDir;
 use serde_json::{Value, json};
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("sweetpad-vscode-cli-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+fn temp_dir(tag: &str) -> TempDir {
+    TempDir::new(&format!("sweetpad-vscode-cli-{tag}"))
 }
 
 /// Read one Content-Length-framed message (the request) from the stream.

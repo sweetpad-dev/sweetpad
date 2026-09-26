@@ -154,10 +154,9 @@ fn plist_buddy(file: &Path, command: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::testdir::TempDir;
 
-    fn temp_plist(name: &str, body: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("sweetpad-sandbox-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+    fn temp_plist(dir: &Path, name: &str, body: &str) -> PathBuf {
         let path = dir.join(name);
         std::fs::write(&path, body).unwrap();
         path
@@ -178,10 +177,11 @@ mod tests {
 
     #[test]
     fn sandboxed_detection_reads_the_key() {
-        assert!(sandboxed(&temp_plist("sandboxed.entitlements", SANDBOXED)).unwrap());
-        assert!(!sandboxed(&temp_plist("plain.entitlements", UNSANDBOXED)).unwrap());
+        let dir = TempDir::new("sweetpad-sandbox");
+        assert!(sandboxed(&temp_plist(&dir, "sandboxed.entitlements", SANDBOXED)).unwrap());
+        assert!(!sandboxed(&temp_plist(&dir, "plain.entitlements", UNSANDBOXED)).unwrap());
         // A garbage file is an error, not a silent "not sandboxed".
-        let garbage = temp_plist("garbage.entitlements", "this is not a plist {{{");
+        let garbage = temp_plist(&dir, "garbage.entitlements", "this is not a plist {{{");
         assert!(sandboxed(&garbage).unwrap_err().contains("not a readable"));
         // A missing file names the resolution problem.
         let missing = Path::new("/nonexistent/x.entitlements");
@@ -190,7 +190,8 @@ mod tests {
 
     #[test]
     fn strip_removes_the_sandbox_and_adds_get_task_allow() {
-        let source = temp_plist("strip-src.entitlements", SANDBOXED);
+        let dir = TempDir::new("sweetpad-sandbox");
+        let source = temp_plist(&dir, "strip-src.entitlements", SANDBOXED);
         let dest = strip(&source, "/work/App.xcodeproj#test-strip", "Debug").unwrap();
         assert!(dest.ends_with("Debug-nosandbox.entitlements"), "{dest:?}");
         let text = std::fs::read_to_string(&dest).unwrap();
@@ -206,8 +207,9 @@ mod tests {
 
     #[test]
     fn plan_matrix() {
-        let sandboxed_file = temp_plist("plan-sandboxed.entitlements", SANDBOXED);
-        let plain_file = temp_plist("plan-plain.entitlements", UNSANDBOXED);
+        let dir = TempDir::new("sweetpad-sandbox");
+        let sandboxed_file = temp_plist(&dir, "plan-sandboxed.entitlements", SANDBOXED);
+        let plain_file = temp_plist(&dir, "plan-plain.entitlements", UNSANDBOXED);
 
         // No explicit entitlements → the build settings suffice.
         assert_eq!(

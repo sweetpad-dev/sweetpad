@@ -4,18 +4,16 @@
 //! exercises the early exits that must not leave the crash-safe manifest
 //! backup behind.
 
-use std::os::fd::OwnedFd;
-use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Output};
-use std::time::{SystemTime, UNIX_EPOCH};
+mod common;
 
-fn tmp(tag: &str) -> PathBuf {
-    let n = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!("sweetpad-dep-add-{tag}-{n}"));
-    std::fs::create_dir_all(&dir).unwrap();
+use std::os::fd::OwnedFd;
+use std::path::Path;
+use std::process::{Command, ExitStatus, Output};
+
+use common::TempDir;
+
+fn tmp(tag: &str) -> TempDir {
+    let dir = TempDir::new(&format!("sweetpad-dep-add-{tag}"));
     // Stop walk-up discovery at this directory.
     std::fs::create_dir_all(dir.join(".git")).unwrap();
     dir
@@ -229,8 +227,6 @@ fn json_stderr_holds_only_the_error_envelope() {
         .unwrap_or_else(|e| panic!("stderr is not one JSON document ({e}): {stderr:?}"));
     assert_eq!(envelope["ok"], serde_json::Value::Bool(false));
     assert!(envelope["error"]["code"].is_string(), "{envelope}");
-    let _ = std::fs::remove_dir_all(&home);
-    let _ = std::fs::remove_dir_all(&root);
 }
 
 /// An interactive local add with no `--product` offers the products the local
@@ -282,8 +278,6 @@ fn an_interactive_local_add_picks_from_the_packages_manifest() {
         calls.contains("package add-target-dependency DepKit App --package Dep\n"),
         "{calls}"
     );
-    let _ = std::fs::remove_dir_all(&home);
-    let _ = std::fs::remove_dir_all(&root);
 }
 
 /// A local package that declares no products has nothing to link, and an
@@ -363,6 +357,4 @@ fn an_interactive_add_of_a_package_with_no_products_says_so() {
             document.display()
         );
     }
-    let _ = std::fs::remove_dir_all(&home);
-    let _ = std::fs::remove_dir_all(&root);
 }
