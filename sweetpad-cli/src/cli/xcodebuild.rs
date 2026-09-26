@@ -630,17 +630,100 @@ pub struct TestFailure {
     pub test_name: String,
     pub target_name: String,
     pub failure_text: String,
+    /// The test within its target, as the test tree names it
+    /// (`Class/method()`, `Suite/function()`).
+    pub test_identifier_string: String,
+    /// The same test as a `test://` URL, whose spelling settles the `()`
+    /// (see [`test_selector`]).
+    #[serde(rename = "testIdentifierURL")]
+    pub test_identifier_url: String,
 }
 
-/// The `-only-testing:` selectors for every test that failed in `bundle`,
-/// read from `xcrun xcresulttool get test-results tests` (Xcode 16+): the test
-/// tree is walked for failed test cases and their identifiers
-/// (`Target/Class/method`) returned. A missing bundle yields an empty list
-/// ("no previous run").
-pub fn failed_test_selectors(bundle: &Path) -> Result<Vec<String>, CliError> {
-    if !bundle.exists() {
-        return Ok(Vec::new());
+impl TestFailure {
+    /// The failing test as `-only-testing:` takes it — what the summary
+    /// prints, so one line can be copied straight into a rerun.
+    #[must_use]
+    pub fn selector(&self) -> String {
+        let test = if self.test_identifier_string.is_empty() {
+            &self.test_name
+        } else {
+            &self.test_identifier_string
+        };
+        test_selector(
+            Some(self.target_name.as_str()),
+            test,
+            Some(self.test_identifier_url.as_str()).filter(|u| !u.is_empty()),
+        )
     }
+}
+
+/// A test's `-only-testing:` identifier: its test target, then the test as the
+/// result bundle names it within that target — `Class/method`, a Swift Testing
+/// `Suite/function()`, or a bare `function()` declared outside any suite.
+///
+/// The bundle's own identifiers stop short of the target, and xcodebuild
+/// refuses a rerun built from them alone. Only XCTest's spelling drops the
+/// `()`: a Swift Testing test named without it selects nothing, silently. A
+/// test's URL keeps the `()` exactly where it belongs, so it decides; with no
+/// URL to go by, the test gets XCTest's spelling.
+fn test_selector(target: Option<&str>, test: &str, url: Option<&str>) -> String {
+    let test = if url.is_some_and(|u| u.ends_with("()")) {
+        test
+    } else {
+        test.strip_suffix("()").unwrap_or(test)
+    };
+    match target.filter(|t| !t.is_empty()) {
+        Some(target) => format!("{target}/{test}"),
+        None => test.to_string(),
+    }
+}
+
+/// One test case in a result bundle's test tree.
+struct TreeCase<'a> {
+    /// The unit or UI test bundle the case sits under. The tree names a
+    /// bundle by its target, which is what `-only-testing:` takes, even when
+    /// the product is renamed.
+    target: Option<&'a str>,
+    identifier: &'a str,
+    url: Option<&'a str>,
+    failed: bool,
+}
+
+/// Walk the xcresulttool test tree (`testNodes`/`children`) for its test
+/// cases, each carrying the test bundle it was found under.
+fn tree_cases<'a>(
+    node: &'a serde_json::Value,
+    target: Option<&'a str>,
+    out: &mut Vec<TreeCase<'a>>,
+) {
+    let field = |key: &str| node.get(key).and_then(serde_json::Value::as_str);
+    let target = match field("nodeType") {
+        Some("Unit test bundle" | "UI test bundle") => field("name").or(target),
+        Some("Test Case") => {
+            if let Some(identifier) = field("nodeIdentifier") {
+                out.push(TreeCase {
+                    target,
+                    identifier,
+                    url: field("nodeIdentifierURL"),
+                    failed: field("result").is_some_and(|r| r.eq_ignore_ascii_case("failed")),
+                });
+            }
+            target
+        }
+        _ => target,
+    };
+    for key in ["testNodes", "children"] {
+        if let Some(nodes) = node.get(key).and_then(serde_json::Value::as_array) {
+            for n in nodes {
+                tree_cases(n, target, out);
+            }
+        }
+    }
+}
+
+/// Read a `.xcresult`'s test tree via `xcrun xcresulttool get test-results
+/// tests` (Xcode 16+).
+fn test_tree(bundle: &Path) -> Result<serde_json::Value, CliError> {
     let out = process::capture(
         "xcrun",
         &[
@@ -652,44 +735,79 @@ pub fn failed_test_selectors(bundle: &Path) -> Result<Vec<String>, CliError> {
             &bundle.to_string_lossy(),
         ],
         None,
-    )
-    .context("reading the previous run's failures")?;
+    )?;
     let json = out
         .find('{')
         .map(|i| &out[i..])
         .ok_or_else(|| CliError::new("xcresulttool produced no JSON test tree"))?;
-    let root: serde_json::Value =
-        serde_json::from_str(json).map_err(|e| CliError::new(format!("parsing test tree: {e}")))?;
-    let mut selectors = Vec::new();
-    collect_failed(&root, &mut selectors);
-    selectors.sort();
-    selectors.dedup();
-    Ok(selectors)
+    serde_json::from_str(json).map_err(|e| CliError::new(format!("parsing test tree: {e}")))
 }
 
-/// Recursive walk of the xcresulttool test tree (`testNodes`/`children`),
-/// collecting failed test cases' identifiers. XCTest identifiers carry a
-/// trailing `()` that `-only-testing:` doesn't accept — trimmed here.
-fn collect_failed(node: &serde_json::Value, out: &mut Vec<String>) {
-    for key in ["testNodes", "children"] {
-        if let Some(nodes) = node.get(key).and_then(serde_json::Value::as_array) {
-            for n in nodes {
-                collect_failed(n, out);
+/// The `-only-testing:` selectors for every test that failed in `bundle`,
+/// read from its test tree. A missing bundle yields an empty list ("no
+/// previous run").
+pub fn failed_test_selectors(bundle: &Path) -> Result<Vec<String>, CliError> {
+    if !bundle.exists() {
+        return Ok(Vec::new());
+    }
+    let root = test_tree(bundle).context("reading the previous run's failures")?;
+    Ok(failed_selectors(&root))
+}
+
+fn failed_selectors(root: &serde_json::Value) -> Vec<String> {
+    let mut cases = Vec::new();
+    tree_cases(root, None, &mut cases);
+    let mut selectors: Vec<String> = cases
+        .iter()
+        .filter(|c| c.failed)
+        .map(|c| test_selector(c.target, c.identifier, c.url))
+        .collect();
+    selectors.sort();
+    selectors.dedup();
+    selectors
+}
+
+/// Which test target holds each test, keyed by `Class/method`. Only the test
+/// tree names the target the way `-only-testing:` does: a test process's
+/// markers name its module and its output directory names its product, and
+/// either one differs from the target once renamed.
+#[derive(Default)]
+struct TestTargets(BTreeMap<String, Vec<String>>);
+
+impl TestTargets {
+    fn from_tree(root: &serde_json::Value) -> Self {
+        let mut cases = Vec::new();
+        tree_cases(root, None, &mut cases);
+        let mut by_test: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for case in cases {
+            if let Some(target) = case.target {
+                let targets = by_test
+                    .entry(case.identifier.trim_end_matches("()").to_string())
+                    .or_default();
+                if !targets.iter().any(|t| t == target) {
+                    targets.push(target.to_string());
+                }
             }
         }
+        Self(by_test)
     }
-    let is_case = node.get("nodeType").and_then(serde_json::Value::as_str) == Some("Test Case");
-    let failed = node
-        .get("result")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|r| r.eq_ignore_ascii_case("failed"));
-    if is_case
-        && failed
-        && let Some(id) = node
-            .get("nodeIdentifier")
-            .and_then(serde_json::Value::as_str)
-    {
-        out.push(id.trim_end_matches("()").to_string());
+
+    /// The target that ran `test` (`Class/method`), whose marker named
+    /// `module`. One source file compiled into two targets puts the same test
+    /// in both, and the module each target builds under its own name tells
+    /// them apart. A test the tree doesn't list is credited to the module
+    /// itself, which is the target's name unless the product or module was
+    /// renamed.
+    fn target_of<'a>(&'a self, test: &str, module: Option<&'a str>) -> Option<&'a str> {
+        let targets = self.0.get(test).map_or(&[][..], Vec::as_slice);
+        let as_module =
+            |target: &str| target.replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_");
+        targets
+            .iter()
+            .find(|t| module.is_some_and(|m| as_module(t) == m))
+            .or_else(|| targets.first())
+            .map(String::as_str)
+            .or(module)
     }
 }
 
@@ -869,44 +987,68 @@ pub struct RunOutput {
 }
 
 pub struct TestOutput {
-    /// `Class/method`, the shape `--only-testing` and the attachment manifest
-    /// both use (the marker's own `Module.Class` spelling is normalized here).
+    /// `Class/method`, the shape the attachment manifest uses (the marker's
+    /// own `Module.Class` spelling is normalized here).
     pub test: String,
+    /// `Target/Class/method`, the shape `--only-testing` takes.
+    pub identifier: String,
     pub output: String,
+}
+
+/// One of XCTest's case markers, read apart.
+struct CaseMarker<'a> {
+    /// The class's module, when the marker qualifies it (an Objective-C
+    /// class is not).
+    module: Option<&'a str>,
+    /// `Class/method`.
+    test: String,
+    started: bool,
 }
 
 /// XCTest brackets each test's console output with these, on the test
 /// process's own stdout: `Test Case '-[Module.Class method]' started.` … then
 /// `passed`/`failed`. Everything between is what that test wrote.
-fn parse_case_marker(line: &str) -> Option<(String, bool)> {
+fn parse_case_marker(line: &str) -> Option<CaseMarker<'_>> {
     let rest = line.strip_prefix("Test Case '-[")?;
     let (inner, tail) = rest.split_once("]' ")?;
-    let (class, method) = inner.split_once(' ')?;
+    let (qualified, method) = inner.split_once(' ')?;
     let started = tail.starts_with("started");
     if !started && !tail.starts_with("passed") && !tail.starts_with("failed") {
         return None;
     }
-    // The marker spells the class module-qualified; every other identifier in
-    // the CLI (and in the result bundle) does not.
-    let class = class.rsplit('.').next().unwrap_or(class);
-    Some((format!("{class}/{method}"), started))
+    // The marker spells the class module-qualified; the result bundle
+    // does not.
+    let class = qualified.rsplit('.').next().unwrap_or(qualified);
+    Some(CaseMarker {
+        module: qualified.split_once('.').map(|(module, _)| module),
+        test: format!("{class}/{method}"),
+        started,
+    })
 }
 
-/// Split one test process's stdout into per-test slices.
-fn split_output(text: &str, into: &mut Vec<TestOutput>, unattributed: &mut String) {
-    let mut current: Option<(String, String)> = None;
+/// Split one test process's stdout into per-test slices, each named by the
+/// target `targets` says ran it.
+fn split_output(
+    text: &str,
+    targets: &TestTargets,
+    into: &mut Vec<TestOutput>,
+    unattributed: &mut String,
+) {
+    let mut current: Option<TestOutput> = None;
     for line in text.lines() {
-        if let Some((test, started)) = parse_case_marker(line) {
-            if let Some((name, body)) = current.take()
-                && !body.trim().is_empty()
+        if let Some(marker) = parse_case_marker(line) {
+            if let Some(done) = current.take()
+                && !done.output.trim().is_empty()
             {
-                into.push(TestOutput {
-                    test: name,
-                    output: body,
-                });
+                into.push(done);
             }
-            if started {
-                current = Some((test, String::new()));
+            if marker.started {
+                let target = targets.target_of(&marker.test, marker.module);
+                current = Some(TestOutput {
+                    identifier: test_selector(target, &marker.test, None),
+                    test: marker.test,
+                    output: String::new(),
+                });
             }
             continue;
         }
@@ -916,19 +1058,16 @@ fn split_output(text: &str, into: &mut Vec<TestOutput>, unattributed: &mut Strin
             continue;
         }
         let sink = match current.as_mut() {
-            Some((_, body)) => body,
+            Some(open) => &mut open.output,
             None => &mut *unattributed,
         };
         sink.push_str(line);
         sink.push('\n');
     }
-    if let Some((name, body)) = current
-        && !body.trim().is_empty()
+    if let Some(done) = current
+        && !done.output.trim().is_empty()
     {
-        into.push(TestOutput {
-            test: name,
-            output: body,
-        });
+        into.push(done);
     }
 }
 
@@ -966,6 +1105,12 @@ pub fn export_run_output(
     collect_diagnostic_files(staging, &mut streams, &mut schedules);
     streams.sort();
 
+    // The tree only names the output. When it can't be read, each test is
+    // named by its module instead, and the output is kept all the same.
+    let targets = test_tree(bundle)
+        .map(|root| TestTargets::from_tree(&root))
+        .unwrap_or_default();
+
     let _ = std::fs::remove_dir_all(keep);
     let _ = std::fs::create_dir_all(keep);
     let mut tests = Vec::new();
@@ -975,7 +1120,7 @@ pub fn export_run_output(
         let Ok(text) = std::fs::read_to_string(path) else {
             continue;
         };
-        split_output(&text, &mut tests, &mut unattributed);
+        split_output(&text, &targets, &mut tests, &mut unattributed);
         let label = stream_label(path, sources.len());
         let mut kept = keep.join(format!("{label}.txt"));
         // Two targets resolving to one label would silently cost a stream.
@@ -1275,14 +1420,19 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
     #[test]
     fn a_tests_own_output_is_recovered_from_the_stream() {
         let (mut tests, mut rest) = (Vec::new(), String::new());
-        split_output(STREAM, &mut tests, &mut rest);
+        split_output(STREAM, &TestTargets::default(), &mut tests, &mut rest);
 
         // Only tests that wrote something appear, under the identifier shape
-        // the rest of the CLI uses — not the marker's `Module.Class`.
+        // the result bundle uses — not the marker's `Module.Class`.
         let names: Vec<&str> = tests.iter().map(|t| t.test.as_str()).collect();
         assert_eq!(
             names,
             ["ReflowEngineTests/testBook", "ReflowEngineTests/testBroken"]
+        );
+        // With no test tree to name the target, the marker's module stands in.
+        assert_eq!(
+            tests[0].identifier,
+            "ReflowTests/ReflowEngineTests/testBook"
         );
         assert_eq!(
             tests[0].output.trim(),
@@ -1304,7 +1454,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         // and the run's output survives whole rather than vanishing.
         let text = "◇ Test example() started.\nmeasured 42ms\n✔ Test example() passed.\n";
         let (mut tests, mut rest) = (Vec::new(), String::new());
-        split_output(text, &mut tests, &mut rest);
+        split_output(text, &TestTargets::default(), &mut tests, &mut rest);
         assert!(tests.is_empty());
         assert!(rest.contains("measured 42ms"), "{rest}");
     }
@@ -1805,5 +1955,180 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             (5, 4, 1)
         );
         assert_eq!(s.test_failures[0].test_name, "testX");
+    }
+
+    /// `xcresulttool get test-results tests` for the CI fixture app, extended
+    /// with a UI test bundle and Swift Testing tests beside its XCTest class
+    /// (durations and source locations dropped). Captured on Xcode 27.
+    const TREE: &str = r#"{ "testNodes": [
+  { "name": "SweetpadCIApp", "nodeType": "Test Plan", "result": "Failed", "children": [
+    { "name": "SweetpadCIAppTests", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests", "nodeType": "Unit test bundle", "result": "Failed", "children": [
+      { "name": "freeGreeting()", "nodeIdentifier": "freeGreeting()", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/freeGreeting()", "nodeType": "Test Case", "result": "Failed", "children": [
+        { "name": "Expectation failed: \"free\" == \"bound\"", "nodeType": "Failure Message" }
+      ] },
+      { "name": "freePasses()", "nodeIdentifier": "freePasses()", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/freePasses()", "nodeType": "Test Case", "result": "Passed" },
+      { "name": "AppTests", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/AppTests", "nodeType": "Test Suite", "result": "Failed", "children": [
+        { "name": "testArithmetic()", "nodeIdentifier": "AppTests/testArithmetic()", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/AppTests/testArithmetic", "nodeType": "Test Case", "result": "Passed" },
+        { "name": "testGreeting()", "nodeIdentifier": "AppTests/testGreeting()", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/AppTests/testGreeting", "nodeType": "Test Case", "result": "Failed", "children": [
+          { "name": "XCTAssertEqual failed: (\"hello\") is not equal to (\"world\")", "nodeType": "Failure Message" }
+        ] }
+      ] },
+      { "name": "GreetingSuite", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite", "nodeType": "Test Suite", "result": "Failed", "children": [
+        { "name": "Nested", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite/Nested", "nodeType": "Test Suite", "result": "Failed", "children": [
+          { "name": "inner()", "nodeIdentifier": "GreetingSuite/Nested/inner()", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite/Nested/inner()", "nodeType": "Test Case", "result": "Failed", "children": [
+            { "name": "Expectation failed: Bool(false)\nfalse → ()", "nodeType": "Failure Message" }
+          ] }
+        ] },
+        { "name": "suiteGreeting()", "nodeIdentifier": "GreetingSuite/suiteGreeting()", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite/suiteGreeting()", "nodeType": "Test Case", "result": "Failed", "children": [
+          { "name": "Expectation failed: 1 == 2", "nodeType": "Failure Message" }
+        ] },
+        { "name": "A display name", "nodeIdentifier": "GreetingSuite/named()", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite/named()", "nodeType": "Test Case", "result": "Failed", "children": [
+          { "name": "Expectation failed: Bool(false)\nfalse → ()", "nodeType": "Failure Message" }
+        ] },
+        { "name": "param(n:)", "nodeIdentifier": "GreetingSuite/param(n:)", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite/param(n:)", "nodeType": "Test Case", "result": "Failed", "children": [
+          { "name": "1", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite/param(n:)?args=6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b", "nodeType": "Arguments", "result": "Passed" },
+          { "name": "2", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite/param(n:)?args=d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35", "nodeType": "Arguments", "result": "Failed", "children": [
+            { "name": "Expectation failed: n == 1\nn → 2", "nodeType": "Failure Message" }
+          ] }
+        ] }
+      ] }
+    ] },
+    { "name": "SweetpadCIAppUITests", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppUITests", "nodeType": "UI test bundle", "result": "Failed", "children": [
+      { "name": "AppUITests", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppUITests/AppUITests", "nodeType": "Test Suite", "result": "Failed", "children": [
+        { "name": "testLaunchShowsNothing()", "nodeIdentifier": "AppUITests/testLaunchShowsNothing()", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppUITests/AppUITests/testLaunchShowsNothing", "nodeType": "Test Case", "result": "Failed", "children": [
+          { "name": "failed - deliberate UI failure", "nodeType": "Failure Message" }
+        ] }
+      ] }
+    ] }
+  ] }
+] }"#;
+
+    /// The failures `xcresulttool get test-results summary` reports for the
+    /// same run as [`TREE`], one per framework and bundle.
+    const SUMMARY: &str = r#"{"result": "Failed", "totalTestCount": 9, "passedTests": 2, "failedTests": 7, "testFailures": [
+{"failureText": "Expectation failed: \"free\" == \"bound\"", "targetName": "SweetpadCIAppTests", "testIdentifier": 7, "testIdentifierString": "freeGreeting()", "testIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/freeGreeting()", "testName": "freeGreeting()"},
+{"failureText": "Expectation failed: Bool(false)\nfalse → ()", "targetName": "SweetpadCIAppTests", "testIdentifier": 6, "testIdentifierString": "GreetingSuite/Nested/inner()", "testIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite/Nested/inner()", "testName": "inner()"},
+{"failureText": "Expectation failed: Bool(false)\nfalse → ()", "targetName": "SweetpadCIAppTests", "testIdentifier": 4, "testIdentifierString": "GreetingSuite/named()", "testIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite/named()", "testName": "A display name"},
+{"failureText": "Expectation failed: n == 1\nn → 2", "targetName": "SweetpadCIAppTests", "testIdentifier": 5, "testIdentifierString": "GreetingSuite/param(n:)", "testIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite/param(n:)", "testName": "param(n:)"},
+{"failureText": "Expectation failed: 1 == 2", "targetName": "SweetpadCIAppTests", "testIdentifier": 3, "testIdentifierString": "GreetingSuite/suiteGreeting()", "testIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/GreetingSuite/suiteGreeting()", "testName": "suiteGreeting()"},
+{"failureText": "XCTAssertEqual failed: (\"hello\") is not equal to (\"world\")", "targetName": "SweetpadCIAppTests", "testIdentifier": 2, "testIdentifierString": "AppTests/testGreeting()", "testIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppTests/AppTests/testGreeting", "testName": "testGreeting()"},
+{"failureText": "failed - deliberate UI failure", "targetName": "SweetpadCIAppUITests", "testIdentifier": 9, "testIdentifierString": "AppUITests/testLaunchShowsNothing()", "testIdentifierURL": "test://com.apple.xcode/SweetpadCIApp/SweetpadCIAppUITests/AppUITests/testLaunchShowsNothing", "testName": "testLaunchShowsNothing()"}
+]}"#;
+
+    fn tree() -> serde_json::Value {
+        serde_json::from_str(TREE).unwrap()
+    }
+
+    #[test]
+    fn a_failed_rerun_names_each_test_by_its_target() {
+        // The tree's own identifiers stop short of the target, and a rerun
+        // built from them is refused outright ("isn't a member of the
+        // specified test plan or scheme"). Each case takes the bundle it sits
+        // under — unit or UI — and only XCTest's spelling drops the `()`,
+        // since a Swift Testing test named without it selects nothing.
+        assert_eq!(
+            failed_selectors(&tree()),
+            [
+                "SweetpadCIAppTests/AppTests/testGreeting",
+                "SweetpadCIAppTests/GreetingSuite/Nested/inner()",
+                "SweetpadCIAppTests/GreetingSuite/named()",
+                "SweetpadCIAppTests/GreetingSuite/param(n:)",
+                "SweetpadCIAppTests/GreetingSuite/suiteGreeting()",
+                "SweetpadCIAppTests/freeGreeting()",
+                "SweetpadCIAppUITests/AppUITests/testLaunchShowsNothing",
+            ]
+        );
+    }
+
+    #[test]
+    fn the_summary_names_a_failure_the_way_a_rerun_takes_it() {
+        // One spelling for one test: each line the summary prints can be
+        // copied into `--only-testing`, and is what `--failed` reruns.
+        let summary = parse_summary(SUMMARY).unwrap();
+        let mut printed: Vec<String> = summary
+            .test_failures
+            .iter()
+            .map(TestFailure::selector)
+            .collect();
+        printed.sort();
+        assert_eq!(printed, failed_selectors(&tree()));
+    }
+
+    #[test]
+    fn a_test_without_a_url_gets_the_xctest_spelling() {
+        assert_eq!(
+            test_selector(Some("AppTests"), "LoginTests/testSignIn()", None),
+            "AppTests/LoginTests/testSignIn"
+        );
+        // A bundle the tree didn't name leaves the identifier as it is found.
+        assert_eq!(
+            test_selector(None, "LoginTests/testSignIn()", None),
+            "LoginTests/testSignIn"
+        );
+        // A summary entry with no identifier string falls back to the name.
+        let failure = TestFailure {
+            test_name: "testSignIn()".into(),
+            target_name: "AppTests".into(),
+            ..TestFailure::default()
+        };
+        assert_eq!(failure.selector(), "AppTests/testSignIn");
+    }
+
+    /// The fixture's own test process stream, from the same run as [`TREE`].
+    const FIXTURE_STREAM: &str = "\
+Test Suite 'AppTests' started at 2026-09-26 17:26:12.841.
+Test Case '-[SweetpadCIAppTests.AppTests testArithmetic]' started.
+Test Case '-[SweetpadCIAppTests.AppTests testArithmetic]' passed (0.002 seconds).
+Test Case '-[SweetpadCIAppTests.AppTests testGreeting]' started.
+greeting under test
+Test Case '-[SweetpadCIAppTests.AppTests testGreeting]' failed (0.223 seconds).
+";
+
+    #[test]
+    fn a_tests_output_is_headed_the_way_a_rerun_takes_it() {
+        let targets = TestTargets::from_tree(&tree());
+        let (mut tests, mut rest) = (Vec::new(), String::new());
+        split_output(FIXTURE_STREAM, &targets, &mut tests, &mut rest);
+        assert_eq!(tests.len(), 1);
+        assert_eq!(
+            tests[0].identifier,
+            "SweetpadCIAppTests/AppTests/testGreeting"
+        );
+        assert_eq!(tests[0].test, "AppTests/testGreeting");
+
+        // A renamed product builds under its own module name, while
+        // `-only-testing` still takes the target's: the tree is what knows it.
+        let renamed = FIXTURE_STREAM.replace("SweetpadCIAppTests.", "Renamed_Tests.");
+        let (mut tests, mut rest) = (Vec::new(), String::new());
+        split_output(&renamed, &targets, &mut tests, &mut rest);
+        assert_eq!(
+            tests[0].identifier,
+            "SweetpadCIAppTests/AppTests/testGreeting"
+        );
+    }
+
+    #[test]
+    fn one_test_in_two_targets_is_told_apart_by_its_module() {
+        // A source file compiled into two test targets puts the same
+        // Class/method in both; the marker's module picks the one that ran.
+        let targets = TestTargets::from_tree(&serde_json::json!({ "testNodes": [
+            { "name": "App Tests", "nodeType": "Unit test bundle", "children": [
+                { "name": "t()", "nodeIdentifier": "Shared/t()", "nodeType": "Test Case" }
+            ] },
+            { "name": "AppIntegrationTests", "nodeType": "Unit test bundle", "children": [
+                { "name": "t()", "nodeIdentifier": "Shared/t()", "nodeType": "Test Case" }
+            ] }
+        ] }));
+        assert_eq!(
+            targets.target_of("Shared/t", Some("AppIntegrationTests")),
+            Some("AppIntegrationTests")
+        );
+        // A space is not an identifier character, so it builds as `App_Tests`.
+        assert_eq!(
+            targets.target_of("Shared/t", Some("App_Tests")),
+            Some("App Tests")
+        );
+        // A test the tree doesn't list is named by its module.
+        assert_eq!(targets.target_of("Other/t", Some("Mod")), Some("Mod"));
     }
 }

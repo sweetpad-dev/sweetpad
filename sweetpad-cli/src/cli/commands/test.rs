@@ -216,10 +216,7 @@ impl Render for TestReport {
             self.summary.total_test_count
         ));
         for f in &self.summary.test_failures {
-            out.line(&format!(
-                "  ✗ {}/{}: {}",
-                f.target_name, f.test_name, f.failure_text
-            ));
+            out.line(&format!("  ✗ {}: {}", f.selector(), f.failure_text));
         }
         if let Some(coverage) = self.coverage {
             out.line(&format!("coverage: {:.1}%", coverage * 100.0));
@@ -236,6 +233,7 @@ impl Render for TestReport {
                 serde_json::json!({
                     "test": f.test_name,
                     "target": f.target_name,
+                    "identifier": f.selector(),
                     "message": f.failure_text,
                 })
             })
@@ -750,6 +748,7 @@ struct OutputReport {
 
 struct TestOutputEntry {
     test: String,
+    identifier: String,
     output: String,
     truncated: bool,
 }
@@ -757,7 +756,7 @@ struct TestOutputEntry {
 impl Render for OutputReport {
     fn human(&self, out: &Output) {
         for entry in &self.tests {
-            out.line(&entry.test);
+            out.line(&entry.identifier);
             if entry.truncated {
                 out.line("    …");
             }
@@ -808,6 +807,7 @@ impl Render for OutputReport {
             .map(|t| {
                 serde_json::json!({
                     "test": t.test,
+                    "identifier": t.identifier,
                     "output": t.output,
                     "truncated": t.truncated,
                 })
@@ -845,13 +845,13 @@ fn output(ctx: &mut Context, args: &TestArgs, opts: &OutputArgs) -> CommandResul
     let run = run?;
 
     let found_any = !run.tests.is_empty();
+    let mut wrote: Vec<String> = run.tests.iter().map(|t| t.identifier.clone()).collect();
     let tests = select_output(run.tests, &args.only_testing, opts.full);
 
     if tests.is_empty() && found_any && !args.only_testing.is_empty() {
-        return Err(CliError::new(format!(
-            "no output from {} — a test here is identified by class, not target",
-            args.only_testing.join(", ")
-        )));
+        wrote.sort();
+        wrote.dedup();
+        return Err(no_output_match(&wrote, &args.only_testing));
     }
 
     let note = (!found_any).then(|| {
@@ -892,9 +892,9 @@ fn select_output(
         .into_iter()
         .filter(|t| {
             only_testing.is_empty()
-                || only_testing
-                    .iter()
-                    .any(|sel| selector_matches(sel, &t.test))
+                || only_testing.iter().any(|sel| {
+                    selector_matches(sel, &t.identifier) || selector_matches(sel, &t.test)
+                })
         })
         .filter(|t| !t.output.trim().is_empty())
         .map(|t| {
@@ -909,6 +909,7 @@ fn select_output(
             };
             TestOutputEntry {
                 test: t.test,
+                identifier: t.identifier,
                 output,
                 truncated,
             }
@@ -989,6 +990,19 @@ fn no_selector_match(classes: &[String], selectors: &[String]) -> CliError {
     };
     CliError::new(format!(
         "no attachments matched {} — a test here is identified by class, not target{known}",
+        selectors.join(", ")
+    ))
+}
+
+/// `--only-testing` matched none of the tests that wrote output, so those are
+/// named instead, in the form the selector takes.
+fn no_output_match(wrote: &[String], selectors: &[String]) -> CliError {
+    let known = match wrote.len() {
+        n if n > 5 => format!("{}, and {} more", wrote[..5].join(", "), n - 5),
+        _ => wrote.join(", "),
+    };
+    CliError::new(format!(
+        "no output from {}; tests that wrote output: {known}",
         selectors.join(", ")
     ))
 }
@@ -1589,8 +1603,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// [`select_output`] over `(test, output)` pairs, which is how a stream
-    /// reads once it has been sliced per test.
+    /// [`select_output`] over `(Target/Class/method, output)` pairs, which is
+    /// how a stream reads once it has been sliced per test.
     fn output_entries(
         tests: Vec<(&str, &str)>,
         only_testing: &[String],
@@ -1598,8 +1612,12 @@ mod tests {
     ) -> Vec<TestOutputEntry> {
         let tests = tests
             .into_iter()
-            .map(|(test, output)| xcodebuild::TestOutput {
-                test: test.to_string(),
+            .map(|(identifier, output)| xcodebuild::TestOutput {
+                test: identifier
+                    .split_once('/')
+                    .map_or(identifier, |(_, test)| test)
+                    .to_string(),
+                identifier: identifier.to_string(),
                 output: output.to_string(),
             })
             .collect();
@@ -1640,18 +1658,18 @@ mod tests {
         // for a test that wrote plenty, and never offered `--full`.
         let printed = format!("{}\n", "A".repeat(10_000));
         let entries = output_entries(
-            vec![("BlobTests/testDump", printed.as_str())],
+            vec![("AppTests/BlobTests/testDump", printed.as_str())],
             &[],
             /* full */ false,
         );
         assert_eq!(entries.len(), 1, "the test was dropped from the report");
-        assert_eq!(entries[0].test, "BlobTests/testDump");
+        assert_eq!(entries[0].identifier, "AppTests/BlobTests/testDump");
         assert!(entries[0].truncated);
         assert!(!entries[0].output.is_empty());
 
         // `--full` keeps all of it and marks nothing truncated.
         let entries = output_entries(
-            vec![("BlobTests/testDump", printed.as_str())],
+            vec![("AppTests/BlobTests/testDump", printed.as_str())],
             &[],
             /* full */ true,
         );
@@ -1664,22 +1682,49 @@ mod tests {
         // The flip side: "wrote nothing" is decided on the whole output, so
         // blank output is still dropped — and dropping it is not something
         // truncation can do by accident.
-        let entries = output_entries(vec![("QuietTests/testNothing", "\n  \n\t\n")], &[], false);
+        let entries = output_entries(
+            vec![("AppTests/QuietTests/testNothing", "\n  \n\t\n")],
+            &[],
+            false,
+        );
         assert!(entries.is_empty());
     }
 
     #[test]
     fn only_testing_selects_among_the_tests_that_wrote_output() {
-        let entries = output_entries(
-            vec![
-                ("ATests/testOne", "from a\n"),
-                ("BTests/testTwo", "from b\n"),
-            ],
-            &["BTests".to_string()],
-            false,
+        // Whatever the heading shows selects its test, down to the target
+        // alone; a selector that starts at the class still lands too.
+        for selector in [
+            "AppUITests",
+            "AppUITests/BTests/testTwo",
+            "BTests",
+            "BTests/testTwo",
+        ] {
+            let entries = output_entries(
+                vec![
+                    ("AppTests/ATests/testOne", "from a\n"),
+                    ("AppUITests/BTests/testTwo", "from b\n"),
+                ],
+                &[selector.to_string()],
+                false,
+            );
+            assert_eq!(entries.len(), 1, "{selector}");
+            assert_eq!(entries[0].output, "from b", "{selector}");
+        }
+    }
+
+    #[test]
+    fn a_selector_matching_no_output_names_the_tests_that_wrote_some() {
+        let err = no_output_match(
+            &["AppTests/ATests/testOne".to_string()],
+            &["AppTests/ATests/testTwo".to_string()],
         );
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].output, "from b");
+        let message = err.to_string();
+        assert!(message.contains("AppTests/ATests/testTwo"), "{message}");
+        assert!(message.contains("AppTests/ATests/testOne"), "{message}");
+        let many: Vec<String> = (0..8).map(|i| format!("T/C/test{i}")).collect();
+        let message = no_output_match(&many, &["X".to_string()]).to_string();
+        assert!(message.contains("and 3 more"), "{message}");
     }
 
     #[test]
@@ -1712,6 +1757,7 @@ mod tests {
                 test_name: "testA<>()".into(),
                 target_name: "AppTests".into(),
                 failure_text: "x & y \"broke\"".into(),
+                ..xcodebuild::TestFailure::default()
             }],
         };
         write_junit(&path, "App", &summary).unwrap();

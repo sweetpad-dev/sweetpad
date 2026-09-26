@@ -2012,6 +2012,28 @@ attributes *nothing*, and there the same bucket is the only account of what ran.
 Dropping it unconditionally would lose the run; showing it unconditionally
 would bury the answer.
 
+### One name per test
+
+The failure summary, a `test output` heading, and the selectors `--failed`
+builds all name a test the way `-only-testing` takes it, `Target/Class/method`,
+so any one of them can be pasted into a rerun. JSON carries it as `identifier`,
+next to the `test` and `target` fields.
+
+**The target comes from the test tree.** The bundle's own identifiers start at
+the class (`AppTests/testGreeting()`), and xcodebuild rejects a selector built
+from them: the target "isn't a member of the specified test plan or scheme". The
+tree nests each case under its unit or UI test bundle, and it names that bundle
+by its target. Neither the case marker's module nor the directory a test's output
+lands in will do: they carry the module and product names, and renaming the
+product changes both while the target stays put.
+
+**The `()` depends on the framework.** Xcode 27 takes an XCTest method either
+way. A Swift Testing test needs it (`Target/Suite/function()`, or
+`Target/function()` for a test outside any suite): without it, `-only-testing`
+selects nothing and Swift Testing reports a pass. The test's `test://` URL in the
+bundle keeps the parentheses only where they belong, so the URL decides. With no
+URL, a test gets the XCTest spelling.
+
 ## 9m. v8 — failures that name their own fix
 
 Three more from §9k's family, all found by agents losing time rather than by

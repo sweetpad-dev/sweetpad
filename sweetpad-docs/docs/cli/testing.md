@@ -37,7 +37,7 @@ error: /path/to/Tests/AppTests/AppTests.swift:10: -[SweetpadCIAppTests.AppTests 
   ✗ SweetpadCIAppTests.AppTests.testGreeting
 ✗ Tests failed
 1 passed, 1 failed, 0 skipped (2 total)
-  ✗ SweetpadCIAppTests/testGreeting(): XCTAssertEqual failed: ("Hello, SweetPad") is not equal to ("Hello, Sweetpad")
+  ✗ SweetpadCIAppTests/AppTests/testGreeting: XCTAssertEqual failed: ("Hello, SweetPad") is not equal to ("Hello, Sweetpad")
 ```
 
 Red tests exit with code `3`, the same code a failed build uses, since both mean "the work ran and
@@ -87,13 +87,9 @@ bundle:
 sweetpad test --failed
 ```
 
-:::note
-
-If `--failed` comes back with "isn't a member of the specified test plan or scheme", the identifier it
-recovered is missing its test target. Copy the full `Target/Class/method` form into `--only-testing`
-instead.
-
-:::
+The failure lines at the end of a run use the same `Target/Class/method` form, so you can paste any
+of them into `--only-testing`. A Swift Testing test keeps its parentheses, as in
+`SweetpadCIAppTests/GreetingSuite/suiteGreeting()`. Without them xcodebuild selects nothing.
 
 ## Watching, retrying, and measuring
 
@@ -127,7 +123,7 @@ enough, and neither reruns anything.
 
 ```console
 $ sweetpad test output
-AppTests/testGreeting
+SweetpadCIAppTests/AppTests/testGreeting
     greeting under test
     /path/to/Tests/AppTests/AppTests.swift:10: error: -[SweetpadCIAppTests.AppTests testGreeting] : XCTAssertEqual failed: ("Hello, SweetPad") is not equal to ("Hello, Sweetpad")
 1 test wrote output (recorded less than a minute ago)
