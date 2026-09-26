@@ -2416,6 +2416,18 @@ are timed (each costs an `xcresulttool` read). A failed query, a device
 destination, or a failure with no activity log leaves the field out rather
 than guessing.
 
+**One more look.** When a failure that says something vanished finds no exit,
+`test` waits 2s and queries once more for the failures still without one.
+launchd's line is readable within a second of the exit, so the second query is
+not waiting for the log to catch up: in the one run of six that printed no
+`app terminated:` line, launchd had logged the crash ten seconds before the
+query ran. What the second query recovers is a first one that failed or ran out
+of time, and contention can cause that. Four other readers dumping the
+simulator's log, as `simctl diagnose` does, stretched the usual 1.5s query to
+13s. Only a red run with such a failure and no exit for it pays the 2s and the
+extra query. A green run, or a red one with no failure of that kind, never
+queries at all.
+
 ### A red suite that looked hung
 
 From Xcode 26 on, a test run that fails starts `simctl diagnose --timeout=600`

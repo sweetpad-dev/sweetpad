@@ -756,6 +756,13 @@ const EXIT_AFTER_FAILURE: f64 = 0.5;
 /// termination reasons.
 const EXIT_QUERY_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// How long to wait before the one more look [`find_exits`] takes. launchd's
+/// line is readable within a second of the exit, so a second query mostly
+/// recovers from the first one failing or running out of time. Four other
+/// readers dumping the simulator's log, as `simctl diagnose` does, stretched a
+/// 1.5s query to 13s, and the one after it took 7s.
+const EXIT_RETRY_WAIT: Duration = Duration::from_secs(2);
+
 /// At most this many failures are timed, since each costs an `xcresulttool`
 /// read of the test's activity log.
 const MAX_TIMED_FAILURES: usize = 20;
@@ -769,20 +776,17 @@ fn terminations(
     run: &RunContext,
     failures: &[xcodebuild::TestFailure],
 ) -> Vec<Option<Termination>> {
+    let none = || failures.iter().map(|_| None).collect();
     let causes: Vec<Option<(Vanished, &str)>> = failures.iter().map(vanishing).collect();
-    let mut found = Vec::new();
-    if causes.iter().any(Option::is_some) {
-        found = exits_during(run).unwrap_or_default();
+    if causes.iter().all(Option::is_none) {
+        return none();
     }
-    if found.is_empty() {
-        return failures.iter().map(|_| None).collect();
-    }
+    let Some(log) = ExitLog::of(&run.target.destination) else {
+        return none();
+    };
     let run_start = epoch_seconds(run.started) - EXIT_QUERY_LEAD;
-    // Resolved on first need: only a failure that names no bundle id needs it.
-    let mut app_id: Option<Option<String>> = None;
-    let mut app_id = || app_id.get_or_insert_with(|| app_bundle_id(run)).clone();
     let mut budget = MAX_TIMED_FAILURES;
-    causes
+    let windows: Vec<Option<ExitWindow>> = causes
         .into_iter()
         .zip(failures)
         .map(|(cause, failure)| {
@@ -790,59 +794,157 @@ fn terminations(
             budget = budget.checked_sub(1)?;
             let times =
                 xcodebuild::failure_times(run.bundle, &failure.test_identifier_string, message)?;
-            let from = times.started.map_or(run_start, |t| t - 1.0);
-            let until = times.failed + EXIT_AFTER_FAILURE;
-            let last_of = |matches: &dyn Fn(&exits::Exit) -> bool| {
-                found
-                    .iter()
-                    .filter(|e| e.epoch_seconds().is_some_and(|t| t >= from && t <= until))
-                    .rfind(|e| matches(e))
-                    .cloned()
-            };
-            let exit = match cause {
-                Vanished::Named(id) => last_of(&|e| e.bundle_id == id),
-                Vanished::App => app_id().and_then(|id| last_of(&|e| e.bundle_id == id)),
-                // A UI test's runner is its own `.xctrunner` app; a unit
-                // test's is the host app, so that is the fallback.
-                Vanished::Runner => last_of(&|e| e.bundle_id.ends_with(".xctrunner"))
-                    .or_else(|| app_id().and_then(|id| last_of(&|e| e.bundle_id == id))),
-            }?;
-            let crash_report = exit
-                .is_crash()
-                .then(|| exits::crash_report(&exit, Some(run.started)))
-                .flatten();
-            Some(Termination { exit, crash_report })
+            Some(ExitWindow {
+                cause,
+                from: times.started.map_or(run_start, |t| t - 1.0),
+                until: times.failed + EXIT_AFTER_FAILURE,
+            })
         })
-        .collect()
+        .collect();
+    // Resolved on first need: only a failure that names no bundle id needs it.
+    let mut app_id: Option<Option<String>> = None;
+    let mut app_id = || app_id.get_or_insert_with(|| app_bundle_id(run)).clone();
+    find_exits(
+        &windows,
+        &mut || exits_during(run, &log),
+        &mut || std::thread::sleep(EXIT_RETRY_WAIT),
+        &mut app_id,
+    )
+    .into_iter()
+    .map(|exit| {
+        let exit = exit?;
+        let crash_report = exit
+            .is_crash()
+            .then(|| exits::crash_report(&exit, Some(run.started)))
+            .flatten();
+        Some(Termination { exit, crash_report })
+    })
+    .collect()
 }
 
-/// Every app exit launchd logged on the test destination since the run
-/// started, plus the crashes only a crash report records. `None` for a
-/// destination with no exit records to read (a device) or a query that failed.
-fn exits_during(run: &RunContext) -> Option<Vec<exits::Exit>> {
-    let destination = &run.target.destination;
-    let field = |key: &str| {
-        destination
-            .split(',')
-            .find_map(|kv| kv.trim().strip_prefix(key))
-            .map(str::to_string)
+/// Where to look for the exit behind one failure: whose it is, and the part
+/// of the run it happened in, in seconds since the epoch.
+struct ExitWindow {
+    cause: Vanished,
+    from: f64,
+    until: f64,
+}
+
+impl ExitWindow {
+    /// The last exit in `found` of the process the cause names, inside the
+    /// window. `app_id` gives the bundle id of the app under test.
+    fn exit_in(
+        &self,
+        found: &[exits::Exit],
+        app_id: &mut dyn FnMut() -> Option<String>,
+    ) -> Option<exits::Exit> {
+        let last_of = |matches: &dyn Fn(&exits::Exit) -> bool| {
+            found
+                .iter()
+                .filter(|e| {
+                    e.epoch_seconds()
+                        .is_some_and(|t| t >= self.from && t <= self.until)
+                })
+                .rfind(|e| matches(e))
+                .cloned()
+        };
+        match &self.cause {
+            Vanished::Named(id) => last_of(&|e| e.bundle_id == *id),
+            Vanished::App => app_id().and_then(|id| last_of(&|e| e.bundle_id == id)),
+            // A UI test's runner is its own `.xctrunner` app; a unit test's is
+            // the host app, so that is the fallback.
+            Vanished::Runner => last_of(&|e| e.bundle_id.ends_with(".xctrunner"))
+                .or_else(|| app_id().and_then(|id| last_of(&|e| e.bundle_id == id))),
+        }
+    }
+}
+
+/// The exit behind each failure that has a window, from the exits `lookup`
+/// reads (`None` when it fails). When one of them finds no exit, `wait` runs
+/// and the lookup is made once more for those still without one. A run with
+/// no window to fill never looks at all.
+fn find_exits(
+    windows: &[Option<ExitWindow>],
+    lookup: &mut dyn FnMut() -> Option<Vec<exits::Exit>>,
+    wait: &mut dyn FnMut(),
+    app_id: &mut dyn FnMut() -> Option<String>,
+) -> Vec<Option<exits::Exit>> {
+    let mut exits: Vec<Option<exits::Exit>> = windows.iter().map(|_| None).collect();
+    if windows.iter().all(Option::is_none) {
+        return exits;
+    }
+    let unfilled = |exits: &[Option<exits::Exit>]| {
+        windows
+            .iter()
+            .zip(exits)
+            .any(|(window, exit)| window.is_some() && exit.is_none())
     };
-    let platform = field("platform=")?;
-    let udid;
-    let source = if platform == "macOS" {
-        exits::Source::Mac
-    } else if platform.ends_with(" Simulator") {
-        udid = if let Some(id) = field("id=") {
+    for attempt in 0..2 {
+        if attempt > 0 {
+            if !unfilled(&exits) {
+                break;
+            }
+            wait();
+        }
+        let Some(found) = lookup() else {
+            continue;
+        };
+        for (window, exit) in windows.iter().zip(&mut exits) {
+            if exit.is_none()
+                && let Some(window) = window
+            {
+                *exit = window.exit_in(&found, app_id);
+            }
+        }
+    }
+    exits
+}
+
+/// Where a test destination's app exits are logged.
+enum ExitLog {
+    Mac,
+    Simulator(String),
+}
+
+impl ExitLog {
+    /// The log `destination`'s app exits land in; `None` for a destination
+    /// with none to read (a device).
+    fn of(destination: &str) -> Option<Self> {
+        let field = |key: &str| {
+            destination
+                .split(',')
+                .find_map(|kv| kv.trim().strip_prefix(key))
+                .map(str::to_string)
+        };
+        let platform = field("platform=")?;
+        if platform == "macOS" {
+            return Some(Self::Mac);
+        }
+        if !platform.ends_with(" Simulator") {
+            return None;
+        }
+        let udid = if let Some(id) = field("id=") {
             id
         } else {
             let name = field("name=")?;
             let sims = simctl::list().ok()?;
             simctl::find(&sims, &name)?.udid.clone()
         };
-        exits::Source::Simulator(&udid)
-    } else {
-        return None;
-    };
+        Some(Self::Simulator(udid))
+    }
+
+    fn source(&self) -> exits::Source<'_> {
+        match self {
+            Self::Mac => exits::Source::Mac,
+            Self::Simulator(udid) => exits::Source::Simulator(udid),
+        }
+    }
+}
+
+/// Every app exit launchd logged in `log` since the run started, plus the
+/// crashes only a crash report records. `None` when the query failed.
+fn exits_during(run: &RunContext, log: &ExitLog) -> Option<Vec<exits::Exit>> {
+    let source = log.source();
     let window = exits::Window::Between {
         start: epoch_seconds(run.started) - EXIT_QUERY_LEAD,
         end: epoch_seconds(SystemTime::now()) + 1.0,
@@ -2630,6 +2732,138 @@ mod tests {
         assert!(json["failures"][1].get("terminationReason").is_none());
         let bare = failed_report(Vec::new()).json();
         assert!(bare["failures"][0].get("terminationReason").is_none());
+    }
+
+    /// launchd's exit line for `bundle_id` at `time`, as `log show` gives it.
+    fn exit_at(bundle_id: &str, pid: u32, time: &str, message: &str) -> exits::Exit {
+        let line = serde_json::json!({
+            "timestamp": time,
+            "subsystem": format!("user/503/UIKitApplication:{bundle_id}[18a4][rb-legacy] [{pid}]"),
+            "eventMessage": message,
+        })
+        .to_string();
+        exits::parse_ndjson_line(&line, &[]).expect("an exit")
+    }
+
+    /// A UI test whose app crashed: the previous test's app killed as this
+    /// one relaunched it, then the crash, then the runner's own exit.
+    fn crash_run() -> (Vec<exits::Exit>, ExitWindow) {
+        const APP: &str = "dev.sweetpad.ci.app";
+        let found = vec![
+            exit_at(
+                APP,
+                79101,
+                "2026-09-26 20:23:06.537712+0200",
+                "exited due to SIGKILL, ran for 5820ms",
+            ),
+            exit_at(
+                APP,
+                79175,
+                "2026-09-26 20:23:11.299962+0200",
+                "exited due to SIGTRAP | sent by exc handler[79175], ran for 4517ms",
+            ),
+            exit_at(
+                "dev.sweetpad.ci.uitests.xctrunner",
+                79090,
+                "2026-09-26 20:23:21.581374+0200",
+                "exited due to exit(1), ran for 27595ms",
+            ),
+        ];
+        let at = |i: usize| found[i].epoch_seconds().expect("a time");
+        // The test started just before the kill; XCTest noticed the crash
+        // 3.6s after it, well before the runner went.
+        let window = ExitWindow {
+            cause: Vanished::Named(APP.into()),
+            from: at(0) - 1.0,
+            until: at(1) + 3.6 + EXIT_AFTER_FAILURE,
+        };
+        (found, window)
+    }
+
+    #[test]
+    fn a_failure_takes_its_apps_last_exit_inside_the_window() {
+        let (found, window) = crash_run();
+        let exit = window
+            .exit_in(&found, &mut || None)
+            .expect("the crash was not found");
+        assert_eq!(exit.pid, Some(79175));
+        // The runner's exit lands after the window, and the test runner is
+        // not whose exit an app's crash asks for anyway.
+        let runner = ExitWindow {
+            cause: Vanished::Runner,
+            ..window
+        };
+        assert!(runner.exit_in(&found, &mut || None).is_none());
+    }
+
+    #[test]
+    fn a_vanished_app_with_no_exit_found_gets_one_more_look() {
+        // The first query failed (a timeout, say) or came back without the
+        // crash; one wait and one more query recover it.
+        for first in [None, Some(Vec::new())] {
+            let (found, window) = crash_run();
+            let mut answers = vec![first, Some(found)].into_iter();
+            let (mut lookups, mut waits) = (0, 0);
+            let exits = find_exits(
+                &[Some(window), None],
+                &mut || {
+                    lookups += 1;
+                    answers.next().flatten()
+                },
+                &mut || waits += 1,
+                &mut || None,
+            );
+            assert_eq!((lookups, waits), (2, 1));
+            assert_eq!(exits[0].as_ref().and_then(|e| e.pid), Some(79175));
+            assert!(exits[1].is_none());
+        }
+
+        // Once is all it gets.
+        let (_, window) = crash_run();
+        let (mut lookups, mut waits) = (0, 0);
+        let exits = find_exits(
+            &[Some(window)],
+            &mut || {
+                lookups += 1;
+                None
+            },
+            &mut || waits += 1,
+            &mut || None,
+        );
+        assert_eq!((lookups, waits), (2, 1));
+        assert!(exits[0].is_none());
+    }
+
+    #[test]
+    fn a_run_whose_exits_are_all_found_never_waits() {
+        let (found, window) = crash_run();
+        let (mut lookups, mut waits) = (0, 0);
+        let exits = find_exits(
+            &[Some(window)],
+            &mut || {
+                lookups += 1;
+                Some(found.clone())
+            },
+            &mut || waits += 1,
+            &mut || None,
+        );
+        assert_eq!((lookups, waits), (1, 0));
+        assert!(exits[0].is_some());
+
+        // Nor does a run with no failure that says something vanished: it
+        // never looks at all.
+        let (mut lookups, mut waits) = (0, 0);
+        let exits = find_exits(
+            &[None, None],
+            &mut || {
+                lookups += 1;
+                None
+            },
+            &mut || waits += 1,
+            &mut || None,
+        );
+        assert_eq!((lookups, waits), (0, 0));
+        assert!(exits.iter().all(Option::is_none));
     }
 
     #[test]
