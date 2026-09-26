@@ -812,6 +812,26 @@ mod tests {
         }
     }
 
+    /// With no usable Xcode, `SDKROOT` names each SDK as xcodebuild does: by
+    /// the version-named alias the capture carries (`MacOSX27.0.sdk`), not
+    /// the bare directory it points at.
+    #[test]
+    fn embedded_sdk_paths_spell_each_canonical_name() {
+        let catalog = embedded().expect("the embedded blob deserializes");
+        assert!(!catalog.sdks.is_empty());
+        for canonical in catalog.sdks.keys() {
+            let stem = catalog
+                .sdk_paths
+                .get(canonical)
+                .and_then(|p| p.file_stem())
+                .and_then(OsStr::to_str);
+            assert!(
+                stem.is_some_and(|s| s.eq_ignore_ascii_case(canonical)),
+                "{canonical}: {stem:?}"
+            );
+        }
+    }
+
     /// The committed blob is exactly what its capture serializes to from this
     /// checkout — which holds only because nothing in it depends on where the
     /// checkout lives.

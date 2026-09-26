@@ -9,7 +9,9 @@ Per Xcode version, copies into `xcspec-cache/xcode-<ver>/`:
     back to its origin.
   - Every `SDKSettings.plist` under
     `Contents/Developer/Platforms/*/Developer/SDKs/*.sdk/`, mirrored under
-    `sdksettings/`.
+    `sdksettings/`, with the version-named symlinks Xcode puts beside each
+    SDK (`MacOSX27.0.sdk -> MacOSX.sdk`). The resolver names `SDKROOT` after
+    the one that spells the SDK's canonical name, as xcodebuild does.
   - `sdksettings/sdk-paths.json`: a mapping from canonical SDK name (as
     reported by `xcodebuild -showsdks -json`) to the absolute SDK path
     reported by `xcrun --show-sdk-path --sdk <name>`.
@@ -62,6 +64,22 @@ def copy_preserving_rel(src: Path, base: Path, out: Path) -> Path:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
     return dst
+
+
+def mirror_sdk_aliases(sdk: Path, mirrored_sdk: Path) -> list[str]:
+    """Recreate beside `mirrored_sdk` every `*.sdk` symlink beside `sdk` that
+    leads to it, pointing at the mirror by its bare name so the capture stays
+    relocatable. Returns the alias names."""
+    aliases: list[str] = []
+    for alias in sorted(sdk.parent.glob("*.sdk")):
+        if not alias.is_symlink() or alias.resolve() != sdk.resolve():
+            continue
+        dst = mirrored_sdk.parent / alias.name
+        if dst.is_symlink() or dst.exists():
+            dst.unlink()
+        dst.symlink_to(mirrored_sdk.name)
+        aliases.append(alias.name)
+    return aliases
 
 
 def list_sdks(xcode: common.XcodeInstall) -> list[dict]:
@@ -143,6 +161,9 @@ def snapshot_one(xcode: common.XcodeInstall, *, force: bool) -> None:
         dst = sdksettings_out / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
+        aliases = mirror_sdk_aliases(src.parent, dst.parent)
+        if aliases:
+            common.log(f"  {src.parent.name}: aliased as {', '.join(aliases)}")
 
     # Resolve SDK paths via xcrun
     sdks = list_sdks(xcode)

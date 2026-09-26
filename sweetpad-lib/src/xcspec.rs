@@ -300,6 +300,7 @@ fn applicable_domains(sdk: &str) -> &'static [&'static str] {
     }
 }
 
+/// Parse the xcspecs under `xcspec_root` and the SDK settings under
 /// `sdksettings_root` (skipped when `None`) into a single [`Catalog`].
 pub fn load_catalog(xcspec_root: &Path, sdksettings_root: Option<&Path>) -> Result<Catalog, Error> {
     let mut catalog = Catalog::default();
@@ -308,7 +309,7 @@ pub fn load_catalog(xcspec_root: &Path, sdksettings_root: Option<&Path>) -> Resu
         walk_sdksettings(root, &mut catalog)?;
     }
     // The capture metadata is plain JSON; a missing or malformed meta.json
-    // just leaves the fields `None` (host fallback), same as before.
+    // leaves the fields `None` (host fallback).
     let meta: Option<serde_json::Value> = fs::read_to_string(xcspec_root.join("meta.json"))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok());
@@ -874,40 +875,28 @@ mod tests {
 
     #[test]
     fn sdk_path_is_the_alias_named_for_the_canonical_name() {
-        // Xcode 27's layout: one real directory per SDK and version-named
-        // symlinks to it, all reading the same SDKSettings.plist. xcodebuild
-        // reports `MacOSX27.0.sdk` for `macosx27.0`, never `MacOSX.sdk` (walked
-        // before it) or the major-only `MacOSX27.sdk` (walked after it).
-        let root = std::env::temp_dir().join(format!("sweetpad-sdk-alias-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        let cached = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("xcspec-cache/xcode-27.0.0/sdksettings/Platforms");
-        let lay_out = |platform: &str, sdk: &str, aliases: &[&str]| -> PathBuf {
-            let rel = format!("{platform}.platform/Developer/SDKs");
-            let plist = format!("{sdk}.sdk/SDKSettings.plist");
-            let sdks = root.join(&rel);
-            fs::create_dir_all(sdks.join(format!("{sdk}.sdk"))).unwrap();
-            fs::copy(cached.join(&rel).join(&plist), sdks.join(&plist)).unwrap();
-            for alias in aliases {
-                std::os::unix::fs::symlink(format!("{sdk}.sdk"), sdks.join(alias)).unwrap();
-            }
-            sdks
-        };
-        let macos = lay_out("MacOSX", "MacOSX", &["MacOSX27.0.sdk", "MacOSX27.sdk"]);
-        let simulator = lay_out(
-            "iPhoneSimulator",
-            "iPhoneSimulator",
-            &["iPhoneSimulator27.0.sdk"],
-        );
-
-        let cat = load_catalog(&root.join("no-xcspecs"), Some(&root)).unwrap();
-        let path = |name: &str| cat.sdk_paths.get(name).cloned();
-        assert_eq!(path("macosx27.0"), Some(macos.join("MacOSX27.0.sdk")));
-        assert_eq!(path("macosx"), Some(macos.join("MacOSX27.0.sdk")));
-        let simulator_sdk = simulator.join("iPhoneSimulator27.0.sdk");
-        assert_eq!(path("iphonesimulator27.0"), Some(simulator_sdk.clone()));
-        assert_eq!(path("iphonesimulator"), Some(simulator_sdk));
-        let _ = fs::remove_dir_all(&root);
+        // Xcode 27's layout, which the capture mirrors: one real directory per
+        // SDK and version-named symlinks to it, all reading the same
+        // SDKSettings.plist. xcrun reported `MacOSX27.0.sdk` for `macosx27.0`
+        // at capture, never `MacOSX.sdk` (walked before it) or the major-only
+        // `MacOSX27.sdk` (walked after it).
+        let sdk_root =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("xcspec-cache/xcode-27.0.0/sdksettings");
+        let cat = load_catalog(&sdk_root.join("no-xcspecs"), Some(&sdk_root)).unwrap();
+        let reported: BTreeMap<String, String> =
+            serde_json::from_str(&fs::read_to_string(sdk_root.join("sdk-paths.json")).unwrap())
+                .unwrap();
+        assert_eq!(reported.len(), cat.sdks.len());
+        for (canonical, path) in &reported {
+            let (_, relative) = path.split_once("/Contents/Developer/").unwrap();
+            let expected = sdk_root.join(relative);
+            assert_eq!(cat.sdk_paths.get(canonical), Some(&expected), "{canonical}");
+            let base: String = canonical
+                .chars()
+                .take_while(|c| !c.is_ascii_digit())
+                .collect();
+            assert_eq!(cat.sdk_paths.get(&base), Some(&expected), "{base}");
+        }
     }
 
     #[test]

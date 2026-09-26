@@ -196,7 +196,12 @@ pinned ref recorded in `corpus/manifest.json`; the captures are committed under
   index-store snapshots, PATH-shim `tool-invocations.jsonl`,
   stdout/stderr/exit code under `build/<scheme>__<config>__<dest>/`.
 - **Per-version Apple spec data** in `xcspec-cache/xcode-<ver>/`: all
-  `*.xcspec` under the Xcode app, all `SDKSettings.plist`, SDK paths.
+  `*.xcspec` under the Xcode app, all `SDKSettings.plist` plus the
+  version-named symlinks beside each SDK (`MacOSX27.0.sdk -> MacOSX.sdk`), and
+  SDK paths. The resolver names `SDKROOT` after the symlink that spells the
+  SDK's canonical name, as xcodebuild does. The 15.4, 16.4 and 26.5 captures
+  have no symlinks (re-run `04_snapshot_xcspecs.py --force` on that Xcode to
+  add them), so their oracle-mode `SDKROOT` names the bare `MacOSX.sdk`.
 - **Compiler-args oracles** under `compiler-args/` — see
   [§7.2](#72-the-oracle-capture-and-scoring).
 
