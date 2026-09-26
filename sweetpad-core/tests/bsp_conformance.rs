@@ -550,6 +550,52 @@ fn bsp_index_store_of_a_symlinked_root_is_the_real_paths_folder() {
     assert!(!store.contains(&as_spelled), "{store}");
 }
 
+/// Xcode's Settings → Locations → Derived Data moves the index store with the
+/// rest of the build, and the server finds it there, as the editor arguments
+/// find the build's products.
+#[test]
+fn bsp_index_store_follows_xcodes_derived_data_location() {
+    use sweetpad_lib::derived_data::{container_hash, hashed_folder};
+
+    let scratch = sweetpad_core::scratch::ScratchDir::new("sweetpad-bsp-ddloc").unwrap();
+    let home = scratch.join("home");
+    let prefs = home.join("Library/Preferences");
+    std::fs::create_dir_all(&prefs).unwrap();
+    let custom = scratch.join("Fast/DerivedData");
+    std::fs::write(
+        prefs.join("com.apple.dt.Xcode.plist"),
+        format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n\
+             \t<key>IDECustomDerivedDataLocation</key>\n\t<string>{}</string>\n</dict>\n</plist>\n",
+            custom.display()
+        ),
+    )
+    .unwrap();
+
+    let messages = vec![
+        json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
+        json!({"jsonrpc":"2.0","method":"build/exit"}),
+    ];
+    let frames = run_session_env(&messages, &project(), &[], &[("HOME", home.as_path())]);
+    let store = result_for(&frames, 1)
+        .and_then(|init| init.pointer("/data/indexStorePath"))
+        .and_then(Value::as_str)
+        .expect("indexStorePath")
+        .to_string();
+    let folder = hashed_folder(
+        "MultiModule",
+        &container_hash(std::path::Path::new(&project())),
+    );
+    assert_eq!(
+        store,
+        custom
+            .join(folder)
+            .join("Index.noindex/DataStore")
+            .display()
+            .to_string()
+    );
+}
+
 /// Every `workspace/buildTargets` entry carries the fields sourcekit-lsp needs:
 /// a `sweetpad://target/<name>` id, the project base directory, the five
 /// language ids, and capabilities marking it compilable (not testable/runnable

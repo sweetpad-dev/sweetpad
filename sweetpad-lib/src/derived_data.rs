@@ -34,12 +34,15 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use crate::file_cache::ParseCache;
-use crate::pbxproj::Value;
 
 /// Where a container's build output lands, with every Xcode location setting
 /// already applied.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Locations {
+    /// The container's own DerivedData folder — `<root>/<Name>-<hash>` in the
+    /// stock layout. Xcode keeps the container's index, logs and package
+    /// checkouts here even when a custom build location moves its products.
+    pub folder: PathBuf,
     /// `SYMROOT` — and `BUILD_DIR` / `BUILD_ROOT` through it.
     pub products: PathBuf,
     /// `OBJROOT` / `TEMP_ROOT`.
@@ -128,6 +131,7 @@ fn apply(
     // over `-derivedDataPath`.
     if let Some((products, intermediates)) = custom_build_location(settings, container, app_root) {
         return Locations {
+            folder,
             products,
             intermediates,
             derived_data_root: root,
@@ -137,6 +141,7 @@ fn apply(
     Locations {
         products: folder.join("Build/Products"),
         intermediates: folder.join("Build/Intermediates.noindex"),
+        folder,
         derived_data_root: root,
     }
 }
@@ -198,11 +203,17 @@ pub fn hashed_name(name: &str) -> String {
     out
 }
 
-/// The root every per-container folder sits in: the app-wide custom location
-/// when set, else Xcode's stock path. A caller with no `$HOME` (the sandboxed
-/// test harness) gets `/tmp` so paths stay absolute.
-fn app_derived_data_root(home: &str, consult_xcode: bool) -> PathBuf {
-    if consult_xcode && let Some(custom) = read_xcode_pref() {
+/// The root every per-container folder sits in unless the container moves its
+/// own: the app-wide custom location (`IDECustomDerivedDataLocation` in
+/// `<home>`'s Xcode preferences) when `consult_xcode` is set and it is,
+/// else Xcode's stock path. A caller with no `$HOME` (the sandboxed test
+/// harness) gets `/tmp` so paths stay absolute.
+#[must_use]
+pub fn app_derived_data_root(home: &str, consult_xcode: bool) -> PathBuf {
+    if consult_xcode
+        && !home.is_empty()
+        && let Some(custom) = read_xcode_pref(Path::new(home))
+    {
         return custom;
     }
     if home.is_empty() {
@@ -260,25 +271,21 @@ fn container_dir(container: &Path) -> PathBuf {
 static PREF_CACHE: LazyLock<ParseCache<Option<PathBuf>>> = LazyLock::new(ParseCache::new);
 static SETTINGS_CACHE: LazyLock<ParseCache<WorkspaceSettings>> = LazyLock::new(ParseCache::new);
 
-/// `IDECustomDerivedDataLocation` from the user's Xcode preferences.
+/// `IDECustomDerivedDataLocation` from the Xcode preferences under `home`.
 ///
 /// Read straight off disk rather than through `defaults`: the preferences file
 /// is a binary plist that [`crate::bplist`] already handles, and macOS writes
 /// the key through on change. A value Xcode has set but not yet flushed from
 /// `cfprefsd` is invisible here until it lands, which in practice means a
-/// just-changed setting can take a moment to be seen.
-fn read_xcode_pref() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")?;
-    let path = Path::new(&home).join("Library/Preferences/com.apple.dt.Xcode.plist");
+/// just-changed setting can take a moment to be seen. An XML copy of the file
+/// reads the same.
+fn read_xcode_pref(home: &Path) -> Option<PathBuf> {
+    let path = home.join("Library/Preferences/com.apple.dt.Xcode.plist");
     let parsed = PREF_CACHE
         .get_or_parse(&path, |path| -> Result<_, ()> {
-            let Ok(value) = crate::bplist::parse_file(path) else {
-                return Ok(None);
-            };
-            let location = value
-                .as_dict()
-                .and_then(|dict| dict.get("IDECustomDerivedDataLocation"))
-                .and_then(Value::as_str)
+            let location = plist_strings(path)
+                .into_iter()
+                .find_map(|(key, value)| (key == "IDECustomDerivedDataLocation").then_some(value))
                 .filter(|s| !s.is_empty())
                 .map(PathBuf::from);
             Ok(location)
@@ -455,6 +462,12 @@ mod tests {
             out.derived_data_root,
             PathBuf::from(format!("{HOME}/Library/Developer/Xcode/DerivedData"))
         );
+        assert_eq!(
+            out.folder,
+            PathBuf::from(format!(
+                "{HOME}/Library/Developer/Xcode/DerivedData/{NAME}-{HASH}"
+            ))
+        );
     }
 
     /// The whitespace rule, pinned against live `xcodebuild -showBuildSettings`
@@ -586,6 +599,7 @@ mod tests {
         );
         assert_eq!(out.products, PathBuf::from("/flag-dd/Build/Products"));
         assert_eq!(out.derived_data_root, PathBuf::from("/flag-dd"));
+        assert_eq!(out.folder, PathBuf::from("/flag-dd"));
     }
 
     #[test]
@@ -603,6 +617,7 @@ mod tests {
             PathBuf::from(format!("/level2/{NAME}-{HASH}/Build/Products"))
         );
         assert_eq!(out.derived_data_root, PathBuf::from("/level2"));
+        assert_eq!(out.folder, PathBuf::from(format!("/level2/{NAME}-{HASH}")));
     }
 
     #[test]
@@ -620,6 +635,10 @@ mod tests {
             PathBuf::from(format!("/src/wstest/MyDD/{NAME}/Build/Products"))
         );
         assert_eq!(out.derived_data_root, PathBuf::from("/src/wstest/MyDD"));
+        assert_eq!(
+            out.folder,
+            PathBuf::from(format!("/src/wstest/MyDD/{NAME}"))
+        );
     }
 
     #[test]
@@ -667,6 +686,13 @@ mod tests {
         let out = resolve_with(&custom_location("Absolute"), None);
         assert_eq!(out.products, PathBuf::from("/abs-prod"));
         assert_eq!(out.intermediates, PathBuf::from("/abs-inter"));
+        // The DerivedData folder itself stays where it was.
+        assert_eq!(
+            out.folder,
+            PathBuf::from(format!(
+                "{HOME}/Library/Developer/Xcode/DerivedData/{NAME}-{HASH}"
+            ))
+        );
     }
 
     #[test]
@@ -815,6 +841,84 @@ mod tests {
         assert_eq!(
             read_workspace_settings(&container),
             WorkspaceSettings::default()
+        );
+    }
+
+    /// A binary plist holding one top-level dict of string pairs, the format
+    /// macOS writes `com.apple.dt.Xcode.plist` in. Every string is ASCII and
+    /// under 256 bytes, and the file stays under 256 bytes.
+    fn binary_plist(pairs: &[(&str, &str)]) -> Vec<u8> {
+        fn string(out: &mut Vec<u8>, s: &str) {
+            if s.len() < 15 {
+                out.push(0x50 | u8::try_from(s.len()).unwrap());
+            } else {
+                out.extend([0x5F, 0x10, u8::try_from(s.len()).unwrap()]);
+            }
+            out.extend(s.as_bytes());
+        }
+        let count = u8::try_from(pairs.len()).unwrap();
+        let mut out = b"bplist00".to_vec();
+        let mut offsets = vec![out.len()];
+        out.push(0xD0 | count);
+        out.extend((1..=count).chain(count + 1..=2 * count));
+        let strings = pairs
+            .iter()
+            .map(|(k, _)| k)
+            .chain(pairs.iter().map(|(_, v)| v));
+        for s in strings {
+            offsets.push(out.len());
+            string(&mut out, s);
+        }
+        let table = out.len();
+        out.extend(offsets.iter().map(|&o| u8::try_from(o).unwrap()));
+        out.extend([0; 6]);
+        out.extend([1, 1]);
+        out.extend((offsets.len() as u64).to_be_bytes());
+        out.extend(0u64.to_be_bytes());
+        out.extend((table as u64).to_be_bytes());
+        out
+    }
+
+    /// Xcode's Settings → Locations → Derived Data, read out of the
+    /// preferences under the home it's given, in the binary form macOS writes
+    /// and in XML.
+    #[test]
+    fn the_app_wide_root_is_the_custom_location_in_xcodes_preferences() {
+        let home = TempDir::new("sweetpad-dd-prefs");
+        let prefs = home.join("Library/Preferences");
+        std::fs::create_dir_all(&prefs).expect("create prefs dir");
+        let home_str = home.display().to_string();
+        let stock = PathBuf::from(format!("{home_str}/Library/Developer/Xcode/DerivedData"));
+        assert_eq!(app_derived_data_root(&home_str, true), stock);
+
+        let file = prefs.join("com.apple.dt.Xcode.plist");
+        std::fs::write(
+            &file,
+            binary_plist(&[
+                ("IDEBuildLocationStyle", "Unique"),
+                ("IDECustomDerivedDataLocation", "/Volumes/Fast/DD"),
+            ]),
+        )
+        .expect("write prefs");
+        assert_eq!(
+            app_derived_data_root(&home_str, true),
+            PathBuf::from("/Volumes/Fast/DD")
+        );
+        // Without `consult_xcode` the preferences go unread.
+        assert_eq!(app_derived_data_root(&home_str, false), stock);
+
+        // A rewrite is picked up, and XML reads the same.
+        std::fs::write(
+            &file,
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>IDECustomDerivedDataLocation</key><string>/Volumes/Other/DerivedData</string>
+</dict></plist>"#,
+        )
+        .expect("rewrite prefs");
+        assert_eq!(
+            app_derived_data_root(&home_str, true),
+            PathBuf::from("/Volumes/Other/DerivedData")
         );
     }
 

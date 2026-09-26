@@ -799,7 +799,7 @@ impl Server {
         // build's DerivedData, also advertise its index store for project-wide
         // navigation from the index-while-building data.
         let mut data = json!({ "sourceKitOptionsProvider": true, "prepareProvider": true });
-        if let Some(dd) = self.derived_data_dir() {
+        if let Some(dd) = self.derived_data().map(|l| l.folder) {
             data["indexStorePath"] = json!(dd.join("Index.noindex/DataStore").to_string_lossy());
             data["indexDatabasePath"] =
                 json!(dd.join("Index.noindex/IndexDatabase").to_string_lossy());
@@ -814,28 +814,34 @@ impl Server {
         })
     }
 
-    /// The build's DerivedData directory: the `--derived-data-path` override, else
-    /// Xcode's default `~/Library/Developer/Xcode/DerivedData/<name>-<hash>`.
+    /// Where the build's DerivedData lands: under the `--derived-data-path`
+    /// override, else wherever this machine's Xcode settings put it
+    /// (`~/Library/Developer/Xcode/DerivedData/<name>-<hash>` by default). The
+    /// same locator places the editor arguments' build products, since
+    /// [`Self::options_for`] reads the same settings.
     ///
     /// The folder is named the way `xcodebuild` names the one it writes
     /// ([`derived_data::container_hash`]): a root reached through a symlink, or
     /// spelled `/private/tmp/…`, shares the folder of its standardized path.
-    fn derived_data_dir(&self) -> Option<PathBuf> {
-        if let Some(dd) = &self.derived_data_path {
-            return Some(dd.clone());
+    /// `None` without a `$HOME` or an override to find it from.
+    fn derived_data(&self) -> Option<derived_data::Locations> {
+        let home = std::env::var("HOME").unwrap_or_default();
+        if home.is_empty() && self.derived_data_path.is_none() {
+            return None;
         }
         let name = self
             .project_path
             .file_stem()?
             .to_string_lossy()
             .into_owned();
-        let hash = derived_data::container_hash(&self.project_path);
-        let home = std::env::var_os("HOME")?;
-        Some(
-            PathBuf::from(home)
-                .join("Library/Developer/Xcode/DerivedData")
-                .join(derived_data::hashed_folder(&name, &hash)),
-        )
+        Some(derived_data::resolve(
+            &project::absolutize(&self.project_path),
+            &name,
+            &derived_data::container_hash(&self.project_path),
+            &home,
+            self.derived_data_path.as_deref(),
+            true,
+        ))
     }
 
     fn build_targets(&self) -> Value {
@@ -1308,11 +1314,8 @@ impl Server {
     /// against. Empty when that directory can't be located, which leaves
     /// xcodebuild its own defaults rather than a half-pinned tree.
     fn build_roots(&self) -> Vec<(&'static str, PathBuf)> {
-        self.derived_data_dir().map_or_else(Vec::new, |dd| {
-            vec![
-                ("SYMROOT", dd.join("Build/Products")),
-                ("OBJROOT", dd.join("Build/Intermediates.noindex")),
-            ]
+        self.derived_data().map_or_else(Vec::new, |dd| {
+            vec![("SYMROOT", dd.products), ("OBJROOT", dd.intermediates)]
         })
     }
 

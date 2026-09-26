@@ -1,7 +1,9 @@
 //! A project-scoped purge deletes this project's own DerivedData folder and no
 //! other. Every checkout, worktree and copy of a project writes a folder with
 //! the same `<Name>-` prefix, so these run against a fake home whose store
-//! holds the folders of two copies of one project.
+//! holds the folders of two copies of one project. The fake home also carries
+//! the Xcode settings that move DerivedData, which the verbs follow the way
+//! the build does.
 
 mod common;
 
@@ -41,6 +43,7 @@ fn sweetpad(args: &[&str], cwd: &Path, home: &Path, path: Option<&Path>) -> Outp
     cmd.args(args)
         .current_dir(cwd)
         .env("HOME", home)
+        .env("USER", USER)
         .env("XDG_STATE_HOME", home)
         .env("XDG_CONFIG_HOME", home)
         .env("XDG_CACHE_HOME", home)
@@ -58,6 +61,76 @@ fn sweetpad(args: &[&str], cwd: &Path, home: &Path, path: Option<&Path>) -> Outp
         );
     }
     cmd.output().expect("failed to run the sweetpad binary")
+}
+
+/// The account name the fake home's per-user Xcode settings are filed under.
+const USER: &str = "sweetpad-test";
+
+/// Xcode's Settings → Locations → Derived Data, set to `location` in the fake
+/// home's preferences.
+fn set_app_location(home: &Path, location: &Path) {
+    let prefs = home.join("Library/Preferences");
+    std::fs::create_dir_all(&prefs).unwrap();
+    std::fs::write(
+        prefs.join("com.apple.dt.Xcode.plist"),
+        format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n\
+             \t<key>IDECustomDerivedDataLocation</key>\n\t<string>{}</string>\n</dict>\n</plist>\n",
+            location.display()
+        ),
+    )
+    .unwrap();
+}
+
+/// A project's own Derived Data setting, as Xcode writes it into the
+/// project's per-user settings for [`USER`]: `style` is `AbsolutePath` or
+/// `WorkspaceRelativePath`.
+fn set_project_location(project: &Path, style: &str, location: &str) {
+    let dir = project.join(format!("project.xcworkspace/xcuserdata/{USER}.xcuserdatad"));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("WorkspaceSettings.xcsettings"),
+        format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n\
+             \t<key>DerivedDataCustomLocation</key>\n\t<string>{location}</string>\n\
+             \t<key>DerivedDataLocationStyle</key>\n\t<string>{style}</string>\n</dict>\n</plist>\n"
+        ),
+    )
+    .unwrap();
+}
+
+/// A stub `name` in `<cwd>/bin` that exits 0 after appending its arguments to
+/// `bin/<name>.args`, for putting ahead of the real tool on `PATH`. Returns
+/// the `bin` directory.
+fn stub(cwd: &Path, name: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let bin = cwd.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let path = bin.join(name);
+    std::fs::write(
+        &path,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" >> \"$0.args\"\nexit 0\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    bin
+}
+
+/// A copy of the committed fixture project under `dir`, for a test that
+/// writes per-user settings into it.
+fn fixture_copy(dir: &Path) -> PathBuf {
+    let source = Path::new(env!("SWEETPAD_LIB_DIR"))
+        .join("fixtures/_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj");
+    let copy = dir.join("SweetpadCIApp.xcodeproj");
+    let status = Command::new("cp")
+        .arg("-R")
+        .arg(&source)
+        .arg(&copy)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    copy
 }
 
 fn data(out: &Output) -> Value {
@@ -238,4 +311,154 @@ fn clean_purge_keeps_the_other_copys_folder() {
     assert_eq!(strings(&clean["purged"]), [shown(&own)]);
     assert!(!own.exists());
     assert!(other.join("Build/built.txt").exists());
+}
+
+/// Xcode's app-wide Derived Data location moves the whole store, and the verbs
+/// look for the project's folder there, where its builds put it. A folder the
+/// stock store still holds from before the move is no longer the build's.
+#[test]
+fn the_verbs_follow_xcodes_derived_data_location() {
+    let home = tmp("app-home");
+    let cwd = tmp("app-cwd");
+    let custom = cwd.join("Fast/DerivedData");
+    std::fs::create_dir_all(&custom).unwrap();
+    set_app_location(&home, &custom);
+    let project = cwd.join("app/MyApp.xcodeproj");
+    std::fs::create_dir_all(&project).unwrap();
+    let own = folder_for(&custom, &project);
+    let stock = folder_for(&store(&home), &project);
+
+    let path = data(&sweetpad(
+        &[
+            "derived-data",
+            "path",
+            "--project",
+            &shown(&project),
+            "--json",
+        ],
+        &cwd,
+        &home,
+        None,
+    ));
+    assert_eq!(path["root"], shown(&custom));
+    assert_eq!(strings(&path["paths"]), [shown(&own)]);
+    assert_eq!(strings(&path["others"]), Vec::<String>::new());
+
+    let all = data(&sweetpad(
+        &["derived-data", "path", "--all", "--json"],
+        &cwd,
+        &home,
+        None,
+    ));
+    assert_eq!(all["root"], shown(&custom));
+    assert_eq!(strings(&all["paths"]), [shown(&custom)]);
+
+    let size = data(&sweetpad(
+        &[
+            "derived-data",
+            "size",
+            "--project",
+            &shown(&project),
+            "--json",
+        ],
+        &cwd,
+        &home,
+        None,
+    ));
+    assert_eq!(size["folders"], 1);
+    assert_eq!(size["bytes"], 1);
+
+    let purge = data(&sweetpad(
+        &[
+            "derived-data",
+            "purge",
+            "--project",
+            &shown(&project),
+            "--yes",
+            "--json",
+        ],
+        &cwd,
+        &home,
+        None,
+    ));
+    assert_eq!(strings(&purge["removed"]), [shown(&own)]);
+    assert!(!own.exists());
+    assert!(stock.join("Build/built.txt").exists());
+}
+
+/// A project's own Derived Data setting (an absolute location) outranks the
+/// app-wide one: `open dd` opens the folder there and `clean --purge` deletes
+/// it, leaving the stock store alone.
+#[test]
+fn open_and_clean_follow_the_projects_own_location() {
+    let home = tmp("proj-home");
+    let cwd = tmp("proj-cwd");
+    let project = fixture_copy(&cwd);
+    let custom = cwd.join("ProjectDD");
+    std::fs::create_dir_all(&custom).unwrap();
+    set_project_location(&project, "AbsolutePath", &shown(&custom));
+    let own = folder_for(&custom, &project);
+    let stock = folder_for(&store(&home), &project);
+    let bin = stub(&cwd, "open");
+    stub(&cwd, "xcodebuild");
+
+    let open = data(&sweetpad(
+        &["open", "dd", "--project", &shown(&project), "--json"],
+        &cwd,
+        &home,
+        Some(&bin),
+    ));
+    assert_eq!(open["opened"], shown(&own));
+    assert_eq!(
+        std::fs::read_to_string(bin.join("open.args")).unwrap(),
+        format!("{}\n", shown(&own))
+    );
+
+    let clean = data(&sweetpad(
+        &[
+            "clean",
+            "--project",
+            &shown(&project),
+            "--scheme",
+            "SweetpadCIMac",
+            "--configuration",
+            "Debug",
+            "--purge",
+            "--json",
+        ],
+        &cwd,
+        &home,
+        Some(&bin),
+    ));
+    assert_eq!(strings(&clean["purged"]), [shown(&own)]);
+    assert!(!own.exists());
+    assert!(stock.join("Build/built.txt").exists());
+}
+
+/// A workspace-relative location writes the bare project name beside the
+/// project, with no hash in it, and that folder is the project's.
+#[test]
+fn a_workspace_relative_location_is_the_bare_folder_beside_the_project() {
+    let home = tmp("rel-home");
+    let cwd = tmp("rel-cwd");
+    let project = cwd.join("app/MyApp.xcodeproj");
+    std::fs::create_dir_all(&project).unwrap();
+    set_project_location(&project, "WorkspaceRelativePath", "DerivedData");
+    let own = cwd.join("app/DerivedData/MyApp");
+    std::fs::create_dir_all(&own).unwrap();
+
+    let path = data(&sweetpad(
+        &[
+            "derived-data",
+            "path",
+            "--project",
+            &shown(&project),
+            "--json",
+        ],
+        &cwd,
+        &home,
+        None,
+    ));
+    assert_eq!(path["root"], shown(&cwd.join("app/DerivedData")));
+    assert_eq!(strings(&path["paths"]), [shown(&own)]);
 }

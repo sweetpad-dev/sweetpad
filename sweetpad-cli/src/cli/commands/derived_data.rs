@@ -1,12 +1,18 @@
 //! `sweetpad derived-data …` — inspect and purge Xcode's DerivedData.
 //!
-//! DerivedData (`~/Library/Developer/Xcode/DerivedData`) accumulates module
-//! caches, indexes, and build products; "delete DerivedData" is the iOS
-//! developer's most common reset. `path`/`size` inspect it, `purge` clears it —
-//! whole, or scoped to the resolved project's own `<Name>-<hash>` folder. A
-//! folder with the same name that another checkout, worktree or copy of the
-//! project wrote (or another project with the same name) is not this
-//! project's, so the scoped verbs leave it alone and say how many they left.
+//! DerivedData (`~/Library/Developer/Xcode/DerivedData`, unless Xcode's
+//! settings move it) accumulates module caches, indexes, and build products;
+//! "delete DerivedData" is the iOS developer's most common reset. `path`/`size`
+//! inspect it, `purge` clears it — whole, or scoped to the resolved project's
+//! own `<Name>-<hash>` folder. A folder with the same name that another
+//! checkout, worktree or copy of the project wrote (or another project with the
+//! same name) is not this project's, so the scoped verbs leave it alone and say
+//! how many they left.
+//!
+//! Both scopes find DerivedData where the build does
+//! ([`sweetpad_lib::derived_data`]): `--all` is the store Xcode's Locations
+//! setting names, and a project's folder follows its per-user workspace
+//! settings too, which can move it out of that store.
 
 use std::path::{Path, PathBuf};
 
@@ -53,6 +59,9 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
 /// What a scoped command acts on: this container's own DerivedData folder(s),
 /// and the folders that only share its name.
 pub(crate) struct Scope {
+    /// The store the folders sit in: the one this container's builds write
+    /// into, or under `--all` the app-wide one.
+    pub(crate) root: PathBuf,
     /// The folders this container's builds wrote (the store's root under
     /// `--all`).
     pub(crate) own: Vec<PathBuf>,
@@ -173,11 +182,10 @@ impl Render for PurgeResult {
 }
 
 fn path(ctx: &mut Context, all: bool) -> CommandResult {
-    let root = root()?;
-    let scope = scope(ctx, &root, all)?;
+    let scope = scope(ctx, all)?;
 
     Ok(Rendered::data(PathResult {
-        root: root.display().to_string(),
+        root: scope.root.display().to_string(),
         paths: display_all(&scope.own),
         others: display_all(&scope.others),
         others_note: scope.others_note("skipped"),
@@ -185,8 +193,7 @@ fn path(ctx: &mut Context, all: bool) -> CommandResult {
 }
 
 fn size(ctx: &mut Context, all: bool) -> CommandResult {
-    let root = root()?;
-    let scope = scope(ctx, &root, all)?;
+    let scope = scope(ctx, all)?;
     let bytes: u64 = scope.own.iter().map(|p| dir_size(p)).sum();
 
     Ok(Rendered::data(SizeResult {
@@ -197,8 +204,8 @@ fn size(ctx: &mut Context, all: bool) -> CommandResult {
 }
 
 fn purge(ctx: &mut Context, all: bool, yes: bool) -> CommandResult {
-    let root = root()?;
-    let scope = scope(ctx, &root, all)?;
+    let scope = scope(ctx, all)?;
+    let root = scope.root.clone();
     let others = display_all(&scope.others);
     let others_note = scope.others_note("kept");
     let targets = scope.own;
@@ -271,34 +278,33 @@ fn purge(ctx: &mut Context, all: bool, yes: bool) -> CommandResult {
 
 /// This project's DerivedData scope — shared with `sweetpad clean --purge`.
 pub(crate) fn project_scope(ctx: &Context) -> Result<Scope, CliError> {
-    let root = root()?;
-    scope(ctx, &root, false)
+    scope(ctx, false)
 }
 
-/// The DerivedData root, honoring `$HOME`.
-fn root() -> Result<PathBuf, CliError> {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or_else(|| CliError::new("$HOME is not set; cannot locate DerivedData"))?;
-    Ok(derived_data_root(&home))
+/// `$HOME`, which every DerivedData location is found from.
+fn home() -> Result<String, CliError> {
+    std::env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .map(|home| home.to_string_lossy().into_owned())
+        .ok_or_else(|| CliError::new("$HOME is not set; cannot locate DerivedData"))
 }
 
-/// `<home>/Library/Developer/Xcode/DerivedData`.
-fn derived_data_root(home: &Path) -> PathBuf {
-    home.join("Library/Developer/Xcode/DerivedData")
-}
+/// What a command acts on: `--all` is the whole app-wide store — just
+/// `[root]` (when it exists); the default is the resolved container's own
+/// folder(s), apart from the others sharing its name ([`classify`]).
+fn scope(ctx: &Context, all: bool) -> Result<Scope, CliError> {
+    use sweetpad_lib::derived_data;
 
-/// What a command acts on: `--all` is the whole store — just `[root]` (when
-/// it exists); the default is the resolved container's own folder(s), apart
-/// from the others sharing its name ([`classify`]).
-fn scope(ctx: &Context, root: &Path, all: bool) -> Result<Scope, CliError> {
+    let home = home()?;
     if all {
+        let root = derived_data::app_derived_data_root(&home, true);
         return Ok(Scope {
             own: if root.is_dir() {
-                vec![root.to_path_buf()]
+                vec![root.clone()]
             } else {
                 Vec::new()
             },
+            root,
             others: Vec::new(),
             pattern: String::new(),
         });
@@ -308,33 +314,56 @@ fn scope(ctx: &Context, root: &Path, all: bool) -> Result<Scope, CliError> {
     let base = project_base_name(&container).ok_or_else(|| {
         CliError::new("could not determine the project name to scope DerivedData")
     })?;
-    Ok(classify(root, &base, &keyed_path(&container)))
+    let keyed = keyed_path(&container);
+    // The locator the build names its products through, so a folder Xcode's
+    // settings move is found where the build writes it.
+    let locations = derived_data::resolve(
+        &sweetpad_lib::project::absolutize(keyed_container(&container)),
+        &base,
+        &derived_data::container_hash(&keyed),
+        &home,
+        None,
+        true,
+    );
+    Ok(classify(
+        &locations.derived_data_root,
+        &locations.folder,
+        &base,
+        &keyed,
+    ))
 }
 
-/// The path Xcode keys a container's DerivedData folder by, standardized the
-/// way it hashes it (see [`sweetpad_lib::project::standardize`]): the
-/// `.xcodeproj` or `.xcworkspace` itself, or a Swift package's directory.
-fn keyed_path(container: &Container) -> PathBuf {
-    let path = match container {
+/// The container Xcode keys a DerivedData folder by: the `.xcodeproj` or
+/// `.xcworkspace` itself, or a Swift package's directory.
+fn keyed_container(container: &Container) -> &Path {
+    match container {
         Container::SwiftPackage(manifest) => manifest
             .parent()
             .filter(|dir| !dir.as_os_str().is_empty())
             .unwrap_or(Path::new(".")),
         Container::Workspace(p) | Container::Project(p) => p,
-    };
-    sweetpad_lib::project::standardize(path)
+    }
+}
+
+/// [`keyed_container`], standardized the way Xcode hashes it (see
+/// [`sweetpad_lib::project::standardize`]).
+fn keyed_path(container: &Container) -> PathBuf {
+    sweetpad_lib::project::standardize(keyed_container(container))
 }
 
 /// Split the folders under `root` named for `base` into the ones the container
 /// at `keyed` wrote and the rest. A name alone cannot tell them apart: every
 /// checkout of a project writes a `<Name>-<hash>` folder, with the hash taken
-/// over its own path. So a folder is this container's when its name carries
-/// the hash of `keyed`, or when the `info.plist` Xcode records in it names
-/// `keyed` as the workspace it was written for.
-fn classify(root: &Path, base: &str, keyed: &Path) -> Scope {
-    use sweetpad_lib::derived_data::{container_hash, hashed_folder, hashed_name, workspace_path};
+/// over its own path. So a folder is this container's when it is `folder`, the
+/// one the container's builds write, or when the `info.plist` Xcode records
+/// in it names `keyed` as the workspace it was written for.
+fn classify(root: &Path, folder: &Path, base: &str, keyed: &Path) -> Scope {
+    use sweetpad_lib::derived_data::{hashed_name, workspace_path};
 
-    let own_name = hashed_folder(base, &container_hash(keyed));
+    let own_name = folder
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let mut own = Vec::new();
     let mut others = Vec::new();
     if let Ok(entries) = std::fs::read_dir(root) {
@@ -360,6 +389,7 @@ fn classify(root: &Path, base: &str, keyed: &Path) -> Scope {
     own.sort();
     others.sort();
     Scope {
+        root: root.to_path_buf(),
         own,
         others,
         pattern: format!("{}-*", hashed_name(base)),
@@ -443,15 +473,6 @@ mod tests {
     use crate::cli::testdir::TempDir;
 
     #[test]
-    fn root_is_the_standard_xcode_path() {
-        let root = derived_data_root(Path::new("/Users/me"));
-        assert_eq!(
-            root,
-            Path::new("/Users/me/Library/Developer/Xcode/DerivedData")
-        );
-    }
-
-    #[test]
     fn spm_base_name_is_the_package_directory() {
         // Every manifest is literally `Package.swift`; the DerivedData folder is
         // named after the package directory (`MyLib-<hash>`), never `Package-…`.
@@ -521,6 +542,12 @@ mod tests {
         )
     }
 
+    /// [`classify`] against a store in the stock layout, where the container
+    /// at `keyed` writes the `<Name>-<hash>` folder.
+    fn classify_stock(store: &Path, name: &str, keyed: &Path) -> Scope {
+        classify(store, &store.join(folder_for(name, keyed)), name, keyed)
+    }
+
     fn names(paths: &[PathBuf]) -> Vec<String> {
         paths
             .iter()
@@ -538,7 +565,7 @@ mod tests {
         let second = folder_for("MyApp", &copies.second);
         assert_ne!(first, second);
 
-        let scope = classify(&copies.store(), "MyApp", &copies.first);
+        let scope = classify_stock(&copies.store(), "MyApp", &copies.first);
         assert_eq!(names(&scope.own), std::slice::from_ref(&first));
         assert_eq!(names(&scope.others), std::slice::from_ref(&second));
         assert_eq!(
@@ -546,7 +573,7 @@ mod tests {
             Some("kept 1 other 'MyApp-*' folder(s) from other checkouts or same-named projects")
         );
 
-        let scope = classify(&copies.store(), "MyApp", &copies.second);
+        let scope = classify_stock(&copies.store(), "MyApp", &copies.second);
         assert_eq!(names(&scope.own), [second]);
         assert_eq!(names(&scope.others), [first]);
     }
@@ -573,7 +600,7 @@ mod tests {
         record("MyApp-recordedforfirst", &copies.first);
         record("MyApp-recordedforsecond", &copies.second);
 
-        let scope = classify(&copies.store(), "MyApp", &copies.first);
+        let scope = classify_stock(&copies.store(), "MyApp", &copies.first);
         let mut own = vec![
             "MyApp-recordedforfirst".to_string(),
             folder_for("MyApp", &copies.first),
@@ -592,7 +619,7 @@ mod tests {
     #[test]
     fn a_name_with_spaces_scopes_by_its_folder_spelling() {
         let copies = TwoCopies::new("spaces", "My App");
-        let scope = classify(&copies.store(), "My App", &copies.first);
+        let scope = classify_stock(&copies.store(), "My App", &copies.first);
         assert_eq!(names(&scope.own), [folder_for("My App", &copies.first)]);
         assert!(names(&scope.own)[0].starts_with("My_App-"));
         assert_eq!(names(&scope.others), [folder_for("My App", &copies.second)]);
@@ -615,12 +642,29 @@ mod tests {
         );
     }
 
+    /// A workspace-relative DerivedData location writes the bare `<Name>`, with
+    /// no hash to recognise it by, and that folder is the container's own.
+    #[test]
+    fn the_bare_folder_a_relative_location_writes_is_the_containers_own() {
+        let copies = TwoCopies::new("bare", "MyApp");
+        std::fs::create_dir_all(copies.store().join("MyApp")).unwrap();
+        let scope = classify(
+            &copies.store(),
+            &copies.store().join("MyApp"),
+            "MyApp",
+            &copies.first,
+        );
+        assert_eq!(names(&scope.own), ["MyApp"]);
+        assert_eq!(scope.others.len(), 2, "{:?}", scope.others);
+        assert_eq!(scope.root, copies.store());
+    }
+
     /// No folder of this project's name, or none at all, is an empty scope
     /// with nothing to note.
     #[test]
     fn a_missing_store_is_an_empty_scope() {
         let dir = TempDir::new("sweetpad-dd-missing");
-        let scope = classify(
+        let scope = classify_stock(
             &dir.join("DerivedData"),
             "MyApp",
             &dir.join("MyApp.xcodeproj"),

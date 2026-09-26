@@ -357,9 +357,9 @@ fn configured_arg_refusal(arg: &str) -> Option<&'static str> {
         "-destination" => "use the 'destination' key",
         "-sdk" => "use the 'sdk' key",
         "-derivedDataPath" => {
-            "'clean', 'derived-data' and the editor index would keep using the default \
-             location, and a relative value resolves against the project's directory, \
-             not this file's; pass it per command instead"
+            "'clean', 'derived-data' and the editor index would keep using the DerivedData \
+             location Xcode's settings name, and a relative value resolves against the \
+             project's directory, not this file's; pass it per command instead"
         }
         "-resultBundlePath" => {
             "sweetpad writes and reads back its own result bundle; pass it per command \

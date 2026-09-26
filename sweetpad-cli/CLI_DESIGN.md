@@ -523,10 +523,10 @@ args = ["-skipMacroValidation"]   # added to every command that builds
     every other path in the file resolves against the file, so `dd` would
     read as `App/dd` and land in `App/Sources/dd`.
   - The rest never see the file. `clean` spawns its `xcodebuild clean`
-    without `[xcodebuild] args`, `derived-data` and `clean --purge` look in
-    the default store, and the BSP index takes its location from the
-    `buildServer.json` the extension writes. A committed location would move
-    every teammate's build away from all of them.
+    without `[xcodebuild] args`, `derived-data` and `clean --purge` look
+    where Xcode's own settings put DerivedData, and the BSP index takes its
+    location from the `buildServer.json` the extension writes. A committed
+    location would move every teammate's build away from all of them.
 
   It is passed per command instead: a build's `--` tail, and
   `--derived-data-path` for `app launch` (§9s). Lifting the refusal would
@@ -791,6 +791,16 @@ Notes / heuristics:
   list them as `others` in JSON, and human output counts them in a note
   (`kept 2 other 'MyApp-*' folder(s) from other checkouts or same-named
   projects`).
+- The verbs find DerivedData the way the build locator does
+  (`sweetpad_lib::derived_data`), so they follow Xcode's settings when those
+  move it. `--all` is the app-wide store: `IDECustomDerivedDataLocation` in
+  the Xcode preferences, else `~/Library/Developer/Xcode/DerivedData`. A
+  project's own per-user workspace settings can move its folder out of that
+  store (`DerivedDataLocationStyle` with `DerivedDataCustomLocation`): an
+  absolute location keeps the `<Name>-<hash>` name, and a location relative
+  to the project writes a bare `<Name>` folder, which is the project's own.
+  The BSP finds its index store and the `SYMROOT`/`OBJROOT` of a `-target`
+  prepare through the same locator.
 - the side-effecting `simulator`/`app open-url` actions share one
   simulator picker (`resolve::select_simulator`): explicit name/UDID wins, else
   the lone booted sim, else prompt (booted set, or the full list) / strict
