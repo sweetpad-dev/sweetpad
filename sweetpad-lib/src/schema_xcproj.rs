@@ -56,6 +56,68 @@ const EXCEPTION_KEYS: [&str; 6] = [
     "attributes",
 ];
 
+/// The order Xcode writes the document's top-level keys in, as the published
+/// schema's `Project` encoder lists them.
+const DOCUMENT_KEYS: [&str; 19] = [
+    "required-capabilities",
+    "id",
+    "root-group-debug-id",
+    "configuration-list-debug-id",
+    "organization",
+    "class-prefix",
+    "build-independent-targets-in-parallel",
+    "default-configuration",
+    "configurations",
+    "localizations",
+    "imported-products",
+    "packages",
+    "files",
+    "targets",
+    "build-settings",
+    "products-group",
+    "last-upgrade",
+    "last-swift-update",
+    "last-swift-migration",
+];
+
+/// The order Xcode writes a target's keys in, as the published schema's
+/// `Target` encoder lists them. An external-build-system target's own keys
+/// follow the common ones.
+const TARGET_KEYS: [&str; 22] = [
+    "name",
+    "id",
+    "configuration-list-debug-id",
+    "kind",
+    "product",
+    "product-type",
+    "full-product-type",
+    "last-swift-update",
+    "last-swift-migration",
+    "legacy-provisioning-style",
+    "legacy-team-id",
+    "test-host-target",
+    "specialized-configurations",
+    "dependencies",
+    "build-phases",
+    "build-rules",
+    "package-product-members",
+    "build-settings",
+    "build-tool-path",
+    "build-tool-arguments",
+    "build-tool-working-directory",
+    "pass-build-settings-in-environment",
+];
+
+/// Insert a top-level key where Xcode would have written it.
+pub fn insert_document_key(document: &mut Object, key: &str, value: Value) {
+    insert_in_order(document, &DOCUMENT_KEYS, key, value);
+}
+
+/// Insert `key` on a target where Xcode would have written it.
+pub fn insert_target_key(target: &mut Object, key: &str, value: Value) {
+    insert_in_order(target, &TARGET_KEYS, key, value);
+}
+
 /// Insert `key` on a navigator node where Xcode would have written it.
 pub fn insert_node_key(node: &mut Object, key: &str, value: Value) {
     insert_in_order(node, &NODE_KEYS, key, value);

@@ -1799,6 +1799,52 @@ how deep the group sits. Either way a move and its reverse leave the document
 byte for byte as it was, and each outcome reports the resolved path, so the
 preservation is checkable rather than promised.
 
+**Editing packages.** `spm` holds the vocabulary — declared package,
+requirement, product link — and `spm_pbxproj` and `spm_xcproj` are the two
+backends. The pbxproj's three object kinds become two places. A declared
+package is an entry in the top-level `packages` list. A product a target
+consumes is a reference on the target: an entry in `package-product-members`
+when a build phase links it, and a `{ kind: package }` entry in `dependencies`
+when the target only depends on it, which is what a static library's
+`PBXTargetDependency` with a `productRef` converts to.
+`packageProductDependencies` has no counterpart. Converting a project that
+carries each requirement kind settled their spelling, and Apple's published
+schema agrees:
+
+| pbxproj `requirement.kind` | `version` key |
+| --- | --- |
+| `upToNextMajorVersion` | `up-to-next-major-version` |
+| `upToNextMinorVersion` | `up-to-next-minor-version` |
+| `exactVersion` | `version` |
+| `versionRange` | `version-range`, as `1.3.0..<1.5.0` |
+| `branch` | `branch` |
+| `revision` | `revision` |
+
+A range with a bound that is not plain dotted numbers, a prerelease for
+instance, is written as a `version-range-min` / `version-range-max` pair
+instead.
+
+A product reference names its package by the name Xcode gives it rather than
+pointing at an object: a repository's last path component without `.git`, with
+its case kept (`SFSafeSymbols`, where SwiftPM's identity is lowercase), a
+registry identity's name (`Alamofire` for `Alamofire.Alamofire`), and a local
+package's directory name (`LocalKit` for `Packages/LocalKit`). A reference with
+no `package` at all is a local package's product that the pbxproj recorded
+without a back-reference. It converts that way, and `remove` matches it by the
+product names the package's manifest declares, as on the pbxproj path. Xcode
+keeps `package-product-members` sorted in the published schema's order
+(package, product, product type, then build phase, with the references that
+name no package first), while `packages` and `dependencies` keep the order
+entries were added in.
+
+The `PackageProbe` and `SpmStaticLibrary` fixtures are Xcode's conversions of
+one pbxproj project each, before and after `dependency add` edited it. Making
+the same edits through `spm_xcproj` reproduces the converted document byte for
+byte, and removing them gives the earlier document back. On a converted
+project, `add`, a resolve, a build that imports the product, `update` and
+`remove` all work on Xcode 27.2, and the round trip leaves the document as it
+was.
+
 ## 12. Project history
 
 Condensed log of how the library got here; each entry's full technical detail

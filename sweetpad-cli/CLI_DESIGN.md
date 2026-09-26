@@ -1050,6 +1050,20 @@ the Swift 6 `swift package add-dependency`/`add-target-dependency`/`resolve`.
   pick (strict `--project` error off a TTY). All `xcodebuild
   -resolvePackageDependencies` calls pass a `-scheme` (required for a workspace).
 
+**Amendment: `dependency` reads and writes `project.xcproj` too.** The grammar
+and the choice of member project are unchanged; the backend follows whichever
+document the bundle holds. The JSON document names a product's package by the
+name Xcode gives it (`swift-collections`, `LocalKit`) rather than pointing at
+an object, so that name is the package's handle there, and an `add` whose name
+is already taken is refused where a pbxproj would take a second reference. A
+link is a `package-product-members` entry for the target's Frameworks phase, or
+a `{ kind: package }` dependency for a static library or a target with no
+Frameworks phase — the same split the pbxproj makes between a build file and a
+target dependency. Removing drops the lists it empties, so `add` then `remove`
+leaves the document byte for byte as it was. Verified end to end on Xcode 27.2
+for a local and a remote package: `add`, a resolve and a build that imports the
+product, `update`, and `remove`.
+
 > Supersedes the earlier "vendor full source, compile per Xcode" plan: the
 > from-source per-Xcode build (and its `~/.cache/.../<xcode-build>/` cache) existed
 > only to keep XCTest's ABI matched against the active Xcode. Building the

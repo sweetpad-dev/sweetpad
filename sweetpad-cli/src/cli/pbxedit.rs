@@ -148,18 +148,8 @@ pub fn guard_generated(project_file: &ProjectFile, xcodeproj: &Path, force: bool
 }
 
 /// Parse a `.xcodeproj`'s `project.pbxproj` into an owned tree for mutation.
-///
-/// For a verb that has no `project.xcproj` counterpart yet, so the format is
-/// named rather than surfacing as a missing file.
-pub fn parse_owned(xcodeproj: &Path) -> Result<Value, CliError> {
+fn parse_owned(xcodeproj: &Path) -> Result<Value, CliError> {
     let path = xcodeproj.join("project.pbxproj");
-    if !path.exists() && xcodeproj.join(xcproj::DOCUMENT_NAME).exists() {
-        return Err(CliError::new(format!(
-            "{} is in the {} format, which this command does not support yet",
-            xcodeproj.display(),
-            xcproj::DOCUMENT_NAME
-        )));
-    }
     sweetpad_lib::pbxproj::parse_file(&path)
         .map_err(|e| CliError::new(format!("failed to parse {}: {e}", path.display())))
 }
@@ -348,7 +338,8 @@ fn member_has_target(xcodeproj: &Path, target: &str) -> bool {
 
 /// The document file inside an `.xcodeproj`: the JSON one when the bundle
 /// holds it, `project.pbxproj` otherwise.
-fn document_path(xcodeproj: &Path) -> PathBuf {
+#[must_use]
+pub fn document_path(xcodeproj: &Path) -> PathBuf {
     let document = xcodeproj.join(xcproj::DOCUMENT_NAME);
     if document.exists() {
         document

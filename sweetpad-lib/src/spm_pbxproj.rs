@@ -19,130 +19,10 @@ use std::collections::HashMap;
 
 use crate::pbxproj::{Dict, Value};
 
-/// A package declared in `PBXProject.packageReferences`, plus the products it
-/// provides and where they are linked.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeclaredPackage {
-    /// The `XC*SwiftPackageReference` object GUID.
-    pub guid: String,
-    /// SwiftPM identity (lowercased basename of the URL/path), used to correlate
-    /// with a `Package.resolved` pin.
-    pub identity: String,
-    pub kind: PackageKind,
-    /// The version requirement, for remote packages (locals have none).
-    pub requirement: Option<Requirement>,
-    /// `(product, target)` links this package's products participate in.
-    pub products: Vec<ProductLink>,
-}
-
-/// A declared package is either a remote git repo or a local directory.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PackageKind {
-    Remote { url: String },
-    Local { relative_path: String },
-}
-
-impl PackageKind {
-    /// The repository URL (remote) or relative path (local) — the human display.
-    #[must_use]
-    pub fn display(&self) -> &str {
-        match self {
-            PackageKind::Remote { url } => url,
-            PackageKind::Local { relative_path } => relative_path,
-        }
-    }
-
-    #[must_use]
-    pub fn is_remote(&self) -> bool {
-        matches!(self, PackageKind::Remote { .. })
-    }
-}
-
-/// A version requirement parsed from an `XCRemoteSwiftPackageReference`'s
-/// `requirement` dict, flattened to the one or two version-ish values each
-/// `kind` carries.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Requirement {
-    /// `upToNextMajorVersion` / `upToNextMinorVersion` / `exactVersion` /
-    /// `versionRange` / `branch` / `revision`.
-    pub kind: String,
-    /// `minimumVersion` (ranges), `version` (exact), `branch`, or `revision`.
-    pub value: Option<String>,
-    /// `maximumVersion`, for `versionRange` only.
-    pub upper: Option<String>,
-}
-
-impl Requirement {
-    /// A compact human rendering, e.g. `from 5.0.0`, `branch main`,
-    /// `5.0.0 ..< 6.0.0`.
-    #[must_use]
-    pub fn display(&self) -> String {
-        let v = self.value.as_deref().unwrap_or("?");
-        match self.kind.as_str() {
-            "upToNextMajorVersion" => format!("from {v}"),
-            "upToNextMinorVersion" => format!("up-to-next-minor from {v}"),
-            "exactVersion" => format!("exact {v}"),
-            "versionRange" => format!("{v} ..< {}", self.upper.as_deref().unwrap_or("?")),
-            "branch" => format!("branch {v}"),
-            "revision" => format!("revision {v}"),
-            other => format!("{other} {v}"),
-        }
-    }
-}
-
-/// A product linked into a target.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ProductLink {
-    pub product: String,
-    pub target: String,
-}
-
-/// The version requirement to record when adding a remote package. Mirrors the
-/// `swift package add-dependency` requirement flags; the CLI maps its flags onto
-/// this so this module stays clap-free.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RequirementSpec {
-    /// `--from` (up to the next major).
-    UpToNextMajor(String),
-    /// `--up-to-next-minor-from`.
-    UpToNextMinor(String),
-    /// `--exact`.
-    Exact(String),
-    /// `--from … --to …` (half-open range).
-    Range { from: String, to: String },
-    /// `--branch`.
-    Branch(String),
-    /// `--revision`.
-    Revision(String),
-}
-
-// ---------------------------------------------------------------------------
-// Identity
-// ---------------------------------------------------------------------------
-
-/// SwiftPM's package identity for a repository URL: the last path component,
-/// without a trailing `.git`, lowercased. Matches the `identity` key in
-/// `Package.resolved` (and the basename the serializer annotates with).
-#[must_use]
-pub fn identity_from_url(url: &str) -> String {
-    url.trim_end_matches('/')
-        .rsplit('/')
-        .next()
-        .unwrap_or(url)
-        .trim_end_matches(".git")
-        .to_ascii_lowercase()
-}
-
-/// Identity for a local package: the lowercased last path component of its
-/// relative path.
-#[must_use]
-pub fn identity_from_path(path: &str) -> String {
-    path.trim_end_matches(['/', '\\'])
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or(path)
-        .to_ascii_lowercase()
-}
+pub use crate::spm::{
+    DeclaredPackage, PackageKind, ProductLink, Requirement, RequirementSpec, identity_from_path,
+    identity_from_url,
+};
 
 // ---------------------------------------------------------------------------
 // Reading
@@ -217,7 +97,7 @@ fn read_packages(objects: &Dict, project_guid: &str) -> Vec<DeclaredPackage> {
         products.sort();
 
         packages.push(DeclaredPackage {
-            guid: ref_guid,
+            id: ref_guid,
             identity,
             kind,
             requirement,
@@ -822,21 +702,6 @@ mod tests {
 	rootObject = PROJ;
 }
 "#;
-
-    #[test]
-    fn identity_normalizes_url_and_path() {
-        assert_eq!(
-            identity_from_url("https://github.com/mergesort/Bodega"),
-            "bodega"
-        );
-        assert_eq!(
-            identity_from_url("https://github.com/kaishin/Gifu.git"),
-            "gifu"
-        );
-        assert_eq!(identity_from_url("https://github.com/foo/Bar/"), "bar");
-        assert_eq!(identity_from_url("keychain-swift"), "keychain-swift");
-        assert_eq!(identity_from_path("Packages/Env"), "env");
-    }
 
     #[test]
     fn reads_declared_packages_with_links() {

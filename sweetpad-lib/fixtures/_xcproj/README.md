@@ -15,3 +15,12 @@ either can regenerate them.
 `SweetpadCIApp` is small enough to read end to end. `NetNewsWire` is the widest
 spread the corpus has: 83 `}, {` seams, 104 compact objects, synchronized
 folders with exception sets, and a package reference.
+
+`PackageProbe` and `SpmStaticLibrary` are pairs for `tests/spm_xcproj.rs`. Each
+is Xcode 27.2's conversion of one pbxproj project before `sweetpad dependency
+add` edited it, and the `Linked` document is the conversion after. `PackageProbe`
+is a `sweetpad project new --platform macos` app given a remote package for
+each requirement kind and one local package; `SpmStaticLibrary` is
+`fixtures/_synthetic-spm`'s static library given one remote package, which a
+static library takes as a target dependency. The diff between each pair holds
+nothing but the package changes.

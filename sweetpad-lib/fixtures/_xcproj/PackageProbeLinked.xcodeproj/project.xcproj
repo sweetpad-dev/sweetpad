@@ -1,0 +1,162 @@
+{
+  "default-configuration": "Release",
+  "configurations": [
+    "Debug",
+    "Release",
+  ],
+  "localizations": {
+    "development": "en",
+    "supported": [
+      "Base",
+    ],
+  },
+  "packages": [
+    {
+      "kind": "remote",
+      "repository": "https://github.com/apple/swift-collections.git",
+      "version": {
+        "up-to-next-major-version": "1.1.0",
+      },
+    }, {
+      "kind": "remote",
+      "repository": "https://github.com/apple/swift-algorithms",
+      "version": {
+        "up-to-next-minor-version": "1.2.0",
+      },
+    }, {
+      "kind": "remote",
+      "repository": "https://github.com/apple/swift-numerics.git",
+      "version": {
+        "version": "1.0.2",
+      },
+    }, {
+      "kind": "remote",
+      "repository": "https://github.com/apple/swift-argument-parser.git",
+      "version": {
+        "version-range": "1.3.0..<1.5.0",
+      },
+    }, {
+      "kind": "remote",
+      "repository": "https://github.com/pointfreeco/swift-case-paths",
+      "version": {
+        "branch": "main",
+      },
+    }, {
+      "kind": "remote",
+      "repository": "https://github.com/apple/swift-log.git",
+      "version": {
+        "revision": "96a2f8a0fa41e9e09af4585e2724c4e825410b91",
+      },
+    }, {
+      "kind": "local",
+      "path": "Packages/LocalKit",
+    },
+  ],
+  "files": [
+    { "kind": "folder", "path": "Probe", "target-membership": [ "Probe" ] },
+    {
+      "kind": "group",
+      "name": "Products",
+      "children": [
+        { "path": "<PRODUCTS>/Probe.app", "id": "000000000000000000000006", "type": "wrapper.application", "index": false },
+      ],
+    },
+  ],
+  "targets": [
+    {
+      "name": "Probe",
+      "id": "000000000000000000000005",
+      "product": "Products/Probe.app",
+      "product-type": "application",
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+        "resources",
+      ],
+      "package-product-members": [
+        {
+          "package": "LocalKit",
+          "product-name": "LocalExtra",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "package": "LocalKit",
+          "product-name": "LocalKit",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "package": "swift-algorithms",
+          "product-name": "Algorithms",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "package": "swift-argument-parser",
+          "product-name": "ArgumentParser",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "package": "swift-case-paths",
+          "product-name": "CasePaths",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "package": "swift-collections",
+          "product-name": "Collections",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "package": "swift-log",
+          "product-name": "Logging",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "package": "swift-numerics",
+          "product-name": "Numerics",
+          "build-phase": { "build-phase": "frameworks" },
+        },
+      ],
+      "build-settings": {
+        "ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS": "NO",
+        "CODE_SIGN_STYLE": "Automatic",
+        "CURRENT_PROJECT_VERSION": "1",
+        "ENABLE_PREVIEWS": "YES",
+        "GENERATE_INFOPLIST_FILE": "YES",
+        "INFOPLIST_KEY_NSHumanReadableCopyright": "",
+        "LD_RUNPATH_SEARCH_PATHS": [
+          "$(inherited)",
+          "@executable_path/../Frameworks",
+        ],
+        "MARKETING_VERSION": "1.0",
+        "PRODUCT_BUNDLE_IDENTIFIER": "com.example.Probe",
+        "PRODUCT_NAME": "$(TARGET_NAME)",
+        "SWIFT_EMIT_LOC_STRINGS": "YES",
+      },
+    },
+  ],
+  "build-settings": {
+    "ALWAYS_SEARCH_USER_PATHS": "NO",
+    "CLANG_ANALYZER_NONNULL": "YES",
+    "CLANG_ENABLE_MODULES": "YES",
+    "CLANG_ENABLE_OBJC_ARC": "YES",
+    "CLANG_ENABLE_OBJC_WEAK": "YES",
+    "COPY_PHASE_STRIP": "NO",
+    "DEBUG_INFORMATION_FORMAT[config=Debug]": "dwarf",
+    "DEBUG_INFORMATION_FORMAT[config=Release]": "dwarf-with-dsym",
+    "ENABLE_NS_ASSERTIONS[config=Release]": "NO",
+    "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+    "ENABLE_TESTABILITY[config=Debug]": "YES",
+    "GCC_C_LANGUAGE_STANDARD": "gnu17",
+    "GCC_DYNAMIC_NO_PIC[config=Debug]": "NO",
+    "GCC_NO_COMMON_BLOCKS": "YES",
+    "GCC_OPTIMIZATION_LEVEL[config=Debug]": "0",
+    "GCC_PREPROCESSOR_DEFINITIONS[config=Debug]": [
+      "$(inherited)",
+      "DEBUG=1",
+    ],
+    "MACOSX_DEPLOYMENT_TARGET": "14.0",
+    "MTL_ENABLE_DEBUG_INFO[config=Debug]": "INCLUDE_SOURCE",
+    "MTL_ENABLE_DEBUG_INFO[config=Release]": "NO",
+    "MTL_FAST_MATH": "YES",
+    "ONLY_ACTIVE_ARCH[config=Debug]": "YES",
+    "SDKROOT": "macosx",
+    "SWIFT_ACTIVE_COMPILATION_CONDITIONS[config=Debug]": "DEBUG",
+    "SWIFT_COMPILATION_MODE[config=Release]": "wholemodule",
+    "SWIFT_OPTIMIZATION_LEVEL[config=Debug]": "-Onone",
+    "SWIFT_OPTIMIZATION_LEVEL[config=Release]": "-O",
+    "SWIFT_VERSION": "5.0",
+  },
+  "last-upgrade": "16.0",
+}

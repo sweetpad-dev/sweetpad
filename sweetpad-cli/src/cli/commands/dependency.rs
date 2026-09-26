@@ -2,8 +2,10 @@
 //! Manager dependencies.
 //!
 //! Works on all three container kinds. For an `.xcodeproj`/`.xcworkspace` there
-//! is no Apple CLI to add/remove SPM packages, so we edit `project.pbxproj`
-//! directly through [`sweetpad_lib::spm_pbxproj`]; for a `Package.swift` we drive the
+//! is no Apple CLI to add/remove SPM packages, so we edit the project document
+//! directly — `project.pbxproj` through [`sweetpad_lib::spm_pbxproj`], or the
+//! `project.xcproj` Xcode 27.2 writes in its place through
+//! [`sweetpad_lib::spm_xcproj`]; for a `Package.swift` we drive the
 //! Swift 6 `swift package add-dependency`/`add-target-dependency`/`resolve`
 //! commands. `list` shows each declared package's requested requirement next to
 //! its locked version from `Package.resolved`.
@@ -14,14 +16,14 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Subcommand};
 
 use crate::cli::output::Output;
-use crate::cli::pbxedit;
+use crate::cli::pbxedit::{self, Editable};
 use crate::cli::resolve::{self, Container};
 use crate::cli::{
     CliError, CliResult, CommandResult, Context, ErrorKind, Render, Rendered, buildlog, process,
     swiftpm, xcodebuild,
 };
-use sweetpad_lib::pbxproj::Value;
-use sweetpad_lib::spm_pbxproj::{self, DeclaredPackage, RequirementSpec};
+use sweetpad_lib::spm::{DeclaredPackage, PackageKind, RequirementSpec, identity_from_url};
+use sweetpad_lib::{spm_pbxproj, spm_xcproj};
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
@@ -230,9 +232,7 @@ fn gather_direct(
 }
 
 fn read_project(xcodeproj: &Path) -> Result<Vec<DeclaredPackage>, CliError> {
-    let root = sweetpad_lib::project::parse_pbxproj(xcodeproj)
-        .map_err(|e| CliError::new(format!("failed to read {}: {e}", xcodeproj.display())))?;
-    Ok(spm_pbxproj::list_packages(&root))
+    Ok(list_packages(&Editable::parse(xcodeproj)?))
 }
 
 fn packages_to_entries(pkgs: &[DeclaredPackage], pins: &HashMap<String, Pin>) -> Vec<PackageEntry> {
@@ -404,28 +404,34 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
 
     // The reference must be written *before* product discovery (resolution
     // needs it on disk), but everything after can still fail or be cancelled
-    // at a picker — snapshot the pristine pbxproj so no path leaves a
+    // at a picker — snapshot the pristine document so no path leaves a
     // dangling, unlinked package reference behind. The sibling backup covers
     // the paths a snapshot can't: a signal `_exit`ing mid-resolve.
-    let pbxproj_path = xcodeproj.join("project.pbxproj");
-    heal_interrupted_mutation(&pbxproj_path, &ctx.out);
-    let pristine = std::fs::read_to_string(&pbxproj_path)
-        .map_err(|e| CliError::new(format!("failed to read {}: {e}", pbxproj_path.display())))?;
+    let document_path = pbxedit::document_path(&xcodeproj);
+    heal_interrupted_mutation(&document_path, &ctx.out);
+    let mut document = Editable::parse(&xcodeproj)?;
+    let pristine = std::fs::read_to_string(&document_path)
+        .map_err(|e| CliError::new(format!("failed to read {}: {e}", document_path.display())))?;
     // The discovery resolve rewrites Package.resolved with the new package's
     // pins — snapshot it too, so a cancel doesn't leave ghost pins that make
     // `dep list`/`dep remove` misreport the abandoned package.
     let pristine_lockfile = read_lockfile(container);
-    let backup = MutationBackup::create(&pbxproj_path, &pristine)?;
+    let backup = MutationBackup::create(&document_path, &pristine)?;
 
     // 1. Add the package reference (only) and write it, so resolution can fetch.
-    let mut root = pbxedit::parse_owned(&xcodeproj)?;
-    let ref_guid = if let Some(spec) = &spec {
-        spm_pbxproj::add_remote_dependency(&mut root, &args.url, spec).map_err(CliError::new)?
-    } else {
-        let rel = local_relative_path(&xcodeproj, &args.url)?;
-        spm_pbxproj::add_local_dependency(&mut root, &rel).map_err(CliError::new)?
+    let added = match &spec {
+        Some(spec) => add_remote(&mut document, &args.url, spec),
+        None => local_relative_path(&xcodeproj, &args.url)
+            .and_then(|rel| add_local(&mut document, &rel)),
+    }
+    .and_then(|id| document.write(&xcodeproj).map(|()| id));
+    let package_id = match added {
+        Ok(id) => id,
+        Err(e) => {
+            backup.commit();
+            return Err(e);
+        }
     };
-    pbxedit::write_pbxproj(&xcodeproj, &root)?;
     ctx.out.note(&format!("added package {}", args.url));
 
     let linked = (|| -> Result<(Vec<String>, Vec<String>), CliError> {
@@ -436,11 +442,10 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
         // 3. Link each product into each target and write.
         for product in &products {
             for target in &targets {
-                spm_pbxproj::link_product(&mut root, &ref_guid, product, target)
-                    .map_err(CliError::new)?;
+                link_product(&mut document, &package_id, product, target)?;
             }
         }
-        pbxedit::write_pbxproj(&xcodeproj, &root)?;
+        document.write(&xcodeproj)?;
 
         // 4. Ensure Package.resolved is current. Discovering a remote package's
         //    products already resolved (and wrote the lockfile), so only resolve
@@ -462,14 +467,14 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
             // Report the rollback honestly — claiming success while the
             // dangling reference remains would hide exactly the state this
             // rollback exists to prevent.
-            if pbxedit::write_atomic(&pbxproj_path, &pristine).is_ok() {
+            if pbxedit::write_atomic(&document_path, &pristine).is_ok() {
                 ctx.out
                     .note("rolled the package reference back out of the project (nothing linked)");
             } else {
                 ctx.out.warn(&format!(
                     "could not roll the package reference back out of {} — the project may \
                      reference the package without linking it",
-                    pbxproj_path.display()
+                    document_path.display()
                 ));
             }
             Err(e)
@@ -704,32 +709,31 @@ fn remove(ctx: &mut Context, args: &RemoveArgs) -> CliResult {
 fn remove_from_xcode(ctx: &mut Context, container: &Container, args: &RemoveArgs) -> CliResult {
     let xcodeproj = pick_xcodeproj(ctx, container, Some(&args.package))?;
     pbxedit::guard_generated(ctx.project_file(container), &xcodeproj, args.force)?;
-    heal_interrupted_mutation(&xcodeproj.join("project.pbxproj"), &ctx.out);
-    let mut root = pbxedit::parse_owned(&xcodeproj)?;
-    let ref_guid = find_package_or_hint(&root, container, &args.package, &xcodeproj)?;
+    heal_interrupted_mutation(&pbxedit::document_path(&xcodeproj), &ctx.out);
+    let mut document = Editable::parse(&xcodeproj)?;
+    let package_id = find_package_or_hint(&document, container, &args.package, &xcodeproj)?;
 
     if args.product.is_none() && args.target.is_none() {
         // For a local package, Xcode may omit the product->package back-ref, so
         // pass the local package's declared product names to clean those up too.
-        let orphans = local_product_names(&root, &ref_guid, &xcodeproj);
-        spm_pbxproj::remove_package(&mut root, &ref_guid, &orphans).map_err(CliError::new)?;
-        pbxedit::write_pbxproj(&xcodeproj, &root)?;
+        let orphans = local_product_names(&document, &package_id, &xcodeproj);
+        remove_package(&mut document, &package_id, &orphans)?;
+        document.write(&xcodeproj)?;
         remove_pin(container, &args.package);
         report_removed(ctx, &args.package, None);
     } else {
-        let unlinked = spm_pbxproj::unlink(
-            &mut root,
-            &ref_guid,
+        let unlinked = unlink(
+            &mut document,
+            &package_id,
             args.product.as_deref(),
             args.target.as_deref(),
-        )
-        .map_err(CliError::new)?;
+        )?;
         if unlinked.is_empty() {
             return Err(CliError::new(
                 "no matching product/target link found to unlink",
             ));
         }
-        pbxedit::write_pbxproj(&xcodeproj, &root)?;
+        document.write(&xcodeproj)?;
         report_removed(ctx, &args.package, Some(&unlinked));
     }
     Ok(())
@@ -745,7 +749,7 @@ fn remove_pin(container: &Container, query: &str) {
     let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&text) else {
         return;
     };
-    let id = spm_pbxproj::identity_from_url(query);
+    let id = identity_from_url(query);
     // v2/v3 store `pins` at the top level; v1 nested them under `object` (and
     // its pins carry no `identity` key — derive one, as `read_resolved` does).
     let has_top = json.get("pins").is_some_and(serde_json::Value::is_array);
@@ -773,21 +777,21 @@ fn pin_identity(pin: &serde_json::Value) -> Option<String> {
             pin.get("repositoryURL")
                 .or_else(|| pin.get("package"))
                 .and_then(serde_json::Value::as_str)
-                .map(spm_pbxproj::identity_from_url)
+                .map(identity_from_url)
         })
 }
 
 /// The product names a local package declares — passed to `remove_package` so
 /// products Xcode wrote without a `package` back-ref are cleaned up. Empty for a
 /// remote package or when the local manifest can't be read.
-fn local_product_names(root: &Value, ref_guid: &str, xcodeproj: &Path) -> Vec<String> {
-    let Some(pkg) = spm_pbxproj::list_packages(root)
+fn local_product_names(document: &Editable, package_id: &str, xcodeproj: &Path) -> Vec<String> {
+    let Some(pkg) = list_packages(document)
         .into_iter()
-        .find(|p| p.guid == ref_guid)
+        .find(|p| p.id == package_id)
     else {
         return Vec::new();
     };
-    let spm_pbxproj::PackageKind::Local { relative_path } = pkg.kind else {
+    let PackageKind::Local { relative_path } = pkg.kind else {
         return Vec::new();
     };
     let dir = xcodeproj
@@ -803,13 +807,13 @@ fn local_product_names(root: &Value, ref_guid: &str, xcodeproj: &Path) -> Vec<St
 /// Locate a package by query, or fail with a transitive-dependency hint when the
 /// name is a resolved-but-not-declared pin.
 fn find_package_or_hint(
-    root: &Value,
+    document: &Editable,
     container: &Container,
     query: &str,
     xcodeproj: &Path,
 ) -> Result<String, CliError> {
-    if let Some(guid) = spm_pbxproj::find_package(root, query) {
-        return Ok(guid);
+    if let Some(id) = find_package(document, query) {
+        return Ok(id);
     }
     Err(transitive_hint(container, query).unwrap_or_else(|| {
         CliError::new(format!(
@@ -824,7 +828,7 @@ fn find_package_or_hint(
 /// `Package.resolved` but not directly declared) — you can't manage it directly.
 fn transitive_hint(container: &Container, query: &str) -> Option<CliError> {
     let pins = read_resolved(&resolved_path(container));
-    let id = spm_pbxproj::identity_from_url(query);
+    let id = identity_from_url(query);
     pins.contains_key(&id).then(|| {
         CliError::new(format!(
             "`{query}` is a transitive dependency (resolved but not directly declared); it's pulled in by one of your direct packages — change that package's requirement or remove it instead"
@@ -858,14 +862,14 @@ fn update(ctx: &mut Context, args: &UpdateArgs) -> CliResult {
 
     let xcodeproj = pick_xcodeproj(ctx, &container, Some(package))?;
     pbxedit::guard_generated(ctx.project_file(&container), &xcodeproj, args.force)?;
-    let pbxproj_path = xcodeproj.join("project.pbxproj");
-    heal_interrupted_mutation(&pbxproj_path, &ctx.out);
-    let pristine = std::fs::read_to_string(&pbxproj_path)
-        .map_err(|e| CliError::new(format!("failed to read {}: {e}", pbxproj_path.display())))?;
-    let mut root = pbxedit::parse_owned(&xcodeproj)?;
-    let ref_guid = find_package_or_hint(&root, &container, package, &xcodeproj)?;
-    spm_pbxproj::set_requirement(&mut root, &ref_guid, &spec).map_err(CliError::new)?;
-    pbxedit::write_pbxproj(&xcodeproj, &root)?;
+    let document_path = pbxedit::document_path(&xcodeproj);
+    heal_interrupted_mutation(&document_path, &ctx.out);
+    let pristine = std::fs::read_to_string(&document_path)
+        .map_err(|e| CliError::new(format!("failed to read {}: {e}", document_path.display())))?;
+    let mut document = Editable::parse(&xcodeproj)?;
+    let package_id = find_package_or_hint(&document, &container, package, &xcodeproj)?;
+    set_requirement(&mut document, &package_id, &spec)?;
+    document.write(&xcodeproj)?;
 
     if !args.no_resolve {
         // Drop the stale pin so resolution re-pins to the new requirement
@@ -876,7 +880,7 @@ fn update(ctx: &mut Context, args: &UpdateArgs) -> CliResult {
         remove_pin(&container, package);
         if let Err(e) = resolve_packages(&container, None, &ctx.out, false) {
             restore_lockfile(ctx, &container, snapshot);
-            let _ = pbxedit::write_atomic(&pbxproj_path, &pristine);
+            let _ = pbxedit::write_atomic(&document_path, &pristine);
             ctx.out
                 .note("rolled the requirement change back (the resolve failed)");
             return Err(e);
@@ -915,8 +919,8 @@ fn update_resolve(ctx: &mut Context, container: &Container, package: Option<&str
         // "updated <typo>" after a no-op resolve.
         if let Some(p) = package {
             let xcodeproj = pick_xcodeproj(ctx, container, Some(p))?;
-            let root = pbxedit::parse_owned(&xcodeproj)?;
-            find_package_or_hint(&root, container, p, &xcodeproj)?;
+            let document = Editable::parse(&xcodeproj)?;
+            find_package_or_hint(&document, container, p, &xcodeproj)?;
         }
         // xcodebuild has no "update"; drop the pin(s) so the resolve re-pins to
         // the latest allowed — one package, or the whole lockfile. Snapshot
@@ -1228,9 +1232,90 @@ fn pick_xcodeproj(
 
 /// Whether a member project declares a package matching `query`.
 fn member_declares(xcodeproj: &Path, query: &str) -> bool {
-    sweetpad_lib::project::parse_pbxproj(xcodeproj)
+    Editable::parse(xcodeproj)
         .ok()
-        .is_some_and(|root| spm_pbxproj::find_package(&root, query).is_some())
+        .is_some_and(|document| find_package(&document, query).is_some())
+}
+
+// The package edits, in whichever format the bundle holds. A package id is the
+// reference object's GUID in a pbxproj and the package's name in a
+// `project.xcproj` — [`DeclaredPackage::id`] carries whichever the document
+// uses, and each backend takes back only its own.
+
+fn list_packages(document: &Editable) -> Vec<DeclaredPackage> {
+    match document {
+        Editable::Pbxproj(root) => spm_pbxproj::list_packages(root),
+        Editable::Xcproj(root) => spm_xcproj::list_packages(root),
+    }
+}
+
+fn find_package(document: &Editable, query: &str) -> Option<String> {
+    match document {
+        Editable::Pbxproj(root) => spm_pbxproj::find_package(root, query),
+        Editable::Xcproj(root) => spm_xcproj::find_package(root, query),
+    }
+}
+
+fn add_remote(
+    document: &mut Editable,
+    url: &str,
+    spec: &RequirementSpec,
+) -> Result<String, CliError> {
+    match document {
+        Editable::Pbxproj(root) => spm_pbxproj::add_remote_dependency(root, url, spec),
+        Editable::Xcproj(root) => spm_xcproj::add_remote_dependency(root, url, spec),
+    }
+    .map_err(CliError::new)
+}
+
+fn add_local(document: &mut Editable, relative_path: &str) -> Result<String, CliError> {
+    match document {
+        Editable::Pbxproj(root) => spm_pbxproj::add_local_dependency(root, relative_path),
+        Editable::Xcproj(root) => spm_xcproj::add_local_dependency(root, relative_path),
+    }
+    .map_err(CliError::new)
+}
+
+fn link_product(
+    document: &mut Editable,
+    package_id: &str,
+    product: &str,
+    target: &str,
+) -> CliResult {
+    match document {
+        Editable::Pbxproj(root) => spm_pbxproj::link_product(root, package_id, product, target),
+        Editable::Xcproj(root) => spm_xcproj::link_product(root, package_id, product, target),
+    }
+    .map_err(CliError::new)
+}
+
+fn set_requirement(document: &mut Editable, package_id: &str, spec: &RequirementSpec) -> CliResult {
+    match document {
+        Editable::Pbxproj(root) => spm_pbxproj::set_requirement(root, package_id, spec),
+        Editable::Xcproj(root) => spm_xcproj::set_requirement(root, package_id, spec),
+    }
+    .map_err(CliError::new)
+}
+
+fn remove_package(document: &mut Editable, package_id: &str, orphans: &[String]) -> CliResult {
+    match document {
+        Editable::Pbxproj(root) => spm_pbxproj::remove_package(root, package_id, orphans),
+        Editable::Xcproj(root) => spm_xcproj::remove_package(root, package_id, orphans),
+    }
+    .map_err(CliError::new)
+}
+
+fn unlink(
+    document: &mut Editable,
+    package_id: &str,
+    product: Option<&str>,
+    target: Option<&str>,
+) -> Result<Vec<(String, String)>, CliError> {
+    match document {
+        Editable::Pbxproj(root) => spm_pbxproj::unlink(root, package_id, product, target),
+        Editable::Xcproj(root) => spm_xcproj::unlink(root, package_id, product, target),
+    }
+    .map_err(CliError::new)
 }
 
 /// A crash-safe pristine copy of a file about to be mutated in multiple steps.
@@ -1285,8 +1370,8 @@ fn heal_interrupted_mutation(target: &Path, out: &Output) {
     }
 }
 
-/// Path to the local package directory, relative to the project directory, for
-/// an `XCLocalSwiftPackageReference.relativePath`.
+/// Path to the local package directory, relative to the project directory — how
+/// either document format records a local package.
 fn local_relative_path(xcodeproj: &Path, url: &str) -> Result<String, CliError> {
     let target = PathBuf::from(url);
     if !target.exists() {
@@ -1343,7 +1428,7 @@ fn clone_dir() -> PathBuf {
 /// the precise identity→subpath map in `workspace-state.json` (robust to
 /// monorepo sub-paths and case differences), falling back to a basename guess.
 fn resolve_checkout(base: &Path, url: &str) -> Option<PathBuf> {
-    let identity = spm_pbxproj::identity_from_url(url);
+    let identity = identity_from_url(url);
     checkout_from_state(base, &identity).or_else(|| checkout_by_name(&base.join("checkouts"), url))
 }
 
@@ -1378,7 +1463,7 @@ fn checkout_by_name(checkouts: &Path, url: &str) -> Option<PathBuf> {
     if direct.is_dir() {
         return Some(direct);
     }
-    let id = spm_pbxproj::identity_from_url(url);
+    let id = identity_from_url(url);
     std::fs::read_dir(checkouts)
         .ok()?
         .flatten()
@@ -1537,7 +1622,7 @@ fn read_resolved(path: &Path) -> HashMap<String, Pin> {
                 pin.get("repositoryURL")
                     .or_else(|| pin.get("package"))
                     .and_then(serde_json::Value::as_str)
-                    .map(spm_pbxproj::identity_from_url)
+                    .map(identity_from_url)
             });
         let Some(identity) = identity else {
             continue;
