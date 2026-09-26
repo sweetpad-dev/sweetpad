@@ -444,18 +444,27 @@ pub fn target_pairs(members: &[PackageMember]) -> Vec<(PathBuf, Vec<String>)> {
 /// Run `swift package dump-package` in `dir` and parse its JSON. `None` on any
 /// failure (no toolchain, manifest doesn't compile, unexpected output) — the
 /// caller degrades to the names it can read from files.
+///
+/// SwiftPM creates its scratch directory even to only evaluate a manifest, so
+/// the dump gets a throwaway one under the temp dir: reading a package never
+/// leaves a `.build/` inside it. SwiftPM caches evaluated manifests per user,
+/// not in the scratch directory, so a fresh one costs no re-evaluation.
 fn dump_package(dir: &Path, developer_dir: Option<&Path>) -> Option<Value> {
+    let scratch = scratch_dir();
     let mut cmd = Command::new("swift");
     if let Some(dev) = developer_dir {
         cmd.env("DEVELOPER_DIR", dev);
     }
     let output = cmd
-        .args(["package", "dump-package"])
+        .args(["package", "--scratch-path"])
+        .arg(&scratch)
+        .arg("dump-package")
         .current_dir(dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .output()
-        .ok()?;
+        .output();
+    let _ = fs::remove_dir_all(&scratch);
+    let output = output.ok()?;
     if !output.status.success() {
         return None;
     }
@@ -463,6 +472,15 @@ fn dump_package(dir: &Path, developer_dir: Option<&Path>) -> Option<Value> {
     // Skip any leading non-JSON chatter, like the CLI's other JSON readers.
     let start = text.find('{')?;
     serde_json::from_str(&text[start..]).ok()
+}
+
+/// A path no other dump uses, in this process or another: [`resolve`] runs a
+/// level's dumps concurrently. SwiftPM creates the directory itself.
+fn scratch_dir() -> PathBuf {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!("sweetpad-dump-package-{}-{n}", std::process::id()))
 }
 
 fn read_manifest(manifest: &Value) -> ManifestNames {
@@ -779,5 +797,28 @@ mod tests {
             serde_json::json!({"len": 10, "mtime": "99", "products": ["LibA"]}),
         );
         assert!(cached_manifest(&entries, Path::new("/pkg"), (10, 99)).is_none());
+    }
+
+    #[test]
+    fn a_dump_writes_nothing_into_the_package() {
+        let have_swift = Command::new("swift")
+            .arg("--version")
+            .output()
+            .is_ok_and(|out| out.status.success());
+        if !have_swift {
+            eprintln!("skipping: needs the Swift toolchain to evaluate a manifest");
+            return;
+        }
+        let dir = package_dir("dump", None);
+        fs::write(
+            dir.join("Package.swift"),
+            "// swift-tools-version:5.9\nimport PackageDescription\n\
+             let package = Package(name: \"Dumped\")\n",
+        )
+        .unwrap();
+        let manifest = dump_package(&dir, None).expect("the manifest evaluates");
+        assert_eq!(manifest.get("name").and_then(Value::as_str), Some("Dumped"));
+        assert!(!dir.join(".build").exists());
+        let _ = fs::remove_dir_all(&dir);
     }
 }
