@@ -4717,6 +4717,8 @@ fn batch_lldb_args(target: &LldbTarget, cmds: &[String], on_crash: &[String]) ->
 /// exception name/reason are set only for an Objective-C exception.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct DiagnoseOutcome {
+    /// The debuggee's pid, from lldb's own `Process <pid> launched|stopped|…`.
+    pid: Option<u32>,
     stop_reason: Option<String>,
     signal: Option<String>,
     exit_status: Option<i32>,
@@ -4737,6 +4739,17 @@ impl DiagnoseOutcome {
 /// as the result. Section extraction is best-effort; the raw transcript is
 /// always carried alongside for the cases parsing can't cover.
 fn parse_diagnose(transcript: &str) -> DiagnoseOutcome {
+    // lldb's status lines start the line; the app's own log lines carry its
+    // pid too, but inside a `Name[pid:tid]` prefix, never after `Process `.
+    let pid = transcript.lines().find_map(|l| {
+        let mut words = l.strip_prefix("Process ")?.split(' ');
+        let pid = words.next()?.parse().ok()?;
+        matches!(
+            words.next()?,
+            "launched:" | "stopped" | "exited" | "resuming"
+        )
+        .then_some(pid)
+    });
     let stop_reason = transcript.lines().find_map(|l| {
         l.split_once("stop reason = ")
             .map(|(_, r)| r.trim().to_string())
@@ -4791,6 +4804,7 @@ fn parse_diagnose(transcript: &str) -> DiagnoseOutcome {
         .unwrap_or_default();
 
     DiagnoseOutcome {
+        pid,
         stop_reason,
         signal,
         exit_status,
@@ -4956,17 +4970,29 @@ fn diagnose_mac(ctx: &mut Context, plan: &RunPlan, timeout_secs: u64) -> Command
         app.bundle_id
     ));
     let executable = app.executable.clone();
+    // lldb prints `Process <pid> launched` only once `run` returns, so a run
+    // that times out still running names its pid only through the kill.
+    let killed = std::cell::RefCell::new(Vec::new());
     let (transcript, timed_out) =
         run_lldb_captured(&args, &env, batch_timeout(timeout_secs), || {
-            macwin::pids_for_executable(&executable).unwrap_or_default()
+            let pids = macwin::pids_for_executable(&executable).unwrap_or_default();
+            killed.borrow_mut().clone_from(&pids);
+            pids
         })?;
+    let outcome = parse_diagnose(&transcript);
+    let pid = outcome.pid.or_else(|| {
+        killed
+            .borrow()
+            .first()
+            .and_then(|pid| u32::try_from(*pid).ok())
+    });
     Ok(Rendered::data(DiagnoseReport {
         target: "macOS",
         bundle_id: app.bundle_id,
-        pid: None,
+        pid,
         timed_out,
         timeout_secs,
-        outcome: parse_diagnose(&transcript),
+        outcome,
         transcript,
     }))
 }
@@ -7333,6 +7359,7 @@ mod tests {
 frame #1: 0x0002 CoreFoundation`+[NSException raise:format:] + 128\n\
 @@SWEETPAD_END@@\nProcess 67090 exited with status = 9 (0x00000009) killed\n";
         let o = parse_diagnose(t);
+        assert_eq!(o.pid, Some(67090));
         assert!(o.stopped());
         assert_eq!(o.stop_reason.as_deref(), Some("hit Objective-C exception"));
         assert_eq!(o.exception_name.as_deref(), Some("MyExc"));
@@ -7352,11 +7379,24 @@ Process 67104 exited with status = 0 (0x00000000)\n\
 error: unable to evaluate expression while the process is exited\n\
 @@SWEETPAD_REASON@@\n@@SWEETPAD_BT@@\n@@SWEETPAD_END@@\n";
         let o = parse_diagnose(t);
+        assert_eq!(o.pid, Some(67104));
         assert!(!o.stopped());
         assert_eq!(o.exit_status, Some(0));
         assert_eq!(o.exception_name, None);
         assert_eq!(o.exception_reason, None);
         assert!(o.backtrace.is_empty());
+    }
+
+    #[test]
+    fn a_run_still_going_names_no_pid_from_the_apps_own_log() {
+        // Captured from a `diagnose --mac` that timed out: lldb had not
+        // returned from `run`, and the app's log lines carry its pid in their
+        // own prefix.
+        let t = "Current executable set to '/dd/App.app/Contents/MacOS/App' (arm64).\n\
+Breakpoint 1: where = libobjc.A.dylib`objc_exception_throw, address = 0x01\n\
+2026-09-26 20:19:01.084636+0200 App[67475:20392328] [Connection] Unable to re-register with \
+Process Instance Registry, error: Error Domain=NSCocoaErrorDomain Code=4097\r\n";
+        assert_eq!(parse_diagnose(t).pid, None);
     }
 
     #[test]
@@ -7369,6 +7409,7 @@ error: unable to evaluate expression while the process is exited\n\
 * frame #0: 0x00 libsystem_kernel.dylib`__pthread_kill + 8\n\
 @@SWEETPAD_END@@\n";
         let o = parse_diagnose(t);
+        assert_eq!(o.pid, Some(30835));
         assert!(o.stopped());
         assert_eq!(o.signal.as_deref(), Some("SIGABRT"));
         assert_eq!(o.exception_name, None); // not an ObjC exception → no $arg1

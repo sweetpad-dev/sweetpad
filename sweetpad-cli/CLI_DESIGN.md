@@ -1843,9 +1843,13 @@ Both build before they hand off to lldb, so both take the `--` tail (§3).
 
 **`app diagnose`** is the agent-facing verb: build, launch under `lldb -b` with a
 breakpoint on `objc_exception_throw`, run bounded by `--timeout`, and on the
-first stop print a structured report — `stopReason`, `signal`, `exitStatus`,
-`exception { name, reason }`, `backtrace`, and the full lldb `transcript` — then
-kill the app and quit. `-o json` is the point of the verb: the freeform lldb text
+first stop print a structured report — `pid`, `stopReason`, `signal`,
+`exitStatus`, `exception { name, reason }`, `backtrace`, and the full lldb
+`transcript` — then kill the app and quit. On a simulator the pid is the one
+`simctl` launched; on macOS lldb owns the launch, so it is read from lldb's
+`Process <pid> launched|stopped|exited` line, and a run that times out while
+lldb's `run` still blocks (so no such line has printed) takes it from the
+process the timeout kills. `-o json` is the point of the verb: the freeform lldb text
 becomes fields an agent acts on, with the raw transcript alongside for whatever
 parsing can't reach. Human mode prints a one-line verdict and the backtrace. lldb
 recognizes an ObjC throw natively (`stop reason = hit Objective-C exception`);
