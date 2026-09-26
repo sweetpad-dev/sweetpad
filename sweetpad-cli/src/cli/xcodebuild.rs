@@ -12,8 +12,29 @@ use crate::cli::output::Output;
 use crate::cli::resolve::Container;
 use crate::cli::{CliError, ErrorContext, ErrorKind, buildlog, process};
 
-/// Everything needed to invoke `xcodebuild build` for a resolved target.
+/// The `xcodebuild` action a [`BuildPlan`] runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuildAction {
+    /// `build`: the targets the scheme builds for running.
+    Build,
+    /// `build-for-testing`: the targets the scheme tests, plus whatever they
+    /// depend on, compiled without running a test.
+    BuildForTesting,
+}
+
+impl BuildAction {
+    fn as_arg(self) -> &'static str {
+        match self {
+            Self::Build => "build",
+            Self::BuildForTesting => "build-for-testing",
+        }
+    }
+}
+
+/// Everything needed to invoke `xcodebuild build` (or `build-for-testing`) for
+/// a resolved target.
 pub struct BuildPlan<'a> {
+    pub action: BuildAction,
     pub container: &'a Container,
     pub scheme: &'a str,
     pub configuration: &'a str,
@@ -48,14 +69,15 @@ pub struct BuildPlan<'a> {
 }
 
 impl BuildPlan<'_> {
-    /// The `xcodebuild` argument vector: `[clean] build -scheme … -configuration
-    /// … [-destination …] [-sdk …] [-workspace|-project …]`.
+    /// The `xcodebuild` argument vector: `[clean] build|build-for-testing
+    /// -scheme … -configuration … [-destination …] [-sdk …]
+    /// [-workspace|-project …]`.
     fn args(&self) -> Vec<String> {
         let mut args: Vec<String> = Vec::new();
         if self.clean {
             args.push("clean".into());
         }
-        args.push("build".into());
+        args.push(self.action.as_arg().into());
         args.push("-scheme".into());
         args.push(self.scheme.into());
         args.push("-configuration".into());
@@ -1411,6 +1433,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
     fn build_args_for_project() {
         let c = project();
         let plan = BuildPlan {
+            action: BuildAction::Build,
             container: &c,
             scheme: "App",
             configuration: "Debug",
@@ -1443,6 +1466,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
     fn hot_build_appends_interposable_and_frontend_settings() {
         let c = project();
         let plan = BuildPlan {
+            action: BuildAction::Build,
             container: &c,
             scheme: "App",
             configuration: "Debug",
@@ -1471,6 +1495,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
     fn hot_mac_build_disables_hardened_runtime_and_sandbox() {
         let c = project();
         let plan = BuildPlan {
+            action: BuildAction::Build,
             container: &c,
             scheme: "App",
             configuration: "Debug",
@@ -1487,6 +1512,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         assert!(args.contains(&"ENABLE_APP_SANDBOX=NO".to_string()));
         // A non-hot mac build keeps the project's own protections.
         let cold = BuildPlan {
+            action: BuildAction::Build,
             container: &c,
             scheme: "App",
             configuration: "Debug",
@@ -1508,6 +1534,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         let c = project();
         let stripped = Path::new("/cache/hot/Debug-nosandbox.entitlements");
         let plan = BuildPlan {
+            action: BuildAction::Build,
             container: &c,
             scheme: "App",
             configuration: "Debug",
@@ -1529,6 +1556,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         // Simulator hot builds never sign with it — the strip is a macOS
         // concern (and the caller never sets it for simulators anyway).
         let sim = BuildPlan {
+            action: BuildAction::Build,
             container: &c,
             scheme: "App",
             configuration: "Debug",
@@ -1551,6 +1579,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
     fn build_args_workspace_omits_clean_and_destination() {
         let c = Container::Workspace(PathBuf::from("/work/App.xcworkspace"));
         let plan = BuildPlan {
+            action: BuildAction::Build,
             container: &c,
             scheme: "App",
             configuration: "Release",
@@ -1585,6 +1614,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         let c = Container::Project(PathBuf::from("/work/App.xcodeproj"));
         let bundle = PathBuf::from("/state/App-build.xcresult");
         let plan = BuildPlan {
+            action: BuildAction::Build,
             container: &c,
             scheme: "App",
             configuration: "Debug",
@@ -1602,6 +1632,45 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             .position(|a| a == "-resultBundlePath")
             .expect("build asks for a result bundle");
         assert_eq!(args[at + 1], bundle.display().to_string());
+    }
+
+    #[test]
+    fn a_test_build_asks_for_build_for_testing_and_every_test_target() {
+        // `test build` compiles what `test run` would run, so the plan swaps
+        // the action and nothing else: the same result-bundle slot (the editor's
+        // index reads this build's log too) and no `-only-testing`, which
+        // `build-for-testing` ignores when deciding what to compile.
+        let c = project();
+        let bundle = PathBuf::from("/state/App-build.xcresult");
+        let plan = BuildPlan {
+            action: BuildAction::BuildForTesting,
+            container: &c,
+            scheme: "App",
+            configuration: "Debug",
+            destination: Some("platform=iOS Simulator,id=UDID"),
+            passthrough: &[],
+            sdk: None,
+            clean: false,
+            hot: false,
+            hot_entitlements: None,
+            result_bundle: Some(bundle),
+        };
+        assert_eq!(
+            plan.args(),
+            vec![
+                "build-for-testing",
+                "-scheme",
+                "App",
+                "-configuration",
+                "Debug",
+                "-destination",
+                "platform=iOS Simulator,id=UDID",
+                "-resultBundlePath",
+                "/state/App-build.xcresult",
+                "-project",
+                "/work/App.xcodeproj",
+            ]
+        );
     }
 
     #[test]

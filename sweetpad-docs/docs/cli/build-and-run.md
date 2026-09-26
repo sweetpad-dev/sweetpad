@@ -55,7 +55,9 @@ sweetpad build --watch
 :::note
 
 `sweetpad build` builds the app target. It does not compile your test targets, so a green build can
-sit next to a test target that no longer compiles. Run [`sweetpad test`](./testing.md) for that.
+sit next to a test target that no longer compiles. Run
+[`sweetpad test build`](./testing.md#compiling-the-tests-without-running-them) to compile them
+without running anything.
 
 :::
 

@@ -6,7 +6,9 @@
 //! `test run --failed` reruns just the last run's failures, `test attachments`
 //! exports what those tests attached, and `test output` shows what they
 //! printed. A verdict is what the summary carries; the evidence behind it lives
-//! in the bundle.
+//! in the bundle. `test build` compiles the test targets without running them;
+//! it is a build rather than a run, so it writes `build`'s record and leaves the
+//! retained bundle alone.
 
 use std::path::{Path, PathBuf};
 
@@ -75,6 +77,12 @@ pub struct TestArgs {
 pub enum Action {
     /// Run the resolved scheme's tests (the default action: 'sweetpad test').
     Run,
+    /// Compile the scheme's test targets without running them (xcodebuild's
+    /// 'build-for-testing').
+    ///
+    /// Its output matches 'sweetpad build', and 'sweetpad build diagnostics'
+    /// reads its errors back afterwards.
+    Build,
     /// Export the last run's attachments (screenshots, UI dumps) as files.
     Attachments(AttachmentsArgs),
     /// Show what the last run's tests printed, per test.
@@ -122,6 +130,7 @@ pub fn run(ctx: &mut Context, args: &TestArgs, action: Option<&Action>) -> Comma
     match action {
         Some(Action::Attachments(opts)) => return attachments(ctx, args, opts),
         Some(Action::Output(opts)) => return output(ctx, args, opts),
+        Some(Action::Build) => return build(ctx, args),
         Some(Action::Run) | None => {}
     }
     let passthrough = ctx.xcodebuild_args(&args.passthrough)?;
@@ -147,6 +156,45 @@ pub fn run(ctx: &mut Context, args: &TestArgs, action: Option<&Action>) -> Comma
         return super::watch_swift(ctx, &root, |ctx| test(ctx, &run_args));
     }
     test(ctx, &run_args)
+}
+
+/// `test build`: compile what `test run` would run, and run none of it. The
+/// build is `build`'s own (see [`super::build::for_testing`]); what this adds
+/// is refusing the flags that only shape a run, which would otherwise parse —
+/// they are resource-global — and be silently dropped.
+fn build(ctx: &mut Context, args: &TestArgs) -> CommandResult {
+    let given = run_only_flags(args);
+    if let Some((last, rest)) = given.split_last() {
+        let (flags, verb) = if rest.is_empty() {
+            ((*last).to_string(), "applies")
+        } else {
+            (format!("{} and {last}", rest.join(", ")), "apply")
+        };
+        return Err(CliError::new(format!(
+            "{flags} {verb} to a test run, not a build: 'test build' compiles every test \
+             target in the scheme and runs none"
+        )));
+    }
+    super::build::for_testing(ctx, args.watch, args.show_command, &args.passthrough)
+}
+
+/// The flags on `args` that shape a test run and mean nothing to a build.
+/// `--only-testing` is among them because `build-for-testing` compiles every
+/// target the scheme tests whatever the filter says, so no narrowing is on
+/// offer.
+fn run_only_flags(args: &TestArgs) -> Vec<&'static str> {
+    [
+        ("--only-testing", !args.only_testing.is_empty()),
+        ("--skip-testing", !args.skip_testing.is_empty()),
+        ("--failed", args.failed),
+        ("--result-bundle", args.result_bundle.is_some()),
+        ("--junit", args.junit.is_some()),
+        ("--retry-flaky", args.retry_flaky.is_some()),
+        ("--coverage", args.coverage),
+    ]
+    .into_iter()
+    .filter_map(|(flag, given)| given.then_some(flag))
+    .collect()
 }
 
 /// The xcodebuild test result: a pass/fail summary line and failure list in
@@ -1174,6 +1222,89 @@ mod tests {
     use super::*;
     use std::fmt::Write as _;
     use std::path::PathBuf;
+
+    /// Parse a `sweetpad test …` command line down to its resource flags and
+    /// action.
+    fn parse_test(argv: &[&str]) -> (TestArgs, Option<Action>) {
+        use clap::Parser;
+        let cli = crate::cli::Cli::try_parse_from(["sweetpad", "test"].iter().chain(argv))
+            .unwrap_or_else(|e| panic!("`test {}` rejected: {e}", argv.join(" ")));
+        match cli.resource {
+            Some(crate::cli::Resource::Test { args, action }) => (args, action),
+            other => panic!("parsed as {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_build_is_a_verb_that_takes_the_build_flags() {
+        // The target selection, the dry run, `--watch`, and the `--` tail all
+        // parse, on either side of the verb, and none of them reads as a run
+        // flag.
+        let (args, action) = parse_test(&[
+            "--scheme",
+            "App",
+            "build",
+            "--on",
+            "booted",
+            "--show-command",
+            "--",
+            "-skipMacroValidation",
+        ]);
+        assert!(matches!(action, Some(Action::Build)));
+        assert!(args.show_command);
+        assert_eq!(args.passthrough, ["-skipMacroValidation"]);
+        assert!(run_only_flags(&args).is_empty());
+
+        let (args, _) = parse_test(&["build", "--watch"]);
+        assert!(args.watch);
+        assert!(run_only_flags(&args).is_empty());
+    }
+
+    #[test]
+    fn test_build_refuses_the_flags_that_only_shape_a_run() {
+        // They are resource-global, so they parse after `build`; each one has
+        // to be named rather than dropped. `--only-testing` especially, since
+        // it reads like it would narrow the build and cannot.
+        let (args, _) = parse_test(&["build", "--only-testing", "AppTests"]);
+        assert_eq!(run_only_flags(&args), ["--only-testing"]);
+
+        let (args, _) = parse_test(&[
+            "build",
+            "--skip-testing",
+            "AppUITests",
+            "--failed",
+            "--result-bundle",
+            "r.xcresult",
+            "--junit",
+            "j.xml",
+            "--retry-flaky",
+            "2",
+            "--coverage",
+        ]);
+        assert_eq!(
+            run_only_flags(&args),
+            [
+                "--skip-testing",
+                "--failed",
+                "--result-bundle",
+                "--junit",
+                "--retry-flaky",
+                "--coverage"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_test_build_writes_the_build_slot_not_the_retained_run() {
+        // `test build` hands its plan the build's result bundle. Were that the
+        // retained run's slot, compiling the tests would erase the failures
+        // `--failed`, `test output`, and `test attachments` read back.
+        let c = Container::Project(PathBuf::from("/work/App.xcodeproj"));
+        assert_ne!(
+            xcodebuild::build_result_bundle(&c),
+            retained_bundle_path(&c)
+        );
+    }
 
     #[test]
     fn retained_bundle_paths_are_stable_and_distinct() {

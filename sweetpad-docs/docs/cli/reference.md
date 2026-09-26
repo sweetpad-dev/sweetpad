@@ -23,7 +23,7 @@ The CLI describes itself, and that is the authority: `sweetpad --help` lists the
 | ------------------- | ---------------------------------------------------------------------------------- |
 | `sweetpad run`      | The flagship loop: build, install, launch, and follow logs. Press `r` to rebuild. |
 | `sweetpad build`    | Compile the resolved scheme. `--watch` rebuilds on every Swift save; `--clean` first cleans. |
-| `sweetpad test`     | Run the tests. Supports `--only-testing`, `--skip-testing`, `--failed`, `--retry-flaky`, `--coverage`, `--junit`, `--watch`. |
+| `sweetpad test`     | Run the tests. Supports `--only-testing`, `--skip-testing`, `--failed`, `--retry-flaky`, `--coverage`, `--junit`, `--watch`. `sweetpad test build` compiles them without running. |
 | `sweetpad clean`    | Clean build artifacts; `--purge` also deletes DerivedData.                        |
 | `sweetpad archive`  | Archive and export an `.ipa` (`--export-method`, `--output`).                     |
 | `sweetpad format`   | Format Swift sources (`--check` to verify only; `--tool swiftlint` to lint). Alias: `fmt`. |

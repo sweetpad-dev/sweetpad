@@ -523,6 +523,9 @@ pub enum Resource {
     /// 'app run').
     Run(commands::app::RunArgs),
     /// Compile the project ('build' alone runs 'build start').
+    ///
+    /// Builds the scheme's Run targets only; 'sweetpad test build' compiles its
+    /// test targets.
     Build {
         #[command(flatten)]
         args: commands::build::StartArgs,

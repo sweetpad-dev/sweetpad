@@ -1,11 +1,13 @@
 //! `sweetpad build …` — compile the project (via `xcodebuild`, or `swift build`
 //! for a Swift package). `build` stays purely "compile"; the run/install/launch
-//! lifecycle lives under [`crate::cli::commands::app`].
+//! lifecycle lives under [`crate::cli::commands::app`]. `test build` is this
+//! same build over the scheme's test targets ([`for_testing`]).
 
 use clap::Subcommand;
 
 use crate::cli::buildlog::{self, DiagKind};
 use crate::cli::output::Output;
+use crate::cli::xcodebuild::BuildAction;
 use crate::cli::{
     CommandResult, Context, ErrorKind, Render, Rendered, resolve, swiftpm, xcodebuild,
 };
@@ -75,14 +77,50 @@ pub fn run(ctx: &mut Context, args: &StartArgs, action: Option<&Action>) -> Comm
             }
             diagnostics(ctx)
         }
-        Some(Action::Start) | None if args.watch => watch(ctx, args),
-        Some(Action::Start) | None => start(ctx, args.clean, args.show_command, &args.passthrough),
+        Some(Action::Start) | None if args.watch => {
+            watch(ctx, BuildAction::Build, args.clean, &args.passthrough)
+        }
+        Some(Action::Start) | None => start(
+            ctx,
+            BuildAction::Build,
+            args.clean,
+            args.show_command,
+            &args.passthrough,
+        ),
     }
 }
 
-/// `build --watch`: build now, then rebuild on every Swift save. A
-/// failed build reports and keeps watching; Ctrl-C ends the loop.
-fn watch(ctx: &mut Context, args: &StartArgs) -> CommandResult {
+/// `test build`: this module's build, run as `build-for-testing` over the
+/// targets the scheme tests. It shares everything else with `build` — the
+/// transcript, `-q`, the machine result, and the record `build diagnostics`
+/// reads back — so a test that stops compiling reads like any broken build.
+pub(crate) fn for_testing(
+    ctx: &mut Context,
+    watch_saves: bool,
+    show_command: bool,
+    passthrough: &[String],
+) -> CommandResult {
+    if watch_saves {
+        return watch(ctx, BuildAction::BuildForTesting, false, passthrough);
+    }
+    start(
+        ctx,
+        BuildAction::BuildForTesting,
+        false,
+        show_command,
+        passthrough,
+    )
+}
+
+/// `build --watch` (and `test build --watch`): build now, then rebuild on
+/// every Swift save. A failed build reports and keeps watching; Ctrl-C ends
+/// the loop.
+fn watch(
+    ctx: &mut Context,
+    action: BuildAction,
+    clean: bool,
+    passthrough: &[String],
+) -> CommandResult {
     let resolved = resolve::resolve(ctx)?;
     let root = resolved
         .container
@@ -95,9 +133,9 @@ fn watch(ctx: &mut Context, args: &StartArgs) -> CommandResult {
         );
 
     // Only the first iteration honors --clean.
-    let mut clean = args.clean;
+    let mut clean = clean;
     super::watch_swift(ctx, &root, move |ctx| {
-        let result = start(ctx, clean, false, &args.passthrough);
+        let result = start(ctx, action, clean, false, passthrough);
         clean = false;
         result
     })
@@ -162,7 +200,8 @@ struct BuildReport {
     /// The `.app` this build produced, so a caller doesn't hand-assemble a
     /// DerivedData path. Only the machine-readable modes resolve it (see
     /// [`product_path`]); `null` when the scheme builds no launchable product
-    /// (a Swift package, a library-only scheme) or the lookup failed.
+    /// (a Swift package, a library-only scheme), for a test build, or when the
+    /// lookup failed.
     product_path: Option<std::path::PathBuf>,
 }
 
@@ -207,6 +246,7 @@ impl Render for SpmBuildPreview {
 
 fn start(
     ctx: &mut Context,
+    action: BuildAction,
     clean: bool,
     show_command: bool,
     passthrough: &[String],
@@ -214,7 +254,14 @@ fn start(
     // Both entry points (`build` and each `--watch` iteration) land here, so
     // the project file's `[xcodebuild] args` join the tail once.
     let passthrough = &ctx.xcodebuild_args(passthrough)?;
-    let mut resolved = resolve::resolve(ctx)?;
+    // A test build compiles what `test run` would run, so it settles on the
+    // same scheme, configuration, and destination: the testing context.
+    let testing = action == BuildAction::BuildForTesting;
+    let mut resolved = if testing {
+        resolve::resolve_testing(ctx)?
+    } else {
+        resolve::resolve(ctx)?
+    };
 
     // Swift packages have no simulator destination; build them with the `swift`
     // toolchain rather than routing through xcodebuild (which would force a
@@ -227,7 +274,7 @@ fn start(
         if show_command {
             let build_preview = xcodebuild::CommandPreview {
                 program: "swift",
-                args: swiftpm::build_args(&configuration, passthrough),
+                args: swiftpm::build_args(&configuration, testing, passthrough),
                 cwd: swiftpm::package_dir(&resolved.container),
             };
             // `--clean` runs `swift package clean` first — the preview shows
@@ -246,12 +293,15 @@ fn start(
             }
             return Ok(Rendered::data(build_preview));
         }
-        ctx.out.note(&format!(
-            "building Swift package ({configuration}) with swift build"
-        ));
+        ctx.out.note(&if testing {
+            format!("building Swift package tests ({configuration}) with swift build --build-tests")
+        } else {
+            format!("building Swift package ({configuration}) with swift build")
+        });
         swiftpm::build(
             &resolved.container,
             &configuration,
+            testing,
             clean,
             ctx.out.is_json() || ctx.out.is_ndjson(),
             passthrough,
@@ -271,6 +321,7 @@ fn start(
     let target = resolve::build_target(ctx, &mut resolved, !show_command)?;
 
     let plan = xcodebuild::BuildPlan {
+        action,
         container: &resolved.container,
         scheme: &target.scheme,
         configuration: &target.configuration,
@@ -294,11 +345,19 @@ fn start(
     }
     // Remember the picks — but never a `--on`-sourced destination (a one-off
     // reference must not retarget the next plain build).
-    resolve::remember(ctx, &resolved, &target, ctx.targeting.on.is_none());
+    let remember_destination = ctx.targeting.on.is_none();
+    if testing {
+        resolve::remember_testing(ctx, &resolved, &target, remember_destination);
+    } else {
+        resolve::remember(ctx, &resolved, &target, remember_destination);
+    }
 
     ctx.out.note(&format!(
-        "building {} ({}) for {}",
-        target.scheme, target.configuration, target.destination
+        "building {}{} ({}) for {}",
+        target.scheme,
+        if testing { "'s tests" } else { "" },
+        target.configuration,
+        target.destination
     ));
 
     let stats = plan
@@ -322,8 +381,11 @@ fn start(
 /// renders nothing — so only the machine-readable modes pay for it. And a
 /// scheme can legitimately produce nothing launchable, so every failure maps to
 /// `None`: a build that succeeded must not fail over the path lookup.
+///
+/// A test build names none. What it wrote is the test bundles, and the app the
+/// locator would name is built only when a test target depends on it.
 fn product_path(out: &Output, plan: &xcodebuild::BuildPlan<'_>) -> Option<std::path::PathBuf> {
-    if !(out.is_json() || out.is_ndjson()) {
+    if !(out.is_json() || out.is_ndjson()) || plan.action == BuildAction::BuildForTesting {
         return None;
     }
     xcodebuild::resolved_settings(plan)

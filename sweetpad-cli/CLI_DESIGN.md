@@ -93,6 +93,7 @@ sweetpad run [--on X] [--hot]     the flagship loop (= app run)
 sweetpad build [--clean|--watch|--show-command] [-- XCODEBUILD_ARGS]
 sweetpad build diagnostics        last build's errors/warnings, no rebuild
 sweetpad test [--failed|--retry-flaky N|--coverage|--junit P|--watch]
+sweetpad test build               compile the test targets, run none, §9p
 sweetpad test attachments         export the last run's screenshots/dumps, §9l
 sweetpad test output              what the last run's tests printed, §9l
 sweetpad clean [--purge]          xcodebuild clean; --purge adds DerivedData
@@ -2160,6 +2161,42 @@ entitlement either way.
 **A physical device** is refused. Its containers stay on the device, so the
 error names `xcrun devicectl device copy to` and `copy from`, with the device
 and bundle id filled in.
+
+## 9p. v8 — `test build`: compiling what `test` would run
+
+`build` compiles the scheme's Run targets and nothing else, so it succeeds while
+a test target fails to compile. Agents are told to use `build -q` as the cheap
+"does it still compile" check, so a break confined to test code passed it
+silently. The only other route was the undocumented passthrough `sweetpad build
+-- build-for-testing`.
+
+```
+sweetpad test build [--watch] [--show-command] [-- XCODEBUILD_ARGS]
+```
+
+**A build, not a run.** The verb is `build` with xcodebuild's `build-for-testing`
+action in place of `build`: one `BuildPlan`, so the transcript, `-q`, and the `-o
+json`/`ndjson` result are the same, and it writes the one build record `build
+diagnostics` reads back. The result bundle it asks for is the build's slot, never
+the bundle `test run` retains, so compiling the tests cannot erase the failures
+that `--failed`, `test output`, and `test attachments` read. It passes
+`-resultBundlePath` for `build`'s reason: without it xcodebuild writes no
+activity log, and `xcode-build-server` has nothing to read. `productPath` is
+`null`, because what a test build writes is the test bundles.
+
+**Targeting is `test run`'s.** The scheme, configuration, and destination come
+from the testing context, so it compiles what `test run` would run.
+
+**No `--only-testing`.** Measured on Xcode 27: `build-for-testing
+-only-testing:A` still compiles every test target the scheme tests, and a compile
+error in a target the filter leaves out still fails the build. A filter would
+promise a narrowing that never happens. The run flags (`--only-testing`,
+`--skip-testing`, `--failed`, `--result-bundle`, `--junit`, `--retry-flaky`,
+`--coverage`) are resource-global, so they parse after `build`; they are refused
+by name, not dropped.
+
+`--watch` is `build --watch`'s loop unchanged. A Swift package runs `swift build
+--build-tests`.
 
 ## 10. Testing
 

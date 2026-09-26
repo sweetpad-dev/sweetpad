@@ -79,7 +79,13 @@ nothing.
 
 ```bash
 sweetpad build -q                                       # silent unless it matters
+sweetpad test build -q                                  # the same, for test code
 ```
+
+`sweetpad build` compiles only the scheme's Run targets, so a test that no
+longer compiles still passes it. After you change test code, check with
+`sweetpad test build -q`. It compiles the test targets without running them and
+reports the same way, including `build diagnostics` afterwards.
 
 Never pipe a build through `tail -N` to save context — truncation drops the
 diagnostics precisely when you need them.
@@ -93,9 +99,9 @@ sweetpad build diagnostics -o json
 ```
 
 This is the fast path for "why did it fail". The whole agent loop is
-`sweetpad build -q`, and on a non-zero exit `sweetpad build diagnostics -o json`
-for structured errors and warnings (file, line, message) without a second
-compile.
+`sweetpad build -q` (or `sweetpad test build -q` when you touched tests), and on
+a non-zero exit `sweetpad build diagnostics -o json` for structured errors and
+warnings (file, line, message) without a second compile.
 
 ## Run the app without blocking
 
@@ -156,6 +162,7 @@ bounded by `--timeout` (default 30s).
 sweetpad test -o json
 sweetpad test --failed -o json                          # only last run's failures
 sweetpad test --only-testing MyAppTests/LoginTests -o json
+sweetpad test build -q                                  # compile the tests, run none
 ```
 
 `--coverage` adds a coverage summary; `--junit <path>` writes a CI report;

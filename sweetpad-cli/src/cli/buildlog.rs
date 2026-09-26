@@ -84,11 +84,12 @@ pub fn parse_line(line: &str) -> Event {
         .unwrap_or_else(|| parse_task(line, t))
 }
 
-/// Terminal `** … **` banners.
+/// Terminal `** … **` banners. `build-for-testing` closes on `** TEST BUILD
+/// … **`, which is a build's outcome, not a test run's.
 fn parse_banner(t: &str) -> Option<Event> {
-    let kind = if t.contains("** BUILD SUCCEEDED **") {
+    let kind = if t.contains("** BUILD SUCCEEDED **") || t.contains("** TEST BUILD SUCCEEDED **") {
         ResultKind::BuildSucceeded
-    } else if t.contains("** BUILD FAILED **") {
+    } else if t.contains("** BUILD FAILED **") || t.contains("** TEST BUILD FAILED **") {
         ResultKind::BuildFailed
     } else if t.contains("** TEST SUCCEEDED **") {
         ResultKind::TestSucceeded
@@ -1276,6 +1277,16 @@ The following build commands failed:
         assert_eq!(
             parse_line("** TEST FAILED **"),
             Event::Result(ResultKind::TestFailed)
+        );
+        // `build-for-testing` ran no test, so its banner is a build's: it
+        // stamps the time on success and survives `-q` on failure.
+        assert_eq!(
+            parse_line("** TEST BUILD SUCCEEDED **"),
+            Event::Result(ResultKind::BuildSucceeded)
+        );
+        assert_eq!(
+            parse_line("** TEST BUILD FAILED **"),
+            Event::Result(ResultKind::BuildFailed)
         );
     }
 

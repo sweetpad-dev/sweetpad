@@ -887,6 +887,7 @@ impl RunPlan {
 impl RunPlan {
     fn build_plan(&self) -> xcodebuild::BuildPlan<'_> {
         xcodebuild::BuildPlan {
+            action: xcodebuild::BuildAction::Build,
             container: &self.resolved.container,
             scheme: &self.scheme,
             configuration: &self.configuration,

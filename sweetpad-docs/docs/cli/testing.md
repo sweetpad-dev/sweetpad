@@ -44,6 +44,27 @@ Red tests exit with code `3`, the same code a failed build uses, since both mean
 the answer was no". A missing scheme or an unresolvable destination is code `4` instead, so a CI
 script can tell a genuine test failure apart from a broken invocation.
 
+## Compiling the tests without running them
+
+`sweetpad test build` compiles the test targets and stops, the way `sweetpad build` does for the app.
+Nothing launches, so it's a quick way to check that a change didn't break a test:
+
+```console
+$ sweetpad test build
+building SweetpadCIApp's tests (Debug) for platform=iOS Simulator,id=F92801F8-…
+  Compiling AppTests.swift
+  Linking SweetpadCIAppTests
+✓ Build succeeded (5.6s)
+```
+
+Its output matches `sweetpad build`'s: `-q` and `-o json` work the same, a failure exits `3`, and
+`sweetpad build diagnostics` reads its errors back. It picks the scheme, configuration, and
+destination the way `sweetpad test` does. It doesn't touch the retained result bundle, so
+`--failed`, `test output`, and `test attachments` still read your last run.
+
+There's no `--only-testing` here. xcodebuild compiles every test target in the scheme even when
+given a filter, so the flag would narrow nothing.
+
 ## Running just some of the tests
 
 `--only-testing` and `--skip-testing` narrow the run. Both are repeatable, and both take an

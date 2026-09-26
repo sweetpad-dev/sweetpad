@@ -215,7 +215,8 @@ sweetpad build -o quiet || {
 ```
 
 Bear in mind `sweetpad build` compiles the app target and not your test targets, so a hook like this
-won't catch a test that no longer compiles.
+won't catch a test that no longer compiles. Add `sweetpad test build -o quiet` for that. It compiles
+the test targets without running them.
 
 ## Reading results in a script
 

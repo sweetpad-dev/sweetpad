@@ -418,13 +418,17 @@ pub fn configuration_arg(configuration: &str) -> &'static str {
 
 /// The `swift build` argv for a package — shared by [`build`] and the
 /// `--show-command` preview, so the dry run prints exactly what would run.
+/// `build_tests` adds `--build-tests`, which compiles the test targets too.
 #[must_use]
-pub fn build_args(configuration: &str, passthrough: &[String]) -> Vec<String> {
+pub fn build_args(configuration: &str, build_tests: bool, passthrough: &[String]) -> Vec<String> {
     let mut args: Vec<String> = vec![
         "build".into(),
         "--configuration".into(),
         configuration_arg(configuration).into(),
     ];
+    if build_tests {
+        args.push("--build-tests".into());
+    }
     args.extend(passthrough.iter().cloned());
     args
 }
@@ -437,6 +441,7 @@ pub fn build_args(configuration: &str, passthrough: &[String]) -> Vec<String> {
 pub fn build(
     container: &Container,
     configuration: &str,
+    build_tests: bool,
     clean: bool,
     quiet: bool,
     passthrough: &[String],
@@ -455,7 +460,7 @@ pub fn build(
             );
         }
     }
-    let args = build_args(configuration, passthrough);
+    let args = build_args(configuration, build_tests, passthrough);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let ok =
         process::run("swift", &arg_refs, cwd.as_deref(), quiet).context("building the package")?;
@@ -635,6 +640,26 @@ mod tests {
         )
         .unwrap();
         assert_eq!(m.scheme_names(), vec!["P-Package"]);
+    }
+
+    #[test]
+    fn a_test_build_asks_swift_build_for_the_test_targets() {
+        let tail = vec!["-Xswiftc".to_string(), "-DFOO".to_string()];
+        assert_eq!(
+            build_args("Debug", true, &tail),
+            [
+                "build",
+                "--configuration",
+                "debug",
+                "--build-tests",
+                "-Xswiftc",
+                "-DFOO"
+            ]
+        );
+        assert_eq!(
+            build_args("Release", false, &[]),
+            ["build", "--configuration", "release"]
+        );
     }
 
     #[test]
