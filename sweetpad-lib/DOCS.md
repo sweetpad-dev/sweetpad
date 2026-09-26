@@ -1277,7 +1277,8 @@ Four more the Xcode 27 capture hit, all fixed in the repo:
   is for the oracle. When resolving against a live Xcode, `xcode::locate`
   canonicalizes the install, so a symlinked `DEVELOPER_DIR` resolves through
   the real app name as `xcodebuild` does, and both spellings share one catalog
-  cache file.
+  cache file. `xcode::install_at`, behind the extension's `xcodeVersion`,
+  reports the Developer directory through the same real path.
 - **`01_clone_corpus.py` re-resolves `latest-release`** whenever a clone is
   missing, so re-materialising the corpus for a new version silently moves the
   pins. Use **`--from-manifest`** to clone each project at its recorded SHA.
