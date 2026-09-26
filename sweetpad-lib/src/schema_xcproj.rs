@@ -118,6 +118,15 @@ pub fn insert_target_key(target: &mut Object, key: &str, value: Value) {
     insert_in_order(target, &TARGET_KEYS, key, value);
 }
 
+/// Insert `key` on the object a scope names — the document for the project,
+/// the target for a target — where Xcode would have written it.
+pub fn insert_scope_key(owner: &mut Object, scope: &Scope, key: &str, value: Value) {
+    match scope {
+        Scope::Project => insert_document_key(owner, key, value),
+        Scope::Target(_) => insert_target_key(owner, key, value),
+    }
+}
+
 /// Insert `key` on a navigator node where Xcode would have written it.
 pub fn insert_node_key(node: &mut Object, key: &str, value: Value) {
     insert_in_order(node, &NODE_KEYS, key, value);
@@ -352,7 +361,7 @@ pub fn set(
         .as_object_mut()
         .ok_or_else(|| "scope is not an object".to_string())?;
     if owner.get("build-settings").is_none() {
-        owner.insert_sorted("build-settings".to_string(), Value::Object(Object::new()));
+        insert_scope_key(owner, scope, "build-settings", Value::Object(Object::new()));
     }
     owner
         .get_mut("build-settings")

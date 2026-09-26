@@ -286,7 +286,7 @@ fn write_key(
         .as_object_mut()
         .ok_or_else(|| "scope is not an object".to_string())?;
     if owner.get("build-settings").is_none() {
-        owner.insert_sorted("build-settings".to_string(), Value::Object(Object::new()));
+        schema::insert_scope_key(owner, scope, "build-settings", Value::Object(Object::new()));
     }
     let settings = owner
         .get_mut("build-settings")

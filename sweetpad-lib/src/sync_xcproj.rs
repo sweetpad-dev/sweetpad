@@ -354,7 +354,7 @@ fn files_mut(root: &mut Value) -> Result<&mut crate::xcproj::Array, String> {
         .as_object_mut()
         .ok_or_else(|| "document root is not an object".to_string())?;
     if root.get("files").is_none() {
-        root.insert_sorted("files".to_string(), Value::Array(Vec::new().into()));
+        crate::schema_xcproj::insert_document_key(root, "files", Value::Array(Vec::new().into()));
     }
     root.get_mut("files")
         .and_then(Value::as_array_mut)

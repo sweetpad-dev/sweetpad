@@ -237,6 +237,69 @@ fn a_target_scope_edits_only_that_target() {
     );
 }
 
+/// A scope with no settings yet grows a `build-settings` map at the position
+/// Xcode writes one: last in a target, and after `targets` in the document.
+#[test]
+fn a_new_settings_map_goes_where_xcode_writes_it() {
+    let mut doc = document(
+        r#"{
+  "default-configuration": "Debug",
+  "configurations": [ "Debug" ],
+  "files": [],
+  "targets": [
+    { "name": "Tool", "id": "AAAAAAAAAAAAAAAAAAAAAAAA", "product-type": "tool", "build-phases": [ "compile-sources" ] },
+  ],
+  "last-upgrade": "27.2",
+}
+"#,
+    );
+    settings::set(
+        &mut doc,
+        &Scope::Project,
+        &[],
+        &[assign("SDKROOT", "macosx")],
+    )
+    .unwrap();
+    settings::set(
+        &mut doc,
+        &Scope::Target("Tool".into()),
+        &[],
+        &[assign("PRODUCT_NAME", "Tool")],
+    )
+    .unwrap();
+
+    let keys = |object: &xcproj::Value| -> Vec<String> {
+        object
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(k, _)| k.to_string())
+            .collect()
+    };
+    assert_eq!(
+        keys(&doc),
+        [
+            "default-configuration",
+            "configurations",
+            "files",
+            "targets",
+            "build-settings",
+            "last-upgrade"
+        ]
+    );
+    let target = &doc.get("targets").unwrap().as_array().unwrap()[0];
+    assert_eq!(
+        keys(target),
+        [
+            "name",
+            "id",
+            "product-type",
+            "build-phases",
+            "build-settings"
+        ]
+    );
+}
+
 #[test]
 fn an_unknown_configuration_or_target_is_an_error() {
     let mut doc = project();
