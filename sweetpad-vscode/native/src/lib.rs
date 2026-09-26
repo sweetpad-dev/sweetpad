@@ -285,6 +285,7 @@ fn core_options(
         sdksettings_root: None,
         catalog_cache: None,
         derived_data_path: options.derived_data_path.map(PathBuf::from),
+        overrides: Vec::new(),
         // The extension locates the built app from these paths, so they must
         // follow the host's Xcode Derived Data configuration.
         read_xcode_locations: true,

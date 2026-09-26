@@ -1607,6 +1607,54 @@ pub fn passthrough_derived_data(
     Ok(derived_data)
 }
 
+/// The `KEY=VALUE` build settings in a passthrough, in order: what
+/// `xcodebuild` applies above every project layer. The value after a flag
+/// that takes one is skipped, since `-destination platform=macOS` is a
+/// specifier, not a setting named `platform`. A flag missing from
+/// [`VALUE_FLAGS`] reads as a switch, which costs at most one setting read
+/// from its value.
+fn passthrough_settings(passthrough: &[String]) -> Vec<(String, String)> {
+    let mut settings = Vec::new();
+    let mut iter = passthrough.iter();
+    while let Some(arg) = iter.next() {
+        if VALUE_FLAGS.contains(&arg.as_str()) {
+            iter.next();
+        } else if let Some((key, value)) = arg.split_once('=')
+            && key.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+            && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            settings.push((key.to_string(), value.to_string()));
+        }
+    }
+    settings
+}
+
+/// The `xcodebuild` flags that take the next argument as their value.
+const VALUE_FLAGS: [&str; 22] = [
+    "-project",
+    "-workspace",
+    "-target",
+    "-scheme",
+    "-configuration",
+    "-sdk",
+    "-arch",
+    "-destination",
+    "-destination-timeout",
+    "-xcconfig",
+    "-xctestrun",
+    "-testPlan",
+    "-toolchain",
+    "-jobs",
+    "-derivedDataPath",
+    "-resultBundlePath",
+    "-resultStreamPath",
+    "-archivePath",
+    "-exportPath",
+    "-exportOptionsPlist",
+    "-clonedSourcePackagesDirPath",
+    "-packageCachePath",
+];
+
 /// The build settings that move the product somewhere the locator can't
 /// model.
 const RELOCATING_SETTINGS: [&str; 3] = ["SYMROOT", "OBJROOT", "CONFIGURATION_BUILD_DIR"];
@@ -1641,7 +1689,8 @@ pub fn refuse_relocating_settings(args: &[String], from_file: &[String]) -> Resu
 
 /// Resolve every target's build settings for a plan through the in-process
 /// resolver (the engine behind `settings show`), with no `xcodebuild` spawn —
-/// including a passthrough `-derivedDataPath`. Feed the result to
+/// including a passthrough's `-derivedDataPath` and its `KEY=VALUE` build
+/// settings. Feed the result to
 /// [`app_bundle`] to name the product a build of this plan writes. Swift
 /// packages build no `.app`, so they have nothing to resolve here.
 ///
@@ -1675,6 +1724,9 @@ pub fn resolved_settings(plan: &BuildPlan<'_>) -> Result<Vec<TargetBuildSettings
         sdksettings_root: None,
         catalog_cache: None,
         derived_data_path: passthrough_derived_data(plan.passthrough, plan.container)?,
+        // The build takes them too: a `PRODUCT_BUNDLE_IDENTIFIER=` or
+        // `PRODUCT_NAME=` changes what gets installed and launched.
+        overrides: passthrough_settings(plan.passthrough),
         // Callers install, launch, and report what this resolves, so it has to
         // name the bundle `xcodebuild` actually wrote — including when the user
         // has moved Derived Data in Xcode (issue #306).
@@ -2396,6 +2448,77 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         }
 
         assert!(refuse_relocating_settings(&s(&["TARGET_NAME=x"]), &[]).is_ok());
+    }
+
+    #[test]
+    fn a_passthroughs_settings_are_its_assignments_not_its_flag_values() {
+        let args: Vec<String> = [
+            "-quiet",
+            "PRODUCT_BUNDLE_IDENTIFIER=com.x.y",
+            "-destination",
+            "OS=17.0,platform=iOS Simulator",
+            "-derivedDataPath",
+            "A=b",
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG STAGING",
+            "-only-testing:App/T=1",
+            "PRODUCT_NAME=",
+        ]
+        .iter()
+        .map(|a| (*a).to_string())
+        .collect();
+        let pair = |k: &str, v: &str| (k.to_string(), v.to_string());
+        assert_eq!(
+            passthrough_settings(&args),
+            [
+                pair("PRODUCT_BUNDLE_IDENTIFIER", "com.x.y"),
+                pair("SWIFT_ACTIVE_COMPILATION_CONDITIONS", "DEBUG STAGING"),
+                pair("PRODUCT_NAME", ""),
+            ]
+        );
+    }
+
+    /// The fixture app's own project: a macOS app target whose bundle id and
+    /// product name a command-line setting overrides.
+    fn fixture_app() -> Container {
+        Container::Project(
+            PathBuf::from(env!("SWEETPAD_LIB_DIR"))
+                .join("fixtures/_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj"),
+        )
+    }
+
+    fn located(container: &Container, passthrough: &[String]) -> AppBundle {
+        let plan = BuildPlan {
+            action: BuildAction::Build,
+            container,
+            scheme: "SweetpadCIMac",
+            configuration: "Debug",
+            destination: Some("platform=macOS"),
+            sdk: None,
+            clean: false,
+            hot: false,
+            hot_entitlements: None,
+            result_bundle: None,
+            passthrough,
+        };
+        app_bundle(&resolved_settings(&plan).unwrap(), plan.destination).unwrap()
+    }
+
+    #[test]
+    fn the_locator_takes_the_passthroughs_build_settings() {
+        let container = fixture_app();
+        let plain = located(&container, &[]);
+        assert_eq!(plain.bundle_id, "dev.sweetpad.ci.mac");
+
+        let overridden = located(
+            &container,
+            &[
+                "PRODUCT_BUNDLE_IDENTIFIER=com.example.override".to_string(),
+                "PRODUCT_NAME=Renamed".to_string(),
+            ],
+        );
+        assert_eq!(overridden.bundle_id, "com.example.override");
+        assert_eq!(overridden.path.file_name().unwrap(), "Renamed.app");
+        assert_eq!(overridden.path.parent(), plain.path.parent());
     }
 
     #[test]

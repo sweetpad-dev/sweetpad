@@ -1189,13 +1189,12 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
 /// The first passthrough flag that moves xcodebuild's output past where the
 /// in-process app locator looks, if any. `-derivedDataPath` is not one of
 /// them — [`xcodebuild::passthrough_derived_data`] follows it, and refuses the
-/// relocating build settings outright — so this is the pair the locator can
-/// neither follow nor recognize: a `TARGET_BUILD_DIR=` override, and an
-/// `-xcconfig` free to set any of them from a file.
+/// relocating build settings outright — and neither is a `KEY=VALUE` such as
+/// `TARGET_BUILD_DIR=`, which the locator resolves with the build's other
+/// command-line settings. What it can neither follow nor recognize is an
+/// `-xcconfig`, free to set any of them from a file.
 fn passthrough_moves_output(passthrough: &[String]) -> Option<&String> {
-    passthrough
-        .iter()
-        .find(|t| *t == "-xcconfig" || t.starts_with("TARGET_BUILD_DIR="))
+    passthrough.iter().find(|t| *t == "-xcconfig")
 }
 
 /// Say so when the build's products land somewhere the install step won't
@@ -6905,8 +6904,10 @@ mod tests {
     fn only_the_relocations_the_locator_misses_are_warned_about() {
         let argv = |args: &[&str]| args.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
 
-        // Followed: the resolver takes the same -derivedDataPath the build does.
+        // Followed: the resolver takes the same -derivedDataPath and
+        // command-line settings the build does.
         assert!(passthrough_moves_output(&argv(&["-derivedDataPath", "/tmp/dd"])).is_none());
+        assert!(passthrough_moves_output(&argv(&["TARGET_BUILD_DIR=/tmp/t"])).is_none());
         // Refused outright by `xcodebuild::passthrough_derived_data`.
         for relocating in [
             "SYMROOT=/tmp/s",
@@ -6925,7 +6926,6 @@ mod tests {
         }
         // Neither followed nor refused — the warning's whole remit.
         assert!(passthrough_moves_output(&argv(&["-xcconfig", "Over.xcconfig"])).is_some());
-        assert!(passthrough_moves_output(&argv(&["TARGET_BUILD_DIR=/tmp/t"])).is_some());
         // An ordinary flag says nothing about the products dir.
         assert!(passthrough_moves_output(&argv(&["-allowProvisioningUpdates"])).is_none());
     }

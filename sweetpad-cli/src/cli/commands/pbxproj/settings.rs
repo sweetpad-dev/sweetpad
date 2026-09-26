@@ -691,6 +691,7 @@ fn resolve_effects(
                 sdksettings_root: None,
                 catalog_cache: None,
                 derived_data_path: None,
+                overrides: Vec::new(),
                 read_xcode_locations: true,
                 keys: Some(keys.to_vec()),
             };

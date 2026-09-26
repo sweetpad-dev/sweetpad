@@ -87,6 +87,33 @@ fn scratch_debug_resolves_against_active_xcode() {
 }
 
 #[test]
+fn command_line_overrides_win_over_the_project_in_order() {
+    // `xcodebuild … PRODUCT_NAME=A PRODUCT_NAME=B` builds `B`, and what
+    // derives from the setting follows it.
+    let opts = BuildSettingsOptions {
+        overrides: vec![
+            ("PRODUCT_NAME".to_string(), "First".to_string()),
+            ("PRODUCT_NAME".to_string(), "Renamed".to_string()),
+            (
+                "PRODUCT_BUNDLE_IDENTIFIER".to_string(),
+                "com.example.x".to_string(),
+            ),
+        ],
+        ..scratch_opts()
+    };
+    let s = resolve_one(opts);
+    assert_eq!(s.get("PRODUCT_NAME").map(String::as_str), Some("Renamed"));
+    assert_eq!(
+        s.get("PRODUCT_BUNDLE_IDENTIFIER").map(String::as_str),
+        Some("com.example.x")
+    );
+    let full = s
+        .get("FULL_PRODUCT_NAME")
+        .expect("FULL_PRODUCT_NAME present");
+    assert!(full.starts_with("Renamed"), "FULL_PRODUCT_NAME = {full}");
+}
+
+#[test]
 fn layers_extra_xcconfig_macos() {
     let opts = BuildSettingsOptions {
         xcconfig: Some(xcconfig_fixture("conditional-sdk")),

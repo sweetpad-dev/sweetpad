@@ -47,6 +47,9 @@ pub struct BuildSettingsOptions {
     pub catalog_cache: Option<PathBuf>,
     /// `xcodebuild -derivedDataPath` override.
     pub derived_data_path: Option<PathBuf>,
+    /// `KEY=VALUE` build settings from the `xcodebuild` command line, applied
+    /// above every other layer, in order, as `xcodebuild` applies them.
+    pub overrides: Vec<(String, String)>,
     /// Place build output the way this machine's Xcode is configured to,
     /// instead of assuming the stock DerivedData layout (see
     /// [`sweetpad_lib::derived_data`]). Interfaces that go on to install,
@@ -664,25 +667,28 @@ fn build_queries(
                 arch,
                 destination,
             );
-            for mut q in plan.entries {
-                if let Some(p) = &opts.derived_data_path {
-                    q = q.with_derived_data_path(p.clone());
-                }
-                queries.push(q);
-            }
+            queries.extend(plan.entries);
         }
         Selection::Target(target_name) | Selection::AutoScheme(target_name) => {
             let mut q = ResolveQuery::new(target_name, &opts.configuration, sdk, arch);
             if let Some(d) = destination {
                 q = q.with_destination(d.clone());
             }
-            if let Some(p) = &opts.derived_data_path {
-                q = q.with_derived_data_path(p.clone());
-            }
             queries.push(q);
         }
     }
     queries
+        .into_iter()
+        .map(|mut q| {
+            if let Some(p) = &opts.derived_data_path {
+                q = q.with_derived_data_path(p.clone());
+            }
+            for (key, value) in &opts.overrides {
+                q = q.with_override(key, value);
+            }
+            q
+        })
+        .collect()
 }
 
 #[cfg(test)]

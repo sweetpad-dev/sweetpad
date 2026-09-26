@@ -2732,6 +2732,27 @@ reason, since `null` alone reads the same as a scheme with nothing launchable.
 The same `note` explains any other failed lookup; a Swift package or a test
 build, which has no `.app` by design, gets none.
 
+### Command-line settings reach the locator
+
+`xcodebuild` applies a `KEY=VALUE` argument above every project layer, and the
+locator ignored them. With `PRODUCT_BUNDLE_IDENTIFIER=com.example.x` in the
+tail or in `[xcodebuild] args`, `app install` reported the project's bundle id,
+and `app launch` started a different app that happened to be installed under
+it. The assignments go into the resolver's command-line layer
+(`BuildSettingsOptions::overrides`, applied to every query in order), so the
+product path, bundle id and executable are the ones the build wrote.
+
+An assignment is an argument whose text before `=` is an identifier, skipping
+the value after a flag that takes one: `-destination 'OS=17.0,platform=iOS
+Simulator'` is a specifier, not a setting named `OS`. The flags are a fixed
+list; one missing from it reads as a switch, which costs at most one setting
+read from its value.
+
+A `TARGET_BUILD_DIR=` override is followed through the same layer, so the
+warning about output the locator cannot find is left to `-xcconfig`. The
+relocating settings stay refused: whether the resolver models a command-line
+`SYMROOT` the way `xcodebuild` does has not been checked against a capture.
+
 ## 10. Testing
 
 The CLI modules carry inline `#[cfg(test)]` units that need no Xcode, so the

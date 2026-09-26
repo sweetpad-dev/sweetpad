@@ -1612,6 +1612,7 @@ impl Server {
             sdksettings_root: None,
             catalog_cache: None,
             derived_data_path: self.derived_data_path.clone(),
+            overrides: Vec::new(),
             // The index must point at the same tree the editor's builds write
             // to, so honour whatever this machine's Xcode is configured with.
             read_xcode_locations: true,

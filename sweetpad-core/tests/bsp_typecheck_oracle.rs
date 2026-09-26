@@ -133,6 +133,7 @@ fn resolve_target(project: &Path, target: &str, dd: &Path) -> TargetCompilerArgu
         sdksettings_root: None,
         catalog_cache: None,
         derived_data_path: Some(dd.to_path_buf()),
+        overrides: Vec::new(),
         // The fixture pins its own DerivedData; reading the runner's Xcode
         // configuration would make the expectations machine-dependent.
         read_xcode_locations: false,
