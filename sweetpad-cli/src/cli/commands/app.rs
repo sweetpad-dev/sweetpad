@@ -774,10 +774,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::Run(args) => {
             ctx.targeting = args.target.clone().into();
-            crate::cli::settle_on_vs_mode(
-                &mut ctx.targeting,
-                args.mac || args.device || args.device_id.is_some(),
-            )?;
+            settle_mode(ctx, args.mac, args.device, args.device_id.as_deref())?;
             let (hot, hot_mode) = hot_settings(ctx, args);
             let passthrough = ctx.xcodebuild_args(&args.xcodebuild.passthrough)?;
             // The live build-and-run session streams its own output until you quit.
@@ -895,15 +892,22 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     }
 }
 
-/// One mode-vs-`--on` policy for the lifecycle stages, matching `app run`:
-/// a typed `--device`/`--device-id` beats an env-sourced `SWEETPAD_ON`
-/// (instead of silently losing to it), and a typed `--on` alongside them is
-/// rejected.
+/// One mode-vs-`--on` policy for every `app` verb that takes the mode flags,
+/// `run` and the lifecycle stages alike: a typed `--mac`, `--device` or
+/// `--device-id` beats an env-sourced `SWEETPAD_ON` (instead of silently
+/// losing to it), and a typed `--on` alongside one is rejected.
+fn settle_mode(
+    ctx: &mut Context,
+    mac: bool,
+    device: bool,
+    device_id: Option<&str>,
+) -> Result<(), CliError> {
+    crate::cli::settle_on_vs_mode(&mut ctx.targeting, mac || device || device_id.is_some())
+}
+
+/// [`settle_mode`] for the verbs that take [`StageTargetArgs`].
 fn settle_stage_mode(ctx: &mut Context, stage: &StageTargetArgs) -> Result<(), CliError> {
-    crate::cli::settle_on_vs_mode(
-        &mut ctx.targeting,
-        stage.device || stage.device_id.is_some(),
-    )
+    settle_mode(ctx, stage.mac, stage.device, stage.device_id.as_deref())
 }
 
 /// Open a URL on a simulator. Unlike the install/launch lifecycle, this needs

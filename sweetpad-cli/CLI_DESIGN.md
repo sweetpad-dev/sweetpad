@@ -360,6 +360,12 @@ explicit flag  >  env var  >  config file  >  remembered state  >  auto-discover
   `SWEETPAD_WORKSPACE` can't override a typed `--project`), and
   `SWEETPAD_NONINTERACTIVE` (boolean). Boolean `SWEETPAD_*` vars parse
   truthiness: `0`/`false`/`no`/`off`/empty mean **off**.
+- **`--on` versus the mode flags:** `--mac`, `--device` and `--device-id`
+  name a destination the way `--on` does, so every `app` verb that takes them
+  settles the pair with one check, `run` and the lifecycle stages alike: a
+  typed mode flag beats an exported `SWEETPAD_ON`, and a typed `--on` beside
+  one is a usage error, whether it names the same place (`--on mac --mac`) or
+  another (`--on "iPhone 17" --mac`).
 - **Remembered state:** the last interactive picks, saved per project, feed the
   layer just above auto-discovery so the daily loop doesn't re-prompt (§6).
   Only picker-settled values are remembered — a one-off flag/env/config

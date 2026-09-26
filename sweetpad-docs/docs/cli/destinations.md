@@ -223,7 +223,8 @@ sweetpad build --destination 'platform=iOS,id=00008110-000559182E90401E'
 sweetpad build --destination 'platform=macOS'
 ```
 
-`--on` and `--destination` are mutually exclusive, so pick one per command.
+`--on` and `--destination` are mutually exclusive, so pick one per command. On the `app` commands,
+`--on` is also exclusive with `--mac`, `--device`, and `--device-id`.
 
 Prefer `--destination` in CI. Fuzzy matching against whatever simulators a runner happens to have
 installed is a liability, and a pinned specifier fails loudly instead of quietly building for the
