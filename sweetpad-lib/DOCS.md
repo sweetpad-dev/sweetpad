@@ -1526,8 +1526,13 @@ A full library audit (line references against `54c40a1`) landed with commit
 - Catalog disk-cache writes are non-atomic on a path shared by two processes —
   write temp + `rename`.
 - `file_cache` stamp is `(len, mtime)` — fold in inode/ctime.
-- Process-lifetime caches never evict; disk `catalog-*.bin` never GC'd — wire
-  into `xcode::flush_caches()`; prune on write.
+- Process-lifetime caches never evict; disk `catalog-v<format>-*.bin` never
+  GC'd — wire into `xcode::flush_caches()`; prune on write. Pruning has to
+  spare other formats' files. Each `FORMAT_VERSION` names its own file, so the
+  brew CLI, a dev build and the addon don't evict each other, and no binary can
+  tell whether the sweetpad that reads another format is still installed. That
+  includes the unversioned `catalog-<hash>.bin` written by releases through
+  0.1.9.
 - Server exit mid-prepare orphans the spawned `xcodebuild`; `$/cancelRequest`
   is ignored — keep the child handle, kill on shutdown.
 - No lifecycle gating: requests served before `build/initialize` / after

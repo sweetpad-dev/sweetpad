@@ -42,10 +42,12 @@ use crate::xcspec::{self, Catalog, CliArgs, CompilerOption, ProductTypeDefaults}
 
 const MAGIC: &[u8; 4] = b"SPC1";
 /// Bump whenever the serialized layout (or the [`Catalog`] shape) changes, so a
-/// sweetpad upgrade transparently rebuilds disk caches and the embedded blob is
-/// rejected if stale. Bump it too when ingestion extracts something different
-/// from the same Xcode (e.g. which alias `sdk_paths` keeps): a disk cache is
-/// keyed by the Xcode it was parsed from, not by the sweetpad that wrote it.
+/// sweetpad upgrade writes fresh disk caches and the embedded blob is rejected
+/// if stale. Bump it too when ingestion extracts something different from the
+/// same Xcode (e.g. which alias `sdk_paths` keeps): a disk cache is validated
+/// against the Xcode it was parsed from, not the sweetpad that wrote it. Disk
+/// cache files are named by it (see [`cache_path_in`]), so binaries on
+/// different formats keep separate files.
 const FORMAT_VERSION: u8 = 9;
 
 #[derive(Debug)]
@@ -147,8 +149,8 @@ pub fn serialize_embedded(catalog: &Catalog, sdk_root: &Path) -> Vec<u8> {
 /// and is still valid, otherwise parsing the specs and writing the cache.
 ///
 /// `cache_override` pins the cache file path; when `None` a path under the OS
-/// cache dir, keyed by `xcspec_root`, is used. Cache writes are best-effort — a
-/// failure to persist never fails the call.
+/// cache dir, keyed by `xcspec_root` and [`FORMAT_VERSION`], is used. Cache
+/// writes are best-effort — a failure to persist never fails the call.
 pub fn load_cached_or_build(
     xcspec_root: &Path,
     sdksettings_root: Option<&Path>,
@@ -224,15 +226,23 @@ fn read_valid_cache(path: &Path, fingerprint: u64) -> Option<Catalog> {
 // Cache file placement + validation
 // ---------------------------------------------------------------------------
 
-/// Default cache file for a given xcspec root: `<cache-dir>/sweetpad/catalog-<hash>.bin`,
-/// where the hash is derived from the root's canonical path so distinct roots
-/// (e.g. different Xcodes) don't collide.
+/// Default cache file for a given xcspec root:
+/// `<cache-dir>/sweetpad/catalog-v<format>-<hash>.bin`.
 fn default_cache_path(xcspec_root: &Path) -> PathBuf {
+    cache_path_in(&cache_dir().join("sweetpad"), xcspec_root, FORMAT_VERSION)
+}
+
+/// The cache file under `dir` for `xcspec_root` in `format`. The hash is
+/// derived from the root's canonical path so distinct roots (e.g. different
+/// Xcodes) don't collide. The format version keeps the brew CLI, a dev build
+/// and the VS Code addon from sharing one file when they disagree on the
+/// format: each would reject the other's blob and parse the specs again on
+/// every switch. Files of other formats are left alone, since the sweetpad
+/// that reads one may still be installed.
+fn cache_path_in(dir: &Path, xcspec_root: &Path, format: u8) -> PathBuf {
     let canonical = fs::canonicalize(xcspec_root).unwrap_or_else(|_| xcspec_root.to_path_buf());
     let key = fnv1a(canonical.to_string_lossy().as_bytes(), FNV_OFFSET);
-    cache_dir()
-        .join("sweetpad")
-        .join(format!("catalog-{key:016x}.bin"))
+    dir.join(format!("catalog-v{format}-{key:016x}.bin"))
 }
 
 /// Base cache directory: `$SWEETPAD_CACHE_DIR`, else `$XDG_CACHE_HOME`, else
@@ -765,6 +775,24 @@ mod tests {
         let mut bytes = serialize(&sample(), 0);
         bytes[4] = FORMAT_VERSION.wrapping_add(1);
         assert!(matches!(deserialize(&bytes), Err(Error::Corrupt(_))));
+    }
+
+    #[test]
+    fn each_format_keeps_its_own_cache_file() {
+        let dir = Path::new("/cache/sweetpad");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("xcspec-cache/xcode-27.0.0");
+        let ours = cache_path_in(dir, &root, FORMAT_VERSION);
+        let older = cache_path_in(dir, &root, FORMAT_VERSION - 1);
+        assert_ne!(ours, older);
+        assert_eq!(ours.parent(), Some(dir));
+        let name = ours.file_name().and_then(OsStr::to_str).unwrap();
+        assert!(
+            name.starts_with(&format!("catalog-v{FORMAT_VERSION}-")),
+            "{name}"
+        );
+        // Another spelling of the same root shares the file.
+        let respelled = root.join("../xcode-27.0.0");
+        assert_eq!(cache_path_in(dir, &respelled, FORMAT_VERSION), ours);
     }
 
     #[test]
