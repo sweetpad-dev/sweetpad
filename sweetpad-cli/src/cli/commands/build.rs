@@ -4,6 +4,7 @@
 
 use clap::Subcommand;
 
+use crate::cli::buildlog::{self, DiagKind};
 use crate::cli::output::Output;
 use crate::cli::{
     CommandResult, Context, ErrorKind, Render, Rendered, resolve, swiftpm, xcodebuild,
@@ -98,21 +99,22 @@ impl Render for DiagnosticsReport {
         let ok = self.record["ok"].as_bool().unwrap_or(false);
         let errors = self.record["errors"].as_u64().unwrap_or(0);
         let warnings = self.record["warnings"].as_u64().unwrap_or(0);
+        let color = out.use_color();
+        let outcome = if ok { "succeeded" } else { "FAILED" };
         out.line(&format!(
             "last build: {} ({errors} error(s), {warnings} warning(s))",
-            if ok { "succeeded" } else { "FAILED" }
+            buildlog::outcome_word(ok, outcome, color)
         ));
         if let Some(diags) = self.record["diagnostics"].as_array() {
             for d in diags {
-                let location = d["location"]
-                    .as_str()
-                    .map(|l| format!("{l}: "))
-                    .unwrap_or_default();
-                out.line(&format!(
-                    "  {}: {location}{}",
-                    d["severity"].as_str().unwrap_or("note"),
-                    d["message"].as_str().unwrap_or_default()
-                ));
+                let kind = DiagKind::from_severity(d["severity"].as_str().unwrap_or("note"));
+                let line = buildlog::diagnostic_line(
+                    &kind,
+                    d["location"].as_str(),
+                    d["message"].as_str().unwrap_or_default(),
+                    color,
+                );
+                out.line(&format!("  {line}"));
             }
         }
     }

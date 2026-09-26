@@ -52,6 +52,18 @@ pub enum DiagKind {
     Note,
 }
 
+impl DiagKind {
+    /// The kind a recorded diagnostic's `severity` names.
+    #[must_use]
+    pub fn from_severity(severity: &str) -> Self {
+        match severity {
+            "error" => Self::Error,
+            "warning" => Self::Warning,
+            _ => Self::Note,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum ResultKind {
     BuildSucceeded,
@@ -299,17 +311,8 @@ pub fn render(event: &Event, color: bool, verbose: bool, quiet: bool) -> Option<
             kind,
             location,
             message,
-        } => {
-            let loc = location
-                .as_deref()
-                .map(|l| format!("{l}: "))
-                .unwrap_or_default();
-            match kind {
-                DiagKind::Error => Some(c.red(&format!("error: {loc}{message}"))),
-                DiagKind::Warning => Some(c.yellow(&format!("warning: {loc}{message}"))),
-                DiagKind::Note => verbose.then(|| c.dim(&format!("note: {loc}{message}"))),
-            }
-        }
+        } => (verbose || *kind != DiagKind::Note)
+            .then(|| diagnostic_line(kind, location.as_deref(), message, color)),
         Event::TestPassed { name, duration } => Some(c.green(&format!("  ✓ {name} ({duration})"))),
         Event::TestFailed { name } => Some(c.red(&format!("  ✗ {name}"))),
         Event::SuiteStarted { name } => Some(c.bold(&format!("Suite {name}"))),
@@ -761,6 +764,32 @@ fn parse_paren(tail: &str) -> String {
     }
 }
 
+/// One diagnostic as the build log shows it, `error: <location>: <message>`:
+/// red for an error, yellow for a warning, dim for a note.
+#[must_use]
+pub fn diagnostic_line(
+    kind: &DiagKind,
+    location: Option<&str>,
+    message: &str,
+    color: bool,
+) -> String {
+    let c = Colors::new(color);
+    let loc = location.map(|l| format!("{l}: ")).unwrap_or_default();
+    match kind {
+        DiagKind::Error => c.red(&format!("error: {loc}{message}")),
+        DiagKind::Warning => c.yellow(&format!("warning: {loc}{message}")),
+        DiagKind::Note => c.dim(&format!("note: {loc}{message}")),
+    }
+}
+
+/// The word a build's outcome is reported by, colored the way the build log's
+/// closing line is: green for a success, bold red for a failure.
+#[must_use]
+pub fn outcome_word(ok: bool, word: &str, color: bool) -> String {
+    let c = Colors::new(color);
+    if ok { c.green(word) } else { c.red_bold(word) }
+}
+
 /// ANSI color helpers, no-ops when color is disabled.
 struct Colors {
     on: bool,
@@ -802,6 +831,36 @@ impl Colors {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_recorded_diagnostic_is_colored_like_the_live_one() {
+        let line = |severity: &str, color| {
+            diagnostic_line(
+                &DiagKind::from_severity(severity),
+                Some("A.swift:3:1"),
+                "boom",
+                color,
+            )
+        };
+        assert_eq!(
+            line("error", true),
+            "\x1b[31merror: A.swift:3:1: boom\x1b[0m"
+        );
+        assert_eq!(
+            line("warning", true),
+            "\x1b[33mwarning: A.swift:3:1: boom\x1b[0m"
+        );
+        assert_eq!(
+            line("remark", true),
+            "\x1b[2mnote: A.swift:3:1: boom\x1b[0m"
+        );
+        assert_eq!(line("error", false), "error: A.swift:3:1: boom");
+        assert_eq!(
+            outcome_word(false, "FAILED", true),
+            "\x1b[1;31mFAILED\x1b[0m"
+        );
+        assert_eq!(outcome_word(true, "succeeded", false), "succeeded");
+    }
 
     /// The Xcode 26 shape: the validation step is named only in the list of
     /// failed build commands, with curly quotes.
