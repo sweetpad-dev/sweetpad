@@ -205,7 +205,8 @@ sweetpad test build -q                                  # compile the tests, run
 ```
 
 `--coverage` adds a coverage summary; `--junit <path>` writes a JUnit report
-with a test case for every test, passed and skipped ones included;
+with a test case for every test, passed and skipped ones included, and a
+failure's `app terminated:` line in its `<failure>` body;
 `--retry-flaky <N>` retries each failing test up to N times before calling it
 failed.
 

@@ -2292,8 +2292,12 @@ A failure's `message` attribute is the first line of its first message. An XML
 parser reads a raw line break inside an attribute as a space, so a Swift Testing
 expectation's `n → 2` ran into its headline. The `<failure>` body holds every
 message the test recorded (`messages` in JSON), in full, with a blank line
-between two. Text is escaped for XML 1.0, and the control characters it cannot
-carry at all, such as an ANSI escape's ESC, become U+FFFD.
+between two. When the failure has an exit behind it (§9m), its `app
+terminated: …` line comes last, a blank line after the messages, since a CI
+reader has only the report to learn why the app went. The report is written
+after the exit lookup for that reason. Text is escaped for XML 1.0, and the
+control characters it cannot carry at all, such as an ANSI escape's ESC, become
+U+FFFD.
 
 ## 9m. v8 — failures that name their own fix
 

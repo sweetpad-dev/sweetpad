@@ -630,17 +630,6 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     let summary = summary.unwrap_or_default();
     let passed = outcome.passed;
 
-    if let Some(junit) = args.junit.map(sweetpad_lib::project::absolutize) {
-        write_junit(&junit, &target.scheme, &summary)?;
-        if read_summary && summary.test_cases.is_none() {
-            ctx.out.warn(
-                "could not read the result bundle's test tree, so the JUnit report lists only \
-                 the failed tests",
-            );
-        }
-        ctx.out.note(&format!("junit report: {}", junit.display()));
-    }
-
     let coverage = args
         .coverage
         .then(|| xcodebuild::coverage_percent(&bundle))
@@ -658,6 +647,20 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         };
         terminations(&run, &summary.test_failures)
     };
+
+    // Written once the exits are known, so a failure's body can say what
+    // ended the app.
+    if let Some(junit) = args.junit.map(sweetpad_lib::project::absolutize) {
+        write_junit(&junit, &target.scheme, &summary, &terminations)?;
+        if read_summary && summary.test_cases.is_none() {
+            ctx.out.warn(
+                "could not read the result bundle's test tree, so the JUnit report lists only \
+                 the failed tests",
+            );
+        }
+        ctx.out.note(&format!("junit report: {}", junit.display()));
+    }
+
     let exits_command =
         exit_log.map(|log| super::app::follow_up(ctx, "app logs", &log.exits_args()));
     let report = TestReport {
@@ -1723,11 +1726,12 @@ fn write_junit(
     path: &Path,
     scheme: &str,
     summary: &xcodebuild::TestSummary,
+    terminations: &[Option<Termination>],
 ) -> Result<(), CliError> {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    std::fs::write(path, junit_xml(scheme, summary))
+    std::fs::write(path, junit_xml(scheme, summary, terminations))
         .map_err(|e| CliError::new(format!("failed to write {}: {e}", path.display())))
 }
 
@@ -1739,27 +1743,38 @@ struct JunitCase<'a> {
     duration: Option<f64>,
     /// Every failure message of a failed test, or why a skipped one skipped.
     messages: Vec<&'a str>,
+    /// What ended the app or the test runner under a failed test, as the
+    /// `app terminated: …` line the summary prints under it.
+    ended: Option<String>,
 }
 
 /// The report's test cases: every case in the test tree, a failed one with
-/// its messages as the summary gives them, then any failure the tree does not
-/// list. With no tree to read, only the summary's failures.
-fn junit_cases(summary: &xcodebuild::TestSummary) -> Vec<JunitCase<'_>> {
+/// its messages as the summary gives them and what ended its app when
+/// `terminations` (per summary failure) has it, then any failure the tree does
+/// not list. With no tree to read, only the summary's failures.
+fn junit_cases<'a>(
+    summary: &'a xcodebuild::TestSummary,
+    terminations: &[Option<Termination>],
+) -> Vec<JunitCase<'a>> {
     use xcodebuild::CaseOutcome;
     let same = |a: &str, b: &str| a.trim_end_matches("()") == b.trim_end_matches("()");
-    let failures: Vec<(String, &xcodebuild::TestFailure)> = summary
+    let failures: Vec<(String, &xcodebuild::TestFailure, Option<String>)> = summary
         .test_failures
         .iter()
-        .map(|f| (f.selector(), f))
+        .enumerate()
+        .map(|(i, f)| {
+            let ended = terminations.get(i).and_then(Option::as_ref);
+            (f.selector(), f, ended.map(Termination::line))
+        })
         .collect();
     let mut cases: Vec<JunitCase> = summary
         .test_cases
         .iter()
         .flatten()
         .map(|case| {
-            let failure = failures.iter().find(|(s, _)| same(s, &case.identifier));
+            let failure = failures.iter().find(|(s, ..)| same(s, &case.identifier));
             let (outcome, messages) = match (failure, case.outcome) {
-                (Some((_, f)), _) => (CaseOutcome::Failed, f.messages().collect()),
+                (Some((_, f, _)), _) => (CaseOutcome::Failed, f.messages().collect()),
                 (None, CaseOutcome::Failed) => (
                     CaseOutcome::Failed,
                     case.messages.iter().map(String::as_str).collect(),
@@ -1775,16 +1790,18 @@ fn junit_cases(summary: &xcodebuild::TestSummary) -> Vec<JunitCase<'_>> {
                 outcome,
                 duration: case.duration,
                 messages,
+                ended: failure.and_then(|(.., ended)| ended.clone()),
             }
         })
         .collect();
-    for (selector, f) in failures {
+    for (selector, f, ended) in failures {
         if !cases.iter().any(|c| same(&c.selector, &selector)) {
             cases.push(JunitCase {
                 selector,
                 outcome: CaseOutcome::Failed,
                 duration: None,
                 messages: f.messages().collect(),
+                ended,
             });
         }
     }
@@ -1795,12 +1812,17 @@ fn junit_cases(summary: &xcodebuild::TestSummary) -> Vec<JunitCase<'_>> {
 /// skipped ones included, since GitLab counts the cases and ignores the
 /// suite's totals. A failure's `message` is the first line of its first
 /// message, and the element's body holds every message in full, a blank line
-/// between two; an attribute can't carry a line break the way text can. With
-/// no test tree only the failures are listed, under the summary's totals.
-fn junit_xml(scheme: &str, summary: &xcodebuild::TestSummary) -> String {
+/// between two, then the `app terminated: …` line when `terminations` has one
+/// for it; an attribute can't carry a line break the way text can. With no
+/// test tree only the failures are listed, under the summary's totals.
+fn junit_xml(
+    scheme: &str,
+    summary: &xcodebuild::TestSummary,
+    terminations: &[Option<Termination>],
+) -> String {
     use std::fmt::Write as _;
     use xcodebuild::CaseOutcome;
-    let cases = junit_cases(summary);
+    let cases = junit_cases(summary, terminations);
     let count = |outcome| cases.iter().filter(|c| c.outcome == outcome).count();
     let widen = |n: u32| usize::try_from(n).unwrap_or(usize::MAX);
     let (tests, failures, skipped) = if summary.test_cases.is_some() {
@@ -1843,11 +1865,17 @@ fn junit_xml(scheme: &str, summary: &xcodebuild::TestSummary) -> String {
             }
             (CaseOutcome::Failed, first) => {
                 let headline = first.and_then(|m| m.lines().next()).unwrap_or_default();
+                let body: Vec<&str> = case
+                    .messages
+                    .iter()
+                    .copied()
+                    .chain(case.ended.as_deref())
+                    .collect();
                 let _ = writeln!(
                     xml,
                     ">\n      <failure message=\"{}\">{}</failure>\n    </testcase>",
                     xml_attr(headline),
-                    xml_text(&case.messages.join("\n\n"))
+                    xml_text(&body.join("\n\n"))
                 );
             }
         }
@@ -3193,7 +3221,7 @@ mod tests {
             }],
             test_cases: None,
         };
-        write_junit(&path, "App", &summary).unwrap();
+        write_junit(&path, "App", &summary, &[]).unwrap();
         let xml = std::fs::read_to_string(&path).unwrap();
         assert!(xml.contains("tests=\"3\" failures=\"1\""));
         assert!(
@@ -3288,7 +3316,7 @@ mod tests {
     fn junit_lists_every_test_the_run_recorded() {
         // GitLab counts the <testcase> elements and ignores the suite's
         // totals, so a report of failures alone reads as a smaller run.
-        let xml = junit_xml("SweetpadCIApp", &junit_summary());
+        let xml = junit_xml("SweetpadCIApp", &junit_summary(), &[]);
         assert_eq!(xml.matches("<testcase ").count(), 4, "{xml}");
         assert!(xml.contains("<testsuites tests=\"4\" failures=\"2\" skipped=\"1\">"));
         assert!(
@@ -3319,7 +3347,7 @@ mod tests {
     fn a_junit_failure_carries_every_message_in_its_body() {
         // An XML parser turns a raw line break inside an attribute into a
         // space, so `message` holds the first line and the body holds the text.
-        let xml = junit_xml("SweetpadCIApp", &junit_summary());
+        let xml = junit_xml("SweetpadCIApp", &junit_summary(), &[]);
         assert!(
             xml.contains(
                 "<testcase classname=\"SweetpadCIAppTests.AppTests\" name=\"testTwoFailures\" \
@@ -3356,7 +3384,7 @@ mod tests {
             test_identifier_string: "AppUITests/testGone()".into(),
             ..Default::default()
         });
-        let xml = junit_xml("SweetpadCIApp", &summary);
+        let xml = junit_xml("SweetpadCIApp", &summary, &[]);
         assert!(xml.contains("<testsuites tests=\"5\" failures=\"3\" skipped=\"1\">"));
         assert!(
             xml.contains(
@@ -3365,6 +3393,70 @@ mod tests {
             ),
             "{xml}"
         );
+    }
+
+    #[test]
+    fn a_junit_failure_says_what_ended_its_app() {
+        // The summary prints the exit under the failure, and a CI reader of
+        // the report has only the report.
+        let mut summary = junit_summary();
+        summary.test_failures.push(xcodebuild::TestFailure {
+            test_name: "testGone()".into(),
+            target_name: "SweetpadCIAppUITests".into(),
+            failure_text: "Lost connection to the test runner".into(),
+            test_identifier_string: "AppUITests/testGone()".into(),
+            ..Default::default()
+        });
+        let mut crash = exit_at(
+            "dev.sweetpad.ci.app",
+            91599,
+            "2026-09-26 20:37:03.524000+0200",
+            "exited due to SIGSEGV | sent by exc handler[91599], ran for 371ms",
+        );
+        crash.exception = Some("EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x10".into());
+        let runner = exit_at(
+            "dev.sweetpad.ci.uitests.xctrunner",
+            79090,
+            "2026-09-26 20:23:21.581374+0200",
+            "exited due to exit(1), ran for 27595ms",
+        );
+        let terminations = [
+            Some(Termination {
+                exit: crash,
+                crash_report: None,
+            }),
+            None,
+            Some(Termination {
+                exit: runner,
+                crash_report: None,
+            }),
+        ];
+        let xml = junit_xml("SweetpadCIApp", &summary, &terminations);
+        // After every message, a blank line apart, and never in `message`.
+        assert!(
+            xml.contains(
+                "XCTAssertTrue failed - second failure\nwith a second line\n\napp terminated: \
+                 crashed with SIGSEGV (sent by exc handler[91599]; EXC_BAD_ACCESS \
+                 KERN_INVALID_ADDRESS at 0x10)</failure>"
+            ),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(
+                "<failure message=\"Lost connection to the test runner\">Lost connection to the \
+                 test runner\n\ntest runner terminated: exited with status 1</failure>"
+            ),
+            "{xml}"
+        );
+        // A failure with no exit keeps its messages alone.
+        assert!(
+            xml.contains(
+                "<failure message=\"Expectation failed: n == 1\">Expectation failed: n == 1\nn → \
+                 2</failure>"
+            ),
+            "{xml}"
+        );
+        assert_eq!(xml.matches("terminated: ").count(), 2, "{xml}");
     }
 
     #[test]
