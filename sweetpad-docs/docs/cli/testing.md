@@ -54,6 +54,9 @@ its extra lines indented deeper under it:
 With `-o json`, each failure has `message`, the first of them, and `messages`, which lists all of
 them in the order the test recorded them.
 
+If the tests don't compile, `sweetpad test` stops with the compile errors, and
+`sweetpad build diagnostics` reads them back afterwards, as it does after `sweetpad build`.
+
 Red tests exit with code `3`, the same code a failed build uses, since both mean "the work ran and
 the answer was no". A missing scheme or an unresolvable destination is code `4` instead, so a CI
 script can tell a genuine test failure apart from a broken invocation.

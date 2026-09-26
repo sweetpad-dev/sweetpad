@@ -61,10 +61,18 @@ fn stub_command(
     status: i32,
     args: &[&str],
 ) -> (Command, TempDir, TempDir) {
-    use std::os::unix::fs::PermissionsExt;
-
     let home = tmp(&format!("{tag}-home"));
     let cwd = tmp(&format!("{tag}-cwd"));
+    write_stub(&cwd, transcript, status);
+    let cmd = command_in(&home, &cwd, args);
+    (cmd, home, cwd)
+}
+
+/// Put an xcodebuild in `cwd/bin` that prints `transcript` and exits with
+/// `status`, replacing the one already there.
+fn write_stub(cwd: &Path, transcript: &str, status: i32) {
+    use std::os::unix::fs::PermissionsExt;
+
     let bin = cwd.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let log = cwd.join("transcript.log");
@@ -76,6 +84,12 @@ fn stub_command(
     )
     .unwrap();
     std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// `sweetpad <args>` in `cwd`, with `home` as its home and state dir and the
+/// stub [`write_stub`] put in `cwd` ahead of the real xcodebuild.
+fn command_in(home: &Path, cwd: &Path, args: &[&str]) -> Command {
+    let bin = cwd.join("bin");
     // An empty developer dir keeps the `productPath` lookup from loading the
     // installed Xcode's specs, which costs seconds and is not under test.
     let developer_dir = cwd.join("Developer");
@@ -83,11 +97,11 @@ fn stub_command(
 
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_sweetpad"));
     cmd.args(args)
-        .current_dir(&cwd)
-        .env("HOME", &home)
-        .env("XDG_STATE_HOME", &home)
-        .env("XDG_CONFIG_HOME", &home)
-        .env("XDG_CACHE_HOME", &home)
+        .current_dir(cwd)
+        .env("HOME", home)
+        .env("XDG_STATE_HOME", home)
+        .env("XDG_CONFIG_HOME", home)
+        .env("XDG_CACHE_HOME", home)
         .env("DEVELOPER_DIR", &developer_dir)
         .env(
             "PATH",
@@ -100,7 +114,7 @@ fn stub_command(
         .env_remove("NO_COLOR")
         .env_remove("FORCE_COLOR")
         .env_remove("CLICOLOR_FORCE");
-    (cmd, home, cwd)
+    cmd
 }
 
 const WARNED: &str = "\
@@ -305,8 +319,8 @@ fn a_redirected_stderr_gets_the_errors_the_log_showed() {
     );
 }
 
-/// Past the first few errors, the repeat counts the rest. `test` records no
-/// build for 'build diagnostics' to read back, so it says they stay on stdout.
+/// Past the first few errors, the repeat counts the rest and names the
+/// command that reads them all back, after a failed `test` build too.
 #[test]
 fn a_redirected_stderr_counts_the_errors_it_leaves_out() {
     let broken = (1..=5)
@@ -342,10 +356,53 @@ fn a_redirected_stderr_counts_the_errors_it_leaves_out() {
         stderr.ends_with(&format!(
             "error: running the tests\n  \
              xcodebuild test failed before any test ran:\n{first_three}  \
-             and 2 more error(s) in the log on stdout\n"
+             and 2 more error(s)\n\
+             tip: run 'sweetpad build diagnostics' to see every error and warning\n"
         )),
         "{stderr}"
     );
+}
+
+/// A `test` whose build fails is the project's last build, so 'build
+/// diagnostics' reads that failure back, in place of the build before it.
+#[test]
+fn build_diagnostics_reads_back_a_failed_test_build() {
+    let project = project();
+    let args = build_args(&project);
+    let (mut build, home, cwd) = stub_command("test-record", WARNED, 0, &args);
+    assert!(build.output().unwrap().status.success());
+
+    let mut test_args = args.clone();
+    test_args[0] = "test";
+    for mode in [&[][..], &["-o", "json"], &["-o", "ndjson"]] {
+        write_stub(&cwd, BROKEN, 65);
+        let run = [&test_args[..], mode].concat();
+        let out = command_in(&home, &cwd, &run).output().unwrap();
+        assert_eq!(out.status.code(), Some(3), "{run:?}: {out:?}");
+
+        let read = ["build", "diagnostics", "--project", args[2], "-o", "json"];
+        let out = command_in(&home, &cwd, &read).output().unwrap();
+        assert!(out.status.success(), "{mode:?}: {out:?}");
+        let record: Value = serde_json::from_slice(&out.stdout).unwrap();
+        let record = &record["data"];
+        assert_eq!(record["ok"], false, "{mode:?}: {record}");
+        assert_eq!(record["scheme"], "SweetpadCIMac", "{mode:?}: {record}");
+        assert_eq!(record["errors"], 1, "{mode:?}: {record}");
+        assert_eq!(
+            record["diagnostics"][0]["message"], "cannot find 'undefinedSymbol' in scope",
+            "{mode:?}: {record}"
+        );
+
+        // A passing build in between puts the record back to its own.
+        write_stub(&cwd, WARNED, 0);
+        assert!(
+            command_in(&home, &cwd, &args)
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
+    }
 }
 
 /// With nothing on the stream to explain it, the trailing error is the only

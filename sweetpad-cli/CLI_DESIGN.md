@@ -212,10 +212,12 @@ builds it with real `xcodebuild`.
   or `2>&1`), because the streamed log goes to stdout. When they are
   different files (`2>err.log`, or stdout piped away), the error on stderr
   repeats the first three distinct errors, one per line, and counts the rest.
-  `build`, `test build` and the run session's build then close on `tip: run
-  'sweetpad build diagnostics' to see every error and warning` (a device's
-  own tip wins). `test` records no build for that command to read back, so
-  its count says the rest are in the log on stdout.
+  `build`, `test`, `test build` and the run session's build then close on
+  `tip: run 'sweetpad build diagnostics' to see every error and warning` (a
+  device's own tip wins). A `test` whose build step fails records that build
+  the way `build` does, so the command reads back that failure rather than
+  the build before it. A `test` whose tests ran records nothing: its parsed
+  diagnostics mix the build's with the tests' own `error:` lines.
 - Help, errors, warnings and notes quote a command or value with 'single
   quotes', as clap does; a terminal prints backticks literally. A unit test
   walks the clap tree and fails on a backtick in any help text.

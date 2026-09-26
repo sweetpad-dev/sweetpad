@@ -110,7 +110,8 @@ diagnostics precisely when you need them.
 
 ## Read build errors without rebuilding
 
-After a build, pull the diagnostics from the last run — no recompile:
+After a build, or a `sweetpad test` whose build failed, pull the diagnostics
+from the last run — no recompile:
 
 ```bash
 sweetpad build diagnostics -o json

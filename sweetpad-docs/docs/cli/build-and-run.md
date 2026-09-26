@@ -115,7 +115,8 @@ last build: FAILED (1 error(s), 0 warning(s))
 ```
 
 That reads the last build's results from disk, so it's instant and safe to run as many times as you
-like.
+like. A `sweetpad test` whose build fails records that build too, so `build diagnostics` shows its
+errors afterwards.
 
 :::tip
 

@@ -226,6 +226,11 @@ impl BuildPlan<'_> {
     }
 }
 
+/// Where a failed build's error, repeating only its first few errors, sends
+/// the reader for the rest: the record every parsed build leaves behind.
+pub(crate) const DIAGNOSTICS_TIP: &str =
+    "run 'sweetpad build diagnostics' to see every error and warning";
+
 /// The error a failed build reports, for [`BuildPlan::run`] and for the
 /// interactive `app run` session, which spawns xcodebuild itself. A blocked
 /// build ([`buildlog::BlockerWatch`]) leads with the way past it, and stays on
@@ -248,7 +253,7 @@ pub(crate) fn build_failure(
 ) -> CliError {
     let streamed_error = blocker.is_none() && streamed_an_error(streamed, &diagnostics);
     let shown = streamed_error && !stderr_apart;
-    let repeated = (streamed_error && stderr_apart).then(|| repeated_errors(&diagnostics, ""));
+    let repeated = (streamed_error && stderr_apart).then(|| repeated_errors(&diagnostics));
     let headline = blocker.map_or_else(
         || {
             format!(
@@ -259,11 +264,8 @@ pub(crate) fn build_failure(
         |hint| format!("the build is blocked, not broken: {hint}"),
     );
     // A device's own reason for failing outranks the list of every error.
-    let tip = device_tip(args, &diagnostics).or_else(|| {
-        repeated
-            .is_some()
-            .then(|| "run 'sweetpad build diagnostics' to see every error and warning".to_string())
-    });
+    let tip = device_tip(args, &diagnostics)
+        .or_else(|| repeated.is_some().then(|| DIAGNOSTICS_TIP.to_string()));
     let err = CliError::new(headline)
         .kind(ErrorKind::BuildFailure)
         .diagnostics(diagnostics)
@@ -403,6 +405,10 @@ pub struct TestRunOutcome {
     /// The beautified human stream rendered the diagnostics as they arrived
     /// (see [`streamed_an_error`]).
     pub streamed: bool,
+    /// The output was parsed for diagnostics, as in every mode but `-v`'s raw
+    /// passthrough, so a run whose build failed has a record to write for
+    /// `build diagnostics`, as [`BuildPlan::run`] does.
+    pub parsed: bool,
 }
 
 impl TestPlan<'_> {
@@ -474,6 +480,7 @@ impl TestPlan<'_> {
                 transcript: None,
                 blocker,
                 streamed: false,
+                parsed: true,
             }
         } else if out.is_json() {
             let run = process::run_captured("xcodebuild", &args, cwd.as_deref())?;
@@ -491,6 +498,7 @@ impl TestPlan<'_> {
                 diagnostics,
                 transcript: (!run.success).then_some(run.combined),
                 streamed: false,
+                parsed: true,
             }
         } else if out.is_verbose() {
             let ok = process::run("xcodebuild", &args, cwd.as_deref(), false)
@@ -502,6 +510,7 @@ impl TestPlan<'_> {
                 transcript: None,
                 blocker: None,
                 streamed: false,
+                parsed: false,
             }
         } else {
             let (ok, diagnostics, blocker) = buildlog::run_collecting(
@@ -520,6 +529,7 @@ impl TestPlan<'_> {
                 transcript: None,
                 blocker,
                 streamed: true,
+                parsed: true,
             }
         };
         Ok(outcome)
@@ -578,8 +588,8 @@ pub(crate) fn record_build_diagnostics(
 
 /// [`record_build_diagnostics`], naming the scheme the build ran, so a later
 /// command that has none can say which one it was (a typed `--scheme` is not
-/// remembered).
-fn record_build(
+/// remembered). `test` records through this too when its build step fails.
+pub(crate) fn record_build(
     container: &Container,
     scheme: Option<&str>,
     ok: bool,
@@ -695,10 +705,10 @@ const REPEATED_ERRORS: usize = 3;
 /// The errors a beautified log streamed to stdout, for an error that stderr
 /// prints somewhere else (`2>err.log`), where those lines are not in front of
 /// it: `:` and then the first [`REPEATED_ERRORS`] distinct errors, one per
-/// indented line as `build diagnostics` prints them, then a count of the rest
-/// followed by `rest_are`, which says where they are. Only the first line of
-/// a message is kept, as in [`diagnostics_summary`].
-pub(crate) fn repeated_errors(diagnostics: &[serde_json::Value], rest_are: &str) -> String {
+/// indented line as `build diagnostics` prints them, then a count of the rest,
+/// which that command reads back. Only the first line of a message is kept,
+/// as in [`diagnostics_summary`].
+pub(crate) fn repeated_errors(diagnostics: &[serde_json::Value]) -> String {
     use std::fmt::Write as _;
 
     let mut errors: Vec<(Option<&str>, &str)> = Vec::new();
@@ -720,7 +730,7 @@ pub(crate) fn repeated_errors(diagnostics: &[serde_json::Value], rest_are: &str)
     if errors.len() > REPEATED_ERRORS {
         let _ = write!(
             detail,
-            "\n  and {} more error(s){rest_are}",
+            "\n  and {} more error(s)",
             errors.len() - REPEATED_ERRORS
         );
     }
@@ -2178,15 +2188,15 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             diag("error", Some("D.swift:4:1"), "expected ')'"),
         ];
         assert_eq!(
-            repeated_errors(&diagnostics, " elsewhere"),
+            repeated_errors(&diagnostics),
             ":\n  \
              error: B.swift:9:3: cannot find 'foo' in scope\n  \
              error: xcodebuild: Unable to find a device matching the provided destination\n  \
              error: C.swift:2:1: expected '}'\n  \
-             and 1 more error(s) elsewhere"
+             and 1 more error(s)"
         );
         assert_eq!(
-            repeated_errors(&diagnostics[..2], ""),
+            repeated_errors(&diagnostics[..2]),
             ":\n  error: B.swift:9:3: cannot find 'foo' in scope"
         );
     }
