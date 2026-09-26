@@ -130,9 +130,10 @@ and the `app` verbs that spawn `xcodebuild` — `run`, `install`, `debug`,
 `xcodebuild` would be accepted and silently dropped. A passthrough
 `-derivedDataPath` is read back out and handed to the in-process resolver, so
 the app the CLI installs is the one the build just wrote, and `app launch`
-takes the same location as `--derived-data-path` (§9s); the settings that
-relocate the product where the resolver cannot follow (`SYMROOT=`, `OBJROOT=`,
-`CONFIGURATION_BUILD_DIR=`) are refused before a build is spent on them. A
+takes the same location as `--derived-data-path` (§9s). The resolver takes
+the tail's `KEY=VALUE` settings and `-xcconfig` too, so a `SYMROOT=`,
+`OBJROOT=` or `CONFIGURATION_BUILD_DIR=` that moves the product is followed
+like any other setting (§9s). A
 project that always needs the same argument writes it in `sweetpad.toml`'s
 `[xcodebuild] args` instead of typing it each time (§6).
 
@@ -481,8 +482,9 @@ args = ["-skipMacroValidation"]   # added to every command that builds
   that came from. The `app` verbs that find an already-built product instead
   of building one (`launch`, `stop`, `uninstall`, `logs`, `container`,
   `screenshot`, `sample`, `ui`) plan with the same list, so a file `build`
-  refuses, or a relocating setting `app run` refuses, stops them too instead
-  of their running a stale `.app` out of the default DerivedData.
+  refuses stops them too, and a setting that moves the product, such as
+  `SYMROOT=build`, sends them where the build put it instead of to a stale
+  `.app` in the default DerivedData.
 - The arguments the CLI settles itself are **refused** in the file, naming the
   key to use instead: `-scheme`, `-configuration`, `-destination`, `-sdk`,
   `-workspace`, `-project` (a second copy makes the build depend on which one
@@ -2921,22 +2923,12 @@ location changes. A macOS `launch` whose product is missing says it isn't
 built, names the `build` that makes it, and names the flag when it wasn't
 given.
 
-### A refused setting names where it came from
+### A product the locator couldn't find says why
 
-The settings that relocate the product (`SYMROOT=`, `OBJROOT=`,
-`CONFIGURATION_BUILD_DIR=`) are refused before a build is spent on them (§3),
-and the refusal said `'-- SYMROOT=…'` even when the setting came from
-`sweetpad.toml`, on a verb that takes no `--` at all. The file's arguments
-lead the merged list, so the refusal can tell the two apart: one from the
-file reads `sweetpad.toml: 'SYMROOT=…' in [xcodebuild] args …` and says to
-take it out and pass `-- -derivedDataPath <dir>` to the build, and a typed one
-keeps the passthrough's wording.
-
-`build` itself still builds with such a file, and its product cannot be
-located. `-o json` reports `productPath: null` with a `note` naming the
-reason, since `null` alone reads the same as a scheme with nothing launchable.
-The same `note` explains any other failed lookup; a Swift package or a test
-build, which has no `.app` by design, gets none.
+`-o json` on `build` reports `productPath: null` with a `note` naming the
+reason when the lookup fails, since `null` alone reads the same as a scheme
+with nothing launchable. A Swift package or a test build, which has no `.app`
+by design, gets none.
 
 ### Command-line settings reach the locator
 
@@ -2994,6 +2986,39 @@ the file's `SYMROOT`, where the build wrote it, instead of a stale one under
 The plumbing view `pbxproj settings` echoes the effect of an edit to the
 stored layer and keeps resolving without the command line, and the BSP index
 takes its inputs from `buildServer.json`, not from `sweetpad.toml`.
+
+### Settings that move the product are followed (decided)
+
+`SYMROOT=`, `OBJROOT=` and `CONFIGURATION_BUILD_DIR=` were refused before a
+build was spent on them, because nobody had checked the resolver's reading of
+a command-line one against `xcodebuild`. With the assignments reaching the
+resolver, that check was made on Xcode 27: `xcodebuild -showBuildSettings`
+given each setting, against `settings show` given the same one in
+`[xcodebuild] args`, for the fixture's macOS scheme and its iOS scheme on a
+simulator, comparing `SYMROOT`, `OBJROOT`, `BUILD_DIR`,
+`CONFIGURATION_BUILD_DIR`, `TARGET_BUILD_DIR`, `BUILT_PRODUCTS_DIR`,
+`CODESIGNING_FOLDER_PATH`, `OBJECT_FILE_DIR` and `TARGET_TEMP_DIR`.
+
+- An absolute value, or one anchored by a macro (`$(SRCROOT)/build`), agreed
+  on every key for all three settings and for `SYMROOT` and
+  `CONFIGURATION_BUILD_DIR` together. `OBJROOT` moves only the intermediates;
+  the product stays under DerivedData, as the resolver has it.
+- A relative value did not. `xcodebuild` reads a relative `SYMROOT`,
+  `OBJROOT` or `CONFIGURATION_BUILD_DIR` against the directory of the project
+  that owns the target, wherever it runs from and also through a workspace in
+  another directory, while it leaves a relative `TARGET_BUILD_DIR` as typed.
+  The resolver kept `relsym`. So `CommandLineSettings` anchors a relative
+  value of those three to `$(PROJECT_DIR)/…`, which the resolver expands per
+  target, and after that every case agreed, workspace included.
+
+All three are followed, so the refusal is gone. Real builds agreed with the
+check: `build -o json -- SYMROOT=relsym` on macOS names
+`<project>/relsym/Debug/SweetpadCIMac.app`, where the build wrote it, and
+`app launch --mac` with the setting in `sweetpad.toml` starts that bundle. On
+the iPhone 17 simulator `app install` and `app launch` with an absolute
+`CONFIGURATION_BUILD_DIR` and `OBJROOT` in the file install and start the
+relocated build. A relative value with `..` resolves unnormalized
+(`<project>/../x/sym2/Debug/…`), which names the same directory.
 
 ## 10. Testing
 

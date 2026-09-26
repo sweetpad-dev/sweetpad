@@ -109,18 +109,15 @@ including one that moves the product with its own `SYMROOT`. As in `xcodebuild`,
 `-xcconfig` file wins over the same setting typed as `KEY=VALUE`. Hot reload recompiles with the same
 arguments, and `settings show` includes the ones in `sweetpad.toml`.
 
-Overrides that move the product somewhere the locator can't follow are rejected up front, before a
-build is spent on them. Use `-derivedDataPath` instead:
+Settings that move the product are followed the same way. `-- SYMROOT=build` puts the app in
+`build/Debug-iphonesimulator` beside the project, and SweetPad installs it from there. Like
+`xcodebuild`, SweetPad reads a relative `SYMROOT`, `OBJROOT`, or `CONFIGURATION_BUILD_DIR` against the
+project's directory. Commands that don't build, such as `app launch`, see these settings only when they
+come from `sweetpad.toml`, so put a setting there when every command should find the moved product:
 
 ```bash
-sweetpad app install -- SYMROOT=/tmp/out
-# error: '-- SYMROOT=…' relocates the built product where the app locator
-#        can't follow; use '-- -derivedDataPath <dir>' instead
+sweetpad app install -- SYMROOT=/tmp/out   # builds into /tmp/out, installs from there
 ```
-
-The same setting in `sweetpad.toml` stops the `app` commands too, and the error names the file. A
-`build -o json` with one there still builds, but reports `productPath: null` with a `note` that says
-why.
 
 #### Writing them down for the whole repo
 

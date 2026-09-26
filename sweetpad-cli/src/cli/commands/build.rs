@@ -391,8 +391,7 @@ fn start(
 /// renders nothing — so only the machine-readable modes pay for it. And a
 /// scheme can legitimately produce nothing launchable, so a failure comes back
 /// as the reason for a `null` product rather than as the build's error: a
-/// build that succeeded must not fail over the path lookup. A relocating
-/// setting from the project's `[xcodebuild] args` is named as the file's.
+/// build that succeeded must not fail over the path lookup.
 ///
 /// A test build names none. What it wrote is the test bundles, and the app the
 /// locator would name is built only when a test target depends on it.
@@ -403,9 +402,7 @@ fn product_path(
     if !(ctx.out.is_json() || ctx.out.is_ndjson()) || plan.action == BuildAction::BuildForTesting {
         return Ok(None);
     }
-    let from_file = &ctx.project_file(plan.container).xcodebuild.args;
     let located = || -> Result<std::path::PathBuf, CliError> {
-        xcodebuild::refuse_relocating_settings(plan.passthrough, from_file)?;
         let settings = xcodebuild::resolved_settings(plan)?;
         Ok(xcodebuild::app_bundle(&settings, plan.destination)?.path)
     };

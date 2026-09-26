@@ -1764,23 +1764,10 @@ fn bundle_of(t: &TargetBuildSettings) -> Option<AppBundle> {
     })
 }
 
-/// The `-derivedDataPath` a passthrough hands `xcodebuild`, if any — the
-/// product locator has to look where the build actually put the bundle.
-/// `xcodebuild` runs from [`working_dir`], so a relative path is joined onto
-/// that directory rather than onto the caller's: from a nested source
-/// directory the two differ, and the locator would name a bundle that isn't
-/// there. A product-relocating build setting is refused (see
-/// [`refuse_relocating_settings`]), with the passthrough's wording.
-pub fn passthrough_derived_data(
-    passthrough: &[String],
-    container: &Container,
-) -> Result<Option<PathBuf>, CliError> {
-    refuse_relocating_settings(passthrough, &[])?;
-    Ok(passthrough_path(passthrough, "-derivedDataPath", container))
-}
-
 /// The value after the last `flag` in a passthrough, as a path, joined onto
 /// [`working_dir`] when relative, the way `xcodebuild` running there reads it.
+/// A `-derivedDataPath build/dd` typed in a nested source directory names a
+/// directory beside the project, not below the caller.
 fn passthrough_path(passthrough: &[String], flag: &str, container: &Container) -> Option<PathBuf> {
     let mut found = None;
     let mut iter = passthrough.iter().peekable();
@@ -1822,9 +1809,34 @@ impl CommandLineSettings {
         Self {
             derived_data_path: passthrough_path(passthrough, "-derivedDataPath", container),
             xcconfig: passthrough_path(passthrough, "-xcconfig", container),
-            overrides: passthrough_settings(passthrough),
+            overrides: passthrough_settings(passthrough)
+                .into_iter()
+                .map(anchor_build_location)
+                .collect(),
         }
     }
+}
+
+/// The settings that place a build's output, which `xcodebuild` reads a
+/// relative value of against the directory of the project that owns each
+/// target: `SYMROOT=build` puts the products in `<project dir>/build/Debug`,
+/// whatever directory it ran from, and in a workspace that is each member
+/// project's own directory. It leaves a relative `TARGET_BUILD_DIR` as typed.
+const BUILD_LOCATION_SETTINGS: [&str; 3] = ["SYMROOT", "OBJROOT", "CONFIGURATION_BUILD_DIR"];
+
+/// Anchor a relative build-location value to `$(PROJECT_DIR)`, which the
+/// resolver expands per target the way `xcodebuild` resolves it. A value that
+/// is absolute or starts with a macro (`$(SRCROOT)/build`) is left alone.
+fn anchor_build_location((key, value): (String, String)) -> (String, String) {
+    if BUILD_LOCATION_SETTINGS.contains(&key.as_str())
+        && !value.is_empty()
+        && !value.starts_with('/')
+        && !value.starts_with('$')
+    {
+        let value = format!("$(PROJECT_DIR)/{value}");
+        return (key, value);
+    }
+    (key, value)
 }
 
 /// The `KEY=VALUE` build settings in a passthrough, in order: what
@@ -1875,38 +1887,6 @@ const VALUE_FLAGS: [&str; 22] = [
     "-packageCachePath",
 ];
 
-/// The build settings that move the product somewhere the locator can't
-/// model.
-const RELOCATING_SETTINGS: [&str; 3] = ["SYMROOT", "OBJROOT", "CONFIGURATION_BUILD_DIR"];
-
-/// Refuse a product-relocating build setting in `args`: looking in the default
-/// DerivedData would name whatever stale `.app` an earlier plain build left
-/// there. `from_file` is the project's `[xcodebuild] args`, which `args` starts
-/// with. A setting found there is named as the file's, with a fix that works
-/// for it, because the verbs that find a built product take no `--` tail to
-/// fix it with. Public so `app`'s run plan can spend the refusal before a
-/// build rather than after one, and `build` can say why it has no product.
-pub fn refuse_relocating_settings(args: &[String], from_file: &[String]) -> Result<(), CliError> {
-    let Some((arg, key)) = args.iter().find_map(|arg| {
-        let (key, _) = arg.split_once('=')?;
-        RELOCATING_SETTINGS.contains(&key).then_some((arg, key))
-    }) else {
-        return Ok(());
-    };
-    Err(CliError::new(if from_file.contains(arg) {
-        format!(
-            "sweetpad.toml: '{key}=…' in [xcodebuild] args relocates the built product where \
-             the app locator can't follow; take it out and pass '-- -derivedDataPath <dir>' \
-             to the build instead"
-        )
-    } else {
-        format!(
-            "'-- {key}=…' relocates the built product where the app locator can't follow; \
-             use '-- -derivedDataPath <dir>' instead"
-        )
-    }))
-}
-
 /// Resolve every target's build settings for a plan through the in-process
 /// resolver (the engine behind `settings show`), with no `xcodebuild` spawn —
 /// including a passthrough's [`CommandLineSettings`]. Feed the result to
@@ -1924,7 +1904,6 @@ pub fn resolved_settings(plan: &BuildPlan<'_>) -> Result<Vec<TargetBuildSettings
             return Err(CliError::new("Swift packages have no .app bundle"));
         }
     };
-    refuse_relocating_settings(plan.passthrough, &[])?;
     let command_line = CommandLineSettings::of(plan.passthrough, plan.container);
     let opts = BuildSettingsOptions {
         project,
@@ -2697,23 +2676,23 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
     #[test]
     fn a_relative_derived_data_path_resolves_where_xcodebuild_runs() {
         let args = |dir: &str| vec!["-derivedDataPath".to_string(), dir.to_string()];
+        let dd = |args: &[String], container: &Container| {
+            CommandLineSettings::of(args, container).derived_data_path
+        };
         let nested = Container::Project(PathBuf::from("/work/ios/App.xcodeproj"));
         // xcodebuild runs from the project's directory, whatever the caller's.
         assert_eq!(
-            passthrough_derived_data(&args("build/dd"), &nested).unwrap(),
+            dd(&args("build/dd"), &nested),
             Some(PathBuf::from("/work/ios/build/dd"))
         );
         assert_eq!(
-            passthrough_derived_data(&args("/tmp/dd"), &nested).unwrap(),
+            dd(&args("/tmp/dd"), &nested),
             Some(PathBuf::from("/tmp/dd"))
         );
         // A project named relative to the cwd runs xcodebuild in the cwd.
         let here = Container::Project(PathBuf::from("App.xcodeproj"));
-        assert_eq!(
-            passthrough_derived_data(&args("dd"), &here).unwrap(),
-            Some(PathBuf::from("dd"))
-        );
-        assert_eq!(passthrough_derived_data(&[], &nested).unwrap(), None);
+        assert_eq!(dd(&args("dd"), &here), Some(PathBuf::from("dd")));
+        assert_eq!(dd(&[], &nested), None);
     }
 
     /// Every build-settings caller reads the build's `-derivedDataPath`,
@@ -2760,36 +2739,35 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         );
     }
 
+    /// Checked against `xcodebuild -showBuildSettings` on Xcode 27, for a
+    /// project and for a workspace holding it: a relative `SYMROOT`,
+    /// `OBJROOT` or `CONFIGURATION_BUILD_DIR` names a directory beside the
+    /// project that owns the target.
     #[test]
-    fn a_relocating_setting_is_refused_in_the_words_of_where_it_came_from() {
+    fn a_relative_build_location_is_read_against_the_project() {
         let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
-        let file = s(&["SYMROOT=/tmp/out"]);
-        let from_file = refuse_relocating_settings(&file, &file).unwrap_err();
-        assert!(
-            from_file
-                .message
-                .starts_with("sweetpad.toml: 'SYMROOT=…' in [xcodebuild] args"),
-            "{}",
-            from_file.message
+        let project = Container::Project(PathBuf::from("/work/ios/App.xcodeproj"));
+        let read = CommandLineSettings::of(
+            &s(&[
+                "SYMROOT=build",
+                "OBJROOT=/tmp/obj",
+                "CONFIGURATION_BUILD_DIR=$(SRCROOT)/out",
+                "TARGET_BUILD_DIR=rel",
+                "PRODUCT_NAME=Renamed",
+            ]),
+            &project,
         );
-        assert!(!from_file.message.contains("'-- SYMROOT"));
-
-        let typed = refuse_relocating_settings(&s(&["-quiet", "OBJROOT=/o"]), &[]).unwrap_err();
-        assert!(
-            typed.message.starts_with("'-- OBJROOT=…' relocates"),
-            "{}",
-            typed.message
+        let pair = |k: &str, v: &str| (k.to_string(), v.to_string());
+        assert_eq!(
+            read.overrides,
+            [
+                pair("SYMROOT", "$(PROJECT_DIR)/build"),
+                pair("OBJROOT", "/tmp/obj"),
+                pair("CONFIGURATION_BUILD_DIR", "$(SRCROOT)/out"),
+                pair("TARGET_BUILD_DIR", "rel"),
+                pair("PRODUCT_NAME", "Renamed"),
+            ]
         );
-        // Merged as the file's args, then the tail: the tail's own setting is
-        // still the tail's.
-        let merged = s(&["-skipMacroValidation", "CONFIGURATION_BUILD_DIR=/c"]);
-        let err = refuse_relocating_settings(&merged, &s(&["-skipMacroValidation"])).unwrap_err();
-        assert!(err.message.starts_with("'-- CONFIGURATION_BUILD_DIR=…'"));
-        for message in [&from_file.message, &typed.message, &err.message] {
-            assert!(!message.contains('`'), "{message}");
-        }
-
-        assert!(refuse_relocating_settings(&s(&["TARGET_NAME=x"]), &[]).is_ok());
     }
 
     #[test]
