@@ -8,6 +8,7 @@
 use std::process::{Command, Stdio};
 
 use crate::cli::output::Output;
+use crate::cli::swiftpm;
 use crate::cli::{CommandResult, Context, Render, Rendered};
 
 /// One diagnostic line.
@@ -133,10 +134,11 @@ fn gather() -> Vec<Check> {
         Some("install Xcode and accept its license ('sudo xcodebuild -license')"),
     ));
 
-    // Swift toolchain.
+    // Swift toolchain. Probed with a throwaway TMPDIR, since `swift --version`
+    // leaves a temp directory behind.
     checks.push(tool_check(
         "swift",
-        first_line(probe("swift", &["--version"])),
+        first_line(swiftpm::swift_version().filter(|s| !s.trim().is_empty())),
         Status::Fail,
         Some("install the Xcode command-line tools ('xcode-select --install')"),
     ));

@@ -75,6 +75,8 @@ use serde_json::Value;
 use sweetpad_lib::project::Project;
 use sweetpad_lib::workspace::{Workspace, package_scheme_root};
 
+use crate::scratch::ScratchDir;
+
 /// How a package was reached. A workspace member's test targets are schemes
 /// whether or not it has been opened in Xcode; every other package's are only
 /// once it has (see the module docs).
@@ -446,24 +448,33 @@ pub fn target_pairs(members: &[PackageMember]) -> Vec<(PathBuf, Vec<String>)> {
 /// caller degrades to the names it can read from files.
 ///
 /// SwiftPM creates its scratch directory even to only evaluate a manifest, so
-/// the dump gets a throwaway one under the temp dir: reading a package never
-/// leaves a `.build/` inside it. SwiftPM caches evaluated manifests per user,
-/// not in the scratch directory, so a fresh one costs no re-evaluation.
+/// the dump gets a throwaway one: reading a package never leaves a `.build/`
+/// inside it. SwiftPM caches evaluated manifests per user, not in the scratch
+/// directory, so a fresh one costs no re-evaluation.
+///
+/// The child's `TMPDIR` is that same throwaway directory. Each dump would
+/// otherwise leave the manifest compile's `TemporaryDirectory.*` and a lock
+/// file named for the scratch path in the user's `$TMPDIR`. SwiftPM keeps its
+/// lock files for the shared manifest cache there too, so a dump does not
+/// take the lock other SwiftPM processes hold; the cache is SQLite, which
+/// serializes the writes itself.
 fn dump_package(dir: &Path, developer_dir: Option<&Path>) -> Option<Value> {
-    let scratch = scratch_dir();
+    // `resolve` runs a level's dumps concurrently; each gets its own.
+    let scratch = ScratchDir::new("sweetpad-dump-package").ok()?;
     let mut cmd = Command::new("swift");
     if let Some(dev) = developer_dir {
         cmd.env("DEVELOPER_DIR", dev);
     }
     let output = cmd
+        .env("TMPDIR", scratch.as_os_str())
         .args(["package", "--scratch-path"])
-        .arg(&scratch)
+        .arg(scratch.join("build"))
         .arg("dump-package")
         .current_dir(dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output();
-    let _ = fs::remove_dir_all(&scratch);
+    drop(scratch);
     let output = output.ok()?;
     if !output.status.success() {
         return None;
@@ -472,15 +483,6 @@ fn dump_package(dir: &Path, developer_dir: Option<&Path>) -> Option<Value> {
     // Skip any leading non-JSON chatter, like the CLI's other JSON readers.
     let start = text.find('{')?;
     serde_json::from_str(&text[start..]).ok()
-}
-
-/// A path no other dump uses, in this process or another: [`resolve`] runs a
-/// level's dumps concurrently. SwiftPM creates the directory itself.
-fn scratch_dir() -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!("sweetpad-dump-package-{}-{n}", std::process::id()))
 }
 
 fn read_manifest(manifest: &Value) -> ManifestNames {

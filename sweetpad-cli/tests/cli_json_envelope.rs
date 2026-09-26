@@ -16,9 +16,13 @@ use serde_json::Value;
 
 /// Run the `sweetpad` binary with an isolated XDG/HOME so the test never reads
 /// the developer's real config/state and DerivedData resolution is deterministic.
-/// `TMPDIR` points into the home too: `swift --version`, which `doctor` runs,
-/// leaves a `TemporaryDirectory.*` there, and it goes with the home.
+/// `TMPDIR` points into the home too, so whatever a spawned tool leaves there
+/// goes with the home.
 fn sweetpad(args: &[&str], cwd: &Path, home: &Path) -> Output {
+    sweetpad_with_tmpdir(args, cwd, home, home)
+}
+
+fn sweetpad_with_tmpdir(args: &[&str], cwd: &Path, home: &Path, tmpdir: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_sweetpad"))
         .args(args)
         .current_dir(cwd)
@@ -26,7 +30,7 @@ fn sweetpad(args: &[&str], cwd: &Path, home: &Path) -> Output {
         .env("XDG_STATE_HOME", home)
         .env("XDG_CONFIG_HOME", home)
         .env("XDG_CACHE_HOME", home)
-        .env("TMPDIR", home)
+        .env("TMPDIR", tmpdir)
         .env_remove("NO_COLOR")
         .env_remove("FORCE_COLOR")
         .env_remove("CLICOLOR_FORCE")
@@ -149,6 +153,24 @@ fn tool_backed_commands_are_enveloped_or_error() {
             assert!(v.get("data").is_some(), "{args:?}");
         }
     }
+}
+
+/// `doctor` runs `swift --version`, and the Swift driver leaves a
+/// `TemporaryDirectory.*` in `$TMPDIR` on every run unless it is handed a
+/// `TMPDIR` of its own.
+#[test]
+fn doctor_leaves_nothing_in_tmpdir() {
+    let home = tmp("doctor-home");
+    let cwd = tmp("doctor-cwd");
+    let tmpdir = TempDir::new("sweetpad-json-doctor-tmp");
+    let args: &[&str] = &["doctor", "--json", "--non-interactive"];
+    let out = sweetpad_with_tmpdir(args, &cwd, &home, &tmpdir);
+    assert!(out.status.code().is_some(), "{args:?}: {out:?}");
+    let left: Vec<_> = std::fs::read_dir(&*tmpdir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert!(left.is_empty(), "doctor left {left:?} in TMPDIR");
 }
 
 /// An unresolved target under `--json --non-interactive` is the canonical error

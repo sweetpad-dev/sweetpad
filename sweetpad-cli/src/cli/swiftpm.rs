@@ -15,8 +15,10 @@
 //! policy — hand-roll Apple's project-domain formats, never standard ones).
 
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use serde::Deserialize;
+use sweetpad_core::scratch::ScratchDir;
 
 use crate::cli::process;
 use crate::cli::resolve::Container;
@@ -372,18 +374,33 @@ pub fn update(container: &Container, name: Option<&str>, quiet: bool) -> Result<
 
 /// The toolchain's major Swift version (`swift --version`), for gating features
 /// like `swift package add-dependency` (Swift 6+). `None` if it can't be read.
-///
-/// Both streams are captured: the version is on stdout, and the driver writes
-/// `swift-driver version: 1.168.6 ` to stderr with no newline (Swift 6.4),
-/// which would otherwise run into the next line sweetpad writes there — under
-/// `--json`, the error envelope.
 #[must_use]
 pub fn swift_major_version() -> Option<u32> {
-    let run = process::run_captured("swift", &["--version"], None).ok()?;
-    if !run.success {
-        return None;
-    }
-    parse_swift_major(&run.combined)
+    parse_swift_major(&swift_version()?)
+}
+
+/// What `swift --version` prints to stdout, or `None` when it can't run or
+/// fails.
+///
+/// Stderr is captured too: the driver writes `swift-driver version: 1.168.6 `
+/// there with no newline (Swift 6.4), which would otherwise run into the next
+/// line sweetpad writes there — under `--json`, the error envelope. The driver
+/// also leaves a `TemporaryDirectory.*` in `$TMPDIR` on every run, so the probe
+/// gets a `TMPDIR` of its own that goes when it's done.
+#[must_use]
+pub fn swift_version() -> Option<String> {
+    let scratch = ScratchDir::new("sweetpad-swift-version").ok()?;
+    let output = Command::new("swift")
+        .arg("--version")
+        .env("TMPDIR", scratch.as_os_str())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// Parse the major version from `swift --version` output, e.g. "Apple Swift

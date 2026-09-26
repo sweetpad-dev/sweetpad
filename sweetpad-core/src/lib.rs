@@ -13,3 +13,4 @@ pub mod build_settings;
 pub mod framing;
 pub mod package_members;
 pub mod paths;
+pub mod scratch;

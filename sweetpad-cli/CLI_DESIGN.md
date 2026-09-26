@@ -704,7 +704,11 @@ sweetpad app open-url <URL> [--simulator NAME]
 Notes / heuristics:
 - `doctor` probes each tool with both stdio streams captured (so the report
   stays clean) and reports the first version line; the runtime-count, summary,
-  status-glyph, and `first_line` helpers are pure and unit-tested.
+  status-glyph, and `first_line` helpers are pure and unit-tested. The Swift
+  driver leaves a `TemporaryDirectory.*` in `$TMPDIR` on every run, so
+  `swift --version` (here and in the Swift 6 check of `dependency add`) runs
+  with a `TMPDIR` that sweetpad removes afterwards, as does the `dump-package`
+  that reads a local package's schemes.
 - DerivedData scoping matches Xcode's `<Name>-<hash>` folders by the
   container's file-stem (exact name or `<Name>-` prefix), tested against
   prefix-collision cases (`MyApp` must not match `MyAppHelper-…`).
