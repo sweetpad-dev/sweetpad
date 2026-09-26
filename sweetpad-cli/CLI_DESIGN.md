@@ -2937,6 +2937,12 @@ tool-spawning code is pinned without a Mac:
 
 The *runtime* truth (does xcodebuild actually build, does the log
 predicate/console attach behave) is exercised by the `cli-smoke` macOS job.
+Its script, `sweetpad-lib/ci/smoke.sh`, runs on a dev Mac as well. It edits
+scratch copies only, never a tracked file. The simulator it boots and erases
+is one it creates for the run and deletes on exit, or the one
+`SWEETPAD_SMOKE_DEST` names (`platform=iOS Simulator,id=<UDID>`); it never
+picks a shared simulator on its own. On exit it also purges the DerivedData
+its scratch projects built into.
 
 ## 11. Build-log beautifier
 

@@ -7,6 +7,13 @@
 #
 # Requires: SWEETPAD_BIN pointing at the built binary; the app fixture already
 # generated with `xcodegen generate`.
+#
+# Safe to run on a dev Mac: it edits only scratch copies, never a tracked
+# file, and the iOS simulator it boots, shuts down and erases is its own.
+# SWEETPAD_SMOKE_DEST names one to use instead, as a destination
+# ('platform=iOS Simulator,id=<UDID>'); that simulator is erased at teardown
+# too. Without it the script makes a simulator for the run, modelled on the
+# first iOS simulator 'destination list' reports, and deletes it on exit.
 set -euo pipefail
 
 BIN="${SWEETPAD_BIN:?set SWEETPAD_BIN to the sweetpad binary}"
@@ -14,6 +21,32 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 APP_DIR="$ROOT/fixture-app"
 SPM_DIR="$ROOT/fixture-spm"
 APP="$APP_DIR/SweetpadCIApp.xcodeproj"
+
+# Whatever the run makes outside the repo goes when it ends, pass or fail: the
+# simulator it created, the DerivedData its scratch projects built into (a
+# project-scoped purge takes only that project's own folder), and the scratch
+# directories. A simulator from SWEETPAD_SMOKE_DEST is the caller's and stays.
+CREATED_SIM=""
+cleanup() {
+  local rc=$?
+  if [ -n "$CREATED_SIM" ]; then
+    xcrun simctl shutdown "$CREATED_SIM" >/dev/null 2>&1 || true
+    xcrun simctl delete "$CREATED_SIM" >/dev/null 2>&1 || true
+  fi
+  local proj dir
+  for proj in "${GEN_PROJ:-}" "${MAC_PROJ:-}" "${TREE_PROJ:-}"; do
+    if [ -n "$proj" ] && [ -d "$proj" ]; then
+      "$BIN" derived-data purge --project "$proj" --yes >/dev/null 2>&1 || true
+    fi
+  done
+  for dir in "${GEN_DIR:-}" "${TREE_DIR:-}" "${ARCH_DIR:-}" "${FORMAT_DIR:-}" "${SHOT:-}"; do
+    if [ -n "$dir" ]; then
+      rm -rf "$dir"
+    fi
+  done
+  exit "$rc"
+}
+trap cleanup EXIT
 
 CHECKS=0
 section() { echo; echo "==== $* ===="; }
@@ -133,11 +166,45 @@ ok "destination list (human)"
 "$BIN" simulator list --json >/dev/null
 ok "simulator list"
 
-DEST=$(python3 -c "import json,subprocess;d=json.loads(subprocess.check_output(['$BIN','destination','list','--json']))['data']['destinations'];print(next(x['destination'] for x in d if x['kind']=='simulator' and x['os']=='iOS'))")
-UDID="${DEST##*id=}"
+if [ -n "${SWEETPAD_SMOKE_DEST:-}" ]; then
+  DEST="$SWEETPAD_SMOKE_DEST"
+  UDID=$(printf '%s' "$DEST" | sed -n 's/.*id=\([^,]*\).*/\1/p')
+  [ -n "$UDID" ] || fail "SWEETPAD_SMOKE_DEST needs an id: 'platform=iOS Simulator,id=<UDID>', got: $DEST"
+else
+  # A simulator of the run's own, so a shared one (and whatever is installed
+  # on it) is never the one erased at teardown. It is modelled on the first
+  # iOS simulator, and cloned from a shut-down one of that model, or else of
+  # that runtime, when there is one: a clone of a simulator that has booted
+  # before skips the first boot's data migration, which a freshly created
+  # one can sit in indefinitely.
+  TEMPLATE=$(python3 -c "import json,subprocess;d=json.loads(subprocess.check_output(['$BIN','destination','list','--json']))['data']['destinations'];print(next(x['destination'] for x in d if x['kind']=='simulator' and x['os']=='iOS'))")
+  SOURCE=$(python3 - "${TEMPLATE##*id=}" <<'PY'
+import json, subprocess, sys
+devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "-j"]))["devices"]
+listed = [(runtime, device) for runtime, entries in devices.items() for device in entries]
+template = next((pair for pair in listed if pair[1]["udid"] == sys.argv[1]), None)
+if template is None:
+    sys.exit(f"simulator {sys.argv[1]} is not in 'simctl list devices'")
+runtime, model = template[0], template[1]["deviceTypeIdentifier"]
+idle = [d for r, d in listed if r == runtime and d.get("isAvailable") and d["state"] == "Shutdown"]
+idle.sort(key=lambda d: d["deviceTypeIdentifier"] != model)
+print(f"clone {idle[0]['udid']}" if idle else f"create {model} {runtime}")
+PY
+)
+  case "$SOURCE" in
+    clone\ *) UDID=$(xcrun simctl clone "${SOURCE#clone }" "sweetpad-smoke-$$") ;;
+    *) read -r _ SIM_TYPE SIM_RUNTIME <<<"$SOURCE"
+       UDID=$(xcrun simctl create "sweetpad-smoke-$$" "$SIM_TYPE" "$SIM_RUNTIME") ;;
+  esac
+  CREATED_SIM="$UDID"
+  DEST="platform=iOS Simulator,id=$UDID"
+fi
 echo "  using $DEST"
 xcrun simctl boot "$UDID" || true
-xcrun simctl bootstatus "$UDID" -b || true
+# Bounded, so a boot that never finishes fails the run instead of hanging it.
+BOOT_RC=0
+perl -e 'alarm shift; exec @ARGV' 600 xcrun simctl bootstatus "$UDID" -b >/dev/null || BOOT_RC=$?
+[ "$BOOT_RC" -ne 142 ] || fail "simulator $UDID was still booting after 10 minutes"
 "$BIN" simulator boot "$UDID" >/dev/null 2>&1 || true   # already booted is fine
 ok "simulator boot"
 
@@ -370,7 +437,13 @@ assert_json "$out" "[r['group'] for r in d['refs'] if r['address']=='$CV']" "[No
 out=$("$BIN" pbxproj group attach "$CV" --group "$GROUP" --project "$TREE_PROJ" --json)
 assert_json "$out" "d['changed']" "True"
 ok "pbxproj group attach/detach (child entry only, the object survives)"
-rm -rf "$TREE_DIR"
+
+# The copy built into a DerivedData folder of its own, named like the
+# fixture's; the derived-data section purges around it, then removes it.
+out=$("$BIN" derived-data path --project "$TREE_PROJ" --json)
+assert_json "$out" "len(d['paths'])" "1"
+TREE_DD=$(printf '%s' "$out" | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['paths'][0])")
+ok "derived-data path finds the copy's own folder"
 
 # ---------------------------------------------------------------------------
 section "test (iOS)"
@@ -496,7 +569,10 @@ ok "device list (no devices)"
 
 # ---------------------------------------------------------------------------
 section "format"
-"$BIN" format run "$APP_DIR/Sources/App/ContentView.swift"
+# A copy, so the committed fixture stays as it is.
+FORMAT_DIR="$(mktemp -d)"
+cp "$APP_DIR/Sources/App/ContentView.swift" "$FORMAT_DIR/"
+"$BIN" format run "$FORMAT_DIR/ContentView.swift"
 ok "format run (swift-format, in place)"
 
 # ---------------------------------------------------------------------------
@@ -514,11 +590,19 @@ ok "derived-data path --project (folder present)"
 out=$("$BIN" derived-data size --project "$APP" --json)
 assert_json "$out" "d['folders']>=1" "True"
 ok "derived-data size --project"
-# Purge just this project's folder(s), then confirm they're gone.
-"$BIN" derived-data purge --project "$APP" --yes
+# Purge just this project's folder(s), then confirm they're gone. The copy of
+# the fixture shares its name but not its path, so its folder stays.
+out=$("$BIN" derived-data purge --project "$APP" --yes --json)
+assert_json "$out" "len(d['removed'])>=1" "True"
+assert_json "$out" "'$TREE_DD' in d['others']" "True"
+test -d "$TREE_DD" || fail "purging the fixture deleted its copy's DerivedData: $TREE_DD"
 out=$("$BIN" derived-data path --project "$APP" --json)
 assert_json "$out" "len(d['paths'])" "0"
-ok "derived-data purge --project (roundtrip)"
+ok "derived-data purge --project (roundtrip, a same-named copy's folder stays)"
+out=$("$BIN" derived-data purge --project "$TREE_PROJ" --yes --json)
+assert_json "$out" "d['removed']" "['$TREE_DD']"
+rm -rf "$TREE_DIR"
+ok "derived-data purge --project on the copy takes only the copy's folder"
 
 # ---------------------------------------------------------------------------
 section "archive"
