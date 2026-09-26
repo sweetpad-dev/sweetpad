@@ -127,26 +127,25 @@ impl BuildPlan<'_> {
     /// [`buildlog`]; `-v` passes it through raw; `--json` captures both child
     /// streams (nothing interleaves with the envelope) and folds the tail of
     /// the transcript into the error on failure; `-o ndjson` streams one event
-    /// per line (the returned stats ride into the terminal result event).
-    /// Every mode but `-v` records the parsed diagnostics as the project's
-    /// last-build artifact for `build diagnostics`.
-    pub fn run(&self, out: &Output) -> Result<Option<buildlog::StreamStats>, CliError> {
+    /// per line. Every mode but `-v` records the parsed diagnostics as the
+    /// project's last-build artifact for `build diagnostics`, and returns their
+    /// [`BuildStats`](buildlog::BuildStats) for the terminal result.
+    pub fn run(&self, out: &Output) -> Result<Option<buildlog::BuildStats>, CliError> {
         self.prepare_result_bundle();
         let parts = self.args();
         let args: Vec<&str> = parts.iter().map(String::as_str).collect();
         let cwd = working_dir(self.container);
+        let start = std::time::Instant::now();
         let mut failure_detail = String::new();
-        let mut stats = None;
         let mut diagnostics = Vec::new();
         let mut blocker = None;
         // Only the raw `-v` human passthrough leaves output unparsed; every
         // parsing mode (including ndjson under `-v`) records the artifact.
         let mut parsed = true;
         let ok = if out.is_ndjson() {
-            let (ok, s) = buildlog::run_ndjson("xcodebuild", &args, cwd.as_deref(), out)?;
-            diagnostics.clone_from(&s.diagnostics);
-            blocker.clone_from(&s.blocker);
-            stats = Some(s);
+            let (ok, d, b) = buildlog::run_ndjson("xcodebuild", &args, cwd.as_deref(), out)?;
+            diagnostics = d;
+            blocker = b;
             ok
         } else if out.is_json() {
             let run = process::run_captured("xcodebuild", &args, cwd.as_deref())?;
@@ -177,7 +176,9 @@ impl BuildPlan<'_> {
             record_build_diagnostics(self.container, ok, &diagnostics);
         }
         if ok {
-            Ok(stats)
+            // One tally for every parsing mode, so the `-o json` envelope and
+            // the `-o ndjson` result line carry the same fields.
+            Ok(parsed.then(|| buildlog::BuildStats::tally(&diagnostics, start.elapsed())))
         } else {
             // Classified here, the one chokepoint every build goes through, so
             // `build start` and `app run`'s build step both exit 3 on a failed
@@ -324,13 +325,14 @@ impl TestPlan<'_> {
         let args: Vec<&str> = parts.iter().map(String::as_str).collect();
         let cwd = working_dir(self.container);
         let outcome = if out.is_ndjson() {
-            let (ok, stats) = buildlog::run_ndjson("xcodebuild", &args, cwd.as_deref(), out)?;
+            let (ok, diagnostics, blocker) =
+                buildlog::run_ndjson("xcodebuild", &args, cwd.as_deref(), out)?;
             TestRunOutcome {
                 passed: ok,
                 tail: None,
-                diagnostics: stats.diagnostics,
+                diagnostics,
                 transcript: None,
-                blocker: stats.blocker,
+                blocker,
             }
         } else if out.is_json() {
             let run = process::run_captured("xcodebuild", &args, cwd.as_deref())?;

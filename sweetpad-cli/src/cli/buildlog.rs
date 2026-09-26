@@ -684,50 +684,57 @@ pub fn event_json(event: &Event) -> Option<serde_json::Value> {
     })
 }
 
-/// Error/warning counts, elapsed time, and the diagnostic events accumulated
-/// by [`run_ndjson`] — counts fold into the terminal result payload, the
-/// diagnostics into the last-build artifact.
-#[derive(Debug, Default)]
-pub struct StreamStats {
-    pub errors: u32,
-    pub warnings: u32,
+/// A finished build's error/warning counts and elapsed time, for the terminal
+/// result payload. Tallied from the parsed diagnostics rather than by any one
+/// runner, so every mode that parsed them reports the same numbers.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct BuildStats {
+    pub errors: usize,
+    pub warnings: usize,
     pub duration_ms: u64,
-    pub diagnostics: Vec<serde_json::Value>,
-    /// Set when the build was blocked rather than broken — see [`BlockerWatch`].
-    pub blocker: Option<String>,
+}
+
+impl BuildStats {
+    #[must_use]
+    pub fn tally(diagnostics: &[serde_json::Value], elapsed: Duration) -> Self {
+        let count = |severity: &str| {
+            diagnostics
+                .iter()
+                .filter(|d| d["severity"] == severity)
+                .count()
+        };
+        Self {
+            errors: count("error"),
+            warnings: count("warning"),
+            duration_ms: u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
+        }
+    }
 }
 
 /// Run a command emitting each parsed event as an NDJSON line on stdout — the
-/// `-o ndjson` path for builds/tests. The caller folds the returned
-/// [`StreamStats`] into its terminal `{"event":"result"}` payload, so the
+/// `-o ndjson` path for builds/tests. Returns whether it succeeded, the
+/// diagnostic events, and the blocker hint, as [`run_collecting`] does; the
+/// caller closes the stream with its terminal `{"event":"result"}` line, so the
 /// stream ends with exactly one summary line.
 pub fn run_ndjson(
     program: &str,
     args: &[&str],
     cwd: Option<&Path>,
     out: &Output,
-) -> Result<(bool, StreamStats), CliError> {
-    let start = Instant::now();
-    let mut stats = StreamStats::default();
+) -> Result<(bool, Vec<serde_json::Value>, Option<String>), CliError> {
+    let mut diagnostics = Vec::new();
     let mut watch = BlockerWatch::default();
     let ok = process::stream_lines(program, args, cwd, |line| {
         watch.line(line);
         let event = parse_line(line);
         if let Some(json) = event_json(&event) {
-            if let Event::Diagnostic { kind, .. } = &event {
-                match kind {
-                    DiagKind::Error => stats.errors += 1,
-                    DiagKind::Warning => stats.warnings += 1,
-                    DiagKind::Note => {}
-                }
-                stats.diagnostics.push(json.clone());
+            if matches!(event, Event::Diagnostic { .. }) {
+                diagnostics.push(json.clone());
             }
             out.ndjson_event(&json);
         }
     })?;
-    stats.duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
-    stats.blocker = watch.hint();
-    Ok((ok, stats))
+    Ok((ok, diagnostics, watch.hint()))
 }
 
 // --- helpers ---

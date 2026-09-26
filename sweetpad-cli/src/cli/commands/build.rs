@@ -136,13 +136,13 @@ fn diagnostics(ctx: &mut Context) -> CommandResult {
 
 /// The build result. Human mode already streamed the beautified log, so this
 /// renders nothing extra there; `--json`/`-o ndjson` emit it as the terminal
-/// envelope/result event, with the stream's error/warning counts and duration
-/// when the ndjson runner collected them.
+/// envelope/result event, with the build's error/warning counts and duration
+/// whenever its diagnostics were parsed.
 struct BuildReport {
     scheme: Option<String>,
     configuration: String,
     destination: Option<String>,
-    stats: Option<crate::cli::buildlog::StreamStats>,
+    stats: Option<buildlog::BuildStats>,
     /// The `.app` this build produced, so a caller doesn't hand-assemble a
     /// DerivedData path. Only the machine-readable modes resolve it (see
     /// [`product_path`]); `null` when the scheme builds no launchable product
@@ -351,18 +351,21 @@ mod tests {
     }
 
     #[test]
-    fn the_json_report_folds_in_the_stream_stats_when_the_runner_collected_them() {
+    fn the_json_report_folds_in_the_build_stats() {
+        let diagnostics = buildlog::diagnostics_from_transcript(
+            "/a/A.swift:1:1: error: boom\n\
+             /a/A.swift:2:1: warning: unused\n\
+             /a/A.swift:3:1: warning: unused\n\
+             /a/A.swift:3:1: note: declared here\n",
+        );
         let mut r = report(Some("/dd/App.app"));
-        r.stats = Some(crate::cli::buildlog::StreamStats {
-            blocker: None,
-            errors: 2,
-            warnings: 7,
-            duration_ms: 1234,
-            diagnostics: Vec::new(),
-        });
+        r.stats = Some(buildlog::BuildStats::tally(
+            &diagnostics,
+            std::time::Duration::from_millis(1234),
+        ));
         let json = r.json();
-        assert_eq!(json["errors"], serde_json::json!(2));
-        assert_eq!(json["warnings"], serde_json::json!(7));
+        assert_eq!(json["errors"], serde_json::json!(1));
+        assert_eq!(json["warnings"], serde_json::json!(2));
         assert_eq!(json["durationMs"], serde_json::json!(1234));
         assert_eq!(json["productPath"], serde_json::json!("/dd/App.app"));
     }
