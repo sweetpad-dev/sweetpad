@@ -1736,9 +1736,6 @@ mod cli_definition_tests {
     /// A terminal prints backticks literally, so help text quotes with
     /// 'single quotes', as clap's own text does. Doc comments on the clap
     /// types are that help text.
-    ///
-    /// `app` and its subcommands are skipped until their help in
-    /// `commands/app.rs` is converted; drop the exclusion then.
     #[test]
     fn help_text_quotes_without_backticks() {
         use clap::CommandFactory;
@@ -1773,9 +1770,6 @@ mod cli_definition_tests {
                 }
             }
             for sub in cmd.get_subcommands() {
-                if path == "sweetpad" && sub.get_name() == "app" {
-                    continue;
-                }
                 walk(sub, &format!("{path} {}", sub.get_name()), found);
             }
         }

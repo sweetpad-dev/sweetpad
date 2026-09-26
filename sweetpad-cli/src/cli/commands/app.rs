@@ -212,10 +212,11 @@ pub struct DebugBatchArgs {
 /// two never overlap — following only one would silently miss the other.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
 pub enum LogChannel {
-    /// The app's unified log (`os_log`/`Logger`), via `log stream`/`log show`.
+    /// The app's unified log ('os_log'/'Logger'), via 'log stream'/'log show'.
     Oslog,
-    /// The stdout/stderr a detached launch captured to a file (see
-    /// [`detached_log_path`]); `print`, `NSLog`'s stderr leg, C `printf`.
+    /// The stdout/stderr a detached launch captured to a file under sweetpad's
+    /// state directory: 'print', NSLog's stderr leg, C 'printf'.
+    // The file is the one `detached_log_path` names.
     Stdout,
     /// Both, interleaved by arrival (the default).
     #[default]
@@ -409,7 +410,7 @@ pub enum Action {
         launch: LaunchArgs,
     },
     /// Debug under lldb: on a simulator, launch suspended and attach; on
-    /// macOS, hand the executable to lldb and `run` it. '--batch' drives lldb
+    /// macOS, hand the executable to lldb and 'run' it. '--batch' drives lldb
     /// non-interactively from '--cmd' commands, for scripts and agents.
     Debug {
         #[command(flatten)]
@@ -1009,10 +1010,10 @@ fn session_hot(hot: bool, explicit: bool, target: &Target) -> bool {
 fn streaming_under_machine_output(out: &Output, streams: bool) -> Option<CliError> {
     (streams && (out.is_json() || out.is_ndjson())).then(|| {
         CliError::new(
-            "this `app run` streams a live session and has no machine-readable form; add \
-             `--no-logs` (build, install, launch, and exit) or `--detach`, or use \
-             `build start -o ndjson`, `app install`/`app launch --json`, and \
-             `app logs -o ndjson` as separate steps",
+            "this 'app run' streams a live session and has no machine-readable form; add \
+             '--no-logs' (build, install, launch, and exit) or '--detach', or use \
+             'build start -o ndjson', 'app install'/'app launch --json', and \
+             'app logs -o ndjson' as separate steps",
         )
     })
 }
@@ -1041,7 +1042,7 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
             .map_or_else(|| "another session".to_string(), |pid| format!("pid {pid}"));
         ctx.out.warn(&format!(
             "hot reload off for this run: {who} holds 127.0.0.1:8887. The \
-             `[run] hot = true` default yields; type `--hot` to fail instead"
+             '[run] hot = true' default yields; type '--hot' to fail instead"
         ));
         hot = false;
     }
@@ -1073,7 +1074,7 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
     if hot && opts.detach {
         return Err(CliError::new(
             "--detach isn't supported with --hot; hot reload has to stay attached to \
-             recompile and inject (press `d` in the session to detach and leave it running)",
+             recompile and inject (press 'd' in the session to detach and leave it running)",
         ));
     }
 
@@ -1516,13 +1517,13 @@ fn spm_run(ctx: &Context, plan: &RunPlan, product: &str) -> CliResult {
     if plan.launch.wait_for_debugger {
         return Err(CliError::new(
             "--wait-for-debugger isn't supported for a Swift package executable; \
-             use `swift build` and attach lldb to the binary directly",
+             use 'swift build' and attach lldb to the binary directly",
         ));
     }
     if !plan.passthrough.is_empty() {
         return Err(CliError::new(
-            "`--` passthrough args are xcodebuild flags; a Swift package runs via \
-             `swift run` (use --arg for program arguments)",
+            "'--' passthrough args are xcodebuild flags; a Swift package runs via \
+             'swift run' (use --arg for program arguments)",
         ));
     }
     let cwd = plan
@@ -2000,7 +2001,7 @@ fn run_hot_session(
     // if it's absent (UIKit apps don't need it, so this is advisory only).
     if inject::inject_dependency_present(&project_root) == Some(false) {
         ctx.out.note(
-            "hot reload: the `Inject` package isn't in Package.resolved — SwiftUI views \
+            "hot reload: the 'Inject' package isn't in Package.resolved — SwiftUI views \
              won't redraw on save until you add https://github.com/krzysztofzablocki/Inject \
              and annotate them with @ObserveInjection + .enableInjection() (UIKit apps can ignore this)",
         );
@@ -2031,7 +2032,7 @@ fn run_hot_session(
                 log(
                     "hot reload: the app hasn't connected to :8887 — it's likely running \
                      uninjected. A run-script phase may be re-signing the product; \
-                     `codesign -d -vv --entitlements - <app>` shows what it carries.",
+                     'codesign -d -vv --entitlements - <app>' shows what it carries.",
                 );
             }
         });
@@ -2145,7 +2146,7 @@ fn hot_selfcheck(
         .map_err(|e| CliError::new(format!("self-check: read {}: {e}", file.display())))?;
     if !original.contains(SELFCHECK_MARKER) {
         return Err(CliError::new(format!(
-            "self-check: {} has no `{SELFCHECK_MARKER}` marker (expected the hot-reload fixture)",
+            "self-check: {} has no '{SELFCHECK_MARKER}' marker (expected the hot-reload fixture)",
             file.display()
         )));
     }
@@ -2344,7 +2345,7 @@ impl HotApp<'_> {
                     .stderr(std::process::Stdio::piped());
                 let mut c = ctx.out.step("Launching app", || {
                     cmd.spawn().map_err(|e| {
-                        CliError::new(format!("failed to run `{}`: {e}", app.executable.display()))
+                        CliError::new(format!("failed to run '{}': {e}", app.executable.display()))
                     })
                 })?;
                 render_console(&mut c, ctx.out.use_color(), filter);
@@ -2645,7 +2646,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped());
             let mut child = cmd.spawn().map_err(|e| {
-                CliError::new(format!("failed to run `{}`: {e}", app.executable.display()))
+                CliError::new(format!("failed to run '{}': {e}", app.executable.display()))
             })?;
             if plan.launch.wait_for_debugger {
                 stop_for_debugger(ctx, child.id());
@@ -2917,8 +2918,8 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
             // attach to. Refuse rather than accept and ignore.
             if plan.launch.wait_for_debugger {
                 return Err(CliError::new(
-                    "--wait-for-debugger needs a launch that returns: use `app launch --mac \
-                     --wait-for-debugger` (it reports the stopped pid), or run at an \
+                    "--wait-for-debugger needs a launch that returns: use 'app launch --mac \
+                     --wait-for-debugger' (it reports the stopped pid), or run at an \
                      interactive terminal",
                 ));
             }
@@ -2929,7 +2930,7 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
                 .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
                 .status()
                 .map_err(|e| {
-                    CliError::new(format!("failed to run `{}`: {e}", app.executable.display()))
+                    CliError::new(format!("failed to run '{}': {e}", app.executable.display()))
                 })?;
             if status.success() {
                 Ok(())
@@ -3710,7 +3711,7 @@ fn simple(
         Target::Mac | Target::SpmRun(_) => {
             return Err(CliError::new(
                 "app install/uninstall act on a simulator or device — a macOS app is built \
-                 in place; use `app launch --mac` to start it or `app run --mac` to follow it",
+                 in place; use 'app launch --mac' to start it or 'app run --mac' to follow it",
             ));
         }
     };
@@ -3815,7 +3816,7 @@ fn stop_for_debugger(ctx: &Context, pid: u32) {
         }
     }
     ctx.out.note(&format!(
-        "stopped for the debugger — attach to pid {pid}, then `kill -CONT {pid}` to continue"
+        "stopped for the debugger — attach to pid {pid}, then 'kill -CONT {pid}' to continue"
     ));
 }
 
@@ -3871,7 +3872,7 @@ fn spawn_detached_mac(
     own_session_on_spawn(&mut cmd);
     let child = ctx.out.step("Launching app", || {
         cmd.spawn().map_err(|e| {
-            CliError::new(format!("failed to run `{}`: {e}", app.executable.display()))
+            CliError::new(format!("failed to run '{}': {e}", app.executable.display()))
         })
     })?;
     // Deliberately not registered with the signal registry and never waited
@@ -3975,8 +3976,8 @@ fn debug(
     // one-shot JSON for it. Point at `app diagnose` for a structured report.
     if batch.batch && (ctx.out.is_json() || ctx.out.is_ndjson()) {
         return Err(CliError::new(
-            "`app debug --batch` streams lldb output and has no machine-readable form; use \
-             `app diagnose -o json` for a structured exception/crash report",
+            "'app debug --batch' streams lldb output and has no machine-readable form; use \
+             'app diagnose -o json' for a structured exception/crash report",
         ));
     }
     let opts = lldb_run_opts(stage_target, launch, passthrough);
@@ -4000,7 +4001,7 @@ fn debug(
              attach Xcode to the device",
         )),
         Target::SpmRun(_) => Err(CliError::new(
-            "app debug works on an app target; for a Swift package run `lldb -- swift run`",
+            "app debug works on an app target; for a Swift package run 'lldb -- swift run'",
         )),
     }
 }
@@ -4010,7 +4011,7 @@ fn debug(
 fn debug_sim_interactive(ctx: &mut Context, plan: &RunPlan, udid: &str) -> CommandResult {
     let (app, pid) = launch_suspended_on_sim(ctx, plan, udid)?;
     ctx.out.note(&format!(
-        "attaching lldb to {} (pid {pid}) — type `continue` to resume the app",
+        "attaching lldb to {} (pid {pid}) — type 'continue' to resume the app",
         app.bundle_id
     ));
     // Ctrl-C inside lldb is its break-into-the-debuggee gesture; the terminal
@@ -4369,14 +4370,14 @@ fn simple_logs(
         Target::Device(_) => {
             return Err(CliError::new(
                 "app logs can't follow a physical device yet — a device's os_log needs \
-                 pymobiledevice3 (as `app run --device` uses); use `app run --device` to \
+                 pymobiledevice3 (as 'app run --device' uses); use 'app run --device' to \
                  follow it during a run",
             ));
         }
         Target::SpmRun(_) => {
             return Err(CliError::new(
                 "a Swift package executable has no os_log stream; its output goes to the \
-                 terminal during `app run`",
+                 terminal during 'app run'",
             ));
         }
     }
@@ -4399,7 +4400,7 @@ fn debug_mac(ctx: &mut Context, plan: &RunPlan) -> CommandResult {
     let mut args: Vec<&str> = vec!["--", &exe];
     args.extend(plan.launch.args.iter().map(String::as_str));
     ctx.out.note(&format!(
-        "starting lldb for {} — type `run` to launch it, `quit` to leave",
+        "starting lldb for {} — type 'run' to launch it, 'quit' to leave",
         app.bundle_id
     ));
     // Ctrl-C is lldb's break-into-the-debuggee gesture; the terminal delivers
@@ -4663,7 +4664,7 @@ fn run_lldb_captured(
         .stdout(file)
         .stderr(err)
         .spawn()
-        .map_err(|e| CliError::new(format!("failed to run `lldb`: {e}")))?;
+        .map_err(|e| CliError::new(format!("failed to run 'lldb': {e}")))?;
     let slot = crate::cli::signals::register_child(child.id());
     let timed_out = wait_with_timeout(&mut child, timeout);
     if timed_out {
@@ -4687,7 +4688,7 @@ fn run_lldb_streamed(
         .args(args)
         .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .spawn()
-        .map_err(|e| CliError::new(format!("failed to run `lldb`: {e}")))?;
+        .map_err(|e| CliError::new(format!("failed to run 'lldb': {e}")))?;
     let slot = crate::cli::signals::register_child(child.id());
     let timed_out = wait_with_timeout(&mut child, timeout);
     if timed_out {
@@ -4696,7 +4697,7 @@ fn run_lldb_streamed(
     crate::cli::signals::unregister_child(slot);
     if timed_out {
         return Err(CliError::new(format!(
-            "lldb --batch hit the {}s timeout and was killed; raise --timeout, or add `quit` to \
+            "lldb --batch hit the {}s timeout and was killed; raise --timeout, or add 'quit' to \
              your --cmd chain",
             timeout.as_secs()
         )));
@@ -4726,7 +4727,7 @@ fn diagnose(
         )),
         Target::SpmRun(_) => Err(CliError::new(
             "app diagnose works on an app target; for a Swift package run \
-             `lldb -b -o run -o bt -- <binary>`",
+             'lldb -b -o run -o bt -- <binary>'",
         )),
     }
 }
@@ -5987,7 +5988,7 @@ fn ui_act(
     if query.is_empty() {
         return Err(CliError::new(
             "name the element with --label, or --role for a lone control; \
-             `sweetpad app ui tree` shows what the app exposes",
+             'sweetpad app ui tree' shows what the app exposes",
         ));
     }
     let shot = resolve_ui_app(ctx, app.pid)?;
@@ -6115,10 +6116,10 @@ fn resolve_ui_app(ctx: &mut Context, pid: Option<i32>) -> Result<MacShot, CliErr
 /// there instead.
 fn ui_not_mac(kind: &str) -> CliError {
     CliError::new(format!(
-        "`app ui` drives macOS apps through the Accessibility API, which doesn't reach a \
-         {kind}. For a simulator, `app screenshot` captures the screen and `app open-url` \
+        "'app ui' drives macOS apps through the Accessibility API, which doesn't reach a \
+         {kind}. For a simulator, 'app screenshot' captures the screen and 'app open-url' \
          drives it by deep link; scripted taps need a UI test target run through \
-         `sweetpad test`"
+         'sweetpad test'"
     ))
 }
 
@@ -6182,9 +6183,9 @@ fn stream_logs(
     if filters.source == LogChannel::Stdout {
         let Some(path) = console_file else {
             return Err(CliError::new(format!(
-                "no captured output for {} — a detached launch (`app run --detach`, \
-                 `app launch --mac`, or `app run --mac --no-logs`) writes it; a foreground \
-                 `app run --mac` streams stdout inline instead",
+                "no captured output for {} — a detached launch ('app run --detach', \
+                 'app launch --mac', or 'app run --mac --no-logs') writes it; a foreground \
+                 'app run --mac' streams stdout inline instead",
                 app.bundle_id
             )));
         };
