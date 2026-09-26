@@ -129,8 +129,18 @@ pub struct XcodebuildArgs {
 /// three; physical devices don't yet.
 #[derive(Debug, Clone, Default, clap::Args)]
 pub struct LaunchArgs {
-    /// Argument passed to the app process (repeatable).
-    #[arg(long = "arg", value_name = "ARG")]
+    /// Argument passed to the app process (repeatable). A value may start with
+    /// '-', as user-defaults arguments do: '--arg -MyFlag --arg YES'.
+    // Hyphen values: without them clap reads `--arg -MyFlag` as a flag cluster
+    // and points at the xcodebuild `--` tail, the wrong escape. Each `--arg`
+    // still takes exactly one value, so the flag after it parses as a flag;
+    // only a bare `--` is refused, so it keeps starting the tail.
+    #[arg(
+        long = "arg",
+        value_name = "ARG",
+        allow_hyphen_values = true,
+        value_parser = parse_launch_arg
+    )]
     pub args: Vec<String>,
 
     /// Environment variable for the app process, KEY=VALUE (repeatable).
@@ -140,6 +150,17 @@ pub struct LaunchArgs {
     /// Launch suspended, waiting for a debugger to attach ('lldb -p <pid>').
     #[arg(long = "wait-for-debugger")]
     pub wait_for_debugger: bool,
+}
+
+/// An `--arg` value: anything but a bare `--`, which `--arg` would otherwise
+/// swallow when it is typed without a value right before the xcodebuild tail.
+fn parse_launch_arg(value: &str) -> Result<String, String> {
+    if value == "--" {
+        return Err(
+            "'--arg' needs a value before '--', which starts the xcodebuild arguments".into(),
+        );
+    }
+    Ok(value.to_string())
 }
 
 impl LaunchArgs {

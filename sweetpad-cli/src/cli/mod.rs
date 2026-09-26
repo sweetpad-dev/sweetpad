@@ -1815,6 +1815,77 @@ mod cli_definition_tests {
         }
     }
 
+    /// `--arg` takes a value that starts with `-` (user-defaults arguments
+    /// like `-AppleLanguages` do) on every verb that launches the app, while
+    /// the flag after it and a `--` tail keep their own meaning.
+    #[test]
+    fn launch_args_take_values_starting_with_a_hyphen() {
+        use crate::cli::commands::app;
+        use clap::Parser;
+
+        let parse = |argv: &[&str]| -> (app::LaunchArgs, Vec<String>) {
+            let cli = super::Cli::try_parse_from(argv)
+                .unwrap_or_else(|e| panic!("{argv:?} rejected: {e}"));
+            let action = match cli.resource {
+                Some(super::Resource::Run(args)) => app::Action::Run(args),
+                Some(super::Resource::App { action }) => action.expect("no action parsed"),
+                other => panic!("{argv:?} parsed as {other:?}"),
+            };
+            match action {
+                app::Action::Run(args) => (args.launch, args.xcodebuild.passthrough),
+                app::Action::Launch { launch, .. } => (launch, Vec::new()),
+                app::Action::Debug {
+                    launch, xcodebuild, ..
+                }
+                | app::Action::Diagnose {
+                    launch, xcodebuild, ..
+                } => (launch, xcodebuild.passthrough),
+                other => panic!("{argv:?} parsed as {other:?}"),
+            }
+        };
+
+        for verb in [
+            &["run"][..],
+            &["app", "run"],
+            &["app", "launch"],
+            &["app", "debug"],
+            &["app", "diagnose"],
+        ] {
+            let argv = |rest: &[&'static str]| -> Vec<&str> {
+                ["sweetpad"]
+                    .iter()
+                    .chain(verb)
+                    .chain(rest)
+                    .copied()
+                    .collect()
+            };
+
+            let (launch, _) = parse(&argv(&["--arg", "-Foo"]));
+            assert_eq!(launch.args, ["-Foo"], "{verb:?}");
+
+            // One value per `--arg`: the flag that follows is a flag.
+            let (launch, _) = parse(&argv(&[
+                "--arg", "-MyFlag", "--arg", "YES", "--env", "X=1", "--mac",
+            ]));
+            assert_eq!(launch.args, ["-MyFlag", "YES"], "{verb:?}");
+            assert_eq!(launch.env, ["X=1"], "{verb:?}");
+
+            let (launch, _) = parse(&argv(&["--arg", "-Foo", "--wait-for-debugger"]));
+            assert!(launch.wait_for_debugger, "{verb:?}");
+
+            if verb != ["app", "launch"] {
+                let (launch, tail) = parse(&argv(&["--arg", "-Foo", "--", "-quiet"]));
+                assert_eq!(launch.args, ["-Foo"], "{verb:?}");
+                assert_eq!(tail, ["-quiet"], "{verb:?}");
+            }
+
+            // A valueless `--arg` must not take the `--` that starts the tail.
+            let err = super::Cli::try_parse_from(argv(&["--arg", "--", "-quiet"]))
+                .expect_err("`--arg --` accepted");
+            assert!(err.to_string().contains("needs a value"), "{verb:?}: {err}");
+        }
+    }
+
     /// `build diagnostics` re-reads a record, so its help leaves out the
     /// start-only flags that `build` and `build start` list, while a stray one
     /// still parses onto the resource's args for the refusal to catch.
