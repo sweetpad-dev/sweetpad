@@ -200,7 +200,8 @@ export. Each test gets its own directory, and the listing names tests in the sam
 
 `--only-failures` keeps everything a failed test attached, including the crash log and screen
 recording Xcode adds to a UI test whose app crashed. When nothing is left, the note says whether
-the run had no failures or its failing tests attached nothing.
+the run had no failures or its failing tests attached nothing. The listing marks a failed test's
+files with `(failure)`, and `-o json` sets `failure` to `true` for them.
 
 ## Tests in CI
 

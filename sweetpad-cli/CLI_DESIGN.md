@@ -2161,7 +2161,8 @@ of a test the test tree lists as failed, plus any file that is marked. The tree
 is already read to put each test under its target, so the filter costs no extra
 call. The same tree words an empty result: the run had no failing tests, or its
 failing tests attached nothing, or the tree could not be read and only the mark
-was there to go by.
+was there to go by. The listing's `(failure)` marker, `failure` in JSON, takes
+the same two sources: every file of a failed test, and any file that is marked.
 
 **The age of the evidence travels with it.** The export reads the *last* run, so
 running it after an edit but before a re-run hands back screenshots of the old

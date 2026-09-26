@@ -1075,6 +1075,9 @@ struct TestAttachments {
 struct ExportedFile {
     name: String,
     path: PathBuf,
+    /// A failure's evidence: its test failed, or xcresulttool marks the file as
+    /// recorded against a failure. Xcode 27 leaves the mark off what a failed
+    /// test attached itself, and off a failed UI test's crash log too.
     failure: bool,
     timestamp: f64,
 }
@@ -1269,7 +1272,7 @@ fn rename_into_place(
                 .file_name()
                 .map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
             path,
-            failure: item.failure,
+            failure: item.failure || item.failed_test,
             timestamp: item.timestamp,
         };
         match tests.last_mut() {
@@ -2502,6 +2505,61 @@ mod tests {
             root.join("AppTests.ATests.testOne")
                 .join("shot.png")
                 .exists()
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_failed_tests_attachments_are_marked_as_failure_evidence() {
+        // Xcode 27 leaves xcresulttool's mark off what a failed test attached
+        // itself, and off a crashed UI test's crash log too, so the mark alone
+        // would leave '(failure)' off them. The test tree's verdict decides,
+        // and a mark still counts on its own.
+        let root = std::env::temp_dir().join(format!("sweetpad-marked-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let staging = root.join(".sweetpad-export");
+        std::fs::create_dir_all(&staging).unwrap();
+        let attachment = |test: &str, file: &str, failure, failed_test| {
+            std::fs::write(staging.join(file), file).unwrap();
+            xcodebuild::ExportedAttachment {
+                test: format!("ATests/{test}()"),
+                identifier: format!("AppTests/ATests/{test}"),
+                file: staging.join(file),
+                suggested_name: format!("{file}.txt"),
+                failure,
+                failed_test,
+                timestamp: 1.0,
+            }
+        };
+        let exported = vec![
+            attachment("testCrashes", "crash-log", false, true),
+            attachment("testMarked", "marked", true, false),
+            attachment("testPasses", "note", false, false),
+        ];
+        let tests = rename_into_place(exported, &root).unwrap();
+        let marks: Vec<(&str, bool)> = tests
+            .iter()
+            .flat_map(|t| &t.files)
+            .map(|f| (f.name.as_str(), f.failure))
+            .collect();
+        assert_eq!(
+            marks,
+            [
+                ("crash-log.txt", true),
+                ("marked.txt", true),
+                ("note.txt", false)
+            ]
+        );
+        let report = AttachmentsReport {
+            output_dir: root.clone(),
+            tests,
+            recorded_at: None,
+            note: None,
+        };
+        assert_eq!(report.json()["tests"][0]["attachments"][0]["failure"], true);
+        assert_eq!(
+            report.json()["tests"][2]["attachments"][0]["failure"],
+            false
         );
         let _ = std::fs::remove_dir_all(&root);
     }
