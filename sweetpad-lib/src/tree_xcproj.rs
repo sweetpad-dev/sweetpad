@@ -14,9 +14,12 @@
 //! name is its `name` when it has one, else the last component of its `path`,
 //! which is what Xcode shows. The document itself addresses nodes this way: a
 //! target's `product` names `Products/App.app`, the navigator path of a node
-//! whose own `path` is `<PRODUCTS>/App.app`. Two siblings can in principle
-//! share a display name, and an address that matches more than one node is an
-//! error listing what it hit rather than a pick.
+//! whose own `path` is `<PRODUCTS>/App.app`. Two nodes can share a navigator
+//! path, as siblings with one display name do, or cousins below two groups
+//! with no name. Xcode 27.2 then names the node by `id:` and the `id` it
+//! writes on it, and an address takes that spelling too. A navigator path
+//! that matches more than one node is an error listing the ids it hit rather
+//! than a pick.
 //!
 //! A group with neither a name nor a path is still a node holding its
 //! children. Its display name is empty, so it adds an empty component to the
@@ -488,14 +491,19 @@ fn nodes(root: &Value) -> Result<Vec<Node<'_>>, String> {
 
 /// The one node at `address`, or a message saying why not.
 ///
-/// The address is matched as typed first: below a group with no name it holds
-/// an empty component (`/Products`, `Sources//App`) that trimming its slashes
-/// would lose. Then it is trimmed, and last it is matched against each
-/// address trimmed the same way, so `Products` still finds `/Products` when
-/// nothing else is called that.
+/// `id:` and a node's `id` names that node, the spelling the document itself
+/// uses where a navigator path would name two. Otherwise the address is a
+/// navigator path, matched as typed first: below a group with no name it
+/// holds an empty component (`/Products`, `Sources//App`) that trimming its
+/// slashes would lose. Then it is trimmed, and last it is matched against
+/// each address trimmed the same way, so `Products` still finds `/Products`
+/// when nothing else is called that.
 fn find_node<'a>(root: &'a Value, address: &str) -> Result<Node<'a>, String> {
     let wanted = normalize(address);
-    let all = nodes(root)?;
+    let mut all = nodes(root)?;
+    if let Some(index) = position_of_id(&all, address) {
+        return Ok(all.swap_remove(index));
+    }
     let as_typed = |a: &str| a == address;
     let trimmed = |a: &str| a == wanted;
     let both_trimmed = |a: &str| normalize(a) == wanted;
@@ -510,11 +518,50 @@ fn find_node<'a>(root: &'a Value, address: &str) -> Result<Node<'a>, String> {
     match hits.len() {
         1 => Ok(hits.remove(0)),
         0 => Err(missing(root, &wanted)),
-        n => Err(format!(
-            "{wanted} matches {n} navigator nodes; the document holds siblings sharing a \
-             display name, which only Xcode's navigator can tell apart"
-        )),
+        n => {
+            let ids: Vec<String> = hits
+                .iter()
+                .filter_map(|n| node_id(n.value))
+                .map(|id| format!("id:{id}"))
+                .collect();
+            let hint = if ids.is_empty() {
+                ", and only Xcode's navigator can tell them apart".to_string()
+            } else {
+                format!(". Name one by its id: {}", ids.join(", "))
+            };
+            Err(format!(
+                "'{address}' is the navigator path of {n} nodes{hint}"
+            ))
+        }
     }
+}
+
+/// Where the node a reference in the document names resolves to, relative to
+/// the project directory, in the spelling [`FileRefRow::resolved`] uses.
+///
+/// A reference is the node's navigator path, matched exactly, or `id:` and
+/// the node's own `id`. Xcode 27.2 writes the second form where the navigator
+/// path would name two nodes, as it does below two groups at the root that
+/// have no name, and puts the `id` on the node. A configuration's `file` and
+/// `anchor`, a target's `product` and the `products-group` all take either
+/// form. A reference whose id no node carries is read as a navigator path,
+/// since a group's name can itself start with `id:`.
+pub(crate) fn resolve_reference(root: &Value, reference: &str) -> Option<String> {
+    let all = nodes(root).ok()?;
+    position_of_id(&all, reference)
+        .or_else(|| all.iter().position(|n| n.address == reference))
+        .map(|index| all[index].resolved.clone())
+}
+
+/// The node an `id:<id>` spelling names.
+fn position_of_id(all: &[Node<'_>], spelling: &str) -> Option<usize> {
+    let id = spelling.strip_prefix("id:")?;
+    all.iter().position(|n| node_id(n.value) == Some(id))
+}
+
+/// The `id` Xcode writes on a node that something names by it.
+fn node_id(node: &Value) -> Option<&str> {
+    node.get("id").and_then(Value::as_str)
 }
 
 /// A group argument, or `None` for the navigator root, which `""` and `/`
@@ -558,8 +605,22 @@ fn find_group<'a>(root: &'a Value, address: &str) -> Result<Node<'a>, String> {
 }
 
 /// Why an address found nothing. An id-shaped one is the pbxproj habit, and
-/// saying so is more use than listing every node in the project.
+/// saying so is more use than listing every node in the project. A node that
+/// carries the id is named by it with `id:` in front.
 fn missing(root: &Value, address: &str) -> String {
+    if let Some(id) = address.strip_prefix("id:") {
+        return format!(
+            "no node in the project's navigator tree has the id {id}; 'pbxproj fileref list \
+             --json' and 'pbxproj group list --json' print each node's id"
+        );
+    }
+    let all = nodes(root).unwrap_or_default();
+    if all.iter().any(|n| node_id(n.value) == Some(address)) {
+        return format!(
+            "{address} is a node's id; name it as 'id:{address}', since a bare address is a \
+             navigator path in the project.xcproj format"
+        );
+    }
     if address.len() == 24 && address.chars().all(|c| c.is_ascii_hexdigit()) {
         return format!(
             "{address} looks like a pbxproj object id, and this project is in the \
@@ -568,8 +629,7 @@ fn missing(root: &Value, address: &str) -> String {
              'pbxproj group list' print them"
         );
     }
-    let near: Vec<String> = nodes(root)
-        .unwrap_or_default()
+    let near: Vec<String> = all
         .into_iter()
         .map(|n| n.address)
         .filter(|a| {

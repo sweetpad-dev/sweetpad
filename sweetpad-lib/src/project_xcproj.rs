@@ -512,85 +512,35 @@ fn xcconfig_layer(
 
 /// Where a configuration's `file` points.
 ///
-/// Both forms name a place in the navigator rather than on disk: a path of
-/// display names, or an `{ anchor, relative-path }` pair whose anchor is the
-/// navigator path of a synchronized folder, which lists no members of its own.
-/// The two come apart whenever a file's display name differs from its path —
-/// CocoaPods writes `Pods/Pods-App.debug.xcconfig` for a file that lives at
+/// Both forms name a node in the navigator rather than a place on disk: the
+/// node itself, or an `{ anchor, relative-path }` pair whose anchor is a
+/// synchronized folder, which lists no members of its own. The node is found
+/// the way [`crate::tree_xcproj::resolve_reference`] reads a reference: by
+/// `id:` and its id, or by its navigator path. A navigator path and the disk
+/// come apart whenever a file's display name differs from its path. CocoaPods
+/// writes `Pods/Pods-App.debug.xcconfig` for a file that lives at
 /// `Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig`.
-fn xcconfig_path(file: &Value, root: &Value, project_dir: &Path) -> Option<PathBuf> {
-    if let Some(path) = file.as_str() {
-        return navigator_path(root, path, project_dir);
-    }
-    let anchor = file.get("anchor").and_then(Value::as_str)?;
-    let relative = file.get("relative-path").and_then(Value::as_str)?;
-    let anchor_dir = navigator_path(root, anchor, project_dir)?;
-    Some(crate::project::join_normalized(&anchor_dir, relative))
-}
-
-/// The location on disk of the node a navigator path names.
 ///
-/// Matched by walking the tree and rebuilding each node's navigator path from
-/// its display name, rather than by splitting the input: a group's name can
-/// itself hold a `/` (`App/Sources`), so the segments are not separable. A
-/// group with neither a name nor a path adds an empty component, which is how
-/// Xcode spells an xcconfig below one (`Sources//Config/Base.xcconfig`).
-fn navigator_path(root: &Value, navigator: &str, project_dir: &Path) -> Option<PathBuf> {
-    fn walk(
-        nodes: &[Value],
-        parent_nav: Option<&str>,
-        parent_base: &Path,
-        project_dir: &Path,
-        target: &str,
-        depth: usize,
-    ) -> Option<PathBuf> {
-        if depth >= crate::project::MAX_GROUP_DEPTH {
-            return None;
-        }
-        for node in nodes {
-            let nav = crate::tree_xcproj::child_address(
-                parent_nav,
-                crate::tree_xcproj::display_name(node),
-            );
-            if !target.starts_with(nav.as_str()) {
-                continue;
-            }
-            let Some(base) = node_base(node, parent_base, project_dir) else {
-                continue;
-            };
-            if nav == target {
-                return Some(base);
-            }
-            let found = walk(
-                node.get("children")
-                    .and_then(Value::as_array)
-                    .unwrap_or_default(),
-                Some(&nav),
-                &base,
-                project_dir,
-                target,
-                depth + 1,
-            );
-            if found.is_some() {
-                return found;
-            }
-        }
-        None
-    }
-
-    walk(
-        root.get("files")
-            .and_then(Value::as_array)
-            .unwrap_or_default(),
-        None,
-        project_dir,
-        project_dir,
-        navigator,
-        0,
-    )
-    // A document that names a file the tree does not hold — nothing Xcode
-    // writes, but a hand-edited one might — is read as a plain path.
-    .or_else(|| resolve_path(navigator, project_dir, project_dir))
+/// With an empty `project_dir` the result is relative to the project
+/// directory.
+pub(crate) fn xcconfig_path(file: &Value, root: &Value, project_dir: &Path) -> Option<PathBuf> {
+    let (reference, relative) = match file.as_str() {
+        Some(reference) => (reference, None),
+        None => (
+            file.get("anchor").and_then(Value::as_str)?,
+            Some(file.get("relative-path").and_then(Value::as_str)?),
+        ),
+    };
+    let node = match crate::tree_xcproj::resolve_reference(root, reference) {
+        Some(resolved) => resolve_path(&resolved, project_dir, project_dir)?,
+        // A document that names a file the tree does not hold, which nothing
+        // Xcode writes but a hand-edited one might, is read as a plain path.
+        None => resolve_path(reference, project_dir, project_dir)?,
+    };
+    Some(match relative {
+        Some(relative) => crate::project::join_normalized(&node, relative),
+        None => node,
+    })
 }
 
 /// Membership is recorded on the file, not in the phase: a node carries

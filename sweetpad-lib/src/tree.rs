@@ -10,13 +10,15 @@
 //! nested array and a node is its own entry. Across 80 converted corpus
 //! documents holding 1,903 file nodes, the 192 ids under `files` all sit on a
 //! `<PRODUCTS>/…` node, the product a target points at; no ordinary source
-//! file has one. There is nothing to address a file *with* except where it
-//! sits.
+//! file has one. Xcode 27.2 also writes one on a node that a reference has to
+//! name as `id:<id>` because another node shares its navigator path. Past
+//! those, there is nothing to address a file *with* except where it sits.
 //!
 //! So [`FileRefRow::address`] is the id in one format and the navigator path
 //! (`Sources/App/ContentView.swift`) in the other, and every verb takes back
 //! what its listing printed. The document's own id, when it has one, rides
-//! along in `id` rather than being invented where Xcode writes none.
+//! along in `id` rather than being invented where Xcode writes none, and
+//! `id:<id>` names that node too.
 
 /// One file node, as `fileref list` reports it.
 #[derive(Debug, Clone, PartialEq, Eq)]

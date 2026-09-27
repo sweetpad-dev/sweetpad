@@ -1,6 +1,6 @@
 //! The navigator tree of a `project.xcproj` document: nodes addressed by their
 //! path through it, since the format writes an id only on the products a
-//! target points at.
+//! target points at and on a node whose path another node shares.
 
 use sweetpad_lib::tree::{AddGroupOutcome, AddRefOutcome, MoveOutcome};
 use sweetpad_lib::{tree_xcproj as tree, xcproj};
@@ -360,13 +360,92 @@ fn a_group_cannot_be_moved_inside_itself() {
 #[test]
 fn an_object_id_as_an_address_says_which_format_this_is() {
     let mut doc = document();
-    let err = tree::remove_fileref(&mut doc, "958E16DD736EB85C16C05DE6", false).unwrap_err();
+    let err = tree::remove_fileref(&mut doc, "0123456789ABCDEF01234567", false).unwrap_err();
     assert!(err.contains("looks like a pbxproj object id"), "{err}");
     assert!(err.contains("navigator path"), "{err}");
+
+    // The product carries its id, and it names the node with 'id:' in front.
+    let err = tree::remove_fileref(&mut doc, "958E16DD736EB85C16C05DE6", false).unwrap_err();
+    assert!(
+        err.contains("name it as 'id:958E16DD736EB85C16C05DE6'"),
+        "{err}"
+    );
 
     // An ordinary miss points at the node it probably meant.
     let err = tree::remove_fileref(&mut doc, "App.swift", false).unwrap_err();
     assert!(err.contains("did you mean Sources/App.swift"), "{err}");
+}
+
+/// Two groups at the root with no name give their children one navigator
+/// path. Xcode 27.2 then writes an id on the node a reference has to name,
+/// and `id:` with that id names it here too.
+#[test]
+fn a_node_sharing_its_navigator_path_is_named_by_its_id() {
+    let mut doc = xcproj::parse(
+        r#"{
+  "files": [
+    {
+      "kind": "group",
+      "children": [
+        {
+          "kind": "group",
+          "path": "Config",
+          "children": [
+            { "path": "Base.xcconfig", "id": "0000000000000000000000F2" },
+          ],
+        },
+      ],
+    }, {
+      "kind": "group",
+      "children": [
+        {
+          "kind": "group",
+          "name": "Config",
+          "path": "Other",
+          "children": [
+            { "path": "Base.xcconfig" },
+          ],
+        },
+      ],
+    },
+  ],
+}
+"#,
+    )
+    .unwrap_or_else(|e| panic!("parse: {e}"));
+    assert_eq!(
+        addresses(&doc),
+        ["/Config/Base.xcconfig", "/Config/Base.xcconfig"]
+    );
+
+    let err = tree::remove_fileref(&mut doc, "/Config/Base.xcconfig", false).unwrap_err();
+    assert!(
+        err.contains("'/Config/Base.xcconfig' is the navigator path of 2 nodes"),
+        "{err}"
+    );
+    assert!(
+        err.contains("Name one by its id: id:0000000000000000000000F2"),
+        "{err}"
+    );
+    let err = tree::remove_fileref(&mut doc, "0000000000000000000000F2", false).unwrap_err();
+    assert!(
+        err.contains("name it as 'id:0000000000000000000000F2'"),
+        "{err}"
+    );
+    let err = tree::remove_fileref(&mut doc, "id:0000000000000000000000F3", false).unwrap_err();
+    assert!(
+        err.contains("no node in the project's navigator tree has the id"),
+        "{err}"
+    );
+
+    let removed = tree::remove_fileref(&mut doc, "id:0000000000000000000000F2", false).unwrap();
+    assert_eq!(removed.address, "/Config/Base.xcconfig");
+    let left = tree::list_filerefs(&doc).unwrap();
+    assert_eq!(left.len(), 1);
+    assert_eq!(
+        left[0].resolved, "Other/Base.xcconfig",
+        "the other one stays"
+    );
 }
 
 /// Xcode fixes a node's key order by position, not alphabetically: `type`

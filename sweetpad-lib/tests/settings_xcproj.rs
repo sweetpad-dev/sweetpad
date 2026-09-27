@@ -322,6 +322,49 @@ fn an_unknown_configuration_or_target_is_an_error() {
     assert!(err.contains("no target named Nope"), "{err}");
 }
 
+/// The xcconfig an edit could shadow is found on disk the way a build finds
+/// it: through the node the configuration names, by navigator path, by `id:`,
+/// or as a folder and a path inside it.
+#[test]
+fn a_base_xcconfig_is_named_by_where_it_lives() {
+    let doc = document(
+        r#"{
+  "configurations": [
+    { "name": "Debug", "file": "Pods/Pods-App.debug.xcconfig" },
+    { "name": "Release", "file": "id:0000000000000000000000F2" },
+    { "name": "Beta", "file": { "anchor": "Settings", "relative-path": "Beta.xcconfig" } },
+  ],
+  "files": [
+    {
+      "kind": "group",
+      "path": "Pods",
+      "children": [
+        { "path": "Support/Pods-App.debug.xcconfig" },
+      ],
+    }, {
+      "kind": "group",
+      "children": [
+        { "path": "Config/Base.xcconfig", "id": "0000000000000000000000F2" },
+      ],
+    },
+    { "kind": "folder", "path": "Config/Settings" },
+  ],
+}
+"#,
+    );
+    assert_eq!(
+        settings::base_xcconfigs(&doc, &Scope::Project, &[]).unwrap(),
+        [
+            (
+                "Debug".into(),
+                "Pods/Support/Pods-App.debug.xcconfig".into()
+            ),
+            ("Release".into(), "Config/Base.xcconfig".into()),
+            ("Beta".into(), "Config/Settings/Beta.xcconfig".into()),
+        ]
+    );
+}
+
 #[test]
 fn an_info_plist_inside_a_synchronized_folder_is_excepted() {
     let mut doc = document(

@@ -346,6 +346,68 @@ fn xcconfig_resolves_through_a_synchronized_folder_anchor() {
     assert_eq!(layers[0][0].key, "SHARED");
 }
 
+/// Two groups at the root with no name give their children one navigator
+/// path, so Xcode 27.2 names the xcconfig as `id:` and the id it writes on the
+/// node. This is its conversion of such a project: both files are
+/// `/Config/Base.xcconfig` in the navigator, and `xcodebuild -showBuildSettings`
+/// reads the one carrying the id.
+#[test]
+fn xcconfig_named_by_id_resolves_to_the_node_carrying_it() {
+    let dir = tempdir("xcconfig-id");
+    let xcodeproj = scratch(
+        &dir,
+        r#"{
+  "configurations": [
+    { "name": "Debug", "file": "id:0000000000000000000000F2" },
+    { "name": "Release", "file": { "anchor": "id:0000000000000000000000S1", "relative-path": "Base.xcconfig" } },
+  ],
+  "files": [
+    {
+      "kind": "group",
+      "children": [
+        {
+          "kind": "group",
+          "name": "Config",
+          "path": "Other",
+          "children": [
+            { "path": "Base.xcconfig" },
+          ],
+        },
+        { "kind": "folder", "path": "Sub/Config" },
+      ],
+    }, {
+      "kind": "group",
+      "children": [
+        {
+          "kind": "group",
+          "path": "Config",
+          "children": [
+            { "path": "Base.xcconfig", "id": "0000000000000000000000F2" },
+          ],
+        },
+        { "kind": "folder", "id": "0000000000000000000000S1", "path": "Folder/Config" },
+      ],
+    },
+  ],
+  "targets": [ { "name": "App", "product-type": "application" } ],
+}
+"#,
+        &[
+            ("Other/Base.xcconfig", "PROBE = from-other\n"),
+            ("Config/Base.xcconfig", "PROBE = from-config\n"),
+            ("Sub/Config/Base.xcconfig", "PROBE = from-sub\n"),
+            ("Folder/Config/Base.xcconfig", "PROBE = from-folder\n"),
+        ],
+    );
+    for (configuration, expected) in [("Debug", "from-config"), ("Release", "from-folder")] {
+        let layers = build_settings(&xcodeproj, "App", configuration)
+            .unwrap()
+            .layers;
+        let values: Vec<&str> = layers[0].iter().map(|a| a.value.as_str()).collect();
+        assert_eq!(values, [expected], "{configuration}");
+    }
+}
+
 /// An xcconfig the project names but that isn't on disk resolves to an empty
 /// layer, the way xcodebuild carries on after warning. A CocoaPods project
 /// before `pod install` is the usual case.

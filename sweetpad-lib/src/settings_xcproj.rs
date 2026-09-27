@@ -150,8 +150,10 @@ pub fn unset(
 
 /// The project-dir-relative xcconfig backing each selected configuration, as
 /// `(configuration, path)` pairs — configurations without one are omitted.
-/// Callers warn when an edited key is also assigned there: the stored layer
-/// outranks the xcconfig, so the edit silently shadows it.
+/// The document names the file by its node in the navigator, which is resolved
+/// to the disk the way a build reads it. Callers warn when an edited key is
+/// also assigned there: the stored layer outranks the xcconfig, so the edit
+/// silently shadows it.
 ///
 /// # Errors
 /// Returns a message when the target or configuration is missing.
@@ -165,11 +167,8 @@ pub fn base_xcconfigs(
         .into_iter()
         .filter_map(|configuration| {
             let file = schema::base_xcconfig(root, scope, &configuration)?;
-            let relative = file
-                .get("relative-path")
-                .or(Some(file))
-                .and_then(Value::as_str)?;
-            Some((configuration, relative.to_string()))
+            let path = crate::project_xcproj::xcconfig_path(file, root, std::path::Path::new(""))?;
+            Some((configuration, path.to_string_lossy().into_owned()))
         })
         .collect())
 }

@@ -1776,9 +1776,13 @@ friction, without collapsing the axes:
   root's, so there `""` is refused as naming two groups, and `/` still names
   the root. A `project.xcproj` uses these paths as its addresses: `fileref
   list` prints `/Products/App.app`, and a configuration's xcconfig named
-  `Sources//Config/Base.xcconfig` resolves through the group with no name. With
-  no id to fall back on, such a group at the root cannot be the group a verb
-  adds to or moves into. `group move` refuses to move a group with no name in
+  `Sources//Config/Base.xcconfig` resolves through the group with no name.
+  Where two nodes share a navigator path, as the children of two such groups at
+  the root do, Xcode 27.2 writes an `id` on the node and refers to it as
+  `id:<id>`. A configuration's `file` and `anchor`, a target's `product` and
+  the `products-group` all use that form. The xcconfig lookup reads it, and
+  `id:<id>` also names the node as an argument. A group at the root with no
+  name and no id cannot be the group a verb adds to or moves into. `group move` refuses to move a group with no name in
   that format, because keeping its children's files would give it a path, and
   Xcode shows the path as its name. A `project.pbxproj` group listed in two
   places has two paths, and either one selects it. Xcode 27.2 refuses to open
