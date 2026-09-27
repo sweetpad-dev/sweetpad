@@ -168,7 +168,14 @@ which take none of `xcodebuild`'s flags, and a compiler flag it forwards can
 be spelled like one of them (`-Xswiftc -sdk -Xswiftc <path>`). The CLI and the
 BSP server read a flag's value with one helper (sweetpad-core's
 `xcodebuild_args::last_value`): the argument after it, dashes and all, as
-`xcodebuild` reads it, and the last copy counts. The server can't refuse the
+`xcodebuild` reads it, and the last copy counts. Its `VALUE_FLAGS` lists
+each flag that shapes a build, test or archive and takes a value in Xcode 27,
+as probed against it. That includes the testing flags such as
+`-enableCodeCoverage`, `-test-iterations` and the two-word `-only-testing X`.
+Each fails at the end of a command line and takes the next argument even
+when it starts with a dash. A flag that checks its value
+(`-enableCodeCoverage YES|NO`) then refuses it. The flags of `xcodebuild`'s
+other modes, such as `-exportLocalizations`' `-exportLanguage`, are left out. The server can't refuse the
 extension's `bsp.json`, so a `buildArgs` ending that way is logged as a
 warning, and the index reads the rest, the copy before it included.
 
@@ -185,10 +192,10 @@ invalid output format. `-hideShellScriptEnvironment` reads as `-h` and prints
 the verb's help. When the whole word is an `xcodebuild` flag, that error or
 help gives way to the same unknown-flag error and tip. The help stays for
 `-h`, `--help` and `-help`, and for any command line where another word asks
-for it too. For a flag sweetpad passes
-itself, the tip names the sweetpad flag, as the tail's refusal does. So it
-does for a flag with a value when the verb has a flag of the same name (`pass
-'--destination' instead of '-destination'`). A flag nothing takes gets no
+for it too. For a flag sweetpad passes itself, the tip names the sweetpad
+flag, as the tail's refusal does. So it does for a flag with a value when the
+verb has a flag of the same name (`pass '--destination' instead of
+'-destination'`, and `test`'s `-skip-testing`). A flag nothing takes gets no
 tip. The list is
 what `xcodebuild -help` shows for Xcode 27, less the flags that make it do
 something other than build, test or archive (`-showBuildSettings`, `-list`).

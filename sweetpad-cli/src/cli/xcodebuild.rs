@@ -175,10 +175,10 @@ pub fn takes_flag(flag: &str) -> bool {
 }
 
 /// The flags `xcodebuild -help` lists for Xcode 27 that shape a build, test
-/// or archive, besides the [`VALUE_FLAGS`]. The ones that make `xcodebuild`
-/// do something else (`-showBuildSettings`, `-list`, `-exportArchive`,
-/// `-version`, …) are left out.
-const OTHER_FLAGS: [&str; 53] = [
+/// or archive and take no value, beside the [`VALUE_FLAGS`]. The ones that
+/// make `xcodebuild` do something else (`-showBuildSettings`, `-list`,
+/// `-exportArchive`, `-version`, …) are left out.
+const OTHER_FLAGS: [&str; 18] = [
     "-alltargets",
     "-parallelizeTargets",
     "-quiet",
@@ -188,37 +188,8 @@ const OTHER_FLAGS: [&str; 53] = [
     "-skipUnavailableActions",
     "-allowProvisioningUpdates",
     "-allowProvisioningDeviceRegistration",
-    "-authenticationKeyPath",
-    "-authenticationKeyID",
-    "-authenticationKeyIssuerID",
-    "-enableAddressSanitizer",
-    "-enableThreadSanitizer",
-    "-enableUndefinedBehaviorSanitizer",
-    "-enableCodeCoverage",
-    "-enableCodesizeProfile",
-    "-codesizeProfileOutputDir",
-    "-resultBundleVersion",
-    "-maximum-concurrent-test-device-destinations",
-    "-maximum-concurrent-test-simulator-destinations",
-    "-parallel-testing-enabled",
-    "-parallel-testing-worker-count",
-    "-maximum-parallel-testing-workers",
-    "-testProductsPath",
-    "-enablePerformanceTestsDiagnostics",
-    "-only-testing",
-    "-skip-testing",
-    "-test-timeouts-enabled",
-    "-default-test-execution-time-allowance",
-    "-maximum-test-execution-time-allowance",
-    "-test-iterations",
     "-retry-tests-on-failure",
     "-run-tests-until-failure",
-    "-test-repetition-relaunch-enabled",
-    "-only-test-configuration",
-    "-skip-test-configuration",
-    "-collect-test-diagnostics",
-    "-testLanguage",
-    "-testRegion",
     "-disableAutomaticPackageResolution",
     "-onlyUsePackageVersionsFromResolvedFile",
     "-skipPackageUpdates",
@@ -226,12 +197,6 @@ const OTHER_FLAGS: [&str; 53] = [
     "-skipPackagePluginValidation",
     "-skipMacroValidation",
     "-skipPackageSignatureValidation",
-    "-packageAuthorizationProvider",
-    "-defaultPackageRegistryURL",
-    "-packageDependencySCMToRegistryTransformation",
-    "-packageFingerprintPolicy",
-    "-packageSigningEntityPolicy",
-    "-scmProvider",
 ];
 
 /// Refuse a typed `--` tail that ends with a flag still waiting for its
@@ -2302,18 +2267,21 @@ pub fn for_action(
     let testing = matches!(action, Action::Test | Action::BuildForTesting);
     let mut iter = configured.iter();
     while let Some(arg) = iter.next() {
+        let value = if VALUE_FLAGS.contains(&arg.as_str()) {
+            iter.next()
+        } else {
+            None
+        };
         let why = if !testing && TEST_ONLY_FLAGS.contains(&arg.as_str()) {
             ", as a flag only testing takes"
         } else if !bundle_given && arg == "-resultStreamPath" {
             " without a '-resultBundlePath' to stream into"
         } else {
             kept.push(arg.clone());
-            if VALUE_FLAGS.contains(&arg.as_str()) {
-                kept.extend(iter.next().cloned());
-            }
+            kept.extend(value.cloned());
             continue;
         };
-        let value = iter.next().map_or_else(String::new, |v| format!(" {v}"));
+        let value = value.map_or_else(String::new, |v| format!(" {v}"));
         notes.push(format!(
             "leaving out sweetpad.toml's '{arg}{value}': 'xcodebuild {}' fails on it{why}",
             action.as_arg()
@@ -2323,9 +2291,10 @@ pub fn for_action(
 }
 
 /// The flags `xcodebuild` takes only when testing ("The flag
-/// -enableCodeCoverage is only supported when testing"), each of which takes
-/// a value, as Xcode 27 refuses them: `build`, `archive` and `clean` fail on
-/// them, and `build-for-testing` takes them. The other testing flags
+/// -enableCodeCoverage is only supported when testing"), as Xcode 27 refuses
+/// them: `build`, `archive` and `clean` fail on them, and `build-for-testing`
+/// takes them. Each takes a value, which [`for_action`] leaves out with it
+/// because [`VALUE_FLAGS`] lists the flag. The other testing flags
 /// (`-test-iterations`, `-parallel-testing-enabled`, `-only-testing:`, …) are
 /// accepted by every action. `-test-repetition-relaunch-enabled` fails every
 /// action, `test` included, unless an iteration flag comes with it, and is
@@ -4005,6 +3974,9 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
                 crate::cli::config::effective_xcodebuild_args(&file, &[]).is_ok(),
                 "{flag}"
             );
+            // Each takes a value, which leaves with it.
+            assert!(VALUE_FLAGS.contains(flag), "{flag}");
+            assert!(for_action(Action::Clean, &file, &[]).0.is_empty(), "{flag}");
         }
     }
 

@@ -1023,11 +1023,46 @@ export const XCODEBUILD_VALUE_FLAGS: ReadonlySet<string> = new Set([
   "-derivedDataPath",
   "-resultBundlePath",
   "-resultStreamPath",
+  "-resultBundleVersion",
   "-archivePath",
   "-exportPath",
   "-exportOptionsPlist",
   "-clonedSourcePackagesDirPath",
   "-packageCachePath",
+  "-enableCodeCoverage",
+  "-testLanguage",
+  "-testRegion",
+  "-testProductsPath",
+  "-enablePerformanceTestsDiagnostics",
+  "-only-testing",
+  "-skip-testing",
+  "-only-test-configuration",
+  "-skip-test-configuration",
+  "-collect-test-diagnostics",
+  "-test-iterations",
+  "-test-timeouts-enabled",
+  "-default-test-execution-time-allowance",
+  "-maximum-test-execution-time-allowance",
+  "-test-repetition-relaunch-enabled",
+  "-parallel-testing-enabled",
+  "-parallel-testing-worker-count",
+  "-maximum-parallel-testing-workers",
+  "-maximum-concurrent-test-device-destinations",
+  "-maximum-concurrent-test-simulator-destinations",
+  "-enableAddressSanitizer",
+  "-enableThreadSanitizer",
+  "-enableUndefinedBehaviorSanitizer",
+  "-enableCodesizeProfile",
+  "-codesizeProfileOutputDir",
+  "-packageAuthorizationProvider",
+  "-defaultPackageRegistryURL",
+  "-packageDependencySCMToRegistryTransformation",
+  "-packageFingerprintPolicy",
+  "-packageSigningEntityPolicy",
+  "-scmProvider",
+  "-authenticationKeyPath",
+  "-authenticationKeyID",
+  "-authenticationKeyIssuerID",
 ]);
 
 /** The xcodebuild actions `sweetpad.build.args` can add to a command. */
@@ -1060,8 +1095,8 @@ function readXcodebuildArg(arg: string): XcodebuildArg {
 /**
  * Read `args` the way xcodebuild reads them. A flag in `XCODEBUILD_VALUE_FLAGS` takes the next argument as its
  * value. Another flag takes the next argument only when that is not a flag, a `KEY=VALUE` setting or an action,
- * so `-quiet build` stays a switch and an action while `-enableCodeCoverage YES` keeps its value. A value flag
- * that ends `args` has no value.
+ * so `-quiet build` stays a switch and an action while a flag the list lacks, such as one a newer Xcode adds,
+ * keeps a plain word after it as its value. A value flag that ends `args` has no value.
  */
 function parseXcodebuildArgs(args: string[]): XcodebuildArg[] {
   const parsed: XcodebuildArg[] = [];

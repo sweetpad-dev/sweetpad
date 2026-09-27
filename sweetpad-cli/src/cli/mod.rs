@@ -3400,6 +3400,10 @@ mod tail_flag_hint_tests {
                 &["settings", "show", "-target", "App"],
                 "pass '--target' instead of '-target'",
             ),
+            (
+                &["test", "-skip-testing", "AppTests/Slow"],
+                "pass '--skip-testing' instead of '-skip-testing'",
+            ),
         ] {
             let text = rendered(args);
             assert!(text.contains(&format!("tip: {tip}")), "{args:?}:\n{text}");

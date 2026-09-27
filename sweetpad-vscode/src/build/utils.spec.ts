@@ -286,14 +286,45 @@ describe("XcodeCommandBuilder.addAdditionalArgs", () => {
 
   it("keeps the value of a flag outside the value-flag list", () => {
     const command = new XcodeCommandBuilder();
-    command.addAdditionalArgs(["-enableCodeCoverage", "YES", "-destination", "platform=macOS", "-quiet"]);
+    command.addAdditionalArgs(["-flagFromNewerXcode", "YES", "-destination", "platform=macOS", "-quiet"]);
     expect(command.build()).toEqual([
       "xcodebuild",
-      "-enableCodeCoverage",
+      "-flagFromNewerXcode",
       "YES",
       "-destination",
       "platform=macOS",
       "-quiet",
+    ]);
+  });
+
+  // A value spelled like a setting or an action is still the flag's: a registry URL with a query, or a
+  // directory named `build`.
+  it("reads the value of a testing or package flag as its value", () => {
+    const command = new XcodeCommandBuilder();
+    command.addAdditionalArgs([
+      "-enableCodeCoverage",
+      "YES",
+      "-defaultPackageRegistryURL",
+      "https://registry.example.com/?region=eu",
+      "-enableCodesizeProfile",
+      "YES",
+      "-codesizeProfileOutputDir",
+      "build",
+      "-only-testing",
+      "AppTests/Slow",
+    ]);
+    expect(command.build()).toEqual([
+      "xcodebuild",
+      "-enableCodeCoverage",
+      "YES",
+      "-defaultPackageRegistryURL",
+      "https://registry.example.com/?region=eu",
+      "-enableCodesizeProfile",
+      "YES",
+      "-codesizeProfileOutputDir",
+      "build",
+      "-only-testing",
+      "AppTests/Slow",
     ]);
   });
 });

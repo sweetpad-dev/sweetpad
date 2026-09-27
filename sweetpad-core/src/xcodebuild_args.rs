@@ -26,8 +26,16 @@ pub fn settings(args: &[String]) -> Vec<(String, String)> {
     settings
 }
 
-/// The `xcodebuild` flags that take the next argument as their value.
-pub const VALUE_FLAGS: [&str; 22] = [
+/// The `xcodebuild` flags that take the next argument as their value, of the
+/// ones that shape a build, test or archive, as Xcode 27 reads them. Each
+/// fails at the end of a command line ("option '-jobs' requires an
+/// argument"), and takes the next argument whatever it looks like:
+/// `-testLanguage -quiet` names a language '-quiet', and a flag that checks
+/// its value refuses one spelled like a flag (`-enableCodeCoverage -quiet`).
+/// The space form of `-only-testing` and `-skip-testing` is listed;
+/// `-only-testing:X` is one argument. The flags of `xcodebuild`'s other modes
+/// (`-exportLocalizations`' `-exportLanguage`, …) are left out.
+pub const VALUE_FLAGS: [&str; 57] = [
     "-project",
     "-workspace",
     "-target",
@@ -45,11 +53,46 @@ pub const VALUE_FLAGS: [&str; 22] = [
     "-derivedDataPath",
     "-resultBundlePath",
     "-resultStreamPath",
+    "-resultBundleVersion",
     "-archivePath",
     "-exportPath",
     "-exportOptionsPlist",
     "-clonedSourcePackagesDirPath",
     "-packageCachePath",
+    "-enableCodeCoverage",
+    "-testLanguage",
+    "-testRegion",
+    "-testProductsPath",
+    "-enablePerformanceTestsDiagnostics",
+    "-only-testing",
+    "-skip-testing",
+    "-only-test-configuration",
+    "-skip-test-configuration",
+    "-collect-test-diagnostics",
+    "-test-iterations",
+    "-test-timeouts-enabled",
+    "-default-test-execution-time-allowance",
+    "-maximum-test-execution-time-allowance",
+    "-test-repetition-relaunch-enabled",
+    "-parallel-testing-enabled",
+    "-parallel-testing-worker-count",
+    "-maximum-parallel-testing-workers",
+    "-maximum-concurrent-test-device-destinations",
+    "-maximum-concurrent-test-simulator-destinations",
+    "-enableAddressSanitizer",
+    "-enableThreadSanitizer",
+    "-enableUndefinedBehaviorSanitizer",
+    "-enableCodesizeProfile",
+    "-codesizeProfileOutputDir",
+    "-packageAuthorizationProvider",
+    "-defaultPackageRegistryURL",
+    "-packageDependencySCMToRegistryTransformation",
+    "-packageFingerprintPolicy",
+    "-packageSigningEntityPolicy",
+    "-scmProvider",
+    "-authenticationKeyPath",
+    "-authenticationKeyID",
+    "-authenticationKeyIssuerID",
 ];
 
 /// The value after the last `flag` in `args`, read as `xcodebuild` reads
@@ -145,6 +188,37 @@ mod tests {
         // A switch ends a command line fine.
         assert_eq!(dangling_flag(&s(&["-xcconfig", "a", "-quiet"])), None);
         assert_eq!(dangling_flag(&[]), None);
+    }
+
+    /// The testing flags read their values as the others do, so a
+    /// '-enableCodeCoverage YES' is one flag and its value, and one that ends
+    /// the list is named.
+    #[test]
+    fn a_testing_flag_takes_its_value() {
+        let args = s(&[
+            "-enableCodeCoverage",
+            "YES",
+            "-only-testing",
+            "AppTests/Slow",
+            "-test-iterations",
+            "3",
+            "-xcconfig",
+            "-enableCodeCoverage",
+            "-only-testing:AppTests/Fast",
+            "FOO=1",
+        ]);
+        assert_eq!(last_value(&args, "-enableCodeCoverage"), Some("YES"));
+        assert_eq!(last_value(&args, "-only-testing"), Some("AppTests/Slow"));
+        assert_eq!(last_value(&args, "-test-iterations"), Some("3"));
+        assert_eq!(last_value(&args, "-xcconfig"), Some("-enableCodeCoverage"));
+        assert_eq!(dangling_flag(&args), None);
+        assert_eq!(settings(&args), [("FOO".to_string(), "1".to_string())]);
+
+        for flag in ["-enableCodeCoverage", "-only-testing", "-test-iterations"] {
+            assert_eq!(dangling_flag(&s(&["-quiet", flag])), Some(flag));
+        }
+        // The one-word form carries its identifier.
+        assert_eq!(dangling_flag(&s(&["-only-testing:AppTests"])), None);
     }
 
     #[test]

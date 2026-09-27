@@ -104,8 +104,9 @@ SweetPad refuses these before it builds and names its own flag to use:
 | `-enableCodeCoverage`    | nothing, when `test` has `--coverage`        |
 | `-test-iterations`       | nothing, when `test` has `--retry-flaky`     |
 
-The tail also can't end with a flag that still needs its value, such as a bare `-xcconfig`. SweetPad
-refuses it before it builds, and it refuses a `sweetpad.toml` list that ends the same way.
+The tail also can't end with a flag that still needs its value, such as a bare `-xcconfig` or
+`-enableCodeCoverage`. SweetPad refuses it before it builds, and it refuses a `sweetpad.toml` list
+that ends the same way.
 
 A Swift package's tail goes to `swift build` or `swift test` instead, so none of these checks apply
 to it. A compiler flag you forward there can look like an `xcodebuild` flag, as in
