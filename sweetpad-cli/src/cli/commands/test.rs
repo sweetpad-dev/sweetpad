@@ -123,10 +123,17 @@ pub struct BuildArgs {
 
 /// The run flags that reading the last run back refuses, redeclared hidden on
 /// `test attachments` and `test output` the way [`BuildArgs`] does for `test
-/// build`.
+/// build`. The destination flags are among them: the retained bundle is one
+/// per project, whatever the run tested on.
 #[derive(Debug, clap::Args)]
 #[allow(clippy::struct_excessive_bools)] // mirrors TestArgs' toggles, none of them read here
 pub struct HiddenRunArgs {
+    #[arg(long, hide = true)]
+    pub mac: bool,
+    #[arg(long, hide = true)]
+    pub on: Option<String>,
+    #[arg(long, hide = true)]
+    pub destination: Option<String>,
     #[arg(long = "skip-testing", hide = true)]
     pub skip_testing: Vec<String>,
     #[arg(long, hide = true)]
@@ -209,18 +216,24 @@ struct RunArgs<'a> {
 
 pub fn run(ctx: &mut Context, args: &TestArgs, action: Option<&Action>) -> CommandResult {
     ctx.targeting = args.target.clone().into();
-    crate::cli::mac_as_on(&mut ctx.targeting, args.mac)?;
+    let typed = crate::cli::flag_typed;
     match action {
         Some(Action::Attachments(opts)) => {
-            refuse_run_flags(&read_refused_flags(args), &read_reason("attachments"))?;
+            refuse_run_flags(
+                &read_refused_flags(args, typed),
+                &read_reason("attachments"),
+            )?;
             return attachments(ctx, args, opts);
         }
         Some(Action::Output(opts)) => {
-            refuse_run_flags(&read_refused_flags(args), &read_reason("output"))?;
+            refuse_run_flags(&read_refused_flags(args, typed), &read_reason("output"))?;
             return output(ctx, args, opts);
         }
-        Some(Action::Build(_)) => return build(ctx, args),
-        Some(Action::Run) | None => {}
+        Some(Action::Build(_) | Action::Run) | None => {}
+    }
+    crate::cli::mac_as_on(&mut ctx.targeting, args.mac)?;
+    if let Some(Action::Build(_)) = action {
+        return build(ctx, args);
     }
     let passthrough = ctx.xcodebuild_args(&args.passthrough)?;
     let run_args = RunArgs {
@@ -281,9 +294,18 @@ fn read_reason(verb: &str) -> String {
 
 /// The flags on `args` that shape a test run and mean nothing to reading one
 /// back. `--only-testing` and `--result-bundle` are not among them: they pick
-/// the tests and the bundle to read.
-fn read_refused_flags(args: &TestArgs) -> Vec<&'static str> {
+/// the tests and the bundle to read. `--on` and `--destination` count only
+/// when `typed` says they were typed, since an environment variable can set
+/// them for every command.
+fn read_refused_flags(args: &TestArgs, typed: impl Fn(&str) -> bool) -> Vec<&'static str> {
+    let target = &args.target;
     [
+        ("--mac", args.mac),
+        ("--on", target.on.is_some() && typed("--on")),
+        (
+            "--destination",
+            target.destination.is_some() && typed("--destination"),
+        ),
         ("--skip-testing", !args.skip_testing.is_empty()),
         ("--failed", args.failed),
         ("--junit", args.junit.is_some()),
@@ -2337,10 +2359,14 @@ mod tests {
         // verb, and land on the resource's args to be named in the refusal.
         for verb in ["attachments", "output"] {
             let (args, _) = parse_test(&[verb, "--failed", "--junit", "j.xml"]);
-            assert_eq!(read_refused_flags(&args), ["--failed", "--junit"], "{verb}");
+            assert_eq!(
+                read_refused_flags(&args, |_| true),
+                ["--failed", "--junit"],
+                "{verb}"
+            );
             let (args, _) = parse_test(&["--coverage", verb, "--", "-quiet"]);
             assert_eq!(
-                read_refused_flags(&args),
+                read_refused_flags(&args, |_| true),
                 ["--coverage", "'-- XCODEBUILD_ARGS'"],
                 "{verb}"
             );
@@ -2354,7 +2380,7 @@ mod tests {
                 "--show-command",
             ]);
             assert_eq!(
-                read_refused_flags(&args),
+                read_refused_flags(&args, |_| true),
                 [
                     "--skip-testing",
                     "--watch",
@@ -2365,7 +2391,7 @@ mod tests {
             );
         }
         let (args, _) = parse_test(&["output", "--failed"]);
-        let err = refuse_run_flags(&read_refused_flags(&args), &read_reason("output"))
+        let err = refuse_run_flags(&read_refused_flags(&args, |_| true), &read_reason("output"))
             .expect_err("--failed was not refused");
         assert_eq!(
             err.to_string(),
@@ -2375,6 +2401,52 @@ mod tests {
         // A refused flag is a usage error, like the ones clap reports itself.
         assert_eq!(err.error_kind(), crate::cli::ErrorKind::Usage);
         assert_eq!(err.error_kind().exit_code(), 2);
+    }
+
+    #[test]
+    fn the_read_back_verbs_refuse_a_destination_and_leave_it_out_of_their_help() {
+        use clap::CommandFactory;
+        // The bundle is the project's, whatever the run tested on, so a
+        // destination picks nothing here, on either side of the verb.
+        for verb in ["attachments", "output"] {
+            let (args, _) = parse_test(&[verb, "--mac"]);
+            assert_eq!(read_refused_flags(&args, |_| true), ["--mac"], "{verb}");
+            let (args, _) = parse_test(&["--on", "booted", verb, "--destination", "id=X"]);
+            assert_eq!(
+                read_refused_flags(&args, |_| true),
+                ["--on", "--destination"],
+                "{verb}"
+            );
+            // Set by 'SWEETPAD_ON' or 'SWEETPAD_DESTINATION', not typed.
+            assert!(read_refused_flags(&args, |_| false).is_empty(), "{verb}");
+
+            let mut root = crate::cli::Cli::command();
+            root.build();
+            let help = root
+                .find_subcommand_mut("test")
+                .and_then(|test| test.find_subcommand_mut(verb))
+                .expect("the verb")
+                .render_long_help()
+                .to_string();
+            for flag in ["--mac", "--on", "--destination"] {
+                assert!(!help.contains(&format!("{flag} ")), "{verb} lists {flag}");
+                assert!(!help.contains(&format!("{flag}\n")), "{verb} lists {flag}");
+            }
+            assert!(help.contains("--result-bundle <PATH>"), "{verb}");
+        }
+        let (args, _) = parse_test(&["output", "--on", "mac", "--mac"]);
+        let err = refuse_run_flags(&read_refused_flags(&args, |_| true), &read_reason("output"))
+            .expect_err("--mac and --on were not refused");
+        assert_eq!(
+            err.to_string(),
+            "--mac and --on apply to a test run: 'test output' reads the last run's result \
+             bundle and runs nothing"
+        );
+        // A run still takes them.
+        let (args, _) = parse_test(&["--on", "booted"]);
+        assert_eq!(args.target.on.as_deref(), Some("booted"));
+        let (args, _) = parse_test(&["run", "--mac"]);
+        assert!(args.mac);
     }
 
     #[test]
@@ -2405,7 +2477,7 @@ mod tests {
                     Some(Path::new("r.xcresult")),
                     "{argv:?}"
                 );
-                assert!(read_refused_flags(&args).is_empty(), "{argv:?}");
+                assert!(read_refused_flags(&args, |_| true).is_empty(), "{argv:?}");
             }
         }
         // `test --failed` is still `test run --failed`.

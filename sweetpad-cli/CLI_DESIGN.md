@@ -2317,7 +2317,11 @@ ids, as `build diagnostics` does, so their help lists only what they take, and
 a run flag given anyway is refused by name instead of dropped, as a usage error
 (exit 2, §4). `--only-testing`
 and `--result-bundle` are redeclared visible, with help that says what they
-pick here: the tests and the bundle to read.
+pick here: the tests and the bundle to read. `--mac`, `--on` and
+`--destination` are run flags here too: the retained bundle is one per project,
+whatever the run tested on, so a destination picks nothing. `--on` and
+`--destination` are refused only when typed, since `SWEETPAD_ON` and
+`SWEETPAD_DESTINATION` can set them for every command.
 
 ### `test attachments`
 
