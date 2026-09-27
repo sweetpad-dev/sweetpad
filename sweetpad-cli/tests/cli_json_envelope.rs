@@ -328,6 +328,52 @@ fn a_refused_flag_is_a_usage_error() {
     assert!(left.is_empty(), "a refused command wrote {left:?}");
 }
 
+/// A Swift package's '--' tail goes to 'swift build' or 'swift test', which
+/// know none of xcodebuild's flags, so the tail checks for those don't apply:
+/// a compiler flag forwarded with '-Xswiftc' may be spelled like one sweetpad
+/// passes xcodebuild itself. The same tail on an Xcode project is refused.
+#[test]
+fn a_packages_tail_skips_the_xcodebuild_checks() {
+    let home = tmp("package-tail-home");
+    let cwd = tmp("package-tail-cwd");
+    std::fs::write(
+        cwd.join("Package.swift"),
+        "// swift-tools-version: 5.9\nimport PackageDescription\nlet package = \
+         Package(name: \"Tool\")\n",
+    )
+    .unwrap();
+    let tail = ["-Xswiftc", "-sdk", "-Xswiftc", "/sdk"];
+    for verb in [&["build"][..], &["test"], &["test", "build"]] {
+        let args = [verb, &["--show-command", "--json", "--"], &tail].concat();
+        let out = sweetpad(&args, &cwd, &home);
+        assert!(out.status.success(), "{args:?}: {out:?}");
+        let command = parse_stdout(&out, &args)["data"]["command"].clone();
+        let command: Vec<&str> = command
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a.as_str().unwrap())
+            .collect();
+        assert_eq!(command[0], "swift", "{args:?}: {command:?}");
+        assert!(command.ends_with(&tail), "{args:?}: {command:?}");
+    }
+
+    let project = Path::new(env!("SWEETPAD_LIB_DIR"))
+        .join("fixtures/_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj");
+    let args = [
+        &["build", "--project", project.to_str().unwrap(), "--"][..],
+        &tail,
+    ]
+    .concat();
+    let out = sweetpad(&args, &cwd, &home);
+    assert_eq!(out.status.code(), Some(2), "{args:?}: {out:?}");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        stderr.contains("sweetpad sets the SDK itself; pass '--sdk' instead of '-sdk' after '--'"),
+        "{stderr}"
+    );
+}
+
 /// Off a terminal, a command that would have asked names the flag that
 /// answers it instead, and that is a usage error: the same run goes through
 /// once the flag is typed. These need no project, so no fixture either.

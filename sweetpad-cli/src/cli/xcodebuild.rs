@@ -124,9 +124,9 @@ const OWNED_BY_ARCHIVE: [OwnedFlag; 3] = [
 
 /// Refuse a typed `--` argument that names what sweetpad passes `xcodebuild`
 /// itself for `action`, naming the sweetpad flag to use instead. The typed
-/// flags alone decide it, so it is a usage error, raised before any project
-/// is looked for. Only the exact token counts: `xcodebuild` reads
-/// `-scheme=App` as something other than a scheme.
+/// flags alone decide it, so it is a usage error, raised before the command
+/// resolves its scheme or destination. Only the exact token counts:
+/// `xcodebuild` reads `-scheme=App` as something other than a scheme.
 ///
 /// # Errors
 /// A usage error naming the first such argument.

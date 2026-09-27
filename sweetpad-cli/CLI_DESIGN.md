@@ -143,11 +143,11 @@ The tail can't name what sweetpad passes `xcodebuild` itself, because
 `xcodebuild` fails a second copy ("option '-scheme' may only be provided
 once") and the failure would read as a broken build. So `-scheme`,
 `-configuration`, `-sdk`, `-workspace` and `-project` in the tail are a
-usage error naming the sweetpad flag to use, checked before any project is
-looked for. So are `test`'s `-resultBundlePath` (`--result-bundle`) and
-`archive`'s `-archivePath`, `-exportPath` (`--output-file`) and
-`-exportOptionsPlist` (`--export-options`), and on `test` a
-`-enableCodeCoverage` beside `--coverage` or a `-test-iterations` beside
+usage error naming the sweetpad flag to use, checked before the command
+resolves a scheme or destination. So are `test`'s `-resultBundlePath`
+(`--result-bundle`) and `archive`'s `-archivePath`, `-exportPath`
+(`--output-file`) and `-exportOptionsPlist` (`--export-options`), and on
+`test` a `-enableCodeCoverage` beside `--coverage` or a `-test-iterations` beside
 `--retry-flaky`. `-destination` stays: `xcodebuild` takes several and builds
 or tests for each. A build is the one place that adopts the typed copy.
 Nothing reads the build's own result bundle back (it is passed only so
@@ -162,7 +162,10 @@ a usage error too, checked at the same point. `xcodebuild` refuses it
 ("option '-xcconfig' requires an argument"), but `settings show` and the
 locator never spawn it, and would read an earlier `-xcconfig` or none. A
 `sweetpad.toml` list that ends that way is refused as well, since the merge
-would hand the flag the tail's first argument as its value. The CLI and the
+would hand the flag the tail's first argument as its value. A Swift
+package's tail skips both checks. It goes to `swift build` or `swift test`,
+which take none of `xcodebuild`'s flags, and a compiler flag it forwards can
+be spelled like one of them (`-Xswiftc -sdk -Xswiftc <path>`). The CLI and the
 BSP server read a flag's value with one helper (sweetpad-core's
 `xcodebuild_args::last_value`): the argument after it, dashes and all, as
 `xcodebuild` reads it, and the last copy counts. The server can't refuse the

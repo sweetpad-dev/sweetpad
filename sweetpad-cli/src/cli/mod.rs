@@ -878,31 +878,36 @@ impl Context {
     ///
     /// `action` is the `xcodebuild` action the arguments go to. A tail that
     /// names what sweetpad passes itself for it (`-scheme`, `test`'s
-    /// `-resultBundlePath`, …) is refused here, from the command line alone,
-    /// before any project is looked for. The file's flags that action fails
-    /// on (a test-only '-enableCodeCoverage' on a build) are left out, and
-    /// `-v` names them too.
+    /// `-resultBundlePath`, …), or ends with a flag still waiting for its
+    /// value, is refused here, before the command resolves anything else.
+    /// A Swift package's tail goes to `swift build` or `swift test` instead,
+    /// so it skips both checks. The file's flags that action fails on (a
+    /// test-only '-enableCodeCoverage' on a build) are left out, and `-v`
+    /// names them too.
     pub fn xcodebuild_args(
         &self,
         action: xcodebuild::Action,
         tail: &[String],
     ) -> Result<Vec<String>, CliError> {
-        xcodebuild::refuse_owned_flags(action, tail)?;
-        xcodebuild::refuse_dangling_flag(tail)?;
         // Silent resolution: this runs *before* the command resolves for real,
         // and `container` narrates its discovery ("using X (found below …)") —
         // saying it twice per build would be the whole visible effect of a peek
         // at a config table. No container found is not an error here either;
         // resolution is about to fail on its own terms, and the typed tail is
         // still the caller's.
-        let Some(container) = resolve::container_silently(self) else {
-            return Ok(tail.to_vec());
-        };
-        // `swift build`/`swift run` take the tail directly and know none of
-        // xcodebuild's flags, so a package's file contributes nothing here.
-        if matches!(container, resolve::Container::SwiftPackage(_)) {
+        let container = resolve::container_silently(self);
+        // `swift build`/`swift test` take the tail directly and know none of
+        // xcodebuild's flags, so a package's file contributes nothing here,
+        // and its tail may forward a compiler flag xcodebuild would read as
+        // its own ('-Xswiftc -sdk').
+        if matches!(container, Some(resolve::Container::SwiftPackage(_))) {
             return Ok(tail.to_vec());
         }
+        xcodebuild::refuse_owned_flags(action, tail)?;
+        xcodebuild::refuse_dangling_flag(tail)?;
+        let Some(container) = container else {
+            return Ok(tail.to_vec());
+        };
         let (configured, left_out) =
             xcodebuild::for_action(action, &self.project_file(&container).xcodebuild.args, tail);
         let merged = config::effective_xcodebuild_args(&configured, tail).map_err(CliError::new)?;
