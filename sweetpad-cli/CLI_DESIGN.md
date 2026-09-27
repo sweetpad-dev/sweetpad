@@ -2411,7 +2411,10 @@ pick here: the tests and the bundle to read. `--mac`, `--on` and
 `--destination` are run flags here too: the retained bundle is one per project,
 whatever the run tested on, so a destination picks nothing. `--on` and
 `--destination` are refused only when typed, since `SWEETPAD_ON` and
-`SWEETPAD_DESTINATION` can set them for every command.
+`SWEETPAD_DESTINATION` can set them for every command. `build diagnostics`
+refuses the destination flags the same way, through the same
+`HiddenTargetArgs`: the project keeps one build record, whatever the build
+was for.
 
 ### `test attachments`
 

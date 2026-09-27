@@ -241,6 +241,7 @@ fn a_refused_flag_is_a_usage_error() {
         &["test", "attachments", "--junit", "x.xml"],
         &["test", "output", "--coverage"],
         &["build", "diagnostics", "--clean"],
+        &["build", "diagnostics", "--mac"],
         &[
             "pbxproj",
             "membership",

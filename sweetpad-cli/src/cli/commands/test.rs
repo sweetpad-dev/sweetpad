@@ -128,12 +128,8 @@ pub struct BuildArgs {
 #[derive(Debug, clap::Args)]
 #[allow(clippy::struct_excessive_bools)] // mirrors TestArgs' toggles, none of them read here
 pub struct HiddenRunArgs {
-    #[arg(long, hide = true)]
-    pub mac: bool,
-    #[arg(long, hide = true)]
-    pub on: Option<String>,
-    #[arg(long, hide = true)]
-    pub destination: Option<String>,
+    #[command(flatten)]
+    pub target: crate::cli::HiddenTargetArgs,
     #[arg(long = "skip-testing", hide = true)]
     pub skip_testing: Vec<String>,
     #[arg(long, hide = true)]
@@ -291,19 +287,10 @@ fn build(ctx: &mut Context, args: &TestArgs) -> CommandResult {
     super::build::for_testing(ctx, args.watch, args.show_command, &args.passthrough)
 }
 
-/// Refuse the run flags in `given` by name, since each one parsed on a verb it
-/// means nothing to and dropping it would not do what was asked. `why` follows
-/// "…apply to a test run" in the message.
+/// Refuse the run flags in `given` by name (see [`crate::cli::refuse_flags`]).
+/// `why` follows "…apply to a test run" in the message.
 fn refuse_run_flags(given: &[&str], why: &str) -> Result<(), CliError> {
-    let Some((last, rest)) = given.split_last() else {
-        return Ok(());
-    };
-    let (flags, verb) = if rest.is_empty() {
-        ((*last).to_string(), "applies")
-    } else {
-        (format!("{} and {last}", rest.join(", ")), "apply")
-    };
-    Err(CliError::new(format!("{flags} {verb} to a test run{why}")).kind(ErrorKind::Usage))
+    crate::cli::refuse_flags(given, "a test run", why)
 }
 
 /// The `xcodebuild` flags a typed `test` flag passes itself, as `(sweetpad
@@ -357,30 +344,25 @@ fn read_reason(verb: &str) -> String {
 
 /// The flags on `args` that shape a test run and mean nothing to reading one
 /// back. `--only-testing` and `--result-bundle` are not among them: they pick
-/// the tests and the bundle to read. `--on` and `--destination` count only
-/// when `typed` says they were typed, since an environment variable can set
-/// them for every command.
+/// the tests and the bundle to read. The destination flags count as
+/// [`crate::cli::typed_target_flags`] says.
 fn read_refused_flags(args: &TestArgs, typed: impl Fn(&str) -> bool) -> Vec<&'static str> {
-    let target = &args.target;
-    [
-        ("--mac", args.mac),
-        ("--on", target.on.is_some() && typed("--on")),
-        (
-            "--destination",
-            target.destination.is_some() && typed("--destination"),
-        ),
-        ("--skip-testing", !args.skip_testing.is_empty()),
-        ("--failed", args.failed),
-        ("--junit", args.junit.is_some()),
-        ("--watch", args.watch),
-        ("--retry-flaky", args.retry_flaky.is_some()),
-        ("--coverage", args.coverage),
-        ("--show-command", args.show_command),
-        ("'-- XCODEBUILD_ARGS'", !args.passthrough.is_empty()),
-    ]
-    .into_iter()
-    .filter_map(|(flag, given)| given.then_some(flag))
-    .collect()
+    let mut given = crate::cli::typed_target_flags(&args.target, args.mac, typed);
+    given.extend(
+        [
+            ("--skip-testing", !args.skip_testing.is_empty()),
+            ("--failed", args.failed),
+            ("--junit", args.junit.is_some()),
+            ("--watch", args.watch),
+            ("--retry-flaky", args.retry_flaky.is_some()),
+            ("--coverage", args.coverage),
+            ("--show-command", args.show_command),
+            ("'-- XCODEBUILD_ARGS'", !args.passthrough.is_empty()),
+        ]
+        .into_iter()
+        .filter_map(|(flag, given)| given.then_some(flag)),
+    );
+    given
 }
 
 /// The flags on `args` that shape a test run and mean nothing to a build.

@@ -522,6 +522,60 @@ pub(crate) fn mac_as_on(targeting: &mut Targeting, mac: bool) -> Result<(), CliE
     Ok(())
 }
 
+/// The destination flags, redeclared hidden under the same ids on the verbs
+/// that read back what the project's last build or run recorded: `build
+/// diagnostics`, `test attachments` and `test output`. The project keeps one
+/// record whatever the destination was, so a destination picks nothing there.
+/// A subcommand's own arg keeps the resource's global one from propagating
+/// into it, so its help leaves them out; a stray one still parses, and its
+/// value reaches the resource's args for [`typed_target_flags`] to name.
+#[derive(Debug, clap::Args)]
+pub struct HiddenTargetArgs {
+    #[arg(long, hide = true)]
+    pub mac: bool,
+    #[arg(long, hide = true)]
+    pub on: Option<String>,
+    #[arg(long, hide = true)]
+    pub destination: Option<String>,
+}
+
+/// The [`HiddenTargetArgs`] flags given, read off the resource's `target` and
+/// `mac`. `--on` and `--destination` count only when `typed` says they were
+/// typed, since 'SWEETPAD_ON' and 'SWEETPAD_DESTINATION' can set them for
+/// every command.
+pub(crate) fn typed_target_flags(
+    target: &BuildTargetArgs,
+    mac: bool,
+    typed: impl Fn(&str) -> bool,
+) -> Vec<&'static str> {
+    [
+        ("--mac", mac),
+        ("--on", target.on.is_some() && typed("--on")),
+        (
+            "--destination",
+            target.destination.is_some() && typed("--destination"),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(flag, given)| given.then_some(flag))
+    .collect()
+}
+
+/// Refuse the flags in `given` by name, as a usage error: each one parsed on a
+/// verb it means nothing to, and dropping it would not do what was asked. The
+/// message reads "<flags> apply to <what><why>".
+pub(crate) fn refuse_flags(given: &[&str], what: &str, why: &str) -> Result<(), CliError> {
+    let Some((last, rest)) = given.split_last() else {
+        return Ok(());
+    };
+    let (flags, verb) = if rest.is_empty() {
+        ((*last).to_string(), "applies")
+    } else {
+        (format!("{} and {last}", rest.join(", ")), "apply")
+    };
+    Err(CliError::new(format!("{flags} {verb} to {what}{why}")).kind(ErrorKind::Usage))
+}
+
 /// Top-level resources. Each is a noun; actions are its subcommands.
 #[derive(Debug, Subcommand)]
 pub enum Resource {
@@ -2193,6 +2247,16 @@ mod cli_definition_tests {
                 "build diagnostics --help lists {flag}"
             );
         }
+        // Listed as '--on <ON>', or alone on its line for '--mac'.
+        for flag in ["--mac\n", "--on <", "--destination <"] {
+            assert!(resource.contains(flag), "build --help lacks {flag}");
+            assert!(start.contains(flag), "build start --help lacks {flag}");
+            assert!(
+                !diagnostics.contains(flag),
+                "build diagnostics --help lists {flag}"
+            );
+        }
+        assert!(diagnostics.contains("--project <"), "{diagnostics}");
 
         for argv in [
             &["sweetpad", "build", "diagnostics", "--clean"][..],

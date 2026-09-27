@@ -52,11 +52,14 @@ pub enum Action {
 }
 
 /// The start-only flags, redeclared hidden on `build diagnostics` under the
-/// same ids. A subcommand's own arg keeps the resource's global one from
-/// propagating into it, so its help leaves out flags that don't apply; a stray
-/// one still parses, and its value reaches [`StartArgs`] for [`run`] to refuse.
+/// same ids, beside the destination flags. A subcommand's own arg keeps the
+/// resource's global one from propagating into it, so its help leaves out
+/// flags that don't apply; a stray one still parses, and its value reaches
+/// [`StartArgs`] for [`run`] to refuse.
 #[derive(Debug, clap::Args)]
 pub struct DiagnosticsArgs {
+    #[command(flatten)]
+    pub target: crate::cli::HiddenTargetArgs,
     #[arg(long, hide = true)]
     pub clean: bool,
     #[arg(long, hide = true)]
@@ -69,32 +72,56 @@ pub struct DiagnosticsArgs {
 
 pub fn run(ctx: &mut Context, args: &StartArgs, action: Option<&Action>) -> CommandResult {
     ctx.targeting = args.target.clone().into();
-    crate::cli::mac_as_on(&mut ctx.targeting, args.mac)?;
     match action {
         Some(Action::Diagnostics(_)) => {
             // The resource-global build flags parse here too; accepting and
             // ignoring them would silently not do what was asked.
-            if args.clean || args.watch || args.show_command || !args.passthrough.is_empty() {
-                return Err(crate::cli::CliError::new(
-                    "build diagnostics re-reads the last build's record; \
-                     --clean/--watch/--show-command and '--' passthrough don't apply \
-                     (run 'sweetpad build' to build)",
-                )
-                .kind(ErrorKind::Usage));
-            }
+            refuse_build_flags(args, crate::cli::flag_typed)?;
             diagnostics(ctx)
         }
-        Some(Action::Start) | None if args.watch => {
-            watch(ctx, BuildAction::Build, args.clean, &args.passthrough)
+        Some(Action::Start) | None => {
+            crate::cli::mac_as_on(&mut ctx.targeting, args.mac)?;
+            if args.watch {
+                watch(ctx, BuildAction::Build, args.clean, &args.passthrough)
+            } else {
+                start(
+                    ctx,
+                    BuildAction::Build,
+                    args.clean,
+                    args.show_command,
+                    &args.passthrough,
+                )
+            }
         }
-        Some(Action::Start) | None => start(
-            ctx,
-            BuildAction::Build,
-            args.clean,
-            args.show_command,
-            &args.passthrough,
-        ),
     }
+}
+
+/// Refuse the flags on `args` that shape a build, which reading the last one
+/// back takes none of.
+fn refuse_build_flags(args: &StartArgs, typed: impl Fn(&str) -> bool) -> Result<(), CliError> {
+    crate::cli::refuse_flags(
+        &diagnostics_refused_flags(args, typed),
+        "a build",
+        ": 'build diagnostics' reads the last build's record and builds nothing",
+    )
+}
+
+/// The flags on `args` that shape a build and mean nothing to reading the last
+/// one back. The destination flags count as [`crate::cli::typed_target_flags`]
+/// says.
+fn diagnostics_refused_flags(args: &StartArgs, typed: impl Fn(&str) -> bool) -> Vec<&'static str> {
+    let mut given = crate::cli::typed_target_flags(&args.target, args.mac, typed);
+    given.extend(
+        [
+            ("--clean", args.clean),
+            ("--watch", args.watch),
+            ("--show-command", args.show_command),
+            ("'-- XCODEBUILD_ARGS'", !args.passthrough.is_empty()),
+        ]
+        .into_iter()
+        .filter_map(|(flag, given)| given.then_some(flag)),
+    );
+    given
 }
 
 /// `test build`: this module's build, run as `build-for-testing` over the
@@ -429,6 +456,46 @@ mod tests {
             stats: None,
             product: Ok(product_path.map(std::path::PathBuf::from)),
         }
+    }
+
+    fn parse_build(argv: &[&str]) -> StartArgs {
+        use clap::Parser;
+        let cli = crate::cli::Cli::try_parse_from(["sweetpad", "build"].iter().chain(argv))
+            .unwrap_or_else(|e| panic!("`build {}` rejected: {e}", argv.join(" ")));
+        match cli.resource {
+            Some(crate::cli::Resource::Build { args, .. }) => args,
+            other => panic!("parsed as {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_diagnostics_refuses_a_destination() {
+        // The record is the project's, whatever the build was for, so a
+        // destination picks nothing here, on either side of the verb.
+        let args = parse_build(&["diagnostics", "--mac"]);
+        assert_eq!(diagnostics_refused_flags(&args, |_| true), ["--mac"]);
+        let args = parse_build(&["--on", "booted", "diagnostics", "--destination", "id=X"]);
+        assert_eq!(
+            diagnostics_refused_flags(&args, |_| true),
+            ["--on", "--destination"]
+        );
+        // Set by 'SWEETPAD_ON' or 'SWEETPAD_DESTINATION', not typed.
+        assert!(diagnostics_refused_flags(&args, |_| false).is_empty());
+
+        let args = parse_build(&["diagnostics", "--clean", "--mac"]);
+        let err =
+            refuse_build_flags(&args, |_| true).expect_err("--mac and --clean were not refused");
+        assert_eq!(
+            err.to_string(),
+            "--mac and --clean apply to a build: 'build diagnostics' reads the last build's \
+             record and builds nothing"
+        );
+        assert_eq!(err.error_kind().exit_code(), 2);
+
+        // A build still takes them.
+        assert!(parse_build(&["--mac"]).mac);
+        let args = parse_build(&["start", "--on", "booted"]);
+        assert_eq!(args.target.on.as_deref(), Some("booted"));
     }
 
     #[test]
