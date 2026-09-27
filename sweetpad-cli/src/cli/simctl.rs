@@ -531,7 +531,18 @@ fn parse_app_pids(ps: &str, udid: &str, app_dir: &str, executable: &str) -> Vec<
 /// when the app isn't running, which is not a failure for `app stop` /
 /// session teardown.
 pub fn terminate(udid: &str, bundle_id: &str) -> Result<(), CliError> {
-    let output = bounded_step(&["simctl", "terminate", udid, bundle_id], &[], udid)
+    terminate_within("xcrun", udid, bundle_id, STEP_TIMEOUT)
+}
+
+/// [`terminate`] with the program and its limit given.
+pub(crate) fn terminate_within(
+    program: &str,
+    udid: &str,
+    bundle_id: &str,
+    limit: Duration,
+) -> Result<(), CliError> {
+    let argv = ["simctl", "terminate", udid, bundle_id];
+    let output = bounded_step_within(program, &argv, &[], udid, limit)
         .context("terminating the app on the simulator")?;
     if output.status.success() {
         return Ok(());

@@ -1957,22 +1957,37 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
             check_exit(ctx, r);
         }
     }
-    if let Some(r) = running.take() {
-        if detach {
-            ctx.out
-                .note(&format!("detached — {} keeps running", r.name));
-            if matches!(r.kind, RunningKind::Mac { .. }) {
-                ctx.out.warn(
-                    "the macOS app's output pipes close when sweetpad exits — its next \
-                     print may terminate it; relaunch from Finder for a long-lived detach",
-                );
-            }
-            detach_app(r);
-        } else {
-            terminate_app(ctx, r);
+    let outcome = session_result(ever_launched, last_build);
+    end_session(ctx, running, detach, outcome)
+}
+
+/// The plain session's teardown: a detach leaves the app running, and any
+/// other ending stops it. The session exits with `outcome` unless that stop
+/// failed ([`quit_result`]).
+fn end_session(
+    ctx: &Context,
+    running: Option<Running>,
+    detach: bool,
+    outcome: CliResult,
+) -> CliResult {
+    let Some(r) = running else {
+        return outcome;
+    };
+    if detach {
+        ctx.out
+            .note(&format!("detached — {} keeps running", r.name));
+        if matches!(r.kind, RunningKind::Mac { .. }) {
+            ctx.out.warn(
+                "the macOS app's output pipes close when sweetpad exits — its next \
+                 print may terminate it; relaunch from Finder for a long-lived detach",
+            );
         }
+        detach_app(r);
+        return outcome;
     }
-    session_result(ever_launched, last_build)
+    let name = r.name.clone();
+    let stopped = terminate_app(ctx, r);
+    quit_result(ctx, outcome, &name, stopped)
 }
 
 /// How the session's most recent build ended.
@@ -2249,11 +2264,13 @@ fn run_hot_session(
     session_done.store(true, Ordering::Relaxed);
     session.shutdown();
     server.shutdown();
-    if end == HotLoopEnd::Detach {
+    let outcome = if end == HotLoopEnd::Detach {
         hot_app.detach();
+        outcome
     } else {
-        hot_app.terminate(ctx, &app);
-    }
+        let stopped = hot_app.terminate(ctx, &app);
+        quit_result(ctx, outcome, &app.bundle_id, stopped)
+    };
     drop(logs);
     outcome
 }
@@ -2511,7 +2528,7 @@ impl HotApp<'_> {
             HotApp::Sim { udid } => launch_hot(ctx, udid, app, env, args),
             HotApp::Mac { running, filter } => {
                 if let Some(old) = running.take() {
-                    terminate_app(ctx, old);
+                    report_stop(ctx, terminate_app(ctx, old));
                 }
                 let mut cmd = std::process::Command::new(app.executable.as_os_str());
                 cmd.args(args)
@@ -2547,14 +2564,10 @@ impl HotApp<'_> {
     }
 
     /// Terminate the running app (before each relaunch and on quit).
-    fn terminate(&mut self, ctx: &Context, app: &AppBundle) {
+    fn terminate(&mut self, ctx: &Context, app: &AppBundle) -> CliResult {
         match self {
             HotApp::Sim { udid } => terminate_on_simulator(ctx, udid, &app.bundle_id),
-            HotApp::Mac { running, .. } => {
-                if let Some(r) = running.take() {
-                    terminate_app(ctx, r);
-                }
-            }
+            HotApp::Mac { running, .. } => running.take().map_or(Ok(()), |r| terminate_app(ctx, r)),
         }
     }
 
@@ -2676,7 +2689,7 @@ fn hot_key_loop(
                     // left running — just terminate, rebuild, and relaunch.
                     // Re-tee the transcript so the build-log recompiler keeps
                     // seeing current frontend commands after the rebuild.
-                    hot_app.terminate(ctx, &app);
+                    report_stop(ctx, hot_app.terminate(ctx, &app));
                     match build(plan, &ctx.out, Some(build_log)) {
                         BuildOutcome::Ok => {
                             if let Err(e) = hot_app.launch(ctx, plan, &app, env) {
@@ -3012,9 +3025,10 @@ fn app_dir_name(path: &Path) -> String {
 
 /// Terminate the running app and stop its output stream. The session-scoped
 /// simulator log stream is left running — it's torn down once, at session end.
-/// A terminate that fails, or runs out its bound on a wedged simulator, is
-/// reported rather than dropped, since the app may still be running.
-fn terminate_app(ctx: &Context, running: Running) {
+/// A terminate that fails, or runs out its bound on a wedged simulator, comes
+/// back as the error, since the app may still be running: a relaunch reports
+/// it and carries on, and a quit exits with it ([`quit_result`]).
+fn terminate_app(ctx: &Context, running: Running) -> CliResult {
     let Running {
         stream,
         kind,
@@ -3023,42 +3037,63 @@ fn terminate_app(ctx: &Context, running: Running) {
         ..
     } = running;
     crate::cli::signals::unregister_child(reap_slot);
-    match kind {
+    let stopped = match kind {
         RunningKind::Simulator {
             udid, bundle_id, ..
         } => terminate_on_simulator(ctx, &udid, &bundle_id),
-        RunningKind::Device { id, app_dir } => {
-            if let Err(e) = ctx.out.step("Terminating app on device", || {
+        RunningKind::Device { id, app_dir } => ctx
+            .out
+            .step("Terminating app on device", || {
                 devicectl::terminate(&id, &app_dir)
-            }) {
-                ctx.out
-                    .error(&e.context("terminating the app on the device"));
-            }
-        }
+            })
+            .context("terminating the app on the device"),
         // The macOS app *is* the streamed child, so reaping it stops it; an
         // exit `check_exit` already recorded isn't recorded twice.
         RunningKind::Mac { recorder } => {
             if let Some(mut stream) = stream {
                 reap_mac_child(&mut stream, (!reported_exit).then_some(&recorder));
             }
-            return;
+            return Ok(());
         }
-    }
+    };
     if let Some(mut stream) = stream {
         let _ = stream.kill();
         let _ = stream.wait();
     }
+    stopped
 }
 
-/// Stop a session's simulator app, saying so when that fails. `simctl
-/// terminate` gets two minutes before the simulator counts as stuck, and a
-/// failure dropped there reads as the session hanging after 'q' or 'r'.
-fn terminate_on_simulator(ctx: &Context, udid: &str, bundle_id: &str) {
-    if let Err(e) = ctx
-        .out
+/// Stop a session's simulator app. `simctl terminate` gets two minutes
+/// before the simulator counts as stuck, and the caller reports a failure,
+/// since one dropped here reads as the session hanging after 'q' or 'r'.
+fn terminate_on_simulator(ctx: &Context, udid: &str, bundle_id: &str) -> CliResult {
+    ctx.out
         .step("Terminating app", || simctl::terminate(udid, bundle_id))
-    {
+}
+
+/// Report a relaunch's failed stop and carry on: the rebuild goes ahead, and
+/// the launch after it takes over from whatever is left running.
+fn report_stop(ctx: &Context, stopped: CliResult) {
+    if let Err(e) = stopped {
         ctx.out.error(&e);
+    }
+}
+
+/// A session's exit once its quit has stopped the app. A stop that failed
+/// leaves the app possibly running, so a quit that would exit 0 exits 1
+/// with it instead, and a session already failing keeps its own code with
+/// the stop's error printed ahead of it.
+fn quit_result(ctx: &Context, outcome: CliResult, name: &str, stopped: CliResult) -> CliResult {
+    let Err(e) = stopped else {
+        return outcome;
+    };
+    let e = e.context(format!("couldn't stop {name}, so it may still be running"));
+    match outcome {
+        Ok(()) => Err(e),
+        Err(session) => {
+            ctx.out.error(&e);
+            Err(session)
+        }
     }
 }
 
@@ -3597,7 +3632,7 @@ fn do_rebuild(
 ) -> RebuildOutcome {
     ctx.out.note("»  Restarting — rebuilding…");
     if let Some(old) = running.take() {
-        terminate_app(ctx, old);
+        report_stop(ctx, terminate_app(ctx, old));
     }
     let started = Instant::now();
     match build(plan, &ctx.out, None) {
@@ -7731,6 +7766,51 @@ mod tests {
         assert_eq!(code(false, LastBuild::Succeeded), Some(1));
         assert_eq!(code(true, LastBuild::Failed), None);
         assert_eq!(code(true, LastBuild::Succeeded), None);
+    }
+
+    /// A quit whose terminate a wedged simulator never answers exits 1 and
+    /// says the app may still be running, keeping the restart tip. A session
+    /// already failing keeps its own code, and a stop that worked changes
+    /// nothing.
+    #[test]
+    fn a_quit_whose_stop_fails_exits_1_saying_the_app_may_still_run() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = crate::cli::testdir::TempDir::new("sweetpad-test-quit-stuck");
+        let xcrun = dir.join("xcrun");
+        std::fs::write(&xcrun, "#!/bin/sh\nexec sleep 30\n").unwrap();
+        std::fs::set_permissions(&xcrun, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let stuck = || {
+            simctl::terminate_within(
+                &xcrun.display().to_string(),
+                "UDID",
+                "dev.app",
+                Duration::from_secs(1),
+            )
+        };
+        let ctx = project_ctx(Path::new("/nonexistent/App.xcodeproj"));
+
+        let err = quit_result(&ctx, Ok(()), "dev.app", stuck()).unwrap_err();
+        assert_eq!(err.error_kind().exit_code(), 1);
+        assert_eq!(
+            err.headline(),
+            Some("couldn't stop dev.app, so it may still be running")
+        );
+        assert_eq!(
+            err.detail(),
+            "terminating the app on the simulator: 'xcrun simctl terminate' didn't finish \
+             within 1s, so the simulator looks stuck"
+        );
+        assert!(
+            err.tip_text()
+                .unwrap()
+                .contains("sweetpad simulator shutdown UDID")
+        );
+
+        let built = CliError::new("the last build failed").kind(ErrorKind::BuildFailure);
+        let err = quit_result(&ctx, Err(built), "dev.app", stuck()).unwrap_err();
+        assert_eq!(err.error_kind().exit_code(), 3);
+
+        assert!(quit_result(&ctx, Ok(()), "dev.app", Ok(())).is_ok());
     }
 
     #[test]

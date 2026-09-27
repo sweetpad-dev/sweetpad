@@ -327,7 +327,11 @@ run in the session, however the last rebuild went. A session that never got
 the app running exits with its last build's code instead, 3 if it failed or 1
 if it built but didn't launch, so a wrapper still sees that nothing ran. A
 `--hot` session whose first build or launch fails ends there with the same
-codes. `session_result` in `commands/app.rs` holds the rule for both.
+codes. `session_result` in `commands/app.rs` holds the rule for both. A quit
+that can't stop the app (a terminate that fails, or times out on a wedged
+simulator) exits 1 instead of 0, since the app may still be running. A
+session already exiting non-zero keeps its code and prints the stop's error
+too (`quit_result`).
 
 Exit 2 has two sources. clap reports what it can't parse, in its own text
 even under `--json`. The command reports what it parses but refuses: a flag
@@ -755,7 +759,8 @@ sweetpad completions <shell>          clap_complete-generated scripts
   entry, so it is dropped there and from the raw `--json` stream. The exit code
   follows how the session ended (§4):
   Ctrl-C during any of its builds is 6, and a quit is 0 once the app has run,
-  else the last build's code (3 failed, 1 built but not launched).
+  else the last build's code (3 failed, 1 built but not launched). A quit
+  whose stop of the app failed is 1, since the app may still be running.
 
   The reader uses a hand-rolled raw mode (`libc`, unix-only) that flips only
   stdin's line discipline (`ICANON`/`ECHO`/`ISIG`/`IEXTEN`), leaving the terminal's
@@ -789,9 +794,13 @@ sweetpad completions <shell>          clap_complete-generated scripts
   A process of the app that was already running doesn't count, since a
   terminate that timed out can leave one behind. The session's own
   terminates, on `r` and on quit, go through the same bounded `terminate`
-  under a `Terminating app` spinner and print its error when it fails, so a
-  wedged simulator's two-minute wait after `q` shows what it waits on and
-  ends with the same stuck error and restart tip.
+  under a `Terminating app` spinner, so a wedged simulator's two-minute wait
+  after `q` shows what it waits on and ends with the same stuck error and
+  restart tip. A failed stop on `r` is printed and the rebuild goes on. A
+  failed stop on quit is the session's error, headed `couldn't stop <bundle
+  id>, so it may still be running`, and a quit that would exit 0 exits 1 with
+  it (`quit_result`). A device's `devicectl terminate` failing on quit does
+  the same.
 
 `destination list` aggregates **macOS + simulators + connected devices**, each
 with a ready `-destination` specifier. SPM containers are supported for

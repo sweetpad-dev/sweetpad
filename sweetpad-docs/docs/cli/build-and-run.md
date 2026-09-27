@@ -43,7 +43,8 @@ has no window on your Mac, so its list leaves both out.
 A build that fails keeps the session open, so you can fix the error and press `r`. If the app never
 launched and you quit after a failed build, `run` exits with code `3`, the same code a failed
 `sweetpad build` uses. Once the app has run, quitting exits `0`, even if the last rebuild failed.
-Ctrl-C at the prompt quits the same way `q` does. Pressing it while a build is running cancels the
+The exception is a quit that can't stop the app: the session says the app may still be running and
+exits with `1`. Ctrl-C at the prompt quits the same way `q` does. Pressing it while a build is running cancels the
 session instead, and `run` exits with `6`.
 
 ## Building without running
