@@ -131,20 +131,13 @@ const OWNED_BY_ARCHIVE: [OwnedFlag; 3] = [
 /// # Errors
 /// A usage error naming the first such argument.
 pub fn refuse_owned_flags(action: Action, tail: &[String]) -> Result<(), CliError> {
-    let specific: &[OwnedFlag] = match action {
-        Action::Test => &OWNED_BY_TEST,
-        Action::Archive => &OWNED_BY_ARCHIVE,
-        Action::Build | Action::BuildForTesting | Action::Clean => &[],
-    };
     let mut iter = tail.iter();
     while let Some(arg) = iter.next() {
-        if let Some((flag, who, what, instead)) =
-            OWNED_FLAGS.iter().chain(specific).find(|f| arg == f.0)
-        {
-            return Err(CliError::new(format!(
-                "{who} sets {what} itself; pass '{instead}' instead of '{flag}' after '--'"
-            ))
-            .kind(ErrorKind::Usage));
+        if let Some(owned) = owned_flag(action, arg) {
+            return Err(
+                CliError::new(format!("{} after '--'", instead_of_owned(owned)))
+                    .kind(ErrorKind::Usage),
+            );
         }
         if VALUE_FLAGS.contains(&arg.as_str()) {
             iter.next();
@@ -152,6 +145,93 @@ pub fn refuse_owned_flags(action: Action, tail: &[String]) -> Result<(), CliErro
     }
     Ok(())
 }
+
+/// The flag sweetpad passes `xcodebuild` itself for `action` that `arg` is.
+#[must_use]
+pub fn owned_flag(action: Action, arg: &str) -> Option<&'static OwnedFlag> {
+    let specific: &[OwnedFlag] = match action {
+        Action::Test => &OWNED_BY_TEST,
+        Action::Archive => &OWNED_BY_ARCHIVE,
+        Action::Build | Action::BuildForTesting | Action::Clean => &[],
+    };
+    OWNED_FLAGS.iter().chain(specific).find(|f| arg == f.0)
+}
+
+/// What to pass in place of an owned flag: "sweetpad sets the scheme itself;
+/// pass '--scheme' instead of '-scheme'".
+#[must_use]
+pub fn instead_of_owned((flag, who, what, instead): &OwnedFlag) -> String {
+    format!("{who} sets {what} itself; pass '{instead}' instead of '{flag}'")
+}
+
+/// Whether `xcodebuild` takes `flag` on a build, test or archive command
+/// line: one of the [`VALUE_FLAGS`] or [`OTHER_FLAGS`]. A test identifier
+/// rides on `-only-testing:` and `-skip-testing:` and doesn't count.
+#[must_use]
+pub fn takes_flag(flag: &str) -> bool {
+    let name = flag.split_once(':').map_or(flag, |(name, _)| name);
+    VALUE_FLAGS.contains(&name) || OTHER_FLAGS.contains(&name)
+}
+
+/// The flags `xcodebuild -help` lists for Xcode 27 that shape a build, test
+/// or archive, besides the [`VALUE_FLAGS`]. The ones that make `xcodebuild`
+/// do something else (`-showBuildSettings`, `-list`, `-exportArchive`,
+/// `-version`, …) are left out.
+const OTHER_FLAGS: [&str; 53] = [
+    "-alltargets",
+    "-parallelizeTargets",
+    "-quiet",
+    "-verbose",
+    "-hideShellScriptEnvironment",
+    "-showBuildTimingSummary",
+    "-skipUnavailableActions",
+    "-allowProvisioningUpdates",
+    "-allowProvisioningDeviceRegistration",
+    "-authenticationKeyPath",
+    "-authenticationKeyID",
+    "-authenticationKeyIssuerID",
+    "-enableAddressSanitizer",
+    "-enableThreadSanitizer",
+    "-enableUndefinedBehaviorSanitizer",
+    "-enableCodeCoverage",
+    "-enableCodesizeProfile",
+    "-codesizeProfileOutputDir",
+    "-resultBundleVersion",
+    "-maximum-concurrent-test-device-destinations",
+    "-maximum-concurrent-test-simulator-destinations",
+    "-parallel-testing-enabled",
+    "-parallel-testing-worker-count",
+    "-maximum-parallel-testing-workers",
+    "-testProductsPath",
+    "-enablePerformanceTestsDiagnostics",
+    "-only-testing",
+    "-skip-testing",
+    "-test-timeouts-enabled",
+    "-default-test-execution-time-allowance",
+    "-maximum-test-execution-time-allowance",
+    "-test-iterations",
+    "-retry-tests-on-failure",
+    "-run-tests-until-failure",
+    "-test-repetition-relaunch-enabled",
+    "-only-test-configuration",
+    "-skip-test-configuration",
+    "-collect-test-diagnostics",
+    "-testLanguage",
+    "-testRegion",
+    "-disableAutomaticPackageResolution",
+    "-onlyUsePackageVersionsFromResolvedFile",
+    "-skipPackageUpdates",
+    "-disablePackageRepositoryCache",
+    "-skipPackagePluginValidation",
+    "-skipMacroValidation",
+    "-skipPackageSignatureValidation",
+    "-packageAuthorizationProvider",
+    "-defaultPackageRegistryURL",
+    "-packageDependencySCMToRegistryTransformation",
+    "-packageFingerprintPolicy",
+    "-packageSigningEntityPolicy",
+    "-scmProvider",
+];
 
 /// Refuse a typed `--` tail that ends with a flag still waiting for its
 /// value. `xcodebuild` refuses it too ("option '-xcconfig' requires an
@@ -3333,6 +3413,28 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         // The testing actions take the whole file.
         for action in [Action::Test, Action::BuildForTesting] {
             assert_eq!(for_action(action, &file, &[]), (file.clone(), Vec::new()));
+        }
+    }
+
+    #[test]
+    fn xcodebuild_takes_its_listed_flags_with_one_dash() {
+        let mut seen = BTreeSet::new();
+        for flag in VALUE_FLAGS.iter().chain(&OTHER_FLAGS) {
+            assert!(flag.starts_with('-') && !flag.starts_with("--"), "{flag}");
+            assert!(seen.insert(flag), "listed twice: {flag}");
+        }
+        for flag in TEST_ONLY_FLAGS.iter().chain(&["-resultStreamPath"]) {
+            assert!(takes_flag(flag), "{flag}");
+        }
+        assert!(takes_flag("-only-testing:AppTests/Slow"));
+        assert!(takes_flag("-allowProvisioningUpdates"));
+        for flag in [
+            "--allowProvisioningUpdates",
+            "-bogus",
+            "-showBuildSettings",
+            "-",
+        ] {
+            assert!(!takes_flag(flag), "{flag}");
         }
     }
 

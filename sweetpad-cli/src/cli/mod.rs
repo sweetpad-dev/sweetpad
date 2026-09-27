@@ -982,7 +982,7 @@ pub fn run(argv: &[String]) -> ExitCode {
                 render_root_help(stdout_wants_color(argv), long);
                 return ExitCode::SUCCESS;
             }
-            let err = hint_debug_batch(hint_output_file(err, argv), argv);
+            let err = hint_tail_flag(hint_output_file(err, argv), argv);
             let _ = err.print();
             return ExitCode::from(if err.use_stderr() { 2 } else { 0 });
         }
@@ -1467,13 +1467,27 @@ fn takes_output_file(argv: &[String]) -> bool {
     })
 }
 
-/// Point a `--batch` given to `app diagnose` at `app debug`, the verb that has
-/// it, and likewise its `--cmd` and `--on-crash`. `diagnose` runs an lldb
-/// chain of its own, so those flags mean nothing to it, and clap's stock tip
-/// for an unknown flag on a verb with a `--` tail ("to pass '--batch' as a
-/// value, use '-- --batch'") would hand the flag to xcodebuild. Every other
-/// usage error renders as clap wrote it.
-fn hint_debug_batch(mut err: clap::Error, argv: &[String]) -> clap::Error {
+/// Rework clap's tip for an unknown flag on a verb with an xcodebuild `--`
+/// tail. clap's stock tip there ("to pass '--bogus' as a value, use '--
+/// --bogus'") hands the flag to xcodebuild, which spells no flag with two
+/// dashes and refuses it. So that tip goes, and the flag gets one of these in
+/// its place, or none:
+///
+/// - `--batch`, `--cmd` and `--on-crash` on `app diagnose` point at `app
+///   debug`, the verb that has them.
+/// - A flag sweetpad passes xcodebuild itself (`-scheme`, `test`'s
+///   `-resultBundlePath`) names the sweetpad flag that sets it, as the tail's
+///   own refusal does. So does an xcodebuild flag with a value that the verb
+///   has a flag of the same name for (`-destination`, `settings show`'s
+///   `-target`).
+/// - Any other flag xcodebuild takes ([`xcodebuild::takes_flag`]), typed with
+///   one dash or two, is shown after the `--` with one.
+///
+/// A verb whose tail is hidden refuses one, so it gets none of these. clap
+/// splits a one-dash word such as `-quiet` into short flags and names the
+/// first one the verb lacks (`-u`), so the error names the word instead when
+/// it is an xcodebuild flag. Every other usage error renders as clap wrote it.
+fn hint_tail_flag(mut err: clap::Error, argv: &[String]) -> clap::Error {
     use clap::error::{ContextKind, ContextValue};
 
     if err.kind() != clap::error::ErrorKind::UnknownArgument {
@@ -1482,27 +1496,121 @@ fn hint_debug_batch(mut err: clap::Error, argv: &[String]) -> clap::Error {
     let Some(ContextValue::String(arg)) = err.get(ContextKind::InvalidArg) else {
         return err;
     };
-    // clap names the argument as typed, so '--cmd=bt' carries its value.
-    let flag = arg.split('=').next().unwrap_or_default().to_string();
-    if !matches!(flag.as_str(), "--batch" | "--cmd" | "--on-crash")
-        || !with_invoked(argv, |cmd| {
-            cmd.get_bin_name() == Some("sweetpad app diagnose")
-        })
-    {
+    let arg = arg.clone();
+    let Some(verb) = with_invoked(argv, |cmd| TailVerb::of(cmd, argv, &arg)) else {
         return err;
+    };
+    // clap's own tips stay, but for the one that starts "to pass".
+    if let Some(ContextValue::StyledStrs(tips)) = err.remove(ContextKind::Suggested) {
+        let tips: Vec<_> = tips
+            .into_iter()
+            .filter(|tip| !tip.to_string().starts_with("to pass '"))
+            .collect();
+        if !tips.is_empty() {
+            err.insert(ContextKind::Suggested, ContextValue::StyledStrs(tips));
+        }
     }
-    err.remove(ContextKind::SuggestedArg);
+    let flag = verb.flag.as_str();
+    let action = match verb.bin.as_str() {
+        "sweetpad test" | "sweetpad test run" => xcodebuild::Action::Test,
+        "sweetpad archive" => xcodebuild::Action::Archive,
+        _ => xcodebuild::Action::Build,
+    };
+    let tip = if verb.bin == "sweetpad app diagnose"
+        && matches!(verb.word.as_str(), "--batch" | "--cmd" | "--on-crash")
+    {
+        err.remove(ContextKind::SuggestedArg);
+        format!(
+            "'{}' belongs to 'app debug': 'sweetpad app debug --batch --cmd <LLDB_CMD>' runs \
+             your own lldb commands",
+            verb.word
+        )
+    } else if !verb.tail_shown {
+        return err;
+    } else if let Some(owned) = xcodebuild::owned_flag(action, flag) {
+        err.remove(ContextKind::SuggestedArg);
+        xcodebuild::instead_of_owned(owned)
+    } else if verb.named_alike {
+        err.remove(ContextKind::SuggestedArg);
+        format!("pass '-{flag}' instead of '{flag}'")
+    } else if xcodebuild::takes_flag(flag) {
+        format!("xcodebuild flags go after '--': '{} -- {flag}'", verb.bin)
+    } else {
+        return err;
+    };
+    if verb.word != arg {
+        err.insert(ContextKind::InvalidArg, ContextValue::String(verb.word));
+    }
     err.insert(
         ContextKind::Suggested,
-        ContextValue::StyledStrs(vec![
-            format!(
-                "'{flag}' belongs to 'app debug': 'sweetpad app debug --batch --cmd <LLDB_CMD>' \
-                 runs your own lldb commands"
-            )
-            .into(),
-        ]),
+        ContextValue::StyledStrs(vec![tip.into()]),
     );
     err
+}
+
+/// The subcommand an unknown flag was typed on, when it has a `--` tail, for
+/// [`hint_tail_flag`].
+struct TailVerb {
+    /// The command line that names it, such as 'sweetpad app run'.
+    bin: String,
+    /// Whether its help shows the tail. The verbs that refuse one hide it.
+    tail_shown: bool,
+    /// The flag as typed: clap's `arg`, or for a short flag clap split out of
+    /// a one-dash word, that word.
+    word: String,
+    /// The word as xcodebuild spells a flag, with one dash.
+    flag: String,
+    /// Whether `flag` takes a value and the verb has a flag of the same name,
+    /// which sets the same thing.
+    named_alike: bool,
+}
+
+impl TailVerb {
+    fn of(cmd: &clap::Command, argv: &[String], arg: &str) -> Option<Self> {
+        let tail = cmd.get_arguments().find(|a| a.is_last_set())?;
+        let word = if arg.starts_with("--") {
+            arg.split('=').next().unwrap_or_default().to_string()
+        } else {
+            let short = arg.strip_prefix('-')?.chars().next()?;
+            clustered_word(cmd, argv, short).unwrap_or(arg).to_string()
+        };
+        let flag = word
+            .strip_prefix('-')
+            .filter(|w| w.starts_with('-'))
+            .unwrap_or(&word);
+        let named_alike = sweetpad_core::xcodebuild_args::VALUE_FLAGS.contains(&flag)
+            && cmd
+                .get_arguments()
+                .any(|a| a.get_long() == flag.strip_prefix('-'));
+        Some(Self {
+            bin: cmd.get_bin_name()?.to_string(),
+            tail_shown: !tail.is_hide_set(),
+            flag: flag.to_string(),
+            named_alike,
+            word,
+        })
+    }
+}
+
+/// The one-dash word in `argv`, ahead of any `--`, that clap would reject as
+/// the short flag `short`: the first letter of it `cmd` has no switch for.
+fn clustered_word<'a>(cmd: &clap::Command, argv: &'a [String], short: char) -> Option<&'a str> {
+    let switch = |c: char| {
+        cmd.get_arguments()
+            .any(|a| a.get_short() == Some(c) && !a.get_action().takes_values())
+    };
+    argv.iter()
+        .take_while(|a| *a != "--")
+        .map(String::as_str)
+        .find(|word| {
+            let Some(letters) = word.strip_prefix('-').filter(|l| !l.starts_with('-')) else {
+                return false;
+            };
+            letters.len() > 1
+                && letters
+                    .find(short)
+                    .is_some_and(|at| letters[..at].chars().all(switch))
+        })
 }
 
 /// Point a path at `--output-file`, from either way of guessing at it.
@@ -2955,8 +3063,8 @@ mod output_file_hint_tests {
 }
 
 #[cfg(test)]
-mod debug_batch_hint_tests {
-    use super::{Cli, hint_debug_batch};
+mod tail_flag_hint_tests {
+    use super::{Cli, hint_tail_flag};
     use clap::Parser;
 
     /// The error for a command line clap rejects, after the hint pass.
@@ -2966,11 +3074,20 @@ mod debug_batch_hint_tests {
             std::iter::once("sweetpad".to_string()).chain(tokens.iter().cloned()),
         )
         .expect_err("expected a usage error");
-        hint_debug_batch(err, &tokens)
+        hint_tail_flag(err, &tokens)
+    }
+
+    /// The rendered error, which stays a usage error on stderr.
+    fn rendered(args: &[&str]) -> String {
+        let err = rejected(args);
+        assert!(err.use_stderr(), "{args:?}");
+        let text = err.render().to_string();
+        assert!(!text.contains('`'), "{args:?}:\n{text}");
+        text
     }
 
     /// `app diagnose --batch` names the verb that has the flag, in place of
-    /// clap's tip to pass it through to xcodebuild, and stays a usage error.
+    /// clap's tip to pass it through to xcodebuild.
     #[test]
     fn a_batch_flag_on_diagnose_points_at_app_debug() {
         for (args, flag) in [
@@ -2983,9 +3100,7 @@ mod debug_batch_hint_tests {
                 "--batch",
             ),
         ] {
-            let err = rejected(&args);
-            assert!(err.use_stderr(), "{args:?}");
-            let text = err.render().to_string();
+            let text = rendered(&args);
             assert!(
                 text.contains(&format!(
                     "tip: '{flag}' belongs to 'app debug': 'sweetpad app debug --batch --cmd \
@@ -2994,32 +3109,165 @@ mod debug_batch_hint_tests {
                 "{args:?}:\n{text}"
             );
             assert!(!text.contains(&format!("-- {flag}")), "{args:?}:\n{text}");
-            assert!(!text.contains('`'), "{args:?}:\n{text}");
         }
+        let text = rendered(&["app", "run", "--batch"]);
+        assert!(!text.contains("belongs to 'app debug'"), "{text}");
     }
 
-    /// Any other unknown flag, or '--batch' on another verb, keeps clap's
-    /// own error.
+    /// A flag nothing takes gets no tip to pass it after '--' on any verb
+    /// with a tail, while clap's nearest-flag tip stays.
     #[test]
-    fn other_usage_errors_keep_claps_text() {
-        for args in [
-            vec!["app", "diagnose", "--bogus"],
-            vec!["app", "run", "--batch"],
-            vec!["app", "diagnose", "--timeout"],
+    fn a_flag_nothing_takes_is_not_sent_after_the_tail() {
+        for verb in [
+            &["build"][..],
+            &["build", "start"],
+            &["build", "diagnostics"],
+            &["test"],
+            &["test", "build"],
+            &["test", "output"],
+            &["archive"],
+            &["settings", "show"],
+            &["app", "run"],
+            &["app", "install"],
+            &["app", "debug"],
+            &["app", "diagnose"],
         ] {
-            let text = rejected(&args).render().to_string();
+            for flag in ["--bogus", "-bogus"] {
+                let args = [verb, &[flag]].concat();
+                let text = rendered(&args);
+                assert!(text.contains("unexpected argument"), "{args:?}:\n{text}");
+                assert!(!text.contains("to pass"), "{args:?}:\n{text}");
+                assert!(!text.contains("go after '--'"), "{args:?}:\n{text}");
+            }
+        }
+        let text = rendered(&["build", "--scheem", "App"]);
+        assert!(
+            text.contains("tip: a similar argument exists: '--scheme'"),
+            "{text}"
+        );
+        assert!(!text.contains("to pass"), "{text}");
+    }
+
+    /// A flag xcodebuild takes, typed ahead of the '--' with one dash or
+    /// two, is shown after it with one. The error names the word, not the
+    /// letter clap split out of it.
+    #[test]
+    fn an_xcodebuild_flag_is_shown_after_the_tail() {
+        for (args, word, shown) in [
+            (
+                &["build", "--allowProvisioningUpdates"][..],
+                "--allowProvisioningUpdates",
+                "sweetpad build -- -allowProvisioningUpdates",
+            ),
+            (
+                &["build", "-allowProvisioningUpdates"],
+                "-allowProvisioningUpdates",
+                "sweetpad build -- -allowProvisioningUpdates",
+            ),
+            (
+                &["app", "run", "-quiet"],
+                "-quiet",
+                "sweetpad app run -- -quiet",
+            ),
+            (
+                &["app", "run", "--arg", "-Dark", "-allowProvisioningUpdates"],
+                "-allowProvisioningUpdates",
+                "sweetpad app run -- -allowProvisioningUpdates",
+            ),
+            (
+                &["app", "install", "--mac", "-q", "-verbose"],
+                "-verbose",
+                "sweetpad app install -- -verbose",
+            ),
+            (
+                &["test", "-skip-testing:AppTests/Slow"],
+                "-skip-testing:AppTests/Slow",
+                "sweetpad test -- -skip-testing:AppTests/Slow",
+            ),
+            (
+                &["test", "--enableCodeCoverage", "YES"],
+                "--enableCodeCoverage",
+                "sweetpad test -- -enableCodeCoverage",
+            ),
+            (
+                &["settings", "show", "-xcconfig", "ci.xcconfig"],
+                "-xcconfig",
+                "sweetpad settings show -- -xcconfig",
+            ),
+            (
+                &["build", "-resultBundlePath", "r.xcresult"],
+                "-resultBundlePath",
+                "sweetpad build -- -resultBundlePath",
+            ),
+        ] {
+            let text = rendered(args);
             assert!(
-                !text.contains("belongs to 'app debug'"),
+                text.contains(&format!("error: unexpected argument '{word}' found")),
+                "{args:?}:\n{text}"
+            );
+            assert!(
+                text.contains(&format!("tip: xcodebuild flags go after '--': '{shown}'")),
                 "{args:?}:\n{text}"
             );
         }
-        let text = rejected(&["app", "diagnose", "--bogus"])
-            .render()
-            .to_string();
-        assert!(
-            text.contains("to pass '--bogus' as a value, use '-- --bogus'"),
-            "{text}"
-        );
+        // A verb that refuses a tail gets no tip to pass one.
+        let text = rendered(&["build", "diagnostics", "-allowProvisioningUpdates"]);
+        assert!(!text.contains("tip:"), "{text}");
+    }
+
+    /// A flag sweetpad passes xcodebuild itself names the sweetpad flag that
+    /// sets it, since the tail refuses it. So does a value flag the verb has
+    /// a flag of the same name for.
+    #[test]
+    fn a_flag_sweetpad_passes_itself_names_sweetpads() {
+        for (args, tip) in [
+            (
+                &["build", "-scheme", "App"][..],
+                "sweetpad sets the scheme itself; pass '--scheme' instead of '-scheme'",
+            ),
+            (
+                &["app", "run", "-configuration", "Release"],
+                "sweetpad sets the configuration itself; pass '--configuration' instead of \
+                 '-configuration'",
+            ),
+            (
+                &["test", "run", "-resultBundlePath", "r.xcresult"],
+                "'sweetpad test' sets the result bundle itself; pass '--result-bundle' instead \
+                 of '-resultBundlePath'",
+            ),
+            (
+                &["test", "--resultBundlePath", "r.xcresult"],
+                "'sweetpad test' sets the result bundle itself; pass '--result-bundle' instead \
+                 of '-resultBundlePath'",
+            ),
+            (
+                &["archive", "-archivePath", "App.xcarchive"],
+                "'sweetpad archive' sets the archive path itself; pass '--output-file' instead \
+                 of '-archivePath'",
+            ),
+            // A value flag the verb has a flag of the same name for.
+            (
+                &["build", "-destination", "platform=macOS"],
+                "pass '--destination' instead of '-destination'",
+            ),
+            (
+                &["settings", "show", "-target", "App"],
+                "pass '--target' instead of '-target'",
+            ),
+        ] {
+            let text = rendered(args);
+            assert!(text.contains(&format!("tip: {tip}")), "{args:?}:\n{text}");
+            assert!(!text.contains("go after '--'"), "{args:?}:\n{text}");
+        }
+    }
+
+    /// A verb with no tail keeps clap's error as it is.
+    #[test]
+    fn a_verb_without_a_tail_keeps_claps_text() {
+        let text = rendered(&["simulator", "screenshot", "--bogus"]);
+        assert!(text.contains("to pass '--bogus' as a value"), "{text}");
+        let text = rendered(&["app", "launch", "-allowProvisioningUpdates"]);
+        assert!(text.contains("unexpected argument '-a' found"), "{text}");
     }
 }
 

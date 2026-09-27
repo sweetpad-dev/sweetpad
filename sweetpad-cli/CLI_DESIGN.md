@@ -169,6 +169,22 @@ BSP server read a flag's value with one helper (sweetpad-core's
 extension's `bsp.json`, so a `buildArgs` ending that way is logged as a
 warning, and the index reads the rest, the copy before it included.
 
+clap rejects an unknown flag on a verb with a tail, and its stock tip ("to
+pass '--bogus' as a value, use '-- --bogus'") would hand the flag to
+`xcodebuild`, which spells no flag with two dashes. sweetpad drops that tip
+(`hint_tail_flag`). A flag `xcodebuild` takes, typed ahead of `--` with one
+dash or two, gets a tip that shows it after `--` with one: `xcodebuild flags
+go after '--': 'sweetpad build -- -allowProvisioningUpdates'`. clap splits a
+one-dash word into short flags and names a single letter (`-a`), so the error
+names the whole word instead. For a flag sweetpad passes itself, the tip names
+the sweetpad flag, as the tail's refusal does. So it does for a flag with a
+value when the verb has a flag of the same name (`pass '--destination'
+instead of '-destination'`). A flag nothing takes gets no tip. The list is
+what `xcodebuild -help` shows for Xcode 27, less the flags that make it do
+something other than build, test or archive (`-showBuildSettings`, `-list`).
+The verbs with a hidden tail (`build diagnostics`, `test output`) refuse one,
+so they get none of these tips.
+
 ## 3a. `project new` — scaffolding
 
 `project new` creates a fresh, buildable **minimal SwiftUI iOS app** with no
@@ -2214,8 +2230,8 @@ exactly what `diagnose` is for. The two verbs are easy to mix up, and
 after `--`, which would hand it to xcodebuild. So for `--batch`, `--cmd` and
 `--on-crash` on `app diagnose`, the tip names the verb that has them instead:
 `'--batch' belongs to 'app debug': 'sweetpad app debug --batch --cmd
-<LLDB_CMD>' runs your own lldb commands` (`hint_debug_batch`). Every other
-usage error keeps clap's text.
+<LLDB_CMD>' runs your own lldb commands` (`hint_tail_flag`, which reworks that
+stock tip for every unknown flag on a verb with a tail; see §2).
 
 **The exit code reflects the launch, not the finding.** `lldb -b` returns `0`
 whether the debuggee crashed, threw or exited, so neither verb derives success
