@@ -24,6 +24,7 @@
 //! and serialize/write it — the same contract as the sibling `*_pbxproj`
 //! modules.
 
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::pbxproj::{Dict, Value};
@@ -87,12 +88,9 @@ pub fn list_filerefs(root: &Value) -> Result<Vec<FileRefRow>, String> {
 pub fn list_groups(root: &Value) -> Result<Vec<GroupRow>, String> {
     let objects = objects(root).ok_or("pbxproj has no objects dict")?;
     let project_dir = Path::new("");
-    // A group listed in two places has two paths; the first one found names
+    // A group listed in two places has two paths. The one Xcode keeps names
     // it, and either spelling still selects it.
-    let mut navigator: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    for (guid, path) in navigator_index(objects) {
-        navigator.entry(guid).or_insert(path);
-    }
+    let navigator = shown_paths(objects);
     let root = main_group(objects);
     let mut rows: Vec<GroupRow> = objects
         .iter()
@@ -593,13 +591,11 @@ fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
             // Each candidate as `group list` prints it, so the id to pass
             // sits next to the spellings that tell the groups apart.
             let root = main_group(objects);
+            let shown = shown_paths(objects);
             let candidates: Vec<String> = hits
                 .iter()
                 .map(|guid| {
-                    let path = navigator
-                        .iter()
-                        .find(|(g, _)| g == guid)
-                        .map(|(_, path)| path.as_str());
+                    let path = shown.get(guid).map(String::as_str);
                     let path = navigator_label(path, root.as_ref() == Some(guid));
                     let dir = group_directory(objects, guid);
                     let dir = if dir.is_empty() {
@@ -622,6 +618,69 @@ fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
 /// A group's directory, resolved up the chain from the project directory.
 fn group_directory(objects: &Dict, guid: &str) -> String {
     display(&crate::project::group_dir(objects, guid, Path::new(""), 0))
+}
+
+/// The one navigator path each group in the navigator shows, the mainGroup's
+/// empty one included.
+///
+/// A group listed in two places is a malformed project. Xcode 27.2 refuses to
+/// open one. Xcode 27.0 opens it with a warning and keeps one of the listings:
+/// the one in the group it finishes reading last, where it reads a group's
+/// children before the group itself. So a listing in an ancestor wins over one
+/// below it, and of two places side by side the later one in the navigator
+/// wins.
+fn shown_paths(objects: &Dict) -> HashMap<String, String> {
+    fn read(
+        objects: &Dict,
+        guid: &str,
+        depth: usize,
+        seen: &mut HashSet<String>,
+        kept: &mut HashMap<String, String>,
+    ) {
+        if depth >= crate::project::MAX_GROUP_DEPTH || !seen.insert(guid.to_string()) {
+            return;
+        }
+        let groups: Vec<String> = children_of(objects, guid)
+            .into_iter()
+            .filter(|child| {
+                objects
+                    .get(child)
+                    .is_some_and(|node| GROUP_ISAS.contains(&isa(node)))
+            })
+            .collect();
+        for child in &groups {
+            read(objects, child, depth + 1, seen, kept);
+        }
+        for child in groups {
+            kept.insert(child, guid.to_string());
+        }
+    }
+
+    let mut shown = HashMap::new();
+    let Some(root) = main_group(objects) else {
+        return shown;
+    };
+    let mut kept = HashMap::new();
+    read(objects, &root, 0, &mut HashSet::new(), &mut kept);
+    shown.insert(root.clone(), String::new());
+    for guid in kept.keys() {
+        // The display names up the kept chain. A chain that loops instead of
+        // reaching the mainGroup gives no path.
+        let mut names = Vec::new();
+        let mut at = guid.as_str();
+        while at != root && names.len() < crate::project::MAX_GROUP_DEPTH {
+            names.push(objects.get(at).and_then(display_name).unwrap_or_default());
+            let Some(parent) = kept.get(at) else {
+                break;
+            };
+            at = parent;
+        }
+        if at == root {
+            names.reverse();
+            shown.insert(guid.clone(), names.join("/"));
+        }
+    }
+    shown
 }
 
 /// Every navigator path a group answers to: the mainGroup's empty one, then
@@ -1324,6 +1383,58 @@ mod tests {
         assert!(err.contains("N1 (unnamed) [(project root)]"), "{err}");
 
         assert_eq!(unselected_spellings(&root), Vec::<String>::new());
+    }
+
+    /// A group listed in two places shows the path of the listing Xcode 27.0
+    /// keeps, which each layout here was checked against: a listing at the
+    /// root wins over the one below it wherever the two sit, and of two
+    /// sibling groups the later one wins. Either path still selects it.
+    #[test]
+    fn a_group_listed_twice_shows_the_listing_xcode_keeps() {
+        fn shared(mg: &[&str], app: &[&str], tests: &[&str]) -> Option<String> {
+            let mut root = parsed();
+            let dict = objects_mut(&mut root).unwrap();
+            for (guid, path) in [("T1G", "Tests"), ("SH", "Shared")] {
+                let mut group = Dict::new();
+                group.insert("isa".into(), vstr(GROUP_ISA));
+                group.insert("children".into(), Value::Array(Vec::new()));
+                group.insert("path".into(), vstr(path));
+                group.insert("sourceTree".into(), vstr("<group>"));
+                dict.insert(guid.into(), Value::Dict(group));
+            }
+            for (guid, children) in [("MG", mg), ("G1", app), ("T1G", tests)] {
+                let children = children.iter().map(|c| vstr(c)).collect();
+                dict.get_mut(guid)
+                    .and_then(Value::as_dict_mut)
+                    .unwrap()
+                    .insert("children".into(), Value::Array(children));
+            }
+            assert_eq!(unselected_spellings(&root), Vec::<String>::new());
+            list_groups(&root)
+                .unwrap()
+                .into_iter()
+                .find(|g| g.address == "SH")
+                .and_then(|g| g.navigator_path)
+        }
+
+        assert_eq!(
+            shared(&["G1", "SH"], &["FR1", "G2", "SH"], &[]).as_deref(),
+            Some("Shared"),
+            "the root listing, though App's comes first"
+        );
+        assert_eq!(
+            shared(&["SH", "G1"], &["FR1", "G2", "SH"], &[]).as_deref(),
+            Some("Shared")
+        );
+        assert_eq!(
+            shared(&["G1", "T1G"], &["SH", "FR1", "G2"], &["SH"]).as_deref(),
+            Some("Tests/Shared"),
+            "the later of two siblings"
+        );
+        assert_eq!(
+            shared(&["T1G", "G1"], &["FR1", "G2", "SH"], &["SH"]).as_deref(),
+            Some("App/Shared")
+        );
     }
 
     /// Every spelling `group list` prints that neither selects its group nor

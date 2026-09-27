@@ -1720,7 +1720,12 @@ friction, without collapsing the axes:
   no id to fall back on, such a group at the root cannot be the group a verb
   adds to or moves into. `group move` refuses to move a group with no name in
   that format, because keeping its children's files would give it a path, and
-  Xcode shows the path as its name. A path that matches no group is an
+  Xcode shows the path as its name. A `project.pbxproj` group listed in two
+  places has two paths, and either one selects it. Xcode 27.2 refuses to open
+  such a project. Xcode 27.0 opens it with a warning and keeps the listing in
+  the group it reads last, reading a group's children before the group itself:
+  a listing in an ancestor wins, and of two sibling groups the later one wins.
+  `group list` shows the path of that listing. A path that matches no group is an
   error, and so is one that matches two groups by the same spelling. That
   refusal lists each candidate's id with its navigator path and directory.
   `group list` prints all three on each row (`navigatorPath` in JSON, empty
