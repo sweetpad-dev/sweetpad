@@ -372,15 +372,7 @@ fn init_swift_package(manifest_path: &Path, output: Option<&Path>) -> BspSwiftPa
 /// Where sourcekit-lsp looks for a `buildServer.json`: the explicit `--output`,
 /// else next to the container (its parent directory).
 fn buildserver_path(container: &Path, output: Option<&Path>) -> PathBuf {
-    output.map_or_else(
-        || {
-            container
-                .parent()
-                .unwrap_or_else(|| Path::new("."))
-                .join("buildServer.json")
-        },
-        Path::to_path_buf,
-    )
+    sweetpad_core::bsp::build_server_json_path(container, output)
 }
 
 #[cfg(test)]
@@ -392,6 +384,17 @@ mod tests {
         assert_eq!(
             buildserver_path(Path::new("/pkg/Package.swift"), None),
             PathBuf::from("/pkg/buildServer.json")
+        );
+    }
+
+    /// A project named through its embedded workspace gets its
+    /// `buildServer.json` beside the `.xcodeproj`, where sourcekit-lsp looks,
+    /// and never inside the bundle.
+    #[test]
+    fn buildserver_path_puts_an_embedded_workspaces_file_beside_the_project() {
+        assert_eq!(
+            buildserver_path(Path::new("/src/App.xcodeproj/project.xcworkspace"), None),
+            PathBuf::from("/src/buildServer.json")
         );
     }
 

@@ -967,7 +967,10 @@ Notes / heuristics:
   on those alone. The rest are reported, never touched: `path` and `purge`
   list them as `others` in JSON, and human output counts them in a note
   (`kept 2 other 'MyApp-*' folder(s) from other checkouts or same-named
-  projects`).
+  projects`). A project named through its embedded
+  `Foo.xcodeproj/project.xcworkspace` is keyed by the `.xcodeproj`, as
+  `xcodebuild` keys it (`sweetpad_lib::derived_data::ContainerKey`, shared
+  with the build locator and the BSP).
 - The verbs find DerivedData the way the build locator does
   (`sweetpad_lib::derived_data`), so they follow Xcode's settings when those
   move it. `--all` is the app-wide store: `IDECustomDerivedDataLocation` in
@@ -976,7 +979,9 @@ Notes / heuristics:
   store (`DerivedDataLocationStyle` with `DerivedDataCustomLocation`): an
   absolute location keeps the `<Name>-<hash>` name, and a location relative
   to the project writes a bare `<Name>` folder, which is the project's own.
-  The BSP finds its index store and the `SYMROOT`/`OBJROOT` of a `-target`
+  A Swift package keeps these settings in
+  `.swiftpm/xcode/package.xcworkspace`, and its relative location hangs off
+  the package directory itself. The BSP finds its index store and the `SYMROOT`/`OBJROOT` of a `-target`
   prepare through the same locator.
 - the side-effecting `simulator`/`app open-url` actions share one
   simulator picker (`resolve::select_simulator`): explicit name/UDID wins, else

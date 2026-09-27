@@ -48,6 +48,12 @@ pub fn write_config(args: &[String], serve_subcommand: &[&str]) -> Result<(), St
             "config: --project <path.xcodeproj> or --workspace <path.xcworkspace> is required",
         )?;
     let root_abs = std::fs::canonicalize(root).map_err(|e| format!("{root_flag}: {e}"))?;
+    // A project's embedded workspace is the project: the server keys it that
+    // way, and `buildServer.json` belongs beside the `.xcodeproj`, not in it.
+    let (root_flag, root_abs) = match sweetpad_lib::workspace::embedding_project(&root_abs) {
+        Some(project) => ("--project", project.to_path_buf()),
+        None => (root_flag, root_abs),
+    };
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
 
     let mut server_argv = vec![exe.to_string_lossy().into_owned()];
@@ -71,20 +77,28 @@ pub fn write_config(args: &[String], serve_subcommand: &[&str]) -> Result<(), St
         "argv": server_argv,
     });
 
-    let out = flags.get("output").map_or_else(
-        || {
-            root_abs
-                .parent()
-                .unwrap_or_else(|| Path::new("."))
-                .join("buildServer.json")
-        },
-        PathBuf::from,
-    );
+    let out = build_server_json_path(&root_abs, flags.get("output").map(Path::new));
     let body = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
     std::fs::write(&out, format!("{body}\n"))
         .map_err(|e| format!("write {}: {e}", out.display()))?;
     eprintln!("wrote {}", out.display());
     Ok(())
+}
+
+/// Where sourcekit-lsp finds the `buildServer.json` for `container`: the
+/// explicit `output`, else beside the container. A project's embedded
+/// workspace puts it beside the project, not inside the bundle.
+#[must_use]
+pub fn build_server_json_path(container: &Path, output: Option<&Path>) -> PathBuf {
+    output.map_or_else(
+        || {
+            sweetpad_lib::workspace::normalize_stub_workspace(container)
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join("buildServer.json")
+        },
+        Path::to_path_buf,
+    )
 }
 
 /// Build settings the project's builds add above every project layer, from
@@ -228,6 +242,7 @@ pub fn run_with(args: &[String], command_line: CommandLine) -> Result<(), String
 
 struct Server {
     /// The root the server was pointed at: a `.xcodeproj` or a `.xcworkspace`.
+    /// A project's embedded workspace is its project here, as it is to Xcode.
     project_path: PathBuf,
     /// The member `.xcodeproj`s — `[project_path]` for a project root, or the
     /// workspace's project refs for a `.xcworkspace`. File→target and settings
@@ -658,7 +673,9 @@ impl Server {
     ) -> Result<Self, String> {
         // A `.xcworkspace` root expands to its member projects; a `.xcodeproj`
         // root is a one-element list. Targets are the union across members.
-        let root = config.project_path.clone();
+        // A project's embedded `project.xcworkspace` opens the project, which
+        // is what its DerivedData and its directory are keyed by.
+        let root = sweetpad_lib::workspace::normalize_stub_workspace(&config.project_path);
         let projects: Vec<PathBuf> =
             if root.extension().and_then(|e| e.to_str()) == Some("xcworkspace") {
                 sweetpad_lib::workspace::open(&root)
@@ -690,7 +707,7 @@ impl Server {
             .and_then(open_log)
             .map(Mutex::new);
         let server = Server {
-            project_path: config.project_path,
+            project_path: root,
             projects,
             live: Mutex::new(LiveConfig {
                 configuration: config.configuration,
@@ -970,8 +987,8 @@ impl Server {
     /// same locator places the editor arguments' build products, since
     /// [`Self::options_for`] reads the same settings.
     ///
-    /// The folder is named the way `xcodebuild` names the one it writes
-    /// ([`derived_data::container_hash`]): a root reached through a symlink, or
+    /// The folder is keyed the way `xcodebuild` keys the one it writes
+    /// ([`derived_data::ContainerKey`]): a root reached through a symlink, or
     /// spelled `/private/tmp/…`, shares the folder of its standardized path.
     /// `None` without a `$HOME` or an override to find it from.
     fn derived_data(&self) -> Option<derived_data::Locations> {
@@ -979,15 +996,12 @@ impl Server {
         if home.is_empty() && self.derived_data_path.is_none() {
             return None;
         }
-        let name = self
-            .project_path
-            .file_stem()?
-            .to_string_lossy()
-            .into_owned();
+        let key = derived_data::ContainerKey::of(&self.project_path);
+        if key.name.is_empty() {
+            return None;
+        }
         Some(derived_data::resolve(
-            &project::absolutize(&self.project_path),
-            &name,
-            &derived_data::container_hash(&self.project_path),
+            &key,
             &home,
             self.derived_data_path.as_deref(),
             true,
@@ -2119,7 +2133,8 @@ fn editor_sdk_for(sdkroot: &str, supported_platforms: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        CommandLine, LogLevel, ResolvedConfig, Server, editor_sdk_for, parse_flags, path_from_uri,
+        CommandLine, LogLevel, ResolvedConfig, Server, Value, derived_data, editor_sdk_for,
+        parse_flags, path_from_uri, write_config,
     };
     use std::collections::BTreeMap;
     use std::io::{self, Write};
@@ -2200,6 +2215,84 @@ mod tests {
         let allowed = at("CODE_SIGNING_ALLOWED=YES").expect("the setting");
         let unsigned = at("CODE_SIGNING_ALLOWED=NO").expect("prepare's own setting");
         assert!(staging < unsigned && allowed < unsigned, "{args:?}");
+    }
+
+    /// A copy of the synthetic fixture project, with the embedded
+    /// `project.xcworkspace` Xcode writes into every bundle.
+    fn project_with_embedded_workspace(tag: &str) -> (crate::scratch::ScratchDir, PathBuf) {
+        let scratch = crate::scratch::ScratchDir::new(tag).unwrap();
+        let project = scratch.join("SweetpadCIApp.xcodeproj");
+        std::fs::create_dir_all(project.join("project.xcworkspace")).unwrap();
+        std::fs::copy(
+            format!(
+                "{}/fixtures/_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj/project.pbxproj",
+                env!("SWEETPAD_LIB_DIR")
+            ),
+            project.join("project.pbxproj"),
+        )
+        .unwrap();
+        (scratch, project)
+    }
+
+    /// A server pointed at a project's embedded workspace serves the project:
+    /// its index store is in the `<Project>-<hash of the project>` folder
+    /// `xcodebuild -workspace Foo.xcodeproj/project.xcworkspace` builds into,
+    /// not a `project-<hash>` folder nothing writes.
+    #[test]
+    fn an_embedded_workspace_root_serves_its_project() {
+        let (_scratch, project) = project_with_embedded_workspace("sweetpad-bsp-stub");
+        let stub = project.join("project.xcworkspace");
+        let flags = parse_flags(&["--workspace".to_string(), stub.display().to_string()]);
+        let server = Server::build(
+            ResolvedConfig::from_flags(stub, &flags),
+            None,
+            Arc::new(AtomicU8::new(LogLevel::Info as u8)),
+            CommandLine::default(),
+            Sent::default().writer(),
+        )
+        .unwrap();
+        assert_eq!(server.project_path, project);
+        assert_eq!(server.projects, std::slice::from_ref(&project));
+        assert!(!server.is_workspace());
+        if std::env::var("HOME").is_ok_and(|home| !home.is_empty()) {
+            let store = server.initialize()["data"]["indexStorePath"]
+                .as_str()
+                .unwrap()
+                .to_string();
+            let folder = derived_data::ContainerKey::of(&project).folder_name();
+            assert!(store.contains(&format!("/{folder}/")), "{store}");
+        }
+    }
+
+    /// `bsp init` on a project's embedded workspace writes `buildServer.json`
+    /// beside the `.xcodeproj`, where sourcekit-lsp looks, with the server
+    /// pointed at the project.
+    #[test]
+    fn an_embedded_workspace_config_is_written_beside_its_project() {
+        let (scratch, project) = project_with_embedded_workspace("sweetpad-bsp-stub-config");
+        let stub = project.join("project.xcworkspace");
+        write_config(
+            &["--workspace".to_string(), stub.display().to_string()],
+            &["bsp"],
+        )
+        .unwrap();
+        let written: Value = serde_json::from_str(
+            &std::fs::read_to_string(scratch.join("buildServer.json")).unwrap(),
+        )
+        .unwrap();
+        let argv: Vec<&str> = written["argv"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        let canonical = std::fs::canonicalize(&project).unwrap();
+        assert!(
+            argv.windows(2)
+                .any(|w| w == ["--project", &*canonical.to_string_lossy()]),
+            "{argv:?}"
+        );
+        assert!(!project.join("buildServer.json").exists());
     }
 
     /// The extension writes `sweetpad.build.args` into `bsp.json` as

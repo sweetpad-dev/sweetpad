@@ -30,6 +30,7 @@
 //! DerivedData. App-wide `IDEBuildLocationStyle` is likewise ignored — only
 //! DerivedData has an app-wide setting `xcodebuild` respects.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -53,6 +54,76 @@ pub struct Locations {
     pub derived_data_root: PathBuf,
 }
 
+/// What Xcode keys a container's DerivedData folder by: the container it
+/// opened, the name the folder starts with, and the hash of its path.
+///
+/// Everything that names a container's DerivedData starts from
+/// [`ContainerKey::of`], so every spelling a caller can hand in lands on the
+/// folder `xcodebuild` writes:
+///
+/// - A project's embedded `Foo.xcodeproj/project.xcworkspace` stands for the
+///   project ([`crate::workspace::normalize_stub_workspace`]).
+/// - A Swift package is keyed by its directory and named for it, so its
+///   `Package.swift` stands for the directory holding it.
+/// - The hash is taken over the standardized path ([`container_hash`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContainerKey {
+    /// The container, absolute and spelled as the caller spelled it: a
+    /// `.xcworkspace`, a `.xcodeproj`, or a Swift package's directory. Its
+    /// per-user workspace settings are read from here.
+    pub container: PathBuf,
+    /// The container's name, before [`hashed_name`] rewrites its whitespace.
+    pub name: String,
+    /// The 28-char [`container_hash`] of the container.
+    pub hash: String,
+}
+
+impl ContainerKey {
+    /// The key for the container at `path`: a `.xcworkspace` (a project's
+    /// embedded one included), a `.xcodeproj`, a Swift package directory, or
+    /// the `Package.swift` inside one. A relative path anchors at the current
+    /// directory.
+    #[must_use]
+    pub fn of(path: &Path) -> Self {
+        let absolute = crate::project::absolutize(path);
+        let container = if absolute.file_name() == Some(OsStr::new("Package.swift")) {
+            absolute
+                .parent()
+                .map_or_else(|| absolute.clone(), Path::to_path_buf)
+        } else {
+            crate::workspace::normalize_stub_workspace(&absolute)
+        };
+        let name = if is_package(&container) {
+            container.file_name()
+        } else {
+            container.file_stem()
+        }
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+        let hash = container_hash(&container);
+        Self {
+            container,
+            name,
+            hash,
+        }
+    }
+
+    /// The `<Name>-<hash>` folder a hash-keyed location writes.
+    #[must_use]
+    pub fn folder_name(&self) -> String {
+        hashed_folder(&self.name, &self.hash)
+    }
+}
+
+/// Whether `container` is a Swift package directory rather than an Xcode
+/// bundle.
+fn is_package(container: &Path) -> bool {
+    !matches!(
+        container.extension().and_then(OsStr::to_str),
+        Some("xcodeproj" | "xcworkspace")
+    )
+}
+
 /// The per-container `WorkspaceSettings.xcsettings` keys we act on. Absent
 /// keys stay `None`, which reads as "inherit the app-wide setting".
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -65,25 +136,22 @@ struct WorkspaceSettings {
     intermediates_path: Option<String>,
 }
 
-/// Resolve the output locations for `container`.
+/// Resolve the output locations for the container `key` names.
 ///
-/// `name` / `hash` are the container's stem and its 28-char DerivedData hash
-/// (see [`crate::xcode_hash`]); `home` is the user's home directory, passed in
-/// rather than read so callers can pin it in tests. `derived_data_flag` is
-/// `xcodebuild -derivedDataPath`. `consult_xcode` gates every read of host
-/// state: with it `false` this is a pure function of its arguments and yields
-/// Xcode's stock layout, which is what the oracle suites resolve against.
+/// `home` is the user's home directory, passed in rather than read so callers
+/// can pin it in tests. `derived_data_flag` is `xcodebuild -derivedDataPath`.
+/// `consult_xcode` gates every read of host state: with it `false` this is a
+/// pure function of its arguments and yields Xcode's stock layout, which is
+/// what the oracle suites resolve against.
 #[must_use]
 pub fn resolve(
-    container: &Path,
-    name: &str,
-    hash: &str,
+    key: &ContainerKey,
     home: &str,
     derived_data_flag: Option<&Path>,
     consult_xcode: bool,
 ) -> Locations {
     let settings = if consult_xcode {
-        read_workspace_settings(container)
+        read_workspace_settings(&key.container)
     } else {
         WorkspaceSettings::default()
     };
@@ -93,9 +161,9 @@ pub fn resolve(
     let derived_data_flag = derived_data_flag.map(crate::project::derived_data_spelling);
     apply(
         &settings,
-        container,
-        name,
-        hash,
+        &key.container,
+        &key.name,
+        &key.hash,
         &app_derived_data_root(home, consult_xcode),
         derived_data_flag.as_deref(),
     )
@@ -264,9 +332,14 @@ fn custom_build_location(
     Some((base.join(products), base.join(intermediates)))
 }
 
-/// The directory a "relative to workspace" path hangs off: the one holding the
-/// container, not the container itself.
+/// The directory a "relative to workspace" path hangs off: the one holding an
+/// Xcode container, or a Swift package's own directory. Xcode 27 builds a
+/// package whose settings say `WorkspaceRelativePath` `DD` into
+/// `<package>/DD/<package name>`.
 fn container_dir(container: &Path) -> PathBuf {
+    if is_package(container) {
+        return container.to_path_buf();
+    }
     container
         .parent()
         .map_or_else(PathBuf::new, Path::to_path_buf)
@@ -299,15 +372,16 @@ fn read_xcode_pref(home: &Path) -> Option<PathBuf> {
 }
 
 /// The container's per-user workspace settings. A `.xcodeproj` keeps them in
-/// its embedded `project.xcworkspace`; a `.xcworkspace` holds them directly.
-/// Xcode writes one directory per user, so read whichever matches `$USER` and
-/// fall back to a lone directory when the name doesn't line up (a home moved
-/// between accounts).
+/// its embedded `project.xcworkspace`, a Swift package in
+/// `.swiftpm/xcode/package.xcworkspace`, and a `.xcworkspace` holds them
+/// directly. Xcode writes one directory per user, so read whichever matches
+/// `$USER` and fall back to a lone directory when the name doesn't line up (a
+/// home moved between accounts).
 fn read_workspace_settings(container: &Path) -> WorkspaceSettings {
-    let base = if container.extension().is_some_and(|e| e == "xcworkspace") {
-        container.to_path_buf()
-    } else {
-        container.join("project.xcworkspace")
+    let base = match container.extension().and_then(OsStr::to_str) {
+        Some("xcworkspace") => container.to_path_buf(),
+        Some("xcodeproj") => container.join("project.xcworkspace"),
+        _ => crate::workspace::package_scheme_root(container).join("package.xcworkspace"),
     };
     let Some(dir) = user_data_dir(&base.join("xcuserdata")) else {
         return WorkspaceSettings::default();
@@ -432,6 +506,14 @@ mod tests {
         PathBuf::from("/src/wstest/MyApp.xcworkspace")
     }
 
+    fn key() -> ContainerKey {
+        ContainerKey {
+            container: container(),
+            name: NAME.into(),
+            hash: HASH.into(),
+        }
+    }
+
     /// Drive the same resolution [`resolve`] runs, with the settings supplied
     /// instead of read — pinning them on disk would mean writing into the
     /// runner's real home.
@@ -442,14 +524,7 @@ mod tests {
 
     #[test]
     fn stock_layout_when_nothing_is_configured() {
-        let out = resolve(
-            &container(),
-            NAME,
-            HASH,
-            HOME,
-            None,
-            /* consult_xcode */ false,
-        );
+        let out = resolve(&key(), HOME, None, /* consult_xcode */ false);
         assert_eq!(
             out.products,
             PathBuf::from(format!(
@@ -532,14 +607,12 @@ mod tests {
     /// so resolving `ARTA NYC-…` names a directory that never exists.
     #[test]
     fn stock_layout_collapses_whitespace_in_the_folder_name() {
-        let out = resolve(
-            Path::new("/src/ARTA NYC.xcworkspace"),
-            "ARTA NYC",
-            HASH,
-            HOME,
-            None,
-            /* consult_xcode */ false,
-        );
+        let key = ContainerKey {
+            container: PathBuf::from("/src/ARTA NYC.xcworkspace"),
+            name: "ARTA NYC".into(),
+            hash: HASH.into(),
+        };
+        let out = resolve(&key, HOME, None, /* consult_xcode */ false);
         assert_eq!(
             out.products,
             PathBuf::from(format!(
@@ -591,16 +664,76 @@ mod tests {
         );
     }
 
+    /// A Swift package's "relative to workspace" location hangs off the
+    /// package directory itself: Xcode 27 built a package at `…/spm` whose
+    /// settings said `WorkspaceRelativePath` `DDRel` into `…/spm/DDRel/spm`.
+    #[test]
+    fn a_packages_relative_location_hangs_off_its_own_directory() {
+        let out = apply(
+            &WorkspaceSettings {
+                derived_data_style: Some("WorkspaceRelativePath".into()),
+                derived_data_location: Some("DDRel".into()),
+                ..WorkspaceSettings::default()
+            },
+            Path::new("/src/spm"),
+            "spm",
+            HASH,
+            Path::new("/app-root"),
+            None,
+        );
+        assert_eq!(out.folder, PathBuf::from("/src/spm/DDRel/spm"));
+    }
+
+    /// A project named through its embedded workspace is keyed by the
+    /// project. `xcodebuild -workspace B10PkgApp.xcodeproj/project.xcworkspace`
+    /// on Xcode 27.0 built into this folder, and its `info.plist` recorded the
+    /// `.xcodeproj` as the `WorkspacePath`.
+    #[test]
+    fn an_embedded_workspace_is_keyed_by_its_project() {
+        let project = Path::new(
+            "/tmp/claude-503/-Users-hyzyla-home-Developer-sweetpad/\
+             e7fd5499-ae07-4b48-b81b-2d5c20c73fc0/scratchpad/b10-pkg/app/B10PkgApp.xcodeproj",
+        );
+        let key = ContainerKey::of(&project.join("project.xcworkspace"));
+        assert_eq!(key.container, project);
+        assert_eq!(key.name, "B10PkgApp");
+        assert_eq!(key.folder_name(), "B10PkgApp-ciimrmjrntfnzldgbikhgsjrzxed");
+        assert_eq!(key, ContainerKey::of(project));
+    }
+
+    /// Xcode keys a package's folder by the package directory, not its
+    /// manifest: `xcodebuild -list` in a package at this path wrote
+    /// `HashProbeLib-ddiyxpwzwovtfpgqlinqmouqyzjg`.
+    #[test]
+    fn a_package_is_keyed_by_its_directory() {
+        let dir = Path::new(
+            "/tmp/claude-503/-Users-hyzyla-home-Developer-sweetpad/\
+             e7fd5499-ae07-4b48-b81b-2d5c20c73fc0/scratchpad/spmprobe/HashProbeLib",
+        );
+        let key = ContainerKey::of(&dir.join("Package.swift"));
+        assert_eq!(key.container, dir);
+        assert_eq!(key.name, "HashProbeLib");
+        assert_eq!(
+            key.folder_name(),
+            "HashProbeLib-ddiyxpwzwovtfpgqlinqmouqyzjg"
+        );
+        assert_eq!(key, ContainerKey::of(dir));
+    }
+
+    /// A package directory whose name has a dot is named in full, not by its
+    /// stem, and a workspace is named by its stem.
+    #[test]
+    fn a_container_is_named_for_its_bundle_stem_or_package_directory() {
+        assert_eq!(ContainerKey::of(Path::new("/src/My.Lib")).name, "My.Lib");
+        assert_eq!(
+            ContainerKey::of(Path::new("/src/App.xcworkspace")).name,
+            "App"
+        );
+    }
+
     #[test]
     fn derived_data_path_flag_drops_the_container_segment() {
-        let out = resolve(
-            &container(),
-            NAME,
-            HASH,
-            HOME,
-            Some(Path::new("/flag-dd")),
-            false,
-        );
+        let out = resolve(&key(), HOME, Some(Path::new("/flag-dd")), false);
         assert_eq!(out.products, PathBuf::from("/flag-dd/Build/Products"));
         assert_eq!(out.derived_data_root, PathBuf::from("/flag-dd"));
         assert_eq!(out.folder, PathBuf::from("/flag-dd"));
@@ -811,6 +944,20 @@ mod tests {
             ABSOLUTE_DD,
         );
         let settings = read_workspace_settings(&container);
+        assert_eq!(settings.derived_data_style.as_deref(), Some("AbsolutePath"));
+    }
+
+    /// Xcode keeps a Swift package's workspace settings in
+    /// `.swiftpm/xcode/package.xcworkspace`, and `xcodebuild` honours them.
+    #[test]
+    fn reads_a_packages_settings_through_its_swiftpm_workspace() {
+        let root = TempDir::new("sweetpad-dd-package-user");
+        let package = root.join("MyLib");
+        write_settings(
+            &package.join(".swiftpm/xcode/package.xcworkspace/xcuserdata/someone.xcuserdatad"),
+            ABSOLUTE_DD,
+        );
+        let settings = read_workspace_settings(&package);
         assert_eq!(settings.derived_data_style.as_deref(), Some("AbsolutePath"));
     }
 

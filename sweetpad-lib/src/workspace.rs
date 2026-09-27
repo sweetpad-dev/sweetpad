@@ -159,12 +159,32 @@ const EMBEDDED_CONTENTS: &str =
 /// Whether `workspace_path` is an existing `project.xcworkspace` inside a
 /// `.xcodeproj` bundle.
 fn is_embedded(workspace_path: &Path) -> bool {
-    workspace_path.file_name() == Some(OsStr::new("project.xcworkspace"))
-        && workspace_path.is_dir()
-        && workspace_path
-            .parent()
-            .and_then(Path::extension)
-            .is_some_and(|e| e == "xcodeproj")
+    embedding_project(workspace_path).is_some() && workspace_path.is_dir()
+}
+
+/// The `.xcodeproj` whose embedded workspace `path` names
+/// (`Foo.xcodeproj/project.xcworkspace` gives `Foo.xcodeproj`), or `None` for
+/// any other path. Lexical: nothing is read from disk.
+#[must_use]
+pub fn embedding_project(path: &Path) -> Option<&Path> {
+    let parent = path.parent()?;
+    (path.file_name() == Some(OsStr::new("project.xcworkspace"))
+        && parent.extension() == Some(OsStr::new("xcodeproj")))
+    .then_some(parent)
+}
+
+/// Collapse a project's embedded workspace to the project around it, and
+/// leave every other path alone.
+///
+/// Xcode writes a `project.xcworkspace` inside every `.xcodeproj`, and naming
+/// it opens the project: `xcodebuild -workspace Foo.xcodeproj/project.xcworkspace`
+/// builds into `Foo-<hash of Foo.xcodeproj>`, whose `info.plist` records the
+/// `.xcodeproj` as its `WorkspacePath` (Xcode 27.0). Anything that keys on
+/// the container, DerivedData above all, has to key on the project: hashing
+/// the stub names a `project-<hash>` folder nothing writes (issue #285).
+#[must_use]
+pub fn normalize_stub_workspace(container: &Path) -> PathBuf {
+    embedding_project(container).map_or_else(|| container.to_path_buf(), Path::to_path_buf)
 }
 
 impl Workspace {
@@ -439,6 +459,42 @@ mod tests {
     use super::*;
     use crate::testdir::TempDir;
     use std::fs;
+
+    /// `normalize_stub_workspace` is pure-lexical (no filesystem), so pin it
+    /// with a table. It must collapse ONLY the `.xcodeproj/project.xcworkspace`
+    /// stub down to its bundle; everything else passes through untouched.
+    #[test]
+    fn normalize_stub_workspace_collapses_only_the_bundle_stub() {
+        let cases: &[(&str, &str)] = &[
+            // The auto-generated stub collapses to its containing bundle…
+            (
+                "/root/Foo.xcodeproj/project.xcworkspace",
+                "/root/Foo.xcodeproj",
+            ),
+            // …even spelled with a trailing slash (Path ignores it).
+            (
+                "/root/Foo.xcodeproj/project.xcworkspace/",
+                "/root/Foo.xcodeproj",
+            ),
+            // A real, user-authored workspace is left untouched.
+            ("/root/Foo.xcworkspace", "/root/Foo.xcworkspace"),
+            // A `project.xcworkspace` NOT inside an `.xcodeproj` is not the
+            // stub — don't eat a real directory that merely shares the name.
+            (
+                "/root/weird/project.xcworkspace",
+                "/root/weird/project.xcworkspace",
+            ),
+            // A bare `.xcodeproj` is already the container.
+            ("/root/Foo.xcodeproj", "/root/Foo.xcodeproj"),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(
+                normalize_stub_workspace(Path::new(input)),
+                PathBuf::from(expected),
+                "normalize_stub_workspace({input})"
+            );
+        }
+    }
 
     fn fixtures_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures")

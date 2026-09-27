@@ -312,44 +312,31 @@ fn scope(ctx: &Context, all: bool) -> Result<Scope, CliError> {
     }
 
     let container = resolve::container(ctx)?;
-    let base = project_base_name(&container).ok_or_else(|| {
-        CliError::new("could not determine the project name to scope DerivedData")
-    })?;
-    let keyed = keyed_path(&container);
-    // The locator the build names its products through, so a folder Xcode's
-    // settings move is found where the build writes it.
-    let locations = derived_data::resolve(
-        &sweetpad_lib::project::absolutize(keyed_container(&container)),
-        &base,
-        &derived_data::container_hash(&keyed),
-        &home,
-        None,
-        true,
-    );
+    container_scope(&container, &home)
+}
+
+/// The scope of `container`'s own folders, found from `home`. The container is
+/// keyed the way Xcode keys it ([`sweetpad_lib::derived_data::ContainerKey`]):
+/// a project's embedded workspace by the project, a Swift package by its
+/// directory. The folders come from the locator the build names its products
+/// through, so a folder Xcode's settings move is found where the build writes
+/// it.
+fn container_scope(container: &Container, home: &str) -> Result<Scope, CliError> {
+    use sweetpad_lib::derived_data;
+
+    let key = derived_data::ContainerKey::of(container.path());
+    if key.name.is_empty() {
+        return Err(CliError::new(
+            "could not determine the project name to scope DerivedData",
+        ));
+    }
+    let locations = derived_data::resolve(&key, home, None, true);
     Ok(classify(
         &locations.derived_data_root,
         &locations.folder,
-        &base,
-        &keyed,
+        &key.name,
+        &sweetpad_lib::project::standardize(&key.container),
     ))
-}
-
-/// The container Xcode keys a DerivedData folder by: the `.xcodeproj` or
-/// `.xcworkspace` itself, or a Swift package's directory.
-fn keyed_container(container: &Container) -> &Path {
-    match container {
-        Container::SwiftPackage(manifest) => manifest
-            .parent()
-            .filter(|dir| !dir.as_os_str().is_empty())
-            .unwrap_or(Path::new(".")),
-        Container::Workspace(p) | Container::Project(p) => p,
-    }
-}
-
-/// [`keyed_container`], standardized the way Xcode hashes it (see
-/// [`sweetpad_lib::project::standardize`]).
-fn keyed_path(container: &Container) -> PathBuf {
-    sweetpad_lib::project::standardize(keyed_container(container))
 }
 
 /// Split the folders under `root` named for `base` into the ones the container
@@ -395,21 +382,6 @@ fn classify(root: &Path, folder: &Path, base: &str, keyed: &Path) -> Scope {
         others,
         pattern: format!("{}-*", hashed_name(base)),
     }
-}
-
-/// The container's base name — the stem Xcode prefixes DerivedData folders
-/// with (e.g. `MyApp.xcodeproj` → `MyApp`). For a Swift package the manifest is
-/// always literally `Package.swift`, and Xcode names the folder after the
-/// package *directory* — so use that, never the constant `Package` stem (which
-/// would match a foreign `Package-<hash>` entry).
-fn project_base_name(container: &Container) -> Option<String> {
-    let name = match container {
-        Container::SwiftPackage(p) => p.parent()?.file_name()?.to_string_lossy().into_owned(),
-        Container::Workspace(p) | Container::Project(p) => {
-            p.file_stem()?.to_string_lossy().into_owned()
-        }
-    };
-    Some(name)
 }
 
 /// Whether a folder is named for the project `base`, whoever wrote it: Xcode
@@ -474,16 +446,6 @@ mod tests {
     use crate::cli::testdir::TempDir;
 
     #[test]
-    fn spm_base_name_is_the_package_directory() {
-        // Every manifest is literally `Package.swift`; the DerivedData folder is
-        // named after the package directory (`MyLib-<hash>`), never `Package-…`.
-        let pkg = Container::SwiftPackage(PathBuf::from("/work/MyLib/Package.swift"));
-        assert_eq!(project_base_name(&pkg).as_deref(), Some("MyLib"));
-        let proj = Container::Project(PathBuf::from("/work/MyApp.xcodeproj"));
-        assert_eq!(project_base_name(&proj).as_deref(), Some("MyApp"));
-    }
-
-    #[test]
     fn project_match_is_exact_or_hash_suffixed() {
         assert!(matches_project("MyApp", "MyApp"));
         assert!(matches_project("MyApp-abcdef123", "MyApp"));
@@ -514,7 +476,7 @@ mod tests {
             for copy in ["first", "second"] {
                 let project = root.join(copy).join(format!("{name}.xcodeproj"));
                 std::fs::create_dir_all(&project).unwrap();
-                keyed.push(keyed_path(&Container::Project(project)));
+                keyed.push(sweetpad_lib::project::standardize(&project));
             }
             let second = keyed.pop().unwrap();
             let first = keyed.pop().unwrap();
@@ -627,20 +589,45 @@ mod tests {
         assert!(scope.others_note("kept").unwrap().contains("'My_App-*'"));
     }
 
-    /// Xcode keys a package's folder by the package directory, not its
-    /// manifest: `xcodebuild -list` in a package at this path wrote
-    /// `HashProbeLib-ddiyxpwzwovtfpgqlinqmouqyzjg`.
+    /// A project named through its embedded workspace scopes to the
+    /// project's own folder: `xcodebuild -workspace
+    /// Foo.xcodeproj/project.xcworkspace` builds into `Foo-<hash of the
+    /// project>` (Xcode 27.0), and no `project-*` folder is anyone's concern.
     #[test]
-    fn a_package_is_keyed_by_its_directory() {
-        let dir = "/tmp/claude-503/-Users-hyzyla-home-Developer-sweetpad/\
-                   e7fd5499-ae07-4b48-b81b-2d5c20c73fc0/scratchpad/spmprobe/HashProbeLib";
-        let package = Container::SwiftPackage(PathBuf::from(format!("{dir}/Package.swift")));
-        let keyed = keyed_path(&package);
-        assert_eq!(keyed, PathBuf::from(dir));
-        assert_eq!(
-            folder_for("HashProbeLib", &keyed),
-            "HashProbeLib-ddiyxpwzwovtfpgqlinqmouqyzjg"
-        );
+    fn an_embedded_workspace_scopes_to_its_projects_folder() {
+        let home = TempDir::new("sweetpad-dd-stub");
+        let project = home.join("src/MyApp.xcodeproj");
+        let stub = project.join("project.xcworkspace");
+        std::fs::create_dir_all(&stub).unwrap();
+        let store = home.join("Library/Developer/Xcode/DerivedData");
+        let own = folder_for("MyApp", &sweetpad_lib::project::standardize(&project));
+        std::fs::create_dir_all(store.join(&own)).unwrap();
+        std::fs::create_dir_all(store.join("project-abc")).unwrap();
+
+        let scope =
+            container_scope(&Container::Workspace(stub), &home.display().to_string()).unwrap();
+        assert_eq!(names(&scope.own), [own]);
+        assert!(scope.others.is_empty(), "{:?}", scope.others);
+    }
+
+    /// A Swift package scopes to the folder named for its directory.
+    #[test]
+    fn a_package_scopes_to_the_folder_named_for_its_directory() {
+        let home = TempDir::new("sweetpad-dd-package");
+        let dir = home.join("src/MyLib");
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = home.join("Library/Developer/Xcode/DerivedData");
+        let own = folder_for("MyLib", &sweetpad_lib::project::standardize(&dir));
+        std::fs::create_dir_all(store.join(&own)).unwrap();
+        std::fs::create_dir_all(store.join("Package-abc")).unwrap();
+
+        let scope = container_scope(
+            &Container::SwiftPackage(dir.join("Package.swift")),
+            &home.display().to_string(),
+        )
+        .unwrap();
+        assert_eq!(names(&scope.own), [own]);
+        assert!(scope.others.is_empty(), "{:?}", scope.others);
     }
 
     /// A workspace-relative DerivedData location writes the bare `<Name>`, with

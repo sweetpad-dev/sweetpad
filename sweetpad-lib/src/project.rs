@@ -1803,30 +1803,16 @@ pub fn built_in_settings(
     // `xcodebuild -derivedDataPath PATH` flattens this — it replaces the
     // whole `<home>/.../DerivedData/<container-hash>` segment with `PATH`,
     // so `BUILD_DIR = PATH/Build/Products` directly.
-    let derived_container = derived_data_container.map_or_else(
-        || absolutize(xcodeproj_path),
-        |c| normalize_stub_workspace(&absolutize(c)),
-    );
-    let derived_name = derived_container
-        .file_stem()
-        .and_then(OsStr::to_str)
-        .unwrap_or("")
-        .to_string();
-    let derived_hash = crate::derived_data::container_hash(&derived_container);
+    let derived_key =
+        crate::derived_data::ContainerKey::of(derived_data_container.unwrap_or(xcodeproj_path));
     // The stock "Unique" build location (`<Name>-<hash>`) is only one of the
     // layouts a user can end up with: Xcode's Locations pref and a container's
     // per-user workspace settings both move build output, and `xcodebuild`
     // honours them. [`crate::derived_data`] models the lot — it reads host
     // state only when `read_xcode_locations` is set, so with the flag off this
     // stays the pure function the oracle suites resolve against.
-    let locations = crate::derived_data::resolve(
-        &derived_container,
-        &derived_name,
-        &derived_hash,
-        &home,
-        derived_data_path,
-        read_xcode_locations,
-    );
+    let locations =
+        crate::derived_data::resolve(&derived_key, &home, derived_data_path, read_xcode_locations);
     let build_dir = locations.products.display().to_string();
     let obj_root = locations.intermediates.display().to_string();
     // Prefer the catalog's recorded DEVELOPER_DIR (the Xcode the capture was
@@ -3566,29 +3552,6 @@ fn host_user() -> String {
 
 fn host_home() -> String {
     host_override(|o| o.home.as_ref()).unwrap_or_else(|| std::env::var("HOME").unwrap_or_default())
-}
-
-/// Collapse the `.xcodeproj/project.xcworkspace` stub Xcode auto-generates
-/// inside every project bundle down to its containing `.xcodeproj`.
-///
-/// A caller can declare that stub as the DerivedData container — e.g. a
-/// `xcodeWorkspacePath` pointed straight at `Foo.xcodeproj/project.xcworkspace`.
-/// Xcode never keys DerivedData by the stub: opening such a project hashes the
-/// `.xcodeproj` itself, producing `Foo-<hash>`. Hashing the stub instead yields
-/// the wrong folder name (`project-<hash>`) AND the wrong hash, so the built
-/// app can't be found (issue #285).
-#[must_use]
-fn normalize_stub_workspace(container: &Path) -> PathBuf {
-    let is_stub = container.file_name().and_then(OsStr::to_str) == Some("project.xcworkspace")
-        && container
-            .parent()
-            .and_then(Path::extension)
-            .and_then(OsStr::to_str)
-            == Some("xcodeproj");
-    if is_stub && let Some(parent) = container.parent() {
-        return parent.to_path_buf();
-    }
-    container.to_path_buf()
 }
 
 #[must_use]
@@ -5998,42 +5961,6 @@ mod tests {
             standardize(&root.join("real/dd"))
         );
         let _ = fs::remove_dir_all(&root);
-    }
-
-    /// `normalize_stub_workspace` is pure-lexical (no filesystem), so pin it
-    /// with a table. It must collapse ONLY the `.xcodeproj/project.xcworkspace`
-    /// stub down to its bundle; everything else passes through untouched.
-    #[test]
-    fn normalize_stub_workspace_collapses_only_the_bundle_stub() {
-        let cases: &[(&str, &str)] = &[
-            // The auto-generated stub collapses to its containing bundle…
-            (
-                "/root/Foo.xcodeproj/project.xcworkspace",
-                "/root/Foo.xcodeproj",
-            ),
-            // …even spelled with a trailing slash (Path ignores it).
-            (
-                "/root/Foo.xcodeproj/project.xcworkspace/",
-                "/root/Foo.xcodeproj",
-            ),
-            // A real, user-authored workspace is left untouched.
-            ("/root/Foo.xcworkspace", "/root/Foo.xcworkspace"),
-            // A `project.xcworkspace` NOT inside an `.xcodeproj` is not the
-            // stub — don't eat a real directory that merely shares the name.
-            (
-                "/root/weird/project.xcworkspace",
-                "/root/weird/project.xcworkspace",
-            ),
-            // A bare `.xcodeproj` is already the container.
-            ("/root/Foo.xcodeproj", "/root/Foo.xcodeproj"),
-        ];
-        for (input, expected) in cases {
-            assert_eq!(
-                normalize_stub_workspace(Path::new(input)),
-                PathBuf::from(expected),
-                "normalize_stub_workspace({input})"
-            );
-        }
     }
 
     /// MD5 is byte-sensitive, so `Foo.xcodeproj` and `Foo.xcodeproj/` would
