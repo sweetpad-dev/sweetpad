@@ -184,7 +184,9 @@ pub fn exclude(root: &mut Value, target: &str, path: &str) -> Result<ExcludeOutc
 }
 
 /// Drop `target`'s membership exception for `path`. A path that isn't
-/// excepted is a no-op outcome, so re-run scripts stay green.
+/// excepted is a no-op outcome, so re-run scripts stay green. The exception
+/// set goes with its last exception only when it records nothing else, such
+/// as a file's compiler flags.
 ///
 /// # Errors
 /// Returns a message when the tree is malformed or the target is missing.
@@ -204,11 +206,22 @@ pub fn include(root: &mut Value, target: &str, path: &str) -> Result<IncludeOutc
     if !remove_from_array(objects, &set_guid, "membershipExceptions", &rel) {
         return Ok(IncludeOutcome::NotExcluded);
     }
+    // The set goes once it records nothing else. Per-file compiler flags,
+    // attributes, header visibility and platform filters live in the same
+    // set, and deleting it with them would drop those silently.
     let now_empty = objects
         .get(&set_guid)
-        .and_then(|s| s.get("membershipExceptions"))
-        .and_then(Value::as_array)
-        .is_none_or(<[Value]>::is_empty);
+        .and_then(Value::as_dict)
+        .is_none_or(|set| {
+            set.iter().all(|(key, value)| {
+                matches!(key.as_str(), "isa" | "target")
+                    || match value {
+                        Value::Array(items) => items.is_empty(),
+                        Value::Dict(dict) => dict.is_empty(),
+                        Value::String(_) => false,
+                    }
+            })
+        });
     if now_empty {
         objects.remove(&set_guid);
         remove_from_array(objects, &root_guid, "exceptions", &set_guid);
@@ -790,6 +803,33 @@ mod tests {
         assert_eq!(
             remove_root(&mut root, "App", "App").unwrap(),
             RemoveOutcome::NotAttached
+        );
+    }
+
+    /// An exception set also carries per-file compiler flags, so dropping
+    /// its last membership exception keeps the set while the flags are in it.
+    #[test]
+    fn include_keeps_a_set_that_still_holds_compiler_flags() {
+        let mut root = parsed();
+        exclude(&mut root, "App", "App/Old.swift").unwrap();
+        let dict = objects_mut(&mut root).unwrap();
+        let set = exception_set_of(dict, "SR1", "T1").unwrap();
+        let mut flags = Dict::new();
+        flags.insert("Fast.swift".into(), vstr("-Ounchecked"));
+        dict.get_mut(&set)
+            .and_then(Value::as_dict_mut)
+            .unwrap()
+            .insert(
+                "additionalCompilerFlagsByRelativePath".into(),
+                Value::Dict(flags),
+            );
+
+        include(&mut root, "App", "App/Old.swift").unwrap();
+        let text = round_trips(&root);
+        assert!(text.contains("Fast.swift = \"-Ounchecked\";"), "{text}");
+        assert_eq!(
+            exception_set_of(objects(&root).unwrap(), "SR1", "T1"),
+            Some(set)
         );
     }
 

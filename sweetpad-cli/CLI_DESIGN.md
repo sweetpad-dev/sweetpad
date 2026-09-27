@@ -1773,7 +1773,9 @@ sweetpad pbxproj group detach <node> --group G      unlist a child (pbxproj only
     that isn't a member is a recorded no-op.
   - **`exclude`/`include`** are §9f's exception verbs, relocated: excluding
     a file *is* a membership edit (unchecking the box in Xcode writes
-    exactly these exception sets).
+    exactly these exception sets). The set also holds the folder's per-file
+    compiler flags, attributes and platform filters, so `include` deletes it
+    with its last exception only when it holds nothing else.
   - **`add`** (batched, one write) gives a target a classic build-file entry
     for each file, in the phase `--phase` names. The phase is never derived
     from the extension, and the file reference has to exist already
