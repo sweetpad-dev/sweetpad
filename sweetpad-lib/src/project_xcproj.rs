@@ -67,23 +67,10 @@ pub(crate) fn open_from_value(value: &Value, xcodeproj_path: &Path) -> Result<Pr
     let default_configuration = schema::default_configuration(value).map(str::to_string);
     let targets = extract_targets(value, &configurations);
 
-    let mut schemes = crate::scheme::container_schemes(xcodeproj_path);
-    if crate::scheme::autocreation_allowed(xcodeproj_path) {
-        let existing: std::collections::BTreeSet<&str> =
-            schemes.iter().map(String::as_str).collect();
-        let first_config = configurations.first().cloned();
-        let autocreated: Vec<String> = targets
-            .iter()
-            .filter(|t| !existing.contains(t.name.as_str()))
-            .filter(|t| {
-                autocreates_scheme_for_target(value, xcodeproj_path, t, first_config.as_deref())
-            })
-            .map(|t| t.name.clone())
-            .collect();
-        schemes.extend(autocreated);
-    }
-    crate::scheme::sort_like_xcodebuild(&mut schemes);
-    schemes.dedup();
+    let first_config = configurations.first().cloned();
+    let schemes = crate::project::listed_schemes(xcodeproj_path, &targets, |t| {
+        autocreates_scheme_for_target(value, xcodeproj_path, t, first_config.as_deref())
+    });
 
     let name = xcodeproj_path
         .file_stem()

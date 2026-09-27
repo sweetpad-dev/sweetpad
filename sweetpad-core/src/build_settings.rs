@@ -116,10 +116,11 @@ impl Selection {
 /// project, then each local package, shared then the current user's
 /// directories. A scheme with no
 /// file falls back to [`Selection::AutoScheme`] only when Xcode's scheme
-/// autocreation would surface it: no container holds *any* scheme file, and
-/// the shared workspace settings don't disable autocreation. Otherwise the
-/// unknown name is an error, matching `xcodebuild -scheme Nope` against a
-/// container that does have schemes.
+/// autocreation surfaces it: when the container lists it the way
+/// `xcodebuild -list` does ([`project::Project::schemes`],
+/// [`workspace::Workspace::project_for_scheme`]), which autocreates per
+/// target rather than per container. Otherwise the unknown name is an
+/// error, matching `xcodebuild -scheme Nope`.
 fn resolve_selection(
     opts: &BuildSettingsOptions,
     projects: &[PathBuf],
@@ -142,13 +143,13 @@ fn resolve_selection(
                 parsed: Box::new(parsed),
             });
         }
-        let any_scheme_files = containers
-            .iter()
-            .any(|c| !scheme::container_schemes(c).is_empty());
-        let autocreation = containers
-            .first()
-            .is_some_and(|primary| scheme::autocreation_allowed(primary));
-        if any_scheme_files || !autocreation {
+        let listed = match opts.workspace.as_deref() {
+            Some(ws) => workspace::open(ws).is_ok_and(|ws| ws.project_for_scheme(name).is_some()),
+            None => projects.first().is_some_and(|p| {
+                project::open(p).is_ok_and(|project| project.schemes.iter().any(|s| s == name))
+            }),
+        };
+        if !listed {
             return Err(format!(
                 "the workspace/project does not contain a scheme named {name:?}"
             ));

@@ -199,13 +199,9 @@ impl Workspace {
     #[must_use]
     pub fn merged_schemes(&self) -> Vec<String> {
         let mut set: std::collections::BTreeSet<String> = self.schemes.iter().cloned().collect();
-        let autocreate = crate::scheme::autocreation_allowed(&self.path);
+        let references = crate::scheme::SchemeReferences::of(&self.path);
         for project_path in &self.project_refs {
-            if autocreate && let Ok(proj) = project::open(project_path) {
-                set.extend(proj.schemes);
-                continue;
-            }
-            set.extend(crate::scheme::container_schemes(project_path));
+            set.extend(self.member_schemes(project_path, &references));
         }
         for package_path in &self.package_refs {
             set.extend(crate::scheme::container_schemes(&package_scheme_root(
@@ -346,15 +342,44 @@ impl Workspace {
         out
     }
 
+    /// What one member project contributes to [`Workspace::merged_schemes`]:
+    /// its scheme files, plus its autocreated per-target schemes while the
+    /// workspace allows autocreation. `references` are what the workspace's
+    /// own scheme files point at ([`crate::scheme::SchemeReferences`]): Xcode
+    /// 27.0 autocreates no scheme for a member target a workspace scheme runs
+    /// (or builds, for one that doesn't run), as for one its project's own
+    /// scheme does.
+    fn member_schemes(
+        &self,
+        project_path: &Path,
+        references: &crate::scheme::SchemeReferences,
+    ) -> Vec<String> {
+        let files = crate::scheme::container_schemes(project_path);
+        if !crate::scheme::autocreation_allowed(&self.path) {
+            return files;
+        }
+        let Ok(proj) = project::open(project_path) else {
+            return files;
+        };
+        let runs = |name: &str| proj.targets.iter().any(|t| t.name == name && t.runs());
+        proj.schemes
+            .iter()
+            .filter(|name| {
+                files.contains(name) || !references.cover(Some(project_path), name, runs(name))
+            })
+            .cloned()
+            .collect()
+    }
+
     /// Locate the `.xcodeproj` member that owns a scheme by name. Returns
     /// the first project with a `<name>.xcscheme` file (shared or per-user).
-    /// Otherwise — under the same autocreation gate as
-    /// [`Workspace::merged_schemes`] — falls back to the first project whose
-    /// scheme list ([`project::open`]'s files-plus-autocreated set) includes
-    /// the name: scheme files elsewhere do NOT suppress a member's
+    /// Otherwise falls back to the first project whose share of
+    /// [`Workspace::merged_schemes`] (its files-plus-autocreated set) includes
+    /// the name: scheme files elsewhere do NOT suppress a member's other
     /// autocreated per-target schemes, so every name `merged_schemes`
-    /// surfaces must dispatch. Used by callers (the CLI) that need to route
-    /// a scheme-driven build to the right project.
+    /// surfaces must dispatch. Used by callers (the CLI, the build-settings
+    /// resolver) that need to route a scheme-driven build to the right
+    /// project.
     #[must_use]
     pub fn project_for_scheme(&self, scheme_name: &str) -> Option<&Path> {
         if let Some(p) = self
@@ -364,15 +389,13 @@ impl Workspace {
         {
             return Some(p.as_path());
         }
-        if !crate::scheme::autocreation_allowed(&self.path) {
-            return None;
-        }
+        let references = crate::scheme::SchemeReferences::of(&self.path);
         self.project_refs
             .iter()
             .find(|p| {
-                project::open(p)
-                    .map(|proj| proj.schemes.iter().any(|s| s == scheme_name))
-                    .unwrap_or(false)
+                self.member_schemes(p, &references)
+                    .iter()
+                    .any(|s| s == scheme_name)
             })
             .map(PathBuf::as_path)
     }

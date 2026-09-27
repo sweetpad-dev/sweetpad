@@ -37,6 +37,14 @@
 //! from a rename — it names a target no longer in the manifest, and
 //! `xcodebuild` autocreates nothing for that package.
 //!
+//! A product one of those scheme files covers gets no scheme of its own
+//! under its name: a scheme that builds a library product, or runs an
+//! executable one, takes its place, the way it does for a project's targets
+//! ([`sweetpad_lib::scheme::SchemeReferences`]). On Xcode 27.0 a project whose
+//! local package ships a `Beta.xcscheme` building its `Zeta` library lists
+//! `Beta` and no `Zeta`. A package opened on its own lists `Zeta` all the
+//! same.
+//!
 //! A target that no product exposes never gets a scheme, so a package that
 //! declares no products contributes nothing but its test targets — and,
 //! without a container or a membership, nothing at all. An `executableTarget`
@@ -186,6 +194,9 @@ struct ManifestNames {
     /// its own.
     name: String,
     products: Vec<String>,
+    /// The products that run: the declared executables and the implicit ones
+    /// behind `executableTarget`s.
+    executables: Vec<String>,
     test_targets: Vec<String>,
     targets: Vec<String>,
     /// Absolute directories of the manifest's `.package(path:)` dependencies.
@@ -287,6 +298,7 @@ fn cached_manifest(
     Some(ManifestNames {
         name: entry.get("name")?.as_str()?.to_string(),
         products: string_list(entry, "products")?,
+        executables: string_list(entry, "executables")?,
         test_targets: string_list(entry, "testTargets")?,
         targets: string_list(entry, "targets")?,
         path_deps: string_list(entry, "pathDependencies")?
@@ -306,6 +318,7 @@ fn cache_entry(current: Stamp, names: &ManifestNames) -> Value {
         "mtime": mtime.to_string(),
         "name": names.name,
         "products": names.products,
+        "executables": names.executables,
         "testTargets": names.test_targets,
         "targets": names.targets,
         "pathDependencies": names.path_deps
@@ -319,10 +332,21 @@ fn cache_entry(current: Stamp, names: &ManifestNames) -> Value {
 /// container names, its products, and — for a workspace member, or a package
 /// somebody has opened in Xcode — its test targets.
 fn schemes_for(dir: &Path, role: PackageRole, names: &ManifestNames) -> Vec<String> {
-    let files = sweetpad_lib::scheme::container_schemes(&package_scheme_root(dir));
+    let root = package_scheme_root(dir);
+    let files = sweetpad_lib::scheme::container_schemes(&root);
     let opened_in_xcode = has_a_scheme_that_resolves(dir, &files, names);
+    let references = sweetpad_lib::scheme::SchemeReferences::of(&root);
+    let uncovered: Vec<String> = names
+        .products
+        .iter()
+        .filter(|product| {
+            files.contains(product)
+                || !references.cover(None, product, names.executables.contains(product))
+        })
+        .cloned()
+        .collect();
     let mut out = files;
-    out.extend(names.products.iter().cloned());
+    out.extend(uncovered);
     if role == PackageRole::WorkspaceMember || opened_in_xcode {
         out.extend(names.test_targets.iter().cloned());
     }
@@ -639,6 +663,7 @@ fn read_manifest(manifest: &Value) -> ManifestNames {
             .unwrap_or_default()
             .to_string(),
         products: products_with_implicit_executables(manifest),
+        executables: executable_products(manifest),
         test_targets: names_in(manifest, "targets", is_test_target),
         targets: names_in(manifest, "targets", |_| true),
         path_deps: path_dependencies(manifest),
@@ -692,6 +717,27 @@ fn products_with_implicit_executables(manifest: &Value) -> Vec<String> {
         })
         .into_iter()
         .filter(|name| !covered.contains(name.as_str())),
+    );
+    out
+}
+
+/// The products that run: the declared executables (`"type": {"executable":
+/// null}`), and the implicit product behind each `executableTarget` no
+/// declared product covers.
+fn executable_products(manifest: &Value) -> Vec<String> {
+    let declared: Vec<String> = names_in(manifest, "products", |product| {
+        product
+            .get("type")
+            .is_some_and(|t| t.get("executable").is_some())
+    });
+    let all_declared: HashSet<String> = names_in(manifest, "products", |_| true)
+        .into_iter()
+        .collect();
+    let mut out = declared;
+    out.extend(
+        products_with_implicit_executables(manifest)
+            .into_iter()
+            .filter(|name| !all_declared.contains(name)),
     );
     out
 }
@@ -950,6 +996,42 @@ mod tests {
         assert_eq!(
             schemes_for(&dir, PackageRole::Dependency, &names),
             vec!["LibA", "LibATests", "MyPlugin"]
+        );
+    }
+
+    /// A scheme that builds a library product takes its place in a container
+    /// that reaches the package (Xcode 27.0: a project over a package whose
+    /// `Beta.xcscheme` builds `Zeta` lists `Beta` and no `Zeta`), while the
+    /// package opened on its own still lists the product.
+    #[test]
+    fn a_scheme_that_builds_a_library_product_takes_its_place() {
+        let dir = package_dir("covered", Some(("Beta", "LibA")));
+        let names = read_manifest(&manifest());
+        assert_eq!(
+            schemes_for(&dir, PackageRole::Dependency, &names),
+            vec!["Beta", "LibATests", "MyPlugin"]
+        );
+        assert!(
+            standalone_names(&dir, names)
+                .schemes
+                .contains(&"LibA".to_string())
+        );
+    }
+
+    /// Only a scheme that runs an executable product takes its place; one
+    /// that builds it leaves the product its scheme.
+    #[test]
+    fn a_scheme_that_only_builds_an_executable_product_leaves_it_its_scheme() {
+        let dir = package_dir("builds-exec", Some(("Tools", "runner")));
+        let names = read_manifest(&serde_json::json!({
+            "name": "Tool",
+            "products": [],
+            "targets": [{"name": "runner", "type": "executable"}],
+        }));
+        assert_eq!(names.executables, vec!["runner"]);
+        assert_eq!(
+            schemes_for(&dir, PackageRole::Dependency, &names),
+            vec!["Tools", "runner"]
         );
     }
 

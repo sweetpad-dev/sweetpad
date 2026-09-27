@@ -377,6 +377,41 @@ fn scheme_for_target_autocreates_when_no_scheme_files() {
     assert_eq!(scheme_for_target(&proj, "App").as_deref(), Some("App"));
 }
 
+/// Autocreation is per target: a scheme file for `Tool` leaves `App` its own
+/// autocreated scheme, and a prepare of `App` builds through it.
+#[test]
+fn scheme_for_target_autocreates_beside_another_targets_scheme() {
+    let (_root, proj) = scratch_xcodeproj("scheme-autocreate-beside", TWO_CONFIG_PBXPROJ);
+    write_scheme(&proj.join("xcshareddata/xcschemes"), "ToolScheme", "Tool");
+    assert_eq!(open(&proj).unwrap().schemes, ["App", "Tool", "ToolScheme"]);
+    assert_eq!(scheme_for_target(&proj, "App").as_deref(), Some("App"));
+}
+
+/// A scheme that runs `App` under another name takes the place of its
+/// autocreated one: Xcode 27.0 lists only that scheme.
+#[test]
+fn a_scheme_that_runs_a_target_replaces_its_autocreated_scheme() {
+    let (_root, proj) = scratch_xcodeproj("scheme-runs-target", TWO_CONFIG_PBXPROJ);
+    let dir = proj.join("xcshareddata/xcschemes");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("Main.xcscheme"),
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Scheme version = "1.7">
+   <LaunchAction buildConfiguration = "Debug">
+      <BuildableProductRunnable runnableDebuggingMode = "0">
+         <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "APP"
+            BuildableName = "App.app" BlueprintName = "App" ReferencedContainer = "container:App.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </LaunchAction>
+</Scheme>
+"#,
+    )
+    .unwrap();
+    assert_eq!(open(&proj).unwrap().schemes, ["Main", "Tool"]);
+}
+
 /// The plist disabling scheme autocreation, as Xcode writes it (and XcodeGen /
 /// Tuist generate it).
 const AUTOCREATE_OFF_PLIST: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\

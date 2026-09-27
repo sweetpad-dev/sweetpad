@@ -28,8 +28,8 @@ pub struct Project {
     /// Scheme names for this project, sorted alphabetically — the set
     /// `xcodebuild -list` prints: shared (`xcshareddata/xcschemes`) plus
     /// per-user (`xcuserdata/<user>.xcuserdatad/xcschemes`) scheme files,
-    /// plus one autocreated scheme per eligible target not already named by
-    /// a scheme file (Xcode's scheme autocreation; see
+    /// plus one autocreated scheme per eligible target no scheme file names
+    /// or runs (Xcode's scheme autocreation; see [`listed_schemes`], and
     /// [`autocreates_scheme_for_target`] for the eligibility rules). Schemes
     /// that `xcodebuild` additionally synthesizes from Swift *package*
     /// manifests are out of scope — they aren't derivable from the pbxproj.
@@ -206,32 +206,10 @@ pub fn open_from_value(value: &Value, xcodeproj_path: &Path) -> Result<Project, 
     let configurations = extract_project_configurations(objects, project_obj)?;
     let default_configuration = default_configuration_name(objects, project_obj);
     let targets = extract_targets(objects, project_obj)?;
-    let mut schemes = crate::scheme::container_schemes(xcodeproj_path);
-    if crate::scheme::autocreation_allowed(xcodeproj_path) {
-        // Mirror Xcode's per-target scheme autocreation: `xcodebuild -list`
-        // reports one scheme per eligible target that no scheme file already
-        // names, even when other targets DO have scheme files (kingfisher's
-        // Demo project ships only `Kingfisher-Demo.xcscheme` yet lists its
-        // macOS/tvOS/watchOS demo apps too; NetNewsWire lists its
-        // extension targets). When the workspace settings disable
-        // autocreation (XcodeGen / Tuist write the flag), `xcodebuild -list`
-        // shows only the scheme files and so do we.
-        let existing: std::collections::BTreeSet<&str> =
-            schemes.iter().map(String::as_str).collect();
-        let first_config = configurations.first().cloned();
-        let autocreated: Vec<String> = targets
-            .iter()
-            .filter(|t| !existing.contains(t.name.as_str()))
-            .filter(|t| {
-                autocreates_scheme_for_target(value, xcodeproj_path, t, first_config.as_deref())
-            })
-            .map(|t| t.name.clone())
-            .collect();
-        schemes.extend(autocreated);
-        schemes.dedup();
-    }
-    crate::scheme::sort_like_xcodebuild(&mut schemes);
-    schemes.dedup();
+    let first_config = configurations.first().cloned();
+    let schemes = listed_schemes(xcodeproj_path, &targets, |t| {
+        autocreates_scheme_for_target(value, xcodeproj_path, t, first_config.as_deref())
+    });
 
     let name = xcodeproj_path
         .file_stem()
@@ -424,6 +402,58 @@ fn names_a_directory(node: &Value) -> bool {
     match kind {
         None => true,
         Some(k) => k == "folder" || k == "wrapper" || k.starts_with("folder."),
+    }
+}
+
+/// The schemes `xcodebuild -list -project` prints for the project at
+/// `xcodeproj_path`: its scheme files, plus one autocreated scheme per target
+/// `eligible` accepts that no scheme file names or runs, sorted the way
+/// `xcodebuild` sorts. Both project formats list their schemes through here.
+///
+/// Autocreation is per target, not per project: a project with scheme files
+/// still lists a scheme for each other eligible target (kingfisher's Demo
+/// project ships only `Kingfisher-Demo.xcscheme` yet lists its
+/// macOS/tvOS/watchOS demo apps too; NetNewsWire lists its extension
+/// targets). A target a scheme file runs, or builds when the target doesn't
+/// run, has none under its own name ([`crate::scheme::SchemeReferences`]).
+/// When the workspace settings disable
+/// autocreation (XcodeGen / Tuist write the flag), `xcodebuild -list` shows
+/// only the scheme files and so do we.
+pub(crate) fn listed_schemes(
+    xcodeproj_path: &Path,
+    targets: &[Target],
+    eligible: impl Fn(&Target) -> bool,
+) -> Vec<String> {
+    let mut schemes = crate::scheme::container_schemes(xcodeproj_path);
+    if crate::scheme::autocreation_allowed(xcodeproj_path) {
+        let existing: std::collections::BTreeSet<&str> =
+            schemes.iter().map(String::as_str).collect();
+        let references = crate::scheme::SchemeReferences::of(xcodeproj_path);
+        let autocreated: Vec<String> = targets
+            .iter()
+            .filter(|t| !existing.contains(t.name.as_str()))
+            .filter(|t| !references.cover(Some(xcodeproj_path), &t.name, t.runs()))
+            .filter(|t| eligible(t))
+            .map(|t| t.name.clone())
+            .collect();
+        schemes.extend(autocreated);
+    }
+    crate::scheme::sort_like_xcodebuild(&mut schemes);
+    schemes.dedup();
+    schemes
+}
+
+impl Target {
+    /// Whether the target is something a scheme runs, an app, a command-line
+    /// tool or an app extension, rather than something it only builds.
+    #[must_use]
+    pub fn runs(&self) -> bool {
+        self.product_type.as_deref().is_some_and(|pt| {
+            pt.starts_with("com.apple.product-type.application")
+                || pt.starts_with("com.apple.product-type.app-extension")
+                || pt.starts_with("com.apple.product-type.extensionkit-extension")
+                || pt == "com.apple.product-type.tool"
+        })
     }
 }
 
@@ -4436,20 +4466,14 @@ fn value_to_string(v: &Value) -> String {
 /// (BSP `prepare`). Prefers a scheme file named exactly `target` (Xcode and
 /// Tuist create a per-target scheme), shared or per-user; otherwise the first
 /// scheme file (shared directory first, then the current user's) whose build
-/// action references it. When the container holds no scheme file at all and
-/// scheme autocreation is enabled, the target's own name qualifies —
+/// action references it. Failing both, the target's own name qualifies when
+/// the project lists it as an autocreated scheme ([`listed_schemes`]) —
 /// `xcodebuild` accepts autocreated scheme names. `None` otherwise —
 /// `xcodebuild` needs a scheme (a bare `-target` build doesn't populate the
 /// products dir our search paths use).
 #[must_use]
 pub fn scheme_for_target(xcodeproj_path: &Path, target: &str) -> Option<String> {
     let names = crate::scheme::container_schemes(xcodeproj_path);
-    if names.is_empty() {
-        // No scheme file anywhere (shared or per-user): xcodebuild resolves
-        // the target's autocreated scheme, unless the workspace settings
-        // disable autocreation (XcodeGen / Tuist write the flag).
-        return crate::scheme::autocreation_allowed(xcodeproj_path).then(|| target.to_string());
-    }
     if names.iter().any(|n| n == target) {
         return Some(target.to_string());
     }
@@ -4464,14 +4488,22 @@ pub fn scheme_for_target(xcodeproj_path: &Path, target: &str) -> Option<String> 
         })
         .collect();
     schemes.sort();
-    schemes
+    let building = schemes
         .into_iter()
         .find(|(_, _, path)| {
             scheme_build_action_targets(path)
                 .iter()
                 .any(|t| t == target)
         })
-        .map(|(_, name, _)| name)
+        .map(|(_, name, _)| name);
+    // Otherwise the target's autocreated scheme, when the project lists one
+    // (see [`listed_schemes`]): autocreation is per target, so other targets'
+    // scheme files don't stand in its way.
+    building.or_else(|| {
+        open(xcodeproj_path)
+            .is_ok_and(|project| project.schemes.iter().any(|s| s == target))
+            .then(|| target.to_string())
+    })
 }
 
 /// The blueprint (target) names a scheme's `BuildAction` builds.

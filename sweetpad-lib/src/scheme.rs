@@ -353,6 +353,96 @@ pub fn find_scheme_file(container: &Path, name: &str) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// The targets the scheme files stored in a container point at, which decide
+/// the targets Xcode autocreates no scheme for.
+///
+/// Measured on Xcode 27.0 with `xcodebuild -list`: a target that runs (an
+/// app, a tool, an extension) loses its autocreated scheme once a scheme with
+/// another name runs it in its Launch or Profile action, and keeps it when
+/// that scheme only builds it or names it as the test action's macro
+/// expansion. A target that doesn't run (a framework, a library, a package's
+/// library product) loses it once a scheme builds it. A workspace's scheme
+/// files count for its member projects the same way.
+#[derive(Debug, Clone, Default)]
+pub struct SchemeReferences {
+    /// Each scheme's Launch or Profile runnable, as the project its
+    /// `ReferencedContainer` names and the target's name.
+    runs: Vec<(Option<PathBuf>, String)>,
+    /// Each scheme's Build action entries, the same way.
+    builds: Vec<(Option<PathBuf>, String)>,
+}
+
+impl SchemeReferences {
+    /// What the shared and the current user's scheme files in `container` (a
+    /// `.xcodeproj`, a `.xcworkspace`, or a package's `.swiftpm/xcode`) point
+    /// at. A `container:` reference resolves against the directory holding
+    /// `container`; one that names no project (a package's `container:`)
+    /// matches by target name alone.
+    #[must_use]
+    pub fn of(container: &Path) -> Self {
+        let base = container.parent().unwrap_or(Path::new(""));
+        let project_of = |reference: &BuildableRef| match reference.container.split_once(':') {
+            Some(("container", "")) => None,
+            Some(("container", rel)) => Some(crate::project::absolutize(&base.join(rel))),
+            Some(("absolute", abs)) => Some(crate::project::absolutize(Path::new(abs))),
+            _ => None,
+        };
+        let mut out = Self::default();
+        for name in container_schemes(container) {
+            let Some(root) =
+                find_scheme_file(container, &name).and_then(|p| xcscheme::parse_file(&p).ok())
+            else {
+                continue;
+            };
+            for action in ["LaunchAction", "ProfileAction"] {
+                if let Some(reference) = root
+                    .child(action)
+                    .and_then(|a| {
+                        a.child("BuildableProductRunnable")
+                            .or_else(|| a.child("RemoteRunnable"))
+                    })
+                    .and_then(|r| r.child("BuildableReference"))
+                    .and_then(parse_buildable)
+                {
+                    out.runs
+                        .push((project_of(&reference), reference.blueprint_name.clone()));
+                }
+            }
+            let entries = root
+                .child("BuildAction")
+                .and_then(|b| b.child("BuildActionEntries"));
+            for entry in entries
+                .map(|e| e.children_named("BuildActionEntry").collect::<Vec<_>>())
+                .unwrap_or_default()
+            {
+                if let Some(reference) = entry.child("BuildableReference").and_then(parse_buildable)
+                {
+                    out.builds
+                        .push((project_of(&reference), reference.blueprint_name.clone()));
+                }
+            }
+        }
+        out
+    }
+
+    /// Whether a scheme takes the place of `target`'s autocreated one: a
+    /// scheme that runs it, for a target that `runs`, or one that builds it,
+    /// for one that doesn't. `project` is the target's `.xcodeproj`; `None`
+    /// matches by name alone.
+    #[must_use]
+    pub fn cover(&self, project: Option<&Path>, target: &str, runs: bool) -> bool {
+        let project = project.map(crate::project::absolutize);
+        let references = if runs { &self.runs } else { &self.builds };
+        references.iter().any(|(p, t)| {
+            t == target
+                && match (p, &project) {
+                    (Some(p), Some(project)) => p == project,
+                    _ => true,
+                }
+        })
+    }
+}
+
 /// The file behind the scheme `name` that `xcodebuild` lists for `container`,
 /// or `None` when it has none (an autocreated scheme Xcode never wrote, or a
 /// name the container doesn't know). See [`locate_all`] for where it looks.
@@ -922,5 +1012,47 @@ mod tests {
         touch(&mine);
         assert_eq!(locate(&dir, "Foreign"), None);
         assert_eq!(locate(&dir, "Mine"), Some(mine));
+    }
+
+    /// A scheme building `Kit` and running `App`, both in `App.xcodeproj`.
+    const COVERING_SCHEME: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Scheme version = "1.7">
+   <BuildAction>
+      <BuildActionEntries>
+         <BuildActionEntry buildForRunning = "YES">
+            <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "KIT"
+               BuildableName = "Kit.framework" BlueprintName = "Kit" ReferencedContainer = "container:App.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+   <LaunchAction>
+      <BuildableProductRunnable>
+         <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "APP"
+            BuildableName = "App.app" BlueprintName = "App" ReferencedContainer = "container:App.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </LaunchAction>
+</Scheme>
+"#;
+
+    /// Xcode 27.0 drops a framework's autocreated scheme once a scheme builds
+    /// it, and an app's once a scheme runs it, and a reference only counts
+    /// for the project it names.
+    #[test]
+    fn a_scheme_covers_what_it_runs_or_builds_in_the_project_it_names() {
+        let (_root, dir) = scratch_container("references");
+        let path = dir.join("xcshareddata/xcschemes/Custom.xcscheme");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, COVERING_SCHEME).unwrap();
+        let references = SchemeReferences::of(&dir);
+
+        assert!(references.cover(Some(&dir), "Kit", false));
+        assert!(references.cover(Some(&dir), "App", true));
+        // Building an app doesn't take its scheme's place, running is what does.
+        assert!(!references.cover(Some(&dir), "Kit", true));
+        assert!(!references.cover(Some(&dir), "Other", false));
+        let elsewhere = dir.parent().unwrap().join("Other.xcodeproj");
+        assert!(!references.cover(Some(&elsewhere), "App", true));
     }
 }

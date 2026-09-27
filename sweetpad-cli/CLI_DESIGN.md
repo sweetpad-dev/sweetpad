@@ -907,6 +907,15 @@ Notes / heuristics:
   Run action through it (`sweetpad_core::app_locator::find_scheme`), and so do
   the CLI, the build-settings resolver, the supported-platforms filter and the
   extension (launch settings, `scheme.reveal`).
+- Autocreated schemes follow Xcode's per-target rule
+  (`sweetpad_lib::project::listed_schemes`): each eligible target gets one
+  unless a scheme file is named for it, or a scheme file under another name
+  covers it (`sweetpad_lib::scheme::SchemeReferences`). A scheme covers an
+  app, tool or extension by running it in its Launch or Profile action, and a
+  framework or library by building it. A workspace's own scheme files count
+  for its members, and a local package's for its products. Scheme files for
+  other targets don't stand in the way, so `scheme list`, `settings show` and
+  the build's product lookup agree on the set `xcodebuild -list` prints.
 - `test run` exits non-zero on failures; the `--json` summary lands on stdout
   and the failure error on stderr, so both are independently consumable.
 - simulator inline logs use a best-effort `processImagePath CONTAINS` log

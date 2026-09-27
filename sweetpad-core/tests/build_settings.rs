@@ -441,6 +441,28 @@ fn write_scheme(dir: &PathBuf, name: &str) {
     std::fs::write(dir.join(format!("{name}.xcscheme")), SCRATCH_SCHEME_XML).unwrap();
 }
 
+/// [`SCRATCH_SCHEME_XML`] with a Launch action that runs the `Scratch` target.
+fn write_running_scheme(dir: &PathBuf, name: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    let launch = r#"   <LaunchAction buildConfiguration="Debug">
+      <BuildableProductRunnable runnableDebuggingMode="0">
+         <BuildableReference
+            BuildableIdentifier="primary"
+            BlueprintIdentifier="14A71A1C6762522AADB33EF1"
+            BuildableName="Scratch"
+            BlueprintName="Scratch"
+            ReferencedContainer="container:Scratch.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </LaunchAction>
+</Scheme>"#;
+    std::fs::write(
+        dir.join(format!("{name}.xcscheme")),
+        SCRATCH_SCHEME_XML.replace("</Scheme>", launch),
+    )
+    .unwrap();
+}
+
 #[test]
 fn scheme_without_file_resolves_the_same_named_target() {
     // No `.xcscheme` exists anywhere — Xcode's autocreated per-target scheme.
@@ -458,16 +480,34 @@ fn scheme_without_file_resolves_the_same_named_target() {
     assert_eq!(s.get("PRODUCT_NAME").map(String::as_str), Some("Scratch"));
 }
 
+/// Autocreation is per target. On Xcode 27.0 this project, with a `Custom`
+/// scheme that only builds `Scratch`, lists both `Custom` and `Scratch`, and
+/// `xcodebuild -showBuildSettings -scheme Scratch` resolves.
 #[test]
-fn unknown_scheme_errors_when_other_scheme_files_exist() {
-    // Xcode's autocreated per-target schemes only exist in containers with
-    // NO scheme files at all. Once any scheme file exists, xcodebuild
-    // refuses an unknown scheme name even if a target with that name exists.
+fn a_target_another_scheme_only_builds_keeps_its_autocreated_scheme() {
     let (_root, proj) = scratch_copy("schemes-exist");
     write_scheme(&proj.join("xcshareddata/xcschemes"), "Custom");
     let opts = BuildSettingsOptions {
         project: Some(proj),
-        scheme: Some("Scratch".to_string()), // a target, but not a scheme
+        scheme: Some("Scratch".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    };
+    let s = resolve_one(opts);
+    assert_eq!(s.get("PRODUCT_NAME").map(String::as_str), Some("Scratch"));
+}
+
+/// Once `Custom` runs `Scratch` in its Launch action, Xcode 27.0 lists
+/// `Custom` alone and refuses `-scheme Scratch`.
+#[test]
+fn a_target_another_scheme_runs_has_no_autocreated_scheme() {
+    let (_root, proj) = scratch_copy("scheme-runs");
+    write_running_scheme(&proj.join("xcshareddata/xcschemes"), "Custom");
+    let opts = BuildSettingsOptions {
+        project: Some(proj),
+        scheme: Some("Scratch".to_string()),
         configuration: "Debug".to_string(),
         sdk: "macosx".to_string(),
         arch: "arm64".to_string(),
@@ -477,6 +517,63 @@ fn unknown_scheme_errors_when_other_scheme_files_exist() {
     assert!(err.contains("does not contain a scheme"), "err: {err}");
 }
 
+/// A workspace listing the scratch project, with `scheme` written into the
+/// workspace's own shared schemes by `write`.
+fn scratch_workspace(tag: &str, write: fn(&PathBuf, &str)) -> (ScratchDir, PathBuf) {
+    let (root, _proj) = scratch_copy(tag);
+    let ws = root.join("W.xcworkspace");
+    std::fs::create_dir_all(&ws).unwrap();
+    std::fs::write(
+        ws.join("contents.xcworkspacedata"),
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version = \"1.0\">\n   \
+         <FileRef location = \"group:Scratch.xcodeproj\"></FileRef>\n</Workspace>\n",
+    )
+    .unwrap();
+    write(&ws.join("xcshareddata/xcschemes"), "Custom");
+    (root, ws)
+}
+
+fn workspace_scheme(ws: PathBuf, scheme: &str) -> BuildSettingsOptions {
+    BuildSettingsOptions {
+        workspace: Some(ws),
+        scheme: Some(scheme.to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    }
+}
+
+/// A member's autocreated scheme survives a workspace scheme that only builds
+/// its target, as in `xcodebuild -list -workspace` on Xcode 27.0, and
+/// resolves.
+#[test]
+fn a_workspace_scheme_that_only_builds_a_member_target_keeps_its_scheme() {
+    let (_root, ws) = scratch_workspace("ws-builds", write_scheme);
+    assert_eq!(
+        sweetpad_lib::workspace::open(&ws).unwrap().merged_schemes(),
+        ["Custom", "Scratch"]
+    );
+    let s = resolve_one(workspace_scheme(ws, "Scratch"));
+    assert_eq!(s.get("PRODUCT_NAME").map(String::as_str), Some("Scratch"));
+}
+
+/// A workspace scheme that runs a member target takes the place of the
+/// target's autocreated scheme, in the listing and in resolution.
+#[test]
+fn a_workspace_scheme_that_runs_a_member_target_replaces_its_scheme() {
+    let (_root, ws) = scratch_workspace("ws-runs", write_running_scheme);
+    assert_eq!(
+        sweetpad_lib::workspace::open(&ws).unwrap().merged_schemes(),
+        ["Custom"]
+    );
+    let err = resolve_build_settings(workspace_scheme(ws, "Scratch")).unwrap_err();
+    assert!(err.contains("does not contain a scheme"), "err: {err}");
+}
+
+/// A name the project doesn't list is refused as a scheme, the way
+/// `xcodebuild -scheme Nonexistent` refuses it, even where every target
+/// autocreates one.
 #[test]
 fn unknown_scheme_with_no_matching_target_errors() {
     let (_root, proj) = scratch_copy("unknown-scheme");
@@ -489,7 +586,7 @@ fn unknown_scheme_with_no_matching_target_errors() {
         ..Default::default()
     };
     let err = resolve_build_settings(opts).unwrap_err();
-    assert!(err.contains("no target named"), "err: {err}");
+    assert!(err.contains("does not contain a scheme"), "err: {err}");
 }
 
 /// A username whose `xcuserdata` is visible to scheme discovery on this host:
