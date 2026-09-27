@@ -1493,17 +1493,19 @@ fn takes_output_file(argv: &[String]) -> bool {
 /// first one the verb lacks (`-u`), so the error names the word instead when
 /// it is an xcodebuild flag.
 ///
-/// clap can also read such a word as a short flag that takes the rest of it
-/// as its value: `-only-testing:App/Tests` as `-o nly-testing:App/Tests`, an
-/// invalid output format. When the whole word is an xcodebuild flag, that
-/// error gives way to the unknown-flag error naming the word, with its tip.
-/// Every other usage error renders as clap wrote it.
+/// clap can also read such a word as a short flag that takes the rest of it:
+/// `-only-testing:App/Tests` as `-o nly-testing:App/Tests`, an invalid output
+/// format, and `-hideShellScriptEnvironment` as `-h`, which prints the verb's
+/// help. When the whole word is an xcodebuild flag, that error or help gives
+/// way to the unknown-flag error naming the word, with its tip. `-h`, `-help`
+/// and `--help` still print the help. Every other usage error renders as
+/// clap wrote it.
 fn hint_tail_flag(err: clap::Error, argv: &[String]) -> clap::Error {
     use clap::error::ErrorKind;
 
     match err.kind() {
         ErrorKind::UnknownArgument => hint_unknown_flag(err, argv),
-        ErrorKind::InvalidValue => hint_taken_word(err, argv),
+        ErrorKind::InvalidValue | ErrorKind::DisplayHelp => hint_taken_word(err, argv),
         _ => err,
     }
 }
@@ -1546,16 +1548,21 @@ fn hint_unknown_flag(mut err: clap::Error, argv: &[String]) -> clap::Error {
 }
 
 /// [`hint_tail_flag`] for a one-dash word clap read as a short flag that
-/// takes the rest of it as its value.
+/// takes the rest of it: as its value, or as `-h`.
 fn hint_taken_word(err: clap::Error, argv: &[String]) -> clap::Error {
     use clap::error::{ContextKind, ContextValue, ErrorKind};
 
-    let Some(ContextValue::String(value)) = err.get(ContextKind::InvalidValue) else {
-        return err;
+    let value = match err.get(ContextKind::InvalidValue) {
+        Some(ContextValue::String(value)) => Some(value.clone()),
+        _ if err.kind() == ErrorKind::DisplayHelp => None,
+        _ => return err,
     };
-    let value = value.clone();
     with_invoked(argv, |cmd| {
-        let Some(word) = taken_word(cmd, argv, &value) else {
+        let word = match &value {
+            Some(value) => taken_word(cmd, argv, value),
+            None => help_word(cmd, argv),
+        };
+        let Some(word) = word else {
             return err;
         };
         let Some(verb) = TailVerb::typed(cmd, word) else {
@@ -1592,6 +1599,28 @@ fn taken_word<'a>(cmd: &clap::Command, argv: &'a [String], value: &str) -> Optio
                     && rest.strip_prefix('=').unwrap_or(rest) == value
             })
         })
+}
+
+/// The one-dash word in `argv`, ahead of any `--`, that clap read as short
+/// switches ending in `-h` (`-hide…`), when it is the only word that asks for
+/// help. A typed `-h` or `--help` beside it still shows the help, and so does
+/// an `-h` after `--arg -hide…`, where clap took the word as the value.
+fn help_word<'a>(cmd: &clap::Command, argv: &'a [String]) -> Option<&'a str> {
+    use clap::ArgAction;
+
+    let mut asking = argv
+        .iter()
+        .take_while(|a| *a != "--")
+        .map(String::as_str)
+        .filter(|word| {
+            *word == "--help"
+                || split_short(cmd, word).is_some_and(|(arg, _)| {
+                    matches!(arg.get_action(), ArgAction::Help | ArgAction::HelpShort)
+                })
+        });
+    let word = asking.next()?;
+    let (_, rest) = split_short(cmd, word)?;
+    (asking.next().is_none() && !rest.is_empty()).then_some(word)
 }
 
 /// The short flag clap stops at in the one-dash `word`, past the switches
@@ -3386,8 +3415,8 @@ mod tail_flag_hint_tests {
     }
 
     /// clap reads a one-dash word as a short flag that takes the rest of it:
-    /// `-only-testing:…` as an invalid '-o' format. An xcodebuild word gets
-    /// the error and tip an unknown one does.
+    /// `-only-testing:…` as an invalid '-o' format, `-hide…` as '-h'. An
+    /// xcodebuild word gets the error and tip an unknown one does.
     #[test]
     fn an_xcodebuild_word_read_as_a_short_flag_is_shown_after_the_tail() {
         for (args, word, shown) in [
@@ -3405,6 +3434,22 @@ mod tail_flag_hint_tests {
                 &["test", "run", "-q", "-only-test-configuration", "Fast"],
                 "-only-test-configuration",
                 "sweetpad test run -- -only-test-configuration",
+            ),
+            (
+                &["build", "-hideShellScriptEnvironment"],
+                "-hideShellScriptEnvironment",
+                "sweetpad build -- -hideShellScriptEnvironment",
+            ),
+            (
+                &[
+                    "app",
+                    "run",
+                    "--arg",
+                    "-Dark",
+                    "-hideShellScriptEnvironment",
+                ],
+                "-hideShellScriptEnvironment",
+                "sweetpad app run -- -hideShellScriptEnvironment",
             ),
         ] {
             let text = rendered(args);
@@ -3427,11 +3472,32 @@ mod tail_flag_hint_tests {
             ])),
             tail(rendered(&["build", "-quiet"]))
         );
+        assert_eq!(
+            tail(rendered(&["build", "-hideShellScriptEnvironment"])),
+            tail(rendered(&["build", "-quiet"]))
+        );
     }
 
-    /// A word that is no xcodebuild flag keeps clap's error.
+    /// '-h', '--help' and '-help' still print the verb's help, as does an
+    /// xcodebuild word beside a typed help flag, or taken as '--arg''s
+    /// value. So does a word on a verb that refuses a tail. A word that is
+    /// no xcodebuild flag keeps clap's error.
     #[test]
-    fn other_words_stay_as_clap_reads_them() {
+    fn help_and_other_words_stay_as_clap_reads_them() {
+        for args in [
+            &["build", "-h"][..],
+            &["build", "--help"],
+            &["build", "-help"],
+            &["build", "-qh"],
+            &["build", "-hideShellScriptEnvironment", "--help"],
+            &["build", "-h", "-hideShellScriptEnvironment"],
+            &["app", "run", "--arg", "-hideShellScriptEnvironment", "-h"],
+            &["build", "diagnostics", "-hideShellScriptEnvironment"],
+            &["devices", "-hideShellScriptEnvironment"],
+        ] {
+            let err = rejected(args);
+            assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelp, "{args:?}");
+        }
         let text = rendered(&["test", "-oops"]);
         assert!(
             text.contains("invalid value 'ops' for '--output <OUTPUT>'"),

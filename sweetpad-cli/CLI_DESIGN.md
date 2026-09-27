@@ -181,8 +181,11 @@ go after '--': 'sweetpad build -- -allowProvisioningUpdates'`. clap splits a
 one-dash word into short flags and names a single letter (`-a`), so the error
 names the whole word instead. clap can also take the rest of the word as a
 value: `-only-testing:App/Tests` reads as `-o nly-testing:App/Tests`, an
-invalid output format. When the whole word is an `xcodebuild` flag, that error
-gives way to the same unknown-flag error and tip. For a flag sweetpad passes
+invalid output format. `-hideShellScriptEnvironment` reads as `-h` and prints
+the verb's help. When the whole word is an `xcodebuild` flag, that error or
+help gives way to the same unknown-flag error and tip. The help stays for
+`-h`, `--help` and `-help`, and for any command line where another word asks
+for it too. For a flag sweetpad passes
 itself, the tip names the sweetpad flag, as the tail's refusal does. So it
 does for a flag with a value when the verb has a flag of the same name (`pass
 '--destination' instead of '-destination'`). A flag nothing takes gets no
