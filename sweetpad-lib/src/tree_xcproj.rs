@@ -18,6 +18,13 @@
 //! share a display name, and an address that matches more than one node is an
 //! error listing what it hit rather than a pick.
 //!
+//! A group with neither a name nor a path is still a node holding its
+//! children. Its display name is empty, so it adds an empty component to the
+//! addresses below it. Xcode 27.2 spells them that way when it converts such a
+//! project: with one at the root holding `Products`, the product is
+//! `/Products/App.app`, and with one inside `Sources` holding `Config`, the
+//! xcconfig there is `Sources//Config/Base.xcconfig`.
+//!
 //! The navigator path is not the on-disk path. `<PROJECT>/Sources/Deep.swift`
 //! listed at the root appears as `Deep.swift`, and every row carries both.
 //!
@@ -96,12 +103,14 @@ pub fn list_groups(root: &Value) -> Result<Vec<GroupRow>, String> {
                 .map(str::to_string),
             children: children_of(n.value)
                 .iter()
-                .filter_map(|c| display_name(c).map(|name| join(&n.address, name)))
+                .map(|c| child_address(Some(&n.address), display_name(c)))
                 .collect(),
             parent: n.parent,
             resolved: n.resolved,
-            // A node's address is its navigator path.
+            // A node's address is its navigator path, and the document has no
+            // node for the navigator root.
             navigator_path: Some(n.address.clone()),
+            is_navigator_root: false,
             address: n.address,
         })
         .collect())
@@ -135,14 +144,14 @@ pub fn add_fileref(
     let stored = anchor.spell(&path);
     let name = basename(&stored).to_string();
 
-    let (indices, base, group_address) = match below_root(group) {
+    let (indices, base, group_address) = match below_root(root, group)? {
         Some(spec) => {
             let group = find_group(root, spec)?;
             (group.indices, group.resolved, Some(group.address))
         }
         None => (Vec::new(), String::new(), None),
     };
-    let address = join(group_address.as_deref().unwrap_or(""), &name);
+    let address = child_address(group_address.as_deref(), &name);
     if let Some(existing) = nodes(root)?.into_iter().find(|n| n.address == address) {
         return Ok(AddRefOutcome::AlreadyExists {
             address,
@@ -191,7 +200,7 @@ pub fn add_group(
     let anchor = anchor_for(source_tree)?;
     let stored = path.map(|p| anchor.spell(&normalize(p)));
 
-    let (indices, base, parent_address) = match below_root(parent) {
+    let (indices, base, parent_address) = match below_root(root, parent)? {
         Some(spec) => {
             let group = find_group(root, spec)?;
             (group.indices, group.resolved, Some(group.address))
@@ -199,7 +208,7 @@ pub fn add_group(
         None => (Vec::new(), String::new(), None),
     };
     let display = stored.as_deref().map_or(name, basename);
-    let address = join(parent_address.as_deref().unwrap_or(""), display);
+    let address = child_address(parent_address.as_deref(), display);
     if let Some(existing) = nodes(root)?.into_iter().find(|n| n.address == address) {
         return Ok(AddGroupOutcome::AlreadyExists {
             address,
@@ -264,10 +273,10 @@ pub fn remove_fileref(
             if members == 1 { "" } else { "s" }
         ));
     }
-    let (indices, parent) = (node.indices, node.parent);
+    let (indices, parent, address) = (node.indices, node.parent, node.address);
     splice_out(root, &indices)?;
     Ok(RemoveOutcome {
-        address: address.to_string(),
+        address,
         detached_from: parent,
         orphaned: Vec::new(),
     })
@@ -290,10 +299,7 @@ pub fn remove_group(root: &mut Value, address: &str, force: bool) -> Result<Remo
             "{address} is a file, not a group — delete it with 'pbxproj fileref remove'"
         ));
     }
-    let children: Vec<String> = children_of(node.value)
-        .iter()
-        .filter_map(|c| display_name(c).map(|name| join(address, name)))
-        .collect();
+    let children = children_of(node.value);
     if !children.is_empty() {
         let hint = if force {
             "--orphan-children cannot apply in the project.xcproj format: these children are \
@@ -307,10 +313,10 @@ pub fn remove_group(root: &mut Value, address: &str, force: bool) -> Result<Remo
             children.len()
         ));
     }
-    let (indices, parent) = (node.indices, node.parent);
+    let (indices, parent, address) = (node.indices, node.parent, node.address);
     splice_out(root, &indices)?;
     Ok(RemoveOutcome {
-        address: address.to_string(),
+        address,
         detached_from: parent,
         orphaned: Vec::new(),
     })
@@ -337,31 +343,38 @@ pub fn move_node(
     group: Option<&str>,
 ) -> Result<MoveOutcome, String> {
     let node = find_node(root, address)?;
-    let group = below_root(group);
+    let group = below_root(root, group)?;
     let (to_indices, to_base, to_address) = match group {
         Some(spec) => {
             let to = find_group(root, spec)?;
-            (to.indices, to.resolved, to.address)
+            (to.indices, to.resolved, Some(to.address))
         }
-        None => (Vec::new(), String::new(), String::new()),
+        None => (Vec::new(), String::new(), None),
     };
     if to_indices.starts_with(&node.indices) {
         return Err(format!(
-            "{to_address} is inside {address}; a group cannot hold itself"
+            "{} is inside {address}; a group cannot hold itself",
+            to_address.unwrap_or_default()
         ));
     }
     if node.indices.len() == to_indices.len() + 1 && node.indices.starts_with(&to_indices) {
         return Ok(MoveOutcome::AlreadyThere {
-            address: address.to_string(),
-            group: to_address,
+            address: node.address,
+            group: to_address.unwrap_or_default(),
         });
     }
 
     let resolved = node.resolved.clone();
     let from = node.parent.clone();
-    let name = display_name(node.value)
-        .ok_or_else(|| format!("{address} has neither a name nor a path"))?
-        .to_string();
+    let name = display_name(node.value).to_string();
+    // The move writes a path to keep the node's files, and a node with no
+    // name takes its display name from that path.
+    if name.is_empty() {
+        return Err(format!(
+            "'{address}' has neither a name nor a path. Moving it would give it a path, \
+             which Xcode shows as its name; move its children instead"
+        ));
+    }
     let relative = source_tree(node.value) == "<group>";
     let indices = node.indices.clone();
 
@@ -381,9 +394,9 @@ pub fn move_node(
     };
     children_mut(root, &to_indices)?.push(moved);
     Ok(MoveOutcome::Moved {
-        address: join(&to_address, &name),
+        address: child_address(to_address.as_deref(), &name),
         from,
-        to: to_address,
+        to: to_address.unwrap_or_default(),
         resolved,
     })
 }
@@ -430,10 +443,7 @@ fn nodes(root: &Value) -> Result<Vec<Node<'_>>, String> {
             return;
         }
         for (index, node) in children.iter().enumerate() {
-            let Some(name) = display_name(node) else {
-                continue;
-            };
-            let address = join(parent.unwrap_or(""), name);
+            let address = child_address(parent, display_name(node));
             let resolved = resolve(base, node);
             let is_container = kind(node).is_some_and(|k| CONTAINER_KINDS.contains(&k));
             indices.push(index);
@@ -472,12 +482,26 @@ fn nodes(root: &Value) -> Result<Vec<Node<'_>>, String> {
 }
 
 /// The one node at `address`, or a message saying why not.
+///
+/// The address is matched as typed first: below a group with no name it holds
+/// an empty component (`/Products`, `Sources//App`) that trimming its slashes
+/// would lose. Then it is trimmed, and last it is matched against each
+/// address trimmed the same way, so `Products` still finds `/Products` when
+/// nothing else is called that.
 fn find_node<'a>(root: &'a Value, address: &str) -> Result<Node<'a>, String> {
     let wanted = normalize(address);
-    let mut hits: Vec<Node<'a>> = nodes(root)?
-        .into_iter()
-        .filter(|n| n.address == wanted)
-        .collect();
+    let all = nodes(root)?;
+    let as_typed = |a: &str| a == address;
+    let trimmed = |a: &str| a == wanted;
+    let both_trimmed = |a: &str| normalize(a) == wanted;
+    let tiers: [&dyn Fn(&str) -> bool; 3] = [&as_typed, &trimmed, &both_trimmed];
+    let mut hits: Vec<Node<'a>> = match tiers
+        .iter()
+        .find(|matches| all.iter().any(|n| matches(&n.address)))
+    {
+        Some(matches) => all.into_iter().filter(|n| matches(&n.address)).collect(),
+        None => Vec::new(),
+    };
     match hits.len() {
         1 => Ok(hits.remove(0)),
         0 => Err(missing(root, &wanted)),
@@ -490,8 +514,27 @@ fn find_node<'a>(root: &'a Value, address: &str) -> Result<Node<'a>, String> {
 
 /// A group argument, or `None` for the navigator root, which `""` and `/`
 /// name here as they name the mainGroup in a `project.pbxproj`.
-fn below_root(spec: Option<&str>) -> Option<&str> {
-    spec.filter(|spec| !normalize(spec).is_empty())
+///
+/// A group with no name at the root has an empty address too. There `/` still
+/// names the root, and `""` is refused as naming both, the rule a
+/// `project.pbxproj` follows.
+fn below_root<'a>(root: &Value, spec: Option<&'a str>) -> Result<Option<&'a str>, String> {
+    let Some(spec) = spec.filter(|spec| *spec != "/") else {
+        return Ok(None);
+    };
+    if !normalize(spec).is_empty() {
+        return Ok(Some(spec));
+    }
+    if nodes(root)?
+        .iter()
+        .any(|n| n.is_container && n.address == spec)
+    {
+        return Err(format!(
+            "'{spec}' names both the navigator root and a group with no name at the root; \
+             pass '/' for the navigator root"
+        ));
+    }
+    Ok(None)
 }
 
 /// The one group at `address`.
@@ -647,14 +690,23 @@ fn resolve(base: &str, node: &Value) -> String {
 }
 
 /// What Xcode shows the node as: its `name`, else the last component of its
-/// `path`.
-fn display_name(node: &Value) -> Option<&str> {
-    if let Some(name) = node.get("name").and_then(Value::as_str) {
-        return (!name.is_empty()).then_some(name);
+/// `path`, and empty for a node with neither.
+pub(crate) fn display_name(node: &Value) -> &str {
+    match node.get("name").and_then(Value::as_str) {
+        Some(name) => name,
+        None => stored_path(node).map_or("", basename),
     }
-    let path = stored_path(node)?;
-    let name = basename(path);
-    (!name.is_empty()).then_some(name)
+}
+
+/// The address of a node called `name` under the group at `parent`, or at the
+/// navigator root without one. The root adds no component. A group with no
+/// name adds an empty one, which is how `/Products` spells a group inside one
+/// at the root.
+pub(crate) fn child_address(parent: Option<&str>, name: &str) -> String {
+    match parent {
+        None => name.to_string(),
+        Some(parent) => format!("{parent}/{name}"),
+    }
 }
 
 fn stored_path(node: &Value) -> Option<&str> {

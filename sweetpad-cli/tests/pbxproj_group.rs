@@ -254,3 +254,50 @@ fn group_move_to_the_xcproj_root_names_the_navigator_root() {
         "ContentView.swift is already under the navigator root"
     );
 }
+
+/// A project.xcproj group with neither a name nor a path is listed with what
+/// it holds, and at the root its empty address reads '(unnamed)' rather than
+/// passing for the navigator root, which has no row in that format.
+#[test]
+fn group_list_walks_through_an_xcproj_group_with_no_name() {
+    let (dir, project) = xcproj_fixture("sweetpad-group-nameless-xcproj");
+    std::fs::write(
+        Path::new(&project).join("project.xcproj"),
+        r#"{
+  "files": [
+    {
+      "kind": "group",
+      "children": [
+        {
+          "kind": "group",
+          "name": "Products",
+          "children": [
+            { "path": "<PRODUCTS>/App.app", "id": "958E16DD736EB85C16C05DE6", "index": false },
+          ],
+        },
+      ],
+    },
+  ],
+  "targets": [
+    { "name": "App", "product": "/Products/App.app", "product-type": "application" },
+  ],
+}
+"#,
+    )
+    .unwrap();
+    let project = project.as_str();
+
+    let groups = human(&["pbxproj", "group", "list", "--project", project], &dir);
+    assert_eq!(
+        groups.lines().collect::<Vec<_>>(),
+        [
+            "(unnamed)  [(project root), 1 child(ren)]",
+            "/Products  [(project root), 1 child(ren)]",
+        ]
+    );
+    let refs = human(&["pbxproj", "fileref", "list", "--project", project], &dir);
+    assert!(
+        refs.starts_with("/Products/App.app  <PRODUCTS>/App.app  ["),
+        "{refs}"
+    );
+}

@@ -63,6 +63,11 @@ pub struct GroupRow {
     /// neither a name nor a path adds an empty component, as Xcode spells it
     /// (`/Products` under one at the root).
     pub navigator_path: Option<String>,
+    /// Whether this is the navigator root itself: the mainGroup of a
+    /// `project.pbxproj`. A `project.xcproj` has no node for its root, so none
+    /// of its rows is. A group with no name at the root has an empty
+    /// navigator path as well, and this tells the two apart.
+    pub is_navigator_root: bool,
 }
 
 /// How a listing shows a navigator path: the path itself, or a label where

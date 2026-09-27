@@ -1714,7 +1714,13 @@ friction, without collapsing the axes:
   (`/Products`, `App//Inner`), and a path is matched as typed before its
   slashes are trimmed. At the root such a group's own path is empty, like the
   root's, so there `""` is refused as naming two groups, and `/` still names
-  the root. A path that matches no group is an
+  the root. A `project.xcproj` uses these paths as its addresses: `fileref
+  list` prints `/Products/App.app`, and a configuration's xcconfig named
+  `Sources//Config/Base.xcconfig` resolves through the group with no name. With
+  no id to fall back on, such a group at the root cannot be the group a verb
+  adds to or moves into. `group move` refuses to move a group with no name in
+  that format, because keeping its children's files would give it a path, and
+  Xcode shows the path as its name. A path that matches no group is an
   error, and so is one that matches two groups by the same spelling. That
   refusal lists each candidate's id with its navigator path and directory.
   `group list` prints all three on each row (`navigatorPath` in JSON, empty

@@ -431,3 +431,143 @@ fn a_written_node_keeps_xcodes_key_order() {
         .collect();
     assert!(positions.windows(2).all(|w| w[0] < w[1]), "{folder}");
 }
+
+/// Groups with neither a name nor a path, laid out the way Xcode 27.2 writes
+/// them when it converts such a project: one at the root holding `Products`,
+/// and one inside `Sources` holding `App` and `Config`. The document names the
+/// product `/Products/App.app` and the xcconfig `Sources//Config/Base.xcconfig`.
+const NAMELESS: &str = r#"{
+  "configurations": [
+    { "name": "Debug", "file": "Sources//Config/Base.xcconfig" },
+  ],
+  "files": [
+    {
+      "kind": "group",
+      "path": "Sources",
+      "children": [
+        {
+          "kind": "group",
+          "children": [
+            {
+              "kind": "group",
+              "path": "App",
+              "children": [
+                { "path": "ContentView.swift" },
+              ],
+            }, {
+              "kind": "group",
+              "path": "Config",
+              "children": [
+                { "path": "Base.xcconfig" },
+              ],
+            },
+          ],
+        },
+      ],
+    }, {
+      "kind": "group",
+      "children": [
+        {
+          "kind": "group",
+          "name": "Products",
+          "children": [
+            { "path": "<PRODUCTS>/App.app", "id": "958E16DD736EB85C16C05DE6", "index": false },
+          ],
+        },
+      ],
+    },
+  ],
+  "targets": [
+    { "name": "App", "product": "/Products/App.app", "product-type": "application" },
+  ],
+  "products-group": "/Products",
+}
+"#;
+
+/// Such a group is still a node holding its children, so its subtree is
+/// listed, with the empty component Xcode spells, and each address it prints
+/// names its node back.
+#[test]
+fn a_group_with_no_name_and_no_path_is_walked_through() {
+    let mut doc = xcproj::parse(NAMELESS).unwrap_or_else(|e| panic!("parse: {e}"));
+    assert_eq!(
+        addresses(&doc),
+        [
+            "Sources//App/ContentView.swift",
+            "Sources//Config/Base.xcconfig",
+            "/Products/App.app",
+        ]
+    );
+    let groups = tree::list_groups(&doc).unwrap();
+    assert_eq!(
+        groups
+            .iter()
+            .map(|g| g.address.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "Sources",
+            "Sources/",
+            "Sources//App",
+            "Sources//Config",
+            "",
+            "/Products"
+        ]
+    );
+    assert_eq!(groups[0].children, ["Sources/"], "the group it holds");
+    assert_eq!(groups[1].resolved, "Sources", "it adds no directory");
+    assert_eq!(groups[2].resolved, "Sources/App");
+    assert!(groups.iter().all(|g| !g.is_navigator_root));
+
+    // An address matches as typed before its slashes are trimmed, and a
+    // trimmed one still finds a node nothing else is called.
+    let outcome =
+        tree::add_fileref(&mut doc, "New.swift", None, "<group>", Some("Sources//App")).unwrap();
+    assert_eq!(
+        outcome,
+        AddRefOutcome::Created {
+            address: "Sources//App/New.swift".into(),
+            resolved: "Sources/App/New.swift".into(),
+            attached_to: Some("Sources//App".into()),
+        }
+    );
+    let AddGroupOutcome::Created { address, .. } =
+        tree::add_group(&mut doc, "Extra", Some("Products"), None, "<group>").unwrap()
+    else {
+        panic!("expected a new group");
+    };
+    assert_eq!(address, "/Products/Extra");
+
+    // `""` is also the address of the group with no name at the root, so it
+    // names two groups there, and `/` still names the navigator root.
+    let err = tree::add_group(&mut doc, "Top", Some(""), None, "<group>").unwrap_err();
+    assert!(
+        err.contains("'' names both the navigator root and a group with no name at the root"),
+        "{err}"
+    );
+    assert!(err.contains("pass '/' for the navigator root"), "{err}");
+    let AddGroupOutcome::Created { address, .. } =
+        tree::add_group(&mut doc, "Top", Some("/"), None, "<group>").unwrap()
+    else {
+        panic!("expected a new group");
+    };
+    assert_eq!(address, "Top");
+
+    // Deleting a group counts the group with no name it holds.
+    let err = tree::remove_group(&mut doc, "Sources", false).unwrap_err();
+    assert!(err.contains("still holds 1 child node(s)"), "{err}");
+
+    // A move would have to give it a path, and so a name.
+    let err = tree::move_node(&mut doc, "Sources/", Some("Top")).unwrap_err();
+    assert!(err.contains("has neither a name nor a path"), "{err}");
+
+    let moved = tree::move_node(&mut doc, "Sources//App/New.swift", Some("/Products")).unwrap();
+    assert_eq!(
+        moved,
+        MoveOutcome::Moved {
+            address: "/Products/New.swift".into(),
+            from: Some("Sources//App".into()),
+            to: "/Products".into(),
+            resolved: "Sources/App/New.swift".into(),
+        }
+    );
+}

@@ -532,11 +532,13 @@ fn xcconfig_path(file: &Value, root: &Value, project_dir: &Path) -> Option<PathB
 ///
 /// Matched by walking the tree and rebuilding each node's navigator path from
 /// its display name, rather than by splitting the input: a group's name can
-/// itself hold a `/` (`App/Sources`), so the segments are not separable.
+/// itself hold a `/` (`App/Sources`), so the segments are not separable. A
+/// group with neither a name nor a path adds an empty component, which is how
+/// Xcode spells an xcconfig below one (`Sources//Config/Base.xcconfig`).
 fn navigator_path(root: &Value, navigator: &str, project_dir: &Path) -> Option<PathBuf> {
     fn walk(
         nodes: &[Value],
-        parent_nav: &str,
+        parent_nav: Option<&str>,
         parent_base: &Path,
         project_dir: &Path,
         target: &str,
@@ -546,14 +548,10 @@ fn navigator_path(root: &Value, navigator: &str, project_dir: &Path) -> Option<P
             return None;
         }
         for node in nodes {
-            let Some(name) = display_name(node) else {
-                continue;
-            };
-            let nav = if parent_nav.is_empty() {
-                name.to_string()
-            } else {
-                format!("{parent_nav}/{name}")
-            };
+            let nav = crate::tree_xcproj::child_address(
+                parent_nav,
+                crate::tree_xcproj::display_name(node),
+            );
             if !target.starts_with(nav.as_str()) {
                 continue;
             }
@@ -567,7 +565,7 @@ fn navigator_path(root: &Value, navigator: &str, project_dir: &Path) -> Option<P
                 node.get("children")
                     .and_then(Value::as_array)
                     .unwrap_or_default(),
-                &nav,
+                Some(&nav),
                 &base,
                 project_dir,
                 target,
@@ -584,7 +582,7 @@ fn navigator_path(root: &Value, navigator: &str, project_dir: &Path) -> Option<P
         root.get("files")
             .and_then(Value::as_array)
             .unwrap_or_default(),
-        "",
+        None,
         project_dir,
         project_dir,
         navigator,
@@ -593,16 +591,6 @@ fn navigator_path(root: &Value, navigator: &str, project_dir: &Path) -> Option<P
     // A document that names a file the tree does not hold — nothing Xcode
     // writes, but a hand-edited one might — is read as a plain path.
     .or_else(|| resolve_path(navigator, project_dir, project_dir))
-}
-
-/// What the navigator shows for a node: its name, or the last component of its
-/// path.
-fn display_name(node: &Value) -> Option<&str> {
-    if let Some(name) = node.get("name").and_then(Value::as_str) {
-        return Some(name);
-    }
-    let path = node.get("path").and_then(Value::as_str)?;
-    Some(path.rsplit('/').next().unwrap_or(path))
 }
 
 /// Membership is recorded on the file, not in the phase: a node carries
@@ -698,9 +686,8 @@ fn phase_member_names(root: &Value, target: &str, phase: &str) -> Vec<String> {
             return;
         }
         for node in nodes {
-            if member_of(node, target, phase)
-                && let Some(name) = display_name(node)
-            {
+            let name = crate::tree_xcproj::display_name(node);
+            if member_of(node, target, phase) && !name.is_empty() {
                 out.push(name.to_string());
             }
             if let Some(children) = node.get("children").and_then(Value::as_array) {

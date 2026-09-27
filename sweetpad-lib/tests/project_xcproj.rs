@@ -268,6 +268,55 @@ fn xcconfig_resolves_through_the_navigator_tree() {
     assert_eq!(layers[0][0].key, "PODS_ROOT");
 }
 
+/// A group with neither a name nor a path adds an empty component to the
+/// navigator paths below it, which is how Xcode 27.2 names an xcconfig there.
+/// The group titled `Settings` lives in `Config`, so only the tree, not the
+/// path read as a plain one, reaches the file.
+#[test]
+fn xcconfig_resolves_through_a_group_with_no_name() {
+    let dir = tempdir("xcconfig-nameless");
+    let xcodeproj = scratch(
+        &dir,
+        r#"{
+  "configurations": [
+    { "name": "Debug", "file": "Sources//Settings/Base.xcconfig" },
+  ],
+  "files": [
+    {
+      "kind": "group",
+      "path": "Sources",
+      "children": [
+        {
+          "kind": "group",
+          "children": [
+            {
+              "kind": "group",
+              "name": "Settings",
+              "path": "Config",
+              "children": [
+                { "path": "Base.xcconfig" },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+  "targets": [ { "name": "App", "product-type": "application" } ],
+}
+"#,
+        &[("Sources/Config/Base.xcconfig", "FROM_BASE = yes\n")],
+    );
+    let layers = build_settings(&xcodeproj, "App", "Debug").unwrap().layers;
+    assert_eq!(
+        layers[0].len(),
+        1,
+        "project xcconfig layer: {:?}",
+        layers[0]
+    );
+    assert_eq!(layers[0][0].key, "FROM_BASE");
+}
+
 /// An xcconfig inside a synchronized folder has no node of its own, so the
 /// document names the folder and the path within it.
 #[test]

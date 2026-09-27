@@ -93,11 +93,13 @@ pub fn list_groups(root: &Value) -> Result<Vec<GroupRow>, String> {
     for (guid, path) in navigator_index(objects) {
         navigator.entry(guid).or_insert(path);
     }
+    let root = main_group(objects);
     let mut rows: Vec<GroupRow> = objects
         .iter()
         .filter(|(_, o)| GROUP_ISAS.contains(&isa(o)))
         .map(|(guid, o)| GroupRow {
             navigator_path: navigator.get(guid).cloned(),
+            is_navigator_root: root.as_ref() == Some(guid),
             address: guid.clone(),
             id: Some(guid.clone()),
             isa: isa(o).to_string(),

@@ -233,9 +233,9 @@ impl Render for ListResult {
 fn group_line(g: &GroupRow) -> String {
     let dir = display_dir(&g.resolved);
     let children = g.children.len();
-    let navigator = navigator_label(g.navigator_path.as_deref(), g.parent.is_none());
-    if navigator == g.address {
-        format!("{}  [{dir}, {children} child(ren)]", g.address)
+    let navigator = navigator_label(g.navigator_path.as_deref(), g.is_navigator_root);
+    if g.navigator_path.as_deref() == Some(g.address.as_str()) {
+        format!("{navigator}  [{dir}, {children} child(ren)]")
     } else {
         format!("{}  {navigator}  [{dir}, {children} child(ren)]", g.address)
     }
