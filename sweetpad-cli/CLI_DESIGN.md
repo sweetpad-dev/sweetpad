@@ -484,6 +484,18 @@ explicit flag  >  env var  >  config file  >  remembered state  >  auto-discover
   and `test build` take `--mac` as a spelling of `--on mac` and settle it
   with the same check, so the Mac is named the same way on every command
   that builds. `--device` and `--device-id` stay on the `app` verbs.
+- **Reading a raw destination:** every command reads a `-destination`
+  specifier through `sweetpad-lib`'s `DestinationSpec`, and so do core's
+  app locator and the extension's addon. One platform table maps its label
+  to the SDK, to the `SUPPORTED_PLATFORMS` tokens `SupportedPlatforms`
+  filters on, and to the OS names simctl and devicectl use (simctl's runtime
+  spells visionOS `xrOS`). Platform labels match
+  without regard to case, as xcodebuild's do. When an `app` verb installs
+  from a `name=` specifier, the simulator is matched the way xcodebuild
+  matches it: the exact name, on the specifier's platform, at its exact
+  `OS=` (or the newest for `OS=latest`), booted first. Xcode keeps a
+  default device set for every runtime, so a name alone can match one
+  simulator per installed iOS.
 - **Remembered state:** the last interactive picks, saved per project, feed the
   layer just above auto-discovery so the daily loop doesn't re-prompt (§6).
   Only picker-settled values are remembered — a one-off flag/env/config
@@ -3290,6 +3302,14 @@ On Xcode 27 the same listing also returns simulators (`reality: "simulated"`,
 specifier that cannot build for them, and they made `--on device` ambiguous
 whenever the listing held one. They are dropped when the listing is parsed,
 since `simctl` already reports them.
+
+The parsing lives in `sweetpad-core`'s `devices` module, and the VS Code
+extension reads the same listings through the addon, so the two agree on what
+is a device. That module also finds an app's processes on a device for `app
+stop` and the extension's debugger. devicectl reports each executable as a
+`file://` URL, which spells a space `%20`, so the URL is decoded before the
+match. The bundle directory has to match whole: `App.app` never claims
+`MyApp.app`'s processes.
 
 ### `device info` — asking the device itself
 
