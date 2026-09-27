@@ -69,7 +69,8 @@ fn stub_command(
 }
 
 /// Put an xcodebuild in `cwd/bin` that prints `transcript` and exits with
-/// `status`, replacing the one already there.
+/// `status`, replacing the one already there. Like xcodebuild, it refuses a
+/// `-project` or `-workspace` it can't find from the directory it runs in.
 fn write_stub(cwd: &Path, transcript: &str, status: i32) {
     use std::os::unix::fs::PermissionsExt;
 
@@ -80,7 +81,16 @@ fn write_stub(cwd: &Path, transcript: &str, status: i32) {
     let stub = bin.join("xcodebuild");
     std::fs::write(
         &stub,
-        format!("#!/bin/sh\ncat '{}'\nexit {status}\n", log.display()),
+        format!(
+            "#!/bin/sh\n\
+             while [ $# -gt 0 ]; do\n\
+             case \"$1\" in -project|-workspace) [ -e \"$2\" ] || \
+             {{ echo \"xcodebuild: error: '$2' does not exist.\"; exit 66; }};; esac\n\
+             shift\n\
+             done\n\
+             cat '{}'\nexit {status}\n",
+            log.display()
+        ),
     )
     .unwrap();
     std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -215,6 +225,47 @@ fn mac_names_the_mac_on_build_and_test() {
             .find(|pair| pair[0] == "-destination")
             .map(|pair| pair[1]);
         assert_eq!(destination, Some("platform=macOS"), "{args:?}: {command:?}");
+    }
+}
+
+/// A relative '--project' in a subdirectory, typed in its parent or reached
+/// with '-C', builds: xcodebuild runs in the project's directory, so it gets
+/// the project by its name there.
+#[test]
+fn a_relative_project_in_a_subdirectory_builds() {
+    let linked = Path::new("link/SweetpadCIApp.xcodeproj");
+    let (_, home, cwd) = stub_command("relative", WARNED, 0, &[]);
+    std::os::unix::fs::symlink(project().parent().unwrap(), cwd.join("link")).unwrap();
+    let elsewhere = tmp("relative-elsewhere");
+    let path = format!(
+        "{}:{}",
+        cwd.join("bin").display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let chdir = cwd.display().to_string();
+    for (dir, lead) in [(&cwd, &[][..]), (&elsewhere, &["-C", chdir.as_str()])] {
+        let mut args = lead.to_vec();
+        args.extend(build_args(linked));
+        args.extend(["-o", "json"]);
+        let out = command_in(&home, dir, &args)
+            .env("PATH", &path)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{args:?}: {out:?}");
+
+        args.push("--show-command");
+        let out = command_in(&home, dir, &args).output().unwrap();
+        assert!(out.status.success(), "{args:?}: {out:?}");
+        let envelope: Value = serde_json::from_slice(&out.stdout).unwrap();
+        let command = &envelope["data"]["command"];
+        let named = command
+            .as_array()
+            .unwrap()
+            .windows(2)
+            .find(|pair| pair[0] == "-project")
+            .map(|pair| pair[1].clone());
+        assert_eq!(named, Some("SweetpadCIApp.xcodeproj".into()), "{command}");
+        assert_eq!(envelope["data"]["cwd"], "link", "{envelope}");
     }
 }
 

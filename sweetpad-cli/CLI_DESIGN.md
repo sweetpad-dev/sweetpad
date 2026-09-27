@@ -420,6 +420,10 @@ explicit flag  >  env var  >  config file  >  remembered state  >  auto-discover
   `--project` > a `sweetpad.toml` `workspace`/`project` key > auto-discovery —
   because every layer below it (per-project config, remembered state) is
   *keyed by* the container and so can't take part in finding it.
+  `xcodebuild` runs in the container's directory, so a relative container
+  reaches it by file name: `--project ios/App.xcodeproj` runs `xcodebuild
+  -project App.xcodeproj` in `ios`. A relative path in the `--` tail is read
+  from there too.
 - **Downward scan**, once the upward walk finds nothing: look below the working
   directory, then below the repository root, at most two levels down. This is
   what makes the common nested layouts work with no configuration at all —

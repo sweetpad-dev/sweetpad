@@ -586,10 +586,22 @@ fn is_macos_destination(spec: &str) -> bool {
 /// `-workspace <path>` / `-project <path>`; nothing for a Swift package (it's
 /// driven from the package directory). Shared with the `dependency` command's
 /// `-resolvePackageDependencies` invocation.
+///
+/// `xcodebuild` runs in [`working_dir`], so a relative container is named by
+/// its file name there: a `--project link/App.xcodeproj` typed in `link`'s
+/// parent runs `xcodebuild -project App.xcodeproj` in `link`. An absolute one
+/// reads the same from anywhere and stays as given.
 pub(crate) fn container_args(container: &Container) -> Vec<String> {
+    let path = container.path();
+    let named = if path.is_absolute() {
+        path
+    } else {
+        path.file_name().map_or(path, Path::new)
+    };
+    let named = named.display().to_string();
     match container {
-        Container::Workspace(p) => vec!["-workspace".into(), p.display().to_string()],
-        Container::Project(p) => vec!["-project".into(), p.display().to_string()],
+        Container::Workspace(_) => vec!["-workspace".into(), named],
+        Container::Project(_) => vec!["-project".into(), named],
         Container::SwiftPackage(_) => Vec::new(),
     }
 }
@@ -3543,6 +3555,40 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
             working_dir(&Container::Project(PathBuf::from("/work/App.xcodeproj"))),
             Some(PathBuf::from("/work"))
         );
+    }
+
+    /// `xcodebuild` runs in the container's directory, so a relative
+    /// container is named from there. Typed as it is, `link/App.xcodeproj`
+    /// would name `link/link/App.xcodeproj`.
+    #[test]
+    fn a_relative_container_is_named_from_the_directory_xcodebuild_runs_in() {
+        for (container, args, cwd) in [
+            (
+                Container::Project(PathBuf::from("link/App.xcodeproj")),
+                ["-project", "App.xcodeproj"],
+                Some("link"),
+            ),
+            (
+                Container::Workspace(PathBuf::from("../ios/App.xcworkspace")),
+                ["-workspace", "App.xcworkspace"],
+                Some("../ios"),
+            ),
+            (
+                Container::Project(PathBuf::from("App.xcodeproj")),
+                ["-project", "App.xcodeproj"],
+                None,
+            ),
+            (
+                Container::Project(PathBuf::from("/work/ios/App.xcodeproj")),
+                ["-project", "/work/ios/App.xcodeproj"],
+                Some("/work/ios"),
+            ),
+        ] {
+            assert_eq!(container_args(&container), args, "{container:?}");
+            assert_eq!(working_dir(&container), cwd.map(PathBuf::from));
+        }
+        let package = Container::SwiftPackage(PathBuf::from("pkg/Package.swift"));
+        assert!(container_args(&package).is_empty());
     }
 
     #[test]
