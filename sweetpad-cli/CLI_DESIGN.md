@@ -2173,7 +2173,14 @@ debugger, and read `crashed with SIGTRAP: Swift fatal error "<message>"`.
 so the flag is `--cmd`, not `-o`), `--on-crash` to `-k`. You write your own
 `run`/`continue` and `quit`; the output streams. It rejects `--json` like `app
 run` does — a live lldb session has no coherent one-shot envelope; that is
-exactly what `diagnose` is for.
+exactly what `diagnose` is for. The two verbs are easy to mix up, and
+`diagnose --batch` reads as plausible. clap rejects it as an unknown argument
+(exit 2), and its stock tip for a verb with a `--` tail is to pass the flag
+after `--`, which would hand it to xcodebuild. So for `--batch`, `--cmd` and
+`--on-crash` on `app diagnose`, the tip names the verb that has them instead:
+`'--batch' belongs to 'app debug': 'sweetpad app debug --batch --cmd
+<LLDB_CMD>' runs your own lldb commands` (`hint_debug_batch`). Every other
+usage error keeps clap's text.
 
 **The exit code reflects the launch, not the finding.** `lldb -b` returns `0`
 whether the debuggee crashed, threw or exited, so neither verb derives success

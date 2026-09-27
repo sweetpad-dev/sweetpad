@@ -909,7 +909,7 @@ pub fn run(argv: &[String]) -> ExitCode {
                 render_root_help(stdout_wants_color(argv), long);
                 return ExitCode::SUCCESS;
             }
-            let err = hint_output_file(err, argv);
+            let err = hint_debug_batch(hint_output_file(err, argv), argv);
             let _ = err.print();
             return ExitCode::from(if err.use_stderr() { 2 } else { 0 });
         }
@@ -1365,12 +1365,12 @@ fn looks_like_path(value: &str) -> bool {
             .is_some_and(|e| !e.is_empty())
 }
 
-/// Whether the subcommand this command line names declares an `--output-file`
-/// argument. The scan descends the clap tree through the bare words in `argv`;
-/// a word that names no subcommand at the current level (an option's value, a
-/// positional) is skipped, and `--` ends the scan since passthrough tokens
-/// belong to the spawned tool.
-fn takes_output_file(argv: &[String]) -> bool {
+/// Answer `f` about the subcommand this command line names. The scan descends
+/// the clap tree through the bare words in `argv`; a word that names no
+/// subcommand at the current level (an option's value, a positional) is
+/// skipped, and `--` ends the scan since passthrough tokens belong to the
+/// spawned tool.
+fn with_invoked<R>(argv: &[String], f: impl FnOnce(&clap::Command) -> R) -> R {
     let mut root = Cli::command();
     root.build();
     let mut cmd = &root;
@@ -1382,8 +1382,54 @@ fn takes_output_file(argv: &[String]) -> bool {
             cmd = sub;
         }
     }
-    cmd.get_arguments()
-        .any(|a| a.get_long() == Some("output-file"))
+    f(cmd)
+}
+
+/// Whether the subcommand this command line names declares an `--output-file`
+/// argument.
+fn takes_output_file(argv: &[String]) -> bool {
+    with_invoked(argv, |cmd| {
+        cmd.get_arguments()
+            .any(|a| a.get_long() == Some("output-file"))
+    })
+}
+
+/// Point a `--batch` given to `app diagnose` at `app debug`, the verb that has
+/// it, and likewise its `--cmd` and `--on-crash`. `diagnose` runs an lldb
+/// chain of its own, so those flags mean nothing to it, and clap's stock tip
+/// for an unknown flag on a verb with a `--` tail ("to pass '--batch' as a
+/// value, use '-- --batch'") would hand the flag to xcodebuild. Every other
+/// usage error renders as clap wrote it.
+fn hint_debug_batch(mut err: clap::Error, argv: &[String]) -> clap::Error {
+    use clap::error::{ContextKind, ContextValue};
+
+    if err.kind() != clap::error::ErrorKind::UnknownArgument {
+        return err;
+    }
+    let Some(ContextValue::String(arg)) = err.get(ContextKind::InvalidArg) else {
+        return err;
+    };
+    // clap names the argument as typed, so '--cmd=bt' carries its value.
+    let flag = arg.split('=').next().unwrap_or_default().to_string();
+    if !matches!(flag.as_str(), "--batch" | "--cmd" | "--on-crash")
+        || !with_invoked(argv, |cmd| {
+            cmd.get_bin_name() == Some("sweetpad app diagnose")
+        })
+    {
+        return err;
+    }
+    err.remove(ContextKind::SuggestedArg);
+    err.insert(
+        ContextKind::Suggested,
+        ContextValue::StyledStrs(vec![
+            format!(
+                "'{flag}' belongs to 'app debug': 'sweetpad app debug --batch --cmd <LLDB_CMD>' \
+                 runs your own lldb commands"
+            )
+            .into(),
+        ]),
+    );
+    err
 }
 
 /// Point a path at `--output-file`, from either way of guessing at it.
@@ -2813,6 +2859,75 @@ mod output_file_hint_tests {
                 .unwrap_or_default();
             assert!(!tip.contains('`'), "backtick in a rendered tip: {tip}");
         }
+    }
+}
+
+#[cfg(test)]
+mod debug_batch_hint_tests {
+    use super::{Cli, hint_debug_batch};
+    use clap::Parser;
+
+    /// The error for a command line clap rejects, after the hint pass.
+    fn rejected(args: &[&str]) -> clap::Error {
+        let tokens: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
+        let err = Cli::try_parse_from(
+            std::iter::once("sweetpad".to_string()).chain(tokens.iter().cloned()),
+        )
+        .expect_err("expected a usage error");
+        hint_debug_batch(err, &tokens)
+    }
+
+    /// `app diagnose --batch` names the verb that has the flag, in place of
+    /// clap's tip to pass it through to xcodebuild, and stays a usage error.
+    #[test]
+    fn a_batch_flag_on_diagnose_points_at_app_debug() {
+        for (args, flag) in [
+            (vec!["app", "diagnose", "--batch"], "--batch"),
+            (vec!["app", "diagnose", "--cmd", "bt"], "--cmd"),
+            (vec!["app", "diagnose", "--cmd=bt"], "--cmd"),
+            (vec!["app", "diagnose", "--on-crash", "bt"], "--on-crash"),
+            (
+                vec!["-C", "/tmp", "app", "diagnose", "--mac", "--batch"],
+                "--batch",
+            ),
+        ] {
+            let err = rejected(&args);
+            assert!(err.use_stderr(), "{args:?}");
+            let text = err.render().to_string();
+            assert!(
+                text.contains(&format!(
+                    "tip: '{flag}' belongs to 'app debug': 'sweetpad app debug --batch --cmd \
+                     <LLDB_CMD>' runs your own lldb commands"
+                )),
+                "{args:?}:\n{text}"
+            );
+            assert!(!text.contains(&format!("-- {flag}")), "{args:?}:\n{text}");
+            assert!(!text.contains('`'), "{args:?}:\n{text}");
+        }
+    }
+
+    /// Any other unknown flag, or '--batch' on another verb, keeps clap's
+    /// own error.
+    #[test]
+    fn other_usage_errors_keep_claps_text() {
+        for args in [
+            vec!["app", "diagnose", "--bogus"],
+            vec!["app", "run", "--batch"],
+            vec!["app", "diagnose", "--timeout"],
+        ] {
+            let text = rejected(&args).render().to_string();
+            assert!(
+                !text.contains("belongs to 'app debug'"),
+                "{args:?}:\n{text}"
+            );
+        }
+        let text = rejected(&["app", "diagnose", "--bogus"])
+            .render()
+            .to_string();
+        assert!(
+            text.contains("to pass '--bogus' as a value, use '-- --bogus'"),
+            "{text}"
+        );
     }
 }
 

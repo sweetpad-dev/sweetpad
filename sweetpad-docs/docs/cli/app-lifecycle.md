@@ -232,6 +232,9 @@ nor exits in that window. The result is the report, not the exit code. It exits 
 whether the app crashed, threw, exited, or timed out, so read the output (or the JSON payload) rather
 than branching on `$?`. Simulator and macOS only.
 
+`app diagnose` runs its own lldb commands and takes none from you, so it has no `--batch` or `--cmd`.
+To run your own commands, use [`app debug --batch`](#driving-lldb-from-a-script).
+
 lldb reports most crashes as the Mach exception the CPU raised, such as
 `EXC_BAD_ACCESS (code=1, address=0x10)`, before the system turns it into a signal. The report gives the
 signal the app dies of and says what happened:
