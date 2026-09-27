@@ -215,10 +215,11 @@ builds it with real `xcodebuild`.
   repeats the first three distinct errors, one per line, and counts the rest.
   `build`, `test`, `test build` and the run session's build then close on
   `tip: run 'sweetpad build diagnostics' to see every error and warning` (a
-  device's own tip wins). A `test` whose build step fails records that build
-  the way `build` does, so the command reads back that failure rather than
-  the build before it. A `test` whose tests ran records nothing: its parsed
-  diagnostics mix the build's with the tests' own `error:` lines.
+  device's own tip wins). A `test` records its build step the way `build`
+  does, so the command reads back the latest build: a failed one's errors,
+  or, once the tests ran, a clean one's warnings. Only the lines before the
+  run's first test line count, because after it XCTest writes each failed
+  assertion as `<file>:<line>: error: …`.
 - Help, errors, warnings and notes quote a command or value with 'single
   quotes', as clap does; a terminal prints backticks literally. A unit test
   walks the clap tree and fails on a backtick in any help text. Messages are

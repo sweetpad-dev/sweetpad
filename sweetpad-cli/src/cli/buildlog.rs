@@ -874,9 +874,10 @@ pub fn run_keeping_errors(
 }
 
 /// Like [`run`], for an xcodebuild build or test run: also collects each
-/// diagnostic as its [`event_json`]-shaped object (the input to the
-/// last-build diagnostics artifact), and a failed run whose output printed
-/// no failure banner closes on `failed`'s (see [`BuildProgress::close_failed`]).
+/// diagnostic its build step printed ([`BuildDiagnostics`]) as its
+/// [`event_json`]-shaped object (the input to the last-build diagnostics
+/// artifact), and a failed run whose output printed no failure banner closes
+/// on `failed`'s (see [`BuildProgress::close_failed`]).
 pub fn run_collecting(
     program: &str,
     args: &[&str],
@@ -897,15 +898,11 @@ fn stream(
     failed: Option<ResultKind>,
 ) -> Result<(bool, Vec<serde_json::Value>, Option<String>), CliError> {
     let mut progress = BuildProgress::start(out, label);
-    let mut diagnostics = Vec::new();
+    let mut diagnostics = BuildDiagnostics::default();
     let mut watch = BlockerWatch::default();
     let mut parser = LogParser::default();
     let mut show = |parsed: &Parsed| {
-        if let Event::Diagnostic { .. } = parsed.event
-            && let Some(json) = event_json(&parsed.event)
-        {
-            diagnostics.push(json);
-        }
+        diagnostics.take(parsed);
         if let Some(rendered) = progress.parsed(parsed) {
             out.line(&rendered);
         }
@@ -921,7 +918,42 @@ fn stream(
     {
         out.line(&banner);
     }
-    Ok((ok, diagnostics, watch.hint()))
+    Ok((ok, diagnostics.list, watch.hint()))
+}
+
+/// The diagnostics a run's build step printed, taken line by line. A test run
+/// goes on to print its tests' output, where XCTest writes a failed assertion
+/// as `<file>:<line>: error: -[…] : …`. Those are not the build's, so taking
+/// stops at the run's first test line ([`starts_the_tests`]). A build prints
+/// none, and keeps every diagnostic.
+#[derive(Debug, Default)]
+struct BuildDiagnostics {
+    list: Vec<serde_json::Value>,
+    testing: bool,
+}
+
+impl BuildDiagnostics {
+    fn take(&mut self, parsed: &Parsed) {
+        self.testing = self.testing || starts_the_tests(&parsed.raw);
+        if !self.testing
+            && matches!(parsed.event, Event::Diagnostic { .. })
+            && let Some(json) = event_json(&parsed.event)
+        {
+            self.list.push(json);
+        }
+    }
+}
+
+/// Whether `line` is a test run's own output rather than its build step's:
+/// XCTest's `Test Suite '…' started` and `Test Case '…'` lines, their
+/// lowercase `… on '<runner>'` form in a parallel run, and Swift Testing's
+/// `◇ Test run started.`
+fn starts_the_tests(line: &str) -> bool {
+    let t = line.trim();
+    ["Test Suite '", "Test suite '", "Test Case '", "Test case '"]
+        .iter()
+        .any(|marker| t.starts_with(marker))
+        || t.ends_with(" Test run started.")
 }
 
 /// Watches a build's output for a failure that no diagnostic describes and no
@@ -989,17 +1021,18 @@ pub fn blocker_from_transcript(text: &str) -> Option<String> {
     watch.hint()
 }
 
-/// Diagnostics parsed out of a full captured transcript (the `--json` path).
+/// The diagnostics a full captured transcript's build step printed (the
+/// `--json` path; see [`BuildDiagnostics`]).
 #[must_use]
 pub fn diagnostics_from_transcript(text: &str) -> Vec<serde_json::Value> {
     let mut parser = LogParser::default();
     let mut parsed: Vec<Parsed> = text.lines().flat_map(|line| parser.push(line)).collect();
     parsed.extend(parser.finish());
-    parsed
-        .iter()
-        .filter(|p| matches!(p.event, Event::Diagnostic { .. }))
-        .filter_map(|p| event_json(&p.event))
-        .collect()
+    let mut diagnostics = BuildDiagnostics::default();
+    for p in &parsed {
+        diagnostics.take(p);
+    }
+    diagnostics.list
 }
 
 /// One parsed [`Event`] as an NDJSON object for `-o ndjson` consumers, or
@@ -1068,23 +1101,21 @@ impl BuildStats {
 
 /// Run a command emitting each parsed event as an NDJSON line on stdout — the
 /// `-o ndjson` path for builds/tests. Returns whether it succeeded, the
-/// diagnostic events, and the blocker hint, as [`run_collecting`] does; the
-/// caller closes the stream with its terminal `{"event":"result"}` line, so the
-/// stream ends with exactly one summary line.
+/// build step's diagnostics, and the blocker hint, as [`run_collecting`] does;
+/// the caller closes the stream with its terminal `{"event":"result"}` line, so
+/// the stream ends with exactly one summary line.
 pub fn run_ndjson(
     program: &str,
     args: &[&str],
     cwd: Option<&Path>,
     out: &Output,
 ) -> Result<(bool, Vec<serde_json::Value>, Option<String>), CliError> {
-    let mut diagnostics = Vec::new();
+    let mut diagnostics = BuildDiagnostics::default();
     let mut watch = BlockerWatch::default();
     let mut parser = LogParser::default();
     let mut emit = |parsed: &Parsed| {
+        diagnostics.take(parsed);
         if let Some(json) = event_json(&parsed.event) {
-            if matches!(parsed.event, Event::Diagnostic { .. }) {
-                diagnostics.push(json.clone());
-            }
             out.ndjson_event(&json);
         }
     };
@@ -1093,7 +1124,7 @@ pub fn run_ndjson(
         parser.push(line).iter().for_each(&mut emit);
     })?;
     parser.finish().iter().for_each(&mut emit);
-    Ok((ok, diagnostics, watch.hint()))
+    Ok((ok, diagnostics.list, watch.hint()))
 }
 
 // --- helpers ---
@@ -1435,6 +1466,55 @@ xcodebuild: error: Unable to find a device matching the provided destination spe
 \t\t{ platform:macOS, arch:arm64e, id:00006030-0018296E1A28001C, name:My Mac, error:My Mac\u{2019}s macOS platform doesn\u{2019}t match SweetpadCIApp.app\u{2019}s supported platforms. You can change SweetpadCIApp.app\u{2019}s Base SDK or Supported Platforms to support My Mac. }
 \t\t{ platform:tvOS Simulator, arch:arm64, id:2CD2A3F5-8763-46B5-B7FC-F04117966B44, OS:27.0, name:Apple TV 4K (3rd generation), error:Apple TV 4K (3rd generation)\u{2019}s tvOS Simulator platform doesn\u{2019}t match SweetpadCIApp.app\u{2019}s supported platforms. You can change SweetpadCIApp.app\u{2019}s Base SDK or Supported Platforms to support Apple TV 4K (3rd generation). }
 ";
+
+    /// A serial test run on Xcode 27, cut down: the build's warning, then the
+    /// host app's launch chatter, XCTest's markers and a failed assertion,
+    /// then Swift Testing's run with a line an app could print.
+    const TEST_RUN_27: &str = "\
+SwiftCompile normal arm64 /app/Tests/MacTests/XCTests.swift (in target 'AppTests' from project 'App')
+/app/Tests/MacTests/XCTests.swift:5:39: warning: initialization of immutable value 'unused' was never used
+2026-09-27 01:16:41.215013+0200 App[8044:21987686] [Connection] Unable to get synchronousRemoteObjectProxy, error: Error Domain=NSCocoaErrorDomain Code=4097
+Test Suite 'All tests' started at 2026-09-27 01:16:41.452.
+Test Case '-[AppTests.ArithmeticTests testArithmetic]' started.
+/app/Tests/MacTests/XCTests.swift:5: error: -[AppTests.ArithmeticTests testArithmetic] : XCTAssertEqual failed: (\"4\") is not equal to (\"5\")
+Test Case '-[AppTests.ArithmeticTests testArithmetic]' failed (0.056 seconds).
+\u{25c7} Test run started.
+App: error: something the app logged
+** TEST FAILED **
+";
+
+    /// A test run's output after its first test line is the tests' own, and
+    /// XCTest's `file:line: error:` for a failed assertion is not the build's.
+    #[test]
+    fn a_test_runs_diagnostics_stop_at_its_first_test_line() {
+        let diagnostics = diagnostics_from_transcript(TEST_RUN_27);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0]["severity"], "warning");
+        assert_eq!(
+            diagnostics[0]["location"],
+            "/app/Tests/MacTests/XCTests.swift:5:39"
+        );
+    }
+
+    #[test]
+    fn a_test_line_is_any_of_the_markers_a_run_opens_with() {
+        for line in [
+            "Test Suite 'All tests' started at 2026-09-27 01:16:41.452.",
+            "Test Case '-[AppTests.ArithmeticTests testArithmetic]' started.",
+            "Test suite 'ArithmeticTests' started on 'My Mac - App (21220)'",
+            "Test case 'ParallelSuite/b()' passed on 'My Mac - App (21220)' (0.101 seconds)",
+            "\u{25c7} Test run started.",
+        ] {
+            assert!(starts_the_tests(line), "{line}");
+        }
+        for line in [
+            "/app/A.swift:1:1: error: cannot find 'x' in scope",
+            "Testing started",
+            "Test session results, code coverage, and logs:",
+        ] {
+            assert!(!starts_the_tests(line), "{line}");
+        }
+    }
 
     fn only_message(transcript: &str) -> String {
         let diagnostics = diagnostics_from_transcript(transcript);

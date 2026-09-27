@@ -392,9 +392,11 @@ pub fn skips_test_diagnostics(major: u32, passthrough: &[String]) -> bool {
 pub struct TestRunOutcome {
     pub passed: bool,
     pub tail: Option<String>,
-    /// Diagnostics parsed from the run's output, so a run that died in its
-    /// build step reports the compile errors as data rather than as a log.
-    /// Empty under `-v`, whose raw passthrough is not parsed.
+    /// The diagnostics the run's build step printed, parsed from its output up
+    /// to the first test line, so a run that died in its build step reports
+    /// the compile errors as data rather than as a log, and one whose tests
+    /// ran records its build's warnings. Empty under `-v`, whose raw
+    /// passthrough is not parsed.
     pub diagnostics: Vec<serde_json::Value>,
     /// The whole captured transcript (`--json` only, where nothing reached the
     /// terminal), for [`record_failure_transcript`].
@@ -406,8 +408,8 @@ pub struct TestRunOutcome {
     /// (see [`streamed_an_error`]).
     pub streamed: bool,
     /// The output was parsed for diagnostics, as in every mode but `-v`'s raw
-    /// passthrough, so a run whose build failed has a record to write for
-    /// `build diagnostics`, as [`BuildPlan::run`] does.
+    /// passthrough, so the run's build has a record to write for `build
+    /// diagnostics`, as [`BuildPlan::run`] does.
     pub parsed: bool,
 }
 
@@ -484,18 +486,13 @@ impl TestPlan<'_> {
             }
         } else if out.is_json() {
             let run = process::run_captured("xcodebuild", &args, cwd.as_deref())?;
-            let diagnostics = if run.success {
-                Vec::new()
-            } else {
-                buildlog::diagnostics_from_transcript(&run.combined)
-            };
             TestRunOutcome {
                 passed: run.success,
                 tail: (!run.success).then_some(run.tail),
                 blocker: (!run.success)
                     .then(|| buildlog::blocker_from_transcript(&run.combined))
                     .flatten(),
-                diagnostics,
+                diagnostics: buildlog::diagnostics_from_transcript(&run.combined),
                 transcript: (!run.success).then_some(run.combined),
                 streamed: false,
                 parsed: true,
@@ -588,7 +585,7 @@ pub(crate) fn record_build_diagnostics(
 
 /// [`record_build_diagnostics`], naming the scheme the build ran, so a later
 /// command that has none can say which one it was (a typed `--scheme` is not
-/// remembered). `test` records through this too when its build step fails.
+/// remembered). `test` records its build step through this too.
 pub(crate) fn record_build(
     container: &Container,
     scheme: Option<&str>,

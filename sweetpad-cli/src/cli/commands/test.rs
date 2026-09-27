@@ -609,22 +609,23 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     // read back (xcresulttool hiccup / older syntax) — misclassifying that as
     // "failed before any test ran" would delete a perfectly good bundle.
     let ran_tests = outcome.passed || summary.as_ref().is_some_and(|s| s.total_test_count > 0);
+    // The run's build step is the project's last build, so it is recorded the
+    // way 'build' records its own, for 'build diagnostics' to read back. Tests
+    // only run once it succeeds.
+    if outcome.parsed {
+        xcodebuild::record_build(
+            &resolved.container,
+            Some(&target.scheme),
+            ran_tests,
+            &outcome.diagnostics,
+        );
+    }
     if !ran_tests {
         if args.result_bundle.is_some() {
             let _ = std::fs::remove_dir_all(&final_bundle);
             let _ = std::fs::rename(&run_bundle, &final_bundle);
         } else {
             let _ = std::fs::remove_dir_all(&run_bundle);
-        }
-        // The failed build is the project's last one, so it is recorded the
-        // way 'build' records its own, for 'build diagnostics' to read back.
-        if outcome.parsed {
-            xcodebuild::record_build(
-                &resolved.container,
-                Some(&target.scheme),
-                false,
-                &outcome.diagnostics,
-            );
         }
         let device = xcodebuild::device_tip(&plan.command().0, &outcome.diagnostics);
         let err = build_step_failure(
