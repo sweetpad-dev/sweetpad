@@ -1950,7 +1950,7 @@ fn run_session(ctx: &Context, plan: &RunPlan) -> CliResult {
             }
             detach_app(r);
         } else {
-            terminate_app(r);
+            terminate_app(ctx, r);
         }
     }
     session_result(ever_launched, last_build)
@@ -2233,7 +2233,7 @@ fn run_hot_session(
     if end == HotLoopEnd::Detach {
         hot_app.detach();
     } else {
-        hot_app.terminate(&app);
+        hot_app.terminate(ctx, &app);
     }
     drop(logs);
     outcome
@@ -2492,7 +2492,7 @@ impl HotApp<'_> {
             HotApp::Sim { udid } => launch_hot(ctx, udid, app, env, args),
             HotApp::Mac { running, filter } => {
                 if let Some(old) = running.take() {
-                    terminate_app(old);
+                    terminate_app(ctx, old);
                 }
                 let mut cmd = std::process::Command::new(app.executable.as_os_str());
                 cmd.args(args)
@@ -2527,14 +2527,12 @@ impl HotApp<'_> {
     }
 
     /// Terminate the running app (before each relaunch and on quit).
-    fn terminate(&mut self, app: &AppBundle) {
+    fn terminate(&mut self, ctx: &Context, app: &AppBundle) {
         match self {
-            HotApp::Sim { udid } => {
-                let _ = simctl::terminate(udid, &app.bundle_id);
-            }
+            HotApp::Sim { udid } => terminate_on_simulator(ctx, udid, &app.bundle_id),
             HotApp::Mac { running, .. } => {
                 if let Some(r) = running.take() {
-                    terminate_app(r);
+                    terminate_app(ctx, r);
                 }
             }
         }
@@ -2658,7 +2656,7 @@ fn hot_key_loop(
                     // left running — just terminate, rebuild, and relaunch.
                     // Re-tee the transcript so the build-log recompiler keeps
                     // seeing current frontend commands after the rebuild.
-                    hot_app.terminate(&app);
+                    hot_app.terminate(ctx, &app);
                     match build(plan, &ctx.out, Some(build_log)) {
                         BuildOutcome::Ok => {
                             if let Err(e) = hot_app.launch(ctx, plan, &app, env) {
@@ -2870,14 +2868,30 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
             ctx.out
                 .step("Installing app", || simctl::install(udid, &app_path))?;
             // `--console-pty` keeps the launch attached, so this child's stdout/stderr
-            // are the app's; its exit means the app exited.
+            // are the app's; its exit means the app exited. Its start is bounded
+            // like any other launch; a process of the app already running (one
+            // a stuck terminate left behind) doesn't count as this one starting.
             let env = plan.launch.env_pairs("SIMCTL_CHILD_")?;
             let opts = plan.simctl_launch(&env);
+            let app_dir = app_dir_name(&app.path);
+            let exe = process_name(&app).to_string();
+            let before = simctl::app_pids(udid, &app_dir, &exe);
             let mut child = ctx.out.step("Launching app", || {
-                simctl::spawn_console(udid, &app.bundle_id, &opts)
+                let mut child = simctl::spawn_console(udid, &app.bundle_id, &opts)?;
+                simctl::await_console_start(&mut child, udid, || {
+                    simctl::app_pids(udid, &app_dir, &exe)
+                        .iter()
+                        .any(|pid| !before.contains(pid))
+                })?;
+                Ok::<_, CliError>(child)
             })?;
             render_console(&mut child, ctx.out.use_color(), filter, false);
-            let reap_slot = crate::cli::signals::register_child(child.id());
+            // A console child that already ended was reaped by the wait, and
+            // its pid may belong to someone else by now.
+            let reap_slot = match child.try_wait() {
+                Ok(None) => crate::cli::signals::register_child(child.id()),
+                _ => None,
+            };
             Ok(Running {
                 stream: Some(child),
                 kind: RunningKind::Simulator {
@@ -2973,8 +2987,6 @@ fn detach_app(running: Running) {
     }
 }
 
-/// Terminate the running app and stop its output stream. The session-scoped
-/// simulator log stream is left running — it's torn down once, at session end.
 /// The `.app` directory name of a built bundle (`/…/My.app` → `My.app`) — the
 /// key [`devicectl::terminate`] matches running processes by.
 fn app_dir_name(path: &Path) -> String {
@@ -2983,7 +2995,11 @@ fn app_dir_name(path: &Path) -> String {
         .unwrap_or_default()
 }
 
-fn terminate_app(running: Running) {
+/// Terminate the running app and stop its output stream. The session-scoped
+/// simulator log stream is left running — it's torn down once, at session end.
+/// A terminate that fails, or runs out its bound on a wedged simulator, is
+/// reported rather than dropped, since the app may still be running.
+fn terminate_app(ctx: &Context, running: Running) {
     let Running {
         stream,
         kind,
@@ -2995,11 +3011,14 @@ fn terminate_app(running: Running) {
     match kind {
         RunningKind::Simulator {
             udid, bundle_id, ..
-        } => {
-            let _ = simctl::terminate(&udid, &bundle_id);
-        }
+        } => terminate_on_simulator(ctx, &udid, &bundle_id),
         RunningKind::Device { id, app_dir } => {
-            let _ = devicectl::terminate(&id, &app_dir);
+            if let Err(e) = ctx.out.step("Terminating app on device", || {
+                devicectl::terminate(&id, &app_dir)
+            }) {
+                ctx.out
+                    .error(&e.context("terminating the app on the device"));
+            }
         }
         // The macOS app *is* the streamed child, so reaping it stops it; an
         // exit `check_exit` already recorded isn't recorded twice.
@@ -3013,6 +3032,18 @@ fn terminate_app(running: Running) {
     if let Some(mut stream) = stream {
         let _ = stream.kill();
         let _ = stream.wait();
+    }
+}
+
+/// Stop a session's simulator app, saying so when that fails. `simctl
+/// terminate` gets two minutes before the simulator counts as stuck, and a
+/// failure dropped there reads as the session hanging after 'q' or 'r'.
+fn terminate_on_simulator(ctx: &Context, udid: &str, bundle_id: &str) {
+    if let Err(e) = ctx
+        .out
+        .step("Terminating app", || simctl::terminate(udid, bundle_id))
+    {
+        ctx.out.error(&e);
     }
 }
 
@@ -3551,7 +3582,7 @@ fn do_rebuild(
 ) -> RebuildOutcome {
     ctx.out.note("»  Restarting — rebuilding…");
     if let Some(old) = running.take() {
-        terminate_app(old);
+        terminate_app(ctx, old);
     }
     let started = Instant::now();
     match build(plan, &ctx.out, None) {

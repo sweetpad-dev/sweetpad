@@ -454,6 +454,102 @@ pub fn spawn_console(
         .map_err(|e| CliError::new(format!("failed to run 'xcrun simctl launch': {e}")))
 }
 
+/// Wait for a [`spawn_console`] launch to start, within [`STEP_TIMEOUT`].
+/// The console child lives as long as the app, so only its start is bounded:
+/// it has started once it has output (the app's first line, or simctl's
+/// error), once it exits, or once `app_up` sees the app's process, which is
+/// how a launch of an app that prints nothing shows it got going. A healthy
+/// launch gets there in about a second. A wedged simulator never does: the
+/// console child is killed at the limit and the launch reported stuck
+/// ([`stuck`]).
+pub fn await_console_start(
+    child: &mut std::process::Child,
+    udid: &str,
+    app_up: impl FnMut() -> bool,
+) -> Result<(), CliError> {
+    await_console_start_within(child, udid, app_up, STEP_TIMEOUT)
+}
+
+/// [`await_console_start`] with its limit given.
+fn await_console_start_within(
+    child: &mut std::process::Child,
+    udid: &str,
+    mut app_up: impl FnMut() -> bool,
+    limit: Duration,
+) -> Result<(), CliError> {
+    let deadline = Instant::now() + limit;
+    loop {
+        if has_output(child, Duration::from_millis(200)) {
+            return Ok(());
+        }
+        if !matches!(child.try_wait(), Ok(None)) || app_up() {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(stuck("launch", udid, limit).context("launching the app on the simulator"));
+        }
+    }
+}
+
+/// Whether either of `child`'s piped streams has something to read, its
+/// output or its end, waiting up to `wait`. Nothing is consumed, so the
+/// renderer that takes the pipes afterwards still reads every line.
+fn has_output(child: &std::process::Child, wait: Duration) -> bool {
+    use std::os::fd::AsRawFd;
+    let mut fds: Vec<libc::pollfd> = [
+        child.stdout.as_ref().map(AsRawFd::as_raw_fd),
+        child.stderr.as_ref().map(AsRawFd::as_raw_fd),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|fd| libc::pollfd {
+        fd,
+        events: libc::POLLIN,
+        revents: 0,
+    })
+    .collect();
+    if fds.is_empty() {
+        std::thread::sleep(wait);
+        return false;
+    }
+    let count = libc::nfds_t::try_from(fds.len()).unwrap_or(libc::nfds_t::MAX);
+    let millis = libc::c_int::try_from(wait.as_millis()).unwrap_or(libc::c_int::MAX);
+    // Safety: `fds` is a live array of `count` pollfd entries for the whole
+    // call, and poll only writes their `revents`.
+    let ready = unsafe { libc::poll(fds.as_mut_ptr(), count, millis) };
+    ready > 0
+}
+
+/// The pids of `executable` running out of an `.app` named `app_dir` on the
+/// simulator `udid`. A simulator app is a host process under the device's
+/// data directory, so the host's `ps` sees it without asking the simulator,
+/// which a wedged one would never answer. Empty when `ps` fails.
+#[must_use]
+pub fn app_pids(udid: &str, app_dir: &str, executable: &str) -> Vec<u32> {
+    process::capture("ps", &["-axww", "-o", "pid=,comm="], None)
+        .map(|ps| parse_app_pids(&ps, udid, app_dir, executable))
+        .unwrap_or_default()
+}
+
+/// Parse `ps -o pid=,comm=` output for [`app_pids`]: the command path runs
+/// through `CoreSimulator/Devices/<udid>/` (simctl prints the udid in upper
+/// case, a typed destination may not) and ends in `<app_dir>/<executable>`.
+fn parse_app_pids(ps: &str, udid: &str, app_dir: &str, executable: &str) -> Vec<u32> {
+    const DEVICES: &str = "/CoreSimulator/Devices/";
+    let tail = format!("/{app_dir}/{executable}");
+    ps.lines()
+        .filter_map(|line| {
+            let (pid, comm) = line.trim_start().split_once(' ')?;
+            let (_, under) = comm.split_once(DEVICES)?;
+            let device = under.split('/').next()?;
+            (device.eq_ignore_ascii_case(udid) && comm.ends_with(&tail))
+                .then(|| pid.parse().ok())?
+        })
+        .collect()
+}
+
 /// Terminate a running app by bundle id, within [`STEP_TIMEOUT`].
 /// Already-stopped is treated as success (idempotent, mirroring
 /// [`boot`]/[`shutdown`]): `simctl` errors with "found nothing to terminate"
@@ -1127,6 +1223,103 @@ group.com.apple.stocks\t/Users/someone/Library/Developer/CoreSimulator/Devices/F
         assert_eq!(output.status.code(), Some(3));
         assert_eq!(String::from_utf8_lossy(&output.stdout), "dev.app: 4242\n");
         assert_eq!(String::from_utf8_lossy(&output.stderr), "a note\n");
+    }
+
+    /// A stand-in for the session's `simctl launch --console-pty` child,
+    /// running `script` with both streams piped.
+    fn console_child(script: &str) -> std::process::Child {
+        std::process::Command::new("sh")
+            .args(["-c", script])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap()
+    }
+
+    /// A console launch that never prints, never exits, and whose app never
+    /// shows up is a wedged simulator: it is killed at the limit and reported
+    /// as the stuck launch.
+    #[test]
+    fn a_console_launch_that_never_starts_is_stopped_at_its_limit() {
+        let mut child = console_child("exec sleep 30");
+        let started = Instant::now();
+        let err = await_console_start_within(&mut child, "UDID", || false, Duration::from_secs(1))
+            .unwrap_err();
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(child.try_wait().unwrap().is_some(), "the child was killed");
+        assert_eq!(
+            err.to_string(),
+            "launching the app on the simulator: 'xcrun simctl launch' didn't finish within 1s, \
+             so the simulator looks stuck"
+        );
+        assert!(
+            err.tip_text()
+                .unwrap()
+                .contains("sweetpad simulator shutdown UDID")
+        );
+    }
+
+    /// Only the start is bounded: output, an exit, or the app's process
+    /// ends the wait, and the output stays in the pipe for the renderer.
+    #[test]
+    fn a_console_launch_starts_on_output_exit_or_the_apps_process() {
+        let limit = Duration::from_secs(30);
+        for script in [
+            "echo 'app line'; exec sleep 30",
+            "echo 'an error' >&2; exec sleep 30",
+        ] {
+            let mut child = console_child(script);
+            await_console_start_within(&mut child, "UDID", || false, limit).unwrap();
+            assert!(
+                child.try_wait().unwrap().is_none(),
+                "{script}: still running"
+            );
+            let _ = child.kill();
+            let mut out = String::new();
+            std::io::Read::read_to_string(&mut child.stdout.take().unwrap(), &mut out).unwrap();
+            std::io::Read::read_to_string(&mut child.stderr.take().unwrap(), &mut out).unwrap();
+            assert!(
+                out.contains("app line") || out.contains("an error"),
+                "{script}: {out:?}"
+            );
+            let _ = child.wait();
+        }
+
+        let mut child = console_child("exit 4");
+        await_console_start_within(&mut child, "UDID", || false, limit).unwrap();
+
+        let mut child = console_child("exec sleep 30");
+        let mut polls = 0;
+        await_console_start_within(
+            &mut child,
+            "UDID",
+            || {
+                polls += 1;
+                polls == 2
+            },
+            limit,
+        )
+        .unwrap();
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[test]
+    fn app_pids_match_the_app_on_that_simulator_only() {
+        let ps = "\
+  101 /Users/me/Library/Developer/CoreSimulator/Devices/5E88C8CE-7810-45BA-AAC5-5A780BF13348/data/Containers/Bundle/Application/7370/My App.app/My App
+  102 /Users/me/Library/Developer/CoreSimulator/Devices/F13C004A-0824-4870-B4F2-29AAEE36636E/data/Containers/Bundle/Application/1111/My App.app/My App
+  103 /Users/me/Library/Developer/Xcode/DerivedData/X/Build/Products/Debug-iphonesimulator/My App.app/My App
+  104 /Users/me/Library/Developer/CoreSimulator/Devices/5E88C8CE-7810-45BA-AAC5-5A780BF13348/data/Containers/Bundle/Application/7371/Other.app/Other
+  105 /usr/libexec/launchd_sim";
+        let udid = "5e88c8ce-7810-45ba-aac5-5a780bf13348";
+        assert_eq!(parse_app_pids(ps, udid, "My App.app", "My App"), vec![101]);
+        assert!(parse_app_pids(ps, udid, "Missing.app", "Missing").is_empty());
     }
 
     #[test]

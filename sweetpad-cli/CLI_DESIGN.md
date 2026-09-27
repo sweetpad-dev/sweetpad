@@ -727,7 +727,16 @@ sweetpad completions <shell>          clap_complete-generated scripts
   covers every verb that goes through those three, `app install`/`launch`/
   `stop` included. `simctl boot` stays unbounded, since a first boot after a
   runtime update can legitimately take minutes. The session's console launch
-  (`--console-pty`) stays unbounded too: it lives as long as the app does.
+  (`--console-pty`) lives as long as the app does, so only its start is
+  bounded: it has started once it prints, once it exits, or once the app's
+  process shows up in the host's `ps` (a simulator app is a host process
+  under the device's data directory, so this asks nothing of the simulator).
+  A process of the app that was already running doesn't count, since a
+  terminate that timed out can leave one behind. The session's own
+  terminates, on `r` and on quit, go through the same bounded `terminate`
+  under a `Terminating app` spinner and print its error when it fails, so a
+  wedged simulator's two-minute wait after `q` shows what it waits on and
+  ends with the same stuck error and restart tip.
 
 `destination list` aggregates **macOS + simulators + connected devices**, each
 with a ready `-destination` specifier. SPM containers are supported for

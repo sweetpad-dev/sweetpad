@@ -170,6 +170,11 @@ tip: restart the simulator with 'sweetpad simulator shutdown F13C004A-…' and '
 
 Under `-o json` the restart commands are in the error's `tip` field.
 
+The interactive `sweetpad run` session has the same limits. It gives the launch two minutes to start
+the app, and gives the stop two minutes when you press `r` or `q`. If either step times out, the
+session prints the same error and tip. After a failed launch the session stays open, so you can
+restart the simulator and press `r`.
+
 ## I need to see what xcodebuild actually said
 
 Three levels, in increasing order of noise:

@@ -137,7 +137,8 @@ alike. `--detach` (`app run` only) leaves the app running after the CLI exits.
 A wedged simulator never answers an install, launch, or terminate. SweetPad
 gives each of those steps two minutes, then fails with exit 1 and a `tip`
 naming `sweetpad simulator shutdown <udid>` and `sweetpad simulator boot
-<udid>`. Run those two, then retry the command.
+<udid>`. Run those two, then retry the command. The interactive session
+prints the same error when its launch, or the stop on `r` or `q`, times out.
 
 `app launch` starts the installed app (on macOS, the built one) without building
 it again. If a macOS build ran with `-- -derivedDataPath <dir>`, pass
