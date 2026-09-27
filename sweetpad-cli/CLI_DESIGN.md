@@ -1785,8 +1785,8 @@ friction, without collapsing the axes:
   name and no id cannot be the group a verb adds to or moves into. In either
   format, `group move` moves a group with neither a name nor a path only into
   a group whose directory is already its own. Anywhere else, keeping its
-  children's files would give it a path, and Xcode shows the path as its name,
-  so the move is refused. A `project.pbxproj` group listed in two
+  children's files would give the group a path, and Xcode shows that path as
+  its name, so the move is refused. A `project.pbxproj` group listed in two
   places has two paths, and either one selects it. Xcode 27.2 refuses to open
   such a project. Xcode 27.0 opens it with a warning and keeps the listing in
   the group it reads last, reading a group's children before the group itself:
@@ -1949,6 +1949,14 @@ of `group detach 85BB78F9ECC9184F5BA8114B --group Sources/App --json`:
 starts the way the group's `group list` row does: the address, the navigator
 path, then the directory. An organizational group resolves to its parent's
 directory, so the directory alone would not say which group was made.
+
+In either format, a `group add` that finds a sibling group showing the same
+name returns that group instead of adding a second one. Only a group counts.
+In a `project.pbxproj` a file of that name is no obstacle: Xcode lists the two
+side by side, and each keeps its own id. A `project.xcproj` names both by one
+navigator path, so there the add is refused with a message naming the node it
+found. `fileref add` beside a group with the file's name is refused the same
+way.
 
 The navigator path is not the on-disk path. A node stored as
 `<PROJECT>/Sources/Deep.swift` but listed at the root appears as `Deep.swift`,

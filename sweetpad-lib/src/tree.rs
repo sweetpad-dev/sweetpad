@@ -72,6 +72,21 @@ pub struct GroupRow {
     pub is_navigator_root: bool,
 }
 
+/// What Xcode shows a node as, in either format: its `name`, else the last
+/// component of its `path`, and empty for a node with neither. The navigator
+/// path is these joined by `/`, so two siblings that show the same name share
+/// one.
+pub(crate) fn display_name<'a>(name: Option<&'a str>, path: Option<&'a str>) -> &'a str {
+    match (name, path) {
+        (Some(name), _) => name,
+        (None, Some(path)) => {
+            let path = path.trim_end_matches('/');
+            path.rsplit_once('/').map_or(path, |(_, last)| last)
+        }
+        (None, None) => "",
+    }
+}
+
 /// How a listing shows a navigator path: the path itself, or a label where
 /// the path is empty or missing. The navigator root shows `/`, the spelling
 /// that always selects it, with a label beside it. `is_root` tells the root

@@ -156,7 +156,7 @@ pub fn add_fileref(
         None => (Vec::new(), String::new(), None),
     };
     let address = child_address(group_address.as_deref(), &name);
-    if let Some(existing) = nodes(root)?.into_iter().find(|n| n.address == address) {
+    if let Some(existing) = existing_at(root, &address, false)? {
         return Ok(AddRefOutcome::AlreadyExists {
             address,
             resolved: existing.resolved,
@@ -211,9 +211,9 @@ pub fn add_group(
         }
         None => (Vec::new(), String::new(), None),
     };
-    let display = stored.as_deref().map_or(name, basename);
-    let address = child_address(parent_address.as_deref(), display);
-    if let Some(existing) = nodes(root)?.into_iter().find(|n| n.address == address) {
+    // The group shows as `name` whichever of the two keys carries it.
+    let address = child_address(parent_address.as_deref(), name);
+    if let Some(existing) = existing_at(root, &address, true)? {
         return Ok(AddGroupOutcome::AlreadyExists {
             navigator_path: Some(address.clone()),
             address,
@@ -225,7 +225,10 @@ pub fn add_group(
     node.insert("kind".to_string(), Value::String("group".to_string()));
     // A `name` that only repeats the directory is noise Xcode does not write,
     // and a group with no directory is named rather than pathed.
-    if display != name || stored.is_none() {
+    if stored
+        .as_deref()
+        .is_none_or(|stored| basename(stored) != name)
+    {
         node.insert("name".to_string(), Value::String(name.to_string()));
     }
     if let Some(stored) = &stored {
@@ -528,6 +531,46 @@ fn find_node<'a>(root: &'a Value, address: &str) -> Result<Node<'a>, String> {
     }
 }
 
+/// The node an add would find already at `address`: one of the kind being
+/// added (a group when `group`, else a file), or a refusal when only a node of
+/// another kind is there. Xcode lists such a pair side by side, but they would
+/// share one navigator path, and no argument could then tell the two apart.
+fn existing_at<'a>(
+    root: &'a Value,
+    address: &str,
+    group: bool,
+) -> Result<Option<Node<'a>>, String> {
+    let mut there: Vec<Node<'a>> = nodes(root)?
+        .into_iter()
+        .filter(|n| n.address == address)
+        .collect();
+    if let Some(index) = there
+        .iter()
+        .position(|n| n.is_container == group && !n.is_folder)
+    {
+        return Ok(Some(there.swap_remove(index)));
+    }
+    let Some(other) = there.first() else {
+        return Ok(None);
+    };
+    let other = if other.is_container {
+        "a group"
+    } else if other.is_folder {
+        "a synchronized folder"
+    } else {
+        "a file"
+    };
+    let (new, remedy) = if group {
+        ("group", "pick another name")
+    } else {
+        ("file", "add it under another group")
+    };
+    Err(format!(
+        "'{address}' is already the navigator path of {other}. A {new} beside it would share \
+         that path, and no argument could then tell the two apart; {remedy}"
+    ))
+}
+
 /// Where the node a reference in the document names resolves to, relative to
 /// the project directory, in the spelling [`FileRefRow::resolved`] uses.
 ///
@@ -748,13 +791,9 @@ fn resolve(base: &str, node: &Value) -> String {
         .into_owned()
 }
 
-/// What Xcode shows the node as: its `name`, else the last component of its
-/// `path`, and empty for a node with neither.
+/// What Xcode shows the node as ([`crate::tree::display_name`]).
 pub(crate) fn display_name(node: &Value) -> &str {
-    match node.get("name").and_then(Value::as_str) {
-        Some(name) => name,
-        None => stored_path(node).map_or("", basename),
-    }
+    crate::tree::display_name(node.get("name").and_then(Value::as_str), stored_path(node))
 }
 
 /// The address of a node called `name` under the group at `parent`, or at the

@@ -207,11 +207,13 @@ pub fn add_group(
     }
     let objects_ref = objects(root).ok_or("pbxproj has no objects dict")?;
     let parent = &settle_group(objects_ref, parent)?;
+    // The new group shows as `name`, so a sibling group showing that name is
+    // the one asked for. A file of that name is no obstacle: Xcode lists the
+    // two side by side, and each keeps its own id.
     if let Some(existing) = children_of(objects_ref, parent).into_iter().find(|child| {
-        objects_ref.get(child).is_some_and(|o| {
-            GROUP_ISAS.contains(&isa(o))
-                && (str_field(o, "name") == Some(name) || str_field(o, "path") == Some(name))
-        })
+        objects_ref
+            .get(child)
+            .is_some_and(|o| GROUP_ISAS.contains(&isa(o)) && display_name(o) == Some(name))
     }) {
         let parents = Parents::of(objects_ref);
         let resolved = display(&parents.group_dir(&existing, Path::new("")));
@@ -697,18 +699,14 @@ fn navigator_paths(objects: &Dict) -> Vec<(String, String)> {
     out
 }
 
-/// What Xcode shows a node as: its `name`, else the last component of its
-/// `path`.
+/// What Xcode shows a node as ([`crate::tree::display_name`]), or `None` for
+/// a node that shows nothing.
 fn display_name(node: &Value) -> Option<&str> {
-    str_field(node, "name")
-        .or_else(|| {
-            str_field(node, "path").map(|p| {
-                p.trim_end_matches('/')
-                    .rsplit_once('/')
-                    .map_or(p, |(_, name)| name)
-            })
-        })
-        .filter(|name| !name.is_empty())
+    Some(crate::tree::display_name(
+        str_field(node, "name"),
+        str_field(node, "path"),
+    ))
+    .filter(|name| !name.is_empty())
 }
 
 fn children_of(objects: &Dict, guid: &str) -> Vec<String> {
@@ -1080,6 +1078,38 @@ mod tests {
                 navigator_path: Some("Frameworks".into()),
             }
         );
+    }
+
+    /// `group add` finds the sibling group that shows the name it was given,
+    /// the rule a `project.xcproj` follows. A file of that name is listed
+    /// beside the new group, as Xcode lists the pair, and a group that only
+    /// has that name as its directory is a different group.
+    #[test]
+    fn a_new_group_matches_only_a_sibling_group_showing_its_name() {
+        let mut root = parsed();
+        let AddRefOutcome::Created { address: file, .. } =
+            add_fileref(&mut root, "Notes", Some("text"), "<group>", Some("G1")).unwrap()
+        else {
+            panic!("expected a fresh reference");
+        };
+        let AddGroupOutcome::Created { address: notes, .. } =
+            add_group(&mut root, "Notes", Some("G1"), None, "<group>").unwrap()
+        else {
+            panic!("a file named Notes does not stand in for a group");
+        };
+        assert_ne!(notes, file);
+
+        // `Legacy` is G2's directory and shows as its name. `Old` has the
+        // directory `Archive` and shows as `Old`.
+        add_group(&mut root, "Old", Some("G1"), Some("Archive"), "<group>").unwrap();
+        assert!(matches!(
+            add_group(&mut root, "Legacy", Some("G1"), None, "<group>").unwrap(),
+            AddGroupOutcome::AlreadyExists { address, .. } if address == "G2"
+        ));
+        assert!(matches!(
+            add_group(&mut root, "Archive", Some("G1"), None, "<group>").unwrap(),
+            AddGroupOutcome::Created { .. }
+        ));
     }
 
     #[test]

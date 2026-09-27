@@ -198,6 +198,67 @@ fn a_group_is_added_with_or_without_a_directory() {
     assert!(text.contains(r#""name": "Frameworks""#), "{text}");
 }
 
+/// A group whose directory is named apart from it shows as its name, and
+/// that is the address it is created at and found at again.
+#[test]
+fn a_group_is_addressed_by_its_name_when_its_directory_differs() {
+    let mut doc = document();
+    let created = AddGroupOutcome::Created {
+        address: "Sources/Views".into(),
+        resolved: "Sources/UI".into(),
+        navigator_path: Some("Sources/Views".into()),
+    };
+    assert_eq!(
+        tree::add_group(&mut doc, "Views", Some("Sources"), Some("UI"), "<group>").unwrap(),
+        created
+    );
+    assert_eq!(
+        tree::add_group(&mut doc, "Views", Some("Sources"), Some("UI"), "<group>").unwrap(),
+        AddGroupOutcome::AlreadyExists {
+            address: "Sources/Views".into(),
+            resolved: "Sources/UI".into(),
+            navigator_path: Some("Sources/Views".into()),
+        }
+    );
+    let groups = tree::list_groups(&doc).unwrap();
+    assert!(groups.iter().any(|g| g.address == "Sources/Views"));
+}
+
+/// An add finds an existing node of its own kind only. A file, a group or a
+/// synchronized folder of the same name would share the new node's navigator
+/// path, which Xcode allows but no address could then tell apart, so the add
+/// is refused and says which it met.
+#[test]
+fn an_add_beside_a_node_of_another_kind_with_its_name_is_refused() {
+    let mut doc = document();
+    let before = xcproj::serialize(&doc);
+
+    let err = tree::add_group(&mut doc, "Deep.swift", None, None, "<group>").unwrap_err();
+    assert_eq!(
+        err,
+        "'Deep.swift' is already the navigator path of a file. A group beside it would \
+         share that path, and no argument could then tell the two apart; pick another name"
+    );
+    let err = tree::add_group(&mut doc, "Shared", None, None, "<group>").unwrap_err();
+    assert!(
+        err.contains("already the navigator path of a synchronized folder"),
+        "{err}"
+    );
+    let err = tree::add_fileref(&mut doc, "Sources", None, "<group>", None).unwrap_err();
+    assert!(
+        err.contains("already the navigator path of a group"),
+        "{err}"
+    );
+    assert!(err.contains("add it under another group"), "{err}");
+    assert_eq!(xcproj::serialize(&doc), before, "nothing was written");
+
+    // The same names are free one level down.
+    assert!(matches!(
+        tree::add_group(&mut doc, "Deep.swift", Some("Sources"), None, "<group>").unwrap(),
+        AddGroupOutcome::Created { .. }
+    ));
+}
+
 #[test]
 fn a_group_still_holding_children_is_not_deleted_out_from_under_them() {
     let mut doc = document();
