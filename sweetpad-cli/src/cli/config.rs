@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use sweetpad_core::xcodebuild_args::{self, has_flag};
 
 /// Parsed `config.toml`. Missing file ⇒ [`Config::default`] (all empty).
 #[derive(Debug, Default, Deserialize)]
@@ -447,6 +448,8 @@ pub struct MergedXcodebuildArgs {
 /// a typed argument wins under `xcodebuild`'s last-one-wins. A flag
 /// `xcodebuild` takes only once ([`SINGLE_USE_FLAGS`]) has no last one to
 /// win, so when the tail gives it, the file's copy and its value are left out.
+/// Both lists are read with [`xcodebuild_args::read`]: a value spelled like
+/// a flag (`-xcconfig -jobs`) is the value, and no copy of that flag.
 ///
 /// The file's arguments are refused when they name something the CLI already
 /// owns — [`configured_arg_refusal`] explains each case. Refusing is an error
@@ -456,9 +459,8 @@ pub fn effective_xcodebuild_args(
     configured: &[String],
     tail: &[String],
 ) -> Result<MergedXcodebuildArgs, String> {
-    if let Some((arg, fix)) = configured
-        .iter()
-        .find_map(|a| configured_arg_refusal(a).map(|fix| (a, fix)))
+    if let Some((arg, fix)) = xcodebuild_args::read(configured)
+        .find_map(|a| configured_arg_refusal(a.word).map(|fix| (a.word, fix)))
     {
         return Err(format!(
             "sweetpad.toml: '{arg}' in [xcodebuild] args — {fix}"
@@ -466,20 +468,19 @@ pub fn effective_xcodebuild_args(
     }
     // Merged, the tail would hand the flag its value, so the file has to
     // give it one.
-    if let Some(flag) = sweetpad_core::xcodebuild_args::dangling_flag(configured) {
+    if let Some(flag) = xcodebuild_args::dangling_flag(configured) {
         return Err(format!(
             "sweetpad.toml: '{flag}' in [xcodebuild] args — add its value after it"
         ));
     }
     let mut args = Vec::with_capacity(configured.len() + tail.len());
     let mut replaced = Vec::new();
-    let mut iter = configured.iter();
-    while let Some(arg) = iter.next() {
-        if SINGLE_USE_FLAGS.contains(&arg.as_str()) && tail.contains(arg) {
-            let value = iter.next().cloned().unwrap_or_default();
-            replaced.push([arg.clone(), value]);
+    for arg in xcodebuild_args::read(configured) {
+        if SINGLE_USE_FLAGS.contains(&arg.word) && has_flag(tail, arg.word) {
+            let value = arg.value.unwrap_or_default();
+            replaced.push([arg.word.to_string(), value.to_string()]);
         } else {
-            args.push(arg.clone());
+            args.extend(arg.words().map(String::from));
         }
     }
     args.extend(tail.iter().cloned());
@@ -1062,6 +1063,30 @@ mod tests {
         assert!(merged.replaced.is_empty());
     }
 
+    /// A value spelled like a single-use flag is its flag's value, in the
+    /// file and in the tail, as xcodebuild reads it.
+    #[test]
+    fn a_value_spelled_like_a_single_use_flag_is_no_copy_of_it() {
+        let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
+
+        // The file's '-jobs' names its xcconfig, so the typed '-jobs'
+        // replaces nothing.
+        let merged =
+            effective_xcodebuild_args(&s(&["-xcconfig", "-jobs"]), &s(&["-jobs", "4"])).unwrap();
+        assert_eq!(merged.args, ["-xcconfig", "-jobs", "-jobs", "4"]);
+        assert!(merged.replaced.is_empty());
+        // The typed '-jobs' names the tail's xcconfig, so the file's stays.
+        let merged =
+            effective_xcodebuild_args(&s(&["-jobs", "4"]), &s(&["-xcconfig", "-jobs"])).unwrap();
+        assert_eq!(merged.args, ["-jobs", "4", "-xcconfig", "-jobs"]);
+        assert!(merged.replaced.is_empty());
+
+        // Each takes a value, which leaves with it.
+        for flag in SINGLE_USE_FLAGS {
+            assert!(xcodebuild_args::takes_value(flag), "{flag}");
+        }
+    }
+
     #[test]
     fn the_files_flags_take_their_values_inside_the_file() {
         let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
@@ -1125,6 +1150,12 @@ mod tests {
                 .args,
             ["-derivedDataPath", "/tmp/dd"]
         );
+
+        // A value spelled like a refused flag is a value, as xcodebuild
+        // reads it: this names an xcconfig called '-scheme'.
+        assert!(effective_xcodebuild_args(&s(&["-xcconfig", "-scheme"]), &[]).is_ok());
+        let err = effective_xcodebuild_args(&s(&["-quiet", "-scheme", "App"]), &[]).unwrap_err();
+        assert!(err.contains("'-scheme'"), "{err}");
     }
 
     #[test]

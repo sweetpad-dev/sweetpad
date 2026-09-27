@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use sweetpad_core::build_settings::{BuildSettingsOptions, resolve_build_settings};
-use sweetpad_core::xcodebuild_args::{VALUE_FLAGS, dangling_flag, last_value};
+use sweetpad_core::xcodebuild_args::{self, dangling_flag, last_value};
 use sweetpad_lib::project::{absolutize, standardize};
 
 use crate::cli::output::Output;
@@ -132,19 +132,12 @@ const OWNED_BY_ARCHIVE: [OwnedFlag; 3] = [
 /// # Errors
 /// A usage error naming the first such argument.
 pub fn refuse_owned_flags(action: Action, tail: &[String]) -> Result<(), CliError> {
-    let mut iter = tail.iter();
-    while let Some(arg) = iter.next() {
-        if let Some(owned) = owned_flag(action, arg) {
-            return Err(
-                CliError::new(format!("{} after '--'", instead_of_owned(owned)))
-                    .kind(ErrorKind::Usage),
-            );
-        }
-        if VALUE_FLAGS.contains(&arg.as_str()) {
-            iter.next();
-        }
+    match xcodebuild_args::read(tail).find_map(|arg| owned_flag(action, arg.word)) {
+        Some(owned) => Err(
+            CliError::new(format!("{} after '--'", instead_of_owned(owned))).kind(ErrorKind::Usage),
+        ),
+        None => Ok(()),
     }
-    Ok(())
 }
 
 /// The flag sweetpad passes `xcodebuild` itself for `action` that `arg` is.
@@ -164,40 +157,6 @@ pub fn owned_flag(action: Action, arg: &str) -> Option<&'static OwnedFlag> {
 pub fn instead_of_owned((flag, who, what, instead): &OwnedFlag) -> String {
     format!("{who} sets {what} itself; pass '{instead}' instead of '{flag}'")
 }
-
-/// Whether `xcodebuild` takes `flag` on a build, test or archive command
-/// line: one of the [`VALUE_FLAGS`] or [`OTHER_FLAGS`]. A test identifier
-/// rides on `-only-testing:` and `-skip-testing:` and doesn't count.
-#[must_use]
-pub fn takes_flag(flag: &str) -> bool {
-    let name = flag.split_once(':').map_or(flag, |(name, _)| name);
-    VALUE_FLAGS.contains(&name) || OTHER_FLAGS.contains(&name)
-}
-
-/// The flags `xcodebuild -help` lists for Xcode 27 that shape a build, test
-/// or archive and take no value, beside the [`VALUE_FLAGS`]. The ones that
-/// make `xcodebuild` do something else (`-showBuildSettings`, `-list`,
-/// `-exportArchive`, `-version`, …) are left out.
-const OTHER_FLAGS: [&str; 18] = [
-    "-alltargets",
-    "-parallelizeTargets",
-    "-quiet",
-    "-verbose",
-    "-hideShellScriptEnvironment",
-    "-showBuildTimingSummary",
-    "-skipUnavailableActions",
-    "-allowProvisioningUpdates",
-    "-allowProvisioningDeviceRegistration",
-    "-retry-tests-on-failure",
-    "-run-tests-until-failure",
-    "-disableAutomaticPackageResolution",
-    "-onlyUsePackageVersionsFromResolvedFile",
-    "-skipPackageUpdates",
-    "-disablePackageRepositoryCache",
-    "-skipPackagePluginValidation",
-    "-skipMacroValidation",
-    "-skipPackageSignatureValidation",
-];
 
 /// Refuse a typed `--` tail that ends with a flag still waiting for its
 /// value. `xcodebuild` refuses it too ("option '-xcconfig' requires an
@@ -514,10 +473,7 @@ pub(crate) fn device_tip(args: &[String], diagnostics: &[serde_json::Value]) -> 
     if !destination_error {
         return None;
     }
-    let spec = args
-        .windows(2)
-        .filter(|pair| pair[0] == "-destination")
-        .map(|pair| pair[1].as_str())
+    let spec = xcodebuild_args::values(args, "-destination")
         .find(|spec| crate::cli::resolve::is_device_destination(spec))?;
     let key = |k: &str| {
         spec.split(',')
@@ -2245,7 +2201,7 @@ fn bundle_of(t: &TargetBuildSettings) -> Option<AppBundle> {
 /// after `--`, which can give the `-resultBundlePath` a `-resultStreamPath`
 /// needs.
 ///
-/// Both are read the way [`last_value`] reads them: a flag that takes a
+/// Both are read with [`xcodebuild_args::read`]: a flag that takes a
 /// value takes the next argument, dashes and all, so `-xcconfig
 /// -enableCodeCoverage` keeps a file named '-enableCodeCoverage', and a
 /// `-derivedDataPath -resultBundlePath` names no result bundle.
@@ -2265,25 +2221,19 @@ pub fn for_action(
     let mut kept = Vec::with_capacity(configured.len());
     let mut notes = Vec::new();
     let testing = matches!(action, Action::Test | Action::BuildForTesting);
-    let mut iter = configured.iter();
-    while let Some(arg) = iter.next() {
-        let value = if VALUE_FLAGS.contains(&arg.as_str()) {
-            iter.next()
-        } else {
-            None
-        };
-        let why = if !testing && TEST_ONLY_FLAGS.contains(&arg.as_str()) {
+    for arg in xcodebuild_args::read(configured) {
+        let why = if !testing && TEST_ONLY_FLAGS.contains(&arg.word) {
             ", as a flag only testing takes"
-        } else if !bundle_given && arg == "-resultStreamPath" {
+        } else if !bundle_given && arg.word == "-resultStreamPath" {
             " without a '-resultBundlePath' to stream into"
         } else {
-            kept.push(arg.clone());
-            kept.extend(value.cloned());
+            kept.extend(arg.words().map(String::from));
             continue;
         };
-        let value = value.map_or_else(String::new, |v| format!(" {v}"));
+        let value = arg.value.map_or_else(String::new, |v| format!(" {v}"));
         notes.push(format!(
-            "leaving out sweetpad.toml's '{arg}{value}': 'xcodebuild {}' fails on it{why}",
+            "leaving out sweetpad.toml's '{}{value}': 'xcodebuild {}' fails on it{why}",
+            arg.word,
             action.as_arg()
         ));
     }
@@ -2294,7 +2244,7 @@ pub fn for_action(
 /// -enableCodeCoverage is only supported when testing"), as Xcode 27 refuses
 /// them: `build`, `archive` and `clean` fail on them, and `build-for-testing`
 /// takes them. Each takes a value, which [`for_action`] leaves out with it
-/// because [`VALUE_FLAGS`] lists the flag. The other testing flags
+/// because [`xcodebuild_args::VALUE_FLAGS`] lists the flag. The other testing flags
 /// (`-test-iterations`, `-parallel-testing-enabled`, `-only-testing:`, …) are
 /// accepted by every action. `-test-repetition-relaunch-enabled` fails every
 /// action, `test` included, unless an iteration flag comes with it, and is
@@ -2356,7 +2306,7 @@ impl CommandLineSettings {
         Self {
             derived_data_path: passthrough_path(passthrough, "-derivedDataPath", container),
             xcconfig: passthrough_path(passthrough, "-xcconfig", container),
-            overrides: sweetpad_core::xcodebuild_args::settings(passthrough),
+            overrides: xcodebuild_args::settings(passthrough),
         }
     }
 }
@@ -3943,28 +3893,6 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
     }
 
     #[test]
-    fn xcodebuild_takes_its_listed_flags_with_one_dash() {
-        let mut seen = BTreeSet::new();
-        for flag in VALUE_FLAGS.iter().chain(&OTHER_FLAGS) {
-            assert!(flag.starts_with('-') && !flag.starts_with("--"), "{flag}");
-            assert!(seen.insert(flag), "listed twice: {flag}");
-        }
-        for flag in TEST_ONLY_FLAGS.iter().chain(&["-resultStreamPath"]) {
-            assert!(takes_flag(flag), "{flag}");
-        }
-        assert!(takes_flag("-only-testing:AppTests/Slow"));
-        assert!(takes_flag("-allowProvisioningUpdates"));
-        for flag in [
-            "--allowProvisioningUpdates",
-            "-bogus",
-            "-showBuildSettings",
-            "-",
-        ] {
-            assert!(!takes_flag(flag), "{flag}");
-        }
-    }
-
-    #[test]
     fn the_flags_an_action_leaves_out_are_ones_the_file_may_carry() {
         // The file's refusals run on what the action keeps, so a flag that
         // was both left out and refused would slip past them on that action.
@@ -3975,7 +3903,7 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
                 "{flag}"
             );
             // Each takes a value, which leaves with it.
-            assert!(VALUE_FLAGS.contains(flag), "{flag}");
+            assert!(xcodebuild_args::takes_value(flag), "{flag}");
             assert!(for_action(Action::Clean, &file, &[]).0.is_empty(), "{flag}");
         }
     }

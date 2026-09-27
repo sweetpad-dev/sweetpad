@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 use clap::Subcommand;
+use sweetpad_core::xcodebuild_args;
 
 mod ax;
 mod macwin;
@@ -4410,7 +4411,7 @@ fn launch_mac(
     app: &AppBundle,
 ) -> Result<AppStageReport, CliError> {
     if !app.executable.exists() {
-        let elsewhere = if plan.passthrough.iter().any(|a| a == "-derivedDataPath") {
+        let elsewhere = if xcodebuild_args::has_flag(&plan.passthrough, "-derivedDataPath") {
             ""
         } else {
             ", or pass '--derived-data-path <dir>' if it was built with \

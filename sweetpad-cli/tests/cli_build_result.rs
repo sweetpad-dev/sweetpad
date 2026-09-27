@@ -1379,6 +1379,73 @@ fn clean_takes_the_arguments_in_sweetpad_toml() {
     );
 }
 
+/// A value spelled like the flag '--coverage' or '--retry-flaky' passes
+/// itself is its own flag's value, as xcodebuild reads it, in the file and in
+/// the typed tail: 'test' neither leaves it out nor refuses it.
+#[test]
+fn a_value_spelled_like_a_test_flags_twin_stays_with_its_flag() {
+    fn command(project: &RecordingProject, extra: &[&str]) -> Vec<String> {
+        let mut args = vec![
+            "test",
+            "--scheme",
+            "SweetpadCIMac",
+            "--configuration",
+            "Debug",
+            "--mac",
+            "--show-command",
+            "-o",
+            "json",
+            "--non-interactive",
+        ];
+        args.extend_from_slice(extra);
+        let out = project.run(&args);
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let envelope: Value = serde_json::from_slice(&out.stdout).unwrap();
+        envelope["data"]["command"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a.as_str().unwrap().to_string())
+            .collect()
+    }
+
+    let file = RecordingProject::new(
+        "twin-value-file",
+        "[xcodebuild]\nargs = [\"-xcconfig\", \"-enableCodeCoverage\"]\n",
+    );
+    let passed = command(&file, &["--coverage"]);
+    assert!(
+        passed
+            .windows(2)
+            .any(|w| w == ["-xcconfig", "-enableCodeCoverage"]),
+        "{passed:?}"
+    );
+    assert!(
+        passed
+            .windows(2)
+            .any(|w| w == ["-enableCodeCoverage", "YES"]),
+        "{passed:?}"
+    );
+
+    let typed = RecordingProject::new("twin-value-tail", "");
+    let passed = command(
+        &typed,
+        &["--retry-flaky", "2", "--", "-xcconfig", "-test-iterations"],
+    );
+    assert!(
+        passed.ends_with(&["-xcconfig".to_string(), "-test-iterations".to_string()]),
+        "{passed:?}"
+    );
+    assert!(
+        passed.windows(2).any(|w| w == ["-test-iterations", "2"]),
+        "{passed:?}"
+    );
+}
+
 /// A session exits by how it ends. Ctrl-C while a build runs cancels it,
 /// exit 6, whether or not the app ran before; a quit at the prompt, by 'q'
 /// or by Ctrl-C, exits 0 once the app has run.

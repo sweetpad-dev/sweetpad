@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use clap::Subcommand;
+use sweetpad_core::xcodebuild_args::{self, has_flag};
 
 use crate::cli::output::Output;
 use crate::cli::resolve::Container;
@@ -232,10 +233,20 @@ pub fn run(ctx: &mut Context, args: &TestArgs, action: Option<&Action>) -> Comma
     if let Some(Action::Build(_)) = action {
         return build(ctx, args);
     }
-    let twins = flag_twins(args);
+    // A Swift package's tail goes to 'swift test', which takes neither
+    // xcodebuild flag, so there is no copy to refuse or leave out.
+    let package = matches!(
+        resolve::container_silently(ctx),
+        Some(Container::SwiftPackage(_))
+    );
+    let twins = if package {
+        Vec::new()
+    } else {
+        flag_twins(args)
+    };
     if let Some((ours, theirs)) = twins
         .iter()
-        .find(|(_, theirs)| args.passthrough.iter().any(|a| a == theirs))
+        .find(|(_, theirs)| has_flag(&args.passthrough, theirs))
     {
         return Err(CliError::new(format!(
             "'{ours}' passes '{theirs}' itself, and xcodebuild takes it only once; give one \
@@ -245,7 +256,7 @@ pub fn run(ctx: &mut Context, args: &TestArgs, action: Option<&Action>) -> Comma
     }
     let (passthrough, left_out) = without_file_twins(
         &twins,
-        ctx.xcodebuild_args(xcodebuild::Action::Test, &args.passthrough)?,
+        &ctx.xcodebuild_args(xcodebuild::Action::Test, &args.passthrough)?,
     );
     if ctx.out.is_verbose() {
         for note in &left_out {
@@ -317,19 +328,21 @@ fn flag_twins(args: &TestArgs) -> Vec<(&'static str, &'static str)> {
 /// value, and the notes naming what it left out: the typed flag replaces the
 /// copy, as a typed `--` tail replaces a single-use flag in the file. The tail
 /// holds none by now ([`run`] refused them), so any copy left is the file's.
+/// The arguments are read with [`xcodebuild_args::read`], so the value of a
+/// flag that takes one stays with it: `-xcconfig -enableCodeCoverage` names a
+/// file, not a copy.
 fn without_file_twins(
     twins: &[(&'static str, &'static str)],
-    passthrough: Vec<String>,
+    passthrough: &[String],
 ) -> (Vec<String>, Vec<String>) {
     let mut kept = Vec::with_capacity(passthrough.len());
     let mut notes = Vec::new();
-    let mut iter = passthrough.into_iter();
-    while let Some(arg) = iter.next() {
-        let Some((ours, theirs)) = twins.iter().find(|(_, theirs)| arg == *theirs) else {
-            kept.push(arg);
+    for arg in xcodebuild_args::read(passthrough) {
+        let Some((ours, theirs)) = twins.iter().find(|(_, theirs)| arg.word == *theirs) else {
+            kept.extend(arg.words().map(String::from));
             continue;
         };
-        let value = iter.next().unwrap_or_default();
+        let value = arg.value.unwrap_or_default();
         notes.push(format!(
             "leaving out sweetpad.toml's '{theirs} {value}': '{ours}' passes its own, and \
              xcodebuild takes '{theirs}' only once"
@@ -2566,7 +2579,7 @@ mod tests {
         ]
         .map(String::from)
         .to_vec();
-        let (kept, notes) = without_file_twins(&twins, file.clone());
+        let (kept, notes) = without_file_twins(&twins, &file);
         assert_eq!(kept, ["-skipMacroValidation"]);
         assert_eq!(
             notes[0],
@@ -2576,9 +2589,42 @@ mod tests {
         assert_eq!(notes.len(), 2);
         // Without the typed flags, the file's copies stay.
         let (args, _) = parse_test(&[]);
-        let (kept, notes) = without_file_twins(&flag_twins(&args), file.clone());
+        let (kept, notes) = without_file_twins(&flag_twins(&args), &file);
         assert_eq!(kept, file);
         assert!(notes.is_empty());
+
+        // A value spelled like a twin is its flag's, as xcodebuild reads it,
+        // and each twin's own value leaves with it.
+        let file = [
+            "-xcconfig",
+            "-enableCodeCoverage",
+            "-jobs",
+            "-test-iterations",
+            "-test-iterations",
+            "5",
+        ]
+        .map(String::from)
+        .to_vec();
+        let (kept, notes) = without_file_twins(&twins, &file);
+        assert_eq!(
+            kept,
+            [
+                "-xcconfig",
+                "-enableCodeCoverage",
+                "-jobs",
+                "-test-iterations"
+            ]
+        );
+        assert_eq!(
+            notes,
+            [
+                "leaving out sweetpad.toml's '-test-iterations 5': '--retry-flaky' passes its own, \
+                 and xcodebuild takes '-test-iterations' only once"
+            ]
+        );
+        for (_, theirs) in &twins {
+            assert!(xcodebuild_args::takes_value(theirs), "{theirs}");
+        }
     }
 
     #[test]

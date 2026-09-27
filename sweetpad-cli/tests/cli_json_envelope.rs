@@ -357,6 +357,24 @@ fn a_packages_tail_skips_the_xcodebuild_checks() {
         assert_eq!(command[0], "swift", "{args:?}: {command:?}");
         assert!(command.ends_with(&tail), "{args:?}: {command:?}");
     }
+    // Nor does the one that keeps '--coverage' and a typed
+    // '-enableCodeCoverage' apart: 'swift test' takes neither.
+    let twin_tail = ["-Xswiftc", "-enableCodeCoverage"];
+    let args = [
+        &["test", "--coverage", "--show-command", "--json", "--"][..],
+        &twin_tail,
+    ]
+    .concat();
+    let out = sweetpad(&args, &cwd, &home);
+    assert!(out.status.success(), "{args:?}: {out:?}");
+    let command = parse_stdout(&out, &args)["data"]["command"].clone();
+    let command: Vec<&str> = command
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a.as_str().unwrap())
+        .collect();
+    assert!(command.ends_with(&twin_tail), "{args:?}: {command:?}");
 
     let project = Path::new(env!("SWEETPAD_LIB_DIR"))
         .join("fixtures/_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj");
@@ -370,6 +388,24 @@ fn a_packages_tail_skips_the_xcodebuild_checks() {
     let stderr = String::from_utf8(out.stderr).unwrap();
     assert!(
         stderr.contains("sweetpad sets the SDK itself; pass '--sdk' instead of '-sdk' after '--'"),
+        "{stderr}"
+    );
+    let args = [
+        &[
+            "test",
+            "--coverage",
+            "--project",
+            project.to_str().unwrap(),
+            "--",
+        ][..],
+        &twin_tail,
+    ]
+    .concat();
+    let out = sweetpad(&args, &cwd, &home);
+    assert_eq!(out.status.code(), Some(2), "{args:?}: {out:?}");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        stderr.contains("'--coverage' passes '-enableCodeCoverage' itself"),
         "{stderr}"
     );
 }

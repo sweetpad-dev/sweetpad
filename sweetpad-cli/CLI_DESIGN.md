@@ -163,21 +163,26 @@ a usage error too, checked at the same point. `xcodebuild` refuses it
 locator never spawn it, and would read an earlier `-xcconfig` or none. A
 `sweetpad.toml` list that ends that way is refused as well, since the merge
 would hand the flag the tail's first argument as its value. A Swift
-package's tail skips both checks. It goes to `swift build` or `swift test`,
-which take none of `xcodebuild`'s flags, and a compiler flag it forwards can
-be spelled like one of them (`-Xswiftc -sdk -Xswiftc <path>`). The CLI and the
-BSP server read a flag's value with one helper (sweetpad-core's
-`xcodebuild_args::last_value`): the argument after it, dashes and all, as
-`xcodebuild` reads it, and the last copy counts. Its `VALUE_FLAGS` lists
-each flag that shapes a build, test or archive and takes a value in Xcode 27,
-as probed against it. That includes the testing flags such as
-`-enableCodeCoverage`, `-test-iterations` and the two-word `-only-testing X`.
-Each fails at the end of a command line and takes the next argument even
-when it starts with a dash. A flag that checks its value
-(`-enableCodeCoverage YES|NO`) then refuses it. The flags of `xcodebuild`'s
-other modes, such as `-exportLocalizations`' `-exportLanguage`, are left out. The server can't refuse the
+package's tail skips these checks, `test`'s check for a copy of what
+`--coverage` or `--retry-flaky` passes among them. It goes to `swift build`
+or `swift test`, which take none of `xcodebuild`'s flags, and a compiler flag
+it forwards can be spelled like one of them (`-Xswiftc -sdk -Xswiftc <path>`).
+The CLI and the BSP server read these arguments with one walker,
+sweetpad-core's `xcodebuild_args::read`: a flag that takes a value takes the
+argument after it, dashes and all, as `xcodebuild` reads it. The checks above,
+the `sweetpad.toml` merge (§6) and every read of a flag's value go through
+it, and the last copy of a flag counts. The server can't refuse the
 extension's `bsp.json`, so a `buildArgs` ending that way is logged as a
 warning, and the index reads the rest, the copy before it included.
+
+The walker's `VALUE_FLAGS` lists each flag that shapes a build, test or
+archive and takes a value in Xcode 27, as probed against it. That includes the
+testing flags such as `-enableCodeCoverage`, `-test-iterations` and the
+two-word `-only-testing X`. Each fails at the end of a command line and takes
+the next argument even when it starts with a dash. A flag that checks its
+value (`-enableCodeCoverage YES|NO`) then refuses it. `SWITCHES` beside it
+lists the flags that take no value. The flags of `xcodebuild`'s other modes,
+such as `-exportLocalizations`' `-exportLanguage`, are in neither.
 
 clap rejects an unknown flag on a verb with a tail, and its stock tip ("to
 pass '--bogus' as a value, use '-- --bogus'") would hand the flag to
@@ -196,7 +201,7 @@ for it too. For a flag sweetpad passes itself, the tip names the sweetpad
 flag, as the tail's refusal does. So it does for a flag with a value when the
 verb has a flag of the same name (`pass '--destination' instead of
 '-destination'`, and `test`'s `-skip-testing`). A flag nothing takes gets no
-tip. The list is
+tip. The flags it knows are `VALUE_FLAGS` and `SWITCHES`:
 what `xcodebuild -help` shows for Xcode 27, less the flags that make it do
 something other than build, test or archive (`-showBuildSettings`, `-list`).
 The verbs with a hidden tail (`build diagnostics`, `test output`) refuse one,
@@ -622,7 +627,9 @@ args = ["-skipMacroValidation"]   # added to every command that builds
   (`-jobs`, `-enableCodeCoverage`, `-test-iterations`, …; `-destination`,
   `-arch`, `-toolchain` and `-packageCachePath` repeat). When the tail gives
   one of those, the merge leaves out the file's copy and its value, and `-v`
-  names what it left out, so the typed tail still wins. The `app` verbs that find an already-built product instead
+  names what it left out, so the typed tail still wins. A value spelled like
+  one of them is no copy of it: a file's `-xcconfig -jobs` names an xcconfig
+  and stays beside a typed `-jobs 4`. The `app` verbs that find an already-built product instead
   of building one (`launch`, `stop`, `uninstall`, `logs`, `container`,
   `screenshot`, `sample`, `ui`) plan with the same list, so a file `build`
   refuses stops them too, and a setting that moves the product, such as
@@ -638,7 +645,9 @@ args = ["-skipMacroValidation"]   # added to every command that builds
   `--export-options` set them), and `-derivedDataPath`. `--coverage` and
   `--retry-flaky` pass `-enableCodeCoverage` and `-test-iterations`, which the
   file may carry, so under either flag `test` leaves the file's copy out and
-  `-v` says so. A refusal is an error rather than a warning:
+  `-v` says so. That check reads flag values the same way, so a file's or a
+  typed `-xcconfig -enableCodeCoverage` keeps its xcconfig beside
+  `--coverage`. A refusal is an error rather than a warning:
   the alternative is handing xcodebuild two answers to one question. Swift
   packages ignore the table entirely, since `swift build` knows none of these
   flags.

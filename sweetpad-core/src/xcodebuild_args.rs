@@ -1,7 +1,63 @@
 //! Reading the arguments an `xcodebuild` command line adds to a build the
 //! way `xcodebuild` reads them. The CLI reads them from `sweetpad.toml` and
 //! the `--` tail, and the BSP server from the `buildArgs` the extension writes
-//! into `bsp.json`.
+//! into `bsp.json`. Every reader walks them with [`read`], which pairs each
+//! flag in [`VALUE_FLAGS`] with its value, so they agree on which argument is
+//! a flag and which is a value.
+
+/// One argument of an `xcodebuild` command line as `xcodebuild` reads it: a
+/// flag in [`VALUE_FLAGS`] with the argument after it, or any other argument
+/// alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Arg<'a> {
+    /// A flag, a `KEY=VALUE` setting, an action, or anything else.
+    pub word: &'a str,
+    /// The value of a flag that takes one. `None` for any other argument,
+    /// and for a flag that ends the list still waiting for its value.
+    pub value: Option<&'a str>,
+}
+
+impl<'a> Arg<'a> {
+    /// Whether [`Self::word`] is a flag that takes a value.
+    #[must_use]
+    pub fn takes_value(&self) -> bool {
+        takes_value(self.word)
+    }
+
+    /// The word and its value, as the command line spells them.
+    pub fn words(self) -> impl Iterator<Item = &'a str> {
+        std::iter::once(self.word).chain(self.value)
+    }
+}
+
+/// `args` as `xcodebuild` reads them, one [`Arg`] per flag or other
+/// argument. A flag that takes a value takes the next argument, dashes and
+/// all: `-xcconfig -quiet` names a file called '-quiet'. A flag missing from
+/// [`VALUE_FLAGS`] reads as a switch.
+pub fn read(args: &[String]) -> impl Iterator<Item = Arg<'_>> {
+    let mut iter = args.iter().map(String::as_str);
+    std::iter::from_fn(move || {
+        let word = iter.next()?;
+        let value = if takes_value(word) { iter.next() } else { None };
+        Some(Arg { word, value })
+    })
+}
+
+/// Whether `flag` takes the next argument as its value.
+#[must_use]
+pub fn takes_value(flag: &str) -> bool {
+    VALUE_FLAGS.contains(&flag)
+}
+
+/// Whether `word` is a flag `xcodebuild` takes on a build, test or archive
+/// command line: one of the [`VALUE_FLAGS`] or [`SWITCHES`]. A test
+/// identifier rides on `-only-testing:` and `-skip-testing:` and doesn't
+/// count.
+#[must_use]
+pub fn is_flag(word: &str) -> bool {
+    let name = word.split_once(':').map_or(word, |(name, _)| name);
+    takes_value(name) || SWITCHES.contains(&name)
+}
 
 /// The `KEY=VALUE` build settings in `args`, in order: what
 /// `xcodebuild` applies above every project layer. The value after a flag
@@ -11,19 +67,15 @@
 /// from its value.
 #[must_use]
 pub fn settings(args: &[String]) -> Vec<(String, String)> {
-    let mut settings = Vec::new();
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        if VALUE_FLAGS.contains(&arg.as_str()) {
-            iter.next();
-        } else if let Some((key, value)) = arg.split_once('=')
-            && key.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
-            && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-        {
-            settings.push((key.to_string(), value.to_string()));
-        }
-    }
-    settings
+    read(args)
+        .filter(|arg| !arg.takes_value())
+        .filter_map(|arg| {
+            let (key, value) = arg.word.split_once('=')?;
+            (key.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+                && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+            .then(|| (key.to_string(), value.to_string()))
+        })
+        .collect()
 }
 
 /// The `xcodebuild` flags that take the next argument as their value, of the
@@ -95,49 +147,143 @@ pub const VALUE_FLAGS: [&str; 57] = [
     "-authenticationKeyIssuerID",
 ];
 
-/// The value after the last `flag` in `args`, read as `xcodebuild` reads
-/// it: a flag that takes a value takes the next argument, dashes and all, so
-/// a value spelled like `flag` is not a copy of it. `xcodebuild` takes one
-/// `-xcconfig` and refuses a second, so the last one given is the one that
-/// counts. A `flag` that ends `args` without a value is skipped: `xcodebuild`
-/// refuses that command line, and [`dangling_flag`] names the flag for the
-/// caller to report.
+/// The flags `xcodebuild -help` lists for Xcode 27 that shape a build, test
+/// or archive and take no value, beside the [`VALUE_FLAGS`]. The ones that
+/// make `xcodebuild` do something else (`-showBuildSettings`, `-list`,
+/// `-exportArchive`, `-version`, …) are left out.
+pub const SWITCHES: [&str; 18] = [
+    "-alltargets",
+    "-parallelizeTargets",
+    "-quiet",
+    "-verbose",
+    "-hideShellScriptEnvironment",
+    "-showBuildTimingSummary",
+    "-skipUnavailableActions",
+    "-allowProvisioningUpdates",
+    "-allowProvisioningDeviceRegistration",
+    "-retry-tests-on-failure",
+    "-run-tests-until-failure",
+    "-disableAutomaticPackageResolution",
+    "-onlyUsePackageVersionsFromResolvedFile",
+    "-skipPackageUpdates",
+    "-disablePackageRepositoryCache",
+    "-skipPackagePluginValidation",
+    "-skipMacroValidation",
+    "-skipPackageSignatureValidation",
+];
+
+/// The value after each `flag` in `args`, in order, read by [`read`]: a
+/// value spelled like `flag` is not a copy of it. A build takes every
+/// `-destination` it is given. A `flag` that ends `args` without a value gives
+/// none.
+pub fn values<'a>(args: &'a [String], flag: &str) -> impl Iterator<Item = &'a str> {
+    read(args)
+        .filter(move |arg| arg.word == flag)
+        .filter_map(|arg| arg.value)
+}
+
+/// The value after the last `flag` in `args` ([`values`]). `xcodebuild`
+/// takes one `-xcconfig` and refuses a second, so the last one given is the
+/// one that counts. A `flag` that ends `args` without a value is skipped:
+/// `xcodebuild` refuses that command line, and [`dangling_flag`] names the
+/// flag for the caller to report.
 #[must_use]
 pub fn last_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
-    let mut found = None;
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        if arg == flag || VALUE_FLAGS.contains(&arg.as_str()) {
-            let value = iter.next();
-            if arg == flag
-                && let Some(value) = value
-            {
-                found = Some(value.as_str());
-            }
-        }
-    }
-    found
+    values(args, flag).last()
+}
+
+/// Whether `args` gives `flag` itself, not as the value of a flag that takes
+/// one: `-xcconfig -enableCodeCoverage` gives '-xcconfig' and no
+/// '-enableCodeCoverage'. A `flag` that ends `args` without its value still
+/// counts.
+#[must_use]
+pub fn has_flag(args: &[String], flag: &str) -> bool {
+    read(args).any(|arg| arg.word == flag)
 }
 
 /// The flag that ends `args` still waiting for its value, which `xcodebuild`
 /// refuses ("option '-xcconfig' requires an argument").
 #[must_use]
 pub fn dangling_flag(args: &[String]) -> Option<&str> {
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        if VALUE_FLAGS.contains(&arg.as_str()) && iter.next().is_none() {
-            return Some(arg);
-        }
-    }
-    None
+    read(args)
+        .find(|arg| arg.takes_value() && arg.value.is_none())
+        .map(|arg| arg.word)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{dangling_flag, last_value, settings};
+    use super::{
+        Arg, SWITCHES, VALUE_FLAGS, dangling_flag, has_flag, is_flag, last_value, read, settings,
+        values,
+    };
 
     fn s(args: &[&str]) -> Vec<String> {
         args.iter().map(|a| (*a).to_string()).collect()
+    }
+
+    #[test]
+    fn each_flag_that_takes_a_value_is_read_with_it() {
+        let args = s(&[
+            "build",
+            "-xcconfig",
+            "-quiet",
+            "-quiet",
+            "FOO=1",
+            "-destination",
+            "platform=macOS",
+            "-derivedDataPath",
+        ]);
+        let arg = |word, value| Arg { word, value };
+        assert_eq!(
+            read(&args).collect::<Vec<_>>(),
+            [
+                arg("build", None),
+                arg("-xcconfig", Some("-quiet")),
+                arg("-quiet", None),
+                arg("FOO=1", None),
+                arg("-destination", Some("platform=macOS")),
+                arg("-derivedDataPath", None),
+            ]
+        );
+        // Written back, the words are the command line as given.
+        assert_eq!(read(&args).flat_map(Arg::words).collect::<Vec<_>>(), args);
+    }
+
+    #[test]
+    fn xcodebuild_takes_its_listed_flags_with_one_dash() {
+        let mut seen = std::collections::BTreeSet::new();
+        for flag in VALUE_FLAGS.iter().chain(&SWITCHES) {
+            assert!(flag.starts_with('-') && !flag.starts_with("--"), "{flag}");
+            assert!(seen.insert(flag), "listed twice: {flag}");
+            assert!(is_flag(flag), "{flag}");
+        }
+        assert!(is_flag("-only-testing:AppTests/Slow"));
+        for word in [
+            "--allowProvisioningUpdates",
+            "-bogus",
+            "-showBuildSettings",
+            "-exportLanguage",
+            "-",
+            "build",
+        ] {
+            assert!(!is_flag(word), "{word}");
+        }
+    }
+
+    #[test]
+    fn a_repeated_flag_gives_each_of_its_values() {
+        let args = s(&[
+            "-destination",
+            "id=A",
+            "-xcconfig",
+            "-destination",
+            "-destination",
+            "id=B",
+        ]);
+        assert_eq!(
+            values(&args, "-destination").collect::<Vec<_>>(),
+            ["id=A", "id=B"]
+        );
     }
 
     #[test]
@@ -219,6 +365,23 @@ mod tests {
         }
         // The one-word form carries its identifier.
         assert_eq!(dangling_flag(&s(&["-only-testing:AppTests"])), None);
+    }
+
+    #[test]
+    fn a_flag_is_given_only_where_xcodebuild_reads_a_flag() {
+        let args = s(&[
+            "-xcconfig",
+            "-enableCodeCoverage",
+            "-quiet",
+            "-test-iterations",
+        ]);
+        assert!(has_flag(&args, "-xcconfig"));
+        assert!(!has_flag(&args, "-enableCodeCoverage"));
+        assert!(has_flag(&args, "-quiet"));
+        // One still waiting for its value is given.
+        assert!(has_flag(&args, "-test-iterations"));
+        assert!(!has_flag(&args, "-jobs"));
+        assert!(!has_flag(&[], "-quiet"));
     }
 
     #[test]

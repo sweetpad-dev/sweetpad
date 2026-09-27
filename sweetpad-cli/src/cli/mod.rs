@@ -23,6 +23,7 @@
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser, Subcommand};
+use sweetpad_core::xcodebuild_args;
 
 pub mod buildlog;
 pub mod config;
@@ -1487,7 +1488,7 @@ fn takes_output_file(argv: &[String]) -> bool {
 ///   own refusal does. So does an xcodebuild flag with a value that the verb
 ///   has a flag of the same name for (`-destination`, `settings show`'s
 ///   `-target`).
-/// - Any other flag xcodebuild takes ([`xcodebuild::takes_flag`]), typed with
+/// - Any other flag xcodebuild takes ([`xcodebuild_args::is_flag`]), typed with
 ///   one dash or two, is shown after the `--` with one.
 ///
 /// A verb whose tail is hidden refuses one, so it gets none of these. clap
@@ -1686,7 +1687,7 @@ impl TailVerb {
             .strip_prefix('-')
             .filter(|w| w.starts_with('-'))
             .unwrap_or(word);
-        let named_alike = sweetpad_core::xcodebuild_args::VALUE_FLAGS.contains(&flag)
+        let named_alike = xcodebuild_args::takes_value(flag)
             && cmd
                 .get_arguments()
                 .any(|a| a.get_long() == flag.strip_prefix('-'));
@@ -1727,7 +1728,7 @@ impl TailVerb {
             replacing(xcodebuild::instead_of_owned(owned))
         } else if self.named_alike {
             replacing(format!("pass '-{flag}' instead of '{flag}'"))
-        } else if xcodebuild::takes_flag(flag) {
+        } else if xcodebuild_args::is_flag(flag) {
             Some(TailTip {
                 text: format!("xcodebuild flags go after '--': '{} -- {flag}'", self.bin),
                 replaces_suggestion: false,
