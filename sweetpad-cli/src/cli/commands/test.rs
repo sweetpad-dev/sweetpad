@@ -1799,16 +1799,18 @@ fn output(ctx: &mut Context, args: &TestArgs, opts: &OutputArgs) -> CommandResul
         return Err(no_output_match(&wrote, &args.only_testing));
     }
 
-    let note = (!found_any).then(|| {
-        "no test wrote to stdout or stderr; a test's own 'print' lands here, while \
-         XCTest's assertions and a UI test's screenshots do not"
-            .to_string()
-    });
+    let note = output_note(
+        found_any,
+        args.only_testing.is_empty(),
+        run.between_tests,
+        &run.sources,
+    );
     // Output written outside a test case is XCTest's own bookkeeping and the
     // app's `os_log` chatter — noise, next to the lines a test meant to write.
     // It earns a place only when nothing was attributed at all, which is what
     // a framework this parser does not recognise looks like: then it is the
     // only account of what ran, and dropping it would lose the run entirely.
+    // Otherwise the note counts what was written while the tests ran.
     let unattributed = tests
         .is_empty()
         .then(|| run.unattributed.trim().to_string())
@@ -1822,6 +1824,42 @@ fn output(ctx: &mut Context, args: &TestArgs, opts: &OutputArgs) -> CommandResul
         overlapped: run.overlapped,
         note,
     }))
+}
+
+/// What `test output` says under its listing: that no test wrote anything, or,
+/// when some did and `every_test` says no '--only-testing' narrowed the
+/// report, that it leaves out `outside` lines written between tests and which
+/// directory of `sources` has them.
+fn output_note(
+    found_any: bool,
+    every_test: bool,
+    outside: usize,
+    sources: &[PathBuf],
+) -> Option<String> {
+    if !found_any {
+        return Some(
+            "no test wrote to stdout or stderr; a test's own 'print' lands here, while \
+             XCTest's assertions and a UI test's screenshots do not"
+                .to_string(),
+        );
+    }
+    if !every_test || outside == 0 {
+        return None;
+    }
+    let (lines, verb) = if outside == 1 {
+        ("line", "is")
+    } else {
+        ("lines", "are")
+    };
+    let where_ = sources
+        .first()
+        .and_then(|p| p.parent())
+        .map_or_else(String::new, |d| {
+            format!("; read {} for the output as written", d.display())
+        });
+    Some(format!(
+        "{outside} {lines} written outside any test {verb} not listed{where_}"
+    ))
 }
 
 /// The tests the report shows: those `only_testing` selects that wrote
@@ -3293,6 +3331,35 @@ mod tests {
         let json = report(false, true).json();
         assert_eq!(json["overlapped"], true);
         assert_eq!(json["serial"], false);
+    }
+
+    #[test]
+    fn lines_between_tests_are_counted_when_they_are_not_listed() {
+        let sources = [PathBuf::from("/state/App-output/AppTests.txt")];
+        assert_eq!(
+            output_note(true, true, 2, &sources).as_deref(),
+            Some(
+                "2 lines written outside any test are not listed; read /state/App-output for \
+                 the output as written"
+            )
+        );
+        assert_eq!(
+            output_note(true, true, 1, &sources).as_deref(),
+            Some(
+                "1 line written outside any test is not listed; read /state/App-output for the \
+                 output as written"
+            )
+        );
+        // Nothing between tests, or a report narrowed to some tests, says
+        // nothing.
+        assert_eq!(output_note(true, true, 0, &sources), None);
+        assert_eq!(output_note(true, false, 2, &sources), None);
+        // With nothing attributed, the lines are listed and the note says why
+        // no test is.
+        assert!(
+            output_note(false, true, 2, &sources)
+                .is_some_and(|n| n.starts_with("no test wrote to stdout or stderr"))
+        );
     }
 
     #[test]

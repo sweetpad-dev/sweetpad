@@ -2597,21 +2597,45 @@ the untruncated text stays readable either way.
 it brackets output between one test's markers. A parallel run keeps to that:
 each worker is a process of its own and writes a stream of its own. On macOS,
 a scheme marked `parallelizable` ran its three test classes on three workers,
-and each stream held one class's tests in turn. So the warning keys on the
-markers rather than the run's mode. It fires when a test in one stream ends
-while another is open, or with none open, as a test that runs another case
-inside itself writes them. The lines after the inner start can't be sorted
-between the two tests, so the warning names the kept streams, which hold the
-output as it was written. JSON carries this as `overlapped`, beside `serial`,
-which comes from `scheduling.log`'s `Parallelization disabled` line.
+and each stream held one class's tests in turn.
 
-**Output written outside a test case is reported only when nothing was
+**A line belongs to the innermost test running.** XCTest runs a test on the
+thread that asks for it. A test that runs another case inside itself
+(`InnerTests(selector:).run()`) therefore writes the inner case's markers
+between its own, and its own lines resume once the inner case ends. So the
+markers are read as a stack. In a run on Xcode 27, the outer test's `outer
+after` line, written after the inner case ended, is listed under the outer
+test. XCTest's two warnings about the nesting land under whichever test was
+running when XCTest wrote them. A test whose end never comes crashed its
+process, and XCTest restarts the process. That test's lines run up to the next
+start, so the crash's `Fatal error` and XCTest's `Restarting after unexpected
+exit` line stay with the test that crashed.
+
+**The warning keys on markers that cross.** Two cases running at once in one
+process end out of order: a test ends while a case that started after it is
+still open, or ends with nothing open. The lines in between can't be sorted
+out, so the warning names the kept streams, which hold the output as it was
+written. JSON carries this as `overlapped`, beside `serial`, which comes from
+`scheduling.log`'s `Parallelization disabled` line. It keys on the markers
+rather than the run's mode, since a parallel run's workers each write their
+own stream.
+
+**Output written outside a test case is listed only when nothing was
 attributed.** Between tests the stream carries XCTest's own bookkeeping and the
 app's `os_log` chatter, which buries the handful of lines a test meant to write.
 But a framework whose markers this parser does not recognise — Swift Testing —
 attributes *nothing*, and there the same bucket is the only account of what ran.
 Dropping it unconditionally would lose the run; showing it unconditionally
-would bury the answer.
+would bury the answer. When some test was attributed, the note counts the
+lines written while a stream's tests ran, after its first case started and
+before its last one ended, and names the kept streams. Those are lines between
+two tests, such as a class's teardown. A plain run gets no note: a hosted app's
+launch logging comes before the first test, and a stream with no case in it,
+such as one holding only xcodebuild's `*** If you believe this error represents
+a bug` line, has no tests to be between. What comes after the last test ended, such as
+XCTest's own crash after a nested run, is left to the kept streams too. Suite
+banners and the `Executed N tests` line under a suite's end are structure and
+are never counted.
 
 ### One name per test
 

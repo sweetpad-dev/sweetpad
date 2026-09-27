@@ -1754,14 +1754,19 @@ pub struct RunOutput {
     /// framework whose markers this parser does not recognise. Kept rather
     /// than dropped, so nothing the run wrote goes missing without a word.
     pub unattributed: String,
+    /// How many non-blank lines of [`Self::unattributed`] a stream wrote
+    /// while its tests ran: after its first case started and before its last
+    /// one ended. What a hosted app logs as it launches comes before that,
+    /// and a stream with no case in it has none.
+    pub between_tests: usize,
     /// The files it was read from, for the part that doesn't fit in a payload.
     pub sources: Vec<PathBuf>,
     /// Whether every target reported running its tests serially. A parallel
     /// run's workers each write a stream of their own, one test at a time, so
     /// this alone says nothing about attribution; [`Self::overlapped`] does.
     pub serial: bool,
-    /// Whether the case markers in some stream overlapped (see
-    /// [`split_output`]), which leaves some lines under the wrong test.
+    /// Whether the case markers in some stream crossed rather than nested
+    /// (see [`split_output`]), which leaves some lines under the wrong test.
     pub overlapped: bool,
 }
 
@@ -1806,60 +1811,140 @@ fn parse_case_marker(line: &str) -> Option<CaseMarker<'_>> {
 }
 
 /// Split one test process's stdout into per-test slices, each named by the
-/// target `targets` says ran it. Returns whether the markers overlapped: a
-/// test that ends while another one is open, or with none open, as a nested
-/// or concurrent run in the one process writes them. The slices hold whole
-/// lines between markers, so some of those lines land under the wrong test.
+/// target `targets` says ran it. Only tests that wrote something are added.
+///
+/// A line goes to the innermost test open when it was written. XCTest runs a
+/// test on the thread that asked for it, so a test that runs another case
+/// inside itself (`InnerTests(selector:).run()`) writes the inner case's
+/// markers between its own: the inner case's lines sit between the inner
+/// markers, and the outer test's lines resume once the inner case ends. A test
+/// whose end never comes crashed and took its process with it. XCTest
+/// restarts the process, so that test's lines run up to the next start.
+///
+/// Returns whether the markers crossed and how many lines outside any test
+/// fell while the tests ran (see [`Split`]).
 fn split_output(
     text: &str,
     targets: &TestTargets,
     into: &mut Vec<TestOutput>,
     unattributed: &mut String,
-) -> bool {
-    let mut current: Option<TestOutput> = None;
-    // The test that started last and has not ended. A test that crashes never
-    // ends, and the next one to start takes its place, so a crash alone is no
-    // overlap.
-    let mut open: Option<(Option<&str>, String)> = None;
-    let mut overlapped = false;
-    for line in text.lines() {
-        if let Some(marker) = parse_case_marker(line) {
-            if let Some(done) = current.take()
-                && !done.output.trim().is_empty()
-            {
-                into.push(done);
-            }
+) -> Split {
+    struct Open<'a> {
+        module: Option<&'a str>,
+        test: String,
+        /// Its entry in `into`.
+        entry: usize,
+        ends: bool,
+    }
+    let lines: Vec<&str> = text.lines().collect();
+    let markers: Vec<Option<CaseMarker>> = lines.iter().map(|l| parse_case_marker(l)).collect();
+    let ends = ends_later(&markers);
+    let first_start = markers
+        .iter()
+        .position(|m| m.as_ref().is_some_and(|m| m.started));
+    let last_end = markers
+        .iter()
+        .rposition(|m| m.as_ref().is_some_and(|m| !m.started));
+    let while_testing =
+        |i: usize| first_start.is_some_and(|s| s < i) && last_end.is_some_and(|e| i < e);
+    let first = into.len();
+    let mut open: Vec<Open> = Vec::new();
+    let mut split = Split::default();
+    let mut after_suite = false;
+    for (i, ((line, marker), ends)) in lines.iter().zip(markers).zip(ends).enumerate() {
+        if let Some(marker) = marker {
+            after_suite = false;
             if marker.started {
-                open = Some((marker.module, marker.test.clone()));
+                // An open test that never ends crashed, and this case runs in
+                // the process XCTest restarted.
+                while open.last().is_some_and(|o| !o.ends) {
+                    open.pop();
+                }
                 let target = targets.target_of(&marker.test, marker.module);
-                current = Some(TestOutput {
+                into.push(TestOutput {
                     identifier: test_selector(target, &marker.test, None),
-                    test: marker.test,
+                    test: marker.test.clone(),
                     output: String::new(),
                 });
+                open.push(Open {
+                    module: marker.module,
+                    test: marker.test,
+                    entry: into.len() - 1,
+                    ends,
+                });
             } else {
-                overlapped |= open.take() != Some((marker.module, marker.test));
+                match open
+                    .iter()
+                    .rposition(|o| o.module == marker.module && o.test == marker.test)
+                {
+                    Some(at) => {
+                        split.crossed |= at + 1 != open.len();
+                        open.remove(at);
+                    }
+                    None => split.crossed = true,
+                }
             }
             continue;
         }
-        // Suite banners are structure, not output; keeping them would bury
-        // the handful of real lines in the unattributed bucket.
+        // Suite banners, and the `Executed N tests` line under a suite's
+        // end, are structure, not output. Keeping them would bury the
+        // handful of real lines outside any test.
         if line.starts_with("Test Suite '") {
+            after_suite = !line.contains("' started at ");
             continue;
         }
-        let sink = match current.as_mut() {
-            Some(open) => &mut open.output,
-            None => &mut *unattributed,
+        if std::mem::take(&mut after_suite) && line.starts_with("\t Executed ") {
+            continue;
+        }
+        let sink = if let Some(o) = open.last() {
+            &mut into[o.entry].output
+        } else {
+            if while_testing(i) && !line.trim().is_empty() {
+                split.between_tests += 1;
+            }
+            &mut *unattributed
         };
         sink.push_str(line);
         sink.push('\n');
     }
-    if let Some(done) = current
-        && !done.output.trim().is_empty()
-    {
-        into.push(done);
+    let mut added = into.split_off(first);
+    added.retain(|t| !t.output.trim().is_empty());
+    into.append(&mut added);
+    split
+}
+
+/// What [`split_output`] makes of a stream besides its per-test slices.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Split {
+    /// Whether the markers crossed: a test that ends while a case that
+    /// started after it is still open, or with none open, as two cases
+    /// running at once in the one process write them. The lines between
+    /// crossed markers could be either test's, so some land under the wrong
+    /// one.
+    crossed: bool,
+    /// How many non-blank lines outside any test came after the stream's
+    /// first case start and before its last case end.
+    between_tests: usize,
+}
+
+/// For each of `markers`, whether it starts a test that ends later in the
+/// stream: the next marker for the same test is its end rather than another
+/// start. A test that crashed has none.
+fn ends_later(markers: &[Option<CaseMarker>]) -> Vec<bool> {
+    let mut ends = vec![false; markers.len()];
+    let mut started: BTreeMap<(Option<&str>, &str), usize> = BTreeMap::new();
+    for (i, marker) in markers.iter().enumerate() {
+        let Some(marker) = marker else {
+            continue;
+        };
+        let key = (marker.module, marker.test.as_str());
+        if marker.started {
+            started.insert(key, i);
+        } else if let Some(start) = started.remove(&key) {
+            ends[start] = true;
+        }
     }
-    overlapped
+    ends
 }
 
 /// Export a `.xcresult`'s diagnostics into `staging` and read back what the
@@ -1908,11 +1993,14 @@ pub fn export_run_output(
     let mut unattributed = String::new();
     let mut sources = Vec::new();
     let mut overlapped = false;
+    let mut between_tests = 0;
     for path in &streams {
         let Ok(text) = std::fs::read_to_string(path) else {
             continue;
         };
-        overlapped |= split_output(&text, &targets, &mut tests, &mut unattributed);
+        let split = split_output(&text, &targets, &mut tests, &mut unattributed);
+        overlapped |= split.crossed;
+        between_tests += split.between_tests;
         let label = stream_label(path, sources.len());
         let mut kept = keep.join(format!("{label}.txt"));
         // Two targets resolving to one label would silently cost a stream.
@@ -1933,6 +2021,7 @@ pub fn export_run_output(
     Ok(RunOutput {
         tests,
         unattributed,
+        between_tests,
         sources,
         serial,
         overlapped,
@@ -2352,42 +2441,183 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         assert!(!rest.contains("BOOK REFLOW"), "{rest}");
     }
 
+    fn split(text: &str) -> (Split, Vec<TestOutput>, String) {
+        let (mut tests, mut rest) = (Vec::new(), String::new());
+        let split = split_output(text, &TestTargets::default(), &mut tests, &mut rest);
+        (split, tests, rest)
+    }
+
     #[test]
-    fn only_markers_that_overlap_count_as_overlapping() {
-        let split = |text: &str| {
-            let (mut tests, mut rest) = (Vec::new(), String::new());
-            let overlapped = split_output(text, &TestTargets::default(), &mut tests, &mut rest);
-            (overlapped, tests)
-        };
-        assert!(!split(STREAM).0);
+    fn only_markers_that_cross_count_as_overlapping() {
+        assert!(!split(STREAM).0.crossed);
 
         // A test that crashed never ends; the next one's start closes it, and
         // each line is still under the test that wrote it.
-        let (overlapped, tests) = split(
+        let (found, tests, _) = split(
             "Test Case '-[M.A testA]' started.\n\
              a1\n\
              Test Case '-[M.A testB]' started.\n\
              b1\n\
              Test Case '-[M.A testB]' passed (0.1 seconds).\n",
         );
-        assert!(!overlapped);
+        assert!(!found.crossed);
         assert_eq!(tests[0].output.trim(), "a1");
         assert_eq!(tests[1].output.trim(), "b1");
 
-        // Two tests open at once, or one run inside another: the lines after
-        // the second start can't be told apart.
-        for text in [
+        // One test run inside another nests, and each line has one owner.
+        let (found, tests, _) = split(
+            "Test Case '-[M.A testA]' started.\n\
+             a1\n\
+             Test Case '-[M.A testB]' started.\n\
+             b1\n\
+             Test Case '-[M.A testB]' passed (0.1 seconds).\n\
+             a2\n\
+             Test Case '-[M.A testA]' passed (0.1 seconds).\n",
+        );
+        assert!(!found.crossed);
+        assert_eq!(tests[0].output, "a1\na2\n");
+        assert_eq!(tests[1].output, "b1\n");
+
+        // Two tests open at once, each ending while the other is open: the
+        // lines after the second start can't be told apart.
+        let (found, ..) = split(
             "Test Case '-[M.A testA]' started.\n\
              Test Case '-[M.A testB]' started.\n\
              Test Case '-[M.A testA]' passed (0.1 seconds).\n\
              Test Case '-[M.A testB]' passed (0.1 seconds).\n",
+        );
+        assert!(found.crossed);
+        // So does an end with nothing open.
+        assert!(
+            split("Test Case '-[M.A testA]' passed (0.1 seconds).\n")
+                .0
+                .crossed
+        );
+    }
+
+    /// A real stream from a macOS unit-test bundle on Xcode 27: a test that
+    /// runs another case inside itself, which XCTest warns about and then
+    /// crashes on, and the restart XCTest makes after it.
+    const NESTED_STREAM: &str = "\
+Test Suite 'NestedTests' started at 2026-09-27 14:56:05.373.
+Test Case '-[B8TestHostless.NestedTests testOuter]' started.
+outer before
+Test Case '-[B8TestHostless.InnerTests testInner]' started.
+WARNING: Starting test case -[InnerTests testInner] while test case -[NestedTests testOuter] is still running
+inner line
+Test Case '-[B8TestHostless.InnerTests testInner]' passed (0.000 seconds).
+outer after
+WARNING: Test case -[NestedTests testOuter] finished which isn't running
+Test Case '-[B8TestHostless.NestedTests testOuter]' passed (0.001 seconds).
+2026-09-27 14:56:05.374526+0200 xctest[64888:23067538] [general] *** Assertion failure in -[XCTRunnerIDESession testCaseDidFinish:], XCTRunnerIDESession.m:680
+libc++abi: terminate_handler unexpectedly threw an exception
+Test Suite 'NestedTests' started at 2026-09-27 14:56:11.408.
+Test Suite 'NestedTests' passed at 2026-09-27 14:56:11.409.
+\t Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+";
+
+    #[test]
+    fn a_line_goes_to_the_innermost_test_running() {
+        let (found, tests, rest) = split(NESTED_STREAM);
+        assert!(!found.crossed);
+        let names: Vec<&str> = tests.iter().map(|t| t.test.as_str()).collect();
+        assert_eq!(names, ["NestedTests/testOuter", "InnerTests/testInner"]);
+        // The outer test's lines on both sides of the inner run are its own.
+        assert_eq!(
+            tests[0].output,
+            "outer before\n\
+             outer after\n\
+             WARNING: Test case -[NestedTests testOuter] finished which isn't running\n"
+        );
+        assert!(
+            tests[1].output.ends_with("inner line\n"),
+            "{}",
+            tests[1].output
+        );
+        // What the process wrote after its last test ended is outside any
+        // test, while the suite's closing summary is structure.
+        assert!(rest.contains("*** Assertion failure"), "{rest}");
+        assert!(rest.contains("libc++abi"), "{rest}");
+        assert!(!rest.contains("Executed"), "{rest}");
+        // They came after the last test ended, so none fell between tests.
+        assert_eq!(found.between_tests, 0);
+    }
+
+    #[test]
+    fn only_lines_while_the_tests_ran_count_as_between_them() {
+        // A hosted app's launch logging comes before the first test, and a
+        // class's teardown between two tests.
+        let (found, tests, rest) = split(
+            "2026-09-27 14:56:04.900083+0200 B8TestMacApp[64890:23067600] [Connection] Unable \
+             to get synchronousRemoteObjectProxy\n\
+             Test Suite 'A' started at 2026-09-27 14:56:05.229.\n\
+             Test Case '-[M.A testA]' started.\n\
+             a\n\
+             Test Case '-[M.A testA]' passed (0.001 seconds).\n\
+             Test Suite 'A' passed at 2026-09-27 14:56:05.232.\n\
+             \t Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.003) seconds\n\
+             class teardown\n\
+             \n\
+             Test Case '-[M.B testB]' started.\n\
+             b\n\
+             Test Case '-[M.B testB]' passed (0.001 seconds).\n\
+             after the last test\n",
+        );
+        assert_eq!(tests.len(), 2);
+        assert!(rest.contains("synchronousRemoteObjectProxy"), "{rest}");
+        assert!(rest.contains("after the last test"), "{rest}");
+        assert_eq!(found.between_tests, 1);
+        // A stream with no case in it, like the one holding only xcodebuild's
+        // request for the result bundle, has no tests to be between.
+        let (found, _, rest) = split(
+            "\n\n*** If you believe this error represents a bug, please attach the result \
+             bundle at /tmp/App.xcresult\n",
+        );
+        assert!(rest.contains("If you believe"), "{rest}");
+        assert_eq!(found.between_tests, 0);
+    }
+
+    #[test]
+    fn a_crashed_tests_lines_run_to_the_restart() {
+        // A real stream: the crash, XCTest's restart, and the next test.
+        let (found, tests, rest) = split(
+            "Test Suite 'CrashTests' started at 2026-09-27 15:00:10.509.\n\
+             Test Case '-[B8TestHostless.CrashTests testACrash]' started.\n\
+             about to crash\n\
+             B8TestHostless/CrashTests.swift:10: Fatal error: b8 crash\n\
+             \n\
+             Restarting after unexpected exit, crash, or test timeout; summary will include \
+             totals from previous launches.\n\
+             \n\
+             Test Suite 'Selected tests' started at 2026-09-27 15:00:12.408.\n\
+             Test Suite 'CrashTests' started at 2026-09-27 15:00:12.409.\n\
+             Test Case '-[B8TestHostless.CrashTests testBAfter]' started.\n\
+             after the crash\n\
+             Test Case '-[B8TestHostless.CrashTests testBAfter]' passed (0.001 seconds).\n\
+             Test Suite 'CrashTests' passed at 2026-09-27 15:00:12.410.\n\
+             \t Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds\n\
+             between\n",
+        );
+        assert!(!found.crossed);
+        assert!(tests[0].output.contains("Fatal error: b8 crash"));
+        assert!(tests[0].output.contains("Restarting after unexpected exit"));
+        assert_eq!(tests[1].output, "after the crash\n");
+        // The crashed test is not left open to take what comes after.
+        assert_eq!(rest, "between\n");
+
+        // A test run again after its crash ends only the second time.
+        let (found, tests, rest) = split(
             "Test Case '-[M.A testA]' started.\n\
-             Test Case '-[M.A testB]' started.\n\
-             Test Case '-[M.A testB]' passed (0.1 seconds).\n\
-             Test Case '-[M.A testA]' passed (0.1 seconds).\n",
-        ] {
-            assert!(split(text).0, "{text}");
-        }
+             first\n\
+             Test Case '-[M.A testA]' started.\n\
+             second\n\
+             Test Case '-[M.A testA]' passed (0.1 seconds).\n\
+             after\n",
+        );
+        assert!(!found.crossed);
+        assert_eq!(tests[0].output, "first\n");
+        assert_eq!(tests[1].output, "second\n");
+        assert_eq!(rest, "after\n");
     }
 
     #[test]
