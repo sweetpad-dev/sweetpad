@@ -2066,7 +2066,10 @@ so an Objective-C throw carries the chain on through the exception's name and
 reason, the backtrace, and the kill. A crash (a Mach exception, a signal, a
 Swift runtime failure) ends the chain after `run` or `continue`, and lldb runs
 the `-k` commands instead, which are the backtrace and the kill again. A clean
-exit ends it at the first `po`, which fails for want of a process. Transcripts
+exit carries the chain on with no process to read, so the `po`s, the `bt` and
+the kill each run inside a `script` guard that skips them unless the process is
+stopped. Unguarded, the first `po` would fail and end the batch with lldb's
+status 1. Transcripts
 captured for each of these, on macOS and on the iPhone 17 simulator, are the
 parser's test input (`fixtures/diagnose`). On a simulator lldb attaches to a
 process launched suspended, and the attach stops it with `signal SIGSTOP`

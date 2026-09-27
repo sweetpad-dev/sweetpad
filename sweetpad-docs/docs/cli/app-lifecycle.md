@@ -208,9 +208,11 @@ unattended run can't hang on an app that stays up.
 
 :::warning
 
-The exit code of `--batch` says whether the session *launched*, not what lldb found. A breakpoint that
-never hit and a clean run look the same from outside. Parse the streamed output, or use `app diagnose`
-when what you want is a verdict.
+The exit code of `--batch` says whether the session *ran*, not what lldb found. A breakpoint that
+never hit and a clean run look the same from outside. lldb's own exit status is not passed on: a
+command that fails, such as `bt` after the app has exited, ends lldb's batch with status 1, and
+sweetpad still exits 0. It exits non-zero when the build or launch fails or `--timeout` ends the
+session. Parse the streamed output, or use `app diagnose` when what you want is a verdict.
 
 :::
 
@@ -226,8 +228,9 @@ sweetpad app diagnose -o json
 ```
 
 It's bounded by `--timeout`, 30 seconds by default, and reports a timeout if the app neither crashes
-nor exits in that window. The result is the report, not the exit code, so read the output (or the JSON
-payload) rather than branching on `$?`. Simulator and macOS only.
+nor exits in that window. The result is the report, not the exit code. It exits 0 for any report,
+whether the app crashed, threw, exited, or timed out, so read the output (or the JSON payload) rather
+than branching on `$?`. Simulator and macOS only.
 
 lldb reports most crashes as the Mach exception the CPU raised, such as
 `EXC_BAD_ACCESS (code=1, address=0x10)`, before the system turns it into a signal. The report gives the

@@ -1,18 +1,20 @@
-Process 42802 stopped
+Process 71718 stopped
 * thread #1, stop reason = signal SIGSTOP
-      frame #0: 0x0000000102340bf0 dyld`_dyld_start
+      frame #0: 0x0000000102b70bf0 dyld`_dyld_start
 dyld`_dyld_start:
-->  0x102340bf0 <+0>:  mov    x0, sp
-    0x102340bf4 <+4>:  and    sp, x0, #0xfffffffffffffff0
-    0x102340bf8 <+8>:  mov    x29, #0x0                 ; =0 
-    0x102340bfc <+12>: mov    x30, #0x0                 ; =0 
-Target 0: (SweetpadB5iOS) stopped.
-Executable binary set to "~/Library/Developer/CoreSimulator/Devices/*/data/Containers/Bundle/Application/*/SweetpadB5iOS.app/SweetpadB5iOS".
+->  0x102b70bf0 <+0>:  mov    x0, sp
+    0x102b70bf4 <+4>:  and    sp, x0, #0xfffffffffffffff0
+    0x102b70bf8 <+8>:  mov    x29, #0x0                 ; =0 
+    0x102b70bfc <+12>: mov    x30, #0x0                 ; =0 
+Target 0: (SweetpadB6RunApp) stopped.
+Executable binary set to "~/Library/Developer/CoreSimulator/Devices/*/data/Containers/Bundle/Application/*/SweetpadB6RunApp.app/SweetpadB6RunApp".
 Architecture set to: arm64-apple-ios-simulator.
 Breakpoint 1: no locations (pending).
 WARNING:  Unable to resolve breakpoint to any actual locations.
 1 location added to breakpoint 1
-Process 42802 resuming
-Process 42802 exited with status = 0 (0x00000000)
+Process 71718 resuming
+Process 71718 exited with status = 0 (0x00000000)
 @@SWEETPAD_EXC@@
-error: unable to evaluate expression while the process is exited: the process must be stopped because the expression might require allocating memory.
+@@SWEETPAD_REASON@@
+@@SWEETPAD_BT@@
+@@SWEETPAD_END@@

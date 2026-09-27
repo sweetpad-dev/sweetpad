@@ -225,8 +225,11 @@ impl LaunchArgs {
 pub struct DebugBatchArgs {
     /// Run lldb non-interactively: execute the '--cmd' commands, then let the
     /// session end, instead of handing over an interactive prompt. The exit
-    /// code reflects whether the session launched, not what lldb found — parse
-    /// the streamed output for the result, or use 'app diagnose' for a report.
+    /// code says whether the session ran, not what lldb found: it is 0 even
+    /// when lldb stops at a failed command (such as 'bt' after the app has
+    /// exited), and non-zero when the build or launch fails or '--timeout'
+    /// ends the session. Parse the streamed output for the result, or use
+    /// 'app diagnose' for a report.
     #[arg(long)]
     pub batch: bool,
 
@@ -478,7 +481,8 @@ pub enum Action {
     /// Run the app under lldb, catch the first Objective-C exception or crash,
     /// print a structured report, and quit. Built for unattended/agent use:
     /// bounded by '--timeout', and the result is the report ('-o json' for the
-    /// machine-readable form), not the exit code. Simulator and macOS only.
+    /// machine-readable form), not the exit code, which is 0 for any report,
+    /// a crash as much as a clean exit. Simulator and macOS only.
     Diagnose {
         #[command(flatten)]
         target: crate::cli::BuildTargetArgs,
@@ -5142,32 +5146,50 @@ const SENTINEL_END: &str = "@@SWEETPAD_END@@";
 /// breakpoint (the Objective-C throw) is a normal stop, so the chain goes on
 /// and dumps the exception. A crash (a Mach exception, a signal, a Swift
 /// runtime failure) ends it after the start verb and runs the `-k` commands
-/// instead, which dump the backtrace and kill the app. A clean exit runs the
-/// chain until the first `po` fails for want of a process, which ends it too.
+/// instead, which dump the backtrace and kill the app. A clean exit also
+/// carries the chain on, with no process to read, so each command that needs
+/// one runs [`when_stopped`]: it is skipped, only the sentinels print, and
+/// lldb exits 0 instead of stopping at a failed `po` with status 1.
 fn diagnose_lldb_args(target: &LldbTarget) -> Vec<String> {
     let mut a = vec!["-b".to_string(), "-Q".to_string()];
     a.extend(target.attach_flag());
     push_one_line(&mut a, "breakpoint set -n objc_exception_throw");
     push_one_line(&mut a, target.start_verb());
     push_one_line(&mut a, &format!("script print('{SENTINEL_EXC}')"));
-    push_one_line(&mut a, "po (id)[(id)$arg1 name]");
+    push_one_line(&mut a, &when_stopped("po (id)[(id)$arg1 name]"));
     push_one_line(&mut a, &format!("script print('{SENTINEL_REASON}')"));
-    push_one_line(&mut a, "po (id)[(id)$arg1 reason]");
+    push_one_line(&mut a, &when_stopped("po (id)[(id)$arg1 reason]"));
     let backtrace_and_kill = [
-        format!("script print('{SENTINEL_BT}')"),
-        "bt".to_string(),
-        format!("script print('{SENTINEL_END}')"),
-        "process kill".to_string(),
-        "quit".to_string(),
+        (format!("script print('{SENTINEL_BT}')"), false),
+        ("bt".to_string(), true),
+        (format!("script print('{SENTINEL_END}')"), false),
+        ("process kill".to_string(), true),
+        ("quit".to_string(), false),
     ];
-    for cmd in &backtrace_and_kill {
-        push_one_line(&mut a, cmd);
+    for (cmd, needs_process) in &backtrace_and_kill {
+        if *needs_process {
+            push_one_line(&mut a, &when_stopped(cmd));
+        } else {
+            push_one_line(&mut a, cmd);
+        }
     }
-    for cmd in &backtrace_and_kill {
+    // A crash leaves the process stopped, so the `-k` commands run as is.
+    for (cmd, _) in &backtrace_and_kill {
         push_on_crash(&mut a, cmd);
     }
     a.extend(target.launch_suffix());
     a
+}
+
+/// An lldb command that runs `cmd` only while the process is stopped, and
+/// does nothing (successfully) once it has exited. `lldb.process` is the
+/// selected process, invalid when there is none, which also skips.
+fn when_stopped(cmd: &str) -> String {
+    debug_assert!(!cmd.contains(['"', '\\']), "{cmd}");
+    format!(
+        "script lldb.debugger.HandleCommand(\"{cmd}\") \
+         if lldb.process.GetState() == lldb.eStateStopped else None"
+    )
 }
 
 /// The `lldb -b` argv for `app debug --batch`: forward the user's `--cmd`
@@ -8055,22 +8077,36 @@ Process Instance Registry, error: Error Domain=NSCocoaErrorDomain Code=4097\r\n"
             // backtrace and the kill it needs are the `-k` commands.
             assert_eq!(on("-k", &args), tail, "{kind}");
             // An Objective-C throw is a breakpoint, which the chain goes on
-            // from: the exception, then the same backtrace and kill.
+            // from: the exception, then the same backtrace and kill, each
+            // command that needs a process guarded for a clean exit.
             let one_line = on("-o", &args);
             assert_eq!(
-                one_line[..6],
+                one_line,
                 [
                     "breakpoint set -n objc_exception_throw",
                     if kind == "mac" { "run" } else { "continue" },
                     "script print('@@SWEETPAD_EXC@@')",
-                    "po (id)[(id)$arg1 name]",
+                    &when_stopped("po (id)[(id)$arg1 name]"),
                     "script print('@@SWEETPAD_REASON@@')",
-                    "po (id)[(id)$arg1 reason]",
+                    &when_stopped("po (id)[(id)$arg1 reason]"),
+                    "script print('@@SWEETPAD_BT@@')",
+                    &when_stopped("bt"),
+                    "script print('@@SWEETPAD_END@@')",
+                    &when_stopped("process kill"),
+                    "quit",
                 ],
                 "{kind}"
             );
-            assert_eq!(one_line[6..], tail, "{kind}");
         }
+    }
+
+    #[test]
+    fn a_guarded_command_runs_only_on_a_stopped_process() {
+        assert_eq!(
+            when_stopped("bt"),
+            "script lldb.debugger.HandleCommand(\"bt\") \
+             if lldb.process.GetState() == lldb.eStateStopped else None"
+        );
     }
 
     #[test]
@@ -8152,18 +8188,16 @@ Process Instance Registry, error: Error Domain=NSCocoaErrorDomain Code=4097\r\n"
     }
 
     #[test]
-    fn a_clean_exit_ends_the_chain_at_the_first_expression() {
-        // The `po` after a clean exit fails for want of a process, and a
-        // failed command ends the batch: no backtrace section, no kill.
+    fn a_clean_exit_skips_the_commands_that_need_a_process() {
+        // After a clean exit the guarded commands do nothing, so the chain
+        // runs to its end with only the sentinels and no lldb error.
         for (name, attached, pid) in [
-            ("mac-clean-exit", false, 41939),
-            ("sim-clean-exit", true, 42802),
+            ("mac-clean-exit", false, 70991),
+            ("sim-clean-exit", true, 71718),
         ] {
             let t = diagnose_fixture(name);
-            assert!(
-                t.contains(SENTINEL_EXC) && !t.contains(SENTINEL_BT),
-                "{name}"
-            );
+            assert!(t.contains(SENTINEL_END), "{name}");
+            assert!(!t.contains("error:"), "{name}");
             let o = parse_diagnose(&t, attached);
             assert_eq!(o.pid, Some(pid), "{name}");
             assert!(!o.stopped(), "{name}");

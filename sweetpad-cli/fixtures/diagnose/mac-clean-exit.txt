@@ -1,20 +1,23 @@
-Current executable set to '~/Library/Developer/Xcode/DerivedData/SweetpadCIApp-*/Build/Products/Debug/SweetpadB5Mac.app/Contents/MacOS/SweetpadB5Mac' (arm64).
+Current executable set to '~/Library/Developer/Xcode/DerivedData/SweetpadB6Run-*/Build/Products/Debug/SweetpadB6RunMac.app/Contents/MacOS/SweetpadB6RunMac' (arm64).
 Breakpoint 1: where = libobjc.A.dylib`objc_exception_throw, address = 0x000000018041c5b4
-2026-09-27 00:09:44.736705+0200 SweetpadB5Mac[41939:21584871] [PreviewsAgentExecutorLibrary] Looking up debug dylib relative path
-2026-09-27 00:09:44.736974+0200 SweetpadB5Mac[41939:21584871] [PreviewsAgentExecutorLibrary] Found debug dylib relative path string `SweetpadB5Mac.debug.dylib`
-2026-09-27 00:09:44.736981+0200 SweetpadB5Mac[41939:21584871] [PreviewsAgentExecutorLibrary] Looking up debug dylib entry point name
-2026-09-27 00:09:44.736984+0200 SweetpadB5Mac[41939:21584871] [PreviewsAgentExecutorLibrary] No debug dylib entry point name defined.
-2026-09-27 00:09:44.736988+0200 SweetpadB5Mac[41939:21584871] [PreviewsAgentExecutorLibrary] Looking up debug dylib install name
-2026-09-27 00:09:44.736991+0200 SweetpadB5Mac[41939:21584871] [PreviewsAgentExecutorLibrary] Found debug dylib install name string `@rpath/SweetpadB5Mac.debug.dylib`
-2026-09-27 00:09:44.736995+0200 SweetpadB5Mac[41939:21584871] [PreviewsAgentExecutorLibrary] Looking for Previews JIT link entry point.
-2026-09-27 00:09:44.737167+0200 SweetpadB5Mac[41939:21584871] [PreviewsAgentExecutorLibrary] No Previews JIT entry point found.
-2026-09-27 00:09:44.737172+0200 SweetpadB5Mac[41939:21584871] [PreviewsAgentExecutorLibrary] Gave PreviewsInjection a chance to run and it returned, continuing with debug dylib.
-2026-09-27 00:09:44.737176+0200 SweetpadB5Mac[41939:21584871] [PreviewsAgentExecutorLibrary] Looking for main entry point.
-2026-09-27 00:09:44.737180+0200 SweetpadB5Mac[41939:21584871] [PreviewsAgentExecutorLibrary] Opening debug dylib with '@rpath/SweetpadB5Mac.debug.dylib'
-2026-09-27 00:09:44.737196+0200 SweetpadB5Mac[41939:21584871] [PreviewsAgentExecutorLibrary] Debug dylib handle: 0x39ac65aa0
-2026-09-27 00:09:44.737211+0200 SweetpadB5Mac[41939:21584871] [PreviewsAgentExecutorLibrary] No entry point found. Checking for alias.
-2026-09-27 00:09:44.737217+0200 SweetpadB5Mac[41939:21584871] [PreviewsAgentExecutorLibrary] Calling provided entry point.
-Process 41939 launched: '~/Library/Developer/Xcode/DerivedData/SweetpadCIApp-*/Build/Products/Debug/SweetpadB5Mac.app/Contents/MacOS/SweetpadB5Mac' (arm64)
-Process 41939 exited with status = 0 (0x00000000)
+2026-09-27 13:13:40.113170+0200 SweetpadB6RunMac[70991:22484803] [PreviewsAgentExecutorLibrary] Looking up debug dylib relative path
+2026-09-27 13:13:40.113438+0200 SweetpadB6RunMac[70991:22484803] [PreviewsAgentExecutorLibrary] Found debug dylib relative path string `SweetpadB6RunMac.debug.dylib`
+2026-09-27 13:13:40.113446+0200 SweetpadB6RunMac[70991:22484803] [PreviewsAgentExecutorLibrary] Looking up debug dylib entry point name
+2026-09-27 13:13:40.113450+0200 SweetpadB6RunMac[70991:22484803] [PreviewsAgentExecutorLibrary] No debug dylib entry point name defined.
+2026-09-27 13:13:40.113453+0200 SweetpadB6RunMac[70991:22484803] [PreviewsAgentExecutorLibrary] Looking up debug dylib install name
+2026-09-27 13:13:40.113456+0200 SweetpadB6RunMac[70991:22484803] [PreviewsAgentExecutorLibrary] Found debug dylib install name string `@rpath/SweetpadB6RunMac.debug.dylib`
+2026-09-27 13:13:40.113459+0200 SweetpadB6RunMac[70991:22484803] [PreviewsAgentExecutorLibrary] Looking for Previews JIT link entry point.
+2026-09-27 13:13:40.113656+0200 SweetpadB6RunMac[70991:22484803] [PreviewsAgentExecutorLibrary] No Previews JIT entry point found.
+2026-09-27 13:13:40.113662+0200 SweetpadB6RunMac[70991:22484803] [PreviewsAgentExecutorLibrary] Gave PreviewsInjection a chance to run and it returned, continuing with debug dylib.
+2026-09-27 13:13:40.113666+0200 SweetpadB6RunMac[70991:22484803] [PreviewsAgentExecutorLibrary] Looking for main entry point.
+2026-09-27 13:13:40.113671+0200 SweetpadB6RunMac[70991:22484803] [PreviewsAgentExecutorLibrary] Opening debug dylib with '@rpath/SweetpadB6RunMac.debug.dylib'
+2026-09-27 13:13:40.113689+0200 SweetpadB6RunMac[70991:22484803] [PreviewsAgentExecutorLibrary] Debug dylib handle: 0x39ac65ab0
+2026-09-27 13:13:40.113704+0200 SweetpadB6RunMac[70991:22484803] [PreviewsAgentExecutorLibrary] No entry point found. Checking for alias.
+2026-09-27 13:13:40.113708+0200 SweetpadB6RunMac[70991:22484803] [PreviewsAgentExecutorLibrary] Calling provided entry point.
+b6run launched
+Process 70991 launched: '~/Library/Developer/Xcode/DerivedData/SweetpadB6Run-*/Build/Products/Debug/SweetpadB6RunMac.app/Contents/MacOS/SweetpadB6RunMac' (arm64)
+Process 70991 exited with status = 0 (0x00000000)
 @@SWEETPAD_EXC@@
-error: unable to evaluate expression while the process is exited: the process must be stopped because the expression might require allocating memory.
+@@SWEETPAD_REASON@@
+@@SWEETPAD_BT@@
+@@SWEETPAD_END@@
