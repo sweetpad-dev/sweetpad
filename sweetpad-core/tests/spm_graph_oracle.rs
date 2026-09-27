@@ -119,6 +119,7 @@ fn a_workspace_lists_every_local_package_it_reaches() {
         eprintln!("skipping: needs the Swift toolchain to evaluate package manifests");
         return;
     }
+    common::keep_state_in_target_tmpdir();
     let ws = workspace::open(&fixture().join("Graph.xcworkspace")).unwrap();
     assert_eq!(ws.package_refs, vec![fixture().join("MultiLib")]);
     assert_eq!(ws.project_package_refs(), project_packages());
@@ -156,6 +157,7 @@ fn a_bare_project_lists_the_packages_it_declares() {
         eprintln!("skipping: needs the Swift toolchain to evaluate package manifests");
         return;
     }
+    common::keep_state_in_target_tmpdir();
     let proj = project::open(&fixture().join("project/SpmApp.xcodeproj")).unwrap();
     assert_eq!(proj.package_refs, project_packages());
 

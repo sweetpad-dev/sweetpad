@@ -328,6 +328,16 @@ pub fn pin_capture_host() {
     });
 }
 
+/// Keep the sweetpad state an in-process test reaches, like the
+/// package-members cache, in Cargo's scratch space for integration tests
+/// rather than the user's `~/.local/state/sweetpad`. Call at the top of every
+/// test that reaches it; idempotent.
+pub fn keep_state_in_target_tmpdir() {
+    sweetpad_core::paths::set_state_dir_override(
+        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("state"),
+    );
+}
+
 pub fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("SWEETPAD_LIB_DIR")).join("fixtures")
 }

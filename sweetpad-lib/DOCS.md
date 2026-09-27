@@ -156,6 +156,12 @@ another.
   `CARGO_TARGET_TMPDIR` (`SWEETPAD_CACHE_DIR` for a spawned `bsp-server`,
   `catalog_cache` for an in-process resolve) or, as a unit test, in a temp
   directory of its own.
+- `cargo test` writes nothing into the user's `~/.local/state/sweetpad`
+  either. A spawned `sweetpad` gets an `XDG_STATE_HOME` of its own. An
+  in-process test that reaches state, like the package-members cache in
+  `spm_graph_oracle`, calls `common::keep_state_in_target_tmpdir`, which pins
+  `paths::state_dir` to `CARGO_TARGET_TMPDIR`. A unit test hands the code a
+  path in a temp directory of its own.
 - After **every** capture or resolver change, re-run the full oracle suite on
   **all** captured versions — a fix for one version must not silently regress
   another.

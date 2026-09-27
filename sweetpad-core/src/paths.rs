@@ -7,6 +7,7 @@
 //! replaced the old in-project `.sweetpad/` directory.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use serde_json::Value;
 
@@ -18,9 +19,26 @@ pub fn home_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-/// `$XDG_STATE_HOME`, falling back to `$HOME/.local/state`.
+static STATE_DIR_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
+
+/// Pin [`state_dir`] to `dir` for the rest of the process, ahead of
+/// `$XDG_STATE_HOME` and `$HOME`. The first call wins.
+///
+/// For a test harness that reaches sweetpad's state in process, such as the
+/// package-members cache: setting `XDG_STATE_HOME` there would race the other
+/// tests' threads, so without this the test writes into the user's
+/// `~/.local/state/sweetpad`. A spawned child takes `XDG_STATE_HOME` instead.
+pub fn set_state_dir_override(dir: PathBuf) {
+    let _ = STATE_DIR_OVERRIDE.set(dir);
+}
+
+/// The directory [`set_state_dir_override`] pinned, else `$XDG_STATE_HOME`,
+/// else `$HOME/.local/state`.
 #[must_use]
 pub fn state_dir() -> Option<PathBuf> {
+    if let Some(dir) = STATE_DIR_OVERRIDE.get() {
+        return Some(dir.clone());
+    }
     if let Some(xdg) = std::env::var_os("XDG_STATE_HOME")
         && !xdg.is_empty()
     {
