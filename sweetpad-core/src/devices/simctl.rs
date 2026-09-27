@@ -5,7 +5,7 @@
 use std::cmp::Ordering;
 
 use serde_json::Value;
-use sweetpad_lib::destination::{PLATFORMS, Platform};
+use sweetpad_lib::destination::{DestinationSpec, PLATFORMS, Platform};
 
 /// A simulator, with its runtime parsed into a friendly OS + version.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -214,6 +214,31 @@ pub fn find<'a>(sims: &'a [Simulator], query: &str) -> Option<&'a Simulator> {
     let mut by_name: Vec<&Simulator> = sims.iter().filter(|s| s.name == query).collect();
     by_name.sort_by_key(|s| !s.is_booted());
     by_name.first().copied()
+}
+
+/// The simulator a `-destination` names by `name=`, matched the way xcodebuild
+/// matches it: the name exactly, on the destination's platform when it gives
+/// one, at its `OS=` exactly (`27` is not `27.0`), or at the newest OS for
+/// `OS=latest`. A booted simulator wins a tie. `None` when the destination has
+/// no `name=` or nothing matches. Xcode keeps a default set of devices for
+/// every runtime, so `iPhone 17` can name one simulator per installed iOS.
+#[must_use]
+pub fn find_named<'a>(sims: &'a [Simulator], spec: &DestinationSpec) -> Option<&'a Simulator> {
+    let name = spec.name.as_deref()?;
+    let mut matches: Vec<&Simulator> = sims
+        .iter()
+        .filter(|s| s.name == name && spec.platform.is_none_or(|p| s.platform() == Some(p)))
+        .collect();
+    match spec.os.as_deref() {
+        Some(os) if os.eq_ignore_ascii_case("latest") => {
+            let newest = matches.iter().map(|s| version_key(&s.os_version)).max();
+            matches.retain(|s| Some(version_key(&s.os_version)) == newest);
+        }
+        Some(os) => matches.retain(|s| s.os_version == os),
+        None => {}
+    }
+    matches.sort_by_key(|s| !s.is_booted());
+    matches.first().copied()
 }
 
 /// The pids in `ps -o pid=,comm=` output of `executable` running out of an
@@ -462,6 +487,51 @@ mod tests {
         };
         let sims = vec![sim("1", "Shutdown"), sim("2", "Booted")];
         assert_eq!(find(&sims, "Dup").unwrap().udid, "2");
+    }
+
+    /// Two runtimes' default sets both hold an `iPhone 17`; the destination's
+    /// `OS=` and platform decide which one it names, as they do for
+    /// xcodebuild.
+    #[test]
+    fn a_named_destination_honors_its_platform_and_os() {
+        let sim = |udid: &str, name: &str, os: &str, version: &str, state: &str| Simulator {
+            udid: udid.into(),
+            name: name.into(),
+            state: state.into(),
+            available: true,
+            os: os.into(),
+            os_version: version.into(),
+            ..Simulator::default()
+        };
+        let sims = vec![
+            sim("NEW", "iPhone 17", "iOS", "27.0", "Booted"),
+            sim("OLD", "iPhone 17", "iOS", "26.5", "Shutdown"),
+            sim("WATCH", "Twin", "watchOS", "27.0", "Booted"),
+            sim("PHONE", "Twin", "iOS", "27.0", "Shutdown"),
+        ];
+        let named = |destination: &str| {
+            find_named(&sims, &DestinationSpec::parse(destination)).map(|s| s.udid.as_str())
+        };
+        assert_eq!(
+            named("platform=iOS Simulator,name=iPhone 17,OS=26.5"),
+            Some("OLD")
+        );
+        assert_eq!(
+            named("platform=iOS Simulator,name=iPhone 17,OS=27.0"),
+            Some("NEW")
+        );
+        assert_eq!(
+            named("platform=iOS Simulator,name=iPhone 17,OS=latest"),
+            Some("NEW")
+        );
+        // `OS=27` names no runtime, for xcodebuild or here.
+        assert_eq!(named("platform=iOS Simulator,name=iPhone 17,OS=27"), None);
+        // Without an OS, the booted one wins.
+        assert_eq!(named("platform=iOS Simulator,name=iPhone 17"), Some("NEW"));
+        // The platform keeps a booted watch from standing in for an iPhone.
+        assert_eq!(named("platform=iOS Simulator,name=Twin"), Some("PHONE"));
+        assert_eq!(named("platform=watchOS Simulator,name=Twin"), Some("WATCH"));
+        assert_eq!(named("platform=iOS Simulator,id=NEW"), None);
     }
 
     #[test]

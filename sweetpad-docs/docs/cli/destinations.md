@@ -230,6 +230,11 @@ sweetpad build --destination 'platform=iOS,id=00008110-000559182E90401E'
 sweetpad build --destination 'platform=macOS'
 ```
 
+When `run` or another `app` command installs from a `name=` specifier, it picks the simulator the
+way xcodebuild does. The name must match exactly, on the platform the specifier gives and at its
+`OS=` when it has one. If several simulators still match, a booted one wins. Xcode keeps an
+`iPhone 16 Pro` for every iOS runtime you install, so add `OS=` when you have more than one.
+
 `--on` and `--destination` are mutually exclusive, so pick one per command. Each of them is also
 exclusive with `--mac`, and on the `app` commands with `--device` and `--device-id` too.
 

@@ -7598,24 +7598,31 @@ fn udid(destination: &str) -> Result<String, CliError> {
 
 /// The simulator a destination addresses: `id=` names it outright; a `name=`
 /// specifier — the form the config examples use, valid for xcodebuild — is
-/// resolved against `simctl list` (booted preferred, `simctl::find`'s
-/// policy), so `run` accepts every destination `build` does.
+/// resolved against `simctl list` on the destination's platform and `OS=`,
+/// booted preferred (`simctl::find_named`), so `run` installs onto the
+/// simulator `build` built for.
 fn destination_udid(destination: &str) -> Result<String, CliError> {
-    if let Ok(u) = udid(destination) {
-        return Ok(u);
+    let spec = DestinationSpec::parse(destination);
+    if let Some(id) = spec.id {
+        return Ok(id);
     }
-    let Some(name) = DestinationSpec::parse(destination).name else {
+    let Some(name) = spec.name.as_deref() else {
         return Err(CliError::new(format!(
             "app commands need a destination with an id= or name= (got {destination:?})"
         ))
         .kind(ErrorKind::TargetResolution));
     };
     let sims = simctl::list()?;
-    simctl::find(&sims, &name)
+    sweetpad_core::devices::simctl::find_named(&sims, &spec)
         .map(|s| s.udid.clone())
         .ok_or_else(|| {
+            let os = spec
+                .os
+                .as_deref()
+                .filter(|os| !os.eq_ignore_ascii_case("latest"))
+                .map_or_else(String::new, |os| format!(" on OS {os}"));
             CliError::new(format!(
-                "the destination names the simulator {name:?}, but no such simulator exists"
+                "the destination names the simulator {name:?}{os}, but no such simulator exists"
             ))
             .kind(ErrorKind::TargetResolution)
         })

@@ -1432,12 +1432,13 @@ impl ExitLog {
         if !spec.is_simulator() || spec.generic {
             return None;
         }
-        let udid = if let Some(id) = spec.id {
+        let udid = if let Some(id) = spec.id.clone() {
             id
         } else {
-            let name = spec.name?;
             let sims = simctl::list().ok()?;
-            simctl::find(&sims, &name)?.udid.clone()
+            sweetpad_core::devices::simctl::find_named(&sims, &spec)?
+                .udid
+                .clone()
         };
         Some(Self::Simulator(udid))
     }
