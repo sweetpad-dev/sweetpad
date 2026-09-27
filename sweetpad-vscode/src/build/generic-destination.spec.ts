@@ -10,6 +10,7 @@ import {
   filterDestinationsForAction,
   findDestinationForTaskInput,
 } from "../destination/utils";
+import { iOSSimulatorDestination } from "../simulators/types";
 import { getXcodeBuildDestinationString } from "./utils";
 
 describe("generic build-only destinations", () => {
@@ -111,5 +112,58 @@ describe("resolving the destination a task named", () => {
 
   it("matches nothing when the platform isn't one we offer", () => {
     expect(findDestinationForTaskInput(destinations, { destination: "generic/platform=DriverKit" })).toBeUndefined();
+  });
+});
+
+describe("resolving the simulator a task's -destination string names", () => {
+  const simulator = (udid: string, name: string, osVersion: string, state: "Booted" | "Shutdown") =>
+    new iOSSimulatorDestination({
+      udid: udid,
+      isAvailable: true,
+      state: state,
+      name: name,
+      simulatorType: "iPhone",
+      os: "iOS",
+      osVersion: osVersion,
+      rawDeviceTypeIdentifier: "com.apple.CoreSimulator.SimDeviceType.iPhone-17",
+      rawRuntime: `com.apple.CoreSimulator.SimRuntime.iOS-${osVersion.replace(".", "-")}`,
+    });
+  const older = simulator("AAAA-1111", "iPhone 17", "26.5", "Shutdown");
+  const newer = simulator("BBBB-2222", "iPhone 17", "27.0", "Booted");
+  const other = simulator("CCCC-3333", "iPhone Air", "27.0", "Shutdown");
+  const myMac = new macOSDestination({ name: "My Mac", arch: "arm64" });
+  const destinations = [myMac, older, newer, other];
+
+  it("reads the id up to its comma, past the arch Rosetta destinations add", () => {
+    // What getXcodeBuildDestinationString writes with "sweetpad.build.rosettaDestination" on.
+    const destination = "platform=iOS Simulator,id=CCCC-3333,arch=x86_64";
+
+    expect(findDestinationForTaskInput(destinations, { destination })).toBe(other);
+  });
+
+  it("finds one by name and OS, the form the task schema's example uses", () => {
+    expect(
+      findDestinationForTaskInput(destinations, { destination: "platform=iOS Simulator,name=iPhone 17,OS=26.5" }),
+    ).toBe(older);
+    // Without an OS the booted one wins the tie.
+    expect(findDestinationForTaskInput(destinations, { destination: "platform=iOS Simulator,name=iPhone 17" })).toBe(
+      newer,
+    );
+    expect(
+      findDestinationForTaskInput(destinations, { destination: "platform=iOS Simulator,name=iPhone 17,OS=latest" }),
+    ).toBe(newer);
+  });
+
+  it("matches a name only on the platform the string gives", () => {
+    expect(findDestinationForTaskInput(destinations, { destination: "platform=iOS,name=iPhone 17" })).toBeUndefined();
+    expect(
+      findDestinationForTaskInput(destinations, { destination: "platform=iOS Simulator,name=iPhone 99" }),
+    ).toBeUndefined();
+  });
+
+  it("never reads an iOS string as this Mac", () => {
+    expect(
+      findDestinationForTaskInput(destinations, { destination: "platform=iOS Simulator,name=macos-helper" }),
+    ).toBeUndefined();
   });
 });

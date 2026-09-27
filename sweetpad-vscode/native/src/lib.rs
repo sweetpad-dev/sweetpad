@@ -647,6 +647,43 @@ fn scheme_to_napi(s: scheme::Scheme) -> SchemeInfo {
     }
 }
 
+/// An `xcodebuild -destination` argument read field by field, e.g.
+/// `platform=iOS Simulator,id=<udid>,arch=x86_64`. Each field is `undefined`
+/// when the argument leaves it out.
+#[napi(object)]
+pub struct DestinationFields {
+    /// The `platform=` (or `generic/platform=`) value as written.
+    pub platform: Option<String>,
+    /// The SDK that platform builds against (`iphonesimulator`), when the
+    /// platform is a known one.
+    pub sdk: Option<String>,
+    /// `generic/platform=…`: a device-less build.
+    pub generic: bool,
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub os: Option<String>,
+    pub arch: Option<String>,
+    pub variant: Option<String>,
+}
+
+/// Read a `-destination` argument the way the CLI does. Never fails: an
+/// unknown platform just has no `sdk`.
+#[napi]
+#[must_use]
+pub fn parse_destination(destination: String) -> DestinationFields {
+    let spec = sweetpad_lib::destination::DestinationSpec::parse(&destination);
+    DestinationFields {
+        sdk: spec.sdk().map(str::to_string),
+        platform: spec.platform_label,
+        generic: spec.generic,
+        id: spec.id,
+        name: spec.name,
+        os: spec.os,
+        arch: spec.arch,
+        variant: spec.variant,
+    }
+}
+
 /// A physical device from `devicectl list devices` JSON, in either of the
 /// shapes devicectl writes. Each optional field is `undefined` when devicectl
 /// leaves it out.

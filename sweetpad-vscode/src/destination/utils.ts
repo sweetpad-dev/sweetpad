@@ -1,5 +1,7 @@
 import os from "node:os";
 
+import * as sweetpadLib from "@sweetpad/native";
+
 import { ExtensionError } from "../common/errors";
 import { assertUnreachable } from "../common/types";
 import type { DestinationPlatform } from "./constants";
@@ -108,28 +110,26 @@ export function assertDestinationSupportsAction(destination: Destination, action
  * The destination a task named, out of the ones currently known.
  *
  * A task can say `destinationId`, the deprecated `simulator`, or a raw `-destination`
- * string, and the string comes in two shapes: `generic/platform=<platform>` for a
- * device-less build, and `platform=<platform>,id=<udid>` for everything else.
+ * string. The string is read field by field, the way the CLI reads it: `generic/platform=`
+ * names a device-less build, `platform=macOS` this Mac, and anything else a simulator or
+ * device by its `id=`, else by its `name=` (and `OS=`, when given). Other fields, such as
+ * the `arch=x86_64` this extension writes when Rosetta destinations are on, don't get in
+ * the way.
  */
 export function findDestinationForTaskInput(
   destinations: Destination[],
   input: { destinationId?: string; simulator?: string; destination?: string },
 ): Destination | undefined {
-  const udidRaw = input.destinationId ?? input.simulator ?? input.destination?.match(/id=(.+)/)?.[1];
+  const spec = input.destination ? sweetpadLib.parseDestination(input.destination) : undefined;
+  const udidRaw = input.destinationId ?? input.simulator ?? spec?.id;
   const udidLower = udidRaw?.trim()?.toLowerCase();
 
-  // A device-less destination names a platform and nothing else, so it is the one shape
-  // that reads exactly. Taking it first also keeps "generic/platform=macOS" away from the
-  // substring test below, which would otherwise claim it for this Mac.
-  const genericPlatform = input.destination
-    ?.trim()
-    .match(/^generic\/platform=(.+)$/i)?.[1]
-    ?.toLowerCase();
+  // A device-less destination names a platform and nothing else, so "generic/platform=macOS"
+  // is Any Mac rather than this Mac.
+  const genericSdk = spec?.generic ? spec.sdk : undefined;
+  const isMacOS = !spec?.generic && spec?.sdk === "macosx";
 
-  // For macOS, we just check if the destination string contains "macos"
-  const isMacOS = !genericPlatform && (input.destination?.toLowerCase().includes("macos") ?? false);
-
-  return destinations.find((d) => {
+  const found = destinations.find((d) => {
     switch (d.type) {
       case "iOSSimulator":
       case "watchOSSimulator":
@@ -145,9 +145,25 @@ export function findDestinationForTaskInput(
       case "generic":
         // Build-only, so there is no udid: a task names one by its `-destination` string
         // or by its id.
-        return genericPlatform ? d.platformArg.toLowerCase() === genericPlatform : d.id === udidLower;
+        return spec?.generic ? d.platform === genericSdk : d.id === udidLower;
       default:
         assertUnreachable(d);
     }
   });
+  if (found || udidLower || !spec?.name || spec.generic || !spec.sdk) {
+    return found;
+  }
+
+  // `platform=iOS Simulator,name=iPhone 17,OS=26.5` names one by name, on the platform the
+  // string gives. A booted simulator wins a tie, as it does for xcodebuild.
+  const osVersion = spec.os && spec.os.toLowerCase() !== "latest" ? spec.os : undefined;
+  const named = destinations.filter(
+    (d): d is RunnableDestination =>
+      d.type !== "generic" &&
+      d.type !== "macOS" &&
+      d.platform === spec.sdk &&
+      d.name === spec.name &&
+      (osVersion === undefined || d.osVersion === osVersion),
+  );
+  return named.find((d) => "isBooted" in d && d.isBooted) ?? named[0];
 }
