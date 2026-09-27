@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 
 import type { BuildManager } from "../build/manager";
 import { askConfigurationBase } from "../common/askers";
-import { type XcodeBuildSettings, getSchemes, getTargets } from "../common/cli/scripts";
+import { getSchemes, getTargets } from "../common/cli/scripts";
 import { getWorkspaceConfig } from "../common/config";
 import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 import type { DestinationPlatform } from "../destination/constants";
@@ -98,11 +98,9 @@ export async function askConfigurationForTesting(
  */
 export async function askDestinationToTestOn(
   destinationsManager: DestinationsManager,
-  buildSettings: XcodeBuildSettings | null,
+  /** The platforms the scheme builds for; the others go under "Other". Undefined filters nothing. */
+  supportedPlatforms: DestinationPlatform[] | undefined,
 ): Promise<Destination> {
-  // We can remove platforms that are not supported by the project
-  const supportedPlatforms = buildSettings?.supportedPlatforms;
-
   const destinations = await destinationsManager.getDestinations({
     mostUsedSort: true,
   });

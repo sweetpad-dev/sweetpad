@@ -3,7 +3,8 @@
 //! This crate holds the orchestration shared by both frontends (the `sweetpad`
 //! CLI and the VS Code extension's N-API addon): build-settings and
 //! compiler-argument resolution ([`build_settings`], [`build_context`]), finding
-//! the app a build produced ([`app_locator`]), local SwiftPM package discovery
+//! the app a build produced ([`app_locator`]) and the platforms a scheme builds
+//! for ([`supported_platforms`]), local SwiftPM package discovery
 //! ([`package_members`]), and the Build Server Protocol server ([`bsp`]). It
 //! depends on `sweetpad-lib` for the file-format primitives and adds nothing
 //! frontend-specific.
@@ -16,4 +17,5 @@ pub mod framing;
 pub mod package_members;
 pub mod paths;
 pub mod scratch;
+pub mod supported_platforms;
 pub mod xcodebuild_args;

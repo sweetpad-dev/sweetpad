@@ -261,8 +261,9 @@ fn archive_destination(
         // Without an explicit target, follow what the scheme actually builds
         // for — a mac-only project archived as `generic/platform=iOS` just
         // fails inside xcodebuild. Mirrors the build path's auto-targeting.
-        let mac_only = resolve::SupportedPlatforms::resolve(resolved, scheme, configuration)
-            .is_some_and(|p| p.is_mac_only());
+        let mac_only =
+            resolve::SupportedPlatforms::resolve(resolved.container.path(), scheme, configuration)
+                .is_some_and(|p| p.is_mac_only());
         return Ok(if mac_only {
             "generic/platform=macOS".to_string()
         } else {

@@ -13,7 +13,8 @@ Open the folder containing your Xcode project, then open the SweetPad sidebar on
 **Build** section, and click ▶️ next to the scheme name. SweetPad asks you to pick a simulator or device, then builds
 and launches the app on it.
 
-When a scheme builds more than one app, SweetPad launches the one the scheme's Run action names, as Xcode does.
+The destination picker lists the destinations the scheme can run on first, under **Supported platforms**. When a
+scheme builds more than one app, SweetPad launches the one the scheme's Run action names, as Xcode does.
 
 For prettier build output, install `xcbeautify`:
 

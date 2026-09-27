@@ -232,11 +232,13 @@ pub struct BuildSettingsOptions {
     pub scheme: Option<String>,
     pub target: Option<String>,
     pub configuration: String,
-    /// SDK to bind conditionals to. Defaults to `macosx`. Ignored when
-    /// `destination` is set (the destination's platform wins).
+    /// SDK to bind conditionals to. Omitted, each target resolves under the
+    /// SDK its own `SDKROOT` names, as a plain `xcodebuild
+    /// -showBuildSettings` does. Ignored when `destination` is set (the
+    /// destination's platform wins).
     pub sdk: Option<String>,
-    /// Arch to bind conditionals to. Defaults to `arm64`. Ignored when
-    /// `destination` is set.
+    /// Arch to bind conditionals to. Omitted, the resolver's default, as for
+    /// the CLI. Ignored when `destination` is set.
     pub arch: Option<String>,
     /// `xcodebuild -destination` string, e.g. `platform=iOS Simulator,id=…`.
     pub destination: Option<String>,
@@ -299,8 +301,8 @@ fn core_options(
             .map(|picked| last("-scheme").unwrap_or(picked)),
         target: options.target,
         configuration: last("-configuration").unwrap_or(options.configuration),
-        sdk: options.sdk.unwrap_or_else(|| "macosx".into()),
-        arch: options.arch.unwrap_or_else(|| "arm64".into()),
+        sdk: options.sdk.unwrap_or_default(),
+        arch: options.arch.unwrap_or_default(),
         destination,
         xcconfig: command_line
             .xcconfig
@@ -416,6 +418,27 @@ pub fn pick_app(options: PickAppOptions) -> napi::Result<LocatedApp> {
     )
     .map(located_to_napi)
     .map_err(to_napi_err)
+}
+
+/// The platforms (`SUPPORTED_PLATFORMS` tokens, `iphonesimulator`) the
+/// scheme's targets build for under `configuration`, read from the targets'
+/// authored settings the way the CLI's destination picker reads them. `null`
+/// when that can't be told (a Swift package, an unreadable project, targets
+/// that author neither `SUPPORTED_PLATFORMS` nor `SDKROOT`): offer every
+/// destination then.
+#[napi]
+#[must_use]
+pub fn supported_platforms(
+    container: String,
+    scheme: String,
+    configuration: String,
+) -> Option<Vec<String>> {
+    sweetpad_core::supported_platforms::SupportedPlatforms::resolve(
+        Path::new(&container),
+        &scheme,
+        &configuration,
+    )
+    .map(|p| p.tokens().map(str::to_string).collect())
 }
 
 /// One generated tool invocation: the tool, its argv, and the input files it

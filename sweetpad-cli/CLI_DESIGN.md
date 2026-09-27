@@ -3758,6 +3758,21 @@ so the locator returns it, marked as a tool, when a scheme builds no app and
 the destination is the Mac. The CLI's `app` verbs install and launch bundles,
 so they still refuse it.
 
+### The extension's destination picker filters like the CLI's
+
+The extension split its destination list into supported and other platforms
+by the `SUPPORTED_PLATFORMS` it resolved with no destination, and the addon
+bound such a resolution to `macosx` and `arm64`. An iOS app that authors only
+`SDKROOT = iphoneos`, as Xcode's and XcodeGen's templates do, resolved to
+`macosx`. The picker then listed My Mac as the only supported destination and
+put every iPhone simulator under "Other". A scheme with more than one target
+got no split at all. The picker now reads the CLI's `SupportedPlatforms`,
+moved to sweetpad-core and exposed as `supportedPlatforms`. It unions the
+scheme's targets' authored `SUPPORTED_PLATFORMS`, or the platforms their
+`SDKROOT` implies. The addon no longer defaults a resolution's SDK and arch.
+With neither an SDK nor a destination, each target resolves under its own
+`SDKROOT`, as `xcodebuild -showBuildSettings` and `settings show` resolve it.
+
 ## 9t. v8 — `feedback`: an agent's problem report to the maintainer
 
 The agents that drive sweetpad hit its bugs first: a tip that doesn't work, a

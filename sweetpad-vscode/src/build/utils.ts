@@ -16,7 +16,7 @@ import {
   findSchemeFile,
   generateBuildServerConfig,
   generateSweetpadBuildServerConfig,
-  getBuildSettingsToAskDestination,
+  getSupportedPlatforms,
   getIsXBSInstalled,
   getSchemes,
   SWEETPAD_CLI_MISSING_MESSAGE,
@@ -130,16 +130,12 @@ export async function askDestinationToRunOn(
     }
   }
 
-  // We can remove platforms that are not supported by the build settings
-  // WARNING: if want to avoid refetching build settings, move this logic to build manager or build context (not exist yet)
-  const buildSettings = await getBuildSettingsToAskDestination({
-    workspaceRoot: options.workspaceRoot,
+  // Destinations the scheme can't run on go under "Other".
+  const supportedPlatforms = getSupportedPlatforms({
     scheme: options.scheme,
     configuration: options.configuration,
-    sdk: options.sdk,
     xcworkspace: options.xcworkspace,
   });
-  const supportedPlatforms = buildSettings?.supportedPlatforms;
 
   // The picker records the choice, so a setting pinning a destination that no longer
   // exists is rewritten with this pick instead of re-prompting on every build.

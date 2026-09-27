@@ -67,7 +67,6 @@ const LAUNCH_SETTINGS_KEYS = [
   "PRODUCT_BUNDLE_IDENTIFIER",
   "ENABLE_DEBUG_DYLIB",
   "TARGET_BUILD_DIR",
-  "SUPPORTED_PLATFORMS",
 ];
 
 export function parseCliJsonOutput<T>(output: string): T {
@@ -207,17 +206,6 @@ export class XcodeBuildSettings {
     // Xcode 15+ Debug Dylib Support: when YES, app code is loaded from
     // <EXECUTABLE>.debug.dylib instead of the main binary.
     return this.settings.ENABLE_DEBUG_DYLIB === "YES";
-  }
-
-  get supportedPlatforms(): DestinationPlatform[] | undefined {
-    // ex: ["iphonesimulator", "iphoneos"]
-    const platformsRaw = this.settings.SUPPORTED_PLATFORMS; // ex: "iphonesimulator iphoneos"
-    if (!platformsRaw) {
-      return undefined;
-    }
-    return platformsRaw.split(" ").map((platform) => {
-      return platform as DestinationPlatform;
-    });
   }
 }
 
@@ -513,34 +501,25 @@ export function isXcodeBuildCommandCustomized(): boolean {
 }
 
 /**
- * Extract build settings for the given scheme and configuration to suggest the destination
- * for the user to select
+ * The platforms the scheme's targets build for, to split the destination picker into supported and other
+ * destinations. Read from the targets' authored `SUPPORTED_PLATFORMS` / `SDKROOT` by the CLI's own filter
+ * (sweetpad-core's `SupportedPlatforms`), since resolving settings with no destination would bind a default
+ * platform instead. Undefined, which filters nothing, when that can't be told: a Swift package, an unreadable
+ * project, targets that author neither setting.
  */
-export async function getBuildSettingsToAskDestination(options: {
-  workspaceRoot: string;
+export function getSupportedPlatforms(options: {
   scheme: string;
   configuration: string;
-  sdk: string | undefined;
   xcworkspace: string;
-}): Promise<XcodeBuildSettings | null> {
+}): DestinationPlatform[] | undefined {
   try {
-    // Only `supportedPlatforms` is read here, so project to the launch keys.
-    const settings = await getBuildSettingsList({ ...options, keys: LAUNCH_SETTINGS_KEYS });
-
-    if (settings.length === 0) {
-      return null;
-    }
-    if (settings.length === 1) {
-      return settings[0];
-    }
-    // To ask destination, we might omit the build settings, since they are needed only to
-    // to suggest the destination and nothing bad will happen if we don't have them here
-    return null;
+    const platforms = sweetpadLib.supportedPlatforms(options.xcworkspace, options.scheme, options.configuration);
+    return platforms === null ? undefined : (platforms as DestinationPlatform[]);
   } catch (e) {
-    commonLogger.error("Error getting build settings", {
+    commonLogger.error("Error reading the scheme's supported platforms", {
       error: e,
     });
-    return null;
+    return undefined;
   }
 }
 

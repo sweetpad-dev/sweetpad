@@ -12,6 +12,7 @@ import { getShellDeveloperDir } from "../tasks/shell-env";
 import {
   getBuildSettingsList,
   getSimulatorAppPath,
+  getSupportedPlatforms,
   getXcodeBuildCommand,
   locateBuiltApp,
   packageSchemes,
@@ -25,6 +26,7 @@ vi.mock("@sweetpad/native", async (importOriginal) => ({
   buildSettings: vi.fn(),
   locateApp: vi.fn(),
   pickApp: vi.fn(),
+  supportedPlatforms: vi.fn(),
 }));
 
 const mockGetConfiguration = vscode.workspace.getConfiguration as Mock;
@@ -33,6 +35,7 @@ const mockGetShellDeveloperDir = getShellDeveloperDir as Mock;
 const mockBuildSettings = sweetpadLib.buildSettings as Mock;
 const mockLocateApp = sweetpadLib.locateApp as Mock;
 const mockPickApp = sweetpadLib.pickApp as Mock;
+const mockSupportedPlatforms = sweetpadLib.supportedPlatforms as Mock;
 
 /** `getWorkspaceConfig` reads `getConfiguration("sweetpad").get(key)`. */
 function mockConfig(values: Record<string, unknown>) {
@@ -464,6 +467,35 @@ describe("locateBuiltApp", () => {
     expect(mockLocateApp).not.toHaveBeenCalled();
     expect(mockPickApp).not.toHaveBeenCalled();
     expect(app.executablePath).toBe("/dd/Debug/Tool");
+  });
+});
+
+describe("getSupportedPlatforms", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("reads the scheme's platforms through the CLI's filter", () => {
+    mockSupportedPlatforms.mockReturnValue(["iphoneos", "iphonesimulator"]);
+
+    expect(
+      getSupportedPlatforms({ scheme: "App", configuration: "Debug", xcworkspace: "/proj/App.xcodeproj" }),
+    ).toEqual(["iphoneos", "iphonesimulator"]);
+    expect(mockSupportedPlatforms).toHaveBeenCalledWith("/proj/App.xcodeproj", "App", "Debug");
+  });
+
+  it("filters nothing when the platforms can't be told", () => {
+    mockSupportedPlatforms.mockReturnValue(null);
+    expect(
+      getSupportedPlatforms({ scheme: "App", configuration: "Debug", xcworkspace: "/proj/Package.swift" }),
+    ).toBeUndefined();
+
+    mockSupportedPlatforms.mockImplementation(() => {
+      throw new Error("unreadable project");
+    });
+    expect(
+      getSupportedPlatforms({ scheme: "App", configuration: "Debug", xcworkspace: "/proj/App.xcodeproj" }),
+    ).toBeUndefined();
   });
 });
 
