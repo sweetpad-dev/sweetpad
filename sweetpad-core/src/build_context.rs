@@ -1299,10 +1299,12 @@ mod tests {
     /// one from a directory reached that way. All six reported `PROJECT_DIR =
     /// /tmp/…/app`, and with `SYMROOT=build` on the command line, `SYMROOT =
     /// BUILD_DIR = /tmp/…/app/build`. A symlinked checkout under `/Users`
-    /// reported its real directory. A `-derivedDataPath` loses the `/private`
-    /// and keeps the symlink: `/private/tmp/…/link/dd` reported `BUILD_DIR =
-    /// /tmp/…/link/dd/Build/Products`. The scratch project here sits under
-    /// `$TMPDIR`, which `/var` reaches the way `/tmp` reaches `/private/tmp`.
+    /// reported its real directory. A `-derivedDataPath` loses the `/private`,
+    /// and keeps the symlink until the directory exists: `/private/tmp/…/link/dd`
+    /// reported `BUILD_DIR = /tmp/…/link/dd/Build/Products`, and `/tmp/…/app/dd/
+    /// Build/Products` once a run had created it. The scratch project here sits
+    /// under `$TMPDIR`, which `/var` reaches the way `/tmp` reaches
+    /// `/private/tmp`.
     #[test]
     fn project_paths_take_the_spelling_xcodebuild_prints() {
         let root = ScratchDir::new("sweetpad-bc-spelling").unwrap();
@@ -1366,6 +1368,13 @@ mod tests {
                 opened.display()
             );
         }
+
+        std::fs::create_dir(real.join("dd")).unwrap();
+        let ctx = BuildContext::open(&private.join("link/Scratch.xcodeproj")).unwrap();
+        let moved = ctx
+            .resolve(&query.with_derived_data_path(private.join("link/dd")))
+            .unwrap();
+        assert_eq!(get(&moved, "BUILD_DIR"), format!("{dir}/dd/Build/Products"));
     }
 
     /// The DerivedData container hash uses the *standardized* project path —

@@ -3503,9 +3503,19 @@ real directory. That is the standardized path DerivedData is hashed over
 read against them follows. It used the canonical path, so `settings show`
 printed `/private/tmp/…` for a project under `/tmp`.
 
-A `-derivedDataPath` loses only the `/private`. `/private/tmp/…/link/dd`
-printed `BUILD_DIR = /tmp/…/link/dd/Build/Products`, symlink kept, and the
-resolver spells it that way too. A setting given an absolute path keeps its
+A `-derivedDataPath` always loses the `/private`, and whether it keeps its
+symlinks depends on whether the directory exists. `/private/tmp/…/link/dd`
+printed `BUILD_DIR = /tmp/…/link/dd/Build/Products`, symlink kept. Once that
+run had created the directory, the same command printed
+`/tmp/…/app/dd/Build/Products`. A path that doesn't exist has `..` collapsed
+as written: `…/link/../dd` printed `…/dd`. The resolver follows both
+(`derived_data_spelling`). A relative one is read against the physical
+directory `xcodebuild` runs in. With the project opened through `link` and
+`xcodebuild` run there, `dd` printed `/tmp/…/app/dd` and `../dd` printed the
+directory beside `app`, before and after either existed. The CLI joins a
+relative path onto the standardized project directory for that reason.
+Joined onto `link` as spelled, `settings show` printed `…/link/dd`, and put
+`../dd` beside `link` instead. A setting given an absolute path keeps its
 spelling: `SYMROOT=/private/tmp/…/sym` printed as typed. The BSP server's
 source lists stay on the canonical project directory, and it compares
 spellings when it matches a file, so the index finds a file either way. The

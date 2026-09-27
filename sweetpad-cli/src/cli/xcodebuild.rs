@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use sweetpad_core::build_settings::{BuildSettingsOptions, resolve_build_settings};
 use sweetpad_core::xcodebuild_args::{VALUE_FLAGS, dangling_flag, last_value};
+use sweetpad_lib::project::{absolutize, standardize};
 
 use crate::cli::output::Output;
 use crate::cli::resolve::Container;
@@ -2148,12 +2149,20 @@ const TEST_ONLY_FLAGS: [&str; 5] = [
 /// `xcodebuild` running there reads it. A `-derivedDataPath build/dd` typed
 /// in a nested source directory names a directory beside the project, not
 /// below the caller.
+///
+/// `xcodebuild` knows the directory it runs in by its physical path, so a
+/// relative path joins that directory's [`standardize`] spelling. For a
+/// project reached through a symlinked `link`, `xcodebuild` reports
+/// `-derivedDataPath dd` as `real/dd` and `../dd` as the real directory's
+/// sibling.
 fn passthrough_path(passthrough: &[String], flag: &str, container: &Container) -> Option<PathBuf> {
     let path = PathBuf::from(last_value(passthrough, flag)?);
-    Some(match working_dir(container) {
-        Some(base) if path.is_relative() => base.join(path),
-        _ => path,
-    })
+    if path.is_absolute() {
+        return Some(path);
+    }
+    // No working directory runs `xcodebuild` in the caller's.
+    let base = working_dir(container).unwrap_or_else(|| PathBuf::from("."));
+    Some(absolutize(&standardize(&base).join(path)))
 }
 
 /// What a passthrough adds to the build settings `xcodebuild` resolves, above
@@ -3174,8 +3183,35 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         );
         // A project named relative to the cwd runs xcodebuild in the cwd.
         let here = Container::Project(PathBuf::from("App.xcodeproj"));
-        assert_eq!(dd(&args("dd"), &here), Some(PathBuf::from("dd")));
+        assert_eq!(
+            dd(&args("dd"), &here),
+            Some(standardize(Path::new(".")).join("dd"))
+        );
         assert_eq!(dd(&[], &nested), None);
+    }
+
+    /// `xcodebuild` reads a relative path against the physical directory it
+    /// runs in. Measured on Xcode 27 from a `link` symlinked to `real/app`,
+    /// with `-project` relative and absolute through `link`:
+    /// `-derivedDataPath dd` reported `BUILD_DIR = …/real/app/dd/Build/Products`,
+    /// and `../dd` reported `…/real/dd/Build/Products`.
+    #[test]
+    fn a_relative_path_joins_the_real_directory_of_a_symlinked_project() {
+        let root = sweetpad_core::scratch::ScratchDir::new("sweetpad-cli-dd-link").unwrap();
+        std::fs::create_dir_all(root.join("real/app")).unwrap();
+        std::os::unix::fs::symlink(root.join("real/app"), root.join("link")).unwrap();
+        let container = Container::Project(root.join("link/App.xcodeproj"));
+        let read = |dir: &str| {
+            let args = vec!["-derivedDataPath".to_string(), dir.to_string()];
+            CommandLineSettings::of(&args, &container).derived_data_path
+        };
+        let physical = standardize(&root.join("real"));
+        assert_eq!(read("dd"), Some(physical.join("app/dd")));
+        assert_eq!(read("../dd"), Some(physical.join("dd")));
+        assert_eq!(
+            read(&root.join("link/dd").display().to_string()),
+            Some(root.join("link/dd"))
+        );
     }
 
     /// Every build-settings caller reads the build's `-derivedDataPath`,

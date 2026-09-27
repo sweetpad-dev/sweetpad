@@ -88,8 +88,9 @@ pub fn resolve(
         WorkspaceSettings::default()
     };
     // `xcodebuild` reports a `-derivedDataPath` under `/private/tmp` as
-    // `/tmp/…`, the way it spells the project.
-    let derived_data_flag = derived_data_flag.map(crate::project::without_private_root);
+    // `/tmp/…`, the way it spells the project, with its symlinks resolved once
+    // the directory exists.
+    let derived_data_flag = derived_data_flag.map(crate::project::derived_data_spelling);
     apply(
         &settings,
         container,

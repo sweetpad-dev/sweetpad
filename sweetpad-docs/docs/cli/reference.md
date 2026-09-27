@@ -124,7 +124,8 @@ sweetpad app install -- -derivedDataPath /tmp/dd   # builds and installs from /t
 ```
 
 A relative path is taken from the project's directory, because that's where SweetPad runs
-`xcodebuild`. `app launch` builds nothing and has no tail, so it takes the same location as a flag:
+`xcodebuild`. For a project reached through a symlink, `xcodebuild` sees the directory the link points to, so `../dd`
+lands beside the real project. `app launch` builds nothing and has no tail, so it takes the same location as a flag:
 
 ```bash
 sweetpad build --on mac -- -derivedDataPath build/dd

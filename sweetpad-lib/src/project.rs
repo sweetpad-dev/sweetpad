@@ -1511,12 +1511,26 @@ pub fn standardize(path: &Path) -> PathBuf {
     }
 }
 
-/// Xcode's spelling of a `-derivedDataPath`: a leading `/private` dropped
-/// when the directory after it is one of the root symlinks into `/private`
-/// (`/tmp`, `/var`, `/etc`), and nothing else touched. Unlike [`standardize`],
-/// a symlink further down stays, and the path need not exist yet:
+/// Xcode's spelling of a `-derivedDataPath`, which depends on whether the
+/// directory exists. One that does takes [`standardize`]'s spelling, symlinks
+/// resolved. One that doesn't keeps its symlinks, has `.` and `..` collapsed,
+/// and loses only a leading `/private` ([`without_private_root`]). On Xcode 27,
 /// `xcodebuild -showBuildSettings -derivedDataPath /private/tmp/x/link/dd`
-/// reports `BUILD_DIR = /tmp/x/link/dd/Build/Products`.
+/// reported `BUILD_DIR = /tmp/x/link/dd/Build/Products` the first time, and
+/// `/tmp/x/real/dd/Build/Products` once that run had created the directory.
+#[must_use]
+pub fn derived_data_spelling(path: &Path) -> PathBuf {
+    if fs::canonicalize(path).is_ok() {
+        standardize(path)
+    } else {
+        without_private_root(&absolutize(path))
+    }
+}
+
+/// A leading `/private` dropped from `path` when the directory after it is one
+/// of the root symlinks into `/private` (`/tmp`, `/var`, `/etc`), and nothing
+/// else touched. Unlike [`standardize`], a symlink further down stays, and the
+/// path need not exist.
 #[must_use]
 pub fn without_private_root(path: &Path) -> PathBuf {
     let Ok(rest) = path.strip_prefix("/private") else {
@@ -5817,6 +5831,34 @@ mod tests {
                 "{given}"
             );
         }
+    }
+
+    /// A `-derivedDataPath` keeps a symlink in it until the directory exists,
+    /// and is spelled through the real directory once it does, as
+    /// `xcodebuild -showBuildSettings` spells it before and after the run that
+    /// creates it.
+    #[test]
+    fn a_derived_data_path_resolves_its_symlinks_once_it_exists() {
+        let root =
+            std::env::temp_dir().join(format!("sweetpad-dd-spelling-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("real")).unwrap();
+        std::os::unix::fs::symlink(root.join("real"), root.join("link")).unwrap();
+        let spelled = |path: &Path| without_private_root(path);
+
+        let through_link = root.join("link/dd");
+        assert_eq!(derived_data_spelling(&through_link), spelled(&through_link));
+        assert_eq!(
+            derived_data_spelling(&root.join("link/../dd")),
+            spelled(&root.join("dd"))
+        );
+
+        fs::create_dir(root.join("real/dd")).unwrap();
+        assert_eq!(
+            derived_data_spelling(&through_link),
+            standardize(&root.join("real/dd"))
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 
     /// `normalize_stub_workspace` is pure-lexical (no filesystem), so pin it
