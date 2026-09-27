@@ -65,9 +65,9 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::time::UNIX_EPOCH;
 
 use serde_json::Value;
@@ -446,6 +446,19 @@ pub fn target_pairs(members: &[PackageMember]) -> Vec<(PathBuf, Vec<String>)> {
 /// Run `swift package dump-package` in `dir` and parse its JSON. `None` on any
 /// failure (no toolchain, manifest doesn't compile, unexpected output) — the
 /// caller degrades to the names it can read from files.
+fn dump_package(dir: &Path, developer_dir: Option<&Path>) -> Option<Value> {
+    let output = run_dump_package(dir, developer_dir, Stdio::null()).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    // Skip any leading non-JSON chatter, like the CLI's other JSON readers.
+    let start = text.find('{')?;
+    serde_json::from_str(&text[start..]).ok()
+}
+
+/// Run `swift package dump-package` for the package in `dir`, its stderr sent
+/// to `stderr`, and return what it printed.
 ///
 /// SwiftPM creates its scratch directory even to only evaluate a manifest, so
 /// the dump gets a throwaway one: reading a package never leaves a `.build/`
@@ -458,31 +471,30 @@ pub fn target_pairs(members: &[PackageMember]) -> Vec<(PathBuf, Vec<String>)> {
 /// lock files for the shared manifest cache there too, so a dump does not
 /// take the lock other SwiftPM processes hold; the cache is SQLite, which
 /// serializes the writes itself.
-fn dump_package(dir: &Path, developer_dir: Option<&Path>) -> Option<Value> {
+///
+/// # Errors
+///
+/// When the scratch directory cannot be made or `swift` cannot be spawned.
+/// A dump that runs and fails is an `Ok` with a failed status.
+pub fn run_dump_package(
+    dir: &Path,
+    developer_dir: Option<&Path>,
+    stderr: Stdio,
+) -> io::Result<Output> {
     // `resolve` runs a level's dumps concurrently; each gets its own.
-    let scratch = ScratchDir::new("sweetpad-dump-package").ok()?;
+    let scratch = ScratchDir::new("sweetpad-dump-package")?;
     let mut cmd = Command::new("swift");
     if let Some(dev) = developer_dir {
         cmd.env("DEVELOPER_DIR", dev);
     }
-    let output = cmd
-        .env("TMPDIR", scratch.as_os_str())
+    cmd.env("TMPDIR", scratch.as_os_str())
         .args(["package", "--scratch-path"])
         .arg(scratch.join("build"))
         .arg("dump-package")
         .current_dir(dir)
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output();
-    drop(scratch);
-    let output = output.ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    // Skip any leading non-JSON chatter, like the CLI's other JSON readers.
-    let start = text.find('{')?;
-    serde_json::from_str(&text[start..]).ok()
+        .stderr(stderr)
+        .output()
 }
 
 fn read_manifest(manifest: &Value) -> ManifestNames {

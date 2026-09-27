@@ -451,7 +451,9 @@ pub fn spawn_group_inherit(
     cmd.spawn().map_err(|e| spawn_error(program, &e))
 }
 
-fn spawn_error(program: &str, e: &std::io::Error) -> CliError {
+/// The error for a `program` that could not be spawned. A missing tool names
+/// what provides it.
+pub(crate) fn spawn_error(program: &str, e: &std::io::Error) -> CliError {
     if e.kind() == std::io::ErrorKind::NotFound {
         let hint = match program {
             "xcrun" | "xcodebuild" | "xcode-select" | "swift" | "simctl" => {

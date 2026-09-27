@@ -257,22 +257,28 @@ pub fn package_dir(container: &Container) -> Option<PathBuf> {
 /// Evaluate `Package.swift` and decode its manifest model. Runs `swift` from the
 /// package root; stderr (e.g. fetch progress) is inherited, stdout is the JSON.
 pub fn manifest(container: &Container) -> Result<Manifest, CliError> {
-    let cwd = package_dir(container);
-    let stdout = process::capture("swift", &["package", "dump-package"], cwd.as_deref())?;
-    parse_manifest(&stdout)
+    let dir = package_dir(container).unwrap_or_else(|| PathBuf::from("."));
+    manifest_at(&dir)
 }
 
 /// Evaluate the `Package.swift` at an explicit directory — e.g. a resolved
 /// dependency checkout, so `dependency add` can read the package's real products
-/// before linking them. Mirrors [`manifest`] but with `--package-path`.
+/// before linking them.
+///
+/// The dump runs with a throwaway scratch path and `TMPDIR`
+/// ([`sweetpad_core::package_members::run_dump_package`]), so reading a package
+/// leaves no `.build/` in it and nothing in the user's `$TMPDIR`.
 pub fn manifest_at(package_path: &Path) -> Result<Manifest, CliError> {
-    let path = package_path.to_string_lossy();
-    let stdout = process::capture(
-        "swift",
-        &["package", "dump-package", "--package-path", &path],
-        None,
-    )?;
-    parse_manifest(&stdout)
+    let output =
+        sweetpad_core::package_members::run_dump_package(package_path, None, Stdio::inherit())
+            .map_err(|e| process::spawn_error("swift", &e))?;
+    if !output.status.success() {
+        return Err(CliError::new(format!(
+            "swift package dump-package exited with {}",
+            output.status
+        )));
+    }
+    parse_manifest(&String::from_utf8_lossy(&output.stdout))
 }
 
 /// `swift package add-dependency <dependency> …` (Swift 6+). `requirement` is

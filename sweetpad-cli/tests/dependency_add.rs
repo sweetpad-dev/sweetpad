@@ -250,8 +250,10 @@ fn an_interactive_local_add_picks_from_the_packages_manifest() {
             "#!/bin/sh\n\
              case \"$*\" in\n\
              --version) echo 'Apple Swift version 6.4' ;;\n\
-             'package dump-package --package-path ../Dep') echo '{dep_dump}' ;;\n\
-             'package dump-package') echo '{app_dump}' ;;\n\
+             *' dump-package') case $(basename \"$(/bin/pwd)\") in\n\
+             Dep) echo '{dep_dump}' ;;\n\
+             *) echo '{app_dump}' ;;\n\
+             esac ;;\n\
              *) echo \"$*\" >> '{}' ;;\n\
              esac\n",
             log.display()
@@ -300,8 +302,10 @@ fn an_interactive_add_of_a_package_with_no_products_says_so() {
             "#!/bin/sh\n\
              case \"$*\" in\n\
              --version) echo 'Apple Swift version 6.4' ;;\n\
-             'package dump-package --package-path ../Empty') echo '{empty_dump}' ;;\n\
-             'package dump-package') echo '{app_dump}' ;;\n\
+             *' dump-package') case $(basename \"$(/bin/pwd)\") in\n\
+             Empty) echo '{empty_dump}' ;;\n\
+             *) echo '{app_dump}' ;;\n\
+             esac ;;\n\
              esac\n"
         ),
     )

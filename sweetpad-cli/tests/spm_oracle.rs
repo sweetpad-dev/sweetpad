@@ -15,10 +15,13 @@
 //!   `xcodebuild -list -json` against the sample package in real time and
 //!   compare. Requires macOS + Xcode + the Swift toolchain.
 
+mod common;
+
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use common::TempDir;
 use sweetpad_cli::cli::resolve::Container;
 use sweetpad_cli::cli::swiftpm::{self, Manifest};
 
@@ -207,4 +210,58 @@ fn live_schemes_match_xcodebuild() {
         ours, theirs,
         "live SPM scheme mismatch: ours={ours:?} xcodebuild={theirs:?}"
     );
+}
+
+/// Reading a package's manifest leaves nothing behind. `swift package
+/// dump-package` makes a `.build/` in the package, and the manifest compile a
+/// `TemporaryDirectory.*` and a lock file in `$TMPDIR`, unless it runs with a
+/// scratch path and `TMPDIR` of its own.
+#[test]
+fn reading_a_manifest_leaves_nothing_behind() {
+    let root = TempDir::new("sweetpad-spm-manifest");
+    let probe = root.join("probe-tmp");
+    std::fs::create_dir_all(&probe).unwrap();
+    let have_swift = Command::new("swift")
+        .arg("--version")
+        .env("TMPDIR", &probe)
+        .output()
+        .is_ok_and(|out| out.status.success());
+    if !have_swift {
+        eprintln!("skipping: needs the Swift toolchain to evaluate a manifest");
+        return;
+    }
+    let package = root.join("Dumped");
+    let temp = root.join("tmp");
+    std::fs::create_dir_all(package.join(".git")).unwrap();
+    std::fs::create_dir_all(&temp).unwrap();
+    std::fs::write(
+        package.join("Package.swift"),
+        "// swift-tools-version:5.9\nimport PackageDescription\n\
+         let package = Package(name: \"Dumped\")\n",
+    )
+    .unwrap();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_sweetpad"))
+        .args(["project", "info", "--json"])
+        .current_dir(&package)
+        .env("XDG_STATE_HOME", &root)
+        .env("XDG_CONFIG_HOME", &root)
+        .env("XDG_CACHE_HOME", &root)
+        .env("TMPDIR", &temp)
+        .output()
+        .expect("failed to run the sweetpad binary");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let info: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(info["data"]["name"], "Dumped", "{info}");
+
+    assert!(!package.join(".build").exists(), "a .build/ in the package");
+    let left: Vec<_> = std::fs::read_dir(&temp)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert!(left.is_empty(), "left in TMPDIR: {left:?}");
 }
