@@ -23,6 +23,7 @@
 use std::path::Path;
 
 use crate::pbxproj::{Dict, Value};
+use crate::project::Parents;
 
 /// The objects a `PBXBuildFile` can point at. Variant and version groups stand
 /// in for a file the way a plain reference does.
@@ -65,6 +66,7 @@ fn ref_kind_of(isa: &str) -> RefKind {
 pub fn classic_members(root: &Value, target: &str) -> Result<Vec<FileEntry>, String> {
     let objects = objects(root).ok_or("pbxproj has no objects dict")?;
     let target_guid = find_target_guid(objects, target)?;
+    let parents = Parents::of(objects);
     let mut entries = Vec::new();
     for (phase, build_file_guids) in phases_of(objects, &target_guid) {
         for bf_guid in build_file_guids {
@@ -77,7 +79,7 @@ pub fn classic_members(root: &Value, target: &str) -> Result<Vec<FileEntry>, Str
             };
             let kind = ref_kind_of(objects.get(file_ref).map_or("", isa));
             entries.push(FileEntry {
-                path: node_path(objects, file_ref),
+                path: node_path(&parents, file_ref),
                 phase: phase.clone(),
                 kind,
                 compiler_flags: build_file
@@ -270,7 +272,7 @@ fn ref_path_in(objects: &Dict, id: &str) -> Result<String, String> {
     if !REF_ISAS.contains(&isa(node)) {
         return Err(format!("{id} is a {}, not a file reference", isa(node)));
     }
-    Ok(node_path(objects, id))
+    Ok(node_path(&Parents::of(objects), id))
 }
 
 /// The `fileref add` invocation that would create the missing reference.
@@ -295,10 +297,11 @@ fn fileref_add_hint(path: &str) -> String {
 
 /// Every reference-like object whose resolved path is `path`.
 fn refs_at_path(objects: &Dict, path: &str) -> Vec<String> {
+    let parents = Parents::of(objects);
     objects
         .iter()
         .filter(|(_, o)| REF_ISAS.contains(&isa(o)))
-        .filter(|(guid, _)| node_path(objects, guid) == path)
+        .filter(|(guid, _)| node_path(&parents, guid) == path)
         .map(|(guid, _)| guid.clone())
         .collect()
 }
@@ -518,8 +521,9 @@ fn prune_empty_groups(
 
 /// The project-dir-relative path of a group-tree node (its own `path` plus
 /// every pathed ancestor), via the shared group walk.
-fn node_path(objects: &Dict, guid: &str) -> String {
-    crate::project::group_dir(objects, guid, Path::new(""), 0)
+fn node_path(parents: &Parents<'_>, guid: &str) -> String {
+    parents
+        .group_dir(guid, Path::new(""))
         .to_string_lossy()
         .into_owned()
 }

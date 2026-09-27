@@ -1789,9 +1789,13 @@ friction, without collapsing the axes:
   such a project. Xcode 27.0 opens it with a warning and keeps the listing in
   the group it reads last, reading a group's children before the group itself:
   a listing in an ancestor wins, and of two sibling groups the later one wins.
-  `group list` shows the path of that listing. A path that matches no group is
-  an error, and so is one that matches two groups by the same spelling. That
-  refusal lists each candidate's id with its navigator path and directory.
+  The same rule holds for a file listed twice, and a build compiles the file
+  under the kept listing. `group list` shows the path of that listing, and the
+  row's parent and directory, the files a target builds, the local packages
+  the tree holds and an xcconfig's location all resolve the node under it too.
+  A path that matches no group is an error, and so is one that matches two
+  groups by the same spelling. That refusal lists each candidate's id with its
+  navigator path and directory.
   `group list` prints all three on each row (`navigatorPath` in JSON, empty
   for the navigator root and null for a group nothing lists), so the miss
   error can point there. The human listing shows the root's navigator path as

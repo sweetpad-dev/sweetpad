@@ -24,10 +24,11 @@
 //! and serialize/write it — the same contract as the sibling `*_pbxproj`
 //! modules.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::pbxproj::{Dict, Value};
+use crate::project::Parents;
 use crate::spm_pbxproj::fresh_guid;
 use crate::tree::navigator_label;
 
@@ -58,6 +59,7 @@ pub enum LinkOutcome {
 pub fn list_filerefs(root: &Value) -> Result<Vec<FileRefRow>, String> {
     let objects = objects(root).ok_or("pbxproj has no objects dict")?;
     let project_dir = Path::new("");
+    let parents = Parents::of(objects);
     let mut rows: Vec<FileRefRow> = objects
         .iter()
         .filter(|(_, o)| isa(o) == REF_ISA)
@@ -70,8 +72,8 @@ pub fn list_filerefs(root: &Value) -> Result<Vec<FileRefRow>, String> {
                 file_type: str_field(o, "lastKnownFileType")
                     .or_else(|| str_field(o, "explicitFileType"))
                     .map(str::to_string),
-                parent: crate::project::parent_group_of(objects, guid),
-                resolved: display(&resolve_node(objects, guid, project_dir)),
+                parent: parents.get(guid).map(str::to_string),
+                resolved: display(&resolve_node(&parents, objects, guid, project_dir)),
                 source_tree,
                 build_files: build_file_count(objects, guid),
             }
@@ -89,8 +91,9 @@ pub fn list_groups(root: &Value) -> Result<Vec<GroupRow>, String> {
     let objects = objects(root).ok_or("pbxproj has no objects dict")?;
     let project_dir = Path::new("");
     // A group listed in two places has two paths. The one Xcode keeps names
-    // it, and either spelling still selects it.
-    let navigator = shown_paths(objects);
+    // it and gives it its directory, and either spelling still selects it.
+    let parents = Parents::of(objects);
+    let navigator = shown_paths(objects, &parents);
     let root = main_group(objects);
     let mut rows: Vec<GroupRow> = objects
         .iter()
@@ -104,9 +107,9 @@ pub fn list_groups(root: &Value) -> Result<Vec<GroupRow>, String> {
             name: str_field(o, "name").map(str::to_string),
             path: str_field(o, "path").map(str::to_string),
             source_tree: str_field(o, "sourceTree").unwrap_or("<group>").to_string(),
-            parent: crate::project::parent_group_of(objects, guid),
+            parent: parents.get(guid).map(str::to_string),
             children: children_of(objects, guid),
-            resolved: display(&crate::project::group_dir(objects, guid, project_dir, 0)),
+            resolved: display(&parents.group_dir(guid, project_dir)),
         })
         .collect();
     rows.sort_by(|a, b| a.resolved.cmp(&b.resolved).then(a.address.cmp(&b.address)));
@@ -150,7 +153,12 @@ pub fn add_fileref(
             && str_field(o, "sourceTree").unwrap_or("<group>") == source_tree)
             .then(|| guid.clone())
     }) {
-        let resolved = display(&resolve_node(objects_ref, &existing, Path::new("")));
+        let resolved = display(&resolve_node(
+            &Parents::of(objects_ref),
+            objects_ref,
+            &existing,
+            Path::new(""),
+        ));
         return Ok(AddRefOutcome::AlreadyExists {
             address: existing,
             resolved,
@@ -174,7 +182,12 @@ pub fn add_fileref(
     if let Some(group) = group {
         push_child(objects, group, &guid);
     }
-    let resolved = display(&resolve_node(objects, &guid, Path::new("")));
+    let resolved = display(&resolve_node(
+        &Parents::of(objects),
+        objects,
+        &guid,
+        Path::new(""),
+    ));
     Ok(AddRefOutcome::Created {
         address: guid,
         resolved,
@@ -210,14 +223,10 @@ pub fn add_group(
                 && (str_field(o, "name") == Some(name) || str_field(o, "path") == Some(name))
         })
     }) {
-        let resolved = display(&crate::project::group_dir(
-            objects_ref,
-            &existing,
-            Path::new(""),
-            0,
-        ));
+        let parents = Parents::of(objects_ref);
+        let resolved = display(&parents.group_dir(&existing, Path::new("")));
         return Ok(AddGroupOutcome::AlreadyExists {
-            navigator_path: shown_paths(objects_ref).remove(&existing),
+            navigator_path: shown_paths(objects_ref, &parents).remove(&existing),
             address: existing,
             resolved,
         });
@@ -239,9 +248,10 @@ pub fn add_group(
     objects.insert(guid.clone(), Value::Dict(node));
     push_child(objects, parent, &guid);
 
-    let resolved = display(&crate::project::group_dir(objects, &guid, Path::new(""), 0));
+    let parents = Parents::of(objects);
+    let resolved = display(&parents.group_dir(&guid, Path::new("")));
     Ok(AddGroupOutcome::Created {
-        navigator_path: shown_paths(objects).remove(&guid),
+        navigator_path: shown_paths(objects, &parents).remove(&guid),
         address: guid,
         resolved,
     })
@@ -410,7 +420,8 @@ pub fn move_node(
              detach the whole subtree"
         ));
     }
-    let from = crate::project::parent_group_of(objects_ref, child);
+    let parents = Parents::of(objects_ref);
+    let from = parents.get(child).map(str::to_string);
     if from.as_deref() == Some(group.as_str()) {
         return Ok(MoveOutcome::AlreadyThere {
             address: child.to_string(),
@@ -418,22 +429,12 @@ pub fn move_node(
         });
     }
     let resolved = if GROUP_ISAS.contains(&isa(node)) {
-        display(&crate::project::group_dir(
-            objects_ref,
-            child,
-            Path::new(""),
-            0,
-        ))
+        display(&parents.group_dir(child, Path::new("")))
     } else {
-        display(&resolve_node(objects_ref, child, Path::new("")))
+        display(&resolve_node(&parents, objects_ref, child, Path::new("")))
     };
     let anchored = str_field(node, "sourceTree").unwrap_or("<group>") == "<group>";
-    let group_dir = display(&crate::project::group_dir(
-        objects_ref,
-        &group,
-        Path::new(""),
-        0,
-    ));
+    let group_dir = display(&parents.group_dir(&group, Path::new("")));
 
     let objects = objects_mut(root)?;
     if let Some(from) = &from {
@@ -493,10 +494,13 @@ fn is_ancestor(objects: &Dict, ancestor: &str, descendant: &str) -> bool {
 pub fn fileref_for_path(root: &Value, path: &str) -> Result<Option<String>, String> {
     let objects = objects(root).ok_or("pbxproj has no objects dict")?;
     let wanted = normalize(path);
+    let parents = Parents::of(objects);
     let hits: Vec<String> = objects
         .iter()
         .filter(|(_, o)| isa(o) == REF_ISA)
-        .filter(|(guid, _)| display(&resolve_node(objects, guid, Path::new(""))) == wanted)
+        .filter(|(guid, _)| {
+            display(&resolve_node(&parents, objects, guid, Path::new(""))) == wanted
+        })
         .map(|(guid, _)| guid.clone())
         .collect();
     match hits.len() {
@@ -554,6 +558,7 @@ fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
         return Ok(root);
     }
     let wanted = normalize(spec);
+    let parents = Parents::of(objects);
     let navigator = navigator_index(objects);
     let navigator_hits = |matches: &dyn Fn(&str) -> bool| {
         let mut hits: Vec<String> = Vec::new();
@@ -576,7 +581,7 @@ fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
             .iter()
             .filter(|(_, o)| GROUP_ISAS.contains(&isa(o)))
             // A stored `path` can end in `/`, and the listing prints it so.
-            .filter(|(guid, _)| normalize(&group_directory(objects, guid)) == wanted)
+            .filter(|(guid, _)| normalize(&group_directory(&parents, guid)) == wanted)
             .map(|(guid, _)| guid.clone())
             .collect();
         (by_directory, "directory")
@@ -593,13 +598,13 @@ fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
             // Each candidate as `group list` prints it, so the id to pass
             // sits next to the spellings that tell the groups apart.
             let root = main_group(objects);
-            let shown = shown_paths(objects);
+            let shown = shown_paths(objects, &parents);
             let candidates: Vec<String> = hits
                 .iter()
                 .map(|guid| {
                     let path = shown.get(guid).map(String::as_str);
                     let path = navigator_label(path, root.as_ref() == Some(guid));
-                    let dir = group_directory(objects, guid);
+                    let dir = group_directory(&parents, guid);
                     let dir = if dir.is_empty() {
                         "(project root)"
                     } else {
@@ -618,66 +623,32 @@ fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
 }
 
 /// A group's directory, resolved up the chain from the project directory.
-fn group_directory(objects: &Dict, guid: &str) -> String {
-    display(&crate::project::group_dir(objects, guid, Path::new(""), 0))
+fn group_directory(parents: &Parents<'_>, guid: &str) -> String {
+    display(&parents.group_dir(guid, Path::new("")))
 }
 
 /// The one navigator path each group in the navigator shows, the mainGroup's
-/// empty one included.
-///
-/// A group listed in two places is a malformed project. Xcode 27.2 refuses to
-/// open one. Xcode 27.0 opens it with a warning and keeps one of the listings:
-/// the one in the group it finishes reading last, where it reads a group's
-/// children before the group itself. So a listing in an ancestor wins over one
-/// below it, and of two places side by side the later one in the navigator
-/// wins.
-fn shown_paths(objects: &Dict) -> HashMap<String, String> {
-    fn read(
-        objects: &Dict,
-        guid: &str,
-        depth: usize,
-        seen: &mut HashSet<String>,
-        kept: &mut HashMap<String, String>,
-    ) {
-        if depth >= crate::project::MAX_GROUP_DEPTH || !seen.insert(guid.to_string()) {
-            return;
-        }
-        let groups: Vec<String> = children_of(objects, guid)
-            .into_iter()
-            .filter(|child| {
-                objects
-                    .get(child)
-                    .is_some_and(|node| GROUP_ISAS.contains(&isa(node)))
-            })
-            .collect();
-        for child in &groups {
-            read(objects, child, depth + 1, seen, kept);
-        }
-        for child in groups {
-            kept.insert(child, guid.to_string());
-        }
-    }
-
+/// empty one included: the display names up the chain of listings Xcode keeps
+/// ([`Parents`]), so a group listed in two places shows the path of the one
+/// that also gives it its directory.
+fn shown_paths(objects: &Dict, parents: &Parents<'_>) -> HashMap<String, String> {
     let mut shown = HashMap::new();
     let Some(root) = main_group(objects) else {
         return shown;
     };
-    let mut kept = HashMap::new();
-    read(objects, &root, 0, &mut HashSet::new(), &mut kept);
     shown.insert(root.clone(), String::new());
-    for guid in kept.keys() {
-        // The display names up the kept chain. A chain that loops instead of
-        // reaching the mainGroup gives no path.
+    for (guid, _) in objects.iter().filter(|(_, o)| GROUP_ISAS.contains(&isa(o))) {
+        // A group the navigator does not reach gives no path.
         let mut names = Vec::new();
         let mut at = guid.as_str();
         while at != root && names.len() < crate::project::MAX_GROUP_DEPTH {
-            names.push(objects.get(at).and_then(display_name).unwrap_or_default());
-            let Some(parent) = kept.get(at) else {
+            let Some(parent) = parents.in_navigator(at) else {
                 break;
             };
+            names.push(objects.get(at).and_then(display_name).unwrap_or_default());
             at = parent;
         }
-        if at == root {
+        if at == root && !names.is_empty() {
             names.reverse();
             shown.insert(guid.clone(), names.join("/"));
         }
@@ -802,17 +773,14 @@ fn build_file_count(objects: &Dict, ref_guid: &str) -> usize {
 
 /// A node's on-disk path: its own `path` anchored by `sourceTree`, with
 /// `<group>` resolving up the parent chain.
-fn resolve_node(objects: &Dict, guid: &str, project_dir: &Path) -> PathBuf {
+fn resolve_node(parents: &Parents<'_>, objects: &Dict, guid: &str, project_dir: &Path) -> PathBuf {
     let Some(node) = objects.get(guid) else {
         return project_dir.to_path_buf();
     };
     let path = str_field(node, "path").unwrap_or_default();
     match str_field(node, "sourceTree").unwrap_or("<group>") {
         "<absolute>" => PathBuf::from(path),
-        "<group>" => match crate::project::parent_group_of(objects, guid) {
-            Some(parent) => crate::project::group_dir(objects, &parent, project_dir, 0).join(path),
-            None => project_dir.join(path),
-        },
+        "<group>" => parents.parent_dir(guid, project_dir).join(path),
         _ => project_dir.join(path),
     }
 }
@@ -1440,11 +1408,25 @@ mod tests {
                     .insert("children".into(), Value::Array(children));
             }
             assert_eq!(unselected_spellings(&root), Vec::<String>::new());
-            list_groups(&root)
+            let row = list_groups(&root)
                 .unwrap()
                 .into_iter()
-                .find(|g| g.address == "SH")
-                .and_then(|g| g.navigator_path)
+                .find(|g| g.address == "SH")?;
+            // Every group here has a path that repeats its name, so the kept
+            // listing gives the directory the navigator path spells.
+            assert_eq!(Some(&row.resolved), row.navigator_path.as_ref());
+            let (parent, _) = row
+                .navigator_path
+                .as_deref()?
+                .rsplit_once('/')
+                .unwrap_or(("", ""));
+            let expected_parent = match parent {
+                "" => "MG",
+                "App" => "G1",
+                _ => "T1G",
+            };
+            assert_eq!(row.parent.as_deref(), Some(expected_parent));
+            row.navigator_path
         }
 
         assert_eq!(

@@ -346,70 +346,30 @@ fn group_tree_package_refs(
     project_obj: &Value,
     project_dir: &Path,
 ) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    if let Some(main_group_id) = project_obj.get("mainGroup").and_then(Value::as_str) {
-        walk_for_packages(
-            objects,
-            main_group_id,
-            project_dir,
-            project_dir,
-            &mut out,
-            &mut BTreeSet::new(),
-            0,
-        );
-    }
-    out
-}
-
-fn walk_for_packages<'a>(
-    objects: &'a Dict,
-    node_id: &'a str,
-    parent_base: &Path,
-    project_dir: &Path,
-    out: &mut Vec<PathBuf>,
-    visited: &mut BTreeSet<&'a str>,
-    depth: usize,
-) {
-    let Some(node) = objects.get(node_id) else {
-        return;
+    let Some(main_group_id) = project_obj.get("mainGroup").and_then(Value::as_str) else {
+        return Vec::new();
     };
-    let base = node_base(node, parent_base, project_dir);
-    match node.get("isa").and_then(Value::as_str).unwrap_or("") {
-        "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup" => {
-            if depth >= MAX_GROUP_DEPTH || !visited.insert(node_id) {
-                return;
+    let mut out = Vec::new();
+    for (_, node, base) in navigator_nodes(objects, main_group_id, project_dir) {
+        match node.get("isa").and_then(Value::as_str).unwrap_or("") {
+            "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup" => {}
+            // A folder reference (Xcode 16+): the pbxproj lists none of its
+            // members, so a package under it is found by looking at the disk.
+            "PBXFileSystemSynchronizedRootGroup" => {
+                if base.join("Package.swift").is_file() {
+                    out.push(base);
+                } else {
+                    packages_under_synchronized_folder(&base, &mut out, 0);
+                }
             }
-            if let Some(children) = node.get("children").and_then(Value::as_array) {
-                for child in children {
-                    if let Some(cid) = child.as_str() {
-                        walk_for_packages(
-                            objects,
-                            cid,
-                            &base,
-                            project_dir,
-                            out,
-                            visited,
-                            depth + 1,
-                        );
-                    }
+            _ => {
+                if names_a_directory(node) {
+                    out.push(base);
                 }
             }
         }
-        // A folder reference (Xcode 16+): the pbxproj lists none of its
-        // members, so a package under it is found by looking at the disk.
-        "PBXFileSystemSynchronizedRootGroup" => {
-            if base.join("Package.swift").is_file() {
-                out.push(base);
-            } else {
-                packages_under_synchronized_folder(&base, out, 0);
-            }
-        }
-        _ => {
-            if names_a_directory(node) {
-                out.push(base);
-            }
-        }
     }
+    out
 }
 
 /// Package directories physically under `dir`, a synchronized folder.
@@ -861,21 +821,26 @@ pub fn target_source_files_from_value(
     let (objects, project_obj) = project_root(value)?;
     let project_dir = abs_project_dir(xcodeproj_path);
 
-    // Resolve every file reference to an absolute path with one DFS from the
-    // project's mainGroup, accumulating each `<group>`'s `path` as we descend.
+    // Resolve every file reference to an absolute path with one walk from the
+    // project's mainGroup, accumulating each `<group>`'s `path` as it descends.
     let mut file_paths: BTreeMap<String, PathBuf> = BTreeMap::new();
     let mut sync_dirs: BTreeMap<String, PathBuf> = BTreeMap::new();
     if let Some(main_group_id) = project_obj.get("mainGroup").and_then(Value::as_str) {
-        resolve_group_paths(
-            objects,
-            main_group_id,
-            &project_dir,
-            &project_dir,
-            &mut file_paths,
-            &mut sync_dirs,
-            &mut BTreeSet::new(),
-            0,
-        );
+        for (id, node, base) in navigator_nodes(objects, main_group_id, &project_dir) {
+            match node.get("isa").and_then(Value::as_str).unwrap_or("") {
+                "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup" => {}
+                // A folder reference (Xcode 16+): its members aren't listed in
+                // the pbxproj, they are every file physically under `base`. A
+                // target that lists it in `fileSystemSynchronizedGroups`
+                // resolves its sources by walking it.
+                "PBXFileSystemSynchronizedRootGroup" => {
+                    sync_dirs.insert(id.to_string(), base);
+                }
+                _ => {
+                    file_paths.insert(id.to_string(), base);
+                }
+            }
+        }
     }
 
     let target = find_target(objects, project_obj, target_name)?
@@ -1369,66 +1334,87 @@ pub(crate) fn abs_project_dir(xcodeproj_path: &Path) -> PathBuf {
 /// corrupt chain of groups could otherwise overflow the stack.
 pub(crate) const MAX_GROUP_DEPTH: usize = 256;
 
-/// DFS the group tree, recording `file_id → absolute path` for every leaf. A
-/// group node contributes its own directory to its children; a leaf records its
-/// full path. `PBXVariantGroup` / `XCVersionGroup` (localized resources, Core
-/// Data model versions) are walked like groups so their members resolve.
+/// Every node the navigator reaches from the mainGroup, parents before
+/// children in navigator order, each with the absolute path its `sourceTree`
+/// and `path` resolve to. A group contributes its own directory to its
+/// children. `PBXVariantGroup` / `XCVersionGroup` (localized resources, Core
+/// Data model versions) are walked like groups so their members resolve. A
+/// node listed in two groups appears once, under the listing Xcode keeps
+/// ([`Parents`]), so the files a build reads and the directories a listing
+/// shows agree.
 ///
 /// `visited` breaks reference cycles (`G1 → G2 → G1`) and bounds the walk to
-/// one visit per group even when a corrupt file shares subtrees (a crafted
+/// one visit per node even when a corrupt file shares subtrees (a crafted
 /// `children = (G, G)` at every level would otherwise re-walk shared nodes
 /// 2^depth times); `depth` bounds the stack on a non-cyclic chain.
-// The two walk-state params push this over clippy's arity limit; a state
-// struct for an internal DFS helper would be heavier than the flag list.
-#[allow(clippy::too_many_arguments)]
-fn resolve_group_paths<'a>(
+fn navigator_nodes<'a>(
     objects: &'a Dict,
-    node_id: &'a str,
-    parent_base: &Path,
+    main_group: &'a str,
     project_dir: &Path,
-    out: &mut BTreeMap<String, PathBuf>,
-    sync_out: &mut BTreeMap<String, PathBuf>,
-    visited: &mut BTreeSet<&'a str>,
-    depth: usize,
-) {
-    let Some(node) = objects.get(node_id) else {
-        return;
-    };
-    let base = node_base(node, parent_base, project_dir);
-    let isa = node.get("isa").and_then(Value::as_str).unwrap_or("");
-    match isa {
-        "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup" => {
-            if depth >= MAX_GROUP_DEPTH || !visited.insert(node_id) {
-                return;
-            }
-            if let Some(children) = node.get("children").and_then(Value::as_array) {
-                for child in children {
-                    if let Some(cid) = child.as_str() {
-                        resolve_group_paths(
-                            objects,
-                            cid,
-                            &base,
-                            project_dir,
-                            out,
-                            sync_out,
-                            visited,
-                            depth + 1,
-                        );
-                    }
-                }
-            }
+) -> Vec<(&'a str, &'a Value, PathBuf)> {
+    // The walk-state params push this over clippy's arity limit; a state
+    // struct for an internal DFS helper would be heavier than the flag list.
+    #[allow(clippy::too_many_arguments)]
+    fn walk<'a>(
+        objects: &'a Dict,
+        parents: &Parents<'a>,
+        group: &'a str,
+        base: &Path,
+        project_dir: &Path,
+        out: &mut Vec<(&'a str, &'a Value, PathBuf)>,
+        visited: &mut BTreeSet<&'a str>,
+        depth: usize,
+    ) {
+        if depth >= MAX_GROUP_DEPTH {
+            return;
         }
-        // A folder reference (Xcode 16+): its members aren't listed in the
-        // pbxproj — they are every file physically under `base`. Record the
-        // directory keyed by id; a target that lists it in
-        // `fileSystemSynchronizedGroups` resolves its sources by walking it.
-        "PBXFileSystemSynchronizedRootGroup" => {
-            sync_out.insert(node_id.to_string(), base);
-        }
-        _ => {
-            out.insert(node_id.to_string(), base);
+        let children = objects
+            .get(group)
+            .and_then(|g| g.get("children"))
+            .and_then(Value::as_array)
+            .unwrap_or_default();
+        for child in children.iter().filter_map(Value::as_str) {
+            if parents.get(child) != Some(group) || !visited.insert(child) {
+                continue;
+            }
+            let Some(node) = objects.get(child) else {
+                continue;
+            };
+            let child_base = node_base(node, base, project_dir);
+            if is_group(node) {
+                out.push((child, node, child_base.clone()));
+                walk(
+                    objects,
+                    parents,
+                    child,
+                    &child_base,
+                    project_dir,
+                    out,
+                    visited,
+                    depth + 1,
+                );
+            } else {
+                out.push((child, node, child_base));
+            }
         }
     }
+
+    let Some(root) = objects.get(main_group) else {
+        return Vec::new();
+    };
+    let base = node_base(root, project_dir, project_dir);
+    let mut out = vec![(main_group, root, base.clone())];
+    walk(
+        objects,
+        &Parents::of(objects),
+        main_group,
+        &base,
+        project_dir,
+        &mut out,
+        &mut BTreeSet::from([main_group]),
+        0,
+    );
+    out
 }
 
 /// The absolute path of one group/file node, from its `sourceTree` + `path` and
@@ -4254,7 +4240,7 @@ fn resolve_anchor_relative_path(
     xcodeproj_path: &Path,
 ) -> PathBuf {
     let project_dir = xcodeproj_path.parent().unwrap_or_else(|| Path::new("."));
-    group_dir(objects, anchor_id, project_dir, 0).join(relative_path)
+    group_dir(objects, anchor_id, project_dir).join(relative_path)
 }
 
 fn resolve_file_ref_path(
@@ -4277,7 +4263,7 @@ fn resolve_file_ref_path(
         // is NOT always the root group — CocoaPods nests the Pod xcconfigs under
         // a group whose `path` is "Pods". Walk the parent-group chain to anchor
         // it; a root-group ref still resolves to the project dir.
-        "<group>" => parent_group_dir(objects, file_ref_id, project_dir, 0).join(path),
+        "<group>" => parent_group_dir(objects, file_ref_id, project_dir).join(path),
         // `SOURCE_ROOT` is the project dir; build-time trees (BUILT_PRODUCTS_DIR,
         // etc.) don't occur for xcconfig references — anchor at the project dir.
         _ => project_dir.join(path),
@@ -4287,57 +4273,163 @@ fn resolve_file_ref_path(
 
 /// The on-disk directory a `<group>`-relative child resolves against: its parent
 /// `PBXGroup`'s directory, resolved up the group chain. The mainGroup (no parent)
-/// anchors at the project dir. Depth-guarded against a malformed cyclic graph.
-fn parent_group_dir(objects: &Dict, child_id: &str, project_dir: &Path, depth: usize) -> PathBuf {
-    if depth > 64 {
-        return project_dir.to_path_buf();
-    }
-    match parent_group_of(objects, child_id) {
-        Some(parent_id) => group_dir(objects, &parent_id, project_dir, depth + 1),
-        None => project_dir.to_path_buf(),
-    }
+/// anchors at the project dir.
+fn parent_group_dir(objects: &Dict, child_id: &str, project_dir: &Path) -> PathBuf {
+    Parents::of(objects).parent_dir(child_id, project_dir)
 }
 
 /// The on-disk directory of a `PBXGroup`, resolving its `path` up the parent
 /// chain (each `<group>` ancestor contributes its `path`).
-pub(crate) fn group_dir(
-    objects: &Dict,
-    group_id: &str,
-    project_dir: &Path,
-    depth: usize,
-) -> PathBuf {
-    if depth > 64 {
-        return project_dir.to_path_buf();
-    }
-    let Some(group) = objects.get(group_id) else {
-        return project_dir.to_path_buf();
-    };
-    let path = group.get("path").and_then(Value::as_str).unwrap_or("");
-    let source_tree = group
-        .get("sourceTree")
-        .and_then(Value::as_str)
-        .unwrap_or("<group>");
-    match source_tree {
-        "<absolute>" => PathBuf::from(path),
-        "<group>" => parent_group_dir(objects, group_id, project_dir, depth + 1).join(path),
-        _ => project_dir.join(path),
-    }
+pub(crate) fn group_dir(objects: &Dict, group_id: &str, project_dir: &Path) -> PathBuf {
+    Parents::of(objects).group_dir(group_id, project_dir)
 }
 
 /// The id of the group (`PBXGroup` / variant / version) listing `child_id` in its
-/// `children`.
+/// `children`, the one Xcode keeps when two do ([`Parents`]).
 pub(crate) fn parent_group_of(objects: &Dict, child_id: &str) -> Option<String> {
-    objects.iter().find_map(|(id, v)| {
-        let isa = v.get("isa").and_then(Value::as_str)?;
-        if !matches!(isa, "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup") {
+    Parents::of(objects).get(child_id).map(str::to_string)
+}
+
+/// The group each node in the navigator sits in.
+///
+/// A node listed in two groups is a malformed project. Xcode 27.2 refuses to
+/// open one. Xcode 27.0 opens it with a warning and keeps one listing: the one
+/// in the group it finishes reading last, where it reads a group's children
+/// before the group itself. So a listing in an ancestor wins over one below
+/// it, and of two places side by side the later one in the navigator wins.
+/// That listing names the node's navigator path, and it is the one Xcode
+/// resolves a `<group>` path against: a build compiles the file under it. The
+/// rule is the same for a file and for a group.
+///
+/// A node the navigator does not reach keeps the first group listing it, in
+/// object order. The mainGroup has no parent, whatever lists it.
+pub(crate) struct Parents<'a> {
+    objects: &'a Dict,
+    root: Option<&'a str>,
+    kept: std::collections::HashMap<&'a str, &'a str>,
+}
+
+impl<'a> Parents<'a> {
+    pub(crate) fn of(objects: &'a Dict) -> Self {
+        fn read<'a>(
+            objects: &'a Dict,
+            group: &'a str,
+            depth: usize,
+            seen: &mut std::collections::HashSet<&'a str>,
+            kept: &mut std::collections::HashMap<&'a str, &'a str>,
+        ) {
+            if depth >= MAX_GROUP_DEPTH || !seen.insert(group) {
+                return;
+            }
+            let children: Vec<&'a str> = objects
+                .get(group)
+                .and_then(|g| g.get("children"))
+                .and_then(Value::as_array)
+                .unwrap_or_default()
+                .iter()
+                .filter_map(Value::as_str)
+                .collect();
+            for child in &children {
+                if objects.get(child).is_some_and(is_group) {
+                    read(objects, child, depth + 1, seen, kept);
+                }
+            }
+            for child in children {
+                kept.insert(child, group);
+            }
+        }
+
+        let root = main_group_id(objects);
+        let mut kept = std::collections::HashMap::new();
+        if let Some(root) = root {
+            read(
+                objects,
+                root,
+                0,
+                &mut std::collections::HashSet::new(),
+                &mut kept,
+            );
+        }
+        Self {
+            objects,
+            root,
+            kept,
+        }
+    }
+
+    /// The group Xcode keeps listing `child`, if any group lists it.
+    pub(crate) fn get(&self, child: &str) -> Option<&'a str> {
+        if self.root == Some(child) {
             return None;
         }
-        let children = v.get("children").and_then(Value::as_array)?;
-        children
-            .iter()
-            .any(|c| c.as_str() == Some(child_id))
-            .then(|| id.clone())
-    })
+        if let Some(parent) = self.in_navigator(child) {
+            return Some(parent);
+        }
+        self.objects.iter().find_map(|(id, v)| {
+            let children = v.get("children").and_then(Value::as_array)?;
+            (is_group(v) && children.iter().any(|c| c.as_str() == Some(child)))
+                .then_some(id.as_str())
+        })
+    }
+
+    /// The kept group listing `child` when the navigator reaches it from the
+    /// mainGroup, and `None` for a node it does not reach.
+    pub(crate) fn in_navigator(&self, child: &str) -> Option<&'a str> {
+        if self.root == Some(child) {
+            return None;
+        }
+        self.kept.get(child).copied()
+    }
+
+    /// The directory a `<group>` path on `child` resolves against.
+    pub(crate) fn parent_dir(&self, child: &str, project_dir: &Path) -> PathBuf {
+        self.dir_below(child, project_dir, 0)
+    }
+
+    /// The on-disk directory of a group, or of any node, resolving its `path`
+    /// up the kept chain.
+    pub(crate) fn group_dir(&self, id: &str, project_dir: &Path) -> PathBuf {
+        self.dir_of(id, project_dir, 0)
+    }
+
+    fn dir_below(&self, child: &str, project_dir: &Path, depth: usize) -> PathBuf {
+        match self.get(child) {
+            Some(parent) if depth < MAX_GROUP_DEPTH => self.dir_of(parent, project_dir, depth + 1),
+            _ => project_dir.to_path_buf(),
+        }
+    }
+
+    fn dir_of(&self, id: &str, project_dir: &Path, depth: usize) -> PathBuf {
+        let Some(node) = self.objects.get(id) else {
+            return project_dir.to_path_buf();
+        };
+        let path = node.get("path").and_then(Value::as_str).unwrap_or("");
+        let source_tree = node
+            .get("sourceTree")
+            .and_then(Value::as_str)
+            .unwrap_or("<group>");
+        match source_tree {
+            "<absolute>" => PathBuf::from(path),
+            "<group>" => self.dir_below(id, project_dir, depth).join(path),
+            _ => project_dir.join(path),
+        }
+    }
+}
+
+fn is_group(node: &Value) -> bool {
+    matches!(
+        node.get("isa").and_then(Value::as_str),
+        Some("PBXGroup" | "PBXVariantGroup" | "XCVersionGroup")
+    )
+}
+
+/// The navigator root: the group the `PBXProject` names as its `mainGroup`.
+fn main_group_id(objects: &Dict) -> Option<&str> {
+    objects
+        .iter()
+        .find(|(_, o)| o.get("isa").and_then(Value::as_str) == Some("PBXProject"))
+        .and_then(|(_, o)| o.get("mainGroup"))
+        .and_then(Value::as_str)
 }
 
 fn extract_inline_settings(config: &Value) -> Vec<Assignment> {
@@ -5496,6 +5588,60 @@ mod tests {
                     .collect::<Vec<_>>()
             };
             assert_eq!(keys(f), keys(r), "fallback must mirror the default config");
+        }
+    }
+
+    /// A node listed in two groups resolves under the listing Xcode 27.0
+    /// keeps, which is the file each layout here compiled: the later of two
+    /// sibling groups, and a listing at the root over the one below it, in
+    /// navigator order rather than object order. The xcconfig a configuration
+    /// names follows the same listing.
+    #[test]
+    fn a_node_listed_twice_resolves_under_the_listing_xcode_keeps() {
+        fn resolve(main: &str, sources: &str, tests: &str) -> (PathBuf, PathBuf) {
+            let text = format!(
+                "// !$*UTF8*$!
+{{
+\tobjects = {{
+\t\tBF = {{ isa = PBXBuildFile; fileRef = UTIL; }};
+\t\tUTIL = {{ isa = PBXFileReference; path = Util.swift; sourceTree = \"<group>\"; }};
+\t\tXC = {{ isa = PBXFileReference; path = Base.xcconfig; sourceTree = \"<group>\"; }};
+\t\tSRC = {{ isa = PBXGroup; path = Sources; sourceTree = \"<group>\"; children = ({sources}); }};
+\t\tTST = {{ isa = PBXGroup; path = Tests; sourceTree = \"<group>\"; children = ({tests}); }};
+\t\tSH = {{ isa = PBXGroup; path = Shared; sourceTree = \"<group>\"; children = (UTIL, XC); }};
+\t\tMAIN = {{ isa = PBXGroup; sourceTree = \"<group>\"; children = ({main}); }};
+\t\tPHASE = {{ isa = PBXSourcesBuildPhase; files = (BF); }};
+\t\tAPP = {{ isa = PBXNativeTarget; name = App; buildPhases = (PHASE); }};
+\t\tPROJ = {{ isa = PBXProject; mainGroup = MAIN; targets = (APP); }};
+\t}};
+\trootObject = PROJ;
+}}
+"
+            );
+            let value = pbxproj::parse(&text).unwrap();
+            let xcodeproj = Path::new("/nonexistent-sweetpad/App.xcodeproj");
+            let sources = target_source_files_from_value(&value, xcodeproj, "App").unwrap();
+            let (objects, _) = project_root(&value).unwrap();
+            let xcconfig = resolve_file_ref_path(objects, "XC", xcodeproj).unwrap();
+            let relative = |p: &Path| {
+                p.strip_prefix("/nonexistent-sweetpad")
+                    .unwrap()
+                    .to_path_buf()
+            };
+            (relative(&sources[0]), relative(&xcconfig))
+        }
+
+        for (main, sources, tests, expected) in [
+            ("SRC, TST", "SH", "SH", "Tests/Shared"),
+            ("TST, SRC", "SH", "SH", "Sources/Shared"),
+            ("SH, SRC", "SH", "", "Shared"),
+            ("SRC, SH", "SH", "", "Shared"),
+            ("SRC, TST, SH", "SH", "SH", "Shared"),
+        ] {
+            let (source, xcconfig) = resolve(main, sources, tests);
+            let expected = Path::new(expected);
+            assert_eq!(source, expected.join("Util.swift"), "main = ({main})");
+            assert_eq!(xcconfig, expected.join("Base.xcconfig"), "main = ({main})");
         }
     }
 

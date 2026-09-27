@@ -201,12 +201,12 @@ pub fn base_xcconfigs(
             continue;
         };
         let path = if let Some(file_ref) = str_field(config, "baseConfigurationReference") {
-            crate::project::group_dir(objects, file_ref, std::path::Path::new(""), 0)
+            crate::project::group_dir(objects, file_ref, std::path::Path::new(""))
         } else if let (Some(anchor), Some(relative)) = (
             str_field(config, "baseConfigurationReferenceAnchor"),
             str_field(config, "baseConfigurationReferenceRelativePath"),
         ) {
-            crate::project::group_dir(objects, anchor, std::path::Path::new(""), 0).join(relative)
+            crate::project::group_dir(objects, anchor, std::path::Path::new("")).join(relative)
         } else {
             continue;
         };

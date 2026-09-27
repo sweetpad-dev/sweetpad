@@ -328,7 +328,7 @@ fn containing_root(objects: &Dict, target_guid: &str, path: &str) -> Option<(Str
 /// The project-dir-relative directory of a synchronized root (group-tree
 /// walk, honoring parent group paths and `sourceTree`).
 fn root_dir(objects: &Dict, guid: &str) -> String {
-    crate::project::group_dir(objects, guid, Path::new(""), 0)
+    crate::project::group_dir(objects, guid, Path::new(""))
         .to_string_lossy()
         .into_owned()
 }
