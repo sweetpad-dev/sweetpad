@@ -45,6 +45,18 @@ pub enum Action {
     Clean,
 }
 
+impl Action {
+    fn as_arg(self) -> &'static str {
+        match self {
+            Self::Build => "build",
+            Self::BuildForTesting => "build-for-testing",
+            Self::Test => "test",
+            Self::Archive => "archive",
+            Self::Clean => "clean",
+        }
+    }
+}
+
 impl From<BuildAction> for Action {
     fn from(action: BuildAction) -> Self {
         match action {
@@ -1950,36 +1962,63 @@ fn bundle_of(t: &TargetBuildSettings) -> Option<AppBundle> {
     })
 }
 
-/// The part of a passthrough `xcodebuild clean` takes: all of it but
-/// [`NOT_FOR_CLEAN`] and their values. The settings, the `-xcconfig` and the
-/// package flags stay, so the clean resolves the products where the build put
-/// them.
+/// The part of the project file's `[xcodebuild] args` that `action` takes:
+/// all of it but the flags `xcodebuild` fails on for that action, and their
+/// values, with a note per flag left out. The file applies to every action, so
+/// a test-only flag in it would otherwise break every build. The settings, the
+/// `-xcconfig` and the package flags stay, so a `clean` still resolves the
+/// products where the build put them. `tail` is what the invocation typed
+/// after `--`, which can give the `-resultBundlePath` a `-resultStreamPath`
+/// needs.
+///
+/// Only the file's arguments are filtered: a flag typed for this run is the
+/// caller's, and `xcodebuild` says why it refuses one.
 #[must_use]
-pub fn clean_passthrough(passthrough: &[String]) -> Vec<String> {
-    let mut kept = Vec::with_capacity(passthrough.len());
-    let mut iter = passthrough.iter();
+pub fn for_action(
+    action: Action,
+    configured: &[String],
+    tail: &[String],
+) -> (Vec<String>, Vec<String>) {
+    let bundle_given = matches!(
+        action,
+        Action::Build | Action::BuildForTesting | Action::Test
+    ) || tail.iter().any(|a| a == "-resultBundlePath");
+    let mut kept = Vec::with_capacity(configured.len());
+    let mut notes = Vec::new();
+    let testing = matches!(action, Action::Test | Action::BuildForTesting);
+    let mut iter = configured.iter();
     while let Some(arg) = iter.next() {
-        if NOT_FOR_CLEAN.contains(&arg.as_str()) {
-            iter.next();
+        let why = if !testing && TEST_ONLY_FLAGS.contains(&arg.as_str()) {
+            ", as a flag only testing takes"
+        } else if !bundle_given && arg == "-resultStreamPath" {
+            " without a '-resultBundlePath' to stream into"
         } else {
             kept.push(arg.clone());
-        }
+            continue;
+        };
+        let value = iter.next().map_or_else(String::new, |v| format!(" {v}"));
+        notes.push(format!(
+            "leaving out sweetpad.toml's '{arg}{value}': 'xcodebuild {}' fails on it{why}",
+            action.as_arg()
+        ));
     }
-    kept
+    (kept, notes)
 }
 
-/// The flags a build or test takes and `xcodebuild clean` fails on, each of
-/// which takes a value, as Xcode 27 refuses them: the testing ones ("The flag
-/// -enableCodeCoverage is only supported when testing"), and
-/// `-resultStreamPath`, which needs the `-resultBundlePath` sweetpad passes
-/// only to a build.
-const NOT_FOR_CLEAN: [&str; 6] = [
+/// The flags `xcodebuild` takes only when testing ("The flag
+/// -enableCodeCoverage is only supported when testing"), each of which takes
+/// a value, as Xcode 27 refuses them: `build`, `archive` and `clean` fail on
+/// them, and `build-for-testing` takes them. The other testing flags
+/// (`-test-iterations`, `-parallel-testing-enabled`, `-only-testing:`, …) are
+/// accepted by every action. `-test-repetition-relaunch-enabled` fails every
+/// action, `test` included, unless an iteration flag comes with it, and is
+/// accepted by every action when one does.
+const TEST_ONLY_FLAGS: [&str; 5] = [
     "-enableCodeCoverage",
     "-testPlan",
     "-testLanguage",
     "-testRegion",
-    "-test-repetition-relaunch-enabled",
-    "-resultStreamPath",
+    "-testProductsPath",
 ];
 
 /// `path` with its `.` components dropped and each `..` folded into the
@@ -3273,32 +3312,81 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
     }
 
     #[test]
-    fn a_clean_takes_the_passthrough_but_the_flags_it_fails_on() {
+    fn each_action_takes_the_files_args_but_the_flags_it_fails_on() {
         let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
+        let file = s(&[
+            "SYMROOT=build",
+            "-enableCodeCoverage",
+            "YES",
+            "-xcconfig",
+            "ci.xcconfig",
+            "-testPlan",
+            "Smoke",
+            "-skipMacroValidation",
+            "-resultStreamPath",
+            "stream.json",
+            "-test-iterations",
+            "3",
+            "-clonedSourcePackagesDirPath",
+            "pkgs",
+        ]);
+        let (kept, notes) = for_action(Action::Clean, &file, &[]);
         assert_eq!(
-            clean_passthrough(&s(&[
-                "SYMROOT=build",
-                "-enableCodeCoverage",
-                "YES",
-                "-xcconfig",
-                "ci.xcconfig",
-                "-testPlan",
-                "Smoke",
-                "-skipMacroValidation",
-                "-resultStreamPath",
-                "stream.json",
-                "-clonedSourcePackagesDirPath",
-                "pkgs",
-            ])),
+            kept,
             [
                 "SYMROOT=build",
                 "-xcconfig",
                 "ci.xcconfig",
                 "-skipMacroValidation",
+                "-test-iterations",
+                "3",
                 "-clonedSourcePackagesDirPath",
                 "pkgs",
             ]
         );
+        assert_eq!(
+            notes,
+            [
+                "leaving out sweetpad.toml's '-enableCodeCoverage YES': 'xcodebuild clean' fails \
+                 on it, as a flag only testing takes",
+                "leaving out sweetpad.toml's '-testPlan Smoke': 'xcodebuild clean' fails on it, \
+                 as a flag only testing takes",
+                "leaving out sweetpad.toml's '-resultStreamPath stream.json': 'xcodebuild clean' \
+                 fails on it without a '-resultBundlePath' to stream into",
+            ]
+        );
+        // A build passes its own result bundle, so the stream stays; the
+        // test-only flags go.
+        let (kept, notes) = for_action(Action::Build, &file, &[]);
+        assert!(kept.contains(&"-resultStreamPath".to_string()), "{kept:?}");
+        assert!(
+            !kept.contains(&"-enableCodeCoverage".to_string()),
+            "{kept:?}"
+        );
+        assert!(!kept.contains(&"-testPlan".to_string()), "{kept:?}");
+        assert_eq!(notes.len(), 2, "{notes:?}");
+        // An archive has a bundle only when one is typed.
+        let (kept, _) = for_action(Action::Archive, &file, &[]);
+        assert!(!kept.contains(&"-resultStreamPath".to_string()), "{kept:?}");
+        let (kept, _) = for_action(Action::Archive, &file, &s(&["-resultBundlePath", "r"]));
+        assert!(kept.contains(&"-resultStreamPath".to_string()), "{kept:?}");
+        // The testing actions take the whole file.
+        for action in [Action::Test, Action::BuildForTesting] {
+            assert_eq!(for_action(action, &file, &[]), (file.clone(), Vec::new()));
+        }
+    }
+
+    #[test]
+    fn the_flags_an_action_leaves_out_are_ones_the_file_may_carry() {
+        // The file's refusals run on what the action keeps, so a flag that
+        // was both left out and refused would slip past them on that action.
+        for flag in TEST_ONLY_FLAGS.iter().chain(&["-resultStreamPath"]) {
+            let file = [(*flag).to_string(), "v".to_string()];
+            assert!(
+                crate::cli::config::effective_xcodebuild_args(&file, &[]).is_ok(),
+                "{flag}"
+            );
+        }
     }
 
     #[test]

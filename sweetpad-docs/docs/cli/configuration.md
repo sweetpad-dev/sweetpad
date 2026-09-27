@@ -102,6 +102,25 @@ dotfile directories), so a layout like `ios/App.xcodeproj` works with no setup. 
 when two projects sit at the same depth. SweetPad reports that as an error listing both rather than
 guessing, and this is how you settle it.
 
+### Test-only flags
+
+`[xcodebuild] args` reaches every command that runs `xcodebuild`, but some flags only work when
+testing. `xcodebuild build`, `archive`, and `clean` fail on `-enableCodeCoverage`, `-testPlan`,
+`-testLanguage`, `-testRegion`, and `-testProductsPath`. SweetPad leaves these out of every command
+except `sweetpad test` and `sweetpad test build`, so you can keep them in the file:
+
+```toml
+[xcodebuild]
+args = ["-skipMacroValidation", "-testPlan", "CI"]   # -testPlan reaches only the test runs
+```
+
+`-resultStreamPath` needs a result bundle to stream into, so it stays out of `sweetpad clean` and out
+of `sweetpad archive` unless you pass `-resultBundlePath` after `--`. Run with `-v` to see each flag a
+command left out.
+
+The rest of the testing flags, such as `-test-iterations` and `-parallel-testing-enabled`, work with
+every action and reach every command. Flags you type after `--` are never left out.
+
 ### Arguments SweetPad won't let you put here
 
 `[xcodebuild] args` refuses the arguments SweetPad settles itself, naming the key to use instead:

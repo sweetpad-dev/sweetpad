@@ -145,8 +145,10 @@ sweetpad app install -- SYMROOT=/tmp/out   # builds into /tmp/out, installs from
 
 An argument every build in a project needs belongs in `sweetpad.toml`, not in your shell history.
 The `[xcodebuild] args` list is added to every command that builds, so it reaches the builds inside
-`app run`/`install`/`debug`/`diagnose` as well as `build`, `test`, and `archive`. `clean` takes it too,
-without the flags `xcodebuild clean` refuses:
+`app run`/`install`/`debug`/`diagnose` as well as `build`, `test`, and `archive`. `clean` takes it too.
+Each command leaves out the flags its `xcodebuild` action refuses, so a test-only flag such as
+`-enableCodeCoverage` or `-testPlan` reaches `test` and `test build` and stays out of the rest.
+`-v` names each flag left out:
 
 ```toml
 # sweetpad.toml (committed)

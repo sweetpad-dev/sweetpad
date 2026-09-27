@@ -524,10 +524,17 @@ args = ["-skipMacroValidation"]   # added to every command that builds
   `build`, `test`, `archive`, and the builds inside `app
   run`/`install`/`debug`/`diagnose`. `clean` takes it too, so a `SYMROOT=`
   or an `-xcconfig` that moves the products sends `xcodebuild clean` where
-  the build wrote; it leaves out the flags `xcodebuild clean` fails on (the
-  testing ones such as `-enableCodeCoverage` and `-testPlan`, and
-  `-resultStreamPath`, which needs the `-resultBundlePath` only a build
-  gets). A repo-wide `-skipMacroValidation` is a
+  the build wrote. The list has no per-action form, so each action leaves out
+  the file's flags it fails on, with a `-v` note naming each one. The testing
+  flags `-enableCodeCoverage`, `-testPlan`, `-testLanguage`, `-testRegion`
+  and `-testProductsPath` fail `build`, `archive` and `clean` ("only
+  supported when testing"), so they reach only `test` and `test build`.
+  `-resultStreamPath` fails without a `-resultBundlePath`, so it stays out of
+  `clean` and of an `archive` that wasn't typed one. The rest of the testing
+  flags (`-test-iterations`, `-parallel-testing-enabled`, `-only-testing:`, …)
+  pass every action as Xcode 27 probes them. A flag typed after `--` is never
+  left out: it was typed for this run, and `xcodebuild`'s refusal names it. A
+  repo-wide `-skipMacroValidation` is a
   property of the project, not a decision to re-make per command; this is where
   it lives. The typed tail is appended *after* the file's arguments, so typing
   one wins under xcodebuild's last-one-wins, and `status` prints the effective

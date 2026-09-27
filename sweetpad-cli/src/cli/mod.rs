@@ -807,7 +807,9 @@ impl Context {
     /// `action` is the `xcodebuild` action the arguments go to. A tail that
     /// names what sweetpad passes itself for it (`-scheme`, `test`'s
     /// `-resultBundlePath`, …) is refused here, from the command line alone,
-    /// before any project is looked for.
+    /// before any project is looked for. The file's flags that action fails
+    /// on (a test-only '-enableCodeCoverage' on a build) are left out, and
+    /// `-v` names them too.
     pub fn xcodebuild_args(
         &self,
         action: xcodebuild::Action,
@@ -828,9 +830,13 @@ impl Context {
         if matches!(container, resolve::Container::SwiftPackage(_)) {
             return Ok(tail.to_vec());
         }
-        let configured = self.project_file(&container).xcodebuild.args.clone();
+        let (configured, left_out) =
+            xcodebuild::for_action(action, &self.project_file(&container).xcodebuild.args, tail);
         let merged = config::effective_xcodebuild_args(&configured, tail).map_err(CliError::new)?;
         if self.out.is_verbose() {
+            for note in &left_out {
+                self.out.note(note);
+            }
             for [flag, value] in &merged.replaced {
                 self.out.note(&format!(
                     "leaving out sweetpad.toml's '{flag} {value}': the '{flag}' typed after '--' \

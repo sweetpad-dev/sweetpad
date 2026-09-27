@@ -62,7 +62,8 @@ impl Render for CleanReport {
 
 /// The `xcodebuild clean` argv for a scheme and configuration. The project's
 /// `[xcodebuild] args` place the products (a `SYMROOT=`, an `-xcconfig`), so
-/// the clean takes them to reach where the build wrote.
+/// the clean takes them to reach where the build wrote, without the flags
+/// `xcodebuild clean` fails on ([`xcodebuild::for_action`]).
 fn xcodebuild_clean_args(
     ctx: &Context,
     container: &Container,
@@ -77,9 +78,7 @@ fn xcodebuild_clean_args(
         configuration,
     ];
     args.extend(xcodebuild::container_args(container));
-    args.extend(xcodebuild::clean_passthrough(
-        &ctx.xcodebuild_args(xcodebuild::Action::Clean, &[])?,
-    ));
+    args.extend(ctx.xcodebuild_args(xcodebuild::Action::Clean, &[])?);
     Ok(args)
 }
 
