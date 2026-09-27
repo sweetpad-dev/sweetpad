@@ -134,8 +134,8 @@ pub struct XcodebuildArgs {
 }
 
 /// Launch inputs shared by `run` and `launch`: process arguments,
-/// environment, and wait-for-debugger. Simulator and macOS targets honor all
-/// three; physical devices don't yet. `--restore-state` is macOS-only.
+/// environment, and wait-for-debugger. The arguments and environment go after
+/// the scheme's own ([`add_scheme_launch`]). `--restore-state` is macOS-only.
 #[derive(Debug, Clone, Default, clap::Args)]
 pub struct LaunchArgs {
     /// Argument passed to the app process (repeatable). A value may start with
@@ -173,16 +173,11 @@ pub struct LaunchArgs {
 const IGNORE_PERSISTENCE: [&str; 2] = ["-ApplePersistenceIgnoreState", "YES"];
 
 /// The process arguments for a macOS app sweetpad launches: the
-/// [`IGNORE_PERSISTENCE`] pair ahead of the caller's own, unless
-/// `--restore-state` asked for the app's own behavior, or the caller's
-/// arguments or the scheme's (read only when needed) already set the key.
-fn mac_launch_args(
-    args: &[String],
-    restore_state: bool,
-    scheme_args: impl FnOnce() -> Vec<String>,
-) -> Vec<String> {
-    let names_it = |args: &[String]| args.iter().any(|a| a == IGNORE_PERSISTENCE[0]);
-    if restore_state || names_it(args) || names_it(&scheme_args()) {
+/// [`IGNORE_PERSISTENCE`] pair ahead of `args` (the scheme's and the caller's),
+/// unless `--restore-state` asked for the app's own behavior or `args` already
+/// set the key.
+fn mac_launch_args(args: &[String], restore_state: bool) -> Vec<String> {
+    if restore_state || args.iter().any(|a| a == IGNORE_PERSISTENCE[0]) {
         return args.to_vec();
     }
     IGNORE_PERSISTENCE
@@ -1397,12 +1392,14 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         added_ignore_persistence: false,
         passthrough: opts.passthrough.to_vec(),
     };
-    // Settled on the plan, so every macOS launch it drives carries it: the
-    // session's relaunches, a detached launch, and lldb's.
+    // Settled on the plan, like the macOS pair below, so every launch it
+    // drives carries them: a session's relaunches, a detached launch, and
+    // lldb's. `swift run` has no scheme to read them from.
+    if !matches!(plan.target, Target::SpmRun(_)) {
+        add_scheme_launch(&mut plan)?;
+    }
     if matches!(plan.target, Target::Mac) {
-        let args = mac_launch_args(&plan.launch.args, plan.launch.restore_state, || {
-            resolve::scheme_launch_arguments(&plan.resolved.container, &plan.scheme)
-        });
+        let args = mac_launch_args(&plan.launch.args, plan.launch.restore_state);
         // `mac_launch_args` only ever prepends the pair, so a longer list
         // means sweetpad added it.
         plan.added_ignore_persistence = args.len() > plan.launch.args.len();
@@ -1430,6 +1427,59 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         && !matches!(plan.target, Target::SpmRun(_));
     resolve::remember(ctx, &plan.resolved, &bt, picker_sourced);
     Ok(plan)
+}
+
+/// Add what the plan's scheme launches the app with, as Xcode's Run applies
+/// it ([`sweetpad_lib::scheme::Scheme::launch_settings`]): arguments,
+/// environment, and the App Language and App Region flags. Build settings are
+/// resolved only when a row refers to one. A scheme with no file adds nothing.
+fn add_scheme_launch(plan: &mut RunPlan) -> Result<(), CliError> {
+    let Some(scheme) = resolve::parse_scheme(&plan.resolved.container, &plan.scheme) else {
+        return Ok(());
+    };
+    let settings = if scheme.launch_references_settings() {
+        expansion_settings(plan, &scheme)?
+    } else {
+        std::collections::BTreeMap::new()
+    };
+    let launch = scheme.launch_settings(&settings, sweetpad_lib::scheme::host_language);
+    merge_scheme_launch(&mut plan.launch, launch);
+    Ok(())
+}
+
+/// The build settings `$(VAR)` in the scheme's launch rows expands against:
+/// those of the app the plan launches, which the locator picks from the same
+/// Run action, unless the Run action's `MacroExpansion` names another target
+/// the build resolves.
+fn expansion_settings(
+    plan: &RunPlan,
+    scheme: &sweetpad_lib::scheme::Scheme,
+) -> Result<std::collections::BTreeMap<String, String>, CliError> {
+    let located = plan.located()?.settings;
+    if let Some(other) = scheme
+        .launch_macro_expansion
+        .as_ref()
+        .filter(|m| m.blueprint_name != located.target)
+        && let Some(settings) =
+            xcodebuild::target_settings(&plan.build_plan(), &other.blueprint_name)?
+    {
+        return Ok(settings);
+    }
+    Ok(located.settings)
+}
+
+/// Put the scheme's arguments ahead of the `--arg`s and its environment ahead
+/// of the `--env`s, so a value typed for this run wins a clash with the
+/// scheme's.
+fn merge_scheme_launch(launch: &mut LaunchArgs, scheme: sweetpad_lib::scheme::LaunchSettings) {
+    launch.args.splice(0..0, scheme.args);
+    launch.env.splice(
+        0..0,
+        scheme
+            .env
+            .into_iter()
+            .map(|(key, value)| format!("{key}={value}")),
+    );
 }
 
 /// Settle the entitlements story for a hot macOS build (§9d zero-config
@@ -9121,34 +9171,50 @@ Target 0: (crash) stopped.\n"
     #[test]
     fn a_mac_launch_ignores_persistent_state_unless_told_otherwise() {
         let argv = |args: &[&str]| args.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
-        let no_scheme = Vec::new;
 
         assert_eq!(
-            mac_launch_args(&argv(&["-MyFlag", "YES"]), false, no_scheme),
+            mac_launch_args(&argv(&["-MyFlag", "YES"]), false),
             ["-ApplePersistenceIgnoreState", "YES", "-MyFlag", "YES"]
         );
         assert_eq!(
-            mac_launch_args(&[], false, no_scheme),
+            mac_launch_args(&[], false),
             ["-ApplePersistenceIgnoreState", "YES"]
         );
         // '--restore-state' leaves the app to its own behavior.
         assert_eq!(
-            mac_launch_args(&argv(&["-MyFlag", "YES"]), true, || {
-                unreachable!("the scheme is read only when its answer matters")
-            }),
+            mac_launch_args(&argv(&["-MyFlag", "YES"]), true),
             ["-MyFlag", "YES"]
         );
-        // The caller's own value wins, whatever it is.
-        let own = argv(&["-ApplePersistenceIgnoreState", "NO"]);
-        assert_eq!(mac_launch_args(&own, false, no_scheme), own);
-        // So does the scheme's.
-        assert_eq!(
-            mac_launch_args(&argv(&["-MyFlag", "YES"]), false, || argv(&[
-                "-ApplePersistenceIgnoreState",
-                "NO"
-            ])),
-            ["-MyFlag", "YES"]
+        // A value the scheme or the caller chose wins, whatever it is.
+        let own = argv(&["-MyFlag", "YES", "-ApplePersistenceIgnoreState", "NO"]);
+        assert_eq!(mac_launch_args(&own, false), own);
+    }
+
+    /// The scheme's launch rows go ahead of what this run typed, so a typed
+    /// '--arg' comes last and a typed '--env' replaces the scheme's value.
+    #[test]
+    fn scheme_launch_settings_go_ahead_of_the_typed_ones() {
+        let mut launch = LaunchArgs {
+            args: vec!["-Typed".into(), "1".into()],
+            env: vec!["SHARED=typed".into(), "OWN=1".into()],
+            ..LaunchArgs::default()
+        };
+        merge_scheme_launch(
+            &mut launch,
+            sweetpad_lib::scheme::LaunchSettings {
+                args: vec!["-Scheme".into(), "a b".into()],
+                env: vec![
+                    ("SHARED".into(), "scheme".into()),
+                    ("URL".into(), "a=b".into()),
+                ],
+            },
         );
+        assert_eq!(launch.args, ["-Scheme", "a b", "-Typed", "1"]);
+        let env = launch.env_pairs("SIMCTL_CHILD_").unwrap();
+        let resolved: std::collections::HashMap<_, _> = env.iter().cloned().collect();
+        assert_eq!(resolved["SIMCTL_CHILD_SHARED"], "typed");
+        assert_eq!(resolved["SIMCTL_CHILD_URL"], "a=b");
+        assert_eq!(resolved["SIMCTL_CHILD_OWN"], "1");
     }
 
     /// '--restore-state' belongs to every verb that launches the app.

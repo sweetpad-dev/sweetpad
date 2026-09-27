@@ -1491,27 +1491,11 @@ pub fn remember_testing(
 /// The platforms a scheme builds for, the destination picker's filter.
 pub use sweetpad_core::supported_platforms::SupportedPlatforms;
 
-/// The arguments `scheme`'s Run action launches the app with: the enabled
-/// rows only, each split on whitespace as Xcode splits it. Empty when there is
-/// no scheme file to read.
-#[must_use]
-pub fn scheme_launch_arguments(container: &Container, scheme: &str) -> Vec<String> {
-    parse_scheme(container, scheme)
-        .map(|parsed| {
-            parsed
-                .launch_arguments
-                .iter()
-                .filter(|a| a.is_enabled)
-                .flat_map(|a| a.argument.split_whitespace().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 /// The parsed file behind `scheme`, or `None` when there is none to read: an
 /// autocreated scheme Xcode never materialized, or a name that doesn't
 /// resolve.
-fn parse_scheme(container: &Container, scheme: &str) -> Option<sweetpad_lib::scheme::Scheme> {
+#[must_use]
+pub fn parse_scheme(container: &Container, scheme: &str) -> Option<sweetpad_lib::scheme::Scheme> {
     sweetpad_core::app_locator::find_scheme(container.path(), scheme)
 }
 
@@ -1798,10 +1782,10 @@ mod tests {
         assert!(matches!(discover(&dir), Some(Container::Workspace(_))));
     }
 
-    /// A scheme's launch arguments come back the way Xcode passes them: the
-    /// enabled rows only, each split on whitespace.
+    /// The container's scheme file is the one read, and a scheme without a
+    /// file reads as none.
     #[test]
-    fn scheme_launch_arguments_are_the_enabled_rows_split_on_whitespace() {
+    fn parse_scheme_reads_the_containers_scheme_file() {
         let dir = temp_dir("launch-args");
         let project = dir.join("App.xcodeproj");
         let schemes = project.join("xcshareddata/xcschemes");
@@ -1823,11 +1807,14 @@ mod tests {
         )
         .unwrap();
         let container = Container::Project(project);
+        let launch = parse_scheme(&container, "App")
+            .unwrap()
+            .launch_settings(&std::collections::BTreeMap::new(), || None);
         assert_eq!(
-            scheme_launch_arguments(&container, "App"),
+            launch.args,
             ["-ApplePersistenceIgnoreState", "NO", "-Plain"]
         );
-        assert!(scheme_launch_arguments(&container, "Missing").is_empty());
+        assert!(parse_scheme(&container, "Missing").is_none());
     }
 
     #[test]

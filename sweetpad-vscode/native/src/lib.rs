@@ -681,6 +681,10 @@ pub struct SchemeInfo {
     pub launch_environment_variables: Vec<SchemeEnvironmentVariable>,
     pub launch_language: Option<String>,
     pub launch_region: Option<String>,
+    /// Whether an enabled launch argument or environment value refers to a
+    /// build setting, so `schemeLaunchSettings` needs resolved settings to
+    /// expand it.
+    pub launch_references_settings: bool,
 }
 
 /// Parse a single `.xcscheme` file into its actions + per-action
@@ -714,6 +718,41 @@ pub fn scheme_files(container: String, name: String) -> Vec<String> {
         .collect()
 }
 
+/// What a scheme's Run action launches its app with.
+#[napi(object)]
+pub struct SchemeLaunchSettings {
+    /// Process arguments, in launch order.
+    pub args: Vec<String>,
+    pub env: HashMap<String, String>,
+}
+
+/// The arguments and environment Xcode launches the app of the scheme at
+/// `path` with: enabled rows only, `$(VAR)` expanded, arguments split with
+/// shell-style quoting, then the App Language and App Region flags.
+/// `buildSettings` are the scheme's resolved targets. Those of its expansion
+/// target (the Run action's `MacroExpansion`, else the target it launches,
+/// else the first) expand `$(VAR)`. An empty list is enough when
+/// `parseScheme(path).launchReferencesSettings` is false.
+#[napi]
+pub fn scheme_launch_settings(
+    path: String,
+    build_settings: Vec<TargetBuildSettings>,
+) -> napi::Result<SchemeLaunchSettings> {
+    let scheme = scheme::parse_file(Path::new(&path)).map_err(to_napi_err)?;
+    let named = scheme
+        .launch_expansion_target()
+        .and_then(|t| build_settings.iter().find(|s| s.target == t.blueprint_name));
+    let settings: std::collections::BTreeMap<String, String> = named
+        .or(build_settings.first())
+        .map(|t| t.settings.clone().into_iter().collect())
+        .unwrap_or_default();
+    let launch = scheme.launch_settings(&settings, scheme::host_language);
+    Ok(SchemeLaunchSettings {
+        args: launch.args,
+        env: launch.env.into_iter().collect(),
+    })
+}
+
 fn buildable_to_napi(b: scheme::BuildableRef) -> SchemeBuildable {
     SchemeBuildable {
         blueprint_name: b.blueprint_name,
@@ -724,7 +763,9 @@ fn buildable_to_napi(b: scheme::BuildableRef) -> SchemeBuildable {
 }
 
 fn scheme_to_napi(s: scheme::Scheme) -> SchemeInfo {
+    let launch_references_settings = s.launch_references_settings();
     SchemeInfo {
+        launch_references_settings,
         build_entries: s
             .build_entries
             .into_iter()

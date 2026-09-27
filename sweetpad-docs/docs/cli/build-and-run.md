@@ -137,6 +137,11 @@ sweetpad run --arg -MyFlag --arg YES
 sweetpad run --env API_BASE=https://staging.example.com --env LOG_LEVEL=debug
 ```
 
+The app also gets what its scheme's Run action sets, the way Xcode passes it: the checked arguments
+and environment variables, with build settings like `$(SRCROOT)` filled in, and the App Language and
+App Region options. `--arg` adds to the scheme's arguments. `--env` replaces a scheme variable with
+the same name.
+
 ## Running in the background
 
 By default `run` stays in the foreground so it can show you the logs. Two flags change that:

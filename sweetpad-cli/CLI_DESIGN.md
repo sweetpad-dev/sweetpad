@@ -2118,9 +2118,24 @@ launch detached, return. On a simulator or device the app already outlives
 the CLI, so `--detach` there is `--no-logs`. It is rejected with `--hot`,
 which has to stay attached to recompile and inject.
 
+Every launch a run plan drives, on a simulator, a device or the Mac, starts
+from what the scheme's Run action launches the app with, the way Xcode
+applies it (`Scheme::launch_settings` in sweetpad-lib). The enabled argument
+and environment rows are used, with `$(VAR)` expanded against the resolved
+build settings of the app the plan launches (`RunPlan::located`, the
+locator's pick from the same Run action), or of the target the Run action's
+`MacroExpansion` names. Each argument row is then split with shell-style
+quoting, and App Language and App Region add `-AppleLanguages`,
+`-AppleTextDirection` and `-AppleLocale`. The rules come from `xcodebuild
+test` on Xcode 27.0, whose Test action launches with the Run action's rows.
+Build settings are resolved only when a row refers to one. The `--arg`s
+follow the scheme's arguments, and an `--env` replaces a scheme variable with
+the same name. A Swift package's `swift run` takes only the typed ones. The
+extension reads the same function through the addon (`schemeLaunchSettings`).
+
 Every macOS launch sweetpad drives (`run --mac` and its session's
 relaunches, `--hot`, `app launch --mac`, `app debug --mac`, `app diagnose
---mac`) passes `-ApplePersistenceIgnoreState YES` ahead of the `--arg`s.
+--mac`) passes `-ApplePersistenceIgnoreState YES` ahead of the other arguments.
 Without it, a relaunch after a crash can open AppKit's "reopen windows?"
 alert, a modal loop on the main thread that nobody at the terminal sees: the
 app is up and does nothing, and `app sample` reads it as idle. The pair is

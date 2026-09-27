@@ -8,19 +8,22 @@
 //! Schemes are the link between "I want to do X with this app" (run, test,
 //! profile, archive) and "these are the targets that need resolving."
 //! [`crate::build_context::BuildContext::plan_build`] consumes one of these
-//! to produce a `Vec<ResolveQuery>`.
+//! to produce a `Vec<ResolveQuery>`. [`Scheme::launch_settings`] turns the
+//! Run action's arguments, environment and app language into what the app is
+//! launched with.
 //!
 //! What's NOT modeled (yet, deliberately): pre/post actions, test plans,
 //! custom working directory, debugger / launcher identifiers. Add these
 //! incrementally as concrete callers need them — see DOCS.md §3.2 "minimum
 //! abstraction."
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::resolver::expand_one;
 use crate::xcscheme::{self, Element};
 
 #[derive(Debug, Clone)]
@@ -54,8 +57,14 @@ pub struct Scheme {
     pub archive_configuration: Option<String>,
     /// `AnalyzeAction.buildConfiguration`.
     pub analyze_configuration: Option<String>,
-    /// `LaunchAction.CommandLineArguments`, in scheme order. The caller
-    /// filters by `is_enabled` and applies Xcode's whitespace-splitting.
+    /// `LaunchAction.MacroExpansion` — the target whose build settings expand
+    /// `$(VAR)` in the launch arguments and environment (the scheme editor's
+    /// "Expand Variables Based On"). `None` when absent, and then Xcode uses
+    /// [`Self::launch_target`]; [`Self::launch_expansion_target`] applies
+    /// that fallback.
+    pub launch_macro_expansion: Option<BuildableRef>,
+    /// `LaunchAction.CommandLineArguments`, in scheme order, disabled rows
+    /// included. [`Self::launch_settings`] turns them into process arguments.
     pub launch_arguments: Vec<CommandLineArgument>,
     /// `LaunchAction.EnvironmentVariables`, in scheme order.
     pub launch_environment_variables: Vec<EnvironmentVariable>,
@@ -163,7 +172,9 @@ pub struct BuildableRef {
 /// A `<CommandLineArgument>` under `LaunchAction.CommandLineArguments`.
 #[derive(Debug, Clone)]
 pub struct CommandLineArgument {
-    /// The raw argument string. Xcode splits it on whitespace at launch.
+    /// The raw argument string. At launch Xcode expands the build settings
+    /// it references, then splits it into words with shell-style quoting
+    /// ([`split_launch_argument`]).
     pub argument: String,
     /// `isEnabled="NO"` unchecks the row; an absent attribute is enabled.
     pub is_enabled: bool,
@@ -174,7 +185,8 @@ pub struct CommandLineArgument {
 pub struct EnvironmentVariable {
     pub key: String,
     /// `None` when the `value` attribute is absent (distinct from empty `""`);
-    /// Xcode writes value-less rows for widget-preview placeholders.
+    /// Xcode writes value-less rows for widget-preview placeholders, and
+    /// launches with such a variable set to the empty string.
     pub value: Option<String>,
     /// `isEnabled="NO"` unchecks the row; an absent attribute is enabled.
     pub is_enabled: bool,
@@ -571,6 +583,10 @@ pub fn from_element(root: &Element) -> Result<Scheme, Error> {
         launch_configuration: launch_action
             .and_then(|a| a.attr("buildConfiguration"))
             .map(str::to_string),
+        launch_macro_expansion: launch_action
+            .and_then(|a| a.child("MacroExpansion"))
+            .and_then(|m| m.child("BuildableReference"))
+            .and_then(parse_buildable),
         launch_arguments: launch_action
             .map(parse_command_line_arguments)
             .unwrap_or_default(),
@@ -695,6 +711,209 @@ fn parse_yes(v: &str) -> bool {
     v.eq_ignore_ascii_case("YES")
 }
 
+/// What a scheme's Run action launches its app with: the process arguments
+/// and environment Xcode passes, in the order it passes them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LaunchSettings {
+    /// The enabled argument rows, expanded and split into words, then the
+    /// App Language and App Region flags.
+    pub args: Vec<String>,
+    /// The enabled environment rows with their values expanded, one entry per
+    /// key: a later row for a key replaces the value of an earlier one.
+    pub env: Vec<(String, String)>,
+}
+
+impl Scheme {
+    /// The target whose resolved build settings expand `$(VAR)` in the launch
+    /// arguments and environment: the Run action's `MacroExpansion`, or else
+    /// the target it launches.
+    #[must_use]
+    pub fn launch_expansion_target(&self) -> Option<&BuildableRef> {
+        self.launch_macro_expansion
+            .as_ref()
+            .or(self.launch_target.as_ref())
+    }
+
+    /// Whether an enabled launch argument or environment value refers to a
+    /// build setting, so [`Self::launch_settings`] needs the resolved settings
+    /// of [`Self::launch_expansion_target`]. A caller can skip resolving them
+    /// when this is false.
+    #[must_use]
+    pub fn launch_references_settings(&self) -> bool {
+        self.launch_arguments
+            .iter()
+            .any(|a| a.is_enabled && a.argument.contains('$'))
+            || self
+                .launch_environment_variables
+                .iter()
+                .any(|v| v.is_enabled && v.value.as_deref().is_some_and(|v| v.contains('$')))
+    }
+
+    /// The arguments and environment Xcode launches this scheme's app with.
+    /// Checked against `xcodebuild test`, which launches with the Run
+    /// action's rows when the Test action shares them:
+    ///
+    /// - disabled rows are left out;
+    /// - `$(VAR)`, `${VAR}` and `$VAR` expand against `settings`, the resolved
+    ///   build settings of [`Self::launch_expansion_target`]. An undefined
+    ///   `$(VAR)` expands to nothing, an undefined bare `$VAR` stays as
+    ///   written, and `$$` is a literal `$`;
+    /// - each argument row is split into words after expansion
+    ///   ([`split_launch_argument`]), so a setting whose value holds a space
+    ///   becomes two arguments unless the row quotes it;
+    /// - an environment value is used as written once expanded, quotes
+    ///   included. A row with no value sets the variable to the empty string.
+    ///   Keys are not expanded;
+    /// - App Language adds `-AppleLanguages (<language>)` and
+    ///   `-AppleTextDirection YES` or `NO`, and App Region adds `-AppleLocale
+    ///   <language>_<region>`. With a region and no language, the language is
+    ///   the host's, from `host_language`, which is called only then.
+    pub fn launch_settings(
+        &self,
+        settings: &BTreeMap<String, String>,
+        host_language: impl FnOnce() -> Option<String>,
+    ) -> LaunchSettings {
+        let mut args = Vec::new();
+        for row in self.launch_arguments.iter().filter(|a| a.is_enabled) {
+            args.extend(split_launch_argument(&expand_one(&row.argument, settings)));
+        }
+        let language = self.launch_language.as_deref().filter(|l| !l.is_empty());
+        if let Some(language) = language {
+            args.push("-AppleLanguages".into());
+            args.push(format!("({language})"));
+            args.push("-AppleTextDirection".into());
+            args.push(
+                if is_right_to_left(language) {
+                    "YES"
+                } else {
+                    "NO"
+                }
+                .into(),
+            );
+        }
+        if let Some(region) = self.launch_region.as_deref().filter(|r| !r.is_empty())
+            && let Some(language) = language.map(str::to_string).or_else(host_language)
+        {
+            args.push("-AppleLocale".into());
+            args.push(format!("{language}_{region}"));
+        }
+
+        let mut env: Vec<(String, String)> = Vec::new();
+        for row in self
+            .launch_environment_variables
+            .iter()
+            .filter(|v| v.is_enabled && !v.key.is_empty())
+        {
+            let value = row
+                .value
+                .as_deref()
+                .map(|v| expand_one(v, settings))
+                .unwrap_or_default();
+            match env.iter_mut().find(|(key, _)| *key == row.key) {
+                Some(slot) => slot.1 = value,
+                None => env.push((row.key.clone(), value)),
+            }
+        }
+        LaunchSettings { args, env }
+    }
+}
+
+/// Split one launch-argument row into process arguments the way Xcode does:
+/// at unquoted whitespace, with shell-style quoting. Single quotes keep
+/// everything up to the next `'` as written. Outside them, a backslash takes
+/// the next character literally, inside double quotes too. Quoted text joins
+/// the text around it (`a"b c"d` is `ab cd`), `""` is an empty argument, and
+/// an unclosed quote runs to the end of the row.
+#[must_use]
+pub fn split_launch_argument(row: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut in_word = false;
+    let mut chars = row.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' => {
+                in_word = true;
+                word.extend(chars.by_ref().take_while(|&c| c != '\''));
+            }
+            '"' => {
+                in_word = true;
+                while let Some(c) = chars.next() {
+                    match c {
+                        '"' => break,
+                        '\\' => word.extend(chars.next()),
+                        c => word.push(c),
+                    }
+                }
+            }
+            '\\' => {
+                in_word = true;
+                word.extend(chars.next());
+            }
+            c if c.is_whitespace() => {
+                if in_word {
+                    words.push(std::mem::take(&mut word));
+                    in_word = false;
+                }
+            }
+            c => {
+                in_word = true;
+                word.push(c);
+            }
+        }
+    }
+    if in_word {
+        words.push(word);
+    }
+    words
+}
+
+/// Whether Foundation lays `language` out right to left, which is the
+/// `-AppleTextDirection` Xcode passes with App Language. Mirrors
+/// `NSLocale.characterDirection(forLanguage:)` as `xcodebuild` applies it: a
+/// right-to-left base language (`he`, `ar-SA`), or a script-qualified tag
+/// whose locale data is right to left (`pa-Arab`). A left-to-right script
+/// overrides a right-to-left base (`sd-Deva`), and a right-to-left script on
+/// a language with no such locale data does not (`az-Arab`).
+fn is_right_to_left(language: &str) -> bool {
+    const LANGUAGES: &[&str] = &[
+        "ar", "ckb", "dv", "fa", "he", "iw", "ks", "lrc", "mzn", "nqo", "ps", "rhg", "sd", "syr",
+        "ug", "ur", "yi",
+    ];
+    const SCRIPTED: &[&str] = &[
+        "ff-adlm", "ks-arab", "ms-arab", "pa-arab", "sd-arab", "uz-arab",
+    ];
+    const SCRIPTS: &[&str] = &["adlm", "arab", "hebr", "nkoo", "rohg", "syrc", "thaa"];
+    let tag = language.to_ascii_lowercase().replace('_', "-");
+    let mut parts = tag.split('-');
+    let base = parts.next().unwrap_or_default();
+    let script = parts
+        .next()
+        .filter(|p| p.len() == 4 && p.bytes().all(|b| b.is_ascii_alphabetic()));
+    match script {
+        Some(script) if SCRIPTS.contains(&script) => {
+            SCRIPTED.contains(&format!("{base}-{script}").as_str()) || LANGUAGES.contains(&base)
+        }
+        Some(_) => false,
+        None => LANGUAGES.contains(&base),
+    }
+}
+
+/// The host's language, which Xcode pairs with a scheme's App Region when the
+/// scheme sets no App Language: the language part of the user's
+/// `AppleLocale` default (`en` for `en_UA`). `None` when it can't be read.
+#[must_use]
+pub fn host_language() -> Option<String> {
+    let out = std::process::Command::new("defaults")
+        .args(["read", "-g", "AppleLocale"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    let locale = String::from_utf8(out.stdout).ok()?;
+    let language = locale.trim().split(['_', '@']).next()?.trim();
+    (!language.is_empty()).then(|| language.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -789,6 +1008,271 @@ mod tests {
         assert!(scheme.launch_arguments.is_empty());
         assert!(scheme.launch_language.is_none());
         assert!(scheme.launch_region.is_none());
+    }
+
+    /// A scheme whose Run action carries `inner` (argument and environment
+    /// rows) and the given `LaunchAction` attributes.
+    fn launch_scheme(attrs: &str, inner: &str) -> Scheme {
+        let xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Scheme version="1.7">
+   <LaunchAction buildConfiguration="Debug" {attrs}>
+      <BuildableProductRunnable>
+         <BuildableReference BlueprintIdentifier="A1" BuildableName="App.app"
+            BlueprintName="App" ReferencedContainer="container:App.xcodeproj"/>
+      </BuildableProductRunnable>
+      {inner}
+   </LaunchAction>
+</Scheme>"#
+        );
+        from_element(&xcscheme::parse(&xml).unwrap()).unwrap()
+    }
+
+    fn arg(argument: &str, enabled: bool) -> String {
+        let argument = argument.replace('"', "&quot;");
+        let enabled = if enabled { "YES" } else { "NO" };
+        format!(r#"<CommandLineArgument argument="{argument}" isEnabled="{enabled}"/>"#)
+    }
+
+    fn settings(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect()
+    }
+
+    fn no_host() -> Option<String> {
+        panic!("the host language is read only for a region without a language")
+    }
+
+    /// The rows and results of an `xcodebuild test` run (Xcode 27.0) whose
+    /// Test action shares the Run action's arguments and environment.
+    #[test]
+    fn launch_settings_expand_then_split_like_xcodebuild() {
+        let rows = [
+            arg("-Plain YES", true),
+            arg("-Disabled YES", false),
+            arg(r#"-Quoted "a b" 'c d' e\ f"#, true),
+            arg(
+                "-Expand $(PRODUCT_NAME) ${TARGET_NAME} $(SRCROOT)/x $(NOT_SET)| $PRODUCT_NAME",
+                true,
+            ),
+            arg(
+                r#"-Spacey $(SPACEY) $NOT_SET_BARE $(PRODUCT_NAME:lower) $$(PRODUCT_NAME) "$(SPACEY)""#,
+                true,
+            ),
+            arg(
+                r#"-Edge a"b c"d "x\"y" 'it''s' "" 'single\q' "dbl\q" tab	sep $(QUOTED) "abc def"#,
+                true,
+            ),
+        ]
+        .concat();
+        let scheme = launch_scheme(
+            "",
+            &format!("<CommandLineArguments>{rows}</CommandLineArguments>"),
+        );
+        let settings = settings(&[
+            ("PRODUCT_NAME", "App"),
+            ("TARGET_NAME", "App"),
+            ("SRCROOT", "/src"),
+            ("SPACEY", "p q"),
+            ("QUOTED", r#""u v""#),
+        ]);
+        assert!(scheme.launch_references_settings());
+        assert_eq!(
+            scheme.launch_settings(&settings, no_host).args,
+            [
+                "-Plain",
+                "YES",
+                "-Quoted",
+                "a b",
+                "c d",
+                "e f",
+                "-Expand",
+                "App",
+                "App",
+                "/src/x",
+                "|",
+                "App",
+                "-Spacey",
+                "p",
+                "q",
+                "$NOT_SET_BARE",
+                "app",
+                "$(PRODUCT_NAME)",
+                "p q",
+                "-Edge",
+                "ab cd",
+                "x\"y",
+                "its",
+                "",
+                r"single\q",
+                "dblq",
+                "tab",
+                "sep",
+                "u v",
+                "abc def",
+            ]
+        );
+    }
+
+    #[test]
+    fn launch_environment_expands_values_and_keeps_the_last_row_per_key() {
+        let scheme = launch_scheme(
+            "",
+            r#"<EnvironmentVariables>
+                <EnvironmentVariable key="PLAIN" value="hello world" isEnabled="YES"/>
+                <EnvironmentVariable key="OFF" value="x" isEnabled="NO"/>
+                <EnvironmentVariable key="NOVALUE" isEnabled="YES"/>
+                <EnvironmentVariable key="QUOTES" value="&quot;q r&quot; 's'" isEnabled="YES"/>
+                <EnvironmentVariable key="DUP" value="first" isEnabled="YES"/>
+                <EnvironmentVariable key="K_$(PRODUCT_NAME)" value="k" isEnabled="YES"/>
+                <EnvironmentVariable key="DUP" value="second" isEnabled="YES"/>
+                <EnvironmentVariable key="EXPAND" value="$(PRODUCT_NAME)|$(NOT_SET)|${CONFIGURATION}"/>
+            </EnvironmentVariables>"#,
+        );
+        let settings = settings(&[("PRODUCT_NAME", "App"), ("CONFIGURATION", "Debug")]);
+        let env = scheme.launch_settings(&settings, no_host).env;
+        let pairs: Vec<(&str, &str)> = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        assert_eq!(
+            pairs,
+            [
+                ("PLAIN", "hello world"),
+                ("NOVALUE", ""),
+                ("QUOTES", r#""q r" 's'"#),
+                ("DUP", "second"),
+                ("K_$(PRODUCT_NAME)", "k"),
+                ("EXPAND", "App||Debug"),
+            ]
+        );
+    }
+
+    #[test]
+    fn launch_settings_skip_settings_when_nothing_refers_to_them() {
+        let scheme = launch_scheme(
+            "",
+            &format!(
+                r#"<CommandLineArguments>{}{}</CommandLineArguments>
+                <EnvironmentVariables>
+                   <EnvironmentVariable key="A" value="plain" isEnabled="YES"/>
+                   <EnvironmentVariable key="B" value="$(OFF)" isEnabled="NO"/>
+                </EnvironmentVariables>"#,
+                arg("-Flag YES", true),
+                arg("-Off $(SRCROOT)", false),
+            ),
+        );
+        assert!(!scheme.launch_references_settings());
+        let launch = scheme.launch_settings(&BTreeMap::new(), no_host);
+        assert_eq!(launch.args, ["-Flag", "YES"]);
+        assert_eq!(launch.env, [("A".to_string(), "plain".to_string())]);
+    }
+
+    /// App Language and App Region as `xcodebuild` passes them.
+    #[test]
+    fn launch_language_and_region_flags() {
+        let flags = |attrs: &str| {
+            launch_scheme(attrs, "")
+                .launch_settings(&BTreeMap::new(), || Some("en".into()))
+                .args
+        };
+        assert_eq!(
+            flags(r#"language="he" region="IL""#),
+            [
+                "-AppleLanguages",
+                "(he)",
+                "-AppleTextDirection",
+                "YES",
+                "-AppleLocale",
+                "he_IL"
+            ]
+        );
+        assert_eq!(
+            flags(r#"language="zh-Hans" region="CN""#),
+            [
+                "-AppleLanguages",
+                "(zh-Hans)",
+                "-AppleTextDirection",
+                "NO",
+                "-AppleLocale",
+                "zh-Hans_CN"
+            ]
+        );
+        assert_eq!(
+            flags(r#"language="ar""#),
+            ["-AppleLanguages", "(ar)", "-AppleTextDirection", "YES"]
+        );
+        // A region alone pairs with the host's language.
+        assert_eq!(flags(r#"region="JP""#), ["-AppleLocale", "en_JP"]);
+        let unknown =
+            launch_scheme(r#"region="JP""#, "").launch_settings(&BTreeMap::new(), || None);
+        assert!(unknown.args.is_empty());
+        // The arguments rows come first.
+        let scheme = launch_scheme(
+            r#"language="fr""#,
+            &format!(
+                "<CommandLineArguments>{}</CommandLineArguments>",
+                arg("-X 1", true)
+            ),
+        );
+        assert_eq!(
+            scheme.launch_settings(&BTreeMap::new(), no_host).args,
+            [
+                "-X",
+                "1",
+                "-AppleLanguages",
+                "(fr)",
+                "-AppleTextDirection",
+                "NO"
+            ]
+        );
+    }
+
+    /// The text direction `xcodebuild` reported for each language.
+    #[test]
+    fn right_to_left_languages_match_xcodebuild() {
+        for rtl in [
+            "he", "he-IL", "iw", "ar", "ar-SA", "fa", "ur", "yi", "ckb", "dv", "ps", "ug", "sd",
+            "ks", "mzn", "lrc", "syr", "nqo", "rhg", "pa-Arab", "uz-Arab", "ms-Arab", "ff-Adlm",
+        ] {
+            assert!(is_right_to_left(rtl), "{rtl}");
+        }
+        for ltr in [
+            "fr",
+            "en-GB",
+            "zh-Hans",
+            "ku",
+            "arc",
+            "az-Arab",
+            "sd-Deva",
+            "ks-Deva",
+            "IDELaunchRTLPseudoLanguage",
+        ] {
+            assert!(!is_right_to_left(ltr), "{ltr}");
+        }
+    }
+
+    #[test]
+    fn launch_expansion_target_prefers_the_macro_expansion() {
+        let scheme = launch_scheme("", "");
+        assert_eq!(
+            scheme
+                .launch_expansion_target()
+                .map(|b| b.blueprint_name.as_str()),
+            Some("App")
+        );
+        let scheme = launch_scheme(
+            "",
+            r#"<MacroExpansion>
+                  <BuildableReference BlueprintIdentifier="B2" BuildableName="Other.app"
+                     BlueprintName="Other" ReferencedContainer="container:App.xcodeproj"/>
+               </MacroExpansion>"#,
+        );
+        assert_eq!(
+            scheme
+                .launch_expansion_target()
+                .map(|b| b.blueprint_name.as_str()),
+            Some("Other")
+        );
     }
 
     #[test]

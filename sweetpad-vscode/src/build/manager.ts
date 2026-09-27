@@ -504,7 +504,14 @@ export class BuildManager {
 
     const sdk = destination.platform;
 
-    const schemeSettings = await getSchemeLaunchSettings({ xcworkspace: xcworkspace, scheme: scheme });
+    const schemeSettings = await getSchemeLaunchSettings({
+      workspaceRoot: workspaceRoot,
+      xcworkspace: xcworkspace,
+      scheme: scheme,
+      configuration: configuration,
+      sdk: sdk,
+      destination: getXcodeBuildDestinationString({ destination: destination }),
+    });
     const launchArgs = [...schemeSettings.args, ...(getWorkspaceConfig("build.launchArgs") ?? [])];
     const launchEnv = { ...schemeSettings.env, ...getWorkspaceConfig("build.launchEnv") };
 
@@ -618,7 +625,14 @@ export class BuildManager {
 
     const sdk = destination.platform;
 
-    const schemeSettings = await getSchemeLaunchSettings({ xcworkspace: xcworkspace, scheme: scheme });
+    const schemeSettings = await getSchemeLaunchSettings({
+      workspaceRoot: workspaceRoot,
+      xcworkspace: xcworkspace,
+      scheme: scheme,
+      configuration: configuration,
+      sdk: sdk,
+      destination: destinationRaw,
+    });
     const launchArgs = [...schemeSettings.args, ...(getWorkspaceConfig("build.launchArgs") ?? [])];
     const launchEnv = { ...schemeSettings.env, ...getWorkspaceConfig("build.launchEnv") };
 

@@ -2192,6 +2192,20 @@ pub fn located(plan: &BuildPlan<'_>) -> Result<Located, CliError> {
     Ok(located)
 }
 
+/// The resolved settings of `target` in a build of `plan`, resolved the way
+/// [`located`] resolves the app's. `None` when the build doesn't resolve it.
+pub fn target_settings(
+    plan: &BuildPlan<'_>,
+    target: &str,
+) -> Result<Option<BTreeMap<String, String>>, CliError> {
+    let resolved = sweetpad_core::build_settings::resolve_build_settings(&settings_options(plan)?)
+        .map_err(CliError::new)?;
+    Ok(resolved
+        .into_iter()
+        .find(|t| t.target == target)
+        .map(|t| t.settings))
+}
+
 /// The resolver options [`located`] resolves `plan` with.
 fn settings_options(plan: &BuildPlan<'_>) -> Result<BuildSettingsOptions, CliError> {
     let (project, workspace) = match plan.container {

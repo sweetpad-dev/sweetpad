@@ -8,8 +8,10 @@ import * as vscode from "vscode";
 
 import { getBspConfigFile } from "../bsp/paths";
 import {
+  findSchemeFile,
   generateBuildServerConfig,
   generateSweetpadBuildServerConfig,
+  getBuildSettingsList,
   getSweetpadCliPath,
 } from "../common/cli/scripts";
 import { isFileExists, readJsonFile } from "../common/files";
@@ -23,7 +25,7 @@ import {
   findXcodeWorkspaceInDirectory,
   generateBuildServerConfigOnBuild,
   getCurrentXcodeWorkspacePath,
-  launchActionToSettings,
+  getSchemeLaunchSettings,
   prepareDerivedDataPath,
   repairStaleBuildServerConfig,
   workspaceFoldersContaining,
@@ -31,13 +33,21 @@ import {
 } from "./utils";
 
 // `./utils` imports the native `@sweetpad/native` addon at module level; stub it so
-// this spec runs without the compiled addon. Container discovery is the addon's walk.
-vi.mock("@sweetpad/native", () => ({ discoverContainers: vi.fn() }));
+// this spec runs without the compiled addon. Container discovery and the scheme launch settings
+// are the addon's.
+const scheme = vi.hoisted(() => ({ launchReferencesSettings: false }));
+vi.mock("@sweetpad/native", () => ({
+  discoverContainers: vi.fn(),
+  parseScheme: vi.fn(() => scheme),
+  schemeLaunchSettings: vi.fn(),
+}));
 
 vi.mock("../common/cli/scripts", () => ({
   generateBuildServerConfig: vi.fn(),
   generateSweetpadBuildServerConfig: vi.fn(),
   getSweetpadCliPath: vi.fn(),
+  findSchemeFile: vi.fn(),
+  getBuildSettingsList: vi.fn(),
   getXcodeBuildCommand: vi.fn(() => "xcodebuild"),
   SWEETPAD_CLI_MISSING_MESSAGE: "cli missing",
 }));
@@ -53,96 +63,56 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...original, existsSync: vi.fn(original.existsSync) };
 });
 
-type ArgInput = { argument: string; isEnabled?: boolean };
-type EnvInput = { key: string; value?: string; isEnabled?: boolean };
+const launchOptions = {
+  workspaceRoot: "/w",
+  xcworkspace: "/w/App.xcodeproj",
+  scheme: "App",
+  configuration: "Debug",
+  sdk: "iphonesimulator",
+  destination: "platform=iOS Simulator,id=SIM",
+};
 
-// Build the subset of a parsed scheme (`sweetpadLib.SchemeInfo`) that
-// `launchActionToSettings` reads, defaulting each row to enabled.
-function launch(over: { args?: ArgInput[]; env?: EnvInput[]; language?: string; region?: string }) {
-  return {
-    launchArguments: (over.args ?? []).map((a) => ({ argument: a.argument, isEnabled: a.isEnabled ?? true })),
-    launchEnvironmentVariables: (over.env ?? []).map((e) => ({
-      key: e.key,
-      value: e.value,
-      isEnabled: e.isEnabled ?? true,
-    })),
-    launchLanguage: over.language,
-    launchRegion: over.region,
-  };
-}
-
-describe("launchActionToSettings", () => {
-  it("returns empty settings for a bare launch action", () => {
-    expect(launchActionToSettings(launch({}))).toEqual({ args: [], env: {} });
+// The launch rows are turned into argv and env by the native addon (checked
+// against xcodebuild in sweetpad-lib's scheme tests); this side only finds the
+// scheme file and resolves build settings when a row refers to one.
+describe("getSchemeLaunchSettings", () => {
+  beforeEach(() => {
+    scheme.launchReferencesSettings = false;
+    (findSchemeFile as Mock).mockResolvedValue("/w/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme");
+    (sweetpadLib.schemeLaunchSettings as Mock).mockReturnValue({ args: ["-Flag", "a b"], env: { KEY: "value" } });
   });
 
-  it("auto-injects -AppleLanguages and -AppleLocale from language + region", () => {
-    expect(launchActionToSettings(launch({ language: "he", region: "IL" })).args).toEqual([
-      "-AppleLanguages",
-      "(he)",
-      "-AppleLocale",
-      "he_IL",
-    ]);
+  it("returns empty settings when the scheme has no file", async () => {
+    (findSchemeFile as Mock).mockResolvedValue(undefined);
+    expect(await getSchemeLaunchSettings(launchOptions)).toEqual({ args: [], env: {} });
+    expect(sweetpadLib.schemeLaunchSettings).not.toHaveBeenCalled();
   });
 
-  it("emits -AppleLanguages but not -AppleLocale when only language is set", () => {
-    expect(launchActionToSettings(launch({ language: "ar" })).args).toEqual(["-AppleLanguages", "(ar)"]);
-  });
-
-  it("emits no locale flags when only region is set (bare region is not a valid locale id)", () => {
-    expect(launchActionToSettings(launch({ region: "JP" })).args).toEqual([]);
-  });
-
-  it("tokenizes command-line argument rows on whitespace", () => {
-    expect(
-      launchActionToSettings(launch({ args: [{ argument: "-AppleLanguages (he)" }, { argument: "--flag" }] })).args,
-    ).toEqual(["-AppleLanguages", "(he)", "--flag"]);
-  });
-
-  it("skips disabled command-line arguments", () => {
-    expect(
-      launchActionToSettings(launch({ args: [{ argument: "--keep" }, { argument: "--skip", isEnabled: false }] })).args,
-    ).toEqual(["--keep"]);
-  });
-
-  it("collects enabled environment variables and drops disabled ones", () => {
-    expect(
-      launchActionToSettings(
-        launch({
-          env: [
-            { key: "KEEP", value: "1" },
-            { key: "SKIP", value: "x", isEnabled: false },
-          ],
-        }),
-      ).env,
-    ).toEqual({ KEEP: "1" });
-  });
-
-  it("drops environment variables with no value (distinct from empty string)", () => {
-    expect(launchActionToSettings(launch({ env: [{ key: "NOVALUE" }, { key: "EMPTY", value: "" }] })).env).toEqual({
-      EMPTY: "",
-    });
-  });
-
-  it("keeps both explicit locale args and language/region attrs (discussion #197)", () => {
-    const { args } = launchActionToSettings(
-      launch({
-        args: [
-          { argument: "-AppleLanguages (he)" },
-          { argument: "-AppleLocale he_IL" },
-          { argument: "-WMFVisualTestBatchRecordMode" },
-        ],
-        language: "he",
-        region: "IL",
-      }),
+  it("skips resolving build settings when no row refers to one", async () => {
+    expect(await getSchemeLaunchSettings(launchOptions)).toEqual({ args: ["-Flag", "a b"], env: { KEY: "value" } });
+    expect(getBuildSettingsList).not.toHaveBeenCalled();
+    expect(sweetpadLib.schemeLaunchSettings).toHaveBeenCalledWith(
+      "/w/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme",
+      [],
     );
-    // The explicit CLI args and the language/region attrs both flow through;
-    // Foundation reads the first match at launch.
-    expect(args).toContain("-WMFVisualTestBatchRecordMode");
-    expect(args.filter((a) => a === "-AppleLanguages")).toHaveLength(2);
-    expect(args.filter((a) => a === "-AppleLocale")).toHaveLength(2);
-    expect(args).toContain("(he)");
-    expect(args).toContain("he_IL");
+  });
+
+  it("passes the resolved build settings when a row refers to one", async () => {
+    scheme.launchReferencesSettings = true;
+    (getBuildSettingsList as Mock).mockResolvedValue([{ target: "App", settings: { PRODUCT_NAME: "App" } }]);
+    await getSchemeLaunchSettings(launchOptions);
+    expect(getBuildSettingsList).toHaveBeenCalledWith(launchOptions);
+    expect(sweetpadLib.schemeLaunchSettings).toHaveBeenCalledWith(
+      "/w/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme",
+      [{ target: "App", settings: { PRODUCT_NAME: "App" } }],
+    );
+  });
+
+  it("launches without the scheme's settings when they can't be read", async () => {
+    (sweetpadLib.schemeLaunchSettings as Mock).mockImplementation(() => {
+      throw new Error("invalid scheme");
+    });
+    expect(await getSchemeLaunchSettings(launchOptions)).toEqual({ args: [], env: {} });
   });
 });
 

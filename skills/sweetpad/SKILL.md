@@ -134,7 +134,9 @@ sweetpad run --on booted --no-logs --non-interactive
 
 Pass arguments and environment to the app with `--arg` and `--env KEY=VALUE`
 (both repeatable) — both work on `app run`, `app debug`, and `app diagnose`
-alike. `--detach` (`app run` only) leaves the app running after the CLI exits.
+alike. They add to the scheme's own launch arguments, environment and app
+language, which sweetpad applies the way Xcode does. `--detach` (`app run`
+only) leaves the app running after the CLI exits.
 
 A scheme that builds more than one app runs the one its Run action names, as
 Xcode does. When that app can't run on the destination, it runs the app that

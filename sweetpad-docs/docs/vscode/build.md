@@ -381,12 +381,14 @@ the same way whether it's launched from Xcode or from VSCode, with no need to co
 
 The mapping:
 
-- Enabled `<CommandLineArgument>` entries → `launchArgs`.
+- Enabled `<CommandLineArgument>` entries → `launchArgs`. Each entry is split into words the way a shell splits
+  it, so `-Name "a b"` becomes two arguments, `-Name` and `a b`.
 - Enabled `<EnvironmentVariable>` entries → `launchEnv`.
-- `language="fr"` → adds `-AppleLanguages (fr)`.
+- SweetPad fills in build settings in either one, like `$(SRCROOT)` or `$(PRODUCT_NAME)`, from the app's build settings.
+- `language="fr"` → adds `-AppleLanguages (fr) -AppleTextDirection NO`. A right-to-left language such as `he`
+  gets `-AppleTextDirection YES`.
 - `language="fr"` + `region="FR"` → also adds `-AppleLocale fr_FR`.
-- `region` on its own is ignored (Xcode pairs it with the device's system language at runtime, which the CLI can't
-  observe; add an explicit `-AppleLocale` flag in `launchArgs` if you need it).
+- `region="FR"` on its own → adds `-AppleLocale` with your Mac's language, such as `en_FR`.
 
 Anything you put in `sweetpad.build.launchArgs` / `sweetpad.build.launchEnv` is **appended** to the values from the
 scheme, so workspace overrides always win over scheme defaults.
