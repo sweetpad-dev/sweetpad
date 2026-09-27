@@ -655,7 +655,10 @@ pub fn schemes(container: &Container) -> Result<Vec<String>, CliError> {
     match container {
         Container::Workspace(p) => sweetpad_lib::workspace::open(p)
             .map(|w| {
-                let members = sweetpad_core::package_members::resolve_workspace(&w, None);
+                let members = sweetpad_core::package_members::resolve_workspace(
+                    &w,
+                    &sweetpad_core::package_members::Toolchain::default(),
+                );
                 w.merged_schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(
                     &members,
                 ))
@@ -663,7 +666,10 @@ pub fn schemes(container: &Container) -> Result<Vec<String>, CliError> {
             .map_err(|e| CliError::new(format!("failed to read workspace {}: {e}", p.display()))),
         Container::Project(p) => sweetpad_lib::project::open(p)
             .map(|proj| {
-                let members = sweetpad_core::package_members::resolve_project(&proj, None);
+                let members = sweetpad_core::package_members::resolve_project(
+                    &proj,
+                    &sweetpad_core::package_members::Toolchain::default(),
+                );
                 proj.schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(&members))
             })
             .map_err(|e| CliError::new(format!("failed to read project {}: {e}", p.display()))),

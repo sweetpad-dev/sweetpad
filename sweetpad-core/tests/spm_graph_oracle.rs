@@ -124,7 +124,7 @@ fn a_workspace_lists_every_local_package_it_reaches() {
     assert_eq!(ws.package_refs, vec![fixture().join("MultiLib")]);
     assert_eq!(ws.project_package_refs(), project_packages());
 
-    let members = package_members::resolve_workspace(&ws, None);
+    let members = package_members::resolve_workspace(&ws, &package_members::Toolchain::default());
     assert_eq!(
         ws.merged_schemes_with_packages(&package_members::scheme_pairs(&members)),
         WORKSPACE_SCHEMES
@@ -161,7 +161,7 @@ fn a_bare_project_lists_the_packages_it_declares() {
     let proj = project::open(&fixture().join("project/SpmApp.xcodeproj")).unwrap();
     assert_eq!(proj.package_refs, project_packages());
 
-    let members = package_members::resolve_project(&proj, None);
+    let members = package_members::resolve_project(&proj, &package_members::Toolchain::default());
     assert_eq!(
         proj.schemes_with_packages(&package_members::scheme_pairs(&members)),
         PROJECT_SCHEMES

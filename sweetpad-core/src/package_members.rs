@@ -56,6 +56,20 @@
 //! **Targets include test targets** in every case, unlike schemes: a target
 //! list exists to drive `-only-testing:`, where a test target is the point.
 //!
+//! **A package opened on its own lists its own shape.** `xcodebuild -list` in
+//! a package directory prints its scheme files beside what the manifest
+//! synthesizes, all sorted case-insensitively ([`standalone`]; the shape
+//! measured on Xcode 26.5, the order on 27.0):
+//!
+//! | products | synthesized schemes |
+//! |---|---|
+//! | none | `<name>-Package` alone |
+//! | one | `<name>` alone, the package's own name whatever the product is called |
+//! | two or more | `<name>-Package` plus one scheme per product |
+//!
+//! Its test targets are never schemes of their own, whatever its container
+//! holds.
+//!
 //! **The spawn is slow enough to need a cache.** A cold `dump-package` takes
 //! seconds (SwiftPM compiles the manifest); a warm one still costs the `swift`
 //! driver's startup. Results are memoized on disk against the manifest's
@@ -64,10 +78,11 @@
 //! one-shot, so an in-process memo alone would never hit.
 
 use std::collections::{BTreeMap, HashSet};
+use std::fmt;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, ExitStatus, Output, Stdio};
 use std::time::UNIX_EPOCH;
 
 use serde_json::Value;
@@ -76,6 +91,54 @@ use sweetpad_lib::project::Project;
 use sweetpad_lib::workspace::{Workspace, package_scheme_root};
 
 use crate::scratch::ScratchDir;
+
+/// The toolchain that evaluates a manifest. The default is the `swift` on
+/// `PATH` under the process's own `DEVELOPER_DIR`, which is what the CLI
+/// wants. The extension host sees neither the user's login shell nor its
+/// settings, so it passes both.
+#[derive(Debug, Clone, Default)]
+pub struct Toolchain {
+    /// The `swift` to run, when not the one on `PATH`.
+    pub swift: Option<PathBuf>,
+    /// The `DEVELOPER_DIR` to run it under.
+    pub developer_dir: Option<PathBuf>,
+}
+
+impl Toolchain {
+    /// The program to spawn.
+    #[must_use]
+    pub fn swift(&self) -> &Path {
+        self.swift.as_deref().unwrap_or(Path::new("swift"))
+    }
+}
+
+/// Why a manifest could not be read.
+#[derive(Debug)]
+pub enum DumpError {
+    /// `swift` could not be spawned, or its scratch directory made.
+    Spawn(io::Error),
+    /// The dump ran and failed, most often a manifest that doesn't compile.
+    Failed(ExitStatus),
+    /// It printed no JSON object.
+    NoJson,
+    /// It printed JSON that doesn't parse.
+    Parse(serde_json::Error),
+}
+
+impl fmt::Display for DumpError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DumpError::Spawn(e) => write!(f, "running swift package dump-package: {e}"),
+            DumpError::Failed(status) => {
+                write!(f, "swift package dump-package exited with {status}")
+            }
+            DumpError::NoJson => f.write_str("swift package dump-package produced no JSON"),
+            DumpError::Parse(e) => write!(f, "parsing swift package dump-package: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for DumpError {}
 
 /// How a package was reached. A workspace member's test targets are schemes
 /// whether or not it has been opened in Xcode; every other package's are only
@@ -114,11 +177,14 @@ type Stamp = (u64, u128);
 /// manifest, and only this catches an unedited one whose names this code
 /// derives differently — `products`, for one, counts implicit executables that
 /// a plain read of `dump-package` does not.
-const CACHE_SCHEMA: u64 = 1;
+const CACHE_SCHEMA: u64 = 2;
 
 /// What one manifest says, before a role turns it into schemes.
 #[derive(Debug, Clone)]
 struct ManifestNames {
+    /// The package's own name, which names its schemes when it is opened on
+    /// its own.
+    name: String,
     products: Vec<String>,
     test_targets: Vec<String>,
     targets: Vec<String>,
@@ -219,6 +285,7 @@ fn cached_manifest(
         return None;
     }
     Some(ManifestNames {
+        name: entry.get("name")?.as_str()?.to_string(),
         products: string_list(entry, "products")?,
         test_targets: string_list(entry, "testTargets")?,
         targets: string_list(entry, "targets")?,
@@ -237,6 +304,7 @@ fn cache_entry(current: Stamp, names: &ManifestNames) -> Value {
         // u128 exceeds JSON's safe integer range; keep it as a string so a
         // round-trip can't quietly lose precision.
         "mtime": mtime.to_string(),
+        "name": names.name,
         "products": names.products,
         "testTargets": names.test_targets,
         "targets": names.targets,
@@ -303,10 +371,7 @@ fn has_a_scheme_that_resolves(dir: &Path, files: &[String], names: &ManifestName
 /// manifest fails to evaluate contributes nothing and is not cached, so the
 /// next call retries — a broken manifest is usually mid-edit.
 #[must_use]
-pub fn resolve(
-    roots: &[(PathBuf, PackageRole)],
-    developer_dir: Option<&Path>,
-) -> Vec<PackageMember> {
+pub fn resolve(roots: &[(PathBuf, PackageRole)], toolchain: &Toolchain) -> Vec<PackageMember> {
     let mut entries = read_cache();
     let mut changed = false;
     let mut out: Vec<PackageMember> = Vec::new();
@@ -340,10 +405,7 @@ pub fn resolve(
                 .map(|&i| {
                     let dir = level[i].0.clone();
                     scope.spawn(move || {
-                        (
-                            i,
-                            dump_package(&dir, developer_dir).map(|m| read_manifest(&m)),
-                        )
+                        (i, dump_package(&dir, toolchain).map(|m| read_manifest(&m)))
                     })
                 })
                 .collect();
@@ -395,7 +457,7 @@ pub fn resolve(
 /// schemes), then the packages its member projects declare, then everything
 /// those reach through `.package(path:)`.
 #[must_use]
-pub fn resolve_workspace(ws: &Workspace, developer_dir: Option<&Path>) -> Vec<PackageMember> {
+pub fn resolve_workspace(ws: &Workspace, toolchain: &Toolchain) -> Vec<PackageMember> {
     let mut roots: Vec<(PathBuf, PackageRole)> = ws
         .package_refs
         .iter()
@@ -406,7 +468,7 @@ pub fn resolve_workspace(ws: &Workspace, developer_dir: Option<&Path>) -> Vec<Pa
             .into_iter()
             .map(|p| (p, PackageRole::Dependency)),
     );
-    resolve(&roots, developer_dir)
+    resolve(&roots, toolchain)
 }
 
 /// Every local package a standalone `.xcodeproj` draws schemes and targets
@@ -414,13 +476,13 @@ pub fn resolve_workspace(ws: &Workspace, developer_dir: Option<&Path>) -> Vec<Pa
 /// `.package(path:)`. None of them is a workspace member, so none contributes
 /// test-target schemes.
 #[must_use]
-pub fn resolve_project(project: &Project, developer_dir: Option<&Path>) -> Vec<PackageMember> {
+pub fn resolve_project(project: &Project, toolchain: &Toolchain) -> Vec<PackageMember> {
     let roots: Vec<(PathBuf, PackageRole)> = project
         .package_refs
         .iter()
         .map(|p| (p.clone(), PackageRole::Dependency))
         .collect();
-    resolve(&roots, developer_dir)
+    resolve(&roots, toolchain)
 }
 
 /// The `(path, schemes)` pairs
@@ -443,18 +505,93 @@ pub fn target_pairs(members: &[PackageMember]) -> Vec<(PathBuf, Vec<String>)> {
         .collect()
 }
 
+/// The names a Swift package opened on its own offers, the way
+/// `xcodebuild -list` prints them in its directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageNames {
+    /// The package's name, from its manifest.
+    pub name: String,
+    /// Its `.swiftpm/xcode` scheme files and the schemes its manifest
+    /// synthesizes (see the module docs), sorted like `xcodebuild -list`.
+    pub schemes: Vec<String>,
+    /// Every target the manifest declares, test targets included.
+    pub targets: Vec<String>,
+}
+
+/// What the package in `dir` offers when opened on its own. The manifest is
+/// read through the same cache as [`resolve`], so an unchanged
+/// `Package.swift` costs no spawn. `stderr` takes the dump's diagnostics: the
+/// CLI shows a manifest's compile errors, the extension drops them.
+///
+/// # Errors
+///
+/// When the manifest cannot be evaluated ([`DumpError`]).
+pub fn standalone(
+    dir: &Path,
+    toolchain: &Toolchain,
+    stderr: Stdio,
+) -> Result<PackageNames, DumpError> {
+    let dir = canonical(dir);
+    let mut entries = read_cache();
+    let current = stamp(&dir.join("Package.swift"));
+    if let Some(names) = current.and_then(|st| cached_manifest(&entries, &dir, st)) {
+        return Ok(standalone_names(&dir, names));
+    }
+    let names = read_manifest(&dump_manifest(&dir, toolchain, stderr)?);
+    if let Some(st) = current {
+        entries.insert(dir.to_string_lossy().into_owned(), cache_entry(st, &names));
+        write_cache(&entries);
+    }
+    Ok(standalone_names(&dir, names))
+}
+
+/// [`standalone`] for a manifest already dumped: `dump` is the model
+/// `swift package dump-package` printed for the package in `dir`.
+#[must_use]
+pub fn standalone_from_dump(dir: &Path, dump: &Value) -> PackageNames {
+    standalone_names(dir, read_manifest(dump))
+}
+
+/// [`standalone`] once the manifest is read: the scheme files in `dir`'s
+/// container join the synthesized schemes.
+fn standalone_names(dir: &Path, names: ManifestNames) -> PackageNames {
+    let mut schemes = sweetpad_lib::scheme::container_schemes(&package_scheme_root(dir));
+    schemes.extend(names.standalone_schemes());
+    sweetpad_lib::scheme::sort_like_xcodebuild(&mut schemes);
+    schemes.dedup();
+    PackageNames {
+        name: names.name,
+        schemes,
+        targets: names.targets,
+    }
+}
+
 /// Run `swift package dump-package` in `dir` and parse its JSON. `None` on any
 /// failure (no toolchain, manifest doesn't compile, unexpected output) — the
 /// caller degrades to the names it can read from files.
-fn dump_package(dir: &Path, developer_dir: Option<&Path>) -> Option<Value> {
-    let output = run_dump_package(dir, developer_dir, Stdio::null()).ok()?;
+fn dump_package(dir: &Path, toolchain: &Toolchain) -> Option<Value> {
+    dump_manifest(dir, toolchain, Stdio::null()).ok()
+}
+
+/// Evaluate the manifest in `dir` and return the model `dump-package` prints,
+/// its stderr sent to `stderr`.
+///
+/// # Errors
+///
+/// When `swift` cannot run, the dump fails, or it prints no JSON object.
+pub fn dump_manifest(dir: &Path, toolchain: &Toolchain, stderr: Stdio) -> Result<Value, DumpError> {
+    let output = run_dump_package(dir, toolchain, stderr).map_err(DumpError::Spawn)?;
     if !output.status.success() {
-        return None;
+        return Err(DumpError::Failed(output.status));
     }
-    let text = String::from_utf8_lossy(&output.stdout);
-    // Skip any leading non-JSON chatter, like the CLI's other JSON readers.
-    let start = text.find('{')?;
-    serde_json::from_str(&text[start..]).ok()
+    parse_dump(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// The JSON object in a dump's stdout, after any leading non-JSON chatter the
+/// toolchain prints ahead of it.
+fn parse_dump(stdout: &str) -> Result<Value, DumpError> {
+    let start = stdout.find('{').ok_or(DumpError::NoJson)?;
+    serde_json::from_str(&stdout[start..]).map_err(DumpError::Parse)
 }
 
 /// Run `swift package dump-package` for the package in `dir`, its stderr sent
@@ -477,15 +614,11 @@ fn dump_package(dir: &Path, developer_dir: Option<&Path>) -> Option<Value> {
 ///
 /// When the scratch directory cannot be made or `swift` cannot be spawned.
 /// A dump that runs and fails is an `Ok` with a failed status.
-pub fn run_dump_package(
-    dir: &Path,
-    developer_dir: Option<&Path>,
-    stderr: Stdio,
-) -> io::Result<Output> {
+pub fn run_dump_package(dir: &Path, toolchain: &Toolchain, stderr: Stdio) -> io::Result<Output> {
     // `resolve` runs a level's dumps concurrently; each gets its own.
     let scratch = ScratchDir::new("sweetpad-dump-package")?;
-    let mut cmd = Command::new("swift");
-    if let Some(dev) = developer_dir {
+    let mut cmd = Command::new(toolchain.swift());
+    if let Some(dev) = &toolchain.developer_dir {
         cmd.env("DEVELOPER_DIR", dev);
     }
     cmd.env("TMPDIR", scratch.as_os_str())
@@ -500,10 +633,32 @@ pub fn run_dump_package(
 
 fn read_manifest(manifest: &Value) -> ManifestNames {
     ManifestNames {
+        name: manifest
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
         products: products_with_implicit_executables(manifest),
         test_targets: names_in(manifest, "targets", is_test_target),
         targets: names_in(manifest, "targets", |_| true),
         path_deps: path_dependencies(manifest),
+    }
+}
+
+impl ManifestNames {
+    /// The schemes `xcodebuild` synthesizes for the package opened on its own
+    /// (see the module docs). The single-product collapse is easy to get wrong
+    /// in both directions: a package with one library product answers to
+    /// neither that product's name nor the aggregate, and one whose only
+    /// product is the implicit executable behind an `executableTarget`
+    /// answers to the package name too.
+    fn standalone_schemes(&self) -> Vec<String> {
+        if self.products.len() == 1 {
+            return vec![self.name.clone()];
+        }
+        let mut names = vec![format!("{}-Package", self.name)];
+        names.extend(self.products.iter().cloned());
+        names
     }
 }
 
@@ -667,6 +822,107 @@ mod tests {
         );
     }
 
+    fn names(manifest: &str) -> ManifestNames {
+        read_manifest(&serde_json::from_str(manifest).unwrap())
+    }
+
+    #[test]
+    fn two_products_get_the_aggregate_and_a_scheme_each() {
+        let m = names(
+            r#"{ "name": "Demo", "products": [
+                     { "name": "DemoKit", "type": { "library": ["automatic"] }, "targets": ["DemoKit"] },
+                     { "name": "demo", "type": { "executable": null }, "targets": ["demo"] } ],
+                 "targets": [ { "name": "DemoKit", "type": "regular" },
+                              { "name": "demo", "type": "executable" },
+                              { "name": "DemoKitTests", "type": "test" } ] }"#,
+        );
+        assert_eq!(m.standalone_schemes(), ["Demo-Package", "DemoKit", "demo"]);
+    }
+
+    /// Grounded on `xcodebuild -list` (26.5): a package whose only product is
+    /// a library answers to its own name, not the product's and not the
+    /// aggregate's.
+    #[test]
+    fn a_single_product_collapses_to_the_package_name() {
+        let m = names(
+            r#"{ "name": "P", "products": [
+                     { "name": "Lib", "type": { "library": ["automatic"] }, "targets": ["T"] } ],
+                 "targets": [ { "name": "T", "type": "regular" } ] }"#,
+        );
+        assert_eq!(m.standalone_schemes(), ["P"]);
+    }
+
+    /// The implicit executable product SwiftPM synthesizes counts toward that
+    /// collapse: `xcodebuild -list` on a package whose whole manifest is one
+    /// `executableTarget` prints the package name alone.
+    #[test]
+    fn an_executable_target_counts_as_a_product() {
+        let m = names(
+            r#"{ "name": "MyTool", "products": [],
+                 "targets": [ { "name": "runner", "type": "executable" } ] }"#,
+        );
+        assert_eq!(m.standalone_schemes(), ["MyTool"]);
+    }
+
+    /// One declared product plus an `executableTarget` it does not cover is
+    /// two products, so the aggregate comes back and both are listed.
+    #[test]
+    fn an_uncovered_executable_target_is_a_product_of_its_own() {
+        let m = names(
+            r#"{ "name": "D", "products": [
+                     { "name": "LibA", "type": { "library": ["automatic"] }, "targets": ["TA"] } ],
+                 "targets": [ { "name": "TA", "type": "regular" },
+                              { "name": "TC", "type": "executable" } ] }"#,
+        );
+        assert_eq!(m.standalone_schemes(), ["D-Package", "LibA", "TC"]);
+    }
+
+    #[test]
+    fn a_package_with_no_products_offers_just_the_aggregate() {
+        let m = names(
+            r#"{ "name": "P", "products": [],
+                 "targets": [ { "name": "Lib", "type": "regular" },
+                              { "name": "LibTests", "type": "test" } ] }"#,
+        );
+        assert_eq!(m.standalone_schemes(), ["P-Package"]);
+    }
+
+    #[test]
+    fn a_dump_skips_leading_noise_before_its_json() {
+        let parsed = parse_dump("Fetching dependencies\n{\"name\": \"Demo\"}").unwrap();
+        assert_eq!(parsed.get("name").and_then(Value::as_str), Some("Demo"));
+        assert!(matches!(
+            parse_dump("not json at all"),
+            Err(DumpError::NoJson)
+        ));
+    }
+
+    /// `xcodebuild -list` in a package that holds a `.swiftpm/xcode` scheme
+    /// lists it beside the synthesized ones, all sorted case-insensitively
+    /// (Xcode 27.0: `alpha`, `B10Multi-Package`, `Beta`, `runner`, `Zeta`).
+    /// The test target stays out even though `Beta` names a declared target.
+    #[test]
+    fn a_standalone_package_lists_its_scheme_files_beside_its_synthesized_schemes() {
+        let dir = package_dir("standalone", Some(("Beta", "Zeta")));
+        let manifest = names(
+            r#"{ "name": "B10Multi",
+                 "products": [
+                     { "name": "Zeta", "type": { "library": ["automatic"] }, "targets": ["Zeta"] },
+                     { "name": "alpha", "type": { "library": ["automatic"] }, "targets": ["alpha"] } ],
+                 "targets": [ { "name": "Zeta", "type": "regular" },
+                              { "name": "alpha", "type": "regular" },
+                              { "name": "runner", "type": "executable" },
+                              { "name": "ZetaTests", "type": "test" } ] }"#,
+        );
+        let read = standalone_names(&dir, manifest);
+        assert_eq!(read.name, "B10Multi");
+        assert_eq!(
+            read.schemes,
+            ["alpha", "B10Multi-Package", "Beta", "runner", "Zeta"]
+        );
+        assert_eq!(read.targets, ["Zeta", "alpha", "runner", "ZetaTests"]);
+    }
+
     #[test]
     fn a_workspace_member_adds_its_test_targets_to_its_products() {
         let dir = package_dir("member", None);
@@ -823,7 +1079,7 @@ mod tests {
              let package = Package(name: \"Dumped\")\n",
         )
         .unwrap();
-        let manifest = dump_package(&dir, None).expect("the manifest evaluates");
+        let manifest = dump_package(&dir, &Toolchain::default()).expect("the manifest evaluates");
         assert_eq!(manifest.get("name").and_then(Value::as_str), Some("Dumped"));
         assert!(!dir.join(".build").exists());
     }

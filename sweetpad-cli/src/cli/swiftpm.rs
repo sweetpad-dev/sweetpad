@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde::Deserialize;
+use sweetpad_core::package_members::{DumpError, PackageNames, Toolchain};
 use sweetpad_core::scratch::ScratchDir;
 
 use crate::cli::process;
@@ -55,58 +56,6 @@ pub struct DeclaredDep {
 }
 
 impl Manifest {
-    /// Scheme candidates for a package opened on its own, matching what
-    /// `xcodebuild -list` prints in a package directory. How many products the
-    /// package has decides the shape (measured on Xcode 26.5; the two-product
-    /// form is the same back to 15.4 in the captures):
-    ///
-    /// | products | schemes |
-    /// |---|---|
-    /// | none | `<name>-Package` alone |
-    /// | one | `<name>` alone — the package's own name, whatever the product is called |
-    /// | two or more | `<name>-Package` plus one scheme per product |
-    ///
-    /// The single-product collapse is easy to get wrong in both directions: a
-    /// package with one library product answers to neither that product's name
-    /// nor the aggregate, and one whose only product is the implicit
-    /// executable behind an `executableTarget` answers to the package name
-    /// too.
-    #[must_use]
-    pub fn scheme_names(&self) -> Vec<String> {
-        let products = self.effective_products();
-        if products.len() == 1 {
-            return vec![self.name.clone()];
-        }
-        let mut names = vec![format!("{}-Package", self.name)];
-        names.extend(products);
-        names
-    }
-
-    /// The package's products as SwiftPM sees them: the declared ones, plus
-    /// the implicit executable product it synthesizes for each
-    /// `executableTarget` no declared product already covers.
-    ///
-    /// `dump-package` reports only what the manifest wrote — `swift package
-    /// describe` is what shows the implicit ones, and it resolves the whole
-    /// dependency graph to do it. Reconstructing them here keeps the read
-    /// offline.
-    #[must_use]
-    pub fn effective_products(&self) -> Vec<String> {
-        let covered: std::collections::HashSet<&str> = self
-            .products
-            .iter()
-            .flat_map(|p| p.targets.iter().map(String::as_str))
-            .collect();
-        let mut names: Vec<String> = self.products.iter().map(|p| p.name.clone()).collect();
-        names.extend(
-            self.targets
-                .iter()
-                .filter(|t| t.is_executable() && !covered.contains(t.name.as_str()))
-                .map(|t| t.name.clone()),
-        );
-        names
-    }
-
     /// The package's declared dependencies, decoded best-effort from the raw
     /// `dependencies` array. Unknown entries are skipped (never an error).
     #[must_use]
@@ -194,51 +143,16 @@ fn requirement_string(req: &serde_json::Value) -> String {
     "(unparsed)".to_string()
 }
 
-/// A product declared by the package. In the dump, `type` is a single-key
-/// object (`{"library":[…]}`, `{"executable":null}`, `{"plugin":…}`, …); we
-/// keep it raw and inspect the key, which is robust against new product kinds.
+/// A product declared by the package.
 #[derive(Debug, Deserialize)]
 pub struct Product {
     pub name: String,
-    #[serde(rename = "type", default)]
-    pub kind: serde_json::Value,
-    /// The targets this product exposes — what says whether an
-    /// `executableTarget` already has a product, in
-    /// [`Manifest::effective_products`].
-    #[serde(default)]
-    pub targets: Vec<String>,
 }
 
-impl Product {
-    /// Whether this product is an executable (the only kind `swift run` and
-    /// `app run` can launch).
-    #[must_use]
-    pub fn is_executable(&self) -> bool {
-        self.kind.get("executable").is_some()
-    }
-}
-
-/// A target declared by the package. `type` is a plain string here: `regular`,
-/// `executable`, `test`, `system`, `binary`, `plugin`, or `macro`.
+/// A target declared by the package.
 #[derive(Debug, Deserialize)]
 pub struct Target {
     pub name: String,
-    #[serde(rename = "type", default)]
-    pub kind: String,
-}
-
-impl Target {
-    #[must_use]
-    pub fn is_test(&self) -> bool {
-        self.kind == "test"
-    }
-
-    /// Whether SwiftPM would synthesize an executable product for this target
-    /// when no declared product covers it.
-    #[must_use]
-    pub fn is_executable(&self) -> bool {
-        self.kind == "executable"
-    }
 }
 
 /// The package root — the directory holding `Package.swift`, where `swift` must
@@ -269,16 +183,32 @@ pub fn manifest(container: &Container) -> Result<Manifest, CliError> {
 /// ([`sweetpad_core::package_members::run_dump_package`]), so reading a package
 /// leaves no `.build/` in it and nothing in the user's `$TMPDIR`.
 pub fn manifest_at(package_path: &Path) -> Result<Manifest, CliError> {
-    let output =
-        sweetpad_core::package_members::run_dump_package(package_path, None, Stdio::inherit())
-            .map_err(|e| process::spawn_error("swift", &e))?;
-    if !output.status.success() {
-        return Err(CliError::new(format!(
-            "swift package dump-package exited with {}",
-            output.status
-        )));
+    let dump = sweetpad_core::package_members::dump_manifest(
+        package_path,
+        &Toolchain::default(),
+        Stdio::inherit(),
+    )
+    .map_err(dump_error)?;
+    serde_json::from_value(dump)
+        .map_err(|e| CliError::new(format!("parsing swift package dump-package: {e}")))
+}
+
+/// What the package offers when opened on its own: its name, its schemes the
+/// way `xcodebuild -list` prints them in its directory (the `.swiftpm/xcode`
+/// scheme files included), and its targets.
+pub fn package_names(container: &Container) -> Result<PackageNames, CliError> {
+    let dir = package_dir(container).unwrap_or_else(|| PathBuf::from("."));
+    sweetpad_core::package_members::standalone(&dir, &Toolchain::default(), Stdio::inherit())
+        .map_err(dump_error)
+}
+
+/// A failed manifest read as the CLI reports it: a `swift` that can't be
+/// spawned is a missing tool, anything else says what the dump did.
+fn dump_error(error: DumpError) -> CliError {
+    match error {
+        DumpError::Spawn(e) => process::spawn_error("swift", &e),
+        other => CliError::new(other.to_string()),
     }
-    parse_manifest(&String::from_utf8_lossy(&output.stdout))
 }
 
 /// `swift package add-dependency <dependency> …` (Swift 6+). `requirement` is
@@ -419,21 +349,11 @@ fn parse_swift_major(text: &str) -> Option<u32> {
     major.parse().ok()
 }
 
-/// Parse the JSON object emitted by `swift package dump-package`, skipping any
-/// leading non-JSON the toolchain may print before it.
-fn parse_manifest(stdout: &str) -> Result<Manifest, CliError> {
-    let json = stdout
-        .find('{')
-        .map(|i| &stdout[i..])
-        .ok_or_else(|| CliError::new("swift package dump-package produced no JSON"))?;
-    serde_json::from_str(json)
-        .map_err(|e| CliError::new(format!("parsing swift package dump-package: {e}")))
-}
-
-/// Scheme candidates for a package, read directly from the manifest so no
-/// xcodebuild (or even a full Xcode) is needed. See [`Manifest::scheme_names`].
+/// Scheme candidates for a package, read from its manifest and its scheme
+/// container so no xcodebuild (or even a full Xcode) is needed. See
+/// [`package_names`].
 pub fn schemes(container: &Container) -> Result<Vec<String>, CliError> {
-    Ok(manifest(container)?.scheme_names())
+    Ok(package_names(container)?.schemes)
 }
 
 /// Map an Xcode configuration name to SwiftPM's `--configuration` value.
@@ -575,103 +495,12 @@ mod tests {
 
     #[test]
     fn parses_products_and_targets() {
-        let m = parse_manifest(DUMP).unwrap();
+        let m: Manifest = serde_json::from_str(DUMP).unwrap();
         assert_eq!(m.name, "Demo");
-        assert_eq!(m.products.len(), 2);
-        assert!(
-            m.products
-                .iter()
-                .any(|p| p.name == "demo" && p.is_executable())
-        );
-        assert!(
-            m.products
-                .iter()
-                .any(|p| p.name == "DemoKit" && !p.is_executable())
-        );
-        assert!(
-            m.targets
-                .iter()
-                .any(|t| t.name == "DemoKitTests" && t.is_test())
-        );
-    }
-
-    #[test]
-    fn two_products_get_the_aggregate_and_a_scheme_each() {
-        let m = parse_manifest(DUMP).unwrap();
-        assert_eq!(m.scheme_names(), vec!["Demo-Package", "DemoKit", "demo"]);
-    }
-
-    /// Grounded on `xcodebuild -list` (26.5): a package whose only product is
-    /// a library answers to its own name, not the product's and not the
-    /// aggregate's.
-    #[test]
-    fn a_single_product_collapses_to_the_package_name() {
-        let m = parse_manifest(
-            r#"{ "name": "P", "products": [
-                     { "name": "Lib", "type": { "library": ["automatic"] }, "targets": ["T"] } ],
-                 "targets": [ { "name": "T", "type": "regular" } ] }"#,
-        )
-        .unwrap();
-        assert_eq!(m.scheme_names(), vec!["P"]);
-    }
-
-    /// The implicit executable product SwiftPM synthesizes counts toward that
-    /// collapse: `xcodebuild -list` on a package whose whole manifest is one
-    /// `executableTarget` prints the package name alone.
-    #[test]
-    fn an_executable_target_counts_as_a_product() {
-        let m = parse_manifest(
-            r#"{ "name": "MyTool", "products": [],
-                 "targets": [ { "name": "runner", "type": "executable" } ] }"#,
-        )
-        .unwrap();
-        assert_eq!(m.effective_products(), vec!["runner"]);
-        assert_eq!(m.scheme_names(), vec!["MyTool"]);
-    }
-
-    /// One declared product plus an `executableTarget` it does not cover is
-    /// two products, so the aggregate comes back and both are listed.
-    #[test]
-    fn an_uncovered_executable_target_is_a_product_of_its_own() {
-        let m = parse_manifest(
-            r#"{ "name": "D", "products": [
-                     { "name": "LibA", "type": { "library": ["automatic"] }, "targets": ["TA"] } ],
-                 "targets": [ { "name": "TA", "type": "regular" },
-                              { "name": "TC", "type": "executable" } ] }"#,
-        )
-        .unwrap();
-        assert_eq!(m.scheme_names(), vec!["D-Package", "LibA", "TC"]);
-    }
-
-    /// An `executableTarget` a declared product already exposes gets no
-    /// second, implicit product of its own.
-    #[test]
-    fn an_executable_target_behind_a_product_is_not_counted_twice() {
-        let m = parse_manifest(
-            r#"{ "name": "E", "products": [
-                     { "name": "tool", "type": { "executable": null }, "targets": ["e1"] } ],
-                 "targets": [ { "name": "e1", "type": "executable" } ] }"#,
-        )
-        .unwrap();
-        assert_eq!(m.effective_products(), vec!["tool"]);
-        assert_eq!(m.scheme_names(), vec!["E"]);
-    }
-
-    #[test]
-    fn skips_leading_noise_before_json() {
-        let noisy = format!("Fetching dependencies\n{DUMP}");
-        assert_eq!(parse_manifest(&noisy).unwrap().name, "Demo");
-    }
-
-    #[test]
-    fn a_package_with_no_products_offers_just_the_aggregate() {
-        let m = parse_manifest(
-            r#"{ "name": "P", "products": [],
-                 "targets": [ { "name": "Lib", "type": "regular" },
-                              { "name": "LibTests", "type": "test" } ] }"#,
-        )
-        .unwrap();
-        assert_eq!(m.scheme_names(), vec!["P-Package"]);
+        let products: Vec<&str> = m.products.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(products, ["DemoKit", "demo"]);
+        let targets: Vec<&str> = m.targets.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(targets, ["DemoKit", "demo", "DemoKitTests"]);
     }
 
     #[test]
@@ -700,11 +529,6 @@ mod tests {
         assert_eq!(configuration_arg("release"), "release");
         assert_eq!(configuration_arg("Debug"), "debug");
         assert_eq!(configuration_arg("Anything"), "debug");
-    }
-
-    #[test]
-    fn errors_without_json() {
-        assert!(parse_manifest("not json at all").is_err());
     }
 
     #[test]

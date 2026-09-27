@@ -127,6 +127,27 @@ fn is_workspace(path: &Path) -> bool {
     path.extension().and_then(|e| e.to_str()) == Some("xcworkspace")
 }
 
+/// Which toolchain evaluates the manifests a names read needs. The extension
+/// host sees neither the login shell's `DEVELOPER_DIR` nor
+/// `sweetpad.build.swiftCommand`, so the extension passes both.
+#[napi(object)]
+pub struct ManifestToolchain {
+    /// The `swift` to run, when not the one on `PATH`.
+    pub swift: Option<String>,
+    /// The `DEVELOPER_DIR` to run it under.
+    pub developer_dir: Option<String>,
+}
+
+fn toolchain_of(options: Option<ManifestToolchain>) -> sweetpad_core::package_members::Toolchain {
+    let non_empty = |value: Option<String>| value.filter(|v| !v.is_empty()).map(PathBuf::from);
+    options.map_or_else(Default::default, |options| {
+        sweetpad_core::package_members::Toolchain {
+            swift: non_empty(options.swift),
+            developer_dir: non_empty(options.developer_dir),
+        }
+    })
+}
+
 /// Which names to read. Both include what the container's local SwiftPM
 /// packages declare, and naming those means running `swift package
 /// dump-package`, which takes seconds on a cold manifest cache — so the calls
@@ -138,12 +159,28 @@ enum Names {
 }
 
 /// Read `path`'s names, evaluating the manifests of every local package the
-/// container reaches. Runs off the main thread (see [`NamesTask`]).
-fn read_names(path: &str, which: &Names) -> napi::Result<Vec<String>> {
+/// container reaches. A `Package.swift` reads the package opened on its own:
+/// what `xcodebuild -list` prints in its directory. Runs off the main thread
+/// (see [`NamesTask`]).
+fn read_names(
+    path: &str,
+    which: &Names,
+    toolchain: &sweetpad_core::package_members::Toolchain,
+) -> napi::Result<Vec<String>> {
     let p = Path::new(path);
+    if p.file_name().and_then(|n| n.to_str()) == Some("Package.swift") {
+        let dir = p.parent().unwrap_or(Path::new("."));
+        let package =
+            sweetpad_core::package_members::standalone(dir, toolchain, std::process::Stdio::null())
+                .map_err(to_napi_err)?;
+        return Ok(match which {
+            Names::Schemes => package.schemes,
+            Names::Targets => package.targets,
+        });
+    }
     if !is_workspace(p) {
         let project = project::open(p).map_err(to_napi_err)?;
-        let members = sweetpad_core::package_members::resolve_project(&project, None);
+        let members = sweetpad_core::package_members::resolve_project(&project, toolchain);
         return Ok(match which {
             Names::Schemes => project
                 .schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(&members)),
@@ -152,7 +189,7 @@ fn read_names(path: &str, which: &Names) -> napi::Result<Vec<String>> {
         });
     }
     let ws = workspace::open(p).map_err(to_napi_err)?;
-    let members = sweetpad_core::package_members::resolve_workspace(&ws, None);
+    let members = sweetpad_core::package_members::resolve_workspace(&ws, toolchain);
     Ok(match which {
         Names::Schemes => {
             ws.merged_schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(&members))
@@ -166,6 +203,7 @@ fn read_names(path: &str, which: &Names) -> napi::Result<Vec<String>> {
 pub struct NamesTask {
     path: String,
     which: Names,
+    toolchain: sweetpad_core::package_members::Toolchain,
 }
 
 impl napi::Task for NamesTask {
@@ -173,7 +211,7 @@ impl napi::Task for NamesTask {
     type JsValue = Vec<String>;
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
-        read_names(&self.path, &self.which)
+        read_names(&self.path, &self.which, &self.toolchain)
     }
 
     fn resolve(&mut self, _env: napi::Env, output: Self::Output) -> napi::Result<Self::JsValue> {
@@ -181,30 +219,41 @@ impl napi::Task for NamesTask {
     }
 }
 
-/// Scheme names for a `.xcodeproj` or `.xcworkspace` — shared and per-user
-/// scheme files, plus autocreated per-target schemes, plus the products of
-/// every local SwiftPM package the container reaches. For a workspace, merged
-/// across the bundle and every member project, sorted like
-/// `xcodebuild -list -workspace`.
+/// Scheme names for a `.xcodeproj`, `.xcworkspace` or `Package.swift` —
+/// shared and per-user scheme files, plus autocreated per-target schemes, plus
+/// the products of every local SwiftPM package the container reaches. For a
+/// workspace, merged across the bundle and every member project, sorted like
+/// `xcodebuild -list -workspace`. For a package, its `.swiftpm/xcode` scheme
+/// files and the schemes its manifest synthesizes, sorted like `xcodebuild
+/// -list` in its directory. `toolchain` evaluates the manifests.
 #[napi(ts_return_type = "Promise<Array<string>>")]
 #[must_use]
-pub fn schemes(path: String) -> napi::bindgen_prelude::AsyncTask<NamesTask> {
+pub fn schemes(
+    path: String,
+    toolchain: Option<ManifestToolchain>,
+) -> napi::bindgen_prelude::AsyncTask<NamesTask> {
     napi::bindgen_prelude::AsyncTask::new(NamesTask {
         path,
         which: Names::Schemes,
+        toolchain: toolchain_of(toolchain),
     })
 }
 
-/// Target names for a `.xcodeproj` or `.xcworkspace`. For a workspace, the
-/// distinct targets across member projects in first-seen order; then, for
-/// either, each local package's targets — test targets included, since a
-/// target list drives `-only-testing:`.
+/// Target names for a `.xcodeproj`, `.xcworkspace` or `Package.swift`. For a
+/// workspace, the distinct targets across member projects in first-seen
+/// order; then, for either, each local package's targets — test targets
+/// included, since a target list drives `-only-testing:`. For a package, every
+/// target its manifest declares.
 #[napi(ts_return_type = "Promise<Array<string>>")]
 #[must_use]
-pub fn targets(path: String) -> napi::bindgen_prelude::AsyncTask<NamesTask> {
+pub fn targets(
+    path: String,
+    toolchain: Option<ManifestToolchain>,
+) -> napi::bindgen_prelude::AsyncTask<NamesTask> {
     napi::bindgen_prelude::AsyncTask::new(NamesTask {
         path,
         which: Names::Targets,
+        toolchain: toolchain_of(toolchain),
     })
 }
 

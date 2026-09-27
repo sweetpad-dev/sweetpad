@@ -609,75 +609,16 @@ export async function getIsXBSInstalled() {
 }
 
 /**
- * Run `swift package dump-package` in a package directory and parse the model.
- * A manifest is Swift source, so the toolchain is the only thing that can say
- * what a package declares — there is no file to read instead.
+ * The toolchain the addon evaluates manifests with. A manifest is Swift source,
+ * so naming what a package declares means running `swift package dump-package`,
+ * and the extension host sees neither the login shell's `DEVELOPER_DIR` nor a
+ * custom `sweetpad.build.swiftCommand` on its own.
  */
-async function dumpPackage(packageDir: string): Promise<any> {
-  const stdout = await exec({
-    command: getSwiftCommand(),
-    args: ["package", "dump-package"],
-    cwd: packageDir,
-  });
-  return JSON.parse(stdout);
-}
-
-/**
- * The package's products as SwiftPM sees them: the ones the manifest declares,
- * whatever their kind (a `.plugin` product is one too), plus the implicit
- * executable product SwiftPM synthesizes for each `executableTarget` no
- * declared product already covers.
- *
- * `dump-package` reports only what the manifest wrote — `swift package
- * describe` is what shows the implicit ones, and it resolves the whole
- * dependency graph to do it.
- */
-function packageProducts(packageInfo: any): string[] {
-  const declared: string[] = (packageInfo?.products ?? [])
-    .map((product: any) => product?.name)
-    .filter((name: unknown): name is string => typeof name === "string");
-  const covered = new Set<string>(
-    (packageInfo?.products ?? []).flatMap((product: any) =>
-      (product?.targets ?? []).filter((name: unknown): name is string => typeof name === "string"),
-    ),
-  );
-  const implicit: string[] = (packageInfo?.targets ?? [])
-    .filter((target: any) => target?.type === "executable")
-    .map((target: any) => target?.name)
-    .filter((name: unknown): name is string => typeof name === "string" && !covered.has(name));
-  return [...declared, ...implicit];
-}
-
-/**
- * Scheme names for a package opened on its own, matching what `xcodebuild
- * -list` prints in a package directory. How many products the package has
- * decides the shape (measured on Xcode 26.5):
- *
- * - none: the `<name>-Package` aggregate alone;
- * - one: `<name>` alone — the package's own name, whatever the product is
- *   called, and no aggregate;
- * - two or more: the aggregate plus one scheme per product.
- *
- * Exported for its spec: the rule is subtle enough that this copy would drift
- * from `Manifest::scheme_names` in the CLI without one.
- */
-export function packageSchemes(packageInfo: any): string[] {
-  const name = typeof packageInfo?.name === "string" ? packageInfo.name : "";
-  const products = packageProducts(packageInfo);
-  if (products.length === 1 && name) {
-    return [name];
-  }
-  return name ? [`${name}-Package`, ...products] : products;
-}
-
-/**
- * Every target a package declares, tests included — a target list drives
- * `-only-testing:`, where a test target is the whole point.
- */
-function packageTargets(packageInfo: any): string[] {
-  return (packageInfo?.targets ?? [])
-    .map((target: any) => target?.name)
-    .filter((name: unknown): name is string => typeof name === "string");
+async function manifestToolchain(container: string): Promise<sweetpadLib.ManifestToolchain> {
+  return {
+    swift: getWorkspaceConfig("build.swiftCommand") || undefined,
+    developerDir: await getShellDeveloperDir(path.dirname(container)),
+  };
 }
 
 export async function getSchemes(options: { xcworkspace: string | undefined }): Promise<XcodeScheme[]> {
@@ -686,11 +627,13 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
   const workspaceType = detectWorkspaceType(options.xcworkspace ?? "");
   if (workspaceType === "spm") {
     try {
-      const packageDir = getSwiftPMDirectory(options.xcworkspace ?? "");
-      const packageInfo = await dumpPackage(packageDir);
-
-      const schemeNames = new Set<string>(packageSchemes(packageInfo));
-      return Array.from(schemeNames).map((name) => ({ name }));
+      // What `xcodebuild -list` prints in the package directory, the package's
+      // `.swiftpm/xcode` scheme files included. The addon evaluates the
+      // manifest without writing into the package.
+      const xcworkspace = options.xcworkspace ?? "";
+      return (await sweetpadLib.schemes(xcworkspace, await manifestToolchain(xcworkspace))).map((name) => ({
+        name,
+      }));
     } catch (error) {
       commonLogger.error("Failed to get SPM package info", {
         error,
@@ -706,7 +649,8 @@ export async function getSchemes(options: { xcworkspace: string | undefined }): 
     }
     // Already merged and sorted in Rust, member packages included. A promise
     // because a workspace with local packages has to evaluate their manifests.
-    return (await sweetpadLib.schemes(options.xcworkspace)).map((name) => ({ name }));
+    const toolchain = await manifestToolchain(options.xcworkspace);
+    return (await sweetpadLib.schemes(options.xcworkspace, toolchain)).map((name) => ({ name }));
   }
   assertUnreachable(workspaceType);
 }
@@ -715,8 +659,9 @@ export async function getTargets(options: { xcworkspace: string }): Promise<stri
   const workspaceType = detectWorkspaceType(options.xcworkspace);
   if (workspaceType === "spm") {
     try {
-      const packageDir = getSwiftPMDirectory(options.xcworkspace ?? "");
-      return packageTargets(await dumpPackage(packageDir));
+      // Every target the manifest declares, tests included: a target list
+      // drives `-only-testing:`, where a test target is the whole point.
+      return await sweetpadLib.targets(options.xcworkspace, await manifestToolchain(options.xcworkspace));
     } catch (error) {
       commonLogger.error("Failed to get SPM targets", {
         error: error,
@@ -729,7 +674,7 @@ export async function getTargets(options: { xcworkspace: string }): Promise<stri
   if (workspaceType === "xcode") {
     // Member projects first, then each local package's targets — merged in
     // Rust, which is why this is a promise.
-    return await sweetpadLib.targets(options.xcworkspace);
+    return await sweetpadLib.targets(options.xcworkspace, await manifestToolchain(options.xcworkspace));
   }
   assertUnreachable(workspaceType);
 }

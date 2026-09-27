@@ -11,11 +11,12 @@ import { exec } from "../exec";
 import { getShellDeveloperDir } from "../tasks/shell-env";
 import {
   getBuildSettingsList,
+  getSchemes,
   getSimulatorAppPath,
   getSupportedPlatforms,
+  getTargets,
   getXcodeBuildCommand,
   locateBuiltApp,
-  packageSchemes,
   parseCliJsonOutput,
 } from "./scripts";
 
@@ -27,6 +28,8 @@ vi.mock("@sweetpad/native", async (importOriginal) => ({
   locateApp: vi.fn(),
   pickApp: vi.fn(),
   supportedPlatforms: vi.fn(),
+  schemes: vi.fn(),
+  targets: vi.fn(),
 }));
 
 const mockGetConfiguration = vscode.workspace.getConfiguration as Mock;
@@ -36,6 +39,8 @@ const mockBuildSettings = sweetpadLib.buildSettings as Mock;
 const mockLocateApp = sweetpadLib.locateApp as Mock;
 const mockPickApp = sweetpadLib.pickApp as Mock;
 const mockSupportedPlatforms = sweetpadLib.supportedPlatforms as Mock;
+const mockSchemes = sweetpadLib.schemes as Mock;
+const mockTargets = sweetpadLib.targets as Mock;
 
 /** `getWorkspaceConfig` reads `getConfiguration("sweetpad").get(key)`. */
 function mockConfig(values: Record<string, unknown>) {
@@ -499,46 +504,58 @@ describe("getSupportedPlatforms", () => {
   });
 });
 
-describe("packageSchemes", () => {
-  it("offers only the aggregate when the package has no products", () => {
-    expect(packageSchemes({ name: "P", products: [], targets: [{ name: "Lib", type: "regular" }] })).toEqual([
-      "P-Package",
-    ]);
+describe("package names", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
   });
 
-  // Grounded on `xcodebuild -list` (26.5): one product means one scheme, named
-  // after the package rather than the product, and no aggregate.
-  it("collapses a single product to the package's own name", () => {
-    expect(
-      packageSchemes({
-        name: "P",
-        products: [{ name: "Lib", type: { library: ["automatic"] }, targets: ["T"] }],
-        targets: [{ name: "T", type: "regular" }],
-      }),
-    ).toEqual(["P"]);
+  // The addon reads the package the way `xcodebuild -list` does, scheme files
+  // included, so nothing runs `swift` in the package directory from here.
+  it("reads a Swift package's schemes through the addon, with the shell's toolchain", async () => {
+    mockConfig({ "build.swiftCommand": "/opt/swift/bin/swift" });
+    mockGetShellDeveloperDir.mockResolvedValue("/Applications/Xcode-beta.app/Contents/Developer");
+    mockSchemes.mockResolvedValue(["alpha", "B10Multi-Package", "Beta"]);
+
+    const schemes = await getSchemes({ xcworkspace: "/proj/Package.swift" });
+
+    expect(schemes).toEqual([{ name: "alpha" }, { name: "B10Multi-Package" }, { name: "Beta" }]);
+    expect(mockSchemes).toHaveBeenCalledWith("/proj/Package.swift", {
+      swift: "/opt/swift/bin/swift",
+      developerDir: "/Applications/Xcode-beta.app/Contents/Developer",
+    });
+    expect(mockExec).not.toHaveBeenCalled();
   });
 
-  it("counts an uncovered executable target as a product of its own", () => {
-    expect(
-      packageSchemes({
-        name: "D",
-        products: [{ name: "LibA", type: { library: ["automatic"] }, targets: ["TA"] }],
-        targets: [
-          { name: "TA", type: "regular" },
-          { name: "TC", type: "executable" },
-        ],
-      }),
-    ).toEqual(["D-Package", "LibA", "TC"]);
+  it("reads a Swift package's targets through the addon", async () => {
+    mockConfig({});
+    mockGetShellDeveloperDir.mockResolvedValue(undefined);
+    mockTargets.mockResolvedValue(["Zeta", "ZetaTests"]);
+
+    const targets = await getTargets({ xcworkspace: "/proj/Package.swift" });
+
+    expect(targets).toEqual(["Zeta", "ZetaTests"]);
+    expect(mockTargets).toHaveBeenCalledWith("/proj/Package.swift", { swift: undefined, developerDir: undefined });
+    expect(mockExec).not.toHaveBeenCalled();
   });
 
-  it("gives an executable target already behind a product no second product", () => {
-    expect(
-      packageSchemes({
-        name: "E",
-        products: [{ name: "tool", type: { executable: null }, targets: ["e1"] }],
-        targets: [{ name: "e1", type: "executable" }],
-      }),
-    ).toEqual(["E"]);
+  it("offers no schemes when the manifest doesn't evaluate", async () => {
+    mockConfig({});
+    mockSchemes.mockRejectedValue(new Error("swift package dump-package exited with exit status: 1"));
+
+    expect(await getSchemes({ xcworkspace: "/proj/Package.swift" })).toEqual([]);
+  });
+
+  it("hands an Xcode container's package manifests the same toolchain", async () => {
+    mockConfig({});
+    mockGetShellDeveloperDir.mockResolvedValue("/Applications/Xcode.app/Contents/Developer");
+    mockSchemes.mockResolvedValue(["App"]);
+
+    await getSchemes({ xcworkspace: "/proj/App.xcworkspace" });
+
+    expect(mockSchemes).toHaveBeenCalledWith("/proj/App.xcworkspace", {
+      swift: undefined,
+      developerDir: "/Applications/Xcode.app/Contents/Developer",
+    });
   });
 });
 

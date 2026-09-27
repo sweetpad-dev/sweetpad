@@ -528,7 +528,10 @@ fn gather(container: &Container) -> Result<Info, CliError> {
             })?;
             // `info` is an explicit enumeration, so it pays for the packages'
             // manifests rather than under-reporting what the workspace holds.
-            let members = sweetpad_core::package_members::resolve_workspace(&ws, None);
+            let members = sweetpad_core::package_members::resolve_workspace(
+                &ws,
+                &sweetpad_core::package_members::Toolchain::default(),
+            );
             Ok(Info {
                 kind: "workspace",
                 name: ws.name.clone(),
@@ -546,7 +549,10 @@ fn gather(container: &Container) -> Result<Info, CliError> {
             let proj = sweetpad_lib::project::open(p).map_err(|e| {
                 CliError::new(format!("failed to read project {}: {e}", p.display()))
             })?;
-            let members = sweetpad_core::package_members::resolve_project(&proj, None);
+            let members = sweetpad_core::package_members::resolve_project(
+                &proj,
+                &sweetpad_core::package_members::Toolchain::default(),
+            );
             Ok(Info {
                 kind: "project",
                 name: proj.name.clone(),
@@ -560,17 +566,17 @@ fn gather(container: &Container) -> Result<Info, CliError> {
         }
         Container::SwiftPackage(_) => {
             // No pbxproj to read; evaluate the manifest instead. Targets are
-            // every declared target; schemes mirror the synthesized set
-            // (products plus the package aggregate). SwiftPM builds are
-            // debug/release.
-            let manifest = crate::cli::swiftpm::manifest(container)?;
+            // every declared target; schemes are what `xcodebuild -list`
+            // prints in the package directory (its scheme files, products
+            // and the package aggregate). SwiftPM builds are debug/release.
+            let package = crate::cli::swiftpm::package_names(container)?;
             Ok(Info {
                 kind: "package",
-                name: manifest.name.clone(),
+                name: package.name,
                 path,
-                targets: manifest.targets.iter().map(|t| t.name.clone()).collect(),
+                targets: package.targets,
                 configurations: vec!["Debug".to_string(), "Release".to_string()],
-                schemes: manifest.scheme_names(),
+                schemes: package.schemes,
             })
         }
     }

@@ -6,8 +6,8 @@
 //! matches what xcodebuild actually synthesizes, and that the `swift`-driven
 //! build/test path succeeds on a real package:
 //!
-//! - **fixture mode** (default): compare our `scheme_names()` (parsed from a
-//!   captured `dump-package.json`) against the captured `xcodebuild -list`
+//! - **fixture mode** (default): compare the schemes we synthesize from a
+//!   captured `dump-package.json` against the captured `xcodebuild -list`
 //!   schemes, and check the captured `swift build`/`swift test` succeeded.
 //!   Skips cleanly when no captures exist (e.g. on a non-macOS host), so it
 //!   never fails a Linux/CI run — capture with `scripts/22_spm_cli_oracle.py`.
@@ -23,7 +23,7 @@ use std::process::Command;
 
 use common::TempDir;
 use sweetpad_cli::cli::resolve::Container;
-use sweetpad_cli::cli::swiftpm::{self, Manifest};
+use sweetpad_cli::cli::swiftpm;
 
 fn fixtures_root() -> PathBuf {
     Path::new(env!("SWEETPAD_LIB_DIR")).join("fixtures/_synthetic-spm-cli")
@@ -60,9 +60,12 @@ fn xcodebuild_list_schemes(json: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn our_schemes_from_dump(dump: &str) -> Vec<String> {
-    let manifest: Manifest = serde_json::from_str(dump).expect("dump-package json deserializes");
-    manifest.scheme_names()
+/// The schemes we give the package a dump describes. The capture holds no
+/// `.swiftpm/xcode` container, so the manifest decides them alone.
+fn our_schemes_from_dump(dir: &Path, dump: &str) -> Vec<String> {
+    let manifest: serde_json::Value =
+        serde_json::from_str(dump).expect("dump-package json deserializes");
+    sweetpad_core::package_members::standalone_from_dump(dir, &manifest).schemes
 }
 
 #[test]
@@ -84,7 +87,7 @@ fn schemes_match_captured_xcodebuild_list() {
         let list = std::fs::read_to_string(dir.join("list.json")).unwrap();
         let dump = std::fs::read_to_string(dir.join("dump-package.json")).unwrap();
         let theirs: BTreeSet<String> = xcodebuild_list_schemes(&list).into_iter().collect();
-        let ours: BTreeSet<String> = our_schemes_from_dump(&dump).into_iter().collect();
+        let ours: BTreeSet<String> = our_schemes_from_dump(dir, &dump).into_iter().collect();
         if ours != theirs {
             failures.push(format!(
                 "{}: ours={ours:?} xcodebuild={theirs:?} (missing={:?}, extra={:?})",
