@@ -892,17 +892,27 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     }
 }
 
-/// One mode-vs-`--on` policy for every `app` verb that takes the mode flags,
-/// `run` and the lifecycle stages alike: a typed `--mac`, `--device` or
-/// `--device-id` beats an env-sourced `SWEETPAD_ON` (instead of silently
-/// losing to it), and a typed `--on` alongside one is rejected.
+/// One mode-flag policy for every `app` verb that takes the mode flags, `run`
+/// and the lifecycle stages alike: a typed `--mac`, `--device` or
+/// `--device-id` beats an env-sourced `SWEETPAD_ON` or `SWEETPAD_DESTINATION`
+/// (instead of silently losing to it), and a typed `--on` or `--destination`
+/// alongside one is rejected before any project is looked for.
 fn settle_mode(
     ctx: &mut Context,
     mac: bool,
     device: bool,
     device_id: Option<&str>,
 ) -> Result<(), CliError> {
-    crate::cli::settle_on_vs_mode(&mut ctx.targeting, mac || device || device_id.is_some())
+    let mode = if mac {
+        Some("--mac")
+    } else if device_id.is_some() {
+        Some("--device-id")
+    } else if device {
+        Some("--device")
+    } else {
+        None
+    };
+    crate::cli::settle_mode_flag(&mut ctx.targeting, mode)
 }
 
 /// [`settle_mode`] for the verbs that take [`StageTargetArgs`].

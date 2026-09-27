@@ -377,17 +377,17 @@ explicit flag  >  env var  >  config file  >  remembered state  >  auto-discover
   `SWEETPAD_WORKSPACE` can't override a typed `--project`), and
   `SWEETPAD_NONINTERACTIVE` (boolean). Boolean `SWEETPAD_*` vars parse
   truthiness: `0`/`false`/`no`/`off`/empty mean **off**.
-- **`--on` versus the mode flags:** `--mac`, `--device` and `--device-id`
-  name a destination the way `--on` does, so every `app` verb that takes them
-  settles the pair with one check, `run` and the lifecycle stages alike: a
-  typed mode flag beats an exported `SWEETPAD_ON`, and a typed `--on` beside
-  one is a usage error, whether it names the same place (`--on mac --mac`) or
-  another (`--on "iPhone 17" --mac`). `build`, `test` and `test build` take
-  `--mac` as a spelling of `--on mac`, so the Mac is named the same way on
-  every command that builds. `--on` and `--destination` already exclude each
-  other there, so a typed `--mac` is a usage error beside either one, and an
-  exported `SWEETPAD_ON` or `SWEETPAD_DESTINATION` yields to it. `--device`
-  and `--device-id` stay on the `app` verbs.
+- **`--on` and `--destination` versus the mode flags:** `--mac`, `--device`
+  and `--device-id` name a destination the way `--on` and `--destination` do,
+  so every `app` verb that takes them settles them with one check, `run` and
+  the lifecycle stages alike, before any project is looked for: a typed mode
+  flag beats an exported `SWEETPAD_ON` or `SWEETPAD_DESTINATION`, and a typed
+  `--on` or `--destination` beside one is a usage error, whether it names the
+  same place (`--on mac --mac`) or another (`--on "iPhone 17" --mac`,
+  `--destination "platform=iOS Simulator,name=Nope" --mac`). `build`, `test`
+  and `test build` take `--mac` as a spelling of `--on mac` and settle it
+  with the same check, so the Mac is named the same way on every command
+  that builds. `--device` and `--device-id` stay on the `app` verbs.
 - **Remembered state:** the last interactive picks, saved per project, feed the
   layer just above auto-discovery so the daily loop doesn't re-prompt (§6).
   Only picker-settled values are remembered — a one-off flag/env/config

@@ -336,11 +336,12 @@ fn a_typed_destination_beside_mac_is_a_usage_error_on_build_and_test() {
     }
 }
 
-/// Every `app` verb that takes '--mac' checks a typed '--on' against it the
-/// way 'app run' does, before any project is looked for: both typed is a
-/// usage error, whichever destination '--on' names.
+/// Every `app` verb that takes the mode flags checks a typed '--on' or
+/// '--destination' against them the way 'app run' does, before any project
+/// is looked for: both typed is a usage error, whichever destination the
+/// other flag names.
 #[test]
-fn a_typed_on_beside_mac_is_a_usage_error_on_every_app_verb() {
+fn a_typed_on_or_destination_beside_a_mode_flag_is_a_usage_error_on_every_app_verb() {
     let home = tmp("on-mac-home");
     let cwd = tmp("on-mac-cwd");
     let verbs = [
@@ -355,12 +356,19 @@ fn a_typed_on_beside_mac_is_a_usage_error_on_every_app_verb() {
         "container",
     ];
     for verb in verbs {
-        for on in ["mac", "iPhone 17"] {
-            let args = ["app", verb, "--on", on, "--mac"];
+        for (flag, value, mode) in [
+            ("--on", "mac", "--mac"),
+            ("--on", "iPhone 17", "--mac"),
+            ("--destination", "platform=iOS Simulator,name=Nope", "--mac"),
+            ("--destination", "platform=macOS", "--mac"),
+            ("--destination", "platform=iOS Simulator", "--device"),
+        ] {
+            let args = ["app", verb, flag, value, mode];
             let out = sweetpad(&args, &cwd, &home);
             assert_eq!(out.status.code(), Some(2), "{args:?}: {out:?}");
             let stderr = String::from_utf8(out.stderr).unwrap();
-            assert!(stderr.contains("mutually exclusive"), "{args:?}: {stderr}");
+            let expected = format!("{flag} and {mode} are mutually exclusive; pass one");
+            assert!(stderr.contains(&expected), "{args:?}: {stderr}");
         }
     }
 }

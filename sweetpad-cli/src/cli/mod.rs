@@ -481,48 +481,44 @@ fn disambiguate_on_destination(
     }
 }
 
-/// Apply flag > env between `--on` and the mode flags (`--mac`, `--device`,
-/// `--device-id`): an env-sourced `SWEETPAD_ON` yields to a typed mode flag
-/// instead of turning it into an error about a flag the user never typed;
-/// `--on` *typed* alongside a mode flag is a real conflict.
-pub(crate) fn settle_on_vs_mode(
+/// Apply flag > env between a typed mode flag (`--mac`, `--device`,
+/// `--device-id`, named by `mode`) and the other two ways to name a
+/// destination, `--on` and `--destination`: an env-sourced `SWEETPAD_ON` or
+/// `SWEETPAD_DESTINATION` yields to the mode flag instead of turning it into
+/// an error about a flag the user never typed, and either one *typed*
+/// alongside it is a usage error.
+pub(crate) fn settle_mode_flag(
     targeting: &mut Targeting,
-    mode_typed: bool,
+    mode: Option<&str>,
 ) -> Result<(), CliError> {
-    if targeting.on.is_none() || !mode_typed {
+    let Some(mode) = mode else {
         return Ok(());
-    }
-    if flag_typed("--on") {
-        return Err(CliError::new(
-            "--on and --mac/--device/--device-id are mutually exclusive; pass one",
-        )
-        .kind(ErrorKind::Usage));
-    }
-    targeting.on = None;
-    Ok(())
-}
-
-/// `--mac` on `build` and `test`, which take it as a spelling of `--on mac`
-/// so the Mac is named the same way as on the `app` verbs. It beats an
-/// exported `SWEETPAD_ON` or `SWEETPAD_DESTINATION` the way any typed flag
-/// does, and a typed `--on` or `--destination` beside it is a usage error.
-pub(crate) fn mac_as_on(targeting: &mut Targeting, mac: bool) -> Result<(), CliError> {
-    if !mac {
-        return Ok(());
-    }
+    };
     for (flag, given) in [
         ("--on", targeting.on.is_some()),
         ("--destination", targeting.destination.is_some()),
     ] {
         if given && flag_typed(flag) {
             return Err(CliError::new(format!(
-                "{flag} and --mac are mutually exclusive; pass one"
+                "{flag} and {mode} are mutually exclusive; pass one"
             ))
             .kind(ErrorKind::Usage));
         }
     }
-    targeting.on = Some("mac".to_string());
+    targeting.on = None;
     targeting.destination = None;
+    Ok(())
+}
+
+/// `--mac` on `build` and `test`, which take it as a spelling of `--on mac`
+/// so the Mac is named the same way as on the `app` verbs, settled against
+/// `--on` and `--destination` by [`settle_mode_flag`].
+pub(crate) fn mac_as_on(targeting: &mut Targeting, mac: bool) -> Result<(), CliError> {
+    if !mac {
+        return Ok(());
+    }
+    settle_mode_flag(targeting, Some("--mac"))?;
+    targeting.on = Some("mac".to_string());
     Ok(())
 }
 
