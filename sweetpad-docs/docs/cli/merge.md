@@ -12,7 +12,10 @@ that has to be resolved by hand in a file nobody understands, or a "successful" 
 produces a project Xcode refuses to open.
 
 SweetPad ships merge drivers that understand both formats. Two people adding different files to the
-same target is not a conflict once you're merging objects instead of lines.
+same target is not a conflict once you're merging objects instead of lines. Some pairs of edits are
+fine on their own but break the project together: one branch deletes a file that the other starts
+building, or the two branches move the same file into different groups. SweetPad reports these as
+conflicts instead of writing a project that Xcode would build wrong or refuse to open.
 
 ## Installing them
 

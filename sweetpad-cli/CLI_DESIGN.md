@@ -1064,9 +1064,14 @@ runs the standard three-way rule per UUID-keyed object and per field: identical
 edits and one-sided changes resolve silently, disjoint object/array additions
 union (reference lists like `children`/`files` are ordered sets, honoring
 deletions), and only genuine contradictions — both sides setting the same scalar
-differently, or modify-vs-delete — are reported. On any conflict the file is left
-untouched, with a graph-path report (`objects/<UUID> (<isa>)/<field>`) of what
-collided. The SPM engine ([`spm_resolved`]) is the same shape over `serde_json`:
+differently, or modify-vs-delete — are reported. One side deleting an object
+while the other starts naming it counts as modify-vs-delete too: a file one
+branch deletes and the other adds to a target's build phase would otherwise
+merge cleanly into a build file naming nothing, which builds the file for
+neither branch. Two sides moving one node into different groups conflict as
+well: the listings merge as sets, and taking both would list the node twice,
+which Xcode 27.2 refuses to open. On any conflict the file is left untouched,
+with a graph-path report (`objects/<UUID> (<isa>)/<field>`) of what collided. The SPM engine ([`spm_resolved`]) is the same shape over `serde_json`:
 the `pins` array merges by `identity` (union disjoint pins, take one-sided version
 bumps, conflict only on both-sides-bumped-differently), re-rendered to Xcode's
 exact `Package.resolved` style (2-space indent, `" : "`, sorted keys, pins sorted

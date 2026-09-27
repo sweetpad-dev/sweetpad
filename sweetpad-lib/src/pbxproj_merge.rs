@@ -79,10 +79,134 @@ pub fn merge(base: Option<&Value>, ours: &Value, theirs: &Value) -> Merge {
         conflicts: Vec::new(),
     };
     let value = merger.merge_value("", base, ours, theirs);
-    Merge {
-        value,
-        conflicts: merger.conflicts,
+    let mut conflicts = merger.conflicts;
+    conflicts.extend(names_left_dangling(&value, ours, theirs));
+    conflicts.extend(nodes_listed_twice(&value, ours, theirs));
+    Merge { value, conflicts }
+}
+
+/// The nodes the merge leaves listed in two groups where neither side does:
+/// each side moved the node into a different group. The listings merge as
+/// sets, so both survive, and Xcode 27.2 refuses to open a project that lists
+/// a node twice. Where the node ends up is a choice between the two sides.
+fn nodes_listed_twice(merged: &Value, ours: &Value, theirs: &Value) -> Vec<Conflict> {
+    fn listings(root: &Value) -> Vec<(String, Vec<String>)> {
+        let Some(objects) = root.get("objects").and_then(Value::as_dict) else {
+            return Vec::new();
+        };
+        let mut by_child: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        for (group, object) in objects.iter() {
+            let is_group = matches!(
+                object.get("isa").and_then(Value::as_str),
+                Some("PBXGroup" | "PBXVariantGroup" | "XCVersionGroup")
+            );
+            let children = object.get("children").and_then(Value::as_array);
+            for child in children.filter(|_| is_group).into_iter().flatten() {
+                if let Some(child) = child.as_str() {
+                    by_child
+                        .entry(child.to_string())
+                        .or_default()
+                        .push(group.clone());
+                }
+            }
+        }
+        by_child.into_iter().filter(|(_, g)| g.len() > 1).collect()
     }
+    let already: HashSet<String> = listings(ours)
+        .into_iter()
+        .chain(listings(theirs))
+        .map(|(child, _)| child)
+        .collect();
+    let objects = merged.get("objects").and_then(Value::as_dict);
+    listings(merged)
+        .into_iter()
+        .filter(|(child, _)| !already.contains(child))
+        .map(|(child, groups)| Conflict {
+            path: objects.map_or_else(
+                || format!("objects/{child}"),
+                |o| child_path("objects", &child, o),
+            ),
+            kind: ConflictKind::BothModified,
+            detail: format!(
+                "listed in groups {} after the merge; the two sides moved it to different groups",
+                groups.join(" and ")
+            ),
+        })
+        .collect()
+}
+
+/// The names the merge leaves pointing at an object it deleted: one side
+/// deleted the object while the other started naming it, a new build file for
+/// a deleted file, say. Each side is whole on its own, and the merge that
+/// takes both edits is not, so each such name is a modify-delete conflict. A
+/// name that one of the sides already left dangling is not the merge's doing.
+fn names_left_dangling(merged: &Value, ours: &Value, theirs: &Value) -> Vec<Conflict> {
+    let objects = |v: &Value| v.get("objects").and_then(Value::as_dict).cloned();
+    let (Some(merged), Some(ours), Some(theirs)) =
+        (objects(merged), objects(ours), objects(theirs))
+    else {
+        return Vec::new();
+    };
+    // A name is a string equal to the id of an object one of the sides holds.
+    let known: HashSet<&String> = ours.keys().chain(theirs.keys()).collect();
+    let dangling_in = |side: &Dict| -> HashSet<(String, String, String)> {
+        let mut out = HashSet::new();
+        for (owner, object) in side.iter() {
+            for (key, value) in object_strings(object) {
+                if known.contains(&value) && !side.contains_key(&value) {
+                    out.insert((owner.clone(), key, value));
+                }
+            }
+        }
+        out
+    };
+    let already: HashSet<_> = dangling_in(&ours)
+        .union(&dangling_in(&theirs))
+        .cloned()
+        .collect();
+    let mut left: Vec<(String, String, String)> = dangling_in(&merged)
+        .into_iter()
+        .filter(|name| !already.contains(name))
+        .collect();
+    left.sort();
+    left.into_iter()
+        .map(|(owner, key, id)| {
+            let deleter = if ours.contains_key(&id) {
+                "theirs"
+            } else {
+                "ours"
+            };
+            Conflict {
+                path: format!("{}/{key}", child_path("objects", &owner, &merged)),
+                kind: ConflictKind::ModifyDelete,
+                detail: format!("names {id}, which {deleter} deleted"),
+            }
+        })
+        .collect()
+}
+
+/// Every string an object holds, with the top-level key it sits under. Build
+/// settings hold values rather than names, and `remoteGlobalIDString` names
+/// an object in another project as often as in this one.
+fn object_strings(object: &Value) -> Vec<(String, String)> {
+    fn walk(value: &Value, key: &str, out: &mut Vec<(String, String)>) {
+        match value {
+            Value::String(s) => out.push((key.to_string(), s.clone())),
+            Value::Array(items) => items.iter().for_each(|v| walk(v, key, out)),
+            Value::Dict(dict) => dict.values().for_each(|v| walk(v, key, out)),
+        }
+    }
+    let mut out = Vec::new();
+    for (key, value) in object.as_dict().into_iter().flat_map(Dict::iter) {
+        if !matches!(
+            key.as_str(),
+            "buildSettings" | "remoteGlobalIDString" | "isa"
+        ) {
+            walk(value, key, &mut out);
+        }
+    }
+    out
 }
 
 struct Merger {
@@ -405,6 +529,95 @@ mod tests {
             !objs.contains_key("B"),
             "ours deleted B; it must not survive"
         );
+    }
+
+    /// One side deletes a file while the other starts building it. Each side
+    /// alone is whole, but taking the delete and the new build file together
+    /// leaves the build file naming nothing, and the file then builds for
+    /// neither branch's intent. That is the other side's edit to the deleted
+    /// object in all but name, so it is the same conflict.
+    #[test]
+    fn a_delete_the_other_side_starts_naming_is_a_conflict() {
+        let build_file = |file: &str| dict(vec![("isa", s("PBXBuildFile")), ("fileRef", s(file))]);
+        let group = |children: Vec<&str>| {
+            dict(vec![
+                ("isa", s("PBXGroup")),
+                ("children", arr(children.into_iter().map(s).collect())),
+            ])
+        };
+        let base = objects(vec![
+            ("G", group(vec!["F"])),
+            ("F", file_ref("Old.swift")),
+            ("B1", build_file("F")),
+        ]);
+        let ours = objects(vec![("G", group(vec![]))]);
+        let theirs = objects(vec![
+            ("G", group(vec!["F"])),
+            ("F", file_ref("Old.swift")),
+            ("B1", build_file("F")),
+            ("B2", build_file("F")),
+        ]);
+
+        let m = merge(Some(&base), &ours, &theirs);
+
+        assert_eq!(m.conflicts.len(), 1, "{:?}", m.conflicts);
+        let conflict = &m.conflicts[0];
+        assert_eq!(conflict.kind, ConflictKind::ModifyDelete);
+        assert_eq!(conflict.path, "objects/B2 (PBXBuildFile)/fileRef");
+        assert!(
+            conflict.detail.contains("names F, which ours deleted"),
+            "{conflict:?}"
+        );
+
+        // The same edits the other way round.
+        let m = merge(Some(&base), &theirs, &ours);
+        assert_eq!(m.conflicts.len(), 1, "{:?}", m.conflicts);
+        assert!(
+            m.conflicts[0].detail.contains("which theirs deleted"),
+            "{:?}",
+            m.conflicts
+        );
+
+        // A name both sides already left dangling is not the merge's doing.
+        let broken = objects(vec![("B3", build_file("GONE"))]);
+        assert!(merge(Some(&broken), &broken, &broken).is_clean());
+    }
+
+    /// Two sides moving one file into two different groups each leave it
+    /// listed once. The listings merge as sets, so taking both would list it
+    /// in two groups, which Xcode 27.2 refuses to open.
+    #[test]
+    fn a_file_moved_to_two_groups_is_a_conflict() {
+        let group = |children: Vec<&str>| {
+            dict(vec![
+                ("isa", s("PBXGroup")),
+                ("children", arr(children.into_iter().map(s).collect())),
+            ])
+        };
+        let side = |one: Vec<&str>, two: Vec<&str>, three: Vec<&str>| {
+            objects(vec![
+                ("G1", group(one)),
+                ("G2", group(two)),
+                ("G3", group(three)),
+                ("X", file_ref("X.swift")),
+            ])
+        };
+        let base = side(vec!["X"], vec![], vec![]);
+        let ours = side(vec![], vec!["X"], vec![]);
+        let theirs = side(vec![], vec![], vec!["X"]);
+
+        let m = merge(Some(&base), &ours, &theirs);
+
+        assert_eq!(m.conflicts.len(), 1, "{:?}", m.conflicts);
+        assert_eq!(m.conflicts[0].kind, ConflictKind::BothModified);
+        assert_eq!(m.conflicts[0].path, "objects/X (PBXFileReference)");
+        assert!(
+            m.conflicts[0].detail.contains("listed in groups G2 and G3"),
+            "{:?}",
+            m.conflicts
+        );
+        // The same move on both sides is no contradiction.
+        assert!(merge(Some(&base), &ours, &ours).is_clean());
     }
 
     #[test]
