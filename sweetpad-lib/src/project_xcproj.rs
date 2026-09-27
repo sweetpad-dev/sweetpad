@@ -244,16 +244,15 @@ fn node_base(node: &Value, parent_base: &Path, project_dir: &Path) -> Option<Pat
 /// `<PRODUCTS>`, `<SDK>` or `<DEVELOPER>` that `sourceTree` used to carry.
 ///
 /// All but `<PROJECT>` name build-time locations rather than places in the
-/// source tree, and resolve to `None`.
+/// source tree, and resolve to `None`. The rest take the join both formats
+/// use ([`crate::project::join_normalized`]), where an absolute path stands
+/// on its own.
 fn resolve_path(path: &str, parent_base: &Path, project_dir: &Path) -> Option<PathBuf> {
     if let Some(rest) = path.strip_prefix("<PROJECT>/") {
         return Some(crate::project::join_normalized(project_dir, rest));
     }
     if path.starts_with('<') {
         return None;
-    }
-    if path.starts_with('/') {
-        return Some(PathBuf::from(path));
     }
     Some(crate::project::join_normalized(parent_base, path))
 }

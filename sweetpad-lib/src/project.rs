@@ -1380,7 +1380,7 @@ fn navigator_nodes<'a>(
             let Some(node) = objects.get(child) else {
                 continue;
             };
-            let child_base = node_base(node, base, project_dir);
+            let child_base = node_dir(node, || base.to_path_buf(), project_dir);
             if is_group(node) {
                 out.push((child, node, child_base.clone()));
                 walk(
@@ -1402,7 +1402,7 @@ fn navigator_nodes<'a>(
     let Some(root) = objects.get(main_group) else {
         return Vec::new();
     };
-    let base = node_base(root, project_dir, project_dir);
+    let base = node_dir(root, || project_dir.to_path_buf(), project_dir);
     let mut out = vec![(main_group, root, base.clone())];
     walk(
         objects,
@@ -1417,23 +1417,26 @@ fn navigator_nodes<'a>(
     out
 }
 
-/// The absolute path of one group/file node, from its `sourceTree` + `path` and
-/// the accumulated parent-group directory. `<group>` is parent-relative,
-/// `SOURCE_ROOT` is project-relative, `<absolute>` is literal; build-variable
-/// source trees (`BUILT_PRODUCTS_DIR`, …) anchor at the parent as a best effort
-/// (they rarely hold compiled sources).
-fn node_base(node: &Value, parent_base: &Path, project_dir: &Path) -> PathBuf {
+/// Where a pbxproj node's stored `path` points, from its `sourceTree`, for a
+/// build and a listing alike. `<group>` resolves below the directory of the
+/// group holding it, `<absolute>` stands on its own, and every other tree
+/// ignores the group chain and resolves below the project directory:
+/// `SOURCE_ROOT` is that directory, and a build-time tree
+/// (`BUILT_PRODUCTS_DIR`, `SDKROOT`, …) has no place in the source tree to
+/// stand for. Each takes the join a `project.xcproj` node takes too
+/// ([`join_normalized`]). `group_dir` is asked for only by a `<group>` path.
+fn node_dir(node: &Value, group_dir: impl FnOnce() -> PathBuf, project_dir: &Path) -> PathBuf {
     let path = node.get("path").and_then(Value::as_str).unwrap_or("");
-    let source_tree = node
+    let base = match node
         .get("sourceTree")
         .and_then(Value::as_str)
-        .unwrap_or("<group>");
-    match source_tree {
-        "<absolute>" => PathBuf::from(path),
-        "SOURCE_ROOT" => join_normalized(project_dir, path),
-        _ if path.is_empty() => parent_base.to_path_buf(),
-        _ => join_normalized(parent_base, path),
-    }
+        .unwrap_or("<group>")
+    {
+        "<absolute>" => PathBuf::new(),
+        "<group>" => group_dir(),
+        _ => project_dir.to_path_buf(),
+    };
+    join_normalized(&base, path)
 }
 
 /// Make `path` absolute WITHOUT resolving symlinks: a relative path anchors
@@ -1535,13 +1538,24 @@ pub fn without_private_root(path: &Path) -> PathBuf {
 
 /// Join `rel` onto `base`, collapsing `.` / `..` lexically (without touching the
 /// filesystem) so a group path like `../Shared` resolves cleanly.
+///
+/// This is how both project formats place a node's stored path below its
+/// group's directory, for a build and for a listing alike. An empty `rel`
+/// leaves `base` as it is, with no trailing `/`. A relative `base` keeps a
+/// `..` that climbs past its start (`""` and `../Shared` give `../Shared`), so
+/// a listing relative to the project directory still names a directory above
+/// it.
 pub(crate) fn join_normalized(base: &Path, rel: &str) -> PathBuf {
     let mut p = base.to_path_buf();
     for comp in Path::new(rel).components() {
         match comp {
-            Component::ParentDir => {
-                p.pop();
-            }
+            Component::ParentDir => match p.components().next_back() {
+                Some(Component::Normal(_)) => {
+                    p.pop();
+                }
+                Some(Component::RootDir | Component::Prefix(_)) => {}
+                _ => p.push(".."),
+            },
             Component::CurDir => {}
             Component::Normal(s) => p.push(s),
             Component::RootDir | Component::Prefix(_) => p = PathBuf::from(comp.as_os_str()),
@@ -4240,7 +4254,7 @@ fn resolve_anchor_relative_path(
     xcodeproj_path: &Path,
 ) -> PathBuf {
     let project_dir = xcodeproj_path.parent().unwrap_or_else(|| Path::new("."));
-    group_dir(objects, anchor_id, project_dir).join(relative_path)
+    join_normalized(&group_dir(objects, anchor_id, project_dir), relative_path)
 }
 
 fn resolve_file_ref_path(
@@ -4248,34 +4262,16 @@ fn resolve_file_ref_path(
     file_ref_id: &str,
     xcodeproj_path: &Path,
 ) -> Result<PathBuf, Error> {
-    let file_ref = objects.get(file_ref_id).ok_or_else(|| {
-        Error::BadProject(format!("PBXFileReference {file_ref_id} not in objects"))
-    })?;
-    let path = file_ref.get("path").and_then(Value::as_str).unwrap_or("");
-    let source_tree = file_ref
-        .get("sourceTree")
-        .and_then(Value::as_str)
-        .unwrap_or("<group>");
+    if !objects.contains_key(file_ref_id) {
+        return Err(Error::BadProject(format!(
+            "PBXFileReference {file_ref_id} not in objects"
+        )));
+    }
+    // `<group>` (the default) is relative to the parent group's path, which is
+    // NOT always the root group: CocoaPods nests the Pod xcconfigs under a
+    // group whose `path` is "Pods".
     let project_dir = xcodeproj_path.parent().unwrap_or_else(|| Path::new("."));
-    let resolved = match source_tree {
-        "<absolute>" => PathBuf::from(path),
-        // `<group>` (the default) is relative to the parent group's path, which
-        // is NOT always the root group — CocoaPods nests the Pod xcconfigs under
-        // a group whose `path` is "Pods". Walk the parent-group chain to anchor
-        // it; a root-group ref still resolves to the project dir.
-        "<group>" => parent_group_dir(objects, file_ref_id, project_dir).join(path),
-        // `SOURCE_ROOT` is the project dir; build-time trees (BUILT_PRODUCTS_DIR,
-        // etc.) don't occur for xcconfig references — anchor at the project dir.
-        _ => project_dir.join(path),
-    };
-    Ok(resolved)
-}
-
-/// The on-disk directory a `<group>`-relative child resolves against: its parent
-/// `PBXGroup`'s directory, resolved up the group chain. The mainGroup (no parent)
-/// anchors at the project dir.
-fn parent_group_dir(objects: &Dict, child_id: &str, project_dir: &Path) -> PathBuf {
-    Parents::of(objects).parent_dir(child_id, project_dir)
+    Ok(group_dir(objects, file_ref_id, project_dir))
 }
 
 /// The on-disk directory of a `PBXGroup`, resolving its `path` up the parent
@@ -4381,11 +4377,6 @@ impl<'a> Parents<'a> {
         self.kept.get(child).copied()
     }
 
-    /// The directory a `<group>` path on `child` resolves against.
-    pub(crate) fn parent_dir(&self, child: &str, project_dir: &Path) -> PathBuf {
-        self.dir_below(child, project_dir, 0)
-    }
-
     /// The on-disk directory of a group, or of any node, resolving its `path`
     /// up the kept chain.
     pub(crate) fn group_dir(&self, id: &str, project_dir: &Path) -> PathBuf {
@@ -4403,16 +4394,7 @@ impl<'a> Parents<'a> {
         let Some(node) = self.objects.get(id) else {
             return project_dir.to_path_buf();
         };
-        let path = node.get("path").and_then(Value::as_str).unwrap_or("");
-        let source_tree = node
-            .get("sourceTree")
-            .and_then(Value::as_str)
-            .unwrap_or("<group>");
-        match source_tree {
-            "<absolute>" => PathBuf::from(path),
-            "<group>" => self.dir_below(id, project_dir, depth).join(path),
-            _ => project_dir.join(path),
-        }
+        node_dir(node, || self.dir_below(id, project_dir, depth), project_dir)
     }
 }
 
@@ -5880,6 +5862,23 @@ mod tests {
         assert!(has_key(&resolve_with_version("26.5")));
         assert!(!has_key(&resolve_with_version("16.4")));
         assert!(!has_key(&resolve_with_version("15.4")));
+    }
+
+    /// The join both formats place a stored path with: an empty path leaves
+    /// the directory as it is, and a relative directory keeps the `..` that
+    /// climbs past it, so a listing relative to the project still names a
+    /// place above it.
+    #[test]
+    fn join_normalized_adds_nothing_for_an_empty_path_and_keeps_a_leading_climb() {
+        let join = |base: &str, rel: &str| join_normalized(Path::new(base), rel);
+        assert_eq!(join("Sources", ""), PathBuf::from("Sources"));
+        assert_eq!(join("", ""), PathBuf::new());
+        assert_eq!(join("Sources", "App/"), PathBuf::from("Sources/App"));
+        assert_eq!(join("Sources", "../Shared"), PathBuf::from("Shared"));
+        assert_eq!(join("", "../Shared"), PathBuf::from("../Shared"));
+        assert_eq!(join("..", "../x"), PathBuf::from("../../x"));
+        assert_eq!(join("/a", "../../b"), PathBuf::from("/b"));
+        assert_eq!(join("Sources", "/abs/./x"), PathBuf::from("/abs/x"));
     }
 
     /// [`absolutize`] anchors relative paths and collapses dot segments while

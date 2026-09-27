@@ -739,19 +739,21 @@ fn source_tree(node: &Value) -> &'static str {
 }
 
 /// A node's on-disk path, resolved against the directory its group resolves
-/// to. An anchored path is reported in its own spelling, since nothing under
-/// the project directory answers it.
+/// to, with the join a `project.pbxproj` node takes
+/// ([`crate::project::join_normalized`]). An anchored path is reported in its
+/// own spelling, since nothing under the project directory answers it.
 fn resolve(base: &str, node: &Value) -> String {
     let Some(path) = stored_path(node) else {
         return base.to_string();
     };
-    if let Some(rest) = path.strip_prefix("<PROJECT>/") {
-        return normalize(rest);
-    }
-    if path.starts_with('<') || path.starts_with('/') {
-        return path.to_string();
-    }
-    join(base, &normalize(path))
+    let (base, path) = match path.strip_prefix("<PROJECT>/") {
+        Some(rest) => ("", rest),
+        None if path.starts_with('<') => return path.to_string(),
+        None => (base, path),
+    };
+    crate::project::join_normalized(std::path::Path::new(base), path)
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// What Xcode shows the node as: its `name`, else the last component of its
@@ -792,14 +794,6 @@ fn basename(path: &str) -> &str {
     path.trim_end_matches('/')
         .rsplit_once('/')
         .map_or(path, |(_, name)| name)
-}
-
-fn join(base: &str, name: &str) -> String {
-    if base.is_empty() {
-        name.to_string()
-    } else {
-        format!("{base}/{name}")
-    }
 }
 
 fn normalize(path: &str) -> String {

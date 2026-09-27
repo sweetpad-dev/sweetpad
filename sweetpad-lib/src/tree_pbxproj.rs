@@ -25,7 +25,7 @@
 //! modules.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::pbxproj::{Dict, Value};
 use crate::project::Parents;
@@ -73,7 +73,7 @@ pub fn list_filerefs(root: &Value) -> Result<Vec<FileRefRow>, String> {
                     .or_else(|| str_field(o, "explicitFileType"))
                     .map(str::to_string),
                 parent: parents.get(guid).map(str::to_string),
-                resolved: display(&resolve_node(&parents, objects, guid, project_dir)),
+                resolved: display(&parents.group_dir(guid, project_dir)),
                 source_tree,
                 build_files: build_file_count(objects, guid),
             }
@@ -153,12 +153,7 @@ pub fn add_fileref(
             && str_field(o, "sourceTree").unwrap_or("<group>") == source_tree)
             .then(|| guid.clone())
     }) {
-        let resolved = display(&resolve_node(
-            &Parents::of(objects_ref),
-            objects_ref,
-            &existing,
-            Path::new(""),
-        ));
+        let resolved = display(&Parents::of(objects_ref).group_dir(&existing, Path::new("")));
         return Ok(AddRefOutcome::AlreadyExists {
             address: existing,
             resolved,
@@ -182,12 +177,7 @@ pub fn add_fileref(
     if let Some(group) = group {
         push_child(objects, group, &guid);
     }
-    let resolved = display(&resolve_node(
-        &Parents::of(objects),
-        objects,
-        &guid,
-        Path::new(""),
-    ));
+    let resolved = display(&Parents::of(objects).group_dir(&guid, Path::new("")));
     Ok(AddRefOutcome::Created {
         address: guid,
         resolved,
@@ -428,11 +418,7 @@ pub fn move_node(
             group,
         });
     }
-    let resolved = if GROUP_ISAS.contains(&isa(node)) {
-        display(&parents.group_dir(child, Path::new("")))
-    } else {
-        display(&resolve_node(&parents, objects_ref, child, Path::new("")))
-    };
+    let resolved = display(&parents.group_dir(child, Path::new("")));
     let anchored = str_field(node, "sourceTree").unwrap_or("<group>") == "<group>";
     let group_dir = display(&parents.group_dir(&group, Path::new("")));
 
@@ -498,9 +484,7 @@ pub fn fileref_for_path(root: &Value, path: &str) -> Result<Option<String>, Stri
     let hits: Vec<String> = objects
         .iter()
         .filter(|(_, o)| isa(o) == REF_ISA)
-        .filter(|(guid, _)| {
-            display(&resolve_node(&parents, objects, guid, Path::new(""))) == wanted
-        })
+        .filter(|(guid, _)| display(&parents.group_dir(guid, Path::new(""))) == wanted)
         .map(|(guid, _)| guid.clone())
         .collect();
     match hits.len() {
@@ -580,7 +564,6 @@ fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
         let by_directory: Vec<String> = objects
             .iter()
             .filter(|(_, o)| GROUP_ISAS.contains(&isa(o)))
-            // A stored `path` can end in `/`, and the listing prints it so.
             .filter(|(guid, _)| normalize(&group_directory(&parents, guid)) == wanted)
             .map(|(guid, _)| guid.clone())
             .collect();
@@ -771,20 +754,6 @@ fn build_file_count(objects: &Dict, ref_guid: &str) -> usize {
         .count()
 }
 
-/// A node's on-disk path: its own `path` anchored by `sourceTree`, with
-/// `<group>` resolving up the parent chain.
-fn resolve_node(parents: &Parents<'_>, objects: &Dict, guid: &str, project_dir: &Path) -> PathBuf {
-    let Some(node) = objects.get(guid) else {
-        return project_dir.to_path_buf();
-    };
-    let path = str_field(node, "path").unwrap_or_default();
-    match str_field(node, "sourceTree").unwrap_or("<group>") {
-        "<absolute>" => PathBuf::from(path),
-        "<group>" => parents.parent_dir(guid, project_dir).join(path),
-        _ => project_dir.join(path),
-    }
-}
-
 fn display(path: &Path) -> String {
     path.to_string_lossy().trim_start_matches('/').to_string()
 }
@@ -818,6 +787,7 @@ fn str_field<'a>(obj: &'a Value, key: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     /// A classic project: the App group holds one source and a nested Legacy
     /// group; one build file makes App compile the source.
@@ -1360,6 +1330,11 @@ mod tests {
             groups.iter().find(|g| g.address == "I1").unwrap().resolved,
             "App/Inner",
             "a group with no path adds no directory"
+        );
+        assert_eq!(
+            groups.iter().find(|g| g.address == "N2").unwrap().resolved,
+            "App",
+            "and sits in its parent's directory, spelled as the parent's is"
         );
 
         let objects = objects(&root).unwrap();

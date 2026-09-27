@@ -652,3 +652,62 @@ fn a_group_with_no_name_and_no_path_is_walked_through() {
         }
     );
 }
+
+/// The same navigator in both formats lists each group in the same directory:
+/// a group with no path sits in its parent's directory, spelled as the
+/// parent's is, and a path that climbs out of the project keeps its `..`.
+#[test]
+fn both_formats_place_a_group_in_the_same_directory() {
+    let pbxproj = sweetpad_lib::pbxproj::parse(
+        "// !$*UTF8*$!
+{
+\tobjects = {
+\t\tMAIN = { isa = PBXGroup; sourceTree = \"<group>\"; children = (SRC, UP); };
+\t\tSRC = { isa = PBXGroup; path = Sources; sourceTree = \"<group>\"; children = (INNER, NONE); };
+\t\tINNER = { isa = PBXGroup; name = Inner; sourceTree = \"<group>\"; children = (); };
+\t\tNONE = { isa = PBXGroup; sourceTree = \"<group>\"; children = (DEEP); };
+\t\tDEEP = { isa = PBXGroup; path = Deep; sourceTree = \"<group>\"; children = (); };
+\t\tUP = { isa = PBXGroup; path = ../Shared; sourceTree = \"<group>\"; children = (); };
+\t\tPROJ = { isa = PBXProject; mainGroup = MAIN; targets = (); };
+\t};
+\trootObject = PROJ;
+}
+",
+    )
+    .unwrap_or_else(|e| panic!("parse: {e}"));
+    let xcproj = xcproj::parse(
+        r#"{
+  "files": [
+    {
+      "kind": "group",
+      "path": "Sources",
+      "children": [
+        { "kind": "group", "name": "Inner", "children": [] },
+        {
+          "kind": "group",
+          "children": [
+            { "kind": "group", "path": "Deep", "children": [] },
+          ],
+        },
+      ],
+    },
+    { "kind": "group", "path": "../Shared", "children": [] },
+  ],
+}
+"#,
+    )
+    .unwrap_or_else(|e| panic!("parse: {e}"));
+
+    let by_path = |rows: Vec<sweetpad_lib::tree::GroupRow>| {
+        rows.into_iter()
+            .filter_map(|g| Some((g.navigator_path.filter(|p| !p.is_empty())?, g.resolved)))
+            .collect::<std::collections::BTreeMap<_, _>>()
+    };
+    let classic = by_path(sweetpad_lib::tree_pbxproj::list_groups(&pbxproj).unwrap());
+    let document = by_path(tree::list_groups(&xcproj).unwrap());
+    assert_eq!(classic, document);
+    assert_eq!(classic["Sources/Inner"], "Sources");
+    assert_eq!(classic["Sources/"], "Sources");
+    assert_eq!(classic["Sources//Deep"], "Sources/Deep");
+    assert_eq!(classic["Shared"], "../Shared");
+}

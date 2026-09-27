@@ -206,7 +206,10 @@ pub fn base_xcconfigs(
             str_field(config, "baseConfigurationReferenceAnchor"),
             str_field(config, "baseConfigurationReferenceRelativePath"),
         ) {
-            crate::project::group_dir(objects, anchor, std::path::Path::new("")).join(relative)
+            crate::project::join_normalized(
+                &crate::project::group_dir(objects, anchor, std::path::Path::new("")),
+                relative,
+            )
         } else {
             continue;
         };
