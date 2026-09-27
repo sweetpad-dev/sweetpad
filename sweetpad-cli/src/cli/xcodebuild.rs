@@ -2084,6 +2084,11 @@ fn bundle_of(t: &TargetBuildSettings) -> Option<AppBundle> {
 /// after `--`, which can give the `-resultBundlePath` a `-resultStreamPath`
 /// needs.
 ///
+/// Both are read the way [`last_value`] reads them: a flag that takes a
+/// value takes the next argument, dashes and all, so `-xcconfig
+/// -enableCodeCoverage` keeps a file named '-enableCodeCoverage', and a
+/// `-derivedDataPath -resultBundlePath` names no result bundle.
+///
 /// Only the file's arguments are filtered: a flag typed for this run is the
 /// caller's, and `xcodebuild` says why it refuses one.
 #[must_use]
@@ -2095,7 +2100,7 @@ pub fn for_action(
     let bundle_given = matches!(
         action,
         Action::Build | Action::BuildForTesting | Action::Test
-    ) || tail.iter().any(|a| a == "-resultBundlePath");
+    ) || last_value(tail, "-resultBundlePath").is_some();
     let mut kept = Vec::with_capacity(configured.len());
     let mut notes = Vec::new();
     let testing = matches!(action, Action::Test | Action::BuildForTesting);
@@ -2107,6 +2112,9 @@ pub fn for_action(
             " without a '-resultBundlePath' to stream into"
         } else {
             kept.push(arg.clone());
+            if VALUE_FLAGS.contains(&arg.as_str()) {
+                kept.extend(iter.next().cloned());
+            }
             continue;
         };
         let value = iter.next().map_or_else(String::new, |v| format!(" {v}"));
@@ -3414,6 +3422,50 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         for action in [Action::Test, Action::BuildForTesting] {
             assert_eq!(for_action(action, &file, &[]), (file.clone(), Vec::new()));
         }
+    }
+
+    /// A flag's value spelled like a flag an action leaves out is the value,
+    /// as `xcodebuild` reads it, in the file and in the tail.
+    #[test]
+    fn an_action_reads_a_flags_value_as_its_value() {
+        let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
+        let file = s(&[
+            "-xcconfig",
+            "-enableCodeCoverage",
+            "FOO=1",
+            "-clonedSourcePackagesDirPath",
+            "-resultStreamPath",
+            "-testPlan",
+            "Smoke",
+        ]);
+        let (kept, notes) = for_action(Action::Clean, &file, &[]);
+        assert_eq!(
+            kept,
+            [
+                "-xcconfig",
+                "-enableCodeCoverage",
+                "FOO=1",
+                "-clonedSourcePackagesDirPath",
+                "-resultStreamPath",
+            ]
+        );
+        assert_eq!(
+            notes,
+            [
+                "leaving out sweetpad.toml's '-testPlan Smoke': 'xcodebuild clean' fails on it, \
+                 as a flag only testing takes"
+            ]
+        );
+        assert!(crate::cli::config::effective_xcodebuild_args(&kept, &[]).is_ok());
+
+        // A '-resultBundlePath' that is another flag's value names no bundle.
+        let file = s(&["-resultStreamPath", "stream.json"]);
+        let tail = s(&["-derivedDataPath", "-resultBundlePath"]);
+        let (kept, _) = for_action(Action::Archive, &file, &tail);
+        assert!(kept.is_empty(), "{kept:?}");
+        let tail = s(&["-resultBundlePath", "-derivedDataPath"]);
+        let (kept, _) = for_action(Action::Archive, &file, &tail);
+        assert_eq!(kept, file);
     }
 
     #[test]

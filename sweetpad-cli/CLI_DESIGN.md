@@ -582,7 +582,11 @@ args = ["-skipMacroValidation"]   # added to every command that builds
   and `-testProductsPath` fail `build`, `archive` and `clean` ("only
   supported when testing"), so they reach only `test` and `test build`.
   `-resultStreamPath` fails without a `-resultBundlePath`, so it stays out of
-  `clean` and of an `archive` that wasn't typed one. The rest of the testing
+  `clean` and of an `archive` that wasn't typed one. Both lists are read the
+  way `xcodebuild` reads them: the argument after a flag that takes a value is
+  that value, so `-xcconfig -enableCodeCoverage` keeps an xcconfig of that
+  name, and a `-resultBundlePath` that is another flag's value names no
+  bundle. The rest of the testing
   flags (`-test-iterations`, `-parallel-testing-enabled`, `-only-testing:`, …)
   pass every action as Xcode 27 probes them. A flag typed after `--` is never
   left out: it was typed for this run, and `xcodebuild`'s refusal names it. A
