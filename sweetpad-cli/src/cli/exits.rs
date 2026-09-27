@@ -583,6 +583,14 @@ fn epoch_seconds(timestamp: &str) -> Option<f64> {
     Some(seconds as f64 + fraction)
 }
 
+/// Seconds since the epoch for a clock time that names no zone
+/// (`2026-09-27 14:56:05.763`), read as if it were UTC. That is only good for
+/// ordering times one clock wrote, like the suite banners in a test run's
+/// streams.
+pub(crate) fn zoneless_seconds(time: &str) -> Option<f64> {
+    epoch_seconds(&format!("{time}+0000"))
+}
+
 /// Days from 1970-01-01 to a proleptic Gregorian date (Howard Hinnant's
 /// `days_from_civil`).
 fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {

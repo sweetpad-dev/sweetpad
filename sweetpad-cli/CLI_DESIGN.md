@@ -2599,6 +2599,19 @@ each worker is a process of its own and writes a stream of its own. On macOS,
 a scheme marked `parallelizable` ran its three test classes on three workers,
 and each stream held one class's tests in turn.
 
+**Tests are listed in the order they started.** A stream holds one process's
+tests in the order it ran them, and a parallel run has a stream per worker, so
+the streams are merged on when each test started. A suite banner (`Test Suite
+'AlphaTests' started at 2026-09-27 15:07:26.978.`) dates its suite. A test in
+it starts once the tests before it have run for the time their end markers
+give (`passed (0.405 seconds)`). The estimate leaves out the time between
+tests, such as a class's `setUp`, so it can run a little early. Rounding in the
+durations can also carry it past the next banner, so a test is never dated
+earlier than the one before it in its stream, and each stream keeps its own
+order. The banners give no zone, so they are only compared with each other.
+The streams are the only source: the test tree has durations but no start
+times, and a unit test's activity log records no start.
+
 **A line belongs to the innermost test running.** XCTest runs a test on the
 thread that asks for it. A test that runs another case inside itself
 (`InnerTests(selector:).run()`) therefore writes the inner case's markers

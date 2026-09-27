@@ -199,7 +199,8 @@ neither command takes a scheme, configuration, or destination flag.
 
 ### What the tests printed
 
-`sweetpad test output` shows each test's own stdout and stderr, grouped by test:
+`sweetpad test output` shows each test's own stdout and stderr, grouped by test, in the order the
+tests started:
 
 ```console
 $ sweetpad test output

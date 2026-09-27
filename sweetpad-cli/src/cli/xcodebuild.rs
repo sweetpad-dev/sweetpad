@@ -1747,7 +1747,9 @@ fn parse_attachment_manifest(
 
 /// What the tests themselves wrote, recovered from a `.xcresult`'s diagnostics.
 pub struct RunOutput {
-    /// Per test, in the order the run executed them. Only tests that wrote
+    /// Per test, in the order the tests started. Each test process writes a
+    /// stream of its own, and a parallel run has one per worker, so the
+    /// streams are merged on [`TestOutput::started`]. Only tests that wrote
     /// something appear.
     pub tests: Vec<TestOutput>,
     /// Output written outside any test case — setup, teardown, and any
@@ -1777,6 +1779,11 @@ pub struct TestOutput {
     /// `Target/Class/method`, the shape `--only-testing` takes.
     pub identifier: String,
     pub output: String,
+    /// When the test started, in seconds on the test process's clock read as
+    /// UTC, so only good for ordering. The stream dates each suite's start,
+    /// and a test starts once the tests before it in its suite have taken
+    /// their time. `None` before the stream's first suite banner.
+    pub started: Option<f64>,
 }
 
 /// One of XCTest's case markers, read apart.
@@ -1787,6 +1794,8 @@ struct CaseMarker<'a> {
     /// `Class/method`.
     test: String,
     started: bool,
+    /// How long the test took, from an end marker's `(0.405 seconds)`.
+    seconds: Option<f64>,
 }
 
 /// XCTest brackets each test's console output with these, on the test
@@ -1803,11 +1812,23 @@ fn parse_case_marker(line: &str) -> Option<CaseMarker<'_>> {
     // The marker spells the class module-qualified; the result bundle
     // does not.
     let class = qualified.rsplit('.').next().unwrap_or(qualified);
+    let seconds = tail
+        .split_once(" (")
+        .and_then(|(_, time)| time.split_once(" seconds)"))
+        .and_then(|(time, _)| time.parse().ok());
     Some(CaseMarker {
         module: qualified.split_once('.').map(|(module, _)| module),
         test: format!("{class}/{method}"),
         started,
+        seconds,
     })
+}
+
+/// When a suite banner (`Test Suite 'AppTests' started at 2026-09-27
+/// 14:56:05.763.`) says its suite started, as [`TestOutput::started`] counts.
+fn suite_started(line: &str) -> Option<f64> {
+    let (_, time) = line.rsplit_once("' started at ")?;
+    crate::cli::exits::zoneless_seconds(time.strip_suffix('.').unwrap_or(time))
 }
 
 /// Split one test process's stdout into per-test slices, each named by the
@@ -1851,6 +1872,11 @@ fn split_output(
     let mut open: Vec<Open> = Vec::new();
     let mut split = Split::default();
     let mut after_suite = false;
+    // When the next test to start does, by the suite banners and the
+    // durations of the tests since. Rounding in the durations can run it past
+    // the next banner, so no test starts before the one ahead of it.
+    let mut clock: Option<f64> = None;
+    let mut last_start: Option<f64> = None;
     for (i, ((line, marker), ends)) in lines.iter().zip(markers).zip(ends).enumerate() {
         if let Some(marker) = marker {
             after_suite = false;
@@ -1861,10 +1887,16 @@ fn split_output(
                     open.pop();
                 }
                 let target = targets.target_of(&marker.test, marker.module);
+                let started = match (clock, last_start) {
+                    (Some(now), Some(last)) => Some(now.max(last)),
+                    (now, last) => now.or(last),
+                };
+                last_start = started;
                 into.push(TestOutput {
                     identifier: test_selector(target, &marker.test, None),
                     test: marker.test.clone(),
                     output: String::new(),
+                    started,
                 });
                 open.push(Open {
                     module: marker.module,
@@ -1880,6 +1912,10 @@ fn split_output(
                     Some(at) => {
                         split.crossed |= at + 1 != open.len();
                         open.remove(at);
+                        // A nested case's time is part of the outer test's.
+                        if open.is_empty() {
+                            clock = clock.zip(marker.seconds).map(|(t, s)| t + s);
+                        }
                     }
                     None => split.crossed = true,
                 }
@@ -1890,6 +1926,10 @@ fn split_output(
         // end, are structure, not output. Keeping them would bury the
         // handful of real lines outside any test.
         if line.starts_with("Test Suite '") {
+            let started = suite_started(line);
+            if started.is_some() {
+                clock = started;
+            }
             after_suite = !line.contains("' started at ");
             continue;
         }
@@ -2011,6 +2051,7 @@ pub fn export_run_output(
             sources.push(kept);
         }
     }
+    in_start_order(&mut tests);
     // Asserted only from the line that says so: an absent or differently
     // worded log leaves this unclaimed rather than guessed at.
     let serial = !schedules.is_empty()
@@ -2026,6 +2067,16 @@ pub fn export_run_output(
         serial,
         overlapped,
     })
+}
+
+/// Merge the tests of every stream by when each started. A stream is one
+/// process's tests in the order it ran them, and the sort is stable, so it
+/// keeps that order and only interleaves the streams.
+fn in_start_order(tests: &mut [TestOutput]) {
+    tests.sort_by(|a, b| {
+        let at = |t: &TestOutput| t.started.unwrap_or(f64::NEG_INFINITY);
+        at(a).total_cmp(&at(b))
+    });
 }
 
 /// A name for one test process's kept stream. Every stream is called
@@ -2575,6 +2626,105 @@ Test Suite 'NestedTests' passed at 2026-09-27 14:56:11.409.
         );
         assert!(rest.contains("If you believe"), "{rest}");
         assert_eq!(found.between_tests, 0);
+    }
+
+    #[test]
+    fn a_parallel_runs_workers_are_merged_by_when_each_test_started() {
+        // Two workers' real streams from a macOS run with three workers.
+        let first = "\
+Test Suite 'BetaTests' started at 2026-09-27 14:56:05.760.
+Test Case '-[B8TestHostless.BetaTests testOne]' started.
+beta one
+Test Case '-[B8TestHostless.BetaTests testOne]' passed (0.405 seconds).
+Test Case '-[B8TestHostless.BetaTests testTwo]' started.
+beta two
+Test Case '-[B8TestHostless.BetaTests testTwo]' passed (0.407 seconds).
+Test Suite 'BetaTests' passed at 2026-09-27 14:56:06.573.
+\t Executed 2 tests, with 0 failures (0 unexpected) in 0.812 (0.814) seconds
+Test Suite 'AlphaTests' started at 2026-09-27 14:56:06.579.
+Test Case '-[B8TestHostless.AlphaTests testOne]' started.
+alpha one
+Test Case '-[B8TestHostless.AlphaTests testOne]' passed (0.412 seconds).
+Test Case '-[B8TestHostless.AlphaTests testTwo]' started.
+alpha two
+Test Case '-[B8TestHostless.AlphaTests testTwo]' passed (0.404 seconds).
+Test Suite 'AlphaTests' passed at 2026-09-27 14:56:07.395.
+";
+        let second = "\
+Test Suite 'GammaTests' started at 2026-09-27 14:56:05.763.
+Test Case '-[B8TestHostless.GammaTests testOne]' started.
+gamma one
+Test Case '-[B8TestHostless.GammaTests testOne]' passed (0.405 seconds).
+Test Case '-[B8TestHostless.GammaTests testTwo]' started.
+gamma two
+Test Case '-[B8TestHostless.GammaTests testTwo]' passed (0.410 seconds).
+Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
+";
+        let (mut tests, mut rest) = (Vec::new(), String::new());
+        for stream in [first, second] {
+            split_output(stream, &TestTargets::default(), &mut tests, &mut rest);
+        }
+        in_start_order(&mut tests);
+        let names: Vec<&str> = tests.iter().map(|t| t.test.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "BetaTests/testOne",
+                "GammaTests/testOne",
+                "BetaTests/testTwo",
+                "GammaTests/testTwo",
+                "AlphaTests/testOne",
+                "AlphaTests/testTwo",
+            ]
+        );
+        assert!(rest.is_empty(), "{rest}");
+    }
+
+    #[test]
+    fn a_tests_start_counts_only_the_tests_before_it() {
+        let started = |text: &str| {
+            let (_, tests, _) = split(text);
+            tests
+                .iter()
+                .map(|t| (t.test.clone(), t.started))
+                .collect::<Vec<_>>()
+        };
+        let banner =
+            crate::cli::exits::zoneless_seconds("2026-09-27 14:56:05.000").expect("parses");
+        // An inner case's time is inside the outer test's, so only the outer
+        // one moves the clock on.
+        let tests = started(
+            "Test Suite 'A' started at 2026-09-27 14:56:05.000.\n\
+             Test Case '-[M.A testOuter]' started.\n\
+             outer\n\
+             Test Case '-[M.B testInner]' started.\n\
+             inner\n\
+             Test Case '-[M.B testInner]' passed (0.250 seconds).\n\
+             Test Case '-[M.A testOuter]' passed (1.000 seconds).\n\
+             Test Case '-[M.A testNext]' started.\n\
+             next\n\
+             Test Case '-[M.A testNext]' passed (0.100 seconds).\n",
+        );
+        let at = |i: usize| tests[i].1.expect("dated") - banner;
+        assert!(at(0).abs() < 1e-6 && at(1).abs() < 1e-6, "{tests:?}");
+        assert!((at(2) - 1.0).abs() < 1e-6, "{tests:?}");
+
+        // Rounded durations can run past the next banner; the next test
+        // still starts no earlier than the one before it.
+        let tests = started(
+            "Test Suite 'A' started at 2026-09-27 14:56:05.000.\n\
+             Test Case '-[M.A testA]' started.\n\
+             a\n\
+             Test Case '-[M.A testA]' passed (0.406 seconds).\n\
+             Test Suite 'B' started at 2026-09-27 14:56:05.405.\n\
+             Test Case '-[M.B testB]' started.\n\
+             b\n\
+             Test Case '-[M.B testB]' passed (0.001 seconds).\n",
+        );
+        assert!(tests[1].1 >= tests[0].1, "{tests:?}");
+        // A stream with no banner has nothing to date its tests by.
+        let tests = started("Test Case '-[M.A testA]' started.\na\n");
+        assert_eq!(tests[0].1, None);
     }
 
     #[test]

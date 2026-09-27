@@ -3198,6 +3198,7 @@ mod tests {
                     .to_string(),
                 identifier: identifier.to_string(),
                 output: output.to_string(),
+                started: None,
             })
             .collect();
         select_output(tests, only_testing, full)
