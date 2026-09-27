@@ -801,6 +801,7 @@ unit tests rather than a corpus capture.
 | `BuildLocationStyle = CustomLocation` × {Absolute, RelativeToDerivedData, RelativeToWorkspace} | ✅ | src/derived_data.rs (`custom_location_*`) |
 | Precedence: `CustomLocation` outranks `-derivedDataPath`, which outranks the container's DerivedData style | ✅ | src/derived_data.rs (`custom_location_outranks_the_derived_data_path_flag`) |
 | Ignored by xcodebuild: the `xcshareddata` copy, `DeterminedByTargets`, app-wide `IDEBuildLocationStyle` | ✅ | src/derived_data.rs (`ignores_the_shared_settings_copy`, `determined_by_targets_is_a_no_op`) |
+| A moved `SYMROOT` / `OBJROOT` / `DSTROOT` / `CONFIGURATION_BUILD_DIR` (and the other locations xcodebuild settles) folded lexically, a relative one read against the project's directory, and the settings built from it following; `BUILD_DIR` and every other path setting keep their spelling (Xcode 27.0, command line, `-xcconfig` and project) | ✅ | sweetpad-core/tests/build_location_fold_oracle.rs; sweetpad-core/src/build_context.rs (`FOLDED_LOCATIONS`) |
 | The container's own folder (`Locations::folder`), where the index and logs stay under a custom build location; `derived-data`, `clean --purge`, `open dd` and the BSP index find it through this locator | ✅ | src/derived_data.rs (`the_app_wide_root_is_the_custom_location_in_xcodes_preferences`); sweetpad-cli/tests/derived_data_purge.rs; sweetpad-core/tests/bsp_conformance.rs (`bsp_index_store_follows_xcodes_derived_data_location`) |
 
 ### Target / product types

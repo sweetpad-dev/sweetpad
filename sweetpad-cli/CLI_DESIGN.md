@@ -3302,9 +3302,9 @@ simulator, comparing `SYMROOT`, `OBJROOT`, `BUILD_DIR`,
   `OBJROOT` or `CONFIGURATION_BUILD_DIR` against the directory of the project
   that owns the target, wherever it runs from and also through a workspace in
   another directory, while it leaves a relative `TARGET_BUILD_DIR` as typed.
-  The resolver kept `relsym`. So `CommandLineSettings` anchors a relative
-  value of those three to `$(PROJECT_DIR)/…`, which the resolver expands per
-  target, and after that every case agreed, workspace included.
+  The resolver kept `relsym`. It reads a relative value against
+  `$(PROJECT_DIR)` now, per target and from any layer (below), and every case
+  agrees, workspace included.
 
 All three are followed, so the refusal is gone. Real builds agreed with the
 check: `build -o json -- SYMROOT=relsym` on macOS names
@@ -3312,14 +3312,50 @@ check: `build -o json -- SYMROOT=relsym` on macOS names
 `app launch --mac` with the setting in `sweetpad.toml` starts that bundle. On
 the iPhone 17 simulator `app install` and `app launch` with an absolute
 `CONFIGURATION_BUILD_DIR` and `OBJROOT` in the file install and start the
-relocated build. `xcodebuild` normalizes a relocated `SYMROOT`, `OBJROOT`
-or `CONFIGURATION_BUILD_DIR` lexically, `..` and `.` folded without
-resolving a symlink (`SYMROOT=../x/sym2` is `<parent>/x/sym2`, and
-`/tmp/../tmp/obj` is `/tmp/obj`), and leaves any other path setting as
-spelled. The resolver's chain keeps `<project>/../x/sym2/Debug/…`, so the
-locator normalizes the product's directory the same way, and `productPath`
-and the launched executable name the bundle as `xcodebuild` does; `settings
-show` still prints those keys unnormalized.
+relocated build.
+
+### Build locations are folded where they resolve
+
+`xcodebuild` folds a build location lexically, `..` and `.` folded without
+resolving a symlink: `SYMROOT=../x/sym2` is `<parent>/x/sym2` and
+`/tmp/../tmp/obj` is `/tmp/obj`. The locator used to fold the product's
+directory on its own, which fixed `productPath` but left `settings show`,
+the BSP arguments and every other reader of the resolver with the `..`
+chain. The folding now happens in the resolver, and the locator's copy is
+gone.
+
+Which settings fold was measured on Xcode 27.0 with `-showBuildSettings`,
+setting each path setting to `/tmp/../tmp/<KEY>` and to `a/../rel/<KEY>`, on
+the command line, in an `-xcconfig` and in the project. The three layers
+behave the same.
+
+- `SYMROOT`, `OBJROOT`, `DSTROOT`, `CONFIGURATION_BUILD_DIR`,
+  `BUILT_PRODUCTS_DIR`, `CONFIGURATION_TEMP_DIR`, `TARGET_TEMP_DIR`,
+  `TEMP_DIR`, `SHARED_PRECOMPS_DIR`, `LOCROOT` and `LOCSYMROOT` fold, and a
+  relative value is read against the project's directory first. An
+  `-xcconfig` elsewhere reads it against the project too, not against the
+  file.
+- `TARGET_BUILD_DIR` and `INSTALL_DIR` fold but stay relative.
+- Every other path setting keeps its spelling, `BUILD_DIR` included, and so
+  does a setting of your own.
+- A setting built from a folded one sees the folded value: `BUILD_DIR` from
+  `SYMROOT`, `DERIVED_FILE_DIR` from `TARGET_TEMP_DIR`. `TARGET_BUILD_DIR` is
+  the exception. A value set for it is reported folded, while
+  `CODESIGNING_FOLDER_PATH` and `METAL_LIBRARY_OUTPUT_DIR` keep the spelling
+  it was given.
+
+The resolver resolves once, then pins each changed location to its folded
+value on top of the stack and resolves again, in the order `xcodebuild`
+settles them, so the settings built from it follow. The default layout is
+already folded, so a project that moves nothing pays for one resolve. The
+same measurements found three recipes the resolver had wrong once a location
+moves, and they follow CoreBuildSystem.xcspec now: `TEMP_ROOT` is
+`$(OBJROOT)`, `INSTALL_ROOT` is `$(DSTROOT)`, and `TARGET_BUILD_DIR` hangs
+off `CONFIGURATION_BUILD_DIR` rather than `BUILT_PRODUCTS_DIR`. The
+`build_location_fold_oracle` suite in sweetpad-core quotes the measured
+values. One gap is left: with a scheme, `xcodebuild` keeps
+`SHARED_PRECOMPS_DIR` under DerivedData's intermediates when `OBJROOT`
+moves, where the resolver derives it from `OBJROOT`.
 
 ## 9t. v8 — `feedback`: an agent's problem report to the maintainer
 

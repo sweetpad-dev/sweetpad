@@ -1948,9 +1948,7 @@ fn bundle_of(t: &TargetBuildSettings) -> Option<AppBundle> {
     {
         return None;
     }
-    // `xcodebuild` normalizes a relocated build directory: `SYMROOT=../x`
-    // builds into `<parent>/x/Debug`, not `<project>/../x/Debug`.
-    let build_dir = lexically_normal(Path::new(build_dir));
+    let build_dir = Path::new(build_dir);
     let executable = t
         .settings
         .get("EXECUTABLE_PATH")
@@ -2021,29 +2019,6 @@ const TEST_ONLY_FLAGS: [&str; 5] = [
     "-testProductsPath",
 ];
 
-/// `path` with its `.` components dropped and each `..` folded into the
-/// component before it, without reading the filesystem: `/a/b/../c` is
-/// `/a/c` whether or not `b` is a symlink, as `xcodebuild` spells a build
-/// directory. A `..` with nothing before it to fold stays.
-fn lexically_normal(path: &Path) -> PathBuf {
-    use std::path::Component;
-    let mut normal = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => match normal.components().next_back() {
-                Some(Component::Normal(_)) => {
-                    normal.pop();
-                }
-                Some(Component::RootDir | Component::Prefix(_)) => {}
-                _ => normal.push(".."),
-            },
-            other => normal.push(other),
-        }
-    }
-    normal
-}
-
 /// The value after the last `flag` in a passthrough, as a path, joined onto
 /// [`working_dir`] when relative, the way `xcodebuild` running there reads it.
 /// A `-derivedDataPath build/dd` typed in a nested source directory names a
@@ -2082,41 +2057,19 @@ pub struct CommandLineSettings {
 
 impl CommandLineSettings {
     /// Read them from `passthrough`, which is the project's `[xcodebuild]
-    /// args` followed by the typed `--` tail. Relative paths resolve against
-    /// the directory `xcodebuild` runs from, as the build reads them.
+    /// args` followed by the typed `--` tail. The paths of the two flags
+    /// resolve against the directory `xcodebuild` runs from, as the build
+    /// reads them. The settings stay as typed: the resolver reads a relative
+    /// `SYMROOT=build` against each target's project directory, as
+    /// `xcodebuild` does.
     #[must_use]
     pub fn of(passthrough: &[String], container: &Container) -> Self {
         Self {
             derived_data_path: passthrough_path(passthrough, "-derivedDataPath", container),
             xcconfig: passthrough_path(passthrough, "-xcconfig", container),
-            overrides: passthrough_settings(passthrough)
-                .into_iter()
-                .map(anchor_build_location)
-                .collect(),
+            overrides: passthrough_settings(passthrough),
         }
     }
-}
-
-/// The settings that place a build's output, which `xcodebuild` reads a
-/// relative value of against the directory of the project that owns each
-/// target: `SYMROOT=build` puts the products in `<project dir>/build/Debug`,
-/// whatever directory it ran from, and in a workspace that is each member
-/// project's own directory. It leaves a relative `TARGET_BUILD_DIR` as typed.
-const BUILD_LOCATION_SETTINGS: [&str; 3] = ["SYMROOT", "OBJROOT", "CONFIGURATION_BUILD_DIR"];
-
-/// Anchor a relative build-location value to `$(PROJECT_DIR)`, which the
-/// resolver expands per target the way `xcodebuild` resolves it. A value that
-/// is absolute or starts with a macro (`$(SRCROOT)/build`) is left alone.
-fn anchor_build_location((key, value): (String, String)) -> (String, String) {
-    if BUILD_LOCATION_SETTINGS.contains(&key.as_str())
-        && !value.is_empty()
-        && !value.starts_with('/')
-        && !value.starts_with('$')
-    {
-        let value = format!("$(PROJECT_DIR)/{value}");
-        return (key, value);
-    }
-    (key, value)
 }
 
 /// The `KEY=VALUE` build settings in a passthrough, in order: what
@@ -3163,32 +3116,22 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         );
     }
 
-    /// Checked against `xcodebuild -showBuildSettings` on Xcode 27, for a
-    /// project and for a workspace holding it: a relative `SYMROOT`,
-    /// `OBJROOT` or `CONFIGURATION_BUILD_DIR` names a directory beside the
-    /// project that owns the target.
+    /// The settings stay as typed, a relative build location included: the
+    /// resolver reads that against each target's project directory.
     #[test]
-    fn a_relative_build_location_is_read_against_the_project() {
+    fn a_passthroughs_settings_are_read_as_typed() {
         let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
         let project = Container::Project(PathBuf::from("/work/ios/App.xcodeproj"));
         let read = CommandLineSettings::of(
-            &s(&[
-                "SYMROOT=build",
-                "OBJROOT=/tmp/obj",
-                "CONFIGURATION_BUILD_DIR=$(SRCROOT)/out",
-                "TARGET_BUILD_DIR=rel",
-                "PRODUCT_NAME=Renamed",
-            ]),
+            &s(&["SYMROOT=build", "OBJROOT=/tmp/obj", "PRODUCT_NAME=Renamed"]),
             &project,
         );
         let pair = |k: &str, v: &str| (k.to_string(), v.to_string());
         assert_eq!(
             read.overrides,
             [
-                pair("SYMROOT", "$(PROJECT_DIR)/build"),
+                pair("SYMROOT", "build"),
                 pair("OBJROOT", "/tmp/obj"),
-                pair("CONFIGURATION_BUILD_DIR", "$(SRCROOT)/out"),
-                pair("TARGET_BUILD_DIR", "rel"),
                 pair("PRODUCT_NAME", "Renamed"),
             ]
         );
@@ -3272,12 +3215,20 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
     }
 
     /// Xcode 27 builds `SYMROOT=../x/sym2` into `<parent>/x/sym2/Debug`, and
-    /// `-showBuildSettings` spells `TARGET_BUILD_DIR` that way too, where the
-    /// resolver's chain keeps `<project>/../x/sym2/Debug`.
+    /// `-showBuildSettings` spells `TARGET_BUILD_DIR` that way too: the
+    /// relative value is read against the project's directory and folded.
+    /// `SYMROOT=build` is `<project dir>/build`.
     #[test]
     fn a_relocated_product_path_has_no_dot_dot() {
         let container = fixture_app();
         let project_dir = working_dir(&container).unwrap();
+        let beside = located(&container, &["SYMROOT=build".to_string()]);
+        assert_eq!(
+            beside.path,
+            project_dir.join("build/Debug/SweetpadCIMac.app"),
+            "{}",
+            beside.path.display()
+        );
         let app = located(&container, &["SYMROOT=../x/sym2".to_string()]);
         let parent = project_dir.parent().unwrap();
         assert_eq!(
@@ -3290,25 +3241,6 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             app.executable,
             app.path.join("Contents/MacOS/SweetpadCIMac")
         );
-    }
-
-    #[test]
-    fn a_path_is_normalized_without_the_filesystem() {
-        for (path, normal) in [
-            ("/work/App/../x/sym2/Debug", "/work/x/sym2/Debug"),
-            ("/work/./App/./Debug", "/work/App/Debug"),
-            ("/a/b/../../c", "/c"),
-            ("/tmp/../tmp/obj", "/tmp/obj"),
-            ("/../a", "/a"),
-            ("a/../../b", "../b"),
-            ("/work/App", "/work/App"),
-        ] {
-            assert_eq!(
-                lexically_normal(Path::new(path)),
-                PathBuf::from(normal),
-                "{path}"
-            );
-        }
     }
 
     #[test]

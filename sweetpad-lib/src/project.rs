@@ -1960,19 +1960,20 @@ pub fn built_in_settings(
     // `SYMROOT = $(SRCROOT)/../build/products` in an xcconfig) carries
     // `BUILD_DIR` — and the whole `CONFIGURATION_BUILD_DIR` / `BUILT_PRODUCTS_DIR`
     // / `TARGET_BUILD_DIR` chain below it — to the same place, matching
-    // xcodebuild. `OBJROOT` / `TEMP_ROOT` are independent: xcodebuild keeps the
-    // intermediates under DerivedData even when the products move.
+    // xcodebuild. `OBJROOT` is independent: xcodebuild keeps the intermediates
+    // under DerivedData even when the products move, and `TEMP_ROOT` follows
+    // `OBJROOT` (CoreBuildSystem.xcspec's default) when it moves.
     push("SYMROOT", build_dir);
     push("BUILD_DIR", "$(SYMROOT)".into());
     push("BUILD_ROOT", "$(SYMROOT)".into());
-    push("OBJROOT", obj_root.clone());
-    push("TEMP_ROOT", obj_root);
+    push("OBJROOT", obj_root);
+    push("TEMP_ROOT", "$(OBJROOT)".into());
     // `DSTROOT` is keyed on the *project*, not the target —
     // CoreBuildSystem.xcspec defines it as `/tmp/$(PROJECT_NAME).dst` and the
     // captures confirm it (target `Alamofire iOS` reports `/tmp/Alamofire.dst`).
-    // `INSTALL_ROOT` defaults to `$(DSTROOT)`.
+    // `INSTALL_ROOT` defaults to `$(DSTROOT)`, and follows one set elsewhere.
     push("DSTROOT", format!("/tmp/{project_name}.dst"));
-    push("INSTALL_ROOT", format!("/tmp/{project_name}.dst"));
+    push("INSTALL_ROOT", "$(DSTROOT)".into());
     // DerivedData root (parent of every container/hash dir). Referenced by
     // xcspec defaults like `MODULE_CACHE_DIR = $(DERIVED_DATA_DIR)/ModuleCache.noindex`.
     // When `-derivedDataPath` is overridden, the override IS the
@@ -2018,13 +2019,16 @@ pub fn built_in_settings(
     push("BUILT_PRODUCTS_DIR", "$(CONFIGURATION_BUILD_DIR)".into());
     // Including `$(TARGET_BUILD_SUBPATH)` here is what wires up parent-app
     // embedding. `TARGET_BUILD_SUBPATH` defaults to empty (so this expands
-    // to `$(BUILT_PRODUCTS_DIR)` for normal targets), but xcodebuild — and
+    // to `$(CONFIGURATION_BUILD_DIR)` for normal targets), but xcodebuild — and
     // [`crate::build_context::BuildContext`] — set it to e.g.
     // `/App.app/PlugIns` for a unit-test bundle whose host is `App`, which
-    // nests the test bundle inside the host app's `PlugIns` directory.
+    // nests the test bundle inside the host app's `PlugIns` directory. It
+    // hangs off `CONFIGURATION_BUILD_DIR`, as CoreBuildSystem.xcspec has it,
+    // not `BUILT_PRODUCTS_DIR`: Xcode 27 leaves the product where it was when
+    // only `BUILT_PRODUCTS_DIR` is set.
     push(
         "TARGET_BUILD_DIR",
-        "$(BUILT_PRODUCTS_DIR)$(TARGET_BUILD_SUBPATH)".into(),
+        "$(CONFIGURATION_BUILD_DIR)$(TARGET_BUILD_SUBPATH)".into(),
     );
     push(
         "PROJECT_TEMP_DIR",
@@ -5219,7 +5223,7 @@ mod tests {
         );
         let get = |k: &str| out.iter().find(|a| a.key == k).map(|a| a.value.as_str());
         assert_eq!(get("DSTROOT"), Some("/tmp/Alamofire.dst"));
-        assert_eq!(get("INSTALL_ROOT"), Some("/tmp/Alamofire.dst"));
+        assert_eq!(get("INSTALL_ROOT"), Some("$(DSTROOT)"));
     }
 
     #[test]

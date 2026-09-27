@@ -12,9 +12,10 @@
 //! `CONFIGURATION_BUILD_DIR`, `BUILT_PRODUCTS_DIR`, and `TARGET_BUILD_DIR` all
 //! follow it, while `OBJROOT` stays under DerivedData.
 //!
-//! The fixture lives at a path that differs per checkout, so both sides are
-//! lexically normalized (collapse `.`/`..`, then replace the prefix through the
-//! `/fixtures/<slug>/` marker) before comparison.
+//! The fixture lives at a path that differs per checkout, so both sides have
+//! the prefix through the `/fixtures/<slug>/` marker replaced before
+//! comparison. Nothing else is rewritten: xcodebuild folds the xcconfig's
+//! `$(SRCROOT)/..`, and the resolver has to as well.
 
 mod common;
 
@@ -72,43 +73,14 @@ fn project_and_xcconfig(capture: &Path) -> Option<(PathBuf, PathBuf)> {
     (proj.is_dir() && xcconfig.is_file()).then_some((proj, xcconfig))
 }
 
-/// Lexically collapse `.`/`..` segments, then replace the absolute prefix up to
-/// and including `/fixtures/<slug>/` with `<FIX>/`, so a value captured at one
-/// checkout compares equal to the resolver's output at another. xcodebuild
-/// already standardizes the path; the resolver may leave a `..` from the
-/// `$(SRCROOT)/..` xcconfig, so collapse both sides the same way.
+/// Replace the absolute prefix up to and including `/fixtures/<slug>/` with
+/// `<FIX>/`, so a value captured at one checkout compares equal to the
+/// resolver's output at another.
 fn normalize(value: &str) -> String {
-    let collapsed = lexically_normalize(value);
     let marker = format!("/fixtures/{FIXTURE_DIR}/");
-    match collapsed.find(&marker) {
-        Some(idx) => format!("<FIX>/{}", &collapsed[idx + marker.len()..]),
-        None => collapsed,
-    }
-}
-
-/// Pure-lexical path cleanup (no filesystem access): drop `.` segments and
-/// resolve `..` against the preceding segment, preserving a leading `/`.
-fn lexically_normalize(path: &str) -> String {
-    let absolute = path.starts_with('/');
-    let mut stack: Vec<&str> = Vec::new();
-    for seg in path.split('/') {
-        match seg {
-            "" | "." => {}
-            ".." => {
-                if matches!(stack.last(), Some(&s) if s != "..") {
-                    stack.pop();
-                } else if !absolute {
-                    stack.push("..");
-                }
-            }
-            other => stack.push(other),
-        }
-    }
-    let joined = stack.join("/");
-    if absolute {
-        format!("/{joined}")
-    } else {
-        joined
+    match value.find(&marker) {
+        Some(idx) => format!("<FIX>/{}", &value[idx + marker.len()..]),
+        None => value.to_string(),
     }
 }
 

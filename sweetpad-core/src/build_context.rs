@@ -19,6 +19,9 @@
 //! 6. SDKROOT in its absolute-path form when the catalog supplied one.
 //! 7. Command-line `KEY=VALUE` overrides from [`ResolveQuery::overrides`],
 //!    the rest of them.
+//! 8. The build locations `xcodebuild` folds (`SYMROOT`, `OBJROOT`, …),
+//!    pinned to their folded values when resolving changed their spelling
+//!    (see `resolve_folding_locations`).
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -406,12 +409,11 @@ impl BuildContext {
         };
         let probe = self.authored_probe(&bundle, query);
         let layers = self.build_layers(&bundle, query, &probe);
-        let layer_refs: Vec<&[Assignment]> = layers.iter().map(Vec::as_slice).collect();
         Ok(Resolved {
             // The probe pre-resolved the user layers under the very same
             // bindings (see [`Self::authored_probe`]), so the gates and the
             // final resolve agree on every conditional.
-            settings: resolver::resolve(&layer_refs, &probe.ctx),
+            settings: resolve_folding_locations(layers, &probe.ctx),
             product_type: bundle.product_type,
         })
     }
@@ -912,6 +914,97 @@ impl BuildContext {
         };
         Some(format!("/{wrapper}.app{contents}/PlugIns"))
     }
+}
+
+/// The build-location settings `xcodebuild` folds once they resolve, in the
+/// order it settles them: `.` and empty components dropped and each `..`
+/// folded into the component before it, without reading the filesystem, so
+/// `SYMROOT=/tmp/../tmp/x` reports `/tmp/x`. Those marked `true` read a
+/// relative value against the project's directory first, so `OBJROOT=obj`
+/// is `<project dir>/obj`. The settings built from one see the folded value,
+/// `BUILD_DIR` from `SYMROOT` among them, while a `BUILD_DIR` set itself
+/// keeps its spelling like any setting not listed here. Pinned against
+/// `xcodebuild -showBuildSettings` on Xcode 27 with the value typed on the
+/// command line, in an `-xcconfig` and in the project (the
+/// `build_location_fold_oracle` suite).
+const FOLDED_LOCATIONS: [(&str, bool); 12] = [
+    ("SYMROOT", true),
+    ("OBJROOT", true),
+    ("DSTROOT", true),
+    ("CONFIGURATION_BUILD_DIR", true),
+    ("BUILT_PRODUCTS_DIR", true),
+    ("CONFIGURATION_TEMP_DIR", true),
+    ("TARGET_TEMP_DIR", true),
+    ("TEMP_DIR", true),
+    ("SHARED_PRECOMPS_DIR", true),
+    ("INSTALL_DIR", false),
+    ("LOCROOT", true),
+    ("LOCSYMROOT", true),
+];
+
+/// Resolve `layers`, folding [`FOLDED_LOCATIONS`] the way `xcodebuild` does.
+/// Each one that changes is pinned to its folded value in a layer on top and
+/// the stack resolved again, so everything expanded from it afterwards sees
+/// the folded spelling. The default layout folds to itself, so a project that
+/// moves nothing resolves once.
+///
+/// `TARGET_BUILD_DIR` is the exception Xcode 27 makes: a value set for it is
+/// reported folded, never anchored, while `CODESIGNING_FOLDER_PATH` and
+/// `METAL_LIBRARY_OUTPUT_DIR` keep the spelling it was given, so only the
+/// reported value is folded.
+fn resolve_folding_locations(
+    mut layers: Vec<Vec<Assignment>>,
+    ctx: &ResolveContext,
+) -> BTreeMap<String, String> {
+    let resolve = |layers: &[Vec<Assignment>]| {
+        let refs: Vec<&[Assignment]> = layers.iter().map(Vec::as_slice).collect();
+        resolver::resolve(&refs, ctx)
+    };
+    let mut settings = resolve(&layers);
+    let pinned = layers.len();
+    for (key, anchored) in FOLDED_LOCATIONS {
+        let project_dir = settings.get("PROJECT_DIR").filter(|_| anchored);
+        let Some(folded) = settings
+            .get(key)
+            .and_then(|value| folded_location(value, project_dir.map(String::as_str)))
+        else {
+            continue;
+        };
+        if layers.len() == pinned {
+            layers.push(Vec::new());
+        }
+        layers[pinned].push(Assignment {
+            key: key.to_string(),
+            conditions: Vec::new(),
+            // A literal: a `$` in the path is not a reference.
+            value: folded.replace('$', "$$"),
+            condition: None,
+        });
+        settings = resolve(&layers);
+    }
+    if let Some(folded) = settings
+        .get("TARGET_BUILD_DIR")
+        .and_then(|value| folded_location(value, None))
+    {
+        settings.insert("TARGET_BUILD_DIR".to_string(), folded);
+    }
+    settings
+}
+
+/// `value` folded as a build location, read against `project_dir` when it is
+/// relative and one is given, or `None` when that changes nothing. An empty
+/// value stays empty: Xcode 15 reports an empty `LOCROOT`.
+fn folded_location(value: &str, project_dir: Option<&str>) -> Option<String> {
+    if value.is_empty() {
+        return None;
+    }
+    let folded = match project_dir {
+        Some(dir) if !value.starts_with('/') => {
+            resolver::standardize_path(&format!("{dir}/{value}"))
+        }
+        _ => resolver::standardize_path(value),
+    };
+    (folded != value).then_some(folded)
 }
 
 /// Whether a scheme entry's `ReferencedContainer` (e.g.
