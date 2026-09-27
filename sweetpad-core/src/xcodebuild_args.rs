@@ -52,37 +52,99 @@ pub const VALUE_FLAGS: [&str; 22] = [
     "-packageCachePath",
 ];
 
-/// The argument after the last `flag` in `args`: `xcodebuild` takes one
+/// The value after the last `flag` in `args`, read as `xcodebuild` reads
+/// it: a flag that takes a value takes the next argument, dashes and all, so
+/// a value spelled like `flag` is not a copy of it. `xcodebuild` takes one
 /// `-xcconfig` and refuses a second, so the last one given is the one that
-/// counts.
+/// counts. A `flag` that ends `args` without a value is skipped: `xcodebuild`
+/// refuses that command line, and [`dangling_flag`] names the flag for the
+/// caller to report.
 #[must_use]
 pub fn last_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
-    args.windows(2)
-        .rev()
-        .find(|pair| pair[0] == flag)
-        .map(|pair| pair[1].as_str())
+    let mut found = None;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == flag || VALUE_FLAGS.contains(&arg.as_str()) {
+            let value = iter.next();
+            if arg == flag
+                && let Some(value) = value
+            {
+                found = Some(value.as_str());
+            }
+        }
+    }
+    found
+}
+
+/// The flag that ends `args` still waiting for its value, which `xcodebuild`
+/// refuses ("option '-xcconfig' requires an argument").
+#[must_use]
+pub fn dangling_flag(args: &[String]) -> Option<&str> {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if VALUE_FLAGS.contains(&arg.as_str()) && iter.next().is_none() {
+            return Some(arg);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{last_value, settings};
+    use super::{dangling_flag, last_value, settings};
+
+    fn s(args: &[&str]) -> Vec<String> {
+        args.iter().map(|a| (*a).to_string()).collect()
+    }
 
     #[test]
     fn the_last_value_of_a_flag_counts() {
-        let args: Vec<String> = [
+        let args = s(&[
             "-xcconfig",
             "a.xcconfig",
             "-quiet",
             "-xcconfig",
             "b.xcconfig",
-            "-xcconfig",
-        ]
-        .iter()
-        .map(|a| (*a).to_string())
-        .collect();
+        ]);
         assert_eq!(last_value(&args, "-xcconfig"), Some("b.xcconfig"));
         assert_eq!(last_value(&args, "-derivedDataPath"), None);
+        assert_eq!(dangling_flag(&args), None);
         assert!(settings(&args).is_empty());
+    }
+
+    #[test]
+    fn a_flag_spelled_as_another_flags_value_is_not_a_copy() {
+        // xcodebuild reads the argument after a value flag as its value,
+        // dashes and all: `-xcconfig -quiet` reads a file named '-quiet'.
+        let args = s(&["-xcconfig", "a.xcconfig", "-derivedDataPath", "-xcconfig"]);
+        assert_eq!(last_value(&args, "-xcconfig"), Some("a.xcconfig"));
+        assert_eq!(last_value(&args, "-derivedDataPath"), Some("-xcconfig"));
+        assert_eq!(dangling_flag(&args), None);
+        assert_eq!(
+            last_value(&s(&["-xcconfig", "-quiet"]), "-xcconfig"),
+            Some("-quiet")
+        );
+    }
+
+    #[test]
+    fn a_trailing_flag_without_its_value_is_named_and_not_read() {
+        let args = s(&["-xcconfig", "a.xcconfig", "FOO=1", "-xcconfig"]);
+        assert_eq!(dangling_flag(&args), Some("-xcconfig"));
+        // The copy before it is the last one with a value.
+        assert_eq!(last_value(&args, "-xcconfig"), Some("a.xcconfig"));
+        assert_eq!(settings(&args), [("FOO".to_string(), "1".to_string())]);
+
+        assert_eq!(
+            dangling_flag(&s(&["-derivedDataPath"])),
+            Some("-derivedDataPath")
+        );
+        assert_eq!(
+            last_value(&s(&["-derivedDataPath"]), "-derivedDataPath"),
+            None
+        );
+        // A switch ends a command line fine.
+        assert_eq!(dangling_flag(&s(&["-xcconfig", "a", "-quiet"])), None);
+        assert_eq!(dangling_flag(&[]), None);
     }
 
     #[test]

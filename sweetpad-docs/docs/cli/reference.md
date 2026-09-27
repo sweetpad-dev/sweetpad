@@ -104,6 +104,9 @@ SweetPad refuses these before it builds and names its own flag to use:
 | `-enableCodeCoverage`    | nothing, when `test` has `--coverage`        |
 | `-test-iterations`       | nothing, when `test` has `--retry-flaky`     |
 
+The tail also can't end with a flag that still needs its value, such as a bare `-xcconfig`. SweetPad
+refuses it before it builds, and it refuses a `sweetpad.toml` list that ends the same way.
+
 `-destination` is allowed, since `xcodebuild` builds or tests for each one it gets. A build takes a
 typed `-resultBundlePath` in place of its own, and keeps the bundle there. `xcodebuild` won't write
 into a bundle that already exists, so remove it before the next build. Rounds of `build --watch`

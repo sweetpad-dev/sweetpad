@@ -423,6 +423,9 @@ struct ResolvedConfig {
     /// pass `xcodebuild` from `sweetpad.build.args`. Empty for a `--project`
     /// server and for a `bsp.json` without them.
     command_line: CommandLine,
+    /// What reading the config found wrong but worked around, logged once
+    /// the server starts.
+    warning: Option<String>,
 }
 
 /// The `SWEETPAD_BSP_LOG` env path (used by tests and the standalone paths).
@@ -484,6 +487,7 @@ impl ResolvedConfig {
             log_path: env_log(),
             socket: None,
             command_line: CommandLine::default(),
+            warning: None,
         }
     }
 
@@ -516,6 +520,7 @@ impl ResolvedConfig {
                 })
             })
             .ok_or("bsp.json missing projectPath/workspacePath")?;
+        let (command_line, warning) = command_line_of(value, base);
         Ok(ResolvedConfig {
             project_path: resolve(project_path),
             configuration: flags
@@ -538,7 +543,8 @@ impl ResolvedConfig {
                 .map(&resolve),
             log_path: pull("logPath").map(&resolve).or_else(env_log),
             socket: pull("socket").map(&resolve),
-            command_line: command_line_of(value, base),
+            command_line,
+            warning,
         })
     }
 
@@ -577,7 +583,12 @@ fn config_base(value: &Value, path: &Path) -> PathBuf {
 /// Its `KEY=VALUE` settings and last `-xcconfig` are read as `xcodebuild`
 /// reads them, a relative `-xcconfig` against `base`, the directory those
 /// builds run in. A file without `buildArgs` has none.
-fn command_line_of(value: &Value, base: &Path) -> CommandLine {
+///
+/// The second half is a warning for a flag that ends `buildArgs` without its
+/// value. The extension's builds fail on it, and the index reads the rest
+/// without it, so a half-typed edit doesn't cost autocomplete the settings
+/// before it.
+fn command_line_of(value: &Value, base: &Path) -> (CommandLine, Option<String>) {
     let args: Vec<String> = value
         .get("buildArgs")
         .and_then(Value::as_array)
@@ -586,10 +597,16 @@ fn command_line_of(value: &Value, base: &Path) -> CommandLine {
         .filter_map(Value::as_str)
         .map(str::to_string)
         .collect();
-    CommandLine {
+    let warning = xcodebuild_args::dangling_flag(&args).map(|flag| {
+        format!(
+            "ignoring '{flag}' at the end of buildArgs: it has no value, and xcodebuild refuses it"
+        )
+    });
+    let command_line = CommandLine {
         xcconfig: xcodebuild_args::last_value(&args, "-xcconfig").map(|p| base.join(p)),
         overrides: xcodebuild_args::settings(&args),
-    }
+    };
+    (command_line, warning)
 }
 
 impl Server {
@@ -708,6 +725,9 @@ impl Server {
             server.config_path,
             server.targets,
         ));
+        if let Some(warning) = &config.warning {
+            server.log(warning);
+        }
         Ok(server)
     }
 
@@ -787,7 +807,10 @@ impl Server {
             .get("scheme")
             .and_then(Value::as_str)
             .map(str::to_string);
-        let command_line = command_line_of(&value, &config_base(&value, path));
+        let (command_line, warning) = command_line_of(&value, &config_base(&value, path));
+        if let Some(warning) = &warning {
+            self.log(warning);
+        }
         self.apply_config(configuration, scheme, command_line);
         let socket = value
             .get("socket")
@@ -2264,6 +2287,51 @@ mod tests {
         server.reload_from_file(&config);
         let opts = server.options_for("SweetpadCIMac", "macosx", "arm64");
         assert_eq!(opts.overrides, [pair("A", "typed")]);
+    }
+
+    /// A `buildArgs` that ends with a flag waiting for its value fails the
+    /// extension's builds. The index warns and reads the rest, the copy of the
+    /// flag before it included, the way the CLI reads the same arguments.
+    #[test]
+    fn a_trailing_flag_in_bsp_json_is_warned_about_and_left_out() {
+        let project = format!(
+            "{}/fixtures/_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj",
+            env!("SWEETPAD_LIB_DIR")
+        );
+        let scratch = crate::scratch::ScratchDir::new("sweetpad-bsp-dangling").unwrap();
+        let config = scratch.join("bsp.json");
+        let log = scratch.join("bsp.log");
+        std::fs::write(
+            &config,
+            serde_json::json!({
+                "workspacePath": *scratch,
+                "projectPath": project,
+                "logPath": log,
+                "buildArgs": ["-xcconfig", "ci.xcconfig", "FOO=1", "-xcconfig"],
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let server = Server::build(
+            ResolvedConfig::from_file(&config, &BTreeMap::new()).unwrap(),
+            Some(config.clone()),
+            Arc::new(AtomicU8::new(LogLevel::Info as u8)),
+            CommandLine::default(),
+            Sent::default().writer(),
+        )
+        .unwrap();
+
+        let opts = server.options_for("SweetpadCIMac", "macosx", "arm64");
+        assert_eq!(opts.xcconfig, Some(scratch.join("ci.xcconfig")));
+        assert_eq!(opts.overrides, [("FOO".to_string(), "1".to_string())]);
+        let logged = std::fs::read_to_string(&log).unwrap();
+        assert!(
+            logged.contains(
+                "ignoring '-xcconfig' at the end of buildArgs: it has no value, and \
+                 xcodebuild refuses it"
+            ),
+            "{logged}"
+        );
     }
 
     #[test]

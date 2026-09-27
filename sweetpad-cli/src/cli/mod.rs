@@ -888,6 +888,7 @@ impl Context {
         tail: &[String],
     ) -> Result<Vec<String>, CliError> {
         xcodebuild::refuse_owned_flags(action, tail)?;
+        xcodebuild::refuse_dangling_flag(tail)?;
         // Silent resolution: this runs *before* the command resolves for real,
         // and `container` narrates its discovery ("using X (found below …)") —
         // saying it twice per build would be the whole visible effect of a peek

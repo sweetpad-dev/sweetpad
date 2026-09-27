@@ -157,6 +157,18 @@ it is cleared only when an earlier build of the same process wrote it (the
 next `--watch` round, a run-session rebuild). One that was there first is left
 for `xcodebuild` to refuse.
 
+A tail that ends with a flag still waiting for its value (`-- -xcconfig`) is
+a usage error too, checked at the same point. `xcodebuild` refuses it
+("option '-xcconfig' requires an argument"), but `settings show` and the
+locator never spawn it, and would read an earlier `-xcconfig` or none. A
+`sweetpad.toml` list that ends that way is refused as well, since the merge
+would hand the flag the tail's first argument as its value. The CLI and the
+BSP server read a flag's value with one helper (sweetpad-core's
+`xcodebuild_args::last_value`): the argument after it, dashes and all, as
+`xcodebuild` reads it, and the last copy counts. The server can't refuse the
+extension's `bsp.json`, so a `buildArgs` ending that way is logged as a
+warning, and the index reads the rest, the copy before it included.
+
 ## 3a. `project new` — scaffolding
 
 `project new` creates a fresh, buildable **minimal SwiftUI iOS app** with no

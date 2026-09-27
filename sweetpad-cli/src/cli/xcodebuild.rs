@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use sweetpad_core::build_settings::{BuildSettingsOptions, resolve_build_settings};
-use sweetpad_core::xcodebuild_args::VALUE_FLAGS;
+use sweetpad_core::xcodebuild_args::{VALUE_FLAGS, dangling_flag, last_value};
 
 use crate::cli::output::Output;
 use crate::cli::resolve::Container;
@@ -151,6 +151,23 @@ pub fn refuse_owned_flags(action: Action, tail: &[String]) -> Result<(), CliErro
         }
     }
     Ok(())
+}
+
+/// Refuse a typed `--` tail that ends with a flag still waiting for its
+/// value. `xcodebuild` refuses it too ("option '-xcconfig' requires an
+/// argument"), but the commands that read the tail without spawning it
+/// (`settings show`, the `app` verbs that find a built product) would
+/// otherwise read an earlier copy of the flag.
+///
+/// # Errors
+/// A usage error naming the flag.
+pub fn refuse_dangling_flag(tail: &[String]) -> Result<(), CliError> {
+    match dangling_flag(tail) {
+        Some(flag) => {
+            Err(CliError::new(format!("'{flag}' after '--' needs a value")).kind(ErrorKind::Usage))
+        }
+        None => Ok(()),
+    }
 }
 
 /// Everything needed to invoke `xcodebuild build` (or `build-for-testing`) for
@@ -2037,25 +2054,18 @@ const TEST_ONLY_FLAGS: [&str; 5] = [
     "-testProductsPath",
 ];
 
-/// The value after the last `flag` in a passthrough, as a path, joined onto
-/// [`working_dir`] when relative, the way `xcodebuild` running there reads it.
-/// A `-derivedDataPath build/dd` typed in a nested source directory names a
-/// directory beside the project, not below the caller.
+/// The value after the last `flag` in a passthrough, read by
+/// [`last_value`], which the BSP server reads the extension's arguments with
+/// too, as a path, joined onto [`working_dir`] when relative, the way
+/// `xcodebuild` running there reads it. A `-derivedDataPath build/dd` typed
+/// in a nested source directory names a directory beside the project, not
+/// below the caller.
 fn passthrough_path(passthrough: &[String], flag: &str, container: &Container) -> Option<PathBuf> {
-    let mut found = None;
-    let mut iter = passthrough.iter().peekable();
-    while let Some(arg) = iter.next() {
-        if arg == flag {
-            found = iter.peek().map(|value| {
-                let path = PathBuf::from(value);
-                match working_dir(container) {
-                    Some(base) if path.is_relative() => base.join(path),
-                    _ => path,
-                }
-            });
-        }
-    }
-    found
+    let path = PathBuf::from(last_value(passthrough, flag)?);
+    Some(match working_dir(container) {
+        Some(base) if path.is_relative() => base.join(path),
+        _ => path,
+    })
 }
 
 /// What a passthrough adds to the build settings `xcodebuild` resolves, above
@@ -3122,6 +3132,43 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             CommandLineSettings::of(&[], &nested),
             CommandLineSettings::default()
         );
+    }
+
+    /// The CLI and the BSP server read a flag's value with one helper, so they
+    /// agree on which copy counts, and a tail that ends waiting for a value is
+    /// refused before either reads it.
+    #[test]
+    fn a_flag_left_without_its_value_is_refused_and_never_read() {
+        let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
+        let project = Container::Project(PathBuf::from("/work/ios/App.xcodeproj"));
+
+        let tail = s(&["-xcconfig", "a.xcconfig", "FOO=1", "-xcconfig"]);
+        let err = refuse_dangling_flag(&tail).expect_err("a dangling flag");
+        assert_eq!(err.error_kind(), ErrorKind::Usage);
+        assert_eq!(err.to_string(), "'-xcconfig' after '--' needs a value");
+        assert_eq!(
+            CommandLineSettings::of(&tail, &project).xcconfig,
+            sweetpad_core::xcodebuild_args::last_value(&tail, "-xcconfig")
+                .map(|p| PathBuf::from("/work/ios").join(p)),
+        );
+        assert_eq!(
+            CommandLineSettings::of(&tail, &project).xcconfig,
+            Some(PathBuf::from("/work/ios/a.xcconfig"))
+        );
+
+        // A value spelled like a flag is a value, as xcodebuild reads it.
+        let tail = s(&["-derivedDataPath", "-xcconfig"]);
+        assert!(refuse_dangling_flag(&tail).is_ok());
+        let read = CommandLineSettings::of(&tail, &project);
+        assert_eq!(
+            read.derived_data_path,
+            Some(PathBuf::from("/work/ios/-xcconfig"))
+        );
+        assert_eq!(read.xcconfig, None);
+
+        for tail in [&[][..], &["-quiet"], &["-xcconfig", "a.xcconfig", "-quiet"]] {
+            assert!(refuse_dangling_flag(&s(tail)).is_ok(), "{tail:?}");
+        }
     }
 
     /// The settings stay as typed, a relative build location included: the

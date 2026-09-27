@@ -464,6 +464,13 @@ pub fn effective_xcodebuild_args(
             "sweetpad.toml: '{arg}' in [xcodebuild] args — {fix}"
         ));
     }
+    // Merged, the tail would hand the flag its value, so the file has to
+    // give it one.
+    if let Some(flag) = sweetpad_core::xcodebuild_args::dangling_flag(configured) {
+        return Err(format!(
+            "sweetpad.toml: '{flag}' in [xcodebuild] args — add its value after it"
+        ));
+    }
     let mut args = Vec::with_capacity(configured.len() + tail.len());
     let mut replaced = Vec::new();
     let mut iter = configured.iter();
@@ -1054,6 +1061,23 @@ mod tests {
             effective_xcodebuild_args(&s(&["-arch", "arm64"]), &s(&["-arch", "x86_64"])).unwrap();
         assert_eq!(merged.args, ["-arch", "arm64", "-arch", "x86_64"]);
         assert!(merged.replaced.is_empty());
+    }
+
+    #[test]
+    fn the_files_flags_take_their_values_inside_the_file() {
+        let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
+
+        // Merged, the tail's first argument would become the file's value.
+        for tail in [&[][..], &["FOO=1"]] {
+            let err = effective_xcodebuild_args(&s(&["-quiet", "-xcconfig"]), &s(tail))
+                .expect_err("a dangling flag");
+            assert_eq!(
+                err,
+                "sweetpad.toml: '-xcconfig' in [xcodebuild] args — add its value after it"
+            );
+        }
+        assert!(effective_xcodebuild_args(&s(&["-xcconfig", "a.xcconfig"]), &[]).is_ok());
+        assert!(effective_xcodebuild_args(&s(&["-xcconfig", "-quiet"]), &[]).is_ok());
     }
 
     #[test]
