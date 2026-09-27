@@ -1267,14 +1267,24 @@ state at once. The build's children inherit `TMPDIR` as well: a Run Script phase
 test host (in its environment, though not in `NSTemporaryDirectory()`) see it,
 so both would get a directory that is removed when the build ends.
 
-A `bsp serve` prepare that falls back to `xcodebuild` cleans up after the build
-instead. Before the build it notes the `TemporaryDirectory.*` entries in
-`TMPDIR`. After the build exits, it removes each new one that holds only the
-driver's `.keep-directory`. The lock files stay. A live driver's directory
-looks the same until its first job writes there, so nothing is removed while a
-Swift driver runs with that `TMPDIR` (or with none), while a running process
-names one of the directories, or when `ps` can't list the processes. A CLI
-build still leaves its one directory.
+So sweetpad cleans up after the build instead. Before the build it notes the
+`TemporaryDirectory.*` entries in `TMPDIR`. After the build exits, it removes
+each new one that holds only the driver's `.keep-directory`. The lock files
+stay. A live driver's directory looks the same until its first job writes
+there, so nothing is removed while a Swift driver runs with that `TMPDIR` (or
+with none), while a running process names one of the directories, or when `ps`
+can't list the processes. One helper does this, `scratch::TmpdirLeftovers` in
+sweetpad-core, for every run that keeps the user's `TMPDIR`: a `bsp serve`
+prepare that falls back to `xcodebuild`, and every `xcodebuild`, `swift` and
+`swiftc` child of the CLI, since each one is spawned and reaped in
+`process.rs`. A child given a `TMPDIR` of its own is left to whoever made that
+directory. The CLI's runs cover `build`,
+`test`, `archive`, `clean` and the builds of an `app run` session. They also
+cover a package's `swift build`, `swift test` and `swift run`. SwiftPM leaves
+several of these directories per build (five on a warm build of the CI package
+with Xcode 27.0). `--show-command` runs nothing and touches nothing. A
+signal that ends the CLI during a build can still leave the build's
+directories.
 
 **(A) Switchable — capture frontend command lines from our own build.**
 Because the CLI *is* the builder, the `--hot` build tees the `swift-frontend`

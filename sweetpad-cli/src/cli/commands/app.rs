@@ -3130,11 +3130,11 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
     build_plan.prepare_result_bundle();
     let (parts, cwd) = build_plan.command();
     let args: Vec<&str> = parts.iter().map(String::as_str).collect();
-    let (mut child, reader) = match process::spawn_piped_group("xcodebuild", &args, cwd.as_deref())
-    {
-        Ok(pair) => pair,
-        Err(e) => return BuildOutcome::Failed(e),
-    };
+    let (mut child, reader, leftovers) =
+        match process::spawn_piped_group("xcodebuild", &args, cwd.as_deref()) {
+            Ok(spawned) => spawned,
+            Err(e) => return BuildOutcome::Failed(e),
+        };
     let pid = child.id();
     // The child leads its own process group, so a SIGINT delivered to *us*
     // (e.g. Ctrl-C during the `--hot` initial build, before raw mode is on)
@@ -3208,6 +3208,7 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
     done.store(true, Ordering::Relaxed);
     let _ = watcher.join();
     let status = child.wait();
+    drop(leftovers);
 
     // A build that failed without xcodebuild's own banner (a destination
     // error) closes on one, as `BuildPlan::run`'s stream does.

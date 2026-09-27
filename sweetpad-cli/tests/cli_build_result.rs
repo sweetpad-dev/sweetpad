@@ -1473,3 +1473,88 @@ fn a_session_exits_by_how_it_ended() {
         }
     }
 }
+
+/// Put an xcodebuild in `cwd/bin` that leaves in its `TMPDIR` what a real
+/// build does, then succeeds: a `TemporaryDirectory.*` holding the driver's
+/// `.keep-directory`, from the build service's `swiftc --version`, and one of
+/// SwiftPM's lock files.
+fn write_leaving_stub(cwd: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let stub = cwd.join("bin/xcodebuild");
+    std::fs::write(
+        &stub,
+        "#!/bin/sh\nd=$(mktemp -d \"$TMPDIR/TemporaryDirectory.XXXXXX\") || exit 1\n\
+         : > \"$d/.keep-directory\"\n: > \"$TMPDIR/_Users_stub_.swiftpm.lock\"\n\
+         echo '** BUILD SUCCEEDED **'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// A `TMPDIR` for one command, holding a driver's directory from before it
+/// started.
+fn tmpdir_with_theirs(tag: &str) -> TempDir {
+    let tmp = tmp(&format!("{tag}-tmp"));
+    std::fs::create_dir(tmp.join("TemporaryDirectory.theirs")).unwrap();
+    std::fs::write(tmp.join("TemporaryDirectory.theirs/.keep-directory"), "").unwrap();
+    tmp
+}
+
+/// The names in `dir` but the `.git` [`tmp`] stops discovery with, sorted.
+fn tmpdir_entries(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name != ".git")
+        .collect();
+    names.sort();
+    names
+}
+
+/// A build keeps the user's `TMPDIR`, where SwiftPM's locks are shared, and
+/// removes the `TemporaryDirectory.*` its xcodebuild left there once it
+/// exits, in every output mode. The lock and a directory that was there
+/// before the build stay.
+#[test]
+fn a_build_removes_what_its_xcodebuild_left_in_tmpdir() {
+    let project = project();
+    let modes: [(&str, &[&str]); 4] = [
+        ("human", &[]),
+        ("json", &["-o", "json"]),
+        ("ndjson", &["-o", "ndjson"]),
+        ("verbose", &["-v"]),
+    ];
+    for (tag, mode) in modes {
+        let tag = format!("leftovers-{tag}");
+        let tmp = tmpdir_with_theirs(&tag);
+        let mut args = build_args(&project);
+        args.extend_from_slice(mode);
+        let (mut cmd, _home, cwd) = stub_command(&tag, "", 0, &args);
+        write_leaving_stub(&cwd);
+        let out = cmd.env("TMPDIR", &*tmp).output().unwrap();
+        assert!(out.status.success(), "{tag}: {out:?}");
+        assert_eq!(
+            tmpdir_entries(&tmp),
+            ["TemporaryDirectory.theirs", "_Users_stub_.swiftpm.lock"],
+            "{tag}: the stub never ran, or its leftovers stayed"
+        );
+    }
+}
+
+/// The build an `app run` session runs itself cleans up the same way.
+#[test]
+fn a_session_removes_what_its_build_left_in_tmpdir() {
+    let tmp = tmpdir_with_theirs("leftovers-session");
+    let (mut session, dirs) = persistence_note_session("leftovers-session", &[]);
+    write_leaving_stub(&dirs[1]);
+    session.env("TMPDIR", &*tmp);
+    let (status, shown) = on_pty(session, &[("stderr marker", "q")]);
+    assert_eq!(status.code(), Some(0), "{shown}");
+    assert_eq!(
+        tmpdir_entries(&tmp),
+        ["TemporaryDirectory.theirs", "_Users_stub_.swiftpm.lock"],
+        "the stub never ran, or its leftovers stayed"
+    );
+}

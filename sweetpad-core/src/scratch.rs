@@ -9,12 +9,12 @@
 //! scratch path it builds in. A child whose `TMPDIR` is a [`ScratchDir`]
 //! leaves all of that in a directory that goes when the run is done.
 //!
-//! A child that has to keep the user's `TMPDIR` gets [`DriverLeftovers`]
+//! A child that has to keep the user's `TMPDIR` gets [`TmpdirLeftovers`]
 //! instead, which removes the driver's directories the run left once it has
 //! exited.
 
 use std::collections::HashSet;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -65,23 +65,62 @@ const DRIVER_DIR_PREFIX: &str = "TemporaryDirectory.";
 /// without one.
 const DRIVER_MARKER: &str = ".keep-directory";
 
-/// The Swift driver's directories a child leaves in a `TMPDIR` it shares with
-/// other processes.
+/// The programs that leave the Swift driver's directories in the `TMPDIR` they
+/// run in: `xcodebuild`, whose build service runs `swiftc --version` before a
+/// build, `swift`, whose SwiftPM runs `swiftc -print-target-info`, and the
+/// driver itself.
+const DRIVER_TOOLS: &[&str] = &["xcodebuild", "swift", "swiftc"];
+
+/// The Swift driver's directories a build tool leaves in the user's `TMPDIR`,
+/// removed once the child has exited: by [`TmpdirLeftovers::remove`], or when
+/// this drops.
 ///
-/// `xcodebuild` keeps the user's `TMPDIR`, since SwiftPM's cross-process locks
-/// live there, and every build leaves a `TemporaryDirectory.*` in it: the
-/// build service's `swiftc --version` probe. Made before the child starts,
-/// this notes the `TemporaryDirectory.*` entries already there;
-/// [`DriverLeftovers::remove_new`] removes the ones that run added.
-pub struct DriverLeftovers {
+/// `xcodebuild` and `swift` keep that `TMPDIR`, since SwiftPM's cross-process
+/// locks live there, and a lock only excludes the other clients (Xcode, a
+/// second build) because they all take it in the same directory. Every run
+/// that keeps it goes through this, so the lock files stay and the driver's
+/// directories go. A command for any other program, or one that sets the
+/// child's `TMPDIR` itself, gets a guard that does nothing.
+#[must_use]
+pub struct TmpdirLeftovers(Option<DriverLeftovers>);
+
+impl TmpdirLeftovers {
+    /// Note the driver's directories already in `TMPDIR`, before `cmd` starts.
+    pub fn before(cmd: &Command) -> Self {
+        let tool = Path::new(cmd.get_program())
+            .file_name()
+            .and_then(OsStr::to_str);
+        let sets_tmpdir = cmd.get_envs().any(|(key, _)| key == "TMPDIR");
+        let leaves = tool.is_some_and(|tool| DRIVER_TOOLS.contains(&tool)) && !sets_tmpdir;
+        Self(leaves.then(|| DriverLeftovers::before_run(&std::env::temp_dir())))
+    }
+
+    /// Remove what the run left, once the child has exited, and say how many
+    /// directories went.
+    #[must_use]
+    pub fn remove(mut self) -> usize {
+        self.0.take().map_or(0, |leftovers| leftovers.remove_new())
+    }
+}
+
+impl Drop for TmpdirLeftovers {
+    fn drop(&mut self) {
+        if let Some(leftovers) = self.0.take() {
+            let _ = leftovers.remove_new();
+        }
+    }
+}
+
+/// The `TemporaryDirectory.*` entries in a directory before a run, to tell
+/// the ones it added from the rest.
+struct DriverLeftovers {
     dir: PathBuf,
     before: HashSet<OsString>,
 }
 
 impl DriverLeftovers {
     /// Note the `TemporaryDirectory.*` entries in `dir`.
-    #[must_use]
-    pub fn before_run(dir: &Path) -> Self {
+    fn before_run(dir: &Path) -> Self {
         Self {
             dir: dir.to_path_buf(),
             before: driver_dirs(dir).into_iter().collect(),
@@ -98,8 +137,7 @@ impl DriverLeftovers {
     /// removed while a Swift driver runs with this `TMPDIR` (or with none,
     /// which means the same per-user directory), while a running process
     /// names one of the directories, or when the processes can't be listed.
-    #[must_use]
-    pub fn remove_new(&self) -> usize {
+    fn remove_new(&self) -> usize {
         self.remove_new_unless(|names| in_use(&self.dir, names, run_ps))
     }
 
@@ -240,6 +278,27 @@ mod tests {
             .collect();
         names.sort();
         names
+    }
+
+    /// Only a build tool that keeps this process's `TMPDIR` is watched, named
+    /// bare or by path.
+    #[test]
+    fn only_a_build_tool_in_this_tmpdir_is_watched() {
+        let watched = |cmd: &Command| TmpdirLeftovers::before(cmd).0.is_some();
+        assert!(watched(&Command::new("xcodebuild")));
+        assert!(watched(&Command::new(
+            "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild"
+        )));
+        assert!(watched(&Command::new("swift")));
+        assert!(watched(&Command::new("swiftc")));
+        assert!(!watched(&Command::new("xcrun")));
+        assert!(!watched(&Command::new("/bin/ps")));
+        let mut own = Command::new("xcodebuild");
+        own.env("TMPDIR", "/tmp/elsewhere");
+        assert!(!watched(&own));
+        let mut none = Command::new("swift");
+        none.env_remove("TMPDIR");
+        assert!(!watched(&none));
     }
 
     #[test]

@@ -2,9 +2,14 @@
 //! app). Two modes: [`capture`] for commands whose stdout we parse (e.g.
 //! `simctl list --json`), and [`stream`] for long-running commands whose output
 //! belongs on the user's terminal live (e.g. `xcodebuild`).
+//!
+//! A build tool that runs and is reaped here removes the Swift driver's
+//! directories it left in `$TMPDIR` ([`TmpdirLeftovers`]).
 
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+
+use sweetpad_core::scratch::TmpdirLeftovers;
 
 use crate::cli::{CliError, ErrorKind};
 
@@ -30,7 +35,9 @@ pub fn capture_env(
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
+    let leftovers = TmpdirLeftovers::before(&cmd);
     let output = cmd.output().map_err(|e| spawn_error(program, &e))?;
+    drop(leftovers);
     if !output.status.success() {
         return Err(CliError::new(format!(
             "{program} {} exited with {}",
@@ -80,7 +87,9 @@ pub fn run_captured(
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
+    let leftovers = TmpdirLeftovers::before(&cmd);
     let output = cmd.output().map_err(|e| spawn_error(program, &e))?;
+    drop(leftovers);
     let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr_text = String::from_utf8_lossy(&output.stderr);
     // Keep the streams line-separated: without this, a stdout that doesn't
@@ -119,7 +128,9 @@ pub fn stream_env(
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
+    let leftovers = TmpdirLeftovers::before(&cmd);
     let status = cmd.status().map_err(|e| spawn_error(program, &e))?;
+    drop(leftovers);
     if status.success() {
         Ok(())
     } else {
@@ -151,7 +162,9 @@ pub fn run(
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
+    let leftovers = TmpdirLeftovers::before(&cmd);
     let status = cmd.status().map_err(|e| spawn_error(program, &e))?;
+    drop(leftovers);
     Ok(status.success())
 }
 
@@ -208,6 +221,7 @@ pub fn stream_lines(
     }
     let (reader, out, err) = merged_output_pipe(program)?;
     cmd.stdout(out).stderr(err);
+    let leftovers = TmpdirLeftovers::before(&cmd);
     let mut child = cmd.spawn().map_err(|e| spawn_error(program, &e))?;
     // `spawn` only borrows fds > 2, so `cmd` still owns the pipe's two write
     // ends — drop it now or the read below never sees EOF after the child
@@ -220,6 +234,7 @@ pub fn stream_lines(
     read_lines_lossy(reader, &mut on_line);
     crate::cli::signals::unregister_child(reap_slot);
     let status = child.wait().map_err(|e| spawn_error(program, &e))?;
+    drop(leftovers);
     Ok(status.success())
 }
 
@@ -403,12 +418,13 @@ pub fn spawn_piped_both_env(
 /// returned reader — see [`stream_lines`] for why) and placed in its **own
 /// process group**, so a supervisor can signal just this process tree — e.g.
 /// forward Ctrl-C to an interruptible build without taking down the parent.
-/// stdin is null so it never competes for the terminal's keys.
+/// stdin is null so it never competes for the terminal's keys. The caller
+/// drops the returned [`TmpdirLeftovers`] once it has reaped the child.
 pub fn spawn_piped_group(
     program: &str,
     args: &[&str],
     cwd: Option<&Path>,
-) -> Result<(Child, std::fs::File), CliError> {
+) -> Result<(Child, std::fs::File, TmpdirLeftovers), CliError> {
     use std::os::unix::process::CommandExt;
 
     let mut cmd = Command::new(program);
@@ -421,8 +437,9 @@ pub fn spawn_piped_group(
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
+    let leftovers = TmpdirLeftovers::before(&cmd);
     let child = cmd.spawn().map_err(|e| spawn_error(program, &e))?;
-    Ok((child, reader))
+    Ok((child, reader, leftovers))
 }
 
 /// Spawn a command with **inherited** stdio in its **own process group**: the
