@@ -1872,8 +1872,22 @@ will be written to …`). When the plan added the pair itself
 (`RunPlan::added_ignore_persistence`), that line describes sweetpad's launch
 rather than the app, so the run session, plain and `--hot`, leaves it out of
 the app's console. A key the caller or the scheme set keeps its line. A
-detached launch's captured file keeps it too: its stdio goes straight to the
-file, and nothing reading the file later can tell who added the key.
+detached launch's stdio goes straight to its captured file, so the line is
+written there whoever added the key. The file's run header says who did:
+the caller's arguments follow `· args:`, and the pair sweetpad added gets a
+clause of its own, `· sweetpad added: -ApplePersistenceIgnoreState YES`.
+`app logs` reads the header first and leaves the line out when that clause
+is there.
+
+The header is sweetpad's, not the app's. `app logs` shows it as a dim
+`── sweetpad launched … ──` separator, leaves it out of the `--json` stream,
+and never matches an `--until` against it (it names the app, so an
+`--until` for the app's name would match before the app printed anything).
+The hot session's injection client logs a line through NSLog when the
+session's server closes at quit or detach (`[<InjectionNext: 0x…>
+readInt:0x… length:4] error: 0 Operation not supported`: zero bytes read, so
+the connection ended between commands). That line is sweetpad's doing too,
+and the hot session leaves it out of the app's console.
 
 A macOS app logs to two disjoint places — plain stdout/stderr (`print`,
 `NSLog`'s stderr leg, C `printf`) and the unified log (`os_log`/`Logger`) —

@@ -51,8 +51,9 @@ To get the app's own behavior back, pass `--restore-state` to `run`, `app launch
 yourself, with `--arg` or in the scheme's launch arguments. Simulators and devices aren't affected.
 
 AppKit answers the argument with a line on stderr at every launch, `ApplePersistenceIgnoreState:
-Existing state will not be touched…`. When SweetPad added the argument, `sweetpad run` leaves that
-line out of the app's output. When you set it yourself, the line shows as usual.
+Existing state will not be touched…`. When SweetPad added the argument, `sweetpad run` and
+`app logs` leave that line out of the app's output. When you set it yourself, the line shows as
+usual.
 
 ## Logs
 
@@ -155,6 +156,10 @@ sweetpad app logs --mac --source stdout
 That second stream exists because `sweetpad run --detach` on macOS redirects the app's output to a
 file. See [Build and run](./build-and-run.md#running-in-the-background). Simulators and devices are
 os_log only, so `--source` doesn't apply there.
+
+The file starts with a line SweetPad writes at launch. `app logs` shows it as a separator, such as
+`── sweetpad launched MyApp at 14:02:11.031 · args: --flag ──`. It isn't part of the `--json` stream,
+and `--until` doesn't match it.
 
 :::note
 

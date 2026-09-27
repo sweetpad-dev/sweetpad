@@ -1003,6 +1003,8 @@ struct RunPlan {
     /// itself, rather than the caller or the scheme. AppKit's note that the
     /// key took effect is then about sweetpad's launch, not the app, and the
     /// session leaves it out of the app's output ([`is_persistence_note`]).
+    /// A detached launch records it in its captured file's header, so `app
+    /// logs` leaves it out there too ([`CapturedLog`]).
     added_ignore_persistence: bool,
     /// Extra xcodebuild arguments (after `--`), passed through verbatim.
     passthrough: Vec<String>,
@@ -2506,12 +2508,13 @@ impl HotApp<'_> {
                         CliError::new(format!("failed to run '{}': {e}", app.executable.display()))
                     })
                 })?;
-                render_console(
-                    &mut child,
-                    ctx.out.use_color(),
-                    filter,
-                    plan.added_ignore_persistence,
-                );
+                // The client is sweetpad's, so its note that the session's
+                // server went away is too.
+                let own = OwnLines {
+                    injection_disconnect: true,
+                    ..OwnLines::of(plan)
+                };
+                render_console(&mut child, ctx.out.use_color(), filter, own);
                 let reap_slot = crate::cli::signals::register_child(child.id());
                 *running = Some(Running {
                     stream: Some(child),
@@ -2885,7 +2888,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
                 })?;
                 Ok::<_, CliError>(child)
             })?;
-            render_console(&mut child, ctx.out.use_color(), filter, false);
+            render_console(&mut child, ctx.out.use_color(), filter, OwnLines::of(plan));
             // A console child that already ended was reaped by the wait, and
             // its pid may belong to someone else by now.
             let reap_slot = match child.try_wait() {
@@ -2913,7 +2916,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
                 &plan.launch.args,
                 &plan.launch.env_pairs("DEVICECTL_CHILD_")?,
             )?;
-            render_console(&mut child, ctx.out.use_color(), filter, false);
+            render_console(&mut child, ctx.out.use_color(), filter, OwnLines::of(plan));
             let reap_slot = crate::cli::signals::register_child(child.id());
             Ok(Running {
                 stream: Some(child),
@@ -2943,12 +2946,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
             if plan.launch.wait_for_debugger {
                 stop_for_debugger(ctx, child.id());
             }
-            render_console(
-                &mut child,
-                ctx.out.use_color(),
-                filter,
-                plan.added_ignore_persistence,
-            );
+            render_console(&mut child, ctx.out.use_color(), filter, OwnLines::of(plan));
             let reap_slot = crate::cli::signals::register_child(child.id());
             Ok(Running {
                 stream: Some(child),
@@ -3868,33 +3866,27 @@ fn render_logs(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
 /// with the local arrival time, distinct from os_log ([`render_logs`]). Both pipes
 /// are drained so neither blocks the app; known
 /// boot noise ([`is_boot_noise`]) is dropped, and lines obey the live `filter` like
-/// os_log, so `4 off` silences them too. `ours_ignore_persistence` drops
-/// AppKit's stderr note about an `-ApplePersistenceIgnoreState` sweetpad added
-/// ([`RunPlan::added_ignore_persistence`]).
+/// os_log, so `4 off` silences them too. `own` names the stderr lines that are
+/// about sweetpad's launch rather than the app, which are dropped too.
 #[allow(clippy::print_stdout)] // live app stdout/stderr stream on detached threads
-fn render_console(
-    child: &mut Child,
-    color: bool,
-    filter: &Arc<AtomicU8>,
-    ours_ignore_persistence: bool,
-) {
-    let pipes: [(Option<Box<dyn std::io::Read + Send>>, bool); 2] = [
+fn render_console(child: &mut Child, color: bool, filter: &Arc<AtomicU8>, own: OwnLines) {
+    let pipes: [(Option<Box<dyn std::io::Read + Send>>, OwnLines); 2] = [
         (
             child
                 .stdout
                 .take()
                 .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
-            false,
+            OwnLines::default(),
         ),
         (
             child
                 .stderr
                 .take()
                 .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
-            ours_ignore_persistence,
+            own,
         ),
     ];
-    for (pipe, drop_persistence_note) in pipes {
+    for (pipe, own) in pipes {
         let Some(pipe) = pipe else {
             continue;
         };
@@ -3904,7 +3896,7 @@ fn render_console(
             // not end this thread — on the Mac target the streamed child *is*
             // the app, and a dropped read end SIGPIPE-kills it mid-session.
             process::read_lines_lossy(pipe, &mut |line| {
-                if is_boot_noise(line) || (drop_persistence_note && is_persistence_note(line)) {
+                if is_boot_noise(line) || own.covers(line) {
                     return;
                 }
                 // Console output has no timestamp of its own; stamp it with the local
@@ -3962,6 +3954,47 @@ fn is_persistence_note(line: &str) -> bool {
     const NOTE: &str = "ApplePersistenceIgnoreState: Existing state will not be touched";
     let message = line.split_once("] ").map_or(line, |(_, rest)| rest);
     message.starts_with(NOTE)
+}
+
+/// Whether a line is the hot-reload client's note that its connection ended
+/// while it waited for the next command, which it logs through NSLog when the
+/// session's injection server closes at quit or detach, after the usual log
+/// prefix: `[<InjectionNext: 0x…> readInt:0x… length:4] error: 0 Operation
+/// not supported`. Zero bytes read is the connection ending between commands;
+/// a read cut off partway reports a count and still shows.
+fn is_injection_disconnect(line: &str) -> bool {
+    let message = line.split_once("] ").map_or(line, |(_, rest)| rest);
+    message.starts_with("[<InjectionNext: ")
+        && message.contains(" readInt:")
+        && message.contains(" length:4] error: 0 ")
+}
+
+/// The stderr lines of a launched app that are about sweetpad's own doing
+/// rather than the app, which the session leaves out of the app's output.
+#[derive(Debug, Clone, Copy, Default)]
+struct OwnLines {
+    /// AppKit's note about an `-ApplePersistenceIgnoreState` sweetpad added
+    /// ([`RunPlan::added_ignore_persistence`], [`is_persistence_note`]).
+    persistence_note: bool,
+    /// The injection client's line for the hot session's server going away
+    /// ([`is_injection_disconnect`]).
+    injection_disconnect: bool,
+}
+
+impl OwnLines {
+    /// The lines a plain session leaves out of `plan`'s app.
+    fn of(plan: &RunPlan) -> Self {
+        OwnLines {
+            persistence_note: plan.added_ignore_persistence,
+            injection_disconnect: false,
+        }
+    }
+
+    /// Whether `line` is one of these.
+    fn covers(self, line: &str) -> bool {
+        (self.persistence_note && is_persistence_note(line))
+            || (self.injection_disconnect && is_injection_disconnect(line))
+    }
 }
 
 /// Render a device's `pymobiledevice3` syslog stdout on a detached thread, mirroring
@@ -4193,20 +4226,120 @@ fn open_detached_log(
         .truncate(true)
         .open(path)
         .ok()?;
-    let args = plan.launch.args.join(" ");
-    let suffix = if args.is_empty() {
-        String::new()
-    } else {
-        format!(" — args: {args}")
-    };
     let _ = writeln!(
         &file,
-        "=== sweetpad launched {} at {}{suffix} ===",
-        process_name(app),
-        oslog::now_clock(),
+        "{}",
+        launch_header(
+            process_name(app),
+            &oslog::now_clock(),
+            &plan.launch.args,
+            plan.added_ignore_persistence
+        )
     );
     let err = file.try_clone().ok()?;
     Some((file, err))
+}
+
+/// How the run header of a captured file opens and closes.
+const HEADER_OPEN: &str = "=== sweetpad launched ";
+const HEADER_CLOSE: &str = " ===";
+
+/// The header's last clause when sweetpad put [`IGNORE_PERSISTENCE`] ahead of
+/// the app's arguments itself. The file is the app's own stderr, so this is
+/// how a later read of it knows that AppKit's note about the key is
+/// sweetpad's to leave out ([`CapturedLog`]).
+const HEADER_OURS: &str = " · sweetpad added: -ApplePersistenceIgnoreState YES";
+
+/// The one-line run header [`open_detached_log`] writes, e.g. `=== sweetpad
+/// launched MyApp at 12:00:00.000 · args: --flag ===`. `args` are the
+/// process's; with `ours_ignore_persistence` they open with the pair
+/// sweetpad added, which the header names in its own clause instead.
+fn launch_header(
+    name: &str,
+    clock: &str,
+    args: &[String],
+    ours_ignore_persistence: bool,
+) -> String {
+    let (ours, args) = if ours_ignore_persistence {
+        (
+            HEADER_OURS,
+            args.get(IGNORE_PERSISTENCE.len()..).unwrap_or_default(),
+        )
+    } else {
+        ("", args)
+    };
+    let args = if args.is_empty() {
+        String::new()
+    } else {
+        format!(" · args: {}", args.join(" "))
+    };
+    format!("{HEADER_OPEN}{name} at {clock}{args}{ours}{HEADER_CLOSE}")
+}
+
+/// Reads a detached launch's captured file ([`detached_log_path`]) a line at
+/// a time. Its run header is sweetpad's, not the app's, so it renders as a
+/// dim `── … ──` separator in human output and is left out of the JSON
+/// stream, and AppKit's persistence note is left out when the header says
+/// sweetpad added the key. A key the caller or the scheme set keeps its note.
+#[derive(Default)]
+struct CapturedLog {
+    ours_ignore_persistence: bool,
+}
+
+/// What one line of a captured file is ([`CapturedLog::read`]).
+#[derive(Debug, PartialEq, Eq)]
+enum CapturedLine {
+    /// The run header, as its separator reads.
+    Header(String),
+    /// A line sweetpad's launch caused, left out.
+    Own,
+    /// One of the app's own lines.
+    App,
+}
+
+impl CapturedLog {
+    /// Read one line of the file, its trailing newline already trimmed.
+    fn read(&mut self, text: &str) -> CapturedLine {
+        if let Some(inner) = text
+            .strip_prefix(HEADER_OPEN)
+            .and_then(|rest| rest.strip_suffix(HEADER_CLOSE))
+        {
+            self.ours_ignore_persistence = inner.ends_with(HEADER_OURS);
+            return CapturedLine::Header(format!("── sweetpad launched {inner} ──"));
+        }
+        if self.ours_ignore_persistence && is_persistence_note(text) {
+            return CapturedLine::Own;
+        }
+        CapturedLine::App
+    }
+
+    /// Emit one line of the file, a trailing newline trimmed. Returns whether
+    /// it was one of the app's lines, the only ones an `--until` matches.
+    #[allow(clippy::print_stdout)] // the point of `app logs` is stdout
+    fn emit(&mut self, buf: &[u8], color: bool, json: bool) -> bool {
+        let mut line = buf;
+        while matches!(line.last(), Some(b'\n' | b'\r')) {
+            line = &line[..line.len() - 1];
+        }
+        match self.read(&String::from_utf8_lossy(line)) {
+            CapturedLine::Header(rule) => {
+                if !json {
+                    let rule = if color {
+                        format!("\x1b[90m{rule}\x1b[0m")
+                    } else {
+                        rule
+                    };
+                    println!("{rule}");
+                }
+                false
+            }
+            CapturedLine::Own => false,
+            CapturedLine::App => {
+                emit_console_line(line, color, json);
+                true
+            }
+        }
+    }
 }
 
 /// Start a macOS app and return, leaving it running — the counterpart to
@@ -7090,6 +7223,7 @@ fn follow_console_file(
     // A captured line is its own message, so `--until` matches it directly
     // rather than through the os_log renderer.
     let matched = |buf: &[u8]| watch.is_some_and(|w| w.sees(&String::from_utf8_lossy(buf)));
+    let mut log = CapturedLog::default();
     let mut reader = BufReader::new(file);
     let mut buf: Vec<u8> = Vec::new();
     loop {
@@ -7100,7 +7234,7 @@ fn follow_console_file(
             Ok([]) => {
                 if stop.load(Ordering::Relaxed) {
                     if !buf.is_empty() {
-                        emit_console_line(&buf, color, json);
+                        log.emit(&buf, color, json);
                     }
                     return;
                 }
@@ -7113,8 +7247,7 @@ fn follow_console_file(
         };
         let consumed = if let Some(pos) = available.iter().position(|&b| b == b'\n') {
             buf.extend_from_slice(&available[..=pos]);
-            emit_console_line(&buf, color, json);
-            if matched(&buf) {
+            if log.emit(&buf, color, json) && matched(&buf) {
                 return;
             }
             buf.clear();
@@ -7125,8 +7258,7 @@ fn follow_console_file(
         };
         reader.consume(consumed);
         if buf.len() >= MAX_LINE {
-            emit_console_line(&buf, color, json);
-            if matched(&buf) {
+            if log.emit(&buf, color, json) && matched(&buf) {
                 return;
             }
             buf.clear();
@@ -7173,9 +7305,10 @@ fn backfill_logs(
         && let Some(path) = detached_log_path(&app.bundle_id).filter(|p| p.exists())
         && let Ok(bytes) = std::fs::read(&path)
     {
+        let mut log = CapturedLog::default();
         for line in bytes.split(|&b| b == b'\n') {
             if !line.is_empty() {
-                emit_console_line(line, color, json);
+                log.emit(line, color, json);
             }
         }
     }
@@ -8591,6 +8724,142 @@ Target 0: (crash) stopped.\n"
              state will not be touched' in the log"
         ));
         assert!(!is_persistence_note("hello from print()"));
+    }
+
+    /// The injection client's line when the hot session's server closes,
+    /// captured from 'run --hot --mac' then 'q'. Only a read that got
+    /// nothing is the connection ending.
+    #[test]
+    fn the_injection_clients_disconnect_line_is_sweetpads() {
+        let quit = "2026-09-27 02:01:17.509 SweetpadB6RunMac[31397:22121620] [<InjectionNext: \
+                    0x103323380> readInt:0x16d50dd94 length:4] error: 0 Operation not supported";
+        assert!(is_injection_disconnect(quit));
+        let own = OwnLines {
+            injection_disconnect: true,
+            ..OwnLines::default()
+        };
+        assert!(own.covers(quit));
+        assert!(!OwnLines::default().covers(quit));
+
+        assert!(!is_injection_disconnect(
+            "2026-09-27 02:01:17.509 App[1:2] [<InjectionNext: 0x1> readInt:0x2 length:4] \
+             error: 2 Operation not supported"
+        ));
+        assert!(!is_injection_disconnect(
+            "2026-09-27 02:01:13.084 App[1:2] 🔥 Connecting to INJECTION_HOST setting 127.0.0.1"
+        ));
+        assert!(!is_injection_disconnect("hello from print()"));
+    }
+
+    /// A detached launch's header names the arguments the caller gave, and
+    /// in a clause of its own the pair sweetpad added.
+    #[test]
+    fn a_captured_files_header_says_who_added_the_persistence_key() {
+        let argv = |args: &[&str]| args.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            launch_header(
+                "App",
+                "12:00:00.000",
+                &argv(&["-ApplePersistenceIgnoreState", "YES", "--flag"]),
+                true
+            ),
+            "=== sweetpad launched App at 12:00:00.000 · args: --flag · sweetpad added: \
+             -ApplePersistenceIgnoreState YES ==="
+        );
+        assert_eq!(
+            launch_header(
+                "App",
+                "12:00:00.000",
+                &argv(&["-ApplePersistenceIgnoreState", "YES"]),
+                true
+            ),
+            "=== sweetpad launched App at 12:00:00.000 · sweetpad added: \
+             -ApplePersistenceIgnoreState YES ==="
+        );
+        assert_eq!(
+            launch_header(
+                "App",
+                "12:00:00.000",
+                &argv(&["-ApplePersistenceIgnoreState", "YES"]),
+                false
+            ),
+            "=== sweetpad launched App at 12:00:00.000 · args: -ApplePersistenceIgnoreState YES ==="
+        );
+        assert_eq!(
+            launch_header("App", "12:00:00.000", &[], false),
+            "=== sweetpad launched App at 12:00:00.000 ==="
+        );
+    }
+
+    /// Reading a captured file back: the header is a separator, not one of
+    /// the app's lines, and AppKit's note goes only when the header says
+    /// sweetpad added the key.
+    #[test]
+    fn a_captured_file_reads_its_header_as_a_separator() {
+        let note = "2026-09-27 00:01:39.396 App[1:2] ApplePersistenceIgnoreState: Existing state \
+                    will not be touched. New state will be written to /tmp/x.savedState";
+        let ours = launch_header(
+            "App",
+            "12:00:00.000",
+            &IGNORE_PERSISTENCE.map(String::from),
+            true,
+        );
+        let mut log = CapturedLog::default();
+        assert_eq!(
+            log.read(&ours),
+            CapturedLine::Header(
+                "── sweetpad launched App at 12:00:00.000 · sweetpad added: \
+                 -ApplePersistenceIgnoreState YES ──"
+                    .into()
+            )
+        );
+        assert_eq!(log.read(note), CapturedLine::Own);
+        assert_eq!(log.read("hello from print()"), CapturedLine::App);
+
+        let theirs = launch_header(
+            "App",
+            "12:00:00.000",
+            &IGNORE_PERSISTENCE.map(String::from),
+            false,
+        );
+        let mut log = CapturedLog::default();
+        assert!(matches!(log.read(&theirs), CapturedLine::Header(_)));
+        assert_eq!(log.read(note), CapturedLine::App);
+
+        // A file written before the header named sweetpad's clause.
+        let mut log = CapturedLog::default();
+        assert_eq!(
+            log.read("=== sweetpad launched App at 12:00:00.000 — args: -ApplePersistenceIgnoreState YES ==="),
+            CapturedLine::Header(
+                "── sweetpad launched App at 12:00:00.000 — args: -ApplePersistenceIgnoreState YES ──"
+                    .into()
+            )
+        );
+        assert_eq!(log.read(note), CapturedLine::App);
+    }
+
+    /// An '--until' for the app's name matches the app's lines, not the
+    /// header that names it.
+    #[test]
+    fn until_skips_the_captured_files_header() {
+        let dir = crate::cli::testdir::TempDir::new("sweetpad-captured-header");
+        let path = dir.join("captured.log");
+        let header = launch_header("MyApp", "12:00:00.000", &[], false);
+        for (body, sees) in [
+            (format!("{header}\n"), false),
+            (format!("{header}\nMyApp is ready\n"), true),
+        ] {
+            std::fs::write(&path, body).unwrap();
+            let hit = Arc::new(AtomicBool::new(false));
+            let watch = UntilWatch {
+                text: "MyApp".to_string(),
+                hit: Arc::clone(&hit),
+                stream_pid: None,
+            };
+            // `stop` is already raised, so the tail reads to the end and returns.
+            follow_console_file(&path, false, false, &AtomicBool::new(true), Some(&watch));
+            assert_eq!(hit.load(Ordering::Relaxed), sees);
+        }
     }
 
     /// A macOS launch skips AppKit's window restoration unless asked not to,
