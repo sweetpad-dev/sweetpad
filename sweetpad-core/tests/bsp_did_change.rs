@@ -1,8 +1,8 @@
 //! The change-watcher pushes `buildTarget/didChange` when the project file is
 //! edited mid-session, so the client re-queries targets/sources without an LSP
-//! restart. Hermetic: copies the multi-module fixture to a temp dir (so its
-//! pbxproj can be mutated), drives the server with a short watch interval, edits
-//! the pbxproj, and checks the notification arrives.
+//! restart. Hermetic: copies the multi-module fixture into Cargo's scratch
+//! space (so its pbxproj can be mutated), drives the server with a short watch
+//! interval, edits the pbxproj, and checks the notification arrives.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -27,13 +27,18 @@ fn copy_dir(src: &Path, dst: &Path) {
     }
 }
 
-/// A `bsp-server` command whose catalog cache is in Cargo's scratch space for
-/// integration tests: the server resolves against the active Xcode, and the
-/// parsed catalog it caches would otherwise land in the user's
-/// `~/.cache/sweetpad`.
+/// A `bsp-server` command that keeps what a session writes in Cargo's scratch
+/// space for integration tests. The server resolves against the active Xcode,
+/// and the parsed catalog it caches would otherwise land in the user's
+/// `~/.cache/sweetpad`. Its `HOME` is there too: the DerivedData locator and
+/// the `xcodebuild` a prepare runs both follow it, so what the warm-up after
+/// `build/initialized` builds stays out of the user's DerivedData.
 fn bsp_server() -> Command {
+    let home = concat!(env!("CARGO_TARGET_TMPDIR"), "/home");
+    fs::create_dir_all(home).unwrap();
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_bsp-server"));
-    cmd.env("SWEETPAD_CACHE_DIR", env!("CARGO_TARGET_TMPDIR"));
+    cmd.env("SWEETPAD_CACHE_DIR", env!("CARGO_TARGET_TMPDIR"))
+        .env("HOME", home);
     cmd
 }
 
@@ -41,7 +46,9 @@ fn bsp_server() -> Command {
 fn buildtarget_did_change_on_pbxproj_edit() {
     let src =
         PathBuf::from(env!("SWEETPAD_LIB_DIR")).join("fixtures/_synthetic-multimodule/project");
-    let tmp = std::env::temp_dir().join(format!("sweetpad-bsp-didchange-{}", std::process::id()));
+    // The same path on every run: the warm-up keys a DerivedData folder by
+    // the copy's path, so a fresh name each run would leave a folder each run.
+    let tmp = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("bsp-did-change");
     let _ = fs::remove_dir_all(&tmp);
     copy_dir(&src, &tmp);
     let proj = tmp.join("MultiModule.xcodeproj");

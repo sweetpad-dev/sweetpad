@@ -242,13 +242,18 @@ fn the_bsp_server_answers_the_same_for_both_formats() {
     assert_eq!(pbx.1, xc.1, "compiler arguments");
 }
 
-/// A `bsp-server` command whose catalog cache is in Cargo's scratch space for
-/// integration tests: the server resolves against the active Xcode, and the
-/// parsed catalog it caches would otherwise land in the user's
-/// `~/.cache/sweetpad`.
+/// A `bsp-server` command that keeps what a session writes in Cargo's scratch
+/// space for integration tests. The server resolves against the active Xcode,
+/// and the parsed catalog it caches would otherwise land in the user's
+/// `~/.cache/sweetpad`. Its `HOME` is there too: the DerivedData locator and
+/// the `xcodebuild` a prepare runs both follow it, so what the warm-up after
+/// `build/initialized` builds stays out of the user's DerivedData.
 fn bsp_server() -> std::process::Command {
+    let home = concat!(env!("CARGO_TARGET_TMPDIR"), "/home");
+    std::fs::create_dir_all(home).unwrap();
     let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_bsp-server"));
-    cmd.env("SWEETPAD_CACHE_DIR", env!("CARGO_TARGET_TMPDIR"));
+    cmd.env("SWEETPAD_CACHE_DIR", env!("CARGO_TARGET_TMPDIR"))
+        .env("HOME", home);
     cmd
 }
 

@@ -162,6 +162,10 @@ another.
   `spm_graph_oracle`, calls `common::keep_state_in_target_tmpdir`, which pins
   `paths::state_dir` to `CARGO_TARGET_TMPDIR`. A unit test hands the code a
   path in a temp directory of its own.
+- `cargo test` builds nothing into the user's
+  `~/Library/Developer/Xcode/DerivedData`. A spawned `bsp-server` that
+  warms up after `build/initialized` gets a `HOME` in `CARGO_TARGET_TMPDIR`,
+  which the DerivedData locator follows, or a `--derived-data-path`.
 - After **every** capture or resolver change, re-run the full oracle suite on
   **all** captured versions — a fix for one version must not silently regress
   another.

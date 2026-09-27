@@ -1206,8 +1206,7 @@ mod tests {
     /// `build --json`'s `productPath`) to a folder no build ever wrote.
     #[test]
     fn derived_data_hash_uses_the_standardized_path() {
-        let root = std::env::temp_dir().join(format!("sweetpad-bc-link-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root = ScratchDir::new("sweetpad-bc-link").unwrap();
         let real = root.join("real");
         let link = root.join("link");
         std::fs::create_dir_all(real.join("Scratch.xcodeproj")).unwrap();
@@ -1243,7 +1242,6 @@ mod tests {
             !build_dir.contains(&format!("Scratch-{link_hash}")),
             "BUILD_DIR must not hash the symlink spelling: {build_dir}"
         );
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Regression for #285: when the declared DerivedData container is the
@@ -1254,8 +1252,7 @@ mod tests {
     /// for the built app in a directory Xcode never wrote to.
     #[test]
     fn xcodeproj_stub_workspace_container_resolves_to_the_outer_project() {
-        let root = std::env::temp_dir().join(format!("sweetpad-bc-stub-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root = ScratchDir::new("sweetpad-bc-stub").unwrap();
         let xcodeproj = root.join("Scratch.xcodeproj");
         std::fs::create_dir_all(&xcodeproj).unwrap();
         std::fs::copy(
@@ -1285,6 +1282,5 @@ mod tests {
             !build_dir.contains(&format!("project-{stub_hash}")),
             "BUILD_DIR must not use the project.xcworkspace stub: {build_dir}"
         );
-        let _ = std::fs::remove_dir_all(&root);
     }
 }
