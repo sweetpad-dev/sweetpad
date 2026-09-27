@@ -71,12 +71,13 @@ pub struct GroupRow {
 }
 
 /// How a listing shows a navigator path: the path itself, or a label where
-/// the path is empty or missing. `is_root` tells the navigator root from a
-/// group at the root with no name, whose path is empty too.
+/// the path is empty or missing. The navigator root shows `/`, the spelling
+/// that always selects it, with a label beside it. `is_root` tells the root
+/// from a group at the root with no name, whose path is empty too.
 #[must_use]
 pub fn navigator_label(path: Option<&str>, is_root: bool) -> &str {
     match path {
-        Some("") if is_root => "(navigator root)",
+        Some("") if is_root => "/ (navigator root)",
         Some("") => "(unnamed)",
         Some(path) => path,
         None => "(not in the navigator)",

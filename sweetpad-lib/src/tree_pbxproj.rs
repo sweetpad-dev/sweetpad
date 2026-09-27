@@ -1377,7 +1377,7 @@ mod tests {
             "{err}"
         );
         assert!(
-            err.contains("MG (navigator root) [(project root)]"),
+            err.contains("MG / (navigator root) [(project root)]"),
             "{err}"
         );
         assert!(err.contains("N1 (unnamed) [(project root)]"), "{err}");

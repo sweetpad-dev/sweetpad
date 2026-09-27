@@ -14,6 +14,7 @@ use serde_json::Value;
 /// committed classic fixture.
 const CONTENT_VIEW: &str = "85BB78F9ECC9184F5BA8114B";
 const SOURCES_APP: &str = "71376D09ABE451C1E73CAAE7";
+const MAIN_GROUP: &str = "2EB79799EB980C9382F9E6B0";
 
 fn run(args: &[&str], home: &Path) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_sweetpad"))
@@ -165,10 +166,15 @@ fn group_list_prints_each_groups_navigator_path() {
         )),
         "{human}"
     );
+    // The root shows '/', the spelling that selects it, while JSON keeps its
+    // empty navigator path.
     assert!(
-        human.contains("  (navigator root)  [(project root), "),
+        human.contains(&format!(
+            "{MAIN_GROUP}  / (navigator root)  [(project root), 5 child(ren)]"
+        )),
         "{human}"
     );
+    assert_eq!(navigator_path(MAIN_GROUP), Some(Value::from("")), "{data}");
 
     let out = run(
         &[
