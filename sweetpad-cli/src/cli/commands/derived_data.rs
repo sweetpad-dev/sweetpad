@@ -227,7 +227,8 @@ fn purge(ctx: &mut Context, all: bool, yes: bool) -> CommandResult {
         if !ctx.out.is_interactive() {
             return Err(CliError::new(
                 "refusing to delete DerivedData without confirmation; pass --yes to purge non-interactively",
-            ));
+            )
+            .kind(ErrorKind::Usage));
         }
         let prompt = if all {
             format!("Delete ALL DerivedData under {}?", root.display())

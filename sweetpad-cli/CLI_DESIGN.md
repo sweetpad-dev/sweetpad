@@ -178,8 +178,9 @@ sweetpad project new <Name> [flags]
   and git init — each with a default that **Enter accepts** (the name has no
   universal default, so new-directory mode requires typing it). A non-empty
   target additionally prompts to continue (the `--force` question). Non-TTY /
-  `--json` runs stay strict: flags and defaults only, and a missing name is an
-  error.
+  `--json` runs stay strict: flags and defaults only, and a missing name or a
+  non-empty target without `--force` is a usage error (§4). Declining the
+  `--force` question is a cancel (exit 6).
 - **Inline "use defaults" escape.** Every step after the name carries its own
   way to accept the remaining defaults without more questions: the platform
   picker has a trailing *"Use defaults for everything else"* entry, and the text
@@ -351,6 +352,20 @@ default was not, and only a typed `--hot` refuses them. So the agent-facing
 of what the project or destination turns out to be (`--scheme` on a Swift
 package, `--keep-sandbox` off macOS) keeps its own code, since the same flags
 work in another project.
+
+A refusal that stands in for a prompt is a usage error too. Off a terminal
+(piped, `--json`, `--non-interactive`, `CI`), a command that would have asked
+refuses and names the flag that gives the answer: `derived-data purge` and
+`simulator delete` without `--yes`, `dependency add` without `--product` and
+`--target`, `project new` with no name or into a non-empty directory without
+`--force`, and `context select`, which only prompts and names `context set`.
+The command line alone is what falls short, since adding the flag makes the
+same run go through, so it exits 2 with `code: "usage_error"`. The check stays
+where the prompt was: a purge with nothing to delete asks nothing and needs no
+`--yes`. Target resolution is the exception. A missing scheme or destination
+off a terminal keeps exit 4 (§5), with a hint naming `--scheme` or
+`--destination`, since whether one is needed depends on how many the project
+has.
 
 ## 5. Target resolution
 

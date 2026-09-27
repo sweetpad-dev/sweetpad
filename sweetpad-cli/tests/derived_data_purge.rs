@@ -462,3 +462,35 @@ fn a_workspace_relative_location_is_the_bare_folder_beside_the_project() {
     assert_eq!(path["root"], shown(&cwd.join("app/DerivedData")));
     assert_eq!(strings(&path["paths"]), [shown(&own)]);
 }
+
+/// Off a terminal a purge can't ask, so without '--yes' it refuses as a usage
+/// error and deletes nothing. With nothing to delete there is nothing to ask,
+/// and no '--yes' is needed.
+#[test]
+fn a_purge_without_yes_off_a_terminal_is_a_usage_error() {
+    let home = tmp("noyes-home");
+    let cwd = tmp("noyes-cwd");
+    let store = store(&home);
+    let project = cwd.join("MyApp.xcodeproj");
+    std::fs::create_dir_all(&project).unwrap();
+
+    let args = ["derived-data", "purge", "--project", &shown(&project)];
+    let empty = sweetpad(&args, &cwd, &home, None);
+    assert!(empty.status.success(), "{empty:?}");
+
+    let folder = folder_for(&store, &project);
+    let human = sweetpad(&args, &cwd, &home, None);
+    assert_eq!(human.status.code(), Some(2), "{human:?}");
+    assert!(
+        String::from_utf8_lossy(&human.stderr).contains("pass --yes"),
+        "{human:?}"
+    );
+    let json = sweetpad(&[&args[..], &["--json"]].concat(), &cwd, &home, None);
+    assert_eq!(json.status.code(), Some(2), "{json:?}");
+    let envelope: Value = serde_json::from_slice(&json.stderr).unwrap();
+    assert_eq!(envelope["error"]["code"], "usage_error", "{envelope}");
+    assert!(
+        folder.join("Build/built.txt").exists(),
+        "nothing was deleted"
+    );
+}

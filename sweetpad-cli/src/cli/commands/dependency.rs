@@ -394,7 +394,8 @@ fn add_to_xcode(ctx: &mut Context, container: &Container, args: &AddArgs) -> Cli
     if (args.products.is_empty() || args.targets.is_empty()) && !ctx.out.is_interactive() {
         return Err(CliError::new(
             "non-interactive: pass --product and --target to add without prompting",
-        ));
+        )
+        .kind(ErrorKind::Usage));
     }
 
     // The reference must be written *before* product discovery (resolution
@@ -505,7 +506,8 @@ fn add_to_package(ctx: &mut Context, container: &Container, args: &AddArgs) -> C
     if (args.products.is_empty() || args.targets.is_empty()) && !ctx.out.is_interactive() {
         return Err(CliError::new(
             "non-interactive: pass --product and --target to add without prompting",
-        ));
+        )
+        .kind(ErrorKind::Usage));
     }
 
     // Package.swift is edited in step 1 but the pickers below can still be
@@ -626,7 +628,8 @@ fn resolve_products(
     if !ctx.out.is_interactive() {
         return Err(CliError::new(
             "non-interactive: pass --product (and --target) to add without prompting",
-        ));
+        )
+        .kind(ErrorKind::Usage));
     }
     let available = discover_products(ctx, container, url, remote)?;
     choose("product", &available, &[], ctx)
@@ -643,9 +646,10 @@ fn settle_targets(
         return Ok(flags.to_vec());
     }
     if !ctx.out.is_interactive() {
-        return Err(CliError::new(
-            "non-interactive: pass --target to add without prompting",
-        ));
+        return Err(
+            CliError::new("non-interactive: pass --target to add without prompting")
+                .kind(ErrorKind::Usage),
+        );
     }
     let proj = sweetpad_lib::project::open(xcodeproj)
         .map_err(|e| CliError::new(format!("failed to read {}: {e}", xcodeproj.display())))?;

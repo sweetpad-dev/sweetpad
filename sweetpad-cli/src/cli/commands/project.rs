@@ -172,6 +172,7 @@ fn gather_answers(
                 "a project name is required (pass it as an argument, or use \
                  --current-dir to name the project after the current directory)",
             )
+            .kind(ErrorKind::Usage)
         })?,
     };
 
@@ -285,8 +286,8 @@ fn confirm(prompt: &str, default: bool, color: bool) -> Result<bool, CliError> {
 }
 
 /// Refuse to scaffold over an existing non-empty directory. `--force` waives the
-/// check outright; on a TTY without it, the user is asked (default no); off a
-/// TTY it's a hard error.
+/// check outright; on a TTY without it, the user is asked (default no), and a
+/// no is a cancel; off a TTY it's a usage error naming `--force`.
 fn ensure_writable(root: &Path, force: bool, interactive: bool, color: bool) -> CliResult {
     let mut entries = match std::fs::read_dir(root) {
         Ok(entries) => entries,
@@ -301,19 +302,22 @@ fn ensure_writable(root: &Path, force: bool, interactive: bool, color: bool) -> 
     if entries.next().is_none() || force {
         return Ok(());
     }
-    if interactive
-        && confirm(
-            &format!("{} is not empty. Scaffold into it anyway?", root.display()),
-            false,
-            color,
-        )?
-    {
-        return Ok(());
-    }
-    Err(CliError::new(format!(
+    let refusal = CliError::new(format!(
         "{} already exists and is not empty (use --force to scaffold into it anyway)",
         root.display()
-    )))
+    ));
+    if !interactive {
+        // '--force' is the answer the prompt would have asked for.
+        return Err(refusal.kind(ErrorKind::Usage));
+    }
+    if confirm(
+        &format!("{} is not empty. Scaffold into it anyway?", root.display()),
+        false,
+        color,
+    )? {
+        return Ok(());
+    }
+    Err(refusal.kind(ErrorKind::UserCancel))
 }
 
 /// Write each generated file under `root`, creating parent directories.

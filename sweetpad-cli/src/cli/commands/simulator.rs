@@ -256,7 +256,8 @@ fn delete(ctx: &mut Context, target: &str, yes: bool) -> CommandResult {
         if !ctx.out.is_interactive() {
             return Err(CliError::new(
                 "refusing to delete a simulator without confirmation; pass --yes",
-            ));
+            )
+            .kind(ErrorKind::Usage));
         }
         let confirmed = dialoguer::Confirm::new()
             .with_prompt(format!("Delete {}?", sim.label()))

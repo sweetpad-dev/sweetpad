@@ -362,3 +362,68 @@ fn an_interactive_add_of_a_package_with_no_products_says_so() {
         );
     }
 }
+
+/// Off a terminal an add can't ask which products to link into which targets,
+/// so it refuses as a usage error naming the flags, before swift sees the
+/// package or the manifest changes.
+#[test]
+fn an_add_off_a_terminal_without_products_and_targets_is_a_usage_error() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = tmp("noflags-home");
+    let root = tmp("noflags-root");
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let log = root.join("swift.log");
+    std::fs::write(
+        bin.join("swift"),
+        format!(
+            "#!/bin/sh\n\
+             if [ \"$1\" = --version ]; then echo 'Apple Swift version 6.1'; exit 0; fi\n\
+             echo \"$*\" >> '{}'\n\
+             exit 1\n",
+            log.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(bin.join("swift"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let app = root.join("App");
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::create_dir_all(root.join("Dep")).unwrap();
+    let manifest = "// swift-tools-version: 6.0\n";
+    std::fs::write(app.join("Package.swift"), manifest).unwrap();
+
+    for args in [
+        &["dep", "add", "../Dep", "--non-interactive"][..],
+        &[
+            "dep",
+            "add",
+            "../Dep",
+            "--product",
+            "Dep",
+            "--non-interactive",
+        ],
+        &["dep", "add", "../Dep", "--target", "App", "--json"],
+    ] {
+        let out = sweetpad(args, &app, &home, &bin);
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {out:?}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains("pass --product and --target"),
+            "{args:?}: {stderr}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(app.join("Package.swift")).unwrap(),
+            manifest,
+            "{args:?}: manifest changed"
+        );
+    }
+    let json = sweetpad(&["dep", "add", "../Dep", "--json"], &app, &home, &bin);
+    let envelope: serde_json::Value = serde_json::from_slice(&json.stderr).unwrap();
+    assert_eq!(envelope["error"]["code"], "usage_error", "{envelope}");
+    assert!(
+        !log.exists(),
+        "swift saw the package: {:?}",
+        std::fs::read_to_string(&log)
+    );
+}

@@ -327,6 +327,49 @@ fn a_refused_flag_is_a_usage_error() {
     assert!(left.is_empty(), "a refused command wrote {left:?}");
 }
 
+/// Off a terminal, a command that would have asked names the flag that
+/// answers it instead, and that is a usage error: the same run goes through
+/// once the flag is typed. These need no project, so no fixture either.
+#[test]
+fn a_prompt_off_a_terminal_is_a_usage_error() {
+    let home = tmp("prompt-home");
+    let cwd = tmp("prompt-cwd");
+    // A non-empty directory where 'project new App' would scaffold.
+    std::fs::create_dir_all(cwd.join("App")).unwrap();
+    std::fs::write(cwd.join("App/keep.txt"), "mine").unwrap();
+    let cases: &[(&[&str], &str)] = &[
+        (
+            &["project", "new", "--no-git"],
+            "a project name is required",
+        ),
+        (
+            &["project", "new", "App", "--no-git"],
+            "use --force to scaffold into it anyway",
+        ),
+        (
+            &["context", "select"],
+            "'sweetpad context set <variable> <value>'",
+        ),
+    ];
+    for (args, hint) in cases {
+        let human = sweetpad(args, &cwd, &home);
+        assert_eq!(human.status.code(), Some(2), "{args:?}: {human:?}");
+        let stderr = String::from_utf8(human.stderr).unwrap();
+        assert!(stderr.contains(hint), "{args:?}: {stderr}");
+
+        let json_args = [*args, &["--json"]].concat();
+        let out = sweetpad(&json_args, &cwd, &home);
+        assert_eq!(out.status.code(), Some(2), "{json_args:?}: {out:?}");
+        let err = parse_stderr_error(&out, &json_args);
+        assert_eq!(err["error"]["code"], "usage_error", "{json_args:?}");
+    }
+    assert_eq!(
+        std::fs::read_dir(cwd.join("App")).unwrap().count(),
+        1,
+        "the refused scaffold left the directory as it was"
+    );
+}
+
 /// 'build', 'test' and 'test build' take '--mac' as '--on mac', so a typed
 /// '--on' or '--destination' beside it is a usage error, found before any
 /// project is looked for.

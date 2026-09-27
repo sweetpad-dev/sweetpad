@@ -313,7 +313,7 @@ fn select(ctx: &mut Context, variable: Option<Variable>, scope: Scope) -> Comman
             "context select prompts interactively and the terminal is not interactive; use \
              'sweetpad context set <variable> <value>' instead",
         )
-        .kind(ErrorKind::TargetResolution));
+        .kind(ErrorKind::Usage));
     }
     let container = resolve::container(ctx)?;
     let key = container.key();

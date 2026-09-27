@@ -70,6 +70,11 @@ checks these before it looks for a project, so you get the same answer from any 
 that doesn't parse at all also exits 2, but prints the argument parser's plain-text error, even under
 `-o json`.
 
+A command that would ask a question at a terminal also exits 2 when it can't ask, and names the flag
+that answers it. Examples are `derived-data purge` or `simulator delete` without `--yes`, and
+`dependency add` without `--product` and `--target`. A missing scheme or destination is different.
+It exits 4, because whether you need `--scheme` depends on how many schemes the project has.
+
 :::warning
 
 `"ok": true` means "the command executed", not "the outcome was good". A red test suite exits 3 and
@@ -110,8 +115,8 @@ tool output. `-q` wins if you pass both.
 
 ## Never prompting
 
-Interactive commands ask questions: which scheme, which simulator. `--non-interactive` turns every
-such question into an error instead:
+Interactive commands ask questions: which scheme, which simulator, whether to delete.
+`--non-interactive` turns every such question into an error that names the flag to pass instead:
 
 ```bash
 sweetpad build --non-interactive

@@ -156,8 +156,8 @@ and so does `erase`. A clean baseline you clone before each test run is a common
 :::warning
 
 Both are destructive, and they guard themselves differently. `delete` requires you to name the target
-and refuses to run unconfirmed: `error: refusing to delete a simulator without confirmation; pass
---yes`. `erase` has no such guard: it doesn't prompt, and it *does* default to the booted simulator,
+and asks before it deletes. Where it can't ask, it exits 2 with `error: refusing to delete a simulator
+without confirmation; pass --yes`. `erase` has no such guard: it doesn't prompt, and it *does* default to the booted simulator,
 so a bare `sweetpad sim erase` wipes whatever you happen to have running. Name the target when you're
 not certain what that is.
 

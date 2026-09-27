@@ -28,7 +28,8 @@ projects. This skill covers the everyday flows and how to discover the rest.
 - `ok: true` means "the command ran", not "the outcome was good". A failing test
   run still reports `ok: true` with `data.passed: false` — read the payload's own
   status field, not just `ok`.
-- Exit codes: `0` ok · `1` generic · `2` bad flags · `3` build/test failure ·
+- Exit codes: `0` ok · `1` generic · `2` bad flags, or a flag a prompt needs
+  off a terminal (`--yes`, `--product`) · `3` build/test failure ·
   `4` target resolution (unknown scheme/destination) · `5` missing tool ·
   `6` cancelled.
 

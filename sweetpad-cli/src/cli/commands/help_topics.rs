@@ -162,8 +162,9 @@ EXIT CODES
 
   0   success
   1   generic failure
-  2   usage error (bad flags/arguments, or a flag the command refuses, like
-      '--failed' on 'test build')
+  2   usage error (bad flags/arguments, a flag the command refuses, like
+      '--failed' on 'test build', or a flag a prompt needs off a terminal,
+      like '--yes' for 'derived-data purge')
   3   build or test failure
   4   target resolution failed (unknown/missing scheme, destination,
       simulator, device, …)
