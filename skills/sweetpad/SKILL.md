@@ -94,7 +94,8 @@ invocation and exit without building).
 
 In a build-fix loop, add `-q`: it drops progress chatter and keeps only what you
 can't ignore — errors, warnings, and the failure banner. A clean build prints
-nothing.
+nothing. `-q` and `-v` are sweetpad's own flags. xcodebuild's `-quiet` and
+`-verbose` go after `--`, as in `sweetpad build -- -quiet`.
 
 ```bash
 sweetpad build -q                                       # silent unless it matters

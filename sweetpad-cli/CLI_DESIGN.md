@@ -732,8 +732,9 @@ CLI.
   and `--non-interactive` are global — accepted on every command and its
   actions. `--quiet` mutes progress chatter (notes, spinners, step labels, the
   beautified build stream apart from diagnostics and failure banners) while
-  errors and primary data/JSON still emit; it wins over `--verbose`.
-  `--non-interactive` (or `SWEETPAD_NONINTERACTIVE`) forces the strict no-
+  errors and primary data/JSON still emit; it wins over `--verbose`. Both are
+  sweetpad's, so their help points at `xcodebuild`'s own `-quiet` and
+  `-verbose`, which go after `--`. `--non-interactive` (or `SWEETPAD_NONINTERACTIVE`) forces the strict no-
   prompt behavior at a TTY. The **targeting flags**
   (`--workspace`/`--project`, `--scheme`, `--configuration`, `--destination`,
   `--sdk`) are scoped to the commands that consume them, in three tiers —

@@ -116,12 +116,14 @@ pub struct GlobalArgs {
     #[arg(long, global = true)]
     pub no_color: bool,
 
-    /// Print verbose diagnostics (raw tool output, extra detail).
+    /// Print verbose diagnostics (raw tool output, extra detail). For
+    /// xcodebuild's own '-verbose', pass '-- -verbose'.
     #[arg(short, long, global = true)]
     pub verbose: bool,
 
     /// Suppress progress chatter (notes, spinners, step labels). Errors and
-    /// primary data/JSON are still emitted; wins over '--verbose'.
+    /// primary data/JSON are still emitted; wins over '--verbose'. For
+    /// xcodebuild's own '-quiet', pass '-- -quiet'.
     #[arg(short, long, global = true)]
     pub quiet: bool,
 
