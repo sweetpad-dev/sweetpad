@@ -1987,7 +1987,7 @@ fn end_session(
     }
     let name = r.name.clone();
     let stopped = terminate_app(ctx, r);
-    quit_result(ctx, outcome, &name, stopped)
+    quit_result(outcome, &name, stopped, |e| ctx.out.error(e))
 }
 
 /// How the session's most recent build ended.
@@ -2269,7 +2269,7 @@ fn run_hot_session(
         outcome
     } else {
         let stopped = hot_app.terminate(ctx, &app);
-        quit_result(ctx, outcome, &app.bundle_id, stopped)
+        quit_result(outcome, &app.bundle_id, stopped, |e| ctx.out.error(e))
     };
     drop(logs);
     outcome
@@ -3082,8 +3082,14 @@ fn report_stop(ctx: &Context, stopped: CliResult) {
 /// A session's exit once its quit has stopped the app. A stop that failed
 /// leaves the app possibly running, so a quit that would exit 0 exits 1
 /// with it instead, and a session already failing keeps its own code with
-/// the stop's error printed ahead of it.
-fn quit_result(ctx: &Context, outcome: CliResult, name: &str, stopped: CliResult) -> CliResult {
+/// the stop's error handed to `report` ahead of it. The sessions report it
+/// with [`Output::error`].
+fn quit_result(
+    outcome: CliResult,
+    name: &str,
+    stopped: CliResult,
+    report: impl FnOnce(&CliError),
+) -> CliResult {
     let Err(e) = stopped else {
         return outcome;
     };
@@ -3091,7 +3097,7 @@ fn quit_result(ctx: &Context, outcome: CliResult, name: &str, stopped: CliResult
     match outcome {
         Ok(()) => Err(e),
         Err(session) => {
-            ctx.out.error(&e);
+            report(&e);
             Err(session)
         }
     }
@@ -7817,8 +7823,8 @@ mod tests {
 
     /// A quit whose terminate a wedged simulator never answers exits 1 and
     /// says the app may still be running, keeping the restart tip. A session
-    /// already failing keeps its own code, and a stop that worked changes
-    /// nothing.
+    /// already failing keeps its own code and reports that stop error ahead
+    /// of it, and a stop that worked changes nothing.
     #[test]
     fn a_quit_whose_stop_fails_exits_1_saying_the_app_may_still_run() {
         use std::os::unix::fs::PermissionsExt;
@@ -7834,30 +7840,43 @@ mod tests {
                 Duration::from_secs(1),
             )
         };
-        let ctx = project_ctx(Path::new("/nonexistent/App.xcodeproj"));
+        let assert_stop_error = |err: &CliError| {
+            assert_eq!(err.error_kind().exit_code(), 1);
+            assert_eq!(
+                err.headline(),
+                Some("couldn't stop dev.app, so it may still be running")
+            );
+            assert_eq!(
+                err.detail(),
+                "terminating the app on the simulator: 'xcrun simctl terminate' didn't finish \
+                 within 1s, so the simulator looks stuck"
+            );
+            assert!(
+                err.tip_text()
+                    .unwrap()
+                    .contains("sweetpad simulator shutdown UDID")
+            );
+        };
+        let unreported = |e: &CliError| panic!("reported {e}, which the result carries");
 
-        let err = quit_result(&ctx, Ok(()), "dev.app", stuck()).unwrap_err();
-        assert_eq!(err.error_kind().exit_code(), 1);
-        assert_eq!(
-            err.headline(),
-            Some("couldn't stop dev.app, so it may still be running")
-        );
-        assert_eq!(
-            err.detail(),
-            "terminating the app on the simulator: 'xcrun simctl terminate' didn't finish \
-             within 1s, so the simulator looks stuck"
-        );
-        assert!(
-            err.tip_text()
-                .unwrap()
-                .contains("sweetpad simulator shutdown UDID")
-        );
+        let err = quit_result(Ok(()), "dev.app", stuck(), unreported).unwrap_err();
+        assert_stop_error(&err);
 
         let built = CliError::new("the last build failed").kind(ErrorKind::BuildFailure);
-        let err = quit_result(&ctx, Err(built), "dev.app", stuck()).unwrap_err();
+        let mut reported = false;
+        let err = quit_result(Err(built), "dev.app", stuck(), |e| {
+            assert_stop_error(e);
+            reported = true;
+        })
+        .unwrap_err();
+        assert!(reported, "the stop error goes to the report");
         assert_eq!(err.error_kind().exit_code(), 3);
+        assert_eq!(err.to_string(), "the last build failed");
 
-        assert!(quit_result(&ctx, Ok(()), "dev.app", Ok(())).is_ok());
+        assert!(quit_result(Ok(()), "dev.app", Ok(()), unreported).is_ok());
+        let built = CliError::new("the last build failed").kind(ErrorKind::BuildFailure);
+        let err = quit_result(Err(built), "dev.app", Ok(()), unreported).unwrap_err();
+        assert_eq!(err.error_kind().exit_code(), 3);
     }
 
     #[test]
