@@ -286,10 +286,14 @@ pub fn remove_fileref(
         ));
     }
     let (indices, parent, address) = (node.indices, node.parent, node.address);
+    if let Some(refusal) = named_by_refusal(root, &address, &indices)? {
+        return Err(refusal);
+    }
     splice_out(root, &indices)?;
     Ok(RemoveOutcome {
         address,
         detached_from: parent,
+        also_detached_from: Vec::new(),
         orphaned: Vec::new(),
     })
 }
@@ -326,10 +330,14 @@ pub fn remove_group(root: &mut Value, address: &str, force: bool) -> Result<Remo
         ));
     }
     let (indices, parent, address) = (node.indices, node.parent, node.address);
+    if let Some(refusal) = named_by_refusal(root, &address, &indices)? {
+        return Err(refusal);
+    }
     splice_out(root, &indices)?;
     Ok(RemoveOutcome {
         address,
         detached_from: parent,
+        also_detached_from: Vec::new(),
         orphaned: Vec::new(),
     })
 }
@@ -345,10 +353,17 @@ pub fn remove_group(root: &mut Value, address: &str, force: bool) -> Result<Remo
 /// neither a name nor a path moves only where no path has to be written, since
 /// Xcode would show that path as its name.
 ///
+/// The document names nodes by navigator path: a configuration's xcconfig, a
+/// target's product, the products group. A move changes the path of every
+/// node it takes, so each such reference into the moved subtree is rewritten
+/// to follow it, and Xcode still opens the project. A move onto a path
+/// another node already has is refused, as an add there is.
+///
 /// # Errors
 /// Returns a message when the document is malformed, either address names no
-/// node (or more than one), the move would put a group inside itself, or it
-/// would have to write a path on a node with no name.
+/// node (or more than one), the move would put a group inside itself, it
+/// would have to write a path on a node with no name, or another node already
+/// has the navigator path the node would get.
 pub fn move_node(
     root: &mut Value,
     address: &str,
@@ -392,8 +407,19 @@ pub fn move_node(
     if rewrite.is_some() && name.is_empty() {
         return Err(nameless_move_refusal(address));
     }
+    let new_address = child_address(to_address.as_deref(), &name);
+    if let Some(refusal) = taken(
+        root,
+        &new_address,
+        kind_noun(&node),
+        "move it under another group",
+    )? {
+        return Err(refusal);
+    }
     let indices = node.indices.clone();
+    let follow = following(root, &indices, &node.address, &new_address)?;
 
+    let before = root.clone();
     let mut moved = splice_out(root, &indices)?;
     if let Some(stored) = rewrite {
         moved
@@ -408,12 +434,69 @@ pub fn move_node(
         None => Vec::new(),
     };
     children_mut(root, &to_indices)?.push(moved);
+    if let Some(what) = rewrite_followed(root, &follow)? {
+        *root = before;
+        return Err(format!(
+            "moving {address} would leave {what} naming more than one node; move it under \
+             another group"
+        ));
+    }
     Ok(MoveOutcome::Moved {
-        address: child_address(to_address.as_deref(), &name),
+        address: new_address,
         from,
         to: to_address.unwrap_or_default(),
         resolved,
     })
+}
+
+/// A reference a move takes along: where it sits, the navigator path it
+/// gets, and how many nodes shared the path it had.
+struct Follow {
+    reference: Reference,
+    spelling: String,
+    sharing: usize,
+}
+
+/// The references naming the subtree at `indices` by navigator path, each
+/// with the path it gets when the subtree's root moves from `old` to `new`.
+/// One written as `id:` needs nothing, so it is left out.
+fn following(root: &Value, indices: &[usize], old: &str, new: &str) -> Result<Vec<Follow>, String> {
+    let all = nodes(root)?;
+    Ok(references_into(root, indices)?
+        .into_iter()
+        .filter(|(r, named)| r.spelling == *named)
+        .map(|(reference, named)| Follow {
+            spelling: format!("{new}{}", &named[old.len()..]),
+            sharing: all.iter().filter(|n| n.address == named).count(),
+            reference,
+        })
+        .collect())
+}
+
+/// Write each followed reference's new path, and say which one, if any,
+/// names a different number of nodes than it did. A group's name can hold a `/`, so a
+/// rewritten path could spell some other node's too, and the caller undoes
+/// the edit then rather than writing it.
+fn rewrite_followed(root: &mut Value, follow: &[Follow]) -> Result<Option<String>, String> {
+    for f in follow {
+        set_reference(root, &f.reference, &f.spelling)?;
+    }
+    let all = nodes(root)?;
+    Ok(follow
+        .iter()
+        .find(|f| all.iter().filter(|n| n.address == f.spelling).count() != f.sharing)
+        .map(|f| f.reference.what.clone()))
+}
+
+/// A node's kind, for a message.
+fn kind_noun(node: &Node<'_>) -> &'static str {
+    if node.is_container {
+        "group"
+    } else if node.is_folder {
+        "synchronized folder"
+    } else {
+        "file"
+    }
 }
 
 /// A node in the navigator, with how to reach it and where it lives.
@@ -553,22 +636,61 @@ fn existing_at<'a>(
     let Some(other) = there.first() else {
         return Ok(None);
     };
-    let other = if other.is_container {
-        "a group"
-    } else if other.is_folder {
-        "a synchronized folder"
-    } else {
-        "a file"
-    };
     let (new, remedy) = if group {
         ("group", "pick another name")
     } else {
         ("file", "add it under another group")
     };
-    Err(format!(
-        "'{address}' is already the navigator path of {other}. A {new} beside it would share \
-         that path, and no argument could then tell the two apart; {remedy}"
-    ))
+    Err(taken_refusal(address, other, new, remedy))
+}
+
+/// The refusal for a write that would put a node of kind `new` at an
+/// `address` another node already has, or `None` when none does. Xcode reads
+/// a reference one component at a time, so a reference through either node
+/// would then name both, and it refuses the project ("Invalid reference").
+fn taken(root: &Value, address: &str, new: &str, remedy: &str) -> Result<Option<String>, String> {
+    Ok(nodes(root)?
+        .iter()
+        .find(|n| n.address == address)
+        .map(|other| taken_refusal(address, other, new, remedy)))
+}
+
+/// The refusal for adding a synchronized folder at the navigator root where
+/// another node already has its `address` and a reference runs through it,
+/// or `None`. Xcode reads a reference one component at a time, so the
+/// reference would then name two nodes, and Xcode 27.0 and 27.2 refuse the
+/// project ("Invalid reference"). Two nodes sharing a path no reference
+/// runs through are a project Xcode opens.
+pub(crate) fn shared_under_reference(
+    root: &Value,
+    address: &str,
+) -> Result<Option<String>, String> {
+    let all = nodes(root)?;
+    let Some(other) = all.iter().find(|n| n.address == address) else {
+        return Ok(None);
+    };
+    let below = format!("{address}/");
+    let Some(reference) = references(root)
+        .into_iter()
+        .find(|r| r.spelling == address || r.spelling.starts_with(&below))
+    else {
+        return Ok(None);
+    };
+    Ok(Some(format!(
+        "'{address}' is already the navigator path of a {}, and the document names {} through \
+         it. A synchronized folder beside it would make that reference name two nodes, which \
+         Xcode refuses; move the {0} into another group first with 'pbxproj group move'",
+        kind_noun(other),
+        reference.what
+    )))
+}
+
+fn taken_refusal(address: &str, other: &Node<'_>, new: &str, remedy: &str) -> String {
+    format!(
+        "'{address}' is already the navigator path of a {}. A {new} beside it would share \
+         that path, and no argument could then tell the two apart; {remedy}",
+        kind_noun(other)
+    )
 }
 
 /// Where the node a reference in the document names resolves to, relative to
@@ -583,9 +705,177 @@ fn existing_at<'a>(
 /// since a group's name can itself start with `id:`.
 pub(crate) fn resolve_reference(root: &Value, reference: &str) -> Option<String> {
     let all = nodes(root).ok()?;
-    position_of_id(&all, reference)
-        .or_else(|| all.iter().position(|n| n.address == reference))
-        .map(|index| all[index].resolved.clone())
+    position_of_reference(&all, reference).map(|index| all[index].resolved.clone())
+}
+
+/// The node a reference names, as [`resolve_reference`] reads it.
+fn position_of_reference(all: &[Node<'_>], reference: &str) -> Option<usize> {
+    position_of_id(all, reference).or_else(|| all.iter().position(|n| n.address == reference))
+}
+
+/// The `products-group` Xcode reads when the document writes none.
+const DEFAULT_PRODUCTS_GROUP: &str = "Products";
+
+/// One place in the document that names a navigator node: a configuration's
+/// xcconfig `file` or the `anchor` of one, a target's `product`, or the
+/// `products-group`.
+///
+/// Every one of them has to keep naming a node. Xcode 27.0 and 27.2 refuse to
+/// open a document whose reference names nothing ("Invalid reference"), so a
+/// move rewrites the ones it would break and a delete refuses to break one.
+#[derive(Debug, Clone)]
+struct Reference {
+    /// The keys and indices from the document down to the string.
+    at: Vec<Step>,
+    /// The reference as written. A document with no `products-group` has
+    /// the one Xcode reads in its place.
+    spelling: String,
+    /// What the reference is, for a message, after "is still".
+    what: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Step {
+    Key(&'static str),
+    Index(usize),
+}
+
+/// Every reference the document makes to a navigator node.
+fn references(root: &Value) -> Vec<Reference> {
+    fn configurations(
+        owner: &Value,
+        list: &'static str,
+        base: &[Step],
+        scope: &str,
+        out: &mut Vec<Reference>,
+    ) {
+        let entries = owner.get(list).and_then(Value::as_array).unwrap_or(&[]);
+        for (index, entry) in entries.iter().enumerate() {
+            let Some(file) = entry.get("file") else {
+                continue;
+            };
+            let name = entry
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let what =
+                format!("the xcconfig that the '{name}' configuration of {scope} is based on");
+            let mut at = base.to_vec();
+            at.extend([Step::Key(list), Step::Index(index), Step::Key("file")]);
+            if let Some(spelling) = file.as_str() {
+                out.push(Reference {
+                    at,
+                    spelling: spelling.to_string(),
+                    what,
+                });
+            } else if let Some(anchor) = file.get("anchor").and_then(Value::as_str) {
+                at.push(Step::Key("anchor"));
+                out.push(Reference {
+                    at,
+                    spelling: anchor.to_string(),
+                    what: format!("the folder holding {what}"),
+                });
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    configurations(root, "configurations", &[], "the project", &mut out);
+    let targets = root.get("targets").and_then(Value::as_array).unwrap_or(&[]);
+    for (index, target) in targets.iter().enumerate() {
+        let name = target
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let base = [Step::Key("targets"), Step::Index(index)];
+        let scope = format!("target '{name}'");
+        configurations(
+            target,
+            "specialized-configurations",
+            &base,
+            &scope,
+            &mut out,
+        );
+        if let Some(product) = target.get("product").and_then(Value::as_str) {
+            let mut at = base.to_vec();
+            at.push(Step::Key("product"));
+            out.push(Reference {
+                at,
+                spelling: product.to_string(),
+                what: format!("the product of target '{name}'"),
+            });
+        }
+    }
+    out.push(Reference {
+        at: vec![Step::Key("products-group")],
+        spelling: root
+            .get("products-group")
+            .and_then(Value::as_str)
+            .unwrap_or(DEFAULT_PRODUCTS_GROUP)
+            .to_string(),
+        what: "the project's products group".to_string(),
+    });
+    out
+}
+
+/// Write `spelling` where `reference` sits. A `products-group` that comes to
+/// name the default is left out, as Xcode leaves it out.
+fn set_reference(root: &mut Value, reference: &Reference, spelling: &str) -> Result<(), String> {
+    if reference.at == [Step::Key("products-group")] {
+        let document = root
+            .as_object_mut()
+            .ok_or("the document is not an object")?;
+        if spelling == DEFAULT_PRODUCTS_GROUP {
+            document.remove("products-group");
+        } else {
+            crate::schema_xcproj::insert_document_key(
+                document,
+                "products-group",
+                Value::String(spelling.to_string()),
+            );
+        }
+        return Ok(());
+    }
+    let mut at = &mut *root;
+    for step in &reference.at {
+        at = match step {
+            Step::Key(key) => at.get_mut(key),
+            Step::Index(index) => at.as_array_mut().and_then(|items| items.get_mut(*index)),
+        }
+        .ok_or("a reference moved during the edit")?;
+    }
+    *at = Value::String(spelling.to_string());
+    Ok(())
+}
+
+/// The references naming the node at `indices` or anything inside it, each
+/// with the navigator path of the node it names.
+fn references_into(root: &Value, indices: &[usize]) -> Result<Vec<(Reference, String)>, String> {
+    let all = nodes(root)?;
+    Ok(references(root)
+        .into_iter()
+        .filter_map(|r| {
+            let named = &all[position_of_reference(&all, &r.spelling)?];
+            named
+                .indices
+                .starts_with(indices)
+                .then(|| (r, named.address.clone()))
+        })
+        .collect())
+}
+
+/// The refusal for deleting the node at `indices` while a reference names
+/// it, or `None` when none does.
+fn named_by_refusal(
+    root: &Value,
+    address: &str,
+    indices: &[usize],
+) -> Result<Option<String>, String> {
+    let named: Vec<String> = references_into(root, indices)?
+        .into_iter()
+        .map(|(r, _)| r.what)
+        .collect();
+    Ok((!named.is_empty()).then(|| crate::tree::still_named_refusal(address, &named)))
 }
 
 /// The node an `id:<id>` spelling names.

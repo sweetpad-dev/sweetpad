@@ -28,6 +28,7 @@ pub mod membership_pbxproj;
 pub mod membership_xcproj;
 pub mod pbxproj;
 pub mod pbxproj_merge;
+mod pbxproj_refs;
 pub mod pbxproj_writer;
 pub mod project;
 mod project_xcproj;

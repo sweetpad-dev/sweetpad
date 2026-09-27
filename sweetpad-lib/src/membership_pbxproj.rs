@@ -16,13 +16,16 @@
 //!
 //! Everything here is pure (no I/O): callers parse the file, mutate the tree,
 //! and serialize/write it — the same contract as the sibling `*_pbxproj`
-//! modules. Removal cleans up after itself: a file reference no build file
-//! uses anymore is deleted, and ancestor groups emptied by that deletion are
-//! pruned (the orphan contract [`crate::sync_pbxproj::remove_root`] set).
+//! modules. Removal cleans up after itself: a file reference nothing names
+//! anymore is deleted, and ancestor groups emptied by that deletion are
+//! pruned (the orphan contract [`crate::sync_pbxproj::remove_root`] set). A
+//! reference that is still a target's product or a configuration's xcconfig
+//! stays.
 
 use std::path::Path;
 
 use crate::pbxproj::{Dict, Value};
+use crate::pbxproj_refs;
 use crate::project::Parents;
 
 /// The objects a `PBXBuildFile` can point at. Variant and version groups stand
@@ -108,8 +111,8 @@ pub fn classic_members(root: &Value, target: &str) -> Result<Vec<FileEntry>, Str
 }
 
 /// Remove `target`'s classic membership of each path (project-dir-relative):
-/// the build-file entries leave the target's phases; a reference no build
-/// file uses anymore is deleted (variant/version groups take their child
+/// the build-file entries leave the target's phases; a reference nothing
+/// names anymore is deleted (variant/version groups take their child
 /// references with them) and emptied ancestor groups are pruned. A path that
 /// isn't a member is a recorded no-op.
 ///
@@ -120,7 +123,6 @@ pub fn remove_membership(
     target: &str,
     paths: &[String],
 ) -> Result<Vec<Removal>, String> {
-    let (main_group, products_group) = group_guards(root);
     let objects = objects_mut(root)?;
     let target_guid = find_target_guid(objects, target)?;
     let mut removals = Vec::new();
@@ -148,26 +150,19 @@ pub fn remove_membership(
             }
         }
 
-        // Orphan cleanup: a reference nothing builds anymore leaves the tree.
+        // Orphan cleanup: a reference nothing builds anymore leaves the tree,
+        // unless something else still names it, such as a target's product
+        // or the xcconfig a configuration is based on. Another target's build
+        // file is one of those names.
         let mut deleted_reference = false;
         let mut pruned_groups = 0usize;
         for ref_guid in &ref_guids {
-            let still_built = objects.iter().any(|(_, o)| {
-                isa(o) == "PBXBuildFile" && str_field(o, "fileRef") == Some(ref_guid.as_str())
-            });
-            if still_built {
+            if !pbxproj_refs::referrers(objects, ref_guid).is_empty() {
                 continue;
             }
-            let parent = crate::project::parent_group_of(objects, ref_guid);
             delete_node_recursive(objects, ref_guid);
-            if let Some(parent) = parent {
-                remove_child(objects, &parent, ref_guid);
-                pruned_groups += prune_empty_groups(
-                    objects,
-                    &parent,
-                    main_group.as_ref(),
-                    products_group.as_ref(),
-                );
+            for parent in pbxproj_refs::unlist(objects, ref_guid) {
+                pruned_groups += prune_empty_groups(objects, &parent);
             }
             deleted_reference = true;
         }
@@ -468,55 +463,28 @@ fn delete_node_recursive(objects: &mut Dict, guid: &str) {
     objects.remove(guid);
 }
 
-fn remove_child(objects: &mut Dict, group: &str, child: &str) {
-    if let Some(children) = objects
-        .get_mut(group)
-        .and_then(Value::as_dict_mut)
-        .and_then(|g| g.get_mut("children"))
-        .and_then(Value::as_array_mut)
-    {
-        children.retain(|v| v.as_str() != Some(child));
+/// Delete `group` when a removal emptied it, then each group that listed it,
+/// in turn. A group something else names survives even when empty: the
+/// navigator root, the Products group, a folder an xcconfig is anchored in.
+/// Returns how many groups were pruned.
+fn prune_empty_groups(objects: &mut Dict, group: &str) -> usize {
+    let empty = objects
+        .get(group)
+        .filter(|o| matches!(isa(o), "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup"))
+        .is_some_and(|o| {
+            o.get("children")
+                .and_then(Value::as_array)
+                .is_none_or(<[Value]>::is_empty)
+        });
+    if !empty || !pbxproj_refs::referrers(objects, group).is_empty() {
+        return 0;
     }
-}
-
-/// Walk up from `group`, deleting each group its child-removal emptied.
-/// The main group and Products group survive even when empty — they're
-/// structural. Returns how many groups were pruned.
-fn prune_empty_groups(
-    objects: &mut Dict,
-    group: &str,
-    main_group: Option<&String>,
-    products_group: Option<&String>,
-) -> usize {
-    let mut pruned = 0;
-    let mut current = group.to_string();
-    loop {
-        if Some(&current) == main_group || Some(&current) == products_group {
-            break;
-        }
-        let empty = objects
-            .get(&current)
-            .filter(|o| matches!(isa(o), "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup"))
-            .is_some_and(|o| {
-                o.get("children")
-                    .and_then(Value::as_array)
-                    .is_none_or(<[Value]>::is_empty)
-            });
-        if !empty {
-            break;
-        }
-        let parent = crate::project::parent_group_of(objects, &current);
-        objects.remove(&current);
-        pruned += 1;
-        match parent {
-            Some(parent) => {
-                remove_child(objects, &parent, &current);
-                current = parent;
-            }
-            None => break,
-        }
-    }
-    pruned
+    let listings = pbxproj_refs::unlist(objects, group);
+    objects.remove(group);
+    1 + listings
+        .iter()
+        .map(|parent| prune_empty_groups(objects, parent))
+        .sum::<usize>()
 }
 
 /// The project-dir-relative path of a group-tree node (its own `path` plus
@@ -526,23 +494,6 @@ fn node_path(parents: &Parents<'_>, guid: &str) -> String {
         .group_dir(guid, Path::new(""))
         .to_string_lossy()
         .into_owned()
-}
-
-fn group_guards(root: &Value) -> (Option<String>, Option<String>) {
-    let project = root
-        .as_dict()
-        .and_then(|d| d.get("rootObject"))
-        .and_then(Value::as_str)
-        .and_then(|g| objects(root).and_then(|o| o.get(g)));
-    let main_group = project
-        .and_then(|p| p.get("mainGroup"))
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let products_group = project
-        .and_then(|p| p.get("productRefGroup"))
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    (main_group, products_group)
 }
 
 fn str_items(items: &[Value]) -> Vec<String> {
@@ -937,6 +888,48 @@ mod tests {
         assert!(!text.contains("FR2"));
         assert!(!text.contains("G2"), "the Legacy group is pruned");
         assert!(text.contains("G1"), "the App group still has children");
+    }
+
+    /// The last build file going leaves a reference the project still names
+    /// in place: an embedded product is still its target's product, and
+    /// deleting it would leave that target naming nothing. A reference a
+    /// second group lists leaves both listings when it goes.
+    #[test]
+    fn removing_the_last_membership_keeps_a_reference_the_project_names() {
+        let mut root = parsed();
+        let objects = objects_mut(&mut root).unwrap();
+        let tests = objects.get_mut("T2").and_then(Value::as_dict_mut).unwrap();
+        tests.insert("productReference".into(), Value::String("FR4".into()));
+        // Legacy sits inside App, so App's listing is the one Xcode keeps.
+        let legacy = objects.get_mut("G2").and_then(Value::as_dict_mut).unwrap();
+        legacy.insert(
+            "children".into(),
+            Value::Array(vec![
+                Value::String("FR2".into()),
+                Value::String("FR3".into()),
+            ]),
+        );
+
+        let removals = remove_membership(
+            &mut root,
+            "App",
+            &["Helper.xpc".into(), "App/Logo.png".into()],
+        )
+        .unwrap();
+        assert_eq!(
+            removals[0].removed_phases,
+            vec!["copy (Embed XPC Services)"]
+        );
+        assert!(!removals[0].deleted_reference, "Tests still names it");
+        assert!(removals[1].deleted_reference);
+
+        let text = round_trips(&root);
+        assert!(text.contains("FR4 /* Helper.xpc */ = {"), "{text}");
+        assert!(!text.contains("BF5"), "the build file is gone");
+        assert!(
+            !text.contains("FR3"),
+            "neither group lists Logo.png: {text}"
+        );
     }
 
     #[test]

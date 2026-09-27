@@ -179,6 +179,12 @@ Two distinctions the group names encode, and which trip people up in Xcode too:
 separate question from where it lives on disk or what builds it. `group` moves things in the sidebar
 and nothing else.
 
+**Edits keep the project's references whole.** The rest of the project names some files and groups:
+a configuration's xcconfig, a target's product, the Products group. SweetPad refuses to delete one of
+these, and the error says what still names it. A move updates those names, so the project still
+opens. A node can sit in only one group, because Xcode 27.2 won't open a project that lists it in
+two. So `group attach` only lists a node that no group lists yet, and `group move` handles the rest.
+
 `pbxproj settings show` is the counterpart to `settings show`: it prints what the project file stores,
 per configuration, rather than what those settings resolve to:
 

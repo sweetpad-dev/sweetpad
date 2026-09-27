@@ -136,6 +136,10 @@ pub struct RemoveOutcome {
     pub address: String,
     /// The group that stopped holding it, when it had one.
     pub detached_from: Option<String>,
+    /// Other groups that listed it as well, which only a malformed
+    /// `project.pbxproj` has: Xcode 27.2 refuses to open one, and 27.0 keeps
+    /// the listing in `detached_from`. The delete takes every listing with it.
+    pub also_detached_from: Vec<String>,
     /// Children the removed group still listed. A `project.pbxproj` leaves
     /// them in `objects` as unreferenced nodes; a `project.xcproj` cannot,
     /// which is why it refuses the case instead.
@@ -181,6 +185,21 @@ pub(crate) fn nameless_move_refusal(address: &str) -> String {
     format!(
         "'{address}' has neither a name nor a path. Moving it would give it a path, which \
          Xcode shows as its name; move its children instead"
+    )
+}
+
+/// The refusal for deleting a node the rest of the document still names, in
+/// either format. `named_as` says what each name is, after "is still": the
+/// xcconfig a configuration is based on, the product of a target.
+pub(crate) fn still_named_refusal(node: &str, named_as: &[String]) -> String {
+    let those = if named_as.len() == 1 {
+        "that reference"
+    } else {
+        "those references"
+    };
+    format!(
+        "{node} is still {}; deleting it would leave {those} naming nothing",
+        named_as.join(", and ")
     )
 }
 

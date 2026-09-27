@@ -18,6 +18,7 @@
 use std::path::Path;
 
 use crate::pbxproj::{Dict, Value};
+use crate::pbxproj_refs;
 use crate::settings_pbxproj::insert_sorted;
 use crate::spm_pbxproj::fresh_guid;
 
@@ -100,8 +101,9 @@ pub fn add_root(root: &mut Value, target: &str, dir: &str) -> Result<AddOutcome,
 }
 
 /// Detach the root at `dir` from `target`, dropping the target's exception
-/// set for it. The group object itself (and its group-tree entry) goes only
-/// when no other target still lists it.
+/// set for it. The group object itself (and its group-tree entries) goes
+/// only when nothing else names it: no other target builds it, and no
+/// configuration's xcconfig is anchored in it.
 ///
 /// # Errors
 /// Returns a message when the tree is malformed or the target is missing.
@@ -125,14 +127,11 @@ pub fn remove_root(root: &mut Value, target: &str, dir: &str) -> Result<RemoveOu
         objects.remove(&set_guid);
     }
 
-    let still_referenced = objects.iter().any(|(_, o)| {
-        is_target_isa(isa(o))
-            && o.get("fileSystemSynchronizedGroups")
-                .and_then(Value::as_array)
-                .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(guid.as_str())))
-    });
-    if !still_referenced {
-        // Drop the object, its group-tree entry, and any leftover exception
+    // Another target building the folder names it, and so does a
+    // configuration whose xcconfig is anchored in it; either keeps it.
+    let still_named = !pbxproj_refs::referrers(objects, &guid).is_empty();
+    if !still_named {
+        // Drop the object, its group-tree entries, and any leftover exception
         // sets other targets had on it.
         let leftover_sets: Vec<String> = objects
             .get(&guid)
@@ -147,18 +146,11 @@ pub fn remove_root(root: &mut Value, target: &str, dir: &str) -> Result<RemoveOu
         for set in leftover_sets {
             objects.remove(&set);
         }
-        let group_guids: Vec<String> = objects
-            .iter()
-            .filter(|(_, o)| matches!(isa(o), "PBXGroup" | "PBXVariantGroup" | "XCVersionGroup"))
-            .map(|(g, _)| g.clone())
-            .collect();
-        for g in group_guids {
-            remove_from_array(objects, &g, "children", &guid);
-        }
+        pbxproj_refs::unlist(objects, &guid);
         objects.remove(&guid);
     }
     Ok(RemoveOutcome::Detached {
-        deleted_object: !still_referenced,
+        deleted_object: !still_named,
     })
 }
 
@@ -799,6 +791,35 @@ mod tests {
             remove_root(&mut root, "App", "App").unwrap(),
             RemoveOutcome::NotAttached
         );
+    }
+
+    /// A folder a configuration's xcconfig is anchored in outlives its last
+    /// target: deleting it would leave the configuration naming nothing, and
+    /// Xcode would then build without that xcconfig.
+    #[test]
+    fn remove_root_keeps_a_folder_an_xcconfig_is_anchored_in() {
+        let mut root = parsed();
+        let objects = objects_mut(&mut root).unwrap();
+        let mut config = Dict::new();
+        config.insert("isa".into(), vstr("XCBuildConfiguration"));
+        config.insert("baseConfigurationReferenceAnchor".into(), vstr("SR1"));
+        config.insert(
+            "baseConfigurationReferenceRelativePath".into(),
+            vstr("Base.xcconfig"),
+        );
+        config.insert("name".into(), vstr("Debug"));
+        objects.insert("CFG".into(), Value::Dict(config));
+
+        let outcome = remove_root(&mut root, "App", "App").unwrap();
+        assert_eq!(
+            outcome,
+            RemoveOutcome::Detached {
+                deleted_object: false
+            }
+        );
+        let text = round_trips(&root);
+        assert!(text.contains("SR1 /* App */ = {"), "{text}");
+        assert!(!text.contains("fileSystemSynchronizedGroups"), "{text}");
     }
 
     #[test]

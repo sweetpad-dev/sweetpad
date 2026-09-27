@@ -339,6 +339,144 @@ fn moving_a_node_keeps_the_file_it_resolves_to() {
     );
 }
 
+/// Nodes the rest of the document names by navigator path: the xcconfig a
+/// configuration is based on, one anchored in a synchronized folder, the
+/// products, and the products group Xcode reads as `Products` when the
+/// document writes none. Xcode 27.0 and 27.2 refuse to open a document where
+/// one of these names nothing ("Invalid reference").
+const REFERENCED: &str = r#"{
+  "configurations": [
+    { "name": "Debug", "file": "Config/Base.xcconfig" },
+    "Release",
+  ],
+  "files": [
+    {
+      "kind": "group",
+      "path": "Config",
+      "children": [
+        { "path": "Base.xcconfig" },
+        { "path": "Release.xcconfig", "id": "0000000000000000000000C2" },
+      ],
+    }, {
+      "kind": "group",
+      "path": "Sources",
+      "children": [
+        { "path": "App.swift" },
+      ],
+    },
+    { "kind": "folder", "path": "Shared", "target-membership": [ "App" ] },
+    {
+      "kind": "group",
+      "name": "Products",
+      "children": [
+        { "path": "<PRODUCTS>/App.app", "id": "958E16DD736EB85C16C05DE6", "index": false },
+      ],
+    },
+  ],
+  "targets": [
+    {
+      "name": "App",
+      "product": "Products/App.app",
+      "product-type": "application",
+      "specialized-configurations": [
+        { "name": "Debug", "file": { "anchor": "Shared", "relative-path": "App.xcconfig" } },
+        { "name": "Release", "file": "id:0000000000000000000000C2" },
+      ],
+    },
+  ],
+}
+"#;
+
+/// A move takes every reference into the moved subtree along, so the
+/// document still opens; one written as `id:` needs nothing. Moving back
+/// restores the references, and a products group back at `Products` is left
+/// unwritten again.
+#[test]
+fn a_move_takes_the_references_into_it_along() {
+    let mut doc = xcproj::parse(REFERENCED).unwrap_or_else(|e| panic!("parse: {e}"));
+    tree::move_node(&mut doc, "Config", Some("Sources")).unwrap();
+    tree::move_node(&mut doc, "Products", Some("Sources")).unwrap();
+    tree::move_node(&mut doc, "Shared", Some("Sources")).unwrap();
+    let text = xcproj::serialize(&doc);
+    for moved in [
+        r#"{ "name": "Debug", "file": "Sources/Config/Base.xcconfig" },"#,
+        r#""product": "Sources/Products/App.app","#,
+        r#""anchor": "Sources/Shared""#,
+        r#"{ "name": "Release", "file": "id:0000000000000000000000C2" },"#,
+        r#""products-group": "Sources/Products","#,
+    ] {
+        assert!(text.contains(moved), "{moved} in {text}");
+    }
+
+    tree::move_node(&mut doc, "Sources/Products", None).unwrap();
+    let text = xcproj::serialize(&doc);
+    assert!(text.contains(r#""product": "Products/App.app","#), "{text}");
+    assert!(!text.contains("products-group"), "{text}");
+}
+
+/// A delete that would leave a reference naming nothing is refused, and says
+/// which reference, instead of writing a document Xcode cannot open.
+#[test]
+fn a_node_a_reference_names_is_not_deleted() {
+    let mut doc = xcproj::parse(REFERENCED).unwrap_or_else(|e| panic!("parse: {e}"));
+    let err = tree::remove_fileref(&mut doc, "id:0000000000000000000000C2", false).unwrap_err();
+    assert_eq!(
+        err,
+        "Config/Release.xcconfig is still the xcconfig that the 'Release' configuration of \
+         target 'App' is based on; deleting it would leave that reference naming nothing"
+    );
+    let err = tree::remove_fileref(&mut doc, "Products/App.app", true).unwrap_err();
+    assert!(
+        err.contains("Products/App.app is still the product of target 'App';"),
+        "{err}"
+    );
+
+    // The group Xcode reads as the products group with no key naming it.
+    let mut doc = xcproj::parse(
+        r#"{ "files": [ { "kind": "group", "name": "Products", "children": [ ] } ] }"#,
+    )
+    .unwrap_or_else(|e| panic!("parse: {e}"));
+    let err = tree::remove_group(&mut doc, "Products", false).unwrap_err();
+    assert!(
+        err.contains("Products is still the project's products group"),
+        "{err}"
+    );
+}
+
+/// A synchronized folder added beside a node with its name shares that
+/// node's navigator path. Xcode opens such a document until a reference runs
+/// through the path, and then refuses it, so only that add is refused.
+#[test]
+fn a_folder_sharing_a_referenced_navigator_path_is_refused() {
+    let mut doc = xcproj::parse(REFERENCED).unwrap_or_else(|e| panic!("parse: {e}"));
+    let before = xcproj::serialize(&doc);
+    let err = sweetpad_lib::sync_xcproj::add_root(&mut doc, "App", "Config").unwrap_err();
+    assert!(
+        err.contains(
+            "'Config' is already the navigator path of a group, and the document names the xcconfig"
+        ),
+        "{err}"
+    );
+    assert_eq!(xcproj::serialize(&doc), before, "the refusal wrote nothing");
+    sweetpad_lib::sync_xcproj::add_root(&mut doc, "App", "Sources").unwrap();
+}
+
+/// A move onto a navigator path another node already has would leave two
+/// nodes no argument tells apart, and a reference naming one of them would
+/// then name both. It is refused, as an add there is.
+#[test]
+fn a_move_onto_a_navigator_path_in_use_is_refused() {
+    let mut doc = document();
+    tree::add_fileref(&mut doc, "App.swift", None, "<group>", Some("Sources/App")).unwrap();
+    let before = xcproj::serialize(&doc);
+    let err = tree::move_node(&mut doc, "Sources/App/App.swift", Some("Sources")).unwrap_err();
+    assert!(
+        err.contains("'Sources/App.swift' is already the navigator path of a file"),
+        "{err}"
+    );
+    assert_eq!(xcproj::serialize(&doc), before, "the refusal wrote nothing");
+}
+
 /// `""` and `/` name the navigator root, as they name the mainGroup in a
 /// `project.pbxproj`, so a root spelling carries across the two formats.
 #[test]

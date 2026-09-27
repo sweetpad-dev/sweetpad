@@ -3,11 +3,13 @@
 //! §9g). Membership is [`super::membership`]'s axis.
 //!
 //! `attach`/`detach` exist because a `PBXGroup`'s `children` is a list of
-//! references: the same object can be listed in two groups, and attaching it
-//! to one does not take it out of the other. A `project.xcproj` nests its
-//! nodes instead, so a node is in exactly one place and the operation is
-//! [`Action::Move`] — which works on both formats. The two verbs that have no
-//! meaning there say so rather than quietly doing something near enough.
+//! references: an object can exist with no group listing it, and `attach`
+//! lists one of those. It refuses one another group lists already, since Xcode
+//! 27.2 will not open a project that lists a node in two groups. A
+//! `project.xcproj` nests its nodes instead, so a node is in exactly one place
+//! and the operation is [`Action::Move`] — which works on both formats. The
+//! two verbs that have no meaning there say so rather than quietly doing
+//! something near enough.
 
 use clap::{Args, Subcommand};
 
@@ -29,7 +31,9 @@ pub enum Action {
     Remove(RemoveArgs),
     /// Move a node into another group, keeping the file it resolves to.
     Move(MoveArgs),
-    /// List an existing object in a group's children (project.pbxproj only).
+    /// List an object that no group lists yet in a group's children
+    /// (project.pbxproj only). Use 'group move' for an object another group
+    /// lists.
     Attach(LinkArgs),
     /// Drop an object from a group's children, leaving the object itself
     /// (project.pbxproj only).
@@ -348,10 +352,11 @@ fn remove(ctx: &mut Context, args: &RemoveArgs) -> CommandResult {
     .map_err(CliError::new)?;
     document.write(&xcodeproj)?;
 
-    let mut line = format!("removed {}", outcome.address);
-    if let Some(parent) = &outcome.detached_from {
-        let _ = write!(line, "; dropped from group {parent}");
-    }
+    let mut line = format!(
+        "removed {}{}",
+        outcome.address,
+        super::fileref::detached_text(&outcome)
+    );
     // Orphans only happen under --orphan-children, and leaving them unsaid
     // would hide objects that nothing now shows.
     if !outcome.orphaned.is_empty() {
@@ -368,6 +373,7 @@ fn remove(ctx: &mut Context, args: &RemoveArgs) -> CommandResult {
             "action": "remove",
             "address": outcome.address,
             "detachedFrom": outcome.detached_from,
+            "alsoDetachedFrom": outcome.also_detached_from,
             "orphaned": outcome.orphaned,
             "changed": true,
         }),

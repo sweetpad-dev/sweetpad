@@ -45,10 +45,14 @@ pub fn list(root: &Value) -> Result<Vec<TargetRoots>, String> {
 ///
 /// A new node joins the top of the navigator tree as one entry carrying the
 /// whole relative path, which is how Xcode shows a folder dragged in from
-/// anywhere below the project directory.
+/// anywhere below the project directory. A node at the top that already
+/// shows the folder's name then shares its navigator path, which Xcode
+/// accepts until a reference runs through that path: Xcode 27.0 and 27.2
+/// refuse to open a document where one does. So the add is refused only then.
 ///
 /// # Errors
-/// Returns a message when the tree is malformed or the target is missing.
+/// Returns a message when the tree is malformed, the target is missing, or
+/// the folder would share a navigator path a reference runs through.
 pub fn add_root(root: &mut Value, target: &str, dir: &str) -> Result<AddOutcome, String> {
     known_target(root, target)?;
     let dir = normalize(dir);
@@ -68,6 +72,12 @@ pub fn add_root(root: &mut Value, target: &str, dir: &str) -> Result<AddOutcome,
             node.insert("kind".to_string(), Value::String("folder".to_string()));
             node.insert("path".to_string(), Value::String(dir));
             let mut node = Value::Object(node);
+            // At the root the folder shows as its last component, and a node
+            // already showing that name would share its navigator path.
+            let address = crate::tree_xcproj::display_name(&node).to_string();
+            if let Some(refusal) = crate::tree_xcproj::shared_under_reference(root, &address)? {
+                return Err(refusal);
+            }
             add_membership(&mut node, target)?;
             files_mut(root)?.push(node);
             Ok(AddOutcome::Created)

@@ -11,8 +11,10 @@
 //!
 //! The one linkage that is not optional is referential integrity — a group's
 //! `children` must not name an object that no longer exists — so deleting a
-//! node also drops it from its parent's list. Every outcome reports that,
-//! rather than leaving it to a `git diff`.
+//! node also drops it from every group that lists it. Every outcome reports
+//! that, rather than leaving it to a `git diff`. Any other name for the node,
+//! such as a configuration's xcconfig or a target's product, refuses the
+//! delete instead ([`crate::pbxproj_refs`]).
 //!
 //! A reference's `path` is interpreted against its `sourceTree`: `<group>`
 //! (the default) resolves it under the owning group's directory, `SOURCE_ROOT`
@@ -28,6 +30,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::pbxproj::{Dict, Value};
+use crate::pbxproj_refs::{self, Referrer};
 use crate::project::Parents;
 use crate::spm_pbxproj::fresh_guid;
 use crate::tree::{MovedPath, moved_path, nameless_move_refusal, navigator_label};
@@ -38,6 +41,16 @@ const GROUP_ISA: &str = "PBXGroup";
 /// The group-like objects a child can hang from. Variant and version groups
 /// list children exactly as a plain group does.
 const GROUP_ISAS: [&str; 3] = ["PBXGroup", "PBXVariantGroup", "XCVersionGroup"];
+
+/// The objects the navigator shows, and so the ones a group can list.
+const NAVIGATOR_ISAS: [&str; 6] = [
+    "PBXFileReference",
+    "PBXGroup",
+    "PBXVariantGroup",
+    "XCVersionGroup",
+    "PBXReferenceProxy",
+    "PBXFileSystemSynchronizedRootGroup",
+];
 
 pub use crate::tree::{
     AddGroupOutcome, AddRefOutcome, FileRefRow, GroupRow, MoveOutcome, RemoveOutcome,
@@ -254,11 +267,14 @@ pub fn add_group(
 /// Refuses while any `PBXBuildFile` still points at it unless `force` — a
 /// dangling `fileRef` is a corrupt project, and dropping the membership is
 /// [`crate::membership_pbxproj::remove_membership`]'s job, not a side effect of
-/// this one. No group is pruned: an emptied group stays.
+/// this one. Anything else still naming it refuses the delete even under
+/// `force`: an xcconfig a configuration is based on, a target's product. No
+/// group is pruned: an emptied group stays.
 ///
 /// # Errors
 /// Returns a message when the tree is malformed, `guid` is not a file
-/// reference, or build files still reference it and `force` is false.
+/// reference, build files still reference it and `force` is false, or
+/// something other than a build file or a group still names it.
 pub fn remove_fileref(root: &mut Value, guid: &str, force: bool) -> Result<RemoveOutcome, String> {
     let objects_ref = objects(root).ok_or("pbxproj has no objects dict")?;
     let node = objects_ref
@@ -275,29 +291,28 @@ pub fn remove_fileref(root: &mut Value, guid: &str, force: bool) -> Result<Remov
             if used == 1 { "y" } else { "ies" }
         ));
     }
-    let parent = crate::project::parent_group_of(objects_ref, guid);
-
-    let objects = objects_mut(root)?;
-    if let Some(parent) = &parent {
-        remove_child(objects, parent, guid);
+    let named: Vec<Referrer> = pbxproj_refs::referrers(objects_ref, guid)
+        .into_iter()
+        .filter(|r| !is_build_file_ref(objects_ref, r))
+        .collect();
+    if let Some(refusal) = pbxproj_refs::still_named(objects_ref, guid, &named) {
+        return Err(refusal);
     }
-    objects.remove(guid);
-    Ok(RemoveOutcome {
-        address: guid.to_string(),
-        detached_from: parent,
-        orphaned: Vec::new(),
-    })
+    delete_listed(root, guid, Vec::new())
 }
 
 /// Delete a group node.
 ///
 /// Refuses while it still lists children unless `force` — emptying it is
 /// [`detach`]'s job. Under `force` the children stay in `objects` as
-/// unreferenced nodes and are reported in `orphaned`.
+/// unreferenced nodes and are reported in `orphaned`. A group the project
+/// names, such as its navigator root or its Products group, is refused
+/// whatever `force` says.
 ///
 /// # Errors
-/// Returns a message when the tree is malformed, `guid` is not a group, or it
-/// has children and `force` is false.
+/// Returns a message when the tree is malformed, `guid` is not a group, it
+/// has children and `force` is false, or something other than a group still
+/// names it.
 pub fn remove_group(root: &mut Value, guid: &str, force: bool) -> Result<RemoveOutcome, String> {
     let objects_ref = objects(root).ok_or("pbxproj has no objects dict")?;
     let node = objects_ref
@@ -314,37 +329,88 @@ pub fn remove_group(root: &mut Value, guid: &str, force: bool) -> Result<RemoveO
             children.len()
         ));
     }
-    let parent = crate::project::parent_group_of(objects_ref, guid);
-
-    let objects = objects_mut(root)?;
-    if let Some(parent) = &parent {
-        remove_child(objects, parent, guid);
+    let named = pbxproj_refs::referrers(objects_ref, guid);
+    if let Some(refusal) = pbxproj_refs::still_named(objects_ref, guid, &named) {
+        return Err(refusal);
     }
+    delete_listed(root, guid, children)
+}
+
+/// Delete `guid` along with every group listing of it, reporting the listing
+/// Xcode keeps apart from any others.
+fn delete_listed(
+    root: &mut Value,
+    guid: &str,
+    orphaned: Vec<String>,
+) -> Result<RemoveOutcome, String> {
+    let objects = objects_mut(root)?;
+    let kept = crate::project::parent_group_of(objects, guid);
+    let also_detached_from = pbxproj_refs::unlist(objects, guid)
+        .into_iter()
+        .filter(|g| Some(g) != kept.as_ref())
+        .collect();
     objects.remove(guid);
     Ok(RemoveOutcome {
         address: guid.to_string(),
-        detached_from: parent,
-        orphaned: children,
+        detached_from: kept,
+        also_detached_from,
+        orphaned,
     })
+}
+
+/// Whether `referrer` is a build file naming its file, which `--dangling`
+/// lets a delete leave behind.
+fn is_build_file_ref(objects: &Dict, referrer: &Referrer) -> bool {
+    referrer.key == "fileRef" && objects.get(&referrer.owner).map(isa) == Some("PBXBuildFile")
 }
 
 /// List `child` in `group`'s `children`. `group` names either an object id or
 /// the group's resolved directory.
 ///
+/// A node that some group already lists is refused rather than listed a
+/// second time: Xcode 27.2 refuses to open a project that lists a node in two
+/// groups, and 27.0 keeps only one of the listings. Moving it is
+/// [`move_node`].
+///
 /// # Errors
 /// Returns a message when the tree is malformed, `group` names no group (or
-/// more than one), or `child` does not exist.
+/// more than one), `child` does not exist or is not a navigator node, another
+/// group already lists it, or it would end up inside itself.
 pub fn attach(root: &mut Value, child: &str, group: &str) -> Result<LinkOutcome, String> {
     let objects_ref = objects(root).ok_or("pbxproj has no objects dict")?;
     let group = &resolve_group(objects_ref, group)?;
-    if !objects_ref.contains_key(child) {
-        return Err(format!("no object with id {child}"));
-    }
+    let node = objects_ref
+        .get(child)
+        .ok_or_else(|| format!("no object with id {child}"))?;
     if children_of(objects_ref, group).iter().any(|c| c == child) {
         return Ok(LinkOutcome::AlreadyLinked {
             child: child.to_string(),
             group: group.clone(),
         });
+    }
+    if !NAVIGATOR_ISAS.contains(&isa(node)) {
+        return Err(format!(
+            "{child} is a {}, which the navigator does not show",
+            isa(node)
+        ));
+    }
+    if main_group(objects_ref).as_deref() == Some(child) {
+        return Err(format!(
+            "{child} is the navigator root, which no group lists"
+        ));
+    }
+    if let Some(other) = pbxproj_refs::listings(objects_ref, child).first() {
+        return Err(format!(
+            "{child} is already listed in group {other}, and Xcode 27.2 refuses to open a \
+             project that lists a node in two groups; move it with 'pbxproj group move {child} \
+             --to {group}'"
+        ));
+    }
+    if child == group || is_ancestor(objects_ref, child, group) {
+        return Err(format!(
+            "{group} is inside {child}; listing a group in its own descendant would detach \
+             the whole subtree"
+        ));
     }
     let objects = objects_mut(root)?;
     push_child(objects, group, child);
@@ -441,10 +507,10 @@ pub fn move_node(
         return Err(nameless_move_refusal(child));
     }
 
+    // Every listing goes, so a node a malformed project lists twice ends up
+    // listed once, where it was moved to.
     let objects = objects_mut(root)?;
-    if let Some(from) = &from {
-        remove_child(objects, from, child);
-    }
+    pbxproj_refs::unlist(objects, child);
     push_child(objects, &group, child);
     if let Some((path, source_tree)) = rewrite
         && let Some(node) = objects.get_mut(child).and_then(Value::as_dict_mut)
@@ -979,6 +1045,119 @@ mod tests {
         );
     }
 
+    /// A node a malformed project lists in two groups leaves both on delete,
+    /// so no group is left naming a missing object.
+    #[test]
+    fn removing_a_node_listed_twice_takes_both_listings() {
+        let mut root = parsed();
+        let objects = objects_mut(&mut root).unwrap();
+        objects.remove("BF1");
+        push_child(objects, "G2", "FR1");
+        let outcome = remove_fileref(&mut root, "FR1", false).unwrap();
+        // G2 sits inside G1, so the listing in G1 is the one Xcode keeps.
+        assert_eq!(outcome.detached_from.as_deref(), Some("G1"));
+        assert_eq!(outcome.also_detached_from, ["G2"]);
+        assert!(!round_trips(&root).contains("FR1"));
+
+        let mut root = parsed();
+        let objects = objects_mut(&mut root).unwrap();
+        push_child(objects, "MG", "G2");
+        let outcome = remove_group(&mut root, "G2", false).unwrap();
+        assert_eq!(outcome.detached_from.as_deref(), Some("MG"));
+        assert_eq!(outcome.also_detached_from, ["G1"]);
+        assert!(!round_trips(&root).contains("G2"));
+    }
+
+    /// Xcode 27.2 refuses a project that lists a node in two groups, so
+    /// `attach` lists only a node no group lists, and `move` re-homes the rest.
+    #[test]
+    fn a_listed_node_is_not_listed_a_second_time() {
+        let mut root = parsed();
+        let before = crate::pbxproj_writer::serialize(&root, "Fix");
+        let err = attach(&mut root, "FR1", "G2").unwrap_err();
+        assert!(err.contains("FR1 is already listed in group G1"), "{err}");
+        assert!(err.contains("'pbxproj group move FR1 --to G2'"), "{err}");
+        let err = attach(&mut root, "BF1", "G2").unwrap_err();
+        assert!(err.contains("the navigator does not show"), "{err}");
+        let err = attach(&mut root, "MG", "G2").unwrap_err();
+        assert!(err.contains("MG is the navigator root"), "{err}");
+        detach(&mut root, "G1", "MG").unwrap();
+        let err = attach(&mut root, "G1", "G2").unwrap_err();
+        assert!(err.contains("G2 is inside G1"), "{err}");
+        attach(&mut root, "G1", "MG").unwrap();
+        assert_eq!(crate::pbxproj_writer::serialize(&root, "Fix"), before);
+
+        // A move out of a malformed double listing leaves one.
+        push_child(objects_mut(&mut root).unwrap(), "G2", "FR1");
+        move_node(&mut root, "FR1", Some("MG")).unwrap();
+        assert_eq!(
+            pbxproj_refs::listings(objects(&root).unwrap(), "FR1"),
+            ["MG"]
+        );
+    }
+
+    /// A file the rest of the project names, such as an xcconfig or a
+    /// target's product, and a group it names, such as the navigator root,
+    /// are refused a delete whatever the override flag says.
+    #[test]
+    fn a_node_the_project_names_is_not_deleted() {
+        let mut root = parsed();
+        let objects = objects_mut(&mut root).unwrap();
+        let text = r#"{
+            FR2 = {isa = PBXFileReference; path = Base.xcconfig; sourceTree = "<group>"; };
+            FR3 = {isa = PBXFileReference; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
+            CFG = {isa = XCBuildConfiguration; baseConfigurationReference = FR2; buildSettings = {X = FR3; }; name = Debug; };
+            PG = {isa = PBXGroup; children = (FR3); name = Products; sourceTree = "<group>"; };
+        }"#;
+        let extra = crate::pbxproj::parse(text).unwrap();
+        for (id, object) in extra.as_dict().unwrap().iter() {
+            objects.insert(id.clone(), object.clone());
+        }
+        push_child(objects, "G1", "FR2");
+        push_child(objects, "MG", "PG");
+        for (id, key, value) in [
+            (
+                "CLT1",
+                "buildConfigurations",
+                Value::Array(vec![vstr("CFG")]),
+            ),
+            ("T1", "productReference", vstr("FR3")),
+            ("P1", "productRefGroup", vstr("PG")),
+        ] {
+            let object = objects.get_mut(id).and_then(Value::as_dict_mut).unwrap();
+            object.insert(key.into(), value);
+        }
+        let before = crate::pbxproj_writer::serialize(&root, "Fix");
+
+        let err = remove_fileref(&mut root, "FR2", true).unwrap_err();
+        assert_eq!(
+            err,
+            "FR2 is still the xcconfig that the 'Debug' configuration of target 'App' is \
+             based on; deleting it would leave that reference naming nothing"
+        );
+        // A build setting that spells an id names nothing.
+        let err = remove_fileref(&mut root, "FR3", true).unwrap_err();
+        assert!(
+            err.contains("FR3 is still the product of target 'App';"),
+            "{err}"
+        );
+        let err = remove_group(&mut root, "PG", true).unwrap_err();
+        assert!(
+            err.contains("PG is still the project's Products group"),
+            "{err}"
+        );
+        let err = remove_group(&mut root, "MG", true).unwrap_err();
+        assert!(
+            err.contains("MG is still the project's navigator root"),
+            "{err}"
+        );
+        assert_eq!(
+            crate::pbxproj_writer::serialize(&root, "Fix"),
+            before,
+            "the refusals wrote nothing"
+        );
+    }
+
     #[test]
     fn removing_a_group_with_children_refuses_without_force() {
         let mut root = parsed();
@@ -1251,6 +1430,7 @@ mod tests {
         assert_eq!(resolve_group(objects, "").as_deref(), Ok("MG"));
         assert_eq!(resolve_group(objects, "/").as_deref(), Ok("MG"));
 
+        detach(&mut root, "FR1", "G1").unwrap();
         assert_eq!(
             attach(&mut root, "FR1", "").unwrap(),
             LinkOutcome::Linked {
@@ -1308,6 +1488,7 @@ mod tests {
         twin.insert("sourceTree".into(), vstr("<group>"));
         objects.insert("G3".into(), Value::Dict(twin));
         push_child(objects, "MG", "G3");
+        detach(&mut root, "FR1", "G1").unwrap();
 
         let err = attach(&mut root, "FR1", "App").unwrap_err();
         assert!(
@@ -1532,6 +1713,7 @@ mod tests {
     #[test]
     fn attach_and_detach_take_a_directory_too() {
         let mut root = parsed();
+        detach(&mut root, "FR1", "App").unwrap();
         let outcome = attach(&mut root, "FR1", "App/Legacy").unwrap();
         assert_eq!(
             outcome,

@@ -1767,7 +1767,10 @@ sweetpad pbxproj group detach <node> --group G      unlist a child (pbxproj only
     build-file entries for the named files. When the last build file
     referencing a file reference goes, the reference is deleted and emptied
     ancestor groups are pruned — the same orphan-cleanup contract
-    `folder remove` set. A file that isn't a member is a recorded no-op.
+    `folder remove` set. A reference the project still names otherwise stays:
+    an app extension embedded by the target is still its own target's
+    product, and deleting it would leave that target naming nothing. A file
+    that isn't a member is a recorded no-op.
   - **`exclude`/`include`** are §9f's exception verbs, relocated: excluding
     a file *is* a membership edit (unchecking the box in Xcode writes
     exactly these exception sets).
@@ -1795,9 +1798,17 @@ sweetpad pbxproj group detach <node> --group G      unlist a child (pbxproj only
     `group remove` refuses while the group still lists children
     (`--orphan-children` overrides); `group detach` unlists a child without
     deleting the object. The single exception is referential integrity —
-    deleting an object also drops it from its parent's `children`, since a
+    deleting an object also drops it from every group's `children`, since a
     group naming a missing object is a corrupt file rather than a valid
     intermediate state — and every outcome reports what it took with it.
+    Any other name for the object refuses the delete, whatever the override
+    flag: the xcconfig a configuration is based on, a target's product, the
+    navigator root, the Products group, a folder an xcconfig is anchored in.
+    Xcode opens a pbxproj that names a missing xcconfig and builds without
+    it, so this is the difference between an error and a silently wrong
+    build. A `project.xcproj` refuses the same deletes for a stronger reason:
+    Xcode 27.0 and 27.2 will not open one whose reference names nothing
+    ("Invalid reference").
   - **Paths are anchored, not guessed.** A reference's `path` resolves through
     its `sourceTree` (`<group>`, `SOURCE_ROOT`, `<absolute>`), and each
     outcome returns the resolved on-disk path, so a wrong path/anchor pairing
@@ -2019,10 +2030,15 @@ format in front of it is an error naming what to use instead — never a silent
 no-op, and never quietly redefined into the nearest thing:
 
 - **`group attach`/`detach`** exist only because a pbxproj group lists
-  references, so attaching does not move anything and the same object can be
-  listed twice. In a tree a node is in exactly one place and the operation is a
-  move. On a `project.xcproj` they are refused, naming **`group move <node>
-  [--to G]`**, which is new and works on both formats.
+  references, so an object can exist with no group listing it: `detach`
+  unlists one, and `attach` lists one that nothing lists. An object another
+  group lists already is refused, naming `group move`. Xcode 27.2 will not
+  open a project that lists a node in two groups ("a member of more than one
+  group"), and 27.0 keeps only one of the listings. In a tree a node is in
+  exactly one place and the operation is a move. On a `project.xcproj` they
+  are refused, naming **`group move <node> [--to G]`**, which is new and works
+  on both formats. A move takes a node out of every group listing it, so a
+  malformed double listing comes out as one.
 - **`group remove --orphan-children`** has nothing to orphan on a
   `project.xcproj`: the children are nested inside the group rather than listed
   by it, so deleting it would delete them. Refused, naming `group move` to
@@ -2037,7 +2053,8 @@ no-op, and never quietly redefined into the nearest thing:
 `fileref remove --dangling` does carry, with the consequence stated per format:
 a pbxproj is left with build files pointing at nothing, while here the
 memberships live on the node and go with it. The guard is the same either way —
-a delete that would drop membership asks first.
+a delete that would drop membership asks first. `--dangling` covers membership
+only: a file the rest of the document names is refused under it too.
 
 **`--parent` and `--to` default to the navigator root**, which is the
 `mainGroup` in one format and the top of `files` in the other. That relaxes
@@ -2053,6 +2070,18 @@ directory comes off the front when it prefixes the resolved path, and the node
 is anchored at the project root when it does not. Each outcome reports the
 resolved path, so the preservation is checkable rather than promised, and a
 move and its reverse leave the document byte for byte as it was.
+
+In a `project.xcproj` a move also changes the node's address, and the document
+names nodes by address: a configuration's xcconfig `file` or its `anchor`, a
+target's `product`, and the `products-group`, which Xcode reads as `Products`
+when the document leaves it out. Moving `Config` under `Sources` left
+`"file": "Config/Base.xcconfig"` naming nothing, and Xcode 27.0 and 27.2 then
+refused the project with "Invalid reference". A move rewrites every reference
+into the moved subtree to the new address, and writes `products-group` when
+the products group leaves the root, dropping it again when it comes back. A
+reference written as `id:` needs nothing. A move onto a navigator path another
+node already has is refused, as an add there is: the two would share one
+address, and a reference to either would then name both.
 
 ## 9h. v8 — `app screenshot` for native macOS apps
 

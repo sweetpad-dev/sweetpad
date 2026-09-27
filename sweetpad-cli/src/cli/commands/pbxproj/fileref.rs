@@ -290,17 +290,29 @@ fn remove(ctx: &mut Context, args: &RemoveArgs) -> CommandResult {
 
     // Say what the delete took with it — the group entry has to go or the
     // project would name a missing object, and that is worth stating.
-    let detached = match &outcome.detached_from {
-        Some(group) => format!("; dropped from group {group}"),
-        None => String::new(),
-    };
     Ok(Rendered::data(RefMutation {
-        line: format!("removed {}{detached}", outcome.address),
+        line: format!("removed {}{}", outcome.address, detached_text(&outcome)),
         json: serde_json::json!({
             "action": "remove",
             "address": outcome.address,
             "detachedFrom": outcome.detached_from,
+            "alsoDetachedFrom": outcome.also_detached_from,
             "changed": true,
         }),
     }))
+}
+
+/// The groups a delete took the node out of, for the report line: the
+/// listing Xcode keeps, then any second listing a malformed project had.
+pub(super) fn detached_text(outcome: &RemoveOutcome) -> String {
+    let mut text = match &outcome.detached_from {
+        Some(group) => format!("; dropped from group {group}"),
+        None => String::new(),
+    };
+    if !outcome.also_detached_from.is_empty() {
+        text += "; also dropped from ";
+        text += &outcome.also_detached_from.join(", ");
+        text += ", which listed it a second time";
+    }
+    text
 }
