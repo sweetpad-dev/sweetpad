@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { ensureDir, getProjectStateDir } from "../cli-server/paths";
 import { registerBspConfig } from "../cli-server/registry";
 import { getWorkspaceConfig } from "../common/config";
-import { isFileExists } from "../common/files";
+import { isFileExists, readJsonFile } from "../common/files";
 import { getBspConfigFile, getBspLogPath, getBspSocketPath } from "./paths";
 
 /**
@@ -93,6 +93,15 @@ export async function writeBspConfig(config: BspResolvedConfig): Promise<string>
 
 export async function hasBspConfig(workspacePath: string): Promise<boolean> {
   return await isFileExists(getBspConfigFile(workspacePath));
+}
+
+/** The `bsp.json` on disk for `workspacePath`, or `undefined` when there is none to read. */
+export async function readBspConfig(workspacePath: string): Promise<Partial<BspResolvedConfig> | undefined> {
+  try {
+    return await readJsonFile<Partial<BspResolvedConfig>>(getBspConfigFile(workspacePath));
+  } catch {
+    return undefined;
+  }
 }
 
 /**

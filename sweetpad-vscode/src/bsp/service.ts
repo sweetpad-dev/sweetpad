@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import type { BuildManager } from "../build/manager";
+import { restartSwiftLSP } from "../build/utils";
 import { unregisterBspConfig } from "../cli-server/registry";
 import { getWorkspaceConfig, onDidChangeConfiguration } from "../common/config";
 import { commonLogger } from "../common/logger";
@@ -10,7 +11,7 @@ import { BSP_LOG_LEVELS, BspBridge, type BspLogLevel } from "./bridge";
 import { getBuildServerProvider, isSweetpadBuildServerActive } from "./commands";
 import { buildBspResolvedConfig } from "./config";
 import { getBspSocketPath } from "./paths";
-import { writeBspConfig } from "./write";
+import { readBspConfig, writeBspConfig } from "./write";
 
 export type BspStatusSnapshot = {
   bspConnected: boolean;
@@ -59,7 +60,12 @@ export class BspService implements vscode.Disposable {
         if (event.affectsConfiguration("sweetpad.buildServer.provider")) void this.activate();
         if (event.affectsConfiguration("sweetpad.buildServer.logLevel")) this.applyLogLevel();
         // The server re-reads bsp.json when it changes, so the index follows the builds' settings.
-        if (event.affectsConfiguration("sweetpad.build.args")) void this.saveConfig();
+        if (
+          event.affectsConfiguration("sweetpad.build.args") ||
+          event.affectsConfiguration("sweetpad.build.derivedDataPath")
+        ) {
+          void this.saveConfig();
+        }
       }),
       // Both the socket and the config file are named by a hash of the workspace folder, so a
       // project in another folder means a different socket to dial and a different file to write.
@@ -90,6 +96,11 @@ export class BspService implements vscode.Disposable {
    * `buildServer.json`: this owns the file's contents, but cannot create it.
    * Best-effort — a write failure or a folder with no Xcode workspace is
    * logged, not surfaced.
+   *
+   * The server reads `derivedDataPath` only at startup, so a write that moves
+   * it restarts the language server, which starts a new server on the new
+   * location. `restartSwiftLSP` skips that when `sweetpad.build.autoRestartSwiftLSP`
+   * is off.
    */
   private async saveConfig(): Promise<void> {
     const workspacePath = this.workspaceContext.root;
@@ -108,8 +119,16 @@ export class BspService implements vscode.Disposable {
       if (!config) {
         return;
       }
+      const written = await readBspConfig(workspacePath);
       await writeBspConfig(config);
       this.registeredPaths.add(workspacePath);
+      if (written && (written.derivedDataPath ?? null) !== config.derivedDataPath) {
+        commonLogger.log("DerivedData moved, restarting the Swift language server so the index follows", {
+          from: written.derivedDataPath ?? null,
+          to: config.derivedDataPath,
+        });
+        await restartSwiftLSP();
+      }
     } catch (err) {
       commonLogger.debug("Failed to write bsp.json", { error: err });
     }

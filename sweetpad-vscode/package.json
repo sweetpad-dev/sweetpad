@@ -1329,7 +1329,7 @@
         "sweetpad.build.autoRestartSwiftLSP": {
           "type": "boolean",
           "default": true,
-          "description": "Restart the Swift language server after every build and after `tuist generate` / `tuist install` / `xcodegen generate`. Disable when using a build server that does not require LSP restarts (e.g. one with background indexing). Has no effect on the explicit 'SweetPad: Generate Build Server Config' command, which always restarts."
+          "description": "Restart the Swift language server after every build, after `tuist generate` / `tuist install` / `xcodegen generate`, and when the built-in build server's DerivedData location changes. Disable when using a build server that does not require LSP restarts (e.g. one with background indexing). Has no effect on the explicit 'SweetPad: Generate Build Server Config' command, which always restarts."
         },
         "sweetpad.build.logStreamEnabled": {
           "type": "boolean",

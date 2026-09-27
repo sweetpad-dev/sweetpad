@@ -64,7 +64,7 @@ Covered in depth in [Autocomplete](./autocomplete.md).
 | `sweetpad.buildServer.logLevel`                 | `info`               | Verbosity of the built-in server's live log stream (`off`, `error`, `info`, `debug`). The log file always captures everything. |
 | `sweetpad.buildServer.logPath`                  | —                    | Custom location for the built-in server's log file. Relative paths and `${workspaceFolder}` resolve against the workspace. |
 | `sweetpad.build.autoGenerateBuildServerConfig`  | `true`               | Regenerate `buildServer.json` on build and scheme change. Turn off if you maintain your own file. |
-| `sweetpad.build.autoRestartSwiftLSP`            | `true`               | Restart the Swift language server after builds and project regeneration.                   |
+| `sweetpad.build.autoRestartSwiftLSP`            | `true`               | Restart the Swift language server after builds, after project regeneration, and when DerivedData moves. |
 | `sweetpad.xcodebuildserver.autogenerate`        | `true`               | Regenerate the build server config when the default scheme changes.                        |
 | `sweetpad.xcodebuildserver.path`                | —                    | Custom `xcode-build-server` binary, if it's not on `PATH`.                                  |
 | `sweetpad.xcodebuildserver.serverEnv`           | `{}`                 | Environment variables for the long-running xcode-build-server process (e.g. `XBS_LOGPATH`). |

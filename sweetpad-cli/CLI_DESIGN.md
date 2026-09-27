@@ -3405,7 +3405,13 @@ resolver answers the extension's app locator and its CLI server, so builds,
 launches and the index share one answer. `serve` ignores the flag in
 `buildArgs`, which keeps one field in charge of the location. It reads that
 field at startup only, since the index store it advertises in `initialize`
-lives there, so a change reaches the index when the server restarts.
+lives there, so a change reaches the index when the server restarts. The
+extension rewrites `bsp.json` when `sweetpad.build.args` or
+`sweetpad.build.derivedDataPath` changes. When the new `derivedDataPath`
+differs from the one in the file it replaces, it restarts the Swift language
+server, and sourcekit-lsp starts a new server that reads the new location.
+`sweetpad.build.autoRestartSwiftLSP` turns that restart off, as it does the
+one after each build.
 
 ### Settings that move the product are followed (decided)
 
