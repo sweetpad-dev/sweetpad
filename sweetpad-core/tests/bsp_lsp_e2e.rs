@@ -9,7 +9,12 @@
 //! arguments that resolve the cross-module import.
 //!
 //! Opt-in (`BSP_ORACLE=1`): it copies the fixture to a temp dir, builds it with
-//! `xcodebuild`, and runs `sourcekit-lsp` from Xcode 26.5. ⚠️ Pinned to 26.5.
+//! `xcodebuild`, and runs `sourcekit-lsp` from the Xcode `BSP_ORACLE_XCODE`
+//! names, else the selected one ([`oracle_xcode`]). The build and
+//! `sourcekit-lsp`, with the server it launches, get a `TMPDIR` in that temp
+//! dir.
+
+mod oracle_xcode;
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -17,20 +22,31 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use oracle_xcode::OracleXcode;
 use serde_json::{Value, json};
 use sweetpad_core::scratch::ScratchDir;
 
-const XCODE: &str = "/Applications/Xcode-26.5.0.app";
-
-fn developer_dir() -> String {
-    format!("{XCODE}/Contents/Developer")
+/// The Xcode to run against and its `sourcekit-lsp`, when `BSP_ORACLE` is set
+/// and that Xcode has one; prints why when it doesn't.
+fn gated(what: &str) -> Option<(OracleXcode, PathBuf)> {
+    if std::env::var("BSP_ORACLE").is_err() {
+        eprintln!("skipping: set BSP_ORACLE=1 to run the {what}");
+        return None;
+    }
+    let xcode = oracle_xcode::find()?;
+    let sourcekit_lsp = xcode.tool("sourcekit-lsp");
+    if !sourcekit_lsp.exists() {
+        eprintln!("skipping: {} not found", sourcekit_lsp.display());
+        return None;
+    }
+    Some((xcode, sourcekit_lsp))
 }
 
-fn bin_dir(tool: &str) -> String {
-    format!(
-        "{}/Toolchains/XcodeDefault.xctoolchain/usr/bin/{tool}",
-        developer_dir()
-    )
+/// A `TMPDIR` inside `root`, which goes with it.
+fn tmpdir(root: &Path) -> PathBuf {
+    let tmp = root.join("tmp");
+    std::fs::create_dir_all(&tmp).unwrap();
+    tmp
 }
 
 fn lsp_frame(msg: &Value) -> Vec<u8> {
@@ -94,15 +110,9 @@ fn read_lsp(reader: &mut impl BufRead) -> Option<Value> {
 #[test]
 #[allow(clippy::too_many_lines)] // a linear end-to-end harness reads clearer in one piece
 fn bsp_lsp_e2e() {
-    if std::env::var("BSP_ORACLE").is_err() {
-        eprintln!("skipping: set BSP_ORACLE=1 to run the sourcekit-lsp end-to-end oracle");
+    let Some((xcode, sourcekit_lsp)) = gated("sourcekit-lsp end-to-end oracle") else {
         return;
-    }
-    let sourcekit_lsp = bin_dir("sourcekit-lsp");
-    if !Path::new(&sourcekit_lsp).exists() {
-        eprintln!("skipping: {sourcekit_lsp} not found");
-        return;
-    }
+    };
 
     // Isolate everything in a temp copy of the fixture.
     let root = ScratchDir::new("sweetpad-lsp").unwrap();
@@ -110,10 +120,11 @@ fn bsp_lsp_e2e() {
     let project_dir = root.join("project");
     let xcodeproj = project_dir.join("MultiModule.xcodeproj");
     let dd = root.join("dd");
+    let tmp = tmpdir(&root);
 
     // Build so ModuleA.swiftmodule exists where the args point.
-    let build = Command::new("xcodebuild")
-        .env("DEVELOPER_DIR", developer_dir())
+    let build = xcode
+        .command("xcodebuild", &tmp)
         .args(["build", "-project"])
         .arg(&xcodeproj)
         .args([
@@ -141,7 +152,9 @@ fn bsp_lsp_e2e() {
     let config = Command::new(bsp_bin)
         .args(["config", "--project"])
         .arg(&xcodeproj)
-        .args(["--xcode", XCODE, "--derived-data-path"])
+        .arg("--xcode")
+        .arg(&xcode.path)
+        .arg("--derived-data-path")
         .arg(&dd)
         .arg("--output")
         .arg(project_dir.join("buildServer.json"))
@@ -150,8 +163,8 @@ fn bsp_lsp_e2e() {
     assert!(config.success(), "config command failed");
 
     // Launch sourcekit-lsp.
-    let mut lsp = Command::new(&sourcekit_lsp)
-        .env("DEVELOPER_DIR", developer_dir())
+    let mut lsp = xcode
+        .command(&sourcekit_lsp, &tmp)
         .current_dir(&project_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -311,21 +324,16 @@ fn is_module_resolution_error(message: &str) -> bool {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn prepare_resolves_cross_module_without_prior_build() {
-    if std::env::var("BSP_ORACLE").is_err() {
-        eprintln!("skipping: set BSP_ORACLE=1 to run the sourcekit-lsp prepare end-to-end oracle");
+    let Some((xcode, sourcekit_lsp)) = gated("sourcekit-lsp prepare end-to-end oracle") else {
         return;
-    }
-    let sourcekit_lsp = bin_dir("sourcekit-lsp");
-    if !Path::new(&sourcekit_lsp).exists() {
-        eprintln!("skipping: {sourcekit_lsp} not found");
-        return;
-    }
+    };
 
     let root = ScratchDir::new("sweetpad-lsp-prep").unwrap();
     copy_fixture(&root);
     let project_dir = root.join("project");
     let xcodeproj = project_dir.join("MultiModule.xcodeproj");
     let dd = root.join("dd"); // clean — deliberately NOT built up front
+    let tmp = tmpdir(&root);
 
     // buildServer.json → our server, pointed at the clean DerivedData; prepare
     // will build the dependency module into it on demand.
@@ -333,7 +341,9 @@ fn prepare_resolves_cross_module_without_prior_build() {
     let config = Command::new(bsp_bin)
         .args(["config", "--project"])
         .arg(&xcodeproj)
-        .args(["--xcode", XCODE, "--derived-data-path"])
+        .arg("--xcode")
+        .arg(&xcode.path)
+        .arg("--derived-data-path")
         .arg(&dd)
         .arg("--output")
         .arg(project_dir.join("buildServer.json"))
@@ -341,8 +351,8 @@ fn prepare_resolves_cross_module_without_prior_build() {
         .expect("run config");
     assert!(config.success(), "config command failed");
 
-    let mut lsp = Command::new(&sourcekit_lsp)
-        .env("DEVELOPER_DIR", developer_dir())
+    let mut lsp = xcode
+        .command(&sourcekit_lsp, &tmp)
         .current_dir(&project_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

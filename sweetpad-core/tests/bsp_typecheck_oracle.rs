@@ -20,28 +20,37 @@
 //! path class we've never thought about shows up as a failure rather than as
 //! completion that quietly doesn't work.
 //!
-//! Opt-in: builds with `xcodebuild`, so it only runs when `BSP_ORACLE=1` (and
-//! Xcode 26.5 is installed). ⚠️ Pinned to Xcode 26.5 — expand later (DOCS.md §8).
+//! Opt-in: builds with `xcodebuild`, so it only runs when `BSP_ORACLE=1`. It
+//! builds with the Xcode `BSP_ORACLE_XCODE` names, else the selected one
+//! ([`oracle_xcode`]), and gives the build and the front ends a `TMPDIR` of
+//! the test's own.
+
+mod oracle_xcode;
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
+use oracle_xcode::OracleXcode;
 use sweetpad_core::build_settings::{self, BuildSettingsOptions};
 use sweetpad_core::scratch::ScratchDir;
 use sweetpad_lib::compiler_args::TargetCompilerArguments;
 
-// ⚠️ Xcode 26.5 only for now (DOCS.md §8 "expand later").
-const XCODE: &str = "/Applications/Xcode-26.5.0.app";
-
-fn developer_dir() -> String {
-    format!("{XCODE}/Contents/Developer")
+/// The Xcode the oracle builds with and the `TMPDIR` its tools run in.
+struct Oracle {
+    xcode: OracleXcode,
+    tmp: ScratchDir,
 }
 
-fn toolchain_bin(tool: &str) -> String {
-    format!(
-        "{}/Toolchains/XcodeDefault.xctoolchain/usr/bin/{tool}",
-        developer_dir()
-    )
+/// The oracle, when `BSP_ORACLE` is set and there is an Xcode to build with;
+/// prints why when there isn't.
+fn gated(what: &str) -> Option<Oracle> {
+    if std::env::var("BSP_ORACLE").is_err() {
+        eprintln!("skipping: set BSP_ORACLE=1 to run the {what}");
+        return None;
+    }
+    Some(Oracle {
+        xcode: oracle_xcode::find()?,
+        tmp: ScratchDir::new("sweetpad-bsp-typecheck-tmp").unwrap(),
+    })
 }
 
 fn fixture(name: &str, proj: &str) -> PathBuf {
@@ -118,7 +127,12 @@ fn resolution_errors(stderr: &str) -> Vec<String> {
         .collect()
 }
 
-fn resolve_target(project: &Path, target: &str, dd: &Path) -> TargetCompilerArguments {
+fn resolve_target(
+    oracle: &Oracle,
+    project: &Path,
+    target: &str,
+    dd: &Path,
+) -> TargetCompilerArguments {
     let opts = BuildSettingsOptions {
         project: Some(project.to_path_buf()),
         workspace: None,
@@ -129,7 +143,7 @@ fn resolve_target(project: &Path, target: &str, dd: &Path) -> TargetCompilerArgu
         arch: "arm64".into(),
         destination: None,
         xcconfig: None,
-        xcode: Some(PathBuf::from(XCODE)),
+        xcode: Some(oracle.xcode.path.clone()),
         xcspec_root: None,
         sdksettings_root: None,
         catalog_cache: None,
@@ -149,9 +163,10 @@ fn resolve_target(project: &Path, target: &str, dd: &Path) -> TargetCompilerArgu
 
 /// Build a fixture hermetically into `dd`, returning xcodebuild's transcript
 /// (which carries the `CompileC` lines the search-path check reads back).
-fn build_fixture(project: &Path, scheme: &str, dd: &Path) -> String {
-    let build = Command::new("xcodebuild")
-        .env("DEVELOPER_DIR", developer_dir())
+fn build_fixture(oracle: &Oracle, project: &Path, scheme: &str, dd: &Path) -> String {
+    let build = oracle
+        .xcode
+        .command("xcodebuild", &oracle.tmp)
         .args(["build", "-project"])
         .arg(project)
         .args([
@@ -176,14 +191,20 @@ fn build_fixture(project: &Path, scheme: &str, dd: &Path) -> String {
 }
 
 /// Run a front end on a target's sources, returning resolution errors.
-fn check_target(project: &Path, target: &str, dd: &Path, swift: bool) -> Vec<String> {
-    let inv = resolve_target(project, target, dd);
+fn check_target(
+    oracle: &Oracle,
+    project: &Path,
+    target: &str,
+    dd: &Path,
+    swift: bool,
+) -> Vec<String> {
+    let inv = resolve_target(oracle, project, target, dd);
     let (tool, action, build_args, files) = if swift {
         let s = inv
             .swift
             .unwrap_or_else(|| panic!("{target} has no swift invocation"));
         (
-            toolchain_bin("swiftc"),
+            oracle.xcode.tool("swiftc"),
             "-typecheck",
             s.arguments,
             s.input_files,
@@ -193,7 +214,7 @@ fn check_target(project: &Path, target: &str, dd: &Path, swift: bool) -> Vec<Str
             .clang
             .unwrap_or_else(|| panic!("{target} has no clang invocation"));
         (
-            toolchain_bin("clang"),
+            oracle.xcode.tool("clang"),
             "-fsyntax-only",
             c.arguments,
             c.input_files,
@@ -201,11 +222,12 @@ fn check_target(project: &Path, target: &str, dd: &Path, swift: bool) -> Vec<Str
     };
     let mut args = syntax_args(&build_args, action);
     args.extend(files);
-    let out = Command::new(&tool)
-        .env("DEVELOPER_DIR", developer_dir())
+    let out = oracle
+        .xcode
+        .command(&tool, &oracle.tmp)
         .args(&args)
         .output()
-        .unwrap_or_else(|e| panic!("run {tool}: {e}"));
+        .unwrap_or_else(|e| panic!("run {}: {e}", tool.display()));
     let errs = resolution_errors(&String::from_utf8_lossy(&out.stderr));
     eprintln!(
         "[{target}] {} exit={} resolution-errors={}",
@@ -221,47 +243,42 @@ fn check_target(project: &Path, target: &str, dd: &Path, swift: bool) -> Vec<Str
 
 #[test]
 fn bsp_typecheck_oracle() {
-    if std::env::var("BSP_ORACLE").is_err() {
-        eprintln!("skipping: set BSP_ORACLE=1 to run the BSP type-check oracle");
+    let Some(oracle) = gated("BSP type-check oracle") else {
         return;
-    }
-    if !Path::new(XCODE).exists() {
-        eprintln!("skipping: {XCODE} not installed");
-        return;
-    }
+    };
 
     let mut errors = Vec::new();
 
     // Swift cross-module: ModuleB imports ModuleA.
     let multimodule = fixture("_synthetic-multimodule", "MultiModule.xcodeproj");
     let dd1 = ScratchDir::new("sweetpad-bsp-mm").unwrap();
-    let _ = build_fixture(&multimodule, "ModuleB", &dd1);
-    errors.extend(check_target(&multimodule, "ModuleA", &dd1, true));
-    errors.extend(check_target(&multimodule, "ModuleB", &dd1, true));
+    let _ = build_fixture(&oracle, &multimodule, "ModuleB", &dd1);
+    errors.extend(check_target(&oracle, &multimodule, "ModuleA", &dd1, true));
+    errors.extend(check_target(&oracle, &multimodule, "ModuleB", &dd1, true));
     drop(dd1);
 
     // ObjC header search path: widget.m #imports include/widget.h via HEADER_SEARCH_PATHS.
     let objc = fixture("_synthetic-objc-headers", "ObjCHeaders.xcodeproj");
     let dd2 = ScratchDir::new("sweetpad-bsp-objc").unwrap();
-    let _ = build_fixture(&objc, "ObjCHeaders", &dd2);
-    errors.extend(check_target(&objc, "ObjCHeaders", &dd2, false));
+    let _ = build_fixture(&oracle, &objc, "ObjCHeaders", &dd2);
+    errors.extend(check_target(&oracle, &objc, "ObjCHeaders", &dd2, false));
     drop(dd2);
 
     // Swift Package product: SpmApp imports `Dep` from a local package, whose
     // module Xcode builds into the products dir / PackageFrameworks.
     let spm = fixture("_synthetic-spm", "SpmApp.xcodeproj");
     let dd3 = ScratchDir::new("sweetpad-bsp-spm").unwrap();
-    let _ = build_fixture(&spm, "SpmApp", &dd3);
-    errors.extend(check_target(&spm, "SpmApp", &dd3, true));
+    let _ = build_fixture(&oracle, &spm, "SpmApp", &dd3);
+    errors.extend(check_target(&oracle, &spm, "SpmApp", &dd3, true));
     drop(dd3);
 
     // Header maps + generated sources: none of Widget.m's imports is reachable
     // through HEADER_SEARCH_PATHS, which the fixture doesn't set at all.
     let hmaps = fixture("_synthetic-headermaps", "HeaderMaps.xcodeproj");
     let dd4 = ScratchDir::new("sweetpad-bsp-hmap").unwrap();
-    let _ = build_fixture(&hmaps, "HeaderMaps", &dd4);
-    errors.extend(check_target(&hmaps, "HeaderMapsCore", &dd4, false));
-    errors.extend(check_target(&hmaps, "HeaderMaps", &dd4, false));
+    let _ = build_fixture(&oracle, &hmaps, "HeaderMaps", &dd4);
+    errors.extend(check_target(&oracle, &hmaps, "HeaderMapsCore", &dd4, false));
+    errors.extend(check_target(&oracle, &hmaps, "HeaderMaps", &dd4, false));
     drop(dd4);
 
     assert!(
@@ -341,23 +358,18 @@ fn search_paths(args: &[String]) -> Vec<String> {
 /// since it scores header maps and `Intermediates.noindex` paths as geometry.
 #[test]
 fn bsp_clang_search_paths_cover_xcodes() {
-    if std::env::var("BSP_ORACLE").is_err() {
-        eprintln!("skipping: set BSP_ORACLE=1 to run the BSP search-path coverage check");
+    let Some(oracle) = gated("BSP search-path coverage check") else {
         return;
-    }
-    if !Path::new(XCODE).exists() {
-        eprintln!("skipping: {XCODE} not installed");
-        return;
-    }
+    };
 
     let project = fixture("_synthetic-headermaps", "HeaderMaps.xcodeproj");
     let dd = ScratchDir::new("sweetpad-bsp-cover").unwrap();
-    let log = build_fixture(&project, "HeaderMaps", &dd);
+    let log = build_fixture(&oracle, &project, "HeaderMaps", &dd);
 
     let mut missing = Vec::new();
     for target in ["HeaderMapsCore", "HeaderMaps"] {
         let ours = search_paths(
-            &resolve_target(&project, target, &dd)
+            &resolve_target(&oracle, &project, target, &dd)
                 .clang
                 .unwrap_or_else(|| panic!("{target} has no clang invocation"))
                 .arguments,

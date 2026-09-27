@@ -17,12 +17,15 @@
 //! Xcode `BSP_ORACLE_XCODE` names (the `.app` or its `Developer` directory),
 //! else the selected one: `DEVELOPER_DIR`, then `xcode-select -p`.
 
+mod oracle_xcode;
+
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use oracle_xcode::OracleXcode;
 use sweetpad_core::scratch::ScratchDir;
 
 /// Long enough for a cold `xcodebuild` on a small fixture, short enough that a
@@ -40,38 +43,14 @@ fn fixture(name: &str, proj: &str) -> String {
     )
 }
 
-/// The Xcode `BSP_ORACLE_XCODE` names, if it is set.
-fn pinned_xcode() -> Option<PathBuf> {
-    std::env::var_os("BSP_ORACLE_XCODE")
-        .filter(|path| !path.is_empty())
-        .map(PathBuf::from)
-}
-
-/// The Xcode the server builds with.
-fn xcode() -> PathBuf {
-    pinned_xcode().unwrap_or_else(sweetpad_lib::xcode::detect_developer_dir)
-}
-
-/// Whether the gated preconditions hold; prints why when they don't. An Xcode
-/// `BSP_ORACLE_XCODE` names has to exist.
-fn gated() -> bool {
+/// The Xcode the server builds with, when the gated preconditions hold;
+/// prints why when they don't.
+fn gated() -> Option<OracleXcode> {
     if std::env::var("BSP_ORACLE").is_err() {
         eprintln!("skipping: set BSP_ORACLE=1 to run the BSP prepare oracle");
-        return false;
+        return None;
     }
-    let xcode = xcode();
-    if let Some(pinned) = pinned_xcode() {
-        assert!(
-            pinned.exists(),
-            "BSP_ORACLE_XCODE names {}, which does not exist",
-            pinned.display()
-        );
-    } else if !xcode.exists() {
-        eprintln!("skipping: no Xcode at {}", xcode.display());
-        return false;
-    }
-    eprintln!("building with {}", xcode.display());
-    true
+    oracle_xcode::find()
 }
 
 /// A running BSP server plus everything it has written to stdout so far, so a
@@ -84,10 +63,10 @@ struct Session {
 }
 
 impl Session {
-    fn start(project: &str, dd: &Path, log: &Path) -> Session {
+    fn start(xcode: &OracleXcode, project: &str, dd: &Path, log: &Path) -> Session {
         let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
             .args(["bsp", "--project", project, "--xcode"])
-            .arg(xcode())
+            .arg(&xcode.path)
             .arg("--derived-data-path")
             .arg(dd)
             .env("SWEETPAD_BSP_LOG", log)
@@ -170,15 +149,15 @@ fn last_compiler_arguments(transcript: &str) -> String {
 
 #[test]
 fn prepare_builds_dependency_module_from_clean_deriveddata() {
-    if !gated() {
+    let Some(xcode) = gated() else {
         return;
-    }
+    };
     let project = fixture("_synthetic-multimodule", "MultiModule.xcodeproj");
     let scratch = ScratchDir::new("sweetpad-bsp-prep").unwrap();
     let (dd, log) = (scratch.join("dd"), scratch.join("bsp.log"));
     let dep_module = dd.join("Build/Products/Debug/ModuleA.swiftmodule");
 
-    let mut session = Session::start(&project, &dd, &log);
+    let mut session = Session::start(&xcode, &project, &dd, &log);
     session.send(r#"{"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}"#);
     session.send(r#"{"jsonrpc":"2.0","method":"build/initialized"}"#);
     // prepare ModuleB → must build its dependency ModuleA's module.
@@ -216,9 +195,9 @@ fn prepare_builds_dependency_module_from_clean_deriveddata() {
 /// would prepare the target before this can observe the cold tree.
 #[test]
 fn prepare_publishes_header_maps_and_notifies() {
-    if !gated() {
+    let Some(xcode) = gated() else {
         return;
-    }
+    };
     let project = fixture("_synthetic-headermaps", "HeaderMaps.xcodeproj");
     let widget = format!(
         "{}/fixtures/_synthetic-headermaps/project/Top/Widget.m",
@@ -233,7 +212,7 @@ fn prepare_publishes_header_maps_and_notifies() {
         )
     };
 
-    let mut session = Session::start(&project, &dd, &log);
+    let mut session = Session::start(&xcode, &project, &dd, &log);
     session.send(r#"{"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}"#);
     session.send(&options(2));
     assert!(
@@ -285,9 +264,9 @@ fn prepare_publishes_header_maps_and_notifies() {
 /// nothing here ever sends `buildTarget/prepare`.
 #[test]
 fn startup_warmup_prepares_a_target_no_scheme_builds() {
-    if !gated() {
+    let Some(xcode) = gated() else {
         return;
-    }
+    };
     let project = fixture("_synthetic-headermaps", "HeaderMaps.xcodeproj");
     let scratch = ScratchDir::new("sweetpad-bsp-orphan").unwrap();
     let (dd, log) = (scratch.join("dd"), scratch.join("bsp.log"));
@@ -296,7 +275,7 @@ fn startup_warmup_prepares_a_target_no_scheme_builds() {
          HeaderMapsOrphan-project-headers.hmap",
     );
 
-    let mut session = Session::start(&project, &dd, &log);
+    let mut session = Session::start(&xcode, &project, &dd, &log);
     session.send(r#"{"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}"#);
     session.send(r#"{"jsonrpc":"2.0","method":"build/initialized"}"#);
 
@@ -329,9 +308,9 @@ fn startup_warmup_prepares_a_target_no_scheme_builds() {
 /// serializes a fresh build behind every one of them.
 #[test]
 fn a_repeat_prepare_over_unchanged_inputs_is_skipped() {
-    if !gated() {
+    let Some(xcode) = gated() else {
         return;
-    }
+    };
     let project = fixture("_synthetic-headermaps", "HeaderMaps.xcodeproj");
     let scratch = ScratchDir::new("sweetpad-bsp-coalesce").unwrap();
     let (dd, log) = (scratch.join("dd"), scratch.join("bsp.log"));
@@ -341,7 +320,7 @@ fn a_repeat_prepare_over_unchanged_inputs_is_skipped() {
             r#"{{"jsonrpc":"2.0","id":{id},"method":"buildTarget/prepare","params":{{"targets":[{{"uri":"sweetpad://target/HeaderMaps"}}]}}}}"#
         )
     };
-    let mut session = Session::start(&project, &dd, &log);
+    let mut session = Session::start(&xcode, &project, &dd, &log);
     session.send(r#"{"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}"#);
     session.send(&prepare(2));
     let first = session.wait_for(r#""id":2"#, BUILD_TIMEOUT);

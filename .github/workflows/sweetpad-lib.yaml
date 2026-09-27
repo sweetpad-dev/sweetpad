@@ -27,8 +27,9 @@ on:
 # they need no Xcode and form the always-on regression gate — the BSP
 # arg-invariant linter, the compiler-args/settings oracles, and the parsers.
 #
-# The heavy tiers are NOT run here: they need a real Xcode 26.5 plus the
-# gitignored OSS corpus, so they're run locally / nightly off-CI —
+# The heavy tiers are NOT run here: they need a real Xcode (BSP_ORACLE_XCODE,
+# else the selected one) plus the gitignored OSS corpus, so they're run
+# locally / nightly off-CI —
 #   BSP_CORPUS=1     cargo test -p sweetpad-core --test bsp_corpus_completion
 #   BSP_LIVE_DIFF=1  cargo test -p sweetpad-core --test showbuildsettings_live_diff
 #   python3 sweetpad-lib/scripts/21_mutation_audit.py [--e2e]

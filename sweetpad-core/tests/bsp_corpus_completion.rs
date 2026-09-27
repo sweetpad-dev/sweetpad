@@ -19,21 +19,40 @@
 //!
 //! Opt-in (`BSP_CORPUS=1`): builds real projects with `xcodebuild` and runs
 //! `sourcekit-lsp`, so it's slow and needs the cloned corpus (`corpus/<slug>/`,
-//! recreated by `scripts/01_clone_corpus.py`) plus Xcode 26.5. Knobs:
+//! recreated by `scripts/01_clone_corpus.py`). It runs against the Xcode
+//! `BSP_ORACLE_XCODE` names, else the selected one ([`oracle_xcode`]), and each
+//! project's tools get a `TMPDIR` in that project's scratch directory. Knobs:
 //! `BSP_CORPUS_ONLY=<slug[,slug]>` to scope to some projects,
 //! `BSP_CORPUS_SAMPLE=<n>` to cap files per project (default 30).
 
+mod oracle_xcode;
+
+use std::ffi::OsStr;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use oracle_xcode::OracleXcode;
 use serde_json::{Value, json};
 use sweetpad_core::scratch::ScratchDir;
 
-const XCODE: &str = "/Applications/Xcode-26.5.0.app";
 const DEFAULT_SAMPLE: usize = 30;
+
+/// The Xcode the harness runs against, and the `TMPDIR` for the project it is
+/// measuring.
+struct Tools<'a> {
+    xcode: &'a OracleXcode,
+    tmp: &'a Path,
+}
+
+impl Tools<'_> {
+    /// `program` against this Xcode, in this `TMPDIR`.
+    fn command(&self, program: impl AsRef<OsStr>) -> Command {
+        self.xcode.command(program, self.tmp)
+    }
+}
 
 /// A corpus project the harness can drive: the `.xcodeproj` to point the server
 /// at, the scheme that builds the module(s) we measure, and the `xcodebuild`
@@ -276,17 +295,6 @@ fn run_build(cmd: &mut Command, timeout: Duration, errlog: &Path) -> Result<bool
     }
 }
 
-fn developer_dir() -> String {
-    format!("{XCODE}/Contents/Developer")
-}
-
-fn tool(name: &str) -> String {
-    format!(
-        "{}/Toolchains/XcodeDefault.xctoolchain/usr/bin/{name}",
-        developer_dir()
-    )
-}
-
 fn corpus_root() -> PathBuf {
     PathBuf::from(env!("SWEETPAD_LIB_DIR")).join("corpus")
 }
@@ -467,7 +475,7 @@ fn sample<T: Clone>(items: &[T], cap: usize) -> Vec<T> {
 }
 
 #[allow(clippy::too_many_lines)]
-fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
+fn measure_project(xcode: &OracleXcode, p: &CorpusProject, sample_cap: usize) -> Report {
     let mut report = Report {
         slug: p.slug.into(),
         skipped: None,
@@ -505,6 +513,9 @@ fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
     let scratch =
         ScratchDir::new(&format!("sweetpad-corpus-{}", p.slug.replace('/', "-"))).unwrap();
     let dd = scratch.join("dd");
+    let tmp = scratch.join("tmp");
+    std::fs::create_dir_all(&tmp).unwrap();
+    let tools = Tools { xcode, tmp: &tmp };
 
     // Build once so the module graph + generated inputs exist where our search
     // paths point.
@@ -517,13 +528,12 @@ fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
         p.destination,
         timeout.as_secs()
     );
-    let mut cmd = Command::new("xcodebuild");
-    cmd.env("DEVELOPER_DIR", developer_dir())
-        .arg(if p.build_for_testing {
-            "build-for-testing"
-        } else {
-            "build"
-        });
+    let mut cmd = tools.command("xcodebuild");
+    cmd.arg(if p.build_for_testing {
+        "build-for-testing"
+    } else {
+        "build"
+    });
     // CocoaPods needs the workspace built so the Pods build; everything else
     // builds the project directly.
     if let Some(ws) = p.workspace {
@@ -573,7 +583,9 @@ fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
     let cfg = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["config", "--project"])
         .arg(&xcodeproj)
-        .args(["--xcode", XCODE, "--derived-data-path"])
+        .arg("--xcode")
+        .arg(&xcode.path)
+        .arg("--derived-data-path")
         .arg(&dd)
         .arg("--output")
         .arg(&build_server.0)
@@ -602,7 +614,15 @@ fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
         return report;
     }
 
-    measure_files(&project_dir, &xcodeproj, &dd, &files, p.strict, &mut report);
+    measure_files(
+        &tools,
+        &project_dir,
+        &xcodeproj,
+        &dd,
+        &files,
+        p.strict,
+        &mut report,
+    );
     report
 }
 
@@ -641,7 +661,7 @@ fn bsp_frames(out: &[u8]) -> Vec<Value> {
 /// `textDocument/sourceKitOptions`), or `None` when the resolver failed for the
 /// owning target. These are the exact args sourcekit-lsp is handed, so they also
 /// feed the standalone cross-check that de-exonerates internal errors.
-fn bsp_file_args(xcodeproj: &Path, dd: &Path, file: &Path) -> Option<Vec<String>> {
+fn bsp_file_args(tools: &Tools, xcodeproj: &Path, dd: &Path, file: &Path) -> Option<Vec<String>> {
     let uri = format!("file://{}", file.to_string_lossy());
     let msgs = [
         json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
@@ -653,7 +673,8 @@ fn bsp_file_args(xcodeproj: &Path, dd: &Path, file: &Path) -> Option<Vec<String>
     for m in &msgs {
         input.extend(lsp_frame(m));
     }
-    let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
+    let mut child = tools
+        .command(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["bsp", "--project"])
         .arg(xcodeproj)
         .args(["--derived-data-path"])
@@ -690,8 +711,8 @@ fn bsp_file_args(xcodeproj: &Path, dd: &Path, file: &Path) -> Option<Vec<String>
 /// sourcekit-lsp would silently fall back, emitting no diagnostics, which the
 /// per-file measurement would otherwise misread as "clean". So a strict fixture
 /// gates on this directly, closing that false-clean hole.
-fn bsp_serves_options(xcodeproj: &Path, dd: &Path, file: &Path) -> bool {
-    bsp_file_args(xcodeproj, dd, file).is_some_and(|a| !a.is_empty())
+fn bsp_serves_options(tools: &Tools, xcodeproj: &Path, dd: &Path, file: &Path) -> bool {
+    bsp_file_args(tools, xcodeproj, dd, file).is_some_and(|a| !a.is_empty())
 }
 
 /// Cross-check a candidate internal/stdlib-load error: feed the file's own BSP
@@ -701,9 +722,9 @@ fn bsp_serves_options(xcodeproj: &Path, dd: &Path, file: &Path) -> bool {
 /// the cause (a resolution bug, not the sourcekit-lsp rough edge) and the caller
 /// charges it to us; a clean load — or only unrelated type errors — exonerates
 /// the args and leaves the file in the internal bucket.
-fn args_fail_to_load_stdlib(args: &[String]) -> bool {
-    let Ok(out) = Command::new(tool("swiftc"))
-        .env("DEVELOPER_DIR", developer_dir())
+fn args_fail_to_load_stdlib(tools: &Tools, args: &[String]) -> bool {
+    let Ok(out) = tools
+        .command(tools.xcode.tool("swiftc"))
         .arg("-typecheck")
         .args(args)
         .output()
@@ -722,6 +743,7 @@ fn args_fail_to_load_stdlib(args: &[String]) -> bool {
 /// a resolver failure that sourcekit-lsp would otherwise mask).
 #[allow(clippy::too_many_lines)] // a linear LSP-driving loop reads clearer in one piece
 fn measure_files(
+    tools: &Tools,
     root: &Path,
     xcodeproj: &Path,
     dd: &Path,
@@ -729,8 +751,8 @@ fn measure_files(
     strict: bool,
     report: &mut Report,
 ) {
-    let mut lsp = Command::new(tool("sourcekit-lsp"))
-        .env("DEVELOPER_DIR", developer_dir())
+    let mut lsp = tools
+        .command(tools.xcode.tool("sourcekit-lsp"))
         .current_dir(root)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -812,7 +834,7 @@ fn measure_files(
             .to_string();
         // For a strict fixture, a null BSP reply is itself the failure (sourcekit
         // would fall back and report nothing — a false clean), so gate on it.
-        if strict && !bsp_serves_options(xcodeproj, dd, file) {
+        if strict && !bsp_serves_options(tools, xcodeproj, dd, file) {
             report.failed += 1;
             if report.samples.len() < 8 {
                 report.samples.push((
@@ -852,8 +874,8 @@ fn measure_files(
                 // standalone compile with the file's own BSP args loads the
                 // stdlib cleanly. If that compile also fails to load the stdlib,
                 // our `-sdk`/`-target` are wrong and it is our resolution failure.
-                let our_fault = bsp_file_args(xcodeproj, dd, file)
-                    .is_some_and(|args| args_fail_to_load_stdlib(&args));
+                let our_fault = bsp_file_args(tools, xcodeproj, dd, file)
+                    .is_some_and(|args| args_fail_to_load_stdlib(tools, &args));
                 if our_fault {
                     report.failed += 1;
                     report.reclassified += 1;
@@ -907,8 +929,14 @@ fn bsp_corpus_completion() {
         eprintln!("skipping: set BSP_CORPUS=1 to run the corpus-scale completion oracle");
         return;
     }
-    if !Path::new(&tool("sourcekit-lsp")).exists() {
-        eprintln!("skipping: sourcekit-lsp not found under {XCODE}");
+    let Some(xcode) = oracle_xcode::find() else {
+        return;
+    };
+    if !xcode.tool("sourcekit-lsp").exists() {
+        eprintln!(
+            "skipping: sourcekit-lsp not found under {}",
+            xcode.path.display()
+        );
         return;
     }
 
@@ -927,7 +955,7 @@ fn bsp_corpus_completion() {
         {
             continue;
         }
-        reports.push(measure_project(p, sample_cap));
+        reports.push(measure_project(&xcode, p, sample_cap));
     }
 
     // Report. The clean-file rate is the measurement — printed, not asserted

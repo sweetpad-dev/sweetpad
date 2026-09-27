@@ -15,21 +15,22 @@
 //! reported, since this is a discovery sweep, not a byte-for-byte gate.
 //!
 //! Opt-in (`BSP_LIVE_DIFF=1`): shells out to `xcodebuild` per (target, platform,
-//! config), so it's slow and needs Xcode 26.5. `BSP_LIVE_DIFF_ONLY=<slug>` scopes it.
+//! config), so it's slow. It runs the Xcode `BSP_ORACLE_XCODE` names, else the
+//! selected one ([`oracle_xcode`]), with a `TMPDIR` of the test's own, and
+//! resolves against that Xcode's own specs. `BSP_LIVE_DIFF_ONLY=<slug>` scopes it.
 
 mod common;
+mod oracle_xcode;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-use common::{CatalogCache, canonicalize_value, fixtures_root};
+use common::{canonicalize_value, fixtures_root};
+use oracle_xcode::OracleXcode;
 use serde_json::Value;
 use sweetpad_core::build_context::{BuildContext, ResolveQuery};
-use sweetpad_lib::project;
-
-const XCODE: &str = "/Applications/Xcode-26.5.0.app";
-const XCODE_VERSION: &str = "26.5.0";
+use sweetpad_core::scratch::ScratchDir;
+use sweetpad_lib::{project, xcspec};
 
 const KNOWN_SDKS: &[&str] = &[
     "macosx",
@@ -52,21 +53,43 @@ const CRITICAL_KEYS: &[&str] = &[
     "SWIFT_PLATFORM_TARGET_PREFIX",
 ];
 
-fn developer_dir() -> String {
-    format!("{XCODE}/Contents/Developer")
+/// The Xcode the diff runs and the `TMPDIR` it runs in.
+struct Live {
+    xcode: OracleXcode,
+    tmp: ScratchDir,
+}
+
+/// The defaults catalog of the Xcode under test, stamped with its location and
+/// version the way the resolver's own `--xcode` loading stamps it, so ours and
+/// xcodebuild's settings come from the same install.
+fn catalog(xcode: &OracleXcode) -> xcspec::Catalog {
+    let layout = &xcode.layout;
+    let mut catalog = xcspec::load_catalog(&layout.xcspec_root, Some(&layout.sdksettings_root))
+        .unwrap_or_else(|e| {
+            panic!(
+                "failed to load the xcspec catalog from {}: {e}",
+                layout.xcspec_root.display()
+            )
+        });
+    catalog.developer_dir = Some(layout.developer_dir.to_string_lossy().into_owned());
+    catalog.xcode_version = Some(layout.short_version.clone()).filter(|v| !v.is_empty());
+    catalog.product_build_version = Some(layout.build_version.clone()).filter(|v| !v.is_empty());
+    catalog
 }
 
 /// Real `buildSettings` for `(target, config, sdk)` via a bound
 /// `-showBuildSettings -json`, or `None` if xcodebuild fails (e.g. the target
 /// can't resolve for that SDK).
 fn xcodebuild_settings(
+    live: &Live,
     xcodeproj: &Path,
     target: &str,
     config: &str,
     sdk: &str,
 ) -> Option<BTreeMap<String, String>> {
-    let out = Command::new("xcodebuild")
-        .env("DEVELOPER_DIR", developer_dir())
+    let out = live
+        .xcode
+        .command("xcodebuild", &live.tmp)
         .arg("-showBuildSettings")
         .arg("-json")
         .arg("-project")
@@ -118,13 +141,14 @@ struct Diff {
 /// differs from xcodebuild's. Keys xcodebuild doesn't emit are skipped (we model
 /// some it derives differently); keys we don't emit are out of scope.
 fn diff_target(
+    live: &Live,
     ctx: &BuildContext,
     xcodeproj: &Path,
     target: &str,
     platform: &str,
     config: &str,
 ) -> Option<Vec<Diff>> {
-    let theirs = xcodebuild_settings(xcodeproj, target, config, platform)?;
+    let theirs = xcodebuild_settings(live, xcodeproj, target, config, platform)?;
     let ours = ctx
         .resolve(&ResolveQuery::new(target, config, platform, "arm64"))
         .ok()?
@@ -173,13 +197,15 @@ fn resolver_matches_live_showbuildsettings() {
         eprintln!("skipping: set BSP_LIVE_DIFF=1 to run the live -showBuildSettings differential");
         return;
     }
-    if !Path::new(XCODE).exists() {
-        eprintln!("skipping: {XCODE} not found");
+    let Some(xcode) = oracle_xcode::find() else {
         return;
-    }
+    };
     let only = std::env::var("BSP_LIVE_DIFF_ONLY").ok();
-    let mut cache = CatalogCache::new();
-    let catalog = cache.get(XCODE_VERSION).clone();
+    let catalog = catalog(&xcode);
+    let live = Live {
+        xcode,
+        tmp: ScratchDir::new("sweetpad-live-diff-tmp").unwrap(),
+    };
 
     let mut critical_failures = Vec::new();
     let mut compared = 0;
@@ -210,7 +236,7 @@ fn resolver_matches_live_showbuildsettings() {
             for config in &configs {
                 for platform in platforms_for(&ctx, &target.name, config) {
                     let Some(diffs) =
-                        diff_target(&ctx, &xcodeproj, &target.name, &platform, config)
+                        diff_target(&live, &ctx, &xcodeproj, &target.name, &platform, config)
                     else {
                         continue;
                     };
