@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import type { Mock } from "vitest";
@@ -14,6 +14,7 @@ import { findFilesRecursive, isFileExists, readJsonFile } from "../common/files"
 import { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import {
+  XCODEBUILD_VALUE_FLAGS,
   XcodeCommandBuilder,
   activateCurrentXcodeWorkspacePath,
   detectXcodeWorkspacesPaths,
@@ -235,6 +236,78 @@ describe("XcodeCommandBuilder.addAdditionalArgs", () => {
     command.addAdditionalArgs([]);
     expect(command.build()).toEqual(before);
   });
+
+  // xcodebuild reads the argument after a value flag as its value, dashes and all: `-xcconfig -quiet` reads a
+  // file named '-quiet'.
+  it("reads the argument after a value flag as its value, even one spelled as a flag", () => {
+    const command = extensionCommand();
+    command.addAdditionalArgs(["-xcconfig", "-derivedDataPath", "-jobs", "-quiet"]);
+    expect(command.build()).toEqual([
+      "xcodebuild",
+      "ONLY_ACTIVE_ARCH=YES",
+      "-scheme",
+      "App",
+      "-configuration",
+      "Debug",
+      "-destination",
+      "platform=macOS,arch=arm64",
+      "-derivedDataPath",
+      "/w/dd",
+      "-allowProvisioningUpdates",
+      "-xcconfig",
+      "-derivedDataPath",
+      "-jobs",
+      "-quiet",
+      "build",
+    ]);
+  });
+
+  it("keeps a switch apart from the setting or action after it", () => {
+    const command = extensionCommand();
+    command.addAdditionalArgs(["-quiet", "ONLY_ACTIVE_ARCH=NO", "-skipMacroValidation", "build"]);
+    expect(command.build()).toEqual([
+      "xcodebuild",
+      "ONLY_ACTIVE_ARCH=NO",
+      "-scheme",
+      "App",
+      "-configuration",
+      "Debug",
+      "-destination",
+      "platform=macOS,arch=arm64",
+      "-derivedDataPath",
+      "/w/dd",
+      "-allowProvisioningUpdates",
+      "-quiet",
+      "-skipMacroValidation",
+      "build",
+    ]);
+  });
+
+  it("keeps the value of a flag outside the value-flag list", () => {
+    const command = new XcodeCommandBuilder();
+    command.addAdditionalArgs(["-enableCodeCoverage", "YES", "-destination", "platform=macOS", "-quiet"]);
+    expect(command.build()).toEqual([
+      "xcodebuild",
+      "-enableCodeCoverage",
+      "YES",
+      "-destination",
+      "platform=macOS",
+      "-quiet",
+    ]);
+  });
+});
+
+// The BSP server reads the `buildArgs` in bsp.json with sweetpad-core's `VALUE_FLAGS`, so the index and the
+// builds only agree on which argument is a flag's value while the two lists match.
+describe("XCODEBUILD_VALUE_FLAGS", () => {
+  it("matches sweetpad-core's VALUE_FLAGS", () => {
+    const source = readFileSync(path.resolve(__dirname, "../../../sweetpad-core/src/xcodebuild_args.rs"), "utf8");
+    const list = source.match(/pub const VALUE_FLAGS: \[&str; \d+\] = \[([^\]]*)\];/);
+    expect(list).not.toBeNull();
+    const coreFlags = [...(list?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    expect(coreFlags.length).toBeGreaterThan(0);
+    expect([...XCODEBUILD_VALUE_FLAGS].toSorted()).toEqual(coreFlags.toSorted());
+  });
 });
 
 // Builds, the app locator and the BSP index all read DerivedData through `prepareDerivedDataPath`, so a
@@ -268,6 +341,15 @@ describe("prepareDerivedDataPath", () => {
       "build.args": ["-derivedDataPath", "dd-a", "-quiet", "-derivedDataPath", "/abs/dd-b", "-derivedDataPath"],
     });
     expect(prepareDerivedDataPath({ workspaceRoot: "/w" })).toBe("/abs/dd-b");
+  });
+
+  it("reads the build args' flag values the way xcodebuild does", () => {
+    // The '-derivedDataPath' here is the xcconfig file's name.
+    mockConfig({ "build.derivedDataPath": "/setting/dd", "build.args": ["-xcconfig", "-derivedDataPath", "dd"] });
+    expect(prepareDerivedDataPath({ workspaceRoot: "/w" })).toBe("/setting/dd");
+
+    mockConfig({ "build.derivedDataPath": "/setting/dd", "build.args": ["-derivedDataPath", "-dd"] });
+    expect(prepareDerivedDataPath({ workspaceRoot: "/w" })).toBe("/w/-dd");
   });
 
   it("names the directory the build's own command line does", () => {

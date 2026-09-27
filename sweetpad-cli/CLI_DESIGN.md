@@ -3383,7 +3383,13 @@ other than the one `bsp.json` does. So the extension writes that setting into
 `bsp.json` as `buildArgs`, and `serve` reads its `KEY=VALUE` settings and last
 `-xcconfig` the way the CLI reads `[xcodebuild] args` (the parser lives in
 sweetpad-core's `xcodebuild_args`). A relative `-xcconfig` is read against
-`workspacePath`, where the extension's builds run `xcodebuild`. The extension
+`workspacePath`, where the extension's builds run `xcodebuild`. The
+extension's builds read the setting with a copy of core's `VALUE_FLAGS`
+(`XCODEBUILD_VALUE_FLAGS`), and a spec fails when the two differ, so a build
+and the index agree on which argument is a flag's value: `-xcconfig -quiet`
+names a file called `-quiet` in both. A flag outside the list takes the next
+argument only when that is not a flag, a setting or an action, so `-quiet
+build` stays a switch and an action. The extension
 rewrites `bsp.json` when the setting changes, and the server re-reads it as it
 does a new scheme or configuration. A `bsp.json` without `buildArgs`, from an
 older extension, has none. The CLI's own server reads `sweetpad.toml` only at

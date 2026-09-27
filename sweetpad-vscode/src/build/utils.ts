@@ -341,16 +341,14 @@ export function prepareDerivedDataPath(options: { workspaceRoot: string }): stri
 }
 
 /**
- * The value after the last `flag` in `args`, read the way `XcodeCommandBuilder.addAdditionalArgs` reads one:
- * the next argument, unless it starts with `-`. A `flag` with no value after it gives none.
+ * The value after the last `flag` in `args`, read the way `XcodeCommandBuilder.addAdditionalArgs` reads it
+ * (`parseXcodebuildArgs`). A `flag` that ends `args` without a value gives none.
  */
 function lastFlagValue(args: string[], flag: string): string | undefined {
   let value: string | undefined;
-  for (let i = 0; i < args.length; i++) {
-    const next = args[i + 1];
-    if (args[i] === flag && next !== undefined && !next.startsWith("-")) {
-      value = next;
-      i++;
+  for (const parsed of parseXcodebuildArgs(args)) {
+    if (parsed.kind === "flag" && parsed.arg === flag && parsed.value !== undefined) {
+      value = parsed.value;
     }
   }
   return value;
@@ -975,6 +973,87 @@ const REPEATABLE_XCODEBUILD_FLAGS = new Set([
   "-exportLanguage",
 ]);
 
+/**
+ * The xcodebuild flags that take the next argument as their value, whatever it looks like: `-xcconfig -quiet`
+ * names a file called `-quiet`. The same list as `VALUE_FLAGS` in sweetpad-core, which the BSP server reads the
+ * `buildArgs` in `bsp.json` with, and a spec fails when the two differ.
+ */
+export const XCODEBUILD_VALUE_FLAGS: ReadonlySet<string> = new Set([
+  "-project",
+  "-workspace",
+  "-target",
+  "-scheme",
+  "-configuration",
+  "-sdk",
+  "-arch",
+  "-destination",
+  "-destination-timeout",
+  "-xcconfig",
+  "-xctestrun",
+  "-testPlan",
+  "-toolchain",
+  "-jobs",
+  "-derivedDataPath",
+  "-resultBundlePath",
+  "-resultStreamPath",
+  "-archivePath",
+  "-exportPath",
+  "-exportOptionsPlist",
+  "-clonedSourcePackagesDirPath",
+  "-packageCachePath",
+]);
+
+/** The xcodebuild actions `sweetpad.build.args` can add to a command. */
+const XCODEBUILD_ACTIONS: ReadonlySet<string> = new Set(["clean", "build", "test"]);
+
+type XcodebuildArg =
+  | { kind: "flag"; arg: string; value: string | undefined }
+  | { kind: "setting"; key: string; value: string }
+  | { kind: "action"; action: string }
+  | { kind: "unknown"; arg: string };
+
+/**
+ * What `arg` is when no flag takes it as its value. A setting splits at its first `=`, so
+ * `OTHER_SWIFT_FLAGS=-D A=1` keeps its value whole.
+ */
+function readXcodebuildArg(arg: string): XcodebuildArg {
+  if (arg.startsWith("-")) {
+    return { kind: "flag", arg: arg, value: undefined };
+  }
+  const separator = arg.indexOf("=");
+  if (separator !== -1) {
+    return { kind: "setting", key: arg.slice(0, separator), value: arg.slice(separator + 1) };
+  }
+  if (XCODEBUILD_ACTIONS.has(arg)) {
+    return { kind: "action", action: arg };
+  }
+  return { kind: "unknown", arg: arg };
+}
+
+/**
+ * Read `args` the way xcodebuild reads them. A flag in `XCODEBUILD_VALUE_FLAGS` takes the next argument as its
+ * value. Another flag takes the next argument only when that is not a flag, a `KEY=VALUE` setting or an action,
+ * so `-quiet build` stays a switch and an action while `-enableCodeCoverage YES` keeps its value. A value flag
+ * that ends `args` has no value.
+ */
+function parseXcodebuildArgs(args: string[]): XcodebuildArg[] {
+  const parsed: XcodebuildArg[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const read = readXcodebuildArg(args[i]);
+    const next = args[i + 1];
+    if (
+      read.kind === "flag" &&
+      next !== undefined &&
+      (XCODEBUILD_VALUE_FLAGS.has(read.arg) || readXcodebuildArg(next).kind === "unknown")
+    ) {
+      read.value = next;
+      i++;
+    }
+    parsed.push(read);
+  }
+  return parsed;
+}
+
 export class XcodeCommandBuilder {
   NO_VALUE = "__NO_VALUE__";
 
@@ -1012,48 +1091,27 @@ export class XcodeCommandBuilder {
   }
 
   /**
-   * Add the user's `sweetpad.build.args`. A flag given there replaces the extension's own copy of it, so a
-   * typed `-destination` or `-derivedDataPath` overrides the one the extension picked. Among the user's
-   * flags, each copy of a flag in `REPEATABLE_XCODEBUILD_FLAGS` is kept in order, and of any other flag the
-   * last copy wins. A `KEY=VALUE` setting splits at its first `=`, so `OTHER_SWIFT_FLAGS=-D A=1` keeps its
-   * value whole.
+   * Add the user's `sweetpad.build.args`, read by `parseXcodebuildArgs`. A flag given there replaces the
+   * extension's own copy of it, so a typed `-destination` or `-derivedDataPath` overrides the one the extension
+   * picked. Among the user's flags, each copy of a flag in `REPEATABLE_XCODEBUILD_FLAGS` is kept in order, and
+   * of any other flag the last copy wins.
    */
   addAdditionalArgs(args: string[]) {
-    // Cases:
-    // ["-arg1", "value1", "-arg2", "value2", "-arg3", "-arg4", "value4"]
-    // ["xcodebuild", "-arg1", "value1", "-arg2", "value2", "-arg3", "-arg4", "value4"]
-    // ["ARG1=value1", "ARG2=value2", "ARG3", "ARG4=value4"]
-    // ["xcodebuild", "ARG1=value1", "ARG2=value2", "ARG3", "ARG4=value4"]
     if (args.length === 0) {
       return;
     }
 
     const parameters: { arg: string; value: string }[] = [];
-    for (let i = 0; i < args.length; i++) {
-      const current = args[i];
-      const next = args[i + 1];
-      if (current && next && current.startsWith("-") && !next.startsWith("-")) {
-        parameters.push({
-          arg: current,
-          value: next,
-        });
-        i++;
-      } else if (current?.startsWith("-")) {
-        parameters.push({
-          arg: current,
-          value: this.NO_VALUE,
-        });
-      } else if (current?.includes("=")) {
-        const separator = current.indexOf("=");
-        this.buildSettings.push({
-          key: current.slice(0, separator),
-          value: current.slice(separator + 1),
-        });
-      } else if (["clean", "build", "test"].includes(current)) {
-        this.actions.push(current);
+    for (const parsed of parseXcodebuildArgs(args)) {
+      if (parsed.kind === "flag") {
+        parameters.push({ arg: parsed.arg, value: parsed.value ?? this.NO_VALUE });
+      } else if (parsed.kind === "setting") {
+        this.buildSettings.push({ key: parsed.key, value: parsed.value });
+      } else if (parsed.kind === "action") {
+        this.actions.push(parsed.action);
       } else {
         commonLogger.warn("Unknown argument", {
-          argument: current,
+          argument: parsed.arg,
           args: args,
         });
       }
