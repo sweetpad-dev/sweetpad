@@ -289,6 +289,10 @@ Pass any extra `xcodebuild` flags through `sweetpad.build.args`. For example, to
 }
 ```
 
+A flag in this list replaces the one SweetPad passes itself, such as `-destination` or `-derivedDataPath`. Flags that
+`xcodebuild` accepts more than once, such as `-skip-testing` or `-only-testing`, keep every copy in order. For other
+flags, the last copy wins.
+
 You can also pass environment variables to `xcodebuild` itself (not to the launched app) with `sweetpad.build.env`.
 This is useful for forwarding tokens or paths that your project's build scripts read from the environment:
 

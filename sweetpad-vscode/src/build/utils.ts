@@ -933,6 +933,24 @@ export function isXcbeautifyEnabled() {
   return getWorkspaceConfig("build.xcbeautifyEnabled") ?? true;
 }
 
+/**
+ * The xcodebuild flags that take a value and read every copy, as Xcode 27 takes them: a build runs for each
+ * `-destination` and `-target`, and each test filter adds to the others. xcodebuild refuses a second copy of
+ * nearly every other flag that takes a value ("option '-jobs' may only be provided once").
+ */
+const REPEATABLE_XCODEBUILD_FLAGS = new Set([
+  "-destination",
+  "-target",
+  "-arch",
+  "-toolchain",
+  "-packageCachePath",
+  "-only-testing",
+  "-skip-testing",
+  "-only-test-configuration",
+  "-skip-test-configuration",
+  "-exportLanguage",
+]);
+
 export class XcodeCommandBuilder {
   NO_VALUE = "__NO_VALUE__";
 
@@ -969,6 +987,13 @@ export class XcodeCommandBuilder {
     this.actions.push(action);
   }
 
+  /**
+   * Add the user's `sweetpad.build.args`. A flag given there replaces the extension's own copy of it, so a
+   * typed `-destination` or `-derivedDataPath` overrides the one the extension picked. Among the user's
+   * flags, each copy of a flag in `REPEATABLE_XCODEBUILD_FLAGS` is kept in order, and of any other flag the
+   * last copy wins. A `KEY=VALUE` setting splits at its first `=`, so `OTHER_SWIFT_FLAGS=-D A=1` keeps its
+   * value whole.
+   */
   addAdditionalArgs(args: string[]) {
     // Cases:
     // ["-arg1", "value1", "-arg2", "value2", "-arg3", "-arg4", "value4"]
@@ -979,25 +1004,26 @@ export class XcodeCommandBuilder {
       return;
     }
 
+    const parameters: { arg: string; value: string }[] = [];
     for (let i = 0; i < args.length; i++) {
       const current = args[i];
       const next = args[i + 1];
       if (current && next && current.startsWith("-") && !next.startsWith("-")) {
-        this.parameters.push({
+        parameters.push({
           arg: current,
           value: next,
         });
         i++;
       } else if (current?.startsWith("-")) {
-        this.parameters.push({
+        parameters.push({
           arg: current,
           value: this.NO_VALUE,
         });
       } else if (current?.includes("=")) {
-        const [arg, value] = current.split("=");
+        const separator = current.indexOf("=");
         this.buildSettings.push({
-          key: arg,
-          value: value,
+          key: current.slice(0, separator),
+          value: current.slice(separator + 1),
         });
       } else if (["clean", "build", "test"].includes(current)) {
         this.actions.push(current);
@@ -1009,12 +1035,14 @@ export class XcodeCommandBuilder {
       }
     }
 
-    // Remove duplicates, with higher priority for the last occurrence
+    const given = new Set(parameters.map((param) => param.arg));
     const seenParameters = new Set<string>();
-    this.parameters = this.parameters
-      .slice()
+    const kept = parameters
       .toReversed()
       .filter((param) => {
+        if (REPEATABLE_XCODEBUILD_FLAGS.has(param.arg)) {
+          return true;
+        }
         if (seenParameters.has(param.arg)) {
           return false;
         }
@@ -1022,6 +1050,7 @@ export class XcodeCommandBuilder {
         return true;
       })
       .toReversed();
+    this.parameters = [...this.parameters.filter((param) => !given.has(param.arg)), ...kept];
 
     // Remove duplicates, with higher priority for the last occurrence
     const seenActions = new Set<string>();

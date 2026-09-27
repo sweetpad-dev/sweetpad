@@ -13,6 +13,7 @@ import { findFilesRecursive, isFileExists, readJsonFile } from "../common/files"
 import { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import {
+  XcodeCommandBuilder,
   activateCurrentXcodeWorkspacePath,
   detectXcodeWorkspacesPaths,
   generateBuildServerConfigOnBuild,
@@ -31,6 +32,7 @@ vi.mock("../common/cli/scripts", () => ({
   generateBuildServerConfig: vi.fn(),
   generateSweetpadBuildServerConfig: vi.fn(),
   getSweetpadCliPath: vi.fn(),
+  getXcodeBuildCommand: vi.fn(() => "xcodebuild"),
   SWEETPAD_CLI_MISSING_MESSAGE: "cli missing",
 }));
 
@@ -136,6 +138,100 @@ describe("launchActionToSettings", () => {
     expect(args.filter((a) => a === "-AppleLocale")).toHaveLength(2);
     expect(args).toContain("(he)");
     expect(args).toContain("he_IL");
+  });
+});
+
+// `sweetpad.build.args` joins the command the extension assembles for its own builds.
+describe("XcodeCommandBuilder.addAdditionalArgs", () => {
+  function extensionCommand(): XcodeCommandBuilder {
+    const command = new XcodeCommandBuilder();
+    command.addBuildSettings("ONLY_ACTIVE_ARCH", "YES");
+    command.addParameters("-scheme", "App");
+    command.addParameters("-configuration", "Debug");
+    command.addParameters("-destination", "platform=macOS,arch=arm64");
+    command.addParameters("-derivedDataPath", "/w/dd");
+    command.addOption("-allowProvisioningUpdates");
+    command.addAction("build");
+    return command;
+  }
+
+  it("keeps a setting's value whole past its first '='", () => {
+    const command = new XcodeCommandBuilder();
+    command.addAdditionalArgs(["OTHER_SWIFT_FLAGS=-D A=1", "EMPTY="]);
+    expect(command.build()).toEqual(["xcodebuild", "OTHER_SWIFT_FLAGS=-D A=1", "EMPTY="]);
+  });
+
+  it("keeps every copy of a flag xcodebuild reads more than once, in order", () => {
+    const command = new XcodeCommandBuilder();
+    command.addAdditionalArgs([
+      "-skip-testing",
+      "AppTests/A",
+      "-only-testing:AppTests/B",
+      "-skip-testing",
+      "AppTests/C",
+      "-only-testing:AppTests/D",
+      "-arch",
+      "arm64",
+      "-arch",
+      "x86_64",
+    ]);
+    expect(command.build()).toEqual([
+      "xcodebuild",
+      "-skip-testing",
+      "AppTests/A",
+      "-only-testing:AppTests/B",
+      "-skip-testing",
+      "AppTests/C",
+      "-only-testing:AppTests/D",
+      "-arch",
+      "arm64",
+      "-arch",
+      "x86_64",
+    ]);
+  });
+
+  it("keeps the last copy of a flag xcodebuild takes once", () => {
+    const command = new XcodeCommandBuilder();
+    command.addAdditionalArgs(["-jobs", "2", "-quiet", "-jobs", "4", "-quiet"]);
+    expect(command.build()).toEqual(["xcodebuild", "-jobs", "4", "-quiet"]);
+  });
+
+  it("replaces the extension's own copy of a flag the user gives", () => {
+    const command = extensionCommand();
+    command.addAdditionalArgs([
+      "-derivedDataPath",
+      "custom",
+      "-destination",
+      "platform=iOS Simulator,name=A",
+      "-destination",
+      "platform=iOS Simulator,name=B",
+      "ONLY_ACTIVE_ARCH=NO",
+      "-skipMacroValidation",
+    ]);
+    expect(command.build()).toEqual([
+      "xcodebuild",
+      "ONLY_ACTIVE_ARCH=NO",
+      "-scheme",
+      "App",
+      "-configuration",
+      "Debug",
+      "-allowProvisioningUpdates",
+      "-derivedDataPath",
+      "custom",
+      "-destination",
+      "platform=iOS Simulator,name=A",
+      "-destination",
+      "platform=iOS Simulator,name=B",
+      "-skipMacroValidation",
+      "build",
+    ]);
+  });
+
+  it("leaves the extension's command alone without user args", () => {
+    const command = extensionCommand();
+    const before = command.build();
+    command.addAdditionalArgs([]);
+    expect(command.build()).toEqual(before);
   });
 });
 
