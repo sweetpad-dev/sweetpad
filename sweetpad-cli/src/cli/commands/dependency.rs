@@ -614,7 +614,8 @@ fn restore_or_remove_lockfile(container: &Container, pristine: Option<String>) {
 }
 
 /// Settle the product list for an xcodeproj add: explicit `--product` flags, or
-/// discover the package's real products (resolving first) and prompt.
+/// discover the package's real products (resolving first) and prompt. The
+/// caller refuses a missing flag off a terminal before it mutates anything.
 fn resolve_products(
     ctx: &mut Context,
     container: &Container,
@@ -625,18 +626,13 @@ fn resolve_products(
     if !flags.is_empty() {
         return Ok(flags.to_vec());
     }
-    if !ctx.out.is_interactive() {
-        return Err(CliError::new(
-            "non-interactive: pass --product (and --target) to add without prompting",
-        )
-        .kind(ErrorKind::Usage));
-    }
     let available = discover_products(ctx, container, url, remote)?;
     choose("product", &available, &[], ctx)
 }
 
 /// Settle the targets to link into: explicit `--target` flags, or prompt over
-/// the project's targets.
+/// the project's targets. As with products, the caller refuses a missing flag
+/// off a terminal up front.
 fn settle_targets(
     ctx: &mut Context,
     xcodeproj: &Path,
@@ -644,12 +640,6 @@ fn settle_targets(
 ) -> Result<Vec<String>, CliError> {
     if !flags.is_empty() {
         return Ok(flags.to_vec());
-    }
-    if !ctx.out.is_interactive() {
-        return Err(
-            CliError::new("non-interactive: pass --target to add without prompting")
-                .kind(ErrorKind::Usage),
-        );
     }
     let proj = sweetpad_lib::project::open(xcodeproj)
         .map_err(|e| CliError::new(format!("failed to read {}: {e}", xcodeproj.display())))?;

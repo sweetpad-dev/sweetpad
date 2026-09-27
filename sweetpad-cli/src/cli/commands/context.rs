@@ -423,6 +423,7 @@ fn ensure_in_scope(v: Variable, scope: Scope) -> Result<(), CliError> {
 
 /// Prompt for a variable's value using the same pickers the build flow uses;
 /// `sdk`/`target` have no candidate list, so they're free-text (prefilled).
+/// Only `select` calls this, and it refuses a non-interactive terminal first.
 fn prompt_value(
     ctx: &mut Context,
     container: &Container,
@@ -445,9 +446,6 @@ fn prompt_value(
         // reason).
         Variable::Destination => resolve::pick_destination(ctx, key, &simctl::list()?, true, None),
         Variable::Sdk | Variable::Target => {
-            if !ctx.out.is_interactive() {
-                return Err(resolve::missing(v.name()));
-            }
             let current = ctx
                 .state
                 .projects
