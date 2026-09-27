@@ -8,14 +8,16 @@
 use std::process::{Command, Stdio};
 
 use serde_json::Value;
+use sweetpad_core::scratch::ScratchDir;
 
 #[test]
 fn config_writes_complete_build_server_json() {
     let root = env!("SWEETPAD_LIB_DIR");
     let project = format!("{root}/fixtures/_synthetic-multimodule/project/MultiModule.xcodeproj");
-    // Write outside the fixture tree so it can't pollute the project dir.
-    let out = std::env::temp_dir().join(format!("sweetpad-bsp-config-{}.json", std::process::id()));
-    let _ = std::fs::remove_file(&out);
+    // Write outside the fixture tree so it can't pollute the project dir, into
+    // a directory that goes when the test ends, a failed assertion included.
+    let scratch = ScratchDir::new("sweetpad-bsp-config").expect("scratch dir");
+    let out = scratch.join("buildServer.json");
 
     let status = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["config", "--project", &project, "--output"])
@@ -26,7 +28,6 @@ fn config_writes_complete_build_server_json() {
     assert!(status.success(), "config subcommand exited non-zero");
 
     let raw = std::fs::read_to_string(&out).expect("buildServer.json was written");
-    let _ = std::fs::remove_file(&out);
     let cfg: Value = serde_json::from_str(&raw).expect("buildServer.json is valid JSON");
 
     // The five fields sourcekit-lsp's decoder requires.
