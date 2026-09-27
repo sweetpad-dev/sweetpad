@@ -339,6 +339,9 @@ struct TestReport {
 struct Termination {
     exit: exits::Exit,
     crash_report: Option<PathBuf>,
+    /// The test the crash report's backtrace puts the crash in, as
+    /// '-only-testing' names it (see [`crashed_in`]).
+    crashed_in: Option<String>,
 }
 
 impl Termination {
@@ -351,6 +354,66 @@ impl Termination {
         };
         format!("{who} terminated: {}", self.exit.summary())
     }
+
+    /// Whether `other` is the same crash: one host going down fails every
+    /// test that was running in it, and each failure finds the same exit.
+    fn same_crash(&self, other: &Self) -> bool {
+        self.exit.is_crash()
+            && self.exit.pid.is_some()
+            && self.exit.pid == other.exit.pid
+            && self.exit.bundle_id == other.exit.bundle_id
+            && self.exit.time == other.exit.time
+    }
+}
+
+/// The failed tests whose exit is the same crash as failure `i`'s, `i`
+/// included, as '-only-testing' names them.
+fn sharing_the_crash(
+    failures: &[xcodebuild::TestFailure],
+    terminations: &[Option<Termination>],
+    i: usize,
+) -> Vec<String> {
+    let Some(Some(own)) = terminations.get(i) else {
+        return Vec::new();
+    };
+    failures
+        .iter()
+        .zip(terminations)
+        .filter(|(_, t)| t.as_ref().is_some_and(|t| own.same_crash(t)))
+        .map(|(f, _)| f.selector())
+        .collect()
+}
+
+/// What the crash behind failure `i` says about whose code crashed: the test
+/// its backtrace is in, when that is another test, or, when the crash failed
+/// several tests and the backtrace is in none of them, that which one caused
+/// it can't be told.
+fn crash_line(
+    failures: &[xcodebuild::TestFailure],
+    terminations: &[Option<Termination>],
+    i: usize,
+) -> Option<String> {
+    let termination = terminations.get(i)?.as_ref()?;
+    if !termination.exit.is_crash() {
+        return None;
+    }
+    if let Some(culprit) = &termination.crashed_in {
+        let own = failures.get(i)?.selector();
+        return (culprit.trim_end_matches("()") != own.trim_end_matches("()"))
+            .then(|| format!("the crash report's backtrace is in {culprit}, not this test"));
+    }
+    let shared = sharing_the_crash(failures, terminations, i).len();
+    if shared < 2 {
+        return None;
+    }
+    Some(if termination.crash_report.is_some() {
+        format!("{shared} tests failed with this one crash, and its backtrace is in none of them")
+    } else {
+        format!(
+            "{shared} tests failed with this one crash, and without its crash report which one \
+             caused it can't be told"
+        )
+    })
 }
 
 impl TestReport {
@@ -396,6 +459,9 @@ impl TestReport {
             if let Some(Some(termination)) = self.terminations.get(i) {
                 lines.push(format!("      {}", termination.line()));
             }
+            if let Some(crash) = crash_line(&self.summary.test_failures, &self.terminations, i) {
+                lines.push(format!("      {crash}"));
+            }
             if let Some(note) = self.note(i) {
                 lines.push(format!("      {note}"));
             }
@@ -438,6 +504,15 @@ impl Render for TestReport {
                 });
                 if let Some(Some(t)) = self.terminations.get(i) {
                     failure["terminationReason"] = t.exit.json(t.crash_report.as_deref());
+                    if let Some(culprit) = &t.crashed_in {
+                        failure["crashedIn"] = culprit.as_str().into();
+                    } else {
+                        let shared =
+                            sharing_the_crash(&self.summary.test_failures, &self.terminations, i);
+                        if shared.len() > 1 {
+                            failure["crashCandidates"] = shared.into();
+                        }
+                    }
                 }
                 if let Some(note) = self.note(i) {
                     failure["note"] = note.into();
@@ -507,13 +582,38 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     // `--failed`: the selectors come from the *previous* run's retained
     // bundle, read before anything touches it.
     let only: Vec<String> = if args.failed {
-        let selectors = xcodebuild::failed_test_selectors(&final_bundle)?;
-        if selectors.is_empty() {
-            return Err(CliError::new(
-                "the previous run recorded no failures to rerun (or no previous run exists)",
+        let failed = xcodebuild::failed_tests(&final_bundle)?;
+        // xcodebuild takes a failure outside any test as a selector, runs no
+        // test, and reports success, so it is left out and said so.
+        let outside = failed
+            .outside_tests
+            .iter()
+            .map(|name| format!("'{name}'"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        if failed.selectors.is_empty() {
+            return Err(CliError::new(if outside.is_empty() {
+                "the previous run recorded no failures to rerun (or no previous run exists)"
+                    .to_string()
+            } else {
+                format!(
+                    "the previous run failed outside any test ({outside}), so '--failed' has no \
+                     test to rerun; run 'sweetpad test' without it to rerun them all"
+                )
+            }));
+        }
+        if !outside.is_empty() {
+            let (records, it) = if failed.outside_tests.len() == 1 {
+                ("it records", "it")
+            } else {
+                ("they record", "them")
+            };
+            ctx.out.note(&format!(
+                "not rerunning {outside}: {records} the test process failing outside any \
+                 test, and no '-only-testing' selector can name {it}"
             ));
         }
-        selectors
+        failed.selectors
     } else if args.only_testing.is_empty() {
         // A pinned testing target (config `[….testing] target` or `context
         // select target --testing`) narrows the run when nothing explicit is
@@ -668,7 +768,7 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
             bundle: &bundle,
             started: run_started,
         };
-        terminations(&run, &summary.test_failures)
+        terminations(&run, &summary)
     };
 
     // Written once the exits are known, so a failure's body can say what
@@ -806,11 +906,15 @@ fn vanished(message: &str) -> Option<Vanished> {
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_')))
         .then(|| token.to_string())
     };
-    // XCTest gives up on a host that keeps crashing, and says why in the
-    // host's own words: `Exceeded max restart count of 2. (Underlying Error:
-    // Crash: <App> at <frame>. …)`.
+    // XCTest gives up on a host that keeps crashing, or one that crashed
+    // before any test ran, and says why in the host's own words: `Exceeded
+    // max restart count of 2. (Underlying Error: Crash: <App> at <frame>. …)`,
+    // `Early unexpected exit, operation never finished bootstrapping - no
+    // restart will be attempted. (Underlying Error: The test runner crashed
+    // before establishing connection: <App>)`.
     if let Some(underlying) = message
         .strip_prefix("Exceeded max restart count ")
+        .or_else(|| message.strip_prefix("Early unexpected exit, "))
         .and_then(|rest| rest.split_once("(Underlying Error: "))
         .map(|(_, cause)| cause.strip_suffix(')').unwrap_or(cause))
     {
@@ -894,8 +998,9 @@ const MAX_TIMED_FAILURES: usize = 20;
 /// that was searched, when there was a failure to search it for.
 fn terminations(
     run: &RunContext,
-    failures: &[xcodebuild::TestFailure],
+    summary: &xcodebuild::TestSummary,
 ) -> (Vec<Option<Termination>>, Option<ExitLog>) {
+    let failures = &summary.test_failures;
     let none = || failures.iter().map(|_| None).collect();
     let causes: Vec<Option<(Vanished, &str)>> = failures.iter().map(vanishing).collect();
     if causes.iter().all(Option::is_none) {
@@ -924,6 +1029,7 @@ fn terminations(
     // Resolved on first need: only a failure that names no bundle id needs it.
     let mut app_id: Option<Option<String>> = None;
     let mut app_id = || app_id.get_or_insert_with(|| app_bundle_id(run)).clone();
+    let tests = run_tests(summary);
     let terminations = find_exits(
         &windows,
         &mut || exits_during(run, &log),
@@ -937,10 +1043,76 @@ fn terminations(
             .is_crash()
             .then(|| exits::crash_report(&exit, Some(run.started)))
             .flatten();
-        Some(Termination { exit, crash_report })
+        let crashed_in = crash_report
+            .as_deref()
+            .and_then(|report| crashed_in(&exits::crashed_thread_symbols(report), &tests));
+        Some(Termination {
+            exit,
+            crash_report,
+            crashed_in,
+        })
     })
     .collect();
     (terminations, Some(log))
+}
+
+/// The run's tests as '-only-testing' names them, for [`crashed_in`] to find
+/// in a backtrace: every case in the test tree, or, when it couldn't be read,
+/// just the failed ones.
+fn run_tests(summary: &xcodebuild::TestSummary) -> Vec<String> {
+    summary.test_cases.as_ref().map_or_else(
+        || {
+            summary
+                .test_failures
+                .iter()
+                .map(xcodebuild::TestFailure::selector)
+                .collect()
+        },
+        |cases| cases.iter().map(|c| c.identifier.clone()).collect(),
+    )
+}
+
+/// The test a crashed thread's backtrace is in: the innermost frame that is
+/// one of `tests` (as '-only-testing' names them), or a closure inside one.
+///
+/// XCTest fails every test that was running when the host crashed, all with
+/// the same message, and a crash in work a test left running after it passed
+/// fails whichever tests run at that moment instead. Neither says whose code
+/// crashed. The crash report's backtrace does, when it runs through the test.
+fn crashed_in(frames: &[String], tests: &[String]) -> Option<String> {
+    frames.iter().find_map(|symbol| {
+        let function = frame_function(symbol)?;
+        tests
+            .iter()
+            .find(|test| test_function(test) == function)
+            .cloned()
+    })
+}
+
+/// A backtrace frame's function as `Type.method`: the last word of a
+/// demangled Swift symbol without its argument list (`closure #1 in
+/// Suite.test(n:)` is `Suite.test`), or an Objective-C method's class and
+/// selector (`-[AppTests testGreeting]` is `AppTests.testGreeting`).
+fn frame_function(symbol: &str) -> Option<String> {
+    if let Some(method) = symbol
+        .strip_prefix("-[")
+        .or_else(|| symbol.strip_prefix("+["))
+    {
+        let (class, name) = method.strip_suffix(']')?.split_once(' ')?;
+        return Some(format!("{class}.{name}"));
+    }
+    let last = symbol.rsplit(' ').next()?;
+    let (name, _) = last.split_once('(')?;
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+/// A test's function as [`frame_function`] gives it: the '-only-testing'
+/// selector without its target and argument list, so
+/// `AppTests/Suite/test(n:)` is `Suite.test`.
+fn test_function(selector: &str) -> String {
+    let within = selector.split_once('/').map_or(selector, |(_, test)| test);
+    let name = within.split_once('(').map_or(within, |(name, _)| name);
+    name.replace('/', ".")
 }
 
 /// Where to look for the exit behind one failure: whose it is, and the part
@@ -1847,7 +2019,8 @@ struct JunitCase<'a> {
     /// Every failure message of a failed test, or why a skipped one skipped.
     messages: Vec<&'a str>,
     /// What ended the app or the test runner under a failed test, as the
-    /// `app terminated: …` line the summary prints under it.
+    /// `app terminated: …` line the summary prints under it, and the line on
+    /// whose code crashed when the summary prints one.
     ended: Option<String>,
 }
 
@@ -1866,8 +2039,14 @@ fn junit_cases<'a>(
         .iter()
         .enumerate()
         .map(|(i, f)| {
-            let ended = terminations.get(i).and_then(Option::as_ref);
-            (f.selector(), f, ended.map(Termination::line))
+            let ended = terminations.get(i).and_then(Option::as_ref).map(|t| {
+                let mut ended = t.line();
+                if let Some(crash) = crash_line(&summary.test_failures, terminations, i) {
+                    ended = format!("{ended}\n{crash}");
+                }
+                ended
+            });
+            (f.selector(), f, ended)
         })
         .collect();
     let mut cases: Vec<JunitCase> = summary
@@ -2918,6 +3097,9 @@ mod tests {
             "Exceeded max restart count of 2. (Underlying Error: Crash: SweetpadB5Mac at \
              specialized static Runner._applyScopingTraits(for:testCase:_:). \
              libsystem_c.dylib: abort() called)",
+            "Early unexpected exit, operation never finished bootstrapping - no restart will \
+             be attempted. (Underlying Error: The test runner crashed before establishing \
+             connection: SweetpadB6TestMac)",
             "Lost connection to the test runner",
         ] {
             assert_eq!(vanished(message), Some(Vanished::Runner), "{message}");
@@ -2940,6 +3122,7 @@ mod tests {
             "failed - the server is not running",
             "Critical process com.apple.backboardd crashed in main",
             "Exceeded max restart count of 2. (Underlying Error: the helper crashed)",
+            "Early unexpected exit, (Underlying Error: the helper crashed)",
             "Lost connection to testmanagerd",
             "Warning: The test runner exited with code 1 while the state machine was in state \
              Finished.",
@@ -3055,6 +3238,7 @@ mod tests {
         let termination = Termination {
             exit,
             crash_report: Some(PathBuf::from("/tmp/App.ips")),
+            crashed_in: None,
         };
         assert_eq!(
             termination.line(),
@@ -3089,6 +3273,7 @@ mod tests {
         let termination = Termination {
             exit,
             crash_report: None,
+            crashed_in: None,
         };
         assert_eq!(
             termination.line(),
@@ -3132,6 +3317,7 @@ mod tests {
             Some(Termination {
                 exit: crash(),
                 crash_report: None,
+                crashed_in: None,
             }),
             None,
         ]);
@@ -3152,6 +3338,7 @@ mod tests {
         let reported = failed_report(vec![Some(Termination {
             exit: crash(),
             crash_report: Some(PathBuf::from("/tmp/App.ips")),
+            crashed_in: None,
         })]);
         let killed = failed_report(vec![Some(Termination {
             exit: exit_at(
@@ -3161,12 +3348,177 @@ mod tests {
                 "exited due to SIGKILL, ran for 5820ms",
             ),
             crash_report: None,
+            crashed_in: None,
         })]);
         for report in [reported, killed] {
             let lines = report.failure_lines();
             assert_eq!(lines.len(), 3, "{lines:?}");
             assert!(report.json()["failures"][0].get("note").is_none());
         }
+    }
+
+    #[test]
+    fn a_backtrace_frame_names_the_test_it_runs_through() {
+        let tests = [
+            "AppTests/ParallelSuite/a_recordsCrashed()".to_string(),
+            "AppTests/ParallelSuite/b_crashesHost()".to_string(),
+            "AppTests/Outer/Inner/param(n:)".to_string(),
+            "AppTests/free()".to_string(),
+            "AppTests/ArithmeticTests/testArithmetic".to_string(),
+        ];
+        let named = |symbol: &str| crashed_in(&[symbol.to_string()], &tests);
+        // Frames from Xcode 27 crash reports of a host a Swift Testing test
+        // crashed, directly and through a closure it scheduled.
+        assert_eq!(
+            named("ParallelSuite.b_crashesHost()").as_deref(),
+            Some("AppTests/ParallelSuite/b_crashesHost()")
+        );
+        assert_eq!(
+            named("closure #1 in ParallelSuite.b_crashesHost()").as_deref(),
+            Some("AppTests/ParallelSuite/b_crashesHost()")
+        );
+        assert_eq!(
+            named("Outer.Inner.param(n:)").as_deref(),
+            Some("AppTests/Outer/Inner/param(n:)")
+        );
+        assert_eq!(named("free()").as_deref(), Some("AppTests/free()"));
+        assert_eq!(
+            named("@objc ArithmeticTests.testArithmetic()").as_deref(),
+            Some("AppTests/ArithmeticTests/testArithmetic")
+        );
+        assert_eq!(
+            named("-[ArithmeticTests testArithmetic]").as_deref(),
+            Some("AppTests/ArithmeticTests/testArithmetic")
+        );
+        // The Swift Testing macro's thunk, a helper of the same name on
+        // another type, and a frame with no function name.
+        for symbol in [
+            "static ParallelSuite.$s7AppTests13ParallelSuiteV13b_crashesHost0C0fMp_@Sendable ()",
+            "Helper.b_crashesHost()",
+            "__semwait_signal",
+        ] {
+            assert_eq!(named(symbol), None, "{symbol}");
+        }
+        // The innermost frame that is a test decides.
+        let frames = [
+            "_assertionFailure(_:_:file:line:flags:)".to_string(),
+            "Helper.boom()".to_string(),
+            "ParallelSuite.b_crashesHost()".to_string(),
+            "ParallelSuite.a_recordsCrashed()".to_string(),
+        ];
+        assert_eq!(
+            crashed_in(&frames, &tests).as_deref(),
+            Some("AppTests/ParallelSuite/b_crashesHost()")
+        );
+    }
+
+    /// Two Swift Testing tests of one suite running at once in a macOS host
+    /// that crashed, as Xcode 27 recorded them: both failed, with the same
+    /// message, and each failure found the host's one exit.
+    fn parallel_crash(crashed_in: Option<&str>, crash_report: bool) -> TestReport {
+        let failure = |name: &str| xcodebuild::TestFailure {
+            test_name: format!("{name}()"),
+            target_name: "AppTests".into(),
+            failure_text: "Crash: App at specialized static \
+                           Runner._applyScopingTraits(for:testCase:_:)"
+                .into(),
+            test_identifier_string: format!("ParallelSuite/{name}()"),
+            test_identifier_url: format!(
+                "test://com.apple.xcode/App/AppTests/ParallelSuite/{name}()"
+            ),
+            ..Default::default()
+        };
+        let termination = || Termination {
+            exit: exit_at(
+                "dev.sweetpad.app",
+                18626,
+                "2026-09-27 01:20:24.112000+0200",
+                "exited due to SIGTRAP | sent by exc handler[18626], ran for 2504ms",
+            ),
+            crash_report: crash_report.then(|| PathBuf::from("/tmp/App.ips")),
+            crashed_in: crashed_in.map(str::to_string),
+        };
+        TestReport {
+            passed: false,
+            summary: xcodebuild::TestSummary {
+                result: "Failed".into(),
+                total_test_count: 3,
+                failed_tests: 2,
+                test_failures: vec![failure("a_recordsCrashed"), failure("b_crashesHost")],
+                ..Default::default()
+            },
+            terminations: vec![Some(termination()), Some(termination())],
+            exits_command: None,
+            coverage: None,
+            result_bundle: "/tmp/App.xcresult".into(),
+        }
+    }
+
+    #[test]
+    fn a_crash_that_failed_the_tests_beside_it_names_the_one_it_was_in() {
+        const B: &str = "AppTests/ParallelSuite/b_crashesHost()";
+        const C: &str = "AppTests/ParallelSuite/c_passes()";
+        let report = parallel_crash(Some(B), true);
+        let lines = report.failure_lines();
+        assert_eq!(
+            lines[2],
+            format!("      the crash report's backtrace is in {B}, not this test")
+        );
+        // The test it was in gets no such line.
+        assert_eq!(lines.len(), 5, "{lines:?}");
+        assert!(lines[3].starts_with(&format!("  ✗ {B}: Crash: App")));
+        let json = report.json();
+        assert_eq!(json["failures"][0]["crashedIn"], B);
+        assert_eq!(json["failures"][1]["crashedIn"], B);
+        assert!(json["failures"][0].get("crashCandidates").is_none());
+
+        // A crash in work a passed test left running fails only the test
+        // running at the time, and its backtrace names the test that passed.
+        let report = parallel_crash(Some(C), true);
+        let lines = report.failure_lines();
+        assert_eq!(
+            lines[2],
+            format!("      the crash report's backtrace is in {C}, not this test")
+        );
+        assert_eq!(
+            lines[5],
+            format!("      the crash report's backtrace is in {C}, not this test")
+        );
+    }
+
+    #[test]
+    fn a_crash_no_backtrace_pins_down_names_every_test_it_failed() {
+        let candidates = serde_json::json!([
+            "AppTests/ParallelSuite/a_recordsCrashed()",
+            "AppTests/ParallelSuite/b_crashesHost()",
+        ]);
+        let report = parallel_crash(None, true);
+        let lines = report.failure_lines();
+        let line = "      2 tests failed with this one crash, and its backtrace is in none of them";
+        assert_eq!(lines[2], line);
+        assert_eq!(lines[5], line);
+        let json = report.json();
+        assert_eq!(json["failures"][0]["crashCandidates"], candidates);
+        assert_eq!(json["failures"][1]["crashCandidates"], candidates);
+        assert!(json["failures"][0].get("crashedIn").is_none());
+
+        let report = parallel_crash(None, false);
+        assert_eq!(
+            report.failure_lines()[2],
+            "      2 tests failed with this one crash, and without its crash report which one \
+             caused it can't be told"
+        );
+        assert_eq!(report.json()["failures"][1]["crashCandidates"], candidates);
+
+        // A crash that failed one test says nothing more about it.
+        let mut report = parallel_crash(None, true);
+        report.terminations[1] = None;
+        assert_eq!(report.failure_lines().len(), 3);
+        assert!(
+            report.json()["failures"][0]
+                .get("crashCandidates")
+                .is_none()
+        );
     }
 
     /// launchd's exit line for `bundle_id` at `time`, as `log show` gives it.
@@ -3670,11 +4022,13 @@ mod tests {
             Some(Termination {
                 exit: crash,
                 crash_report: None,
+                crashed_in: None,
             }),
             None,
             Some(Termination {
                 exit: runner,
                 crash_report: None,
+                crashed_in: None,
             }),
         ];
         let xml = junit_xml("SweetpadCIApp", &summary, &terminations);

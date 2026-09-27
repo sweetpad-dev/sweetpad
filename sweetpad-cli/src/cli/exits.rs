@@ -645,6 +645,43 @@ fn report_is(text: &str, bundle_id: &str, pid: u32) -> bool {
             })
 }
 
+/// The crashed thread's frames in an `.ips` crash report, innermost first, as
+/// the symbol each one names (`closure #1 in Suite.test()`). Frames with no
+/// symbol are left out, and a report that can't be read gives none.
+#[must_use]
+pub fn crashed_thread_symbols(report: &Path) -> Vec<String> {
+    std::fs::read_to_string(report)
+        .ok()
+        .and_then(|text| crashed_thread_symbols_in(&text))
+        .unwrap_or_default()
+}
+
+/// [`crashed_thread_symbols`] over a report's text: the JSON body after its
+/// one-line header, whose `faultingThread` indexes `threads` (the thread
+/// marked `triggered` when the index is missing).
+fn crashed_thread_symbols_in(text: &str) -> Option<Vec<String>> {
+    let (_, body) = text.split_once('\n')?;
+    let body: serde_json::Value = serde_json::from_str(body).ok()?;
+    let threads = body.get("threads")?.as_array()?;
+    let thread = body
+        .get("faultingThread")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|i| threads.get(usize::try_from(i).ok()?))
+        .or_else(|| {
+            threads
+                .iter()
+                .find(|t| t.get("triggered").and_then(serde_json::Value::as_bool) == Some(true))
+        })?;
+    let frames = thread.get("frames")?.as_array()?;
+    Some(
+        frames
+            .iter()
+            .filter_map(|f| f.get("symbol").and_then(serde_json::Value::as_str))
+            .map(str::to_string)
+            .collect(),
+    )
+}
+
 /// Every crash report the system wrote since `not_before` for one of
 /// `bundle_ids` (any app when empty) on `source`, as the exit it records,
 /// oldest first. Simulator reports land in the same directory as the Mac's;
@@ -1281,6 +1318,46 @@ mod tests {
         assert!(!report_is(report, APP, 59572));
         assert!(!report_is(report, "dev.sweetpad.other", 59571));
         assert!(!report_is("not a report", APP, 59571));
+    }
+
+    /// A unit test's host app crashed by a closure one Swift Testing test
+    /// scheduled, while another test ran, macOS 27, trimmed to two threads and
+    /// the fields read.
+    const HOST_CRASH_IPS: &str = r#"{"app_name":"SweetpadB6TestMac","bundleID":"dev.sweetpad.b6test.mac","bug_type":"309"}
+{
+  "pid" : 13923,
+  "faultingThread" : 1,
+  "threads" : [
+    {"id":1,"frames":[{"imageIndex":0,"symbol":"__semwait_signal"},{"imageIndex":1,"imageOffset":4096}]},
+    {"triggered":true,"id":2,"frames":[
+      {"imageIndex":2,"symbol":"_assertionFailure(_:_:file:line:flags:)"},
+      {"imageIndex":3,"symbol":"closure #1 in ParallelSuite.b_crashesHost()"},
+      {"imageIndex":3,"symbol":"thunk for @escaping @callee_guaranteed @Sendable () -> ()"},
+      {"imageIndex":4,"imageOffset":8192},
+      {"imageIndex":4,"symbol":"_dispatch_client_callout"}
+    ]}
+  ]
+}"#;
+
+    #[test]
+    fn a_crash_report_gives_the_crashed_threads_symbols() {
+        assert_eq!(
+            crashed_thread_symbols_in(HOST_CRASH_IPS).expect("a backtrace"),
+            [
+                "_assertionFailure(_:_:file:line:flags:)",
+                "closure #1 in ParallelSuite.b_crashesHost()",
+                "thunk for @escaping @callee_guaranteed @Sendable () -> ()",
+                "_dispatch_client_callout",
+            ]
+        );
+        // With no index, the thread marked as the one that triggered it.
+        let unindexed = HOST_CRASH_IPS.replace("\"faultingThread\" : 1,", "");
+        assert_eq!(
+            crashed_thread_symbols_in(&unindexed).map(|s| s.len()),
+            Some(4)
+        );
+        assert_eq!(crashed_thread_symbols_in(MAC_ABORT_IPS), None);
+        assert!(crashed_thread_symbols(Path::new("/nonexistent/report.ips")).is_empty());
     }
 
     #[test]

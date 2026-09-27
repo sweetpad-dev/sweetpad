@@ -814,7 +814,7 @@ pub struct TestSummary {
     pub test_failures: Vec<TestFailure>,
     /// Every test case the run recorded, passed ones included, in tree order.
     /// The summary lists only failures, so these come from the test tree, and
-    /// only when [`test_summary`] is asked for them and the tree can be read.
+    /// only when [`test_summary`] reads it and the tree can be read.
     #[serde(skip)]
     pub test_cases: Option<Vec<TestCase>>,
 }
@@ -1012,6 +1012,19 @@ struct TreeCase<'a> {
     skip_message: Option<&'a str>,
 }
 
+impl TreeCase<'_> {
+    /// Whether the case is a test an `-only-testing:` selector can name. Every
+    /// test has a `test://` URL, and a tree too old to carry URLs names its
+    /// tests without spaces. The case XCTest records for a test process that
+    /// failed outside any test has neither ([`FailedTests::outside_tests`]).
+    fn is_a_test(&self) -> bool {
+        match self.url {
+            Some(url) => url.starts_with("test://"),
+            None => !self.identifier.contains(char::is_whitespace),
+        }
+    }
+}
+
 /// Walk the xcresulttool test tree (`testNodes`/`children`) for its test
 /// cases, each carrying the test bundle it was found under.
 fn tree_cases<'a>(
@@ -1121,28 +1134,46 @@ fn test_tree(bundle: &Path) -> Result<serde_json::Value, CliError> {
     serde_json::from_str(json).map_err(|e| CliError::new(format!("parsing test tree: {e}")))
 }
 
-/// The `-only-testing:` selectors for every test that failed in `bundle`,
-/// read from its test tree. A missing bundle yields an empty list ("no
-/// previous run").
-pub fn failed_test_selectors(bundle: &Path) -> Result<Vec<String>, CliError> {
+/// The failures of a run's test tree, as `--failed` reruns them.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct FailedTests {
+    /// Each failed test, as `-only-testing:` takes it.
+    pub selectors: Vec<String>,
+    /// The failures that name no test, as the tree names them. A test
+    /// process that fails outside any test is recorded as a case of its own,
+    /// `<App> (<pid>) encountered an error`, under a `System Failures` suite
+    /// and with no `test://` URL. Given that as a selector, xcodebuild runs
+    /// no test and reports success.
+    pub outside_tests: Vec<String>,
+}
+
+/// What `--failed` reruns from `bundle`, read from its test tree. A missing
+/// bundle yields nothing ("no previous run").
+pub fn failed_tests(bundle: &Path) -> Result<FailedTests, CliError> {
     if !bundle.exists() {
-        return Ok(Vec::new());
+        return Ok(FailedTests::default());
     }
     let root = test_tree(bundle).context("reading the previous run's failures")?;
     Ok(failed_selectors(&root))
 }
 
-fn failed_selectors(root: &serde_json::Value) -> Vec<String> {
+fn failed_selectors(root: &serde_json::Value) -> FailedTests {
     let mut cases = Vec::new();
     tree_cases(root, None, &mut cases);
-    let mut selectors: Vec<String> = cases
-        .iter()
-        .filter(|c| c.outcome == CaseOutcome::Failed)
-        .map(|c| test_selector(c.target, c.identifier, c.url))
-        .collect();
-    selectors.sort();
-    selectors.dedup();
-    selectors
+    let mut failed = FailedTests::default();
+    for case in cases.iter().filter(|c| c.outcome == CaseOutcome::Failed) {
+        if case.is_a_test() {
+            let selector = test_selector(case.target, case.identifier, case.url);
+            failed.selectors.push(selector);
+        } else {
+            failed.outside_tests.push(case.identifier.to_string());
+        }
+    }
+    for list in [&mut failed.selectors, &mut failed.outside_tests] {
+        list.sort();
+        list.dedup();
+    }
+    failed
 }
 
 /// Which test target holds each test, keyed by `Class/method`. Only the test
@@ -1259,8 +1290,9 @@ pub fn coverage_percent(bundle: &Path) -> Option<f64> {
 /// failures also reads the test tree for the rest; when the tree can't be
 /// read, each failure keeps the one message the summary gave it.
 ///
-/// `every_case` asks for [`TestSummary::test_cases`] as well, which costs a
-/// green run the tree read it otherwise skips.
+/// Whenever it reads the tree, it also fills in [`TestSummary::test_cases`].
+/// `every_case` asks for those on a green run too, which costs it the tree
+/// read it otherwise skips.
 pub fn test_summary(bundle: &Path, every_case: bool) -> Result<TestSummary, CliError> {
     let out = process::capture(
         "xcrun",
@@ -1280,9 +1312,7 @@ pub fn test_summary(bundle: &Path, every_case: bool) -> Result<TestSummary, CliE
         && let Ok(root) = test_tree(bundle)
     {
         add_other_messages(&mut summary, &root);
-        if every_case {
-            summary.test_cases = Some(test_cases(&root));
-        }
+        summary.test_cases = Some(test_cases(&root));
     }
     Ok(summary)
 }
@@ -3158,7 +3188,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         // under — unit or UI — and only XCTest's spelling drops the `()`,
         // since a Swift Testing test named without it selects nothing.
         assert_eq!(
-            failed_selectors(&tree()),
+            failed_selectors(&tree()).selectors,
             [
                 "SweetpadCIAppTests/AppTests/testGreeting",
                 "SweetpadCIAppTests/GreetingSuite/Nested/inner()",
@@ -3182,7 +3212,55 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
             .map(TestFailure::selector)
             .collect();
         printed.sort();
-        assert_eq!(printed, failed_selectors(&tree()));
+        assert_eq!(printed, failed_selectors(&tree()).selectors);
+    }
+
+    /// A macOS host app that crashed at launch, on Xcode 27: XCTest records the
+    /// test process as a case of its own, which names no test. Handed to
+    /// xcodebuild as '-only-testing:SweetpadB6TestMacTests/SweetpadB6TestMac
+    /// (16050) encountered an error', it ran no test and reported
+    /// `** TEST SUCCEEDED **`.
+    #[test]
+    fn a_failure_outside_any_test_is_not_rerun_as_one() {
+        fn bare(identifier: &str) -> TreeCase<'_> {
+            TreeCase {
+                target: Some("AppTests"),
+                identifier,
+                url: None,
+                outcome: CaseOutcome::Failed,
+                duration: None,
+                messages: Vec::new(),
+                skip_message: None,
+            }
+        }
+        let tree: serde_json::Value = serde_json::from_str(
+            r#"{ "testNodes": [
+  { "name": "SweetpadB6TestMac", "nodeType": "Test Plan", "result": "Failed", "children": [
+    { "name": "SweetpadB6TestMacTests", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadB6Test/SweetpadB6TestMacTests", "nodeType": "Unit test bundle", "result": "Failed", "children": [
+      { "name": "System Failures", "nodeType": "Test Suite", "result": "Failed", "children": [
+        { "name": "SweetpadB6TestMac (16050) encountered an error", "nodeIdentifier": "SweetpadB6TestMac (16050) encountered an error", "nodeType": "Test Case", "result": "Failed", "children": [
+          { "name": "Early unexpected exit, operation never finished bootstrapping - no restart will be attempted. (Underlying Error: The test runner crashed before establishing connection: SweetpadB6TestMac)", "nodeType": "Failure Message" }
+        ] }
+      ] },
+      { "name": "ParallelSuite", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadB6Test/SweetpadB6TestMacTests/ParallelSuite", "nodeType": "Test Suite", "result": "Failed", "children": [
+        { "name": "a()", "nodeIdentifier": "ParallelSuite/a()", "nodeIdentifierURL": "test://com.apple.xcode/SweetpadB6Test/SweetpadB6TestMacTests/ParallelSuite/a()", "nodeType": "Test Case", "result": "Failed" }
+      ] }
+    ] }
+  ] }
+] }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            failed_selectors(&tree),
+            FailedTests {
+                selectors: vec!["SweetpadB6TestMacTests/ParallelSuite/a()".to_string()],
+                outside_tests: vec!["SweetpadB6TestMac (16050) encountered an error".to_string()],
+            }
+        );
+
+        // A tree with no URLs at all still names each test without a space.
+        assert!(bare("AppTests/testGreeting()").is_a_test());
+        assert!(!bare("App (36652) encountered an error").is_a_test());
     }
 
     #[test]

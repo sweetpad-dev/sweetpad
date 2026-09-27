@@ -2488,6 +2488,18 @@ selects nothing and Swift Testing reports a pass. The test's `test://` URL in th
 bundle keeps the parentheses only where they belong, so the URL decides. With no
 URL, a test gets the XCTest spelling.
 
+**A failure outside any test is not rerun.** When a test process fails outside
+any test, XCTest records it as a case of its own, `<App> (<pid>) encountered an
+error`, under a `System Failures` suite with no `test://` URL. A macOS host that
+crashed at launch got one on Xcode 27, and it was the run's only failure. Given
+`-only-testing:SweetpadB6TestMacTests/SweetpadB6TestMac (16050) encountered an
+error`, xcodebuild ran no test and printed `** TEST SUCCEEDED **`, so `--failed`
+reported a green run of nothing. A case is a test when it has a `test://` URL,
+or, in a tree with no URLs, an identifier with no space. `--failed` leaves the
+rest out with a note naming them. When nothing else failed it stops with an
+error that names the failure and points at a plain `sweetpad test`. The summary
+and JUnit report still list the failure, since it is one.
+
 ### A JUnit report of every test
 
 `--junit` writes a `<testcase>` for every test the run recorded: passed, failed,
@@ -2736,6 +2748,36 @@ The limit is not strict either. Another process on the same Mac reached `33 of
 max 25`, and each count seen matched the reports of that name on disk, so a
 report that goes away may make room for one more. `app logs --exits` gives the
 same reason in its note about a crash with no report.
+
+**The test that crashed the host is not always the one that failed.** A unit
+test's host runs every test of its target, and XCTest attributes a host crash to
+whatever was running when it happened. Reproduced on Xcode 27 with a Swift
+Testing suite running in parallel in a macOS host, where `b_crashesHost()` calls
+`fatalError`:
+
+- With `a_recordsCrashed()` still sleeping when `b` crashed, both failed with the
+  same `Crash: <App> at specialized static Runner._applyScopingTraits(…)`, and
+  the summary listed `a` first.
+- With `b` scheduling the `fatalError` on a dispatch queue and returning, `b`
+  passed and `a`, the test running a second later, took the crash alone.
+- With every test finished first, the run passed: XCTest recorded no crash at
+  all.
+
+The test tree gives no more than that: each failed case holds the same
+`Failure Message`, and its activities hold the crash log's attachment and
+nothing about the thread. Only the crash report says whose code it was. Its
+crashed thread runs through `ParallelSuite.b_crashesHost()` in the first case
+and `closure #1 in ParallelSuite.b_crashesHost()` in the second. So each crash
+with a report has its backtrace read for the innermost frame that is one of the
+run's tests: a demangled `Type.method(…)`, the last word of the symbol, or an
+Objective-C `-[Class method]`, matched against the tree's cases with their
+targets and argument lists dropped. The failure gains a line when that test is
+another one (`the crash report's backtrace is in <id>, not this test`) and
+`crashedIn` in JSON either way. When the backtrace is in no test (the fault is in
+a framework thread) or no report was found, a crash that failed two or more
+tests says it can't tell them apart, and JSON lists them as `crashCandidates`.
+Two failures share a crash when their exits have the same bundle id, pid and
+time. The JUnit body carries the same line after `app terminated:`.
 
 ### A red suite that looked hung
 

@@ -240,6 +240,14 @@ gets a `note`: macOS stops saving an app's reports past a limit, so the
 `exception` detail can be missing. When no exit was found at all, the `note`
 names the `sweetpad app logs --exits` command to run instead.
 
+A host app crash can fail tests other than the one that crashed it: every
+test running in parallel at the time, or the test after one that left work
+running. Don't assume the failed test is the culprit. When the crash
+report's backtrace goes through a test, the failure's `crashedIn` names it.
+When it doesn't, `crashCandidates` lists every test the one crash failed.
+`--failed` skips a failure that names no test (`<App> (<pid>) encountered an
+error`), since xcodebuild runs nothing for it.
+
 ## Inspect resolved build settings
 
 ```bash

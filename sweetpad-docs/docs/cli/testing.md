@@ -101,6 +101,22 @@ If SweetPad can't find the exit at all, the line under the failure says so and g
 app's recent exits.
 The JSON failure's `note` has the same text.
 
+A crash in a unit test's host app doesn't always fail the test that caused it. When tests run in
+parallel, XCTest fails every test that was running at the time, all with the same message. When the
+crash comes from work a test left running after it passed, XCTest fails whichever test runs next.
+So SweetPad reads the crash report's backtrace, and when the crash is in another test's code it adds
+a line under the failure. With `-o json`, the failure's `crashedIn` names that test:
+
+```console
+  ✗ AppTests/ParallelSuite/a_recordsCrashed(): Crash: MyApp at specialized static Runner._applyScopingTraits(for:testCase:_:)
+      app terminated: crashed with SIGTRAP (sent by exc handler[42305]; EXC_BREAKPOINT)
+      the crash report's backtrace is in AppTests/ParallelSuite/b_crashesHost(), not this test
+```
+
+When the backtrace doesn't go through any test, or there's no crash report, SweetPad can't tell
+which test caused the crash. If the crash failed more than one test, the line says so, and the JSON
+failure's `crashCandidates` lists every test it failed.
+
 ## Compiling the tests without running them
 
 `sweetpad test build` compiles the test targets and stops, the way `sweetpad build` does for the app.
@@ -143,6 +159,12 @@ bundle:
 ```bash
 sweetpad test --failed
 ```
+
+When the test process fails outside any test, for example when the host app crashes at launch,
+XCTest records a failure named like `MyApp (36652) encountered an error`. That isn't a test, and
+given it as a selector xcodebuild runs nothing and reports success. So `--failed` leaves it out and
+says so. If it's the only failure, `--failed` stops with an error, and a plain `sweetpad test` is
+the rerun.
 
 The failure lines at the end of a run use the same `Target/Class/method` form, so you can paste any
 of them into `--only-testing`. A Swift Testing test keeps its parentheses, as in
