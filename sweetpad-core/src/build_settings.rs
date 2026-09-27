@@ -111,9 +111,10 @@ impl Selection {
 }
 
 /// Resolve the `scheme` / `target` choice once, before the per-project loop.
-/// A scheme file is looked up across every container that can hold one — the
-/// workspace bundle itself, then each member project, shared then per-user
-/// directories (mirroring where xcodebuild finds schemes). A scheme with no
+/// A scheme file is looked up where `xcodebuild` finds it
+/// ([`scheme::locate`]): the workspace bundle itself, then each member
+/// project, then each local package, shared then the current user's
+/// directories. A scheme with no
 /// file falls back to [`Selection::AutoScheme`] only when Xcode's scheme
 /// autocreation would surface it: no container holds *any* scheme file, and
 /// the shared workspace settings don't disable autocreation. Otherwise the
@@ -130,10 +131,10 @@ fn resolve_selection(
             .into_iter()
             .chain(projects.iter().map(PathBuf::as_path))
             .collect();
-        for container in &containers {
-            let Some(path) = scheme::find_scheme_file(container, name) else {
-                continue;
-            };
+        if let Some(path) = containers
+            .first()
+            .and_then(|primary| scheme::locate(primary, name))
+        {
             let parsed = scheme::parse_file(&path)
                 .map_err(|e| format!("failed to parse scheme {name} at {}: {e}", path.display()))?;
             return Ok(Selection::Scheme {

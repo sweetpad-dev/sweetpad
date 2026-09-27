@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use sweetpad_lib::destination::RunDestination;
 use sweetpad_lib::project::{absolutize, canonicalize_sdk_base, standardize};
-use sweetpad_lib::{scheme, workspace};
+use sweetpad_lib::scheme;
 
 use crate::build_settings::{BuildSettingsOptions, TargetSettings, resolve_build_settings};
 use crate::xcodebuild_args;
@@ -305,19 +305,12 @@ pub fn launch_target(container: &Path, name: &str) -> Option<String> {
 
 /// The parsed scheme file behind `name`, or `None` when there is none to read:
 /// an autocreated scheme Xcode never materialized, or a name that doesn't
-/// resolve. A workspace scheme lives either in the workspace itself or in one
-/// of its member projects, so both are searched, the workspace first.
+/// resolve. The file is the one `xcodebuild -list` reads for the container
+/// ([`scheme::locate`]): the workspace's own, then its member projects', then
+/// its local packages', and only the current user's `xcuserdata`.
 #[must_use]
 pub fn find_scheme(container: &Path, name: &str) -> Option<scheme::Scheme> {
-    let mut candidates = vec![container.to_path_buf()];
-    if container.extension().is_some_and(|e| e == "xcworkspace")
-        && let Ok(ws) = workspace::open(container)
-    {
-        candidates.extend(ws.project_refs);
-    }
-    let file = candidates
-        .iter()
-        .find_map(|c| scheme::find_scheme_file(c, name))?;
+    let file = scheme::locate(container, name)?;
     scheme::parse_file(&file).ok()
 }
 
@@ -604,5 +597,49 @@ mod tests {
             "{:?}",
             simulator.app.path
         );
+    }
+
+    /// The Run action is read from the file `xcodebuild -list` reads: a
+    /// workspace member package's `.swiftpm/xcode` scheme counts, a scheme in a
+    /// project the workspace doesn't list doesn't.
+    #[test]
+    fn the_launch_target_comes_from_the_file_xcodebuild_reads() {
+        let dir = crate::scratch::ScratchDir::new("sweetpad-locate-find-scheme").unwrap();
+        let ws = dir.join("App.xcworkspace");
+        std::fs::create_dir_all(&ws).unwrap();
+        std::fs::write(
+            ws.join("contents.xcworkspacedata"),
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version = \"1.0\">\n   \
+             <FileRef location = \"group:Pkg\"></FileRef>\n</Workspace>\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.join("Pkg")).unwrap();
+        std::fs::write(dir.join("Pkg/Package.swift"), "").unwrap();
+        let scheme = |launches: &str| {
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<Scheme version="1.7">
+<LaunchAction><BuildableProductRunnable><BuildableReference BuildableIdentifier="primary"
+ BlueprintIdentifier="{launches}" BuildableName="{launches}" BlueprintName="{launches}"
+ ReferencedContainer="container:"></BuildableReference></BuildableProductRunnable></LaunchAction>
+</Scheme>"#
+            )
+        };
+        for (at, launches) in [
+            (
+                "Pkg/.swiftpm/xcode/xcshareddata/xcschemes/Tool.xcscheme",
+                "runner",
+            ),
+            (
+                "Stray.xcodeproj/xcshareddata/xcschemes/Stray.xcscheme",
+                "stray",
+            ),
+        ] {
+            let path = dir.join(at);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, scheme(launches)).unwrap();
+        }
+        assert_eq!(launch_target(&ws, "Tool").as_deref(), Some("runner"));
+        assert_eq!(launch_target(&ws, "Stray"), None);
     }
 }

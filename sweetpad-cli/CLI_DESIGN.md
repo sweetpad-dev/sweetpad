@@ -899,6 +899,14 @@ rules and `sweetpad-core/src/package_members.rs` the cache that keeps the
 spawns off the common path.
 
 Notes / heuristics:
+- A scheme's `.xcscheme` is found where `xcodebuild -list` reads it for the
+  container (`sweetpad_lib::scheme::locate`): the container itself, then a
+  workspace's member projects, then the `.swiftpm/xcode` of each local package
+  it or they declare. Only the current user's `xcuserdata` counts, since Xcode
+  never shows one user another's personal schemes. The app locator reads the
+  Run action through it (`sweetpad_core::app_locator::find_scheme`), and so do
+  the CLI, the build-settings resolver, the supported-platforms filter and the
+  extension (launch settings, `scheme.reveal`).
 - `test run` exits non-zero on failures; the `--json` summary lands on stdout
   and the failure error on stderr, so both are independently consumable.
 - simulator inline logs use a best-effort `processImagePath CONTAINS` log

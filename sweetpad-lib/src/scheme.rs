@@ -353,6 +353,87 @@ pub fn find_scheme_file(container: &Path, name: &str) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// The file behind the scheme `name` that `xcodebuild` lists for `container`,
+/// or `None` when it has none (an autocreated scheme Xcode never wrote, or a
+/// name the container doesn't know). See [`locate_all`] for where it looks.
+#[must_use]
+pub fn locate(container: &Path, name: &str) -> Option<PathBuf> {
+    scheme_containers(container)
+        .flat_map(|c| scheme_dirs(&c))
+        .map(|dir| dir.join(format!("{name}.xcscheme")))
+        .find(|p| p.is_file())
+}
+
+/// Every file named for the scheme `name` among the scheme containers
+/// `xcodebuild -list` reads for `container`, the one it uses first. Only the
+/// current user's `xcuserdata` counts, as it does for Xcode.
+///
+/// - A `.xcworkspace` (a project's embedded one included): its own schemes,
+///   then each member project's, then each local package's `.swiftpm/xcode`,
+///   the workspace's own package members before the ones its projects declare.
+/// - A `.xcodeproj`: its own, then the `.swiftpm/xcode` of each local package
+///   it declares.
+/// - A Swift package, named by its `Package.swift` or its directory: its
+///   `.swiftpm/xcode`.
+///
+/// A package reached only through another package's `.package(path:)` is not
+/// looked in: only its manifest names it.
+#[must_use]
+pub fn locate_all(container: &Path, name: &str) -> Vec<PathBuf> {
+    scheme_containers(container)
+        .flat_map(|c| scheme_dirs(&c))
+        .map(|dir| dir.join(format!("{name}.xcscheme")))
+        .filter(|p| p.is_file())
+        .collect()
+}
+
+/// The directories holding `xcshareddata`/`xcuserdata` scheme folders for
+/// `container`, in lookup order. The container's own comes first and costs
+/// nothing to name; the members behind it are read only when a lookup gets
+/// that far.
+fn scheme_containers(container: &Path) -> impl Iterator<Item = PathBuf> {
+    let own = if container.file_name() == Some(OsStr::new("Package.swift")) {
+        crate::workspace::package_scheme_root(container.parent().unwrap_or(Path::new(".")))
+    } else if matches!(
+        container.extension().and_then(OsStr::to_str),
+        Some("xcworkspace" | "xcodeproj")
+    ) {
+        container.to_path_buf()
+    } else {
+        crate::workspace::package_scheme_root(container)
+    };
+    let container = container.to_path_buf();
+    std::iter::once(own).chain(std::iter::once_with(move || members(&container)).flatten())
+}
+
+/// The scheme containers behind `container`'s own: a workspace's member
+/// projects and local packages, a project's local packages.
+fn members(container: &Path) -> Vec<PathBuf> {
+    match container.extension().and_then(OsStr::to_str) {
+        Some("xcworkspace") => crate::workspace::open(container)
+            .map(|ws| {
+                let packages = ws
+                    .package_refs
+                    .iter()
+                    .cloned()
+                    .chain(ws.project_package_refs())
+                    .map(|dir| crate::workspace::package_scheme_root(&dir));
+                ws.project_refs.iter().cloned().chain(packages).collect()
+            })
+            .unwrap_or_default(),
+        Some("xcodeproj") => crate::project::open(container)
+            .map(|project| {
+                project
+                    .package_refs
+                    .iter()
+                    .map(|dir| crate::workspace::package_scheme_root(dir))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
 /// Build a [`Scheme`] from an already-parsed `<Scheme>` element.
 pub fn from_element(root: &Element) -> Result<Scheme, Error> {
     if root.name != "Scheme" {
@@ -756,5 +837,90 @@ mod tests {
         assert_eq!(find_scheme_file(&dir, "App"), Some(shared));
         assert_eq!(find_scheme_file(&dir, "Mine"), Some(user_only));
         assert_eq!(find_scheme_file(&dir, "Nope"), None);
+    }
+
+    /// A workspace holding two projects and a local package, each with
+    /// scheme files of its own.
+    fn scratch_workspace(tag: &str) -> (TempDir, PathBuf) {
+        let root = TempDir::new(&format!("sweetpad-scheme-{tag}"));
+        let ws = root.join("App.xcworkspace");
+        std::fs::create_dir_all(&ws).unwrap();
+        std::fs::write(
+            ws.join("contents.xcworkspacedata"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Workspace version = "1.0">
+   <FileRef location = "group:A.xcodeproj"></FileRef>
+   <FileRef location = "group:B.xcodeproj"></FileRef>
+   <FileRef location = "group:Pkg"></FileRef>
+</Workspace>
+"#,
+        )
+        .unwrap();
+        for dir in ["A.xcodeproj", "B.xcodeproj", "Pkg"] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        touch(&root.join("Pkg/Package.swift"));
+        (root, ws)
+    }
+
+    /// `xcodebuild -list -workspace` reads the workspace's schemes, then each
+    /// member's, then each local package's `.swiftpm/xcode`; a lookup by name
+    /// follows the same order and never leaves the workspace it was given.
+    #[test]
+    fn locate_searches_the_workspace_then_its_members_then_its_packages() {
+        let (root, ws) = scratch_workspace("locate-ws");
+        let own = ws.join("xcshareddata/xcschemes/Shared.xcscheme");
+        touch(&own);
+        touch(&root.join("A.xcodeproj/xcshareddata/xcschemes/Shared.xcscheme"));
+        let in_b = root.join("B.xcodeproj/xcshareddata/xcschemes/OnlyInB.xcscheme");
+        touch(&in_b);
+        let in_package = root.join("Pkg/.swiftpm/xcode/xcshareddata/xcschemes/Custom.xcscheme");
+        touch(&in_package);
+        // A same-named scheme in a project the workspace doesn't list.
+        touch(&root.join("Other.xcodeproj/xcshareddata/xcschemes/Stray.xcscheme"));
+
+        assert_eq!(locate(&ws, "Shared"), Some(own.clone()));
+        assert_eq!(
+            locate_all(&ws, "Shared"),
+            [
+                own,
+                root.join("A.xcodeproj/xcshareddata/xcschemes/Shared.xcscheme")
+            ]
+        );
+        assert_eq!(locate(&ws, "OnlyInB"), Some(in_b));
+        assert_eq!(locate(&ws, "Custom"), Some(in_package));
+        assert_eq!(locate(&ws, "Stray"), None);
+    }
+
+    /// A package is named by its manifest or its directory, and keeps its
+    /// schemes in `.swiftpm/xcode`.
+    #[test]
+    fn locate_reads_a_packages_swiftpm_container() {
+        let root = TempDir::new("sweetpad-scheme-locate-package");
+        let scheme = root.join("Pkg/.swiftpm/xcode/xcshareddata/xcschemes/Custom.xcscheme");
+        touch(&scheme);
+        assert_eq!(
+            locate(&root.join("Pkg/Package.swift"), "Custom"),
+            Some(scheme.clone())
+        );
+        assert_eq!(locate(&root.join("Pkg"), "Custom"), Some(scheme));
+    }
+
+    /// Xcode never shows one user another user's personal schemes, so a
+    /// lookup doesn't either.
+    #[test]
+    fn locate_skips_another_users_schemes() {
+        let Some(user) = detected_user() else {
+            eprintln!("skipping: needs a $USER to scope per-user schemes to");
+            return;
+        };
+        let (_root, dir) = scratch_container("locate-user");
+        touch(&dir.join("xcuserdata/someone-else.xcuserdatad/xcschemes/Foreign.xcscheme"));
+        let mine = dir.join(format!(
+            "xcuserdata/{user}.xcuserdatad/xcschemes/Mine.xcscheme"
+        ));
+        touch(&mine);
+        assert_eq!(locate(&dir, "Foreign"), None);
+        assert_eq!(locate(&dir, "Mine"), Some(mine));
     }
 }

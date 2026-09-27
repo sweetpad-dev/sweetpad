@@ -1,10 +1,9 @@
 import { type Dirent, promises as fs } from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { findFiles, findFilesRecursive, getWorkspaceRelativePath } from "./files";
+import { findFiles, getWorkspaceRelativePath } from "./files";
 import { WorkspaceContextService } from "./workspace-context";
 
 // `../build/utils` imports the native `@sweetpad/native` addon at module level; stub it so this
@@ -32,7 +31,7 @@ function direntWithoutPath(name: string, isDir: boolean): Dirent {
   } as unknown as Dirent;
 }
 
-describe("findFiles / findFilesRecursive path building", () => {
+describe("findFiles path building", () => {
   it("does not rely on Dirent.path (undefined on older Node) — #255", async () => {
     // Simulate a runtime where Dirent.path is undefined: readdir returns
     // entries without the `path` property.
@@ -49,88 +48,6 @@ describe("findFiles / findFilesRecursive path building", () => {
         matcher: (file) => file.name.endsWith(".xcworkspace"),
       });
       expect(result).toEqual([path.join("/Users/test/project", "App.xcworkspace")]);
-    } finally {
-      spy.mockRestore();
-    }
-  });
-
-  it("recurses into subdirectories using the read directory, not Dirent.path", async () => {
-    const root = "/Users/test/project";
-    const nested = path.join(root, "App.xcodeproj");
-
-    const spy = vi.spyOn(fs, "readdir").mockImplementation((async (dir: string) => {
-      if (dir === root) {
-        return [direntWithoutPath("App.xcodeproj", true)];
-      }
-      if (dir === nested) {
-        return [direntWithoutPath("project.xcworkspace", true)];
-      }
-      return [];
-    }) as unknown as typeof fs.readdir);
-
-    try {
-      const result = await findFilesRecursive({
-        directory: root,
-        depth: 4,
-        matcher: (file) => file.name.endsWith(".xcworkspace"),
-      });
-      expect(result).toEqual([path.join(nested, "project.xcworkspace")]);
-    } finally {
-      spy.mockRestore();
-    }
-  });
-
-  it("works end-to-end against the real filesystem", async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "sweetpad-files-"));
-    try {
-      const projDir = path.join(tmpDir, "App.xcodeproj");
-      await fs.mkdir(projDir);
-      await fs.writeFile(path.join(tmpDir, "App.xcworkspace"), "");
-      await fs.writeFile(path.join(projDir, "project.xcworkspace"), "");
-
-      const result = await findFilesRecursive({
-        directory: tmpDir,
-        depth: 4,
-        matcher: (file) => file.name.endsWith(".xcworkspace"),
-      });
-
-      expect(result.toSorted()).toEqual(
-        [path.join(tmpDir, "App.xcworkspace"), path.join(projDir, "project.xcworkspace")].toSorted(),
-      );
-    } finally {
-      await fs.rm(tmpDir, { recursive: true, force: true });
-    }
-  });
-
-  // A multi-root scan runs this once per workspace folder and merges the results, so a folder that
-  // cannot be read has to yield nothing rather than fail the whole scan.
-  it("returns nothing for a directory that does not exist", async () => {
-    const result = await findFilesRecursive({
-      directory: path.join(os.tmpdir(), "sweetpad-does-not-exist-a8f3c1"),
-      depth: 4,
-      matcher: (file) => file.name.endsWith(".xcworkspace"),
-    });
-    expect(result).toEqual([]);
-  });
-
-  // A readdir failure deeper in the tree takes the same path: the subtree contributes nothing and
-  // its siblings still come back.
-  it("keeps siblings when a subdirectory cannot be read", async () => {
-    const root = "/Users/test/project";
-    const spy = vi.spyOn(fs, "readdir").mockImplementation((async (dir: string) => {
-      if (dir === root) {
-        return [direntWithoutPath("App.xcworkspace", true), direntWithoutPath("denied", true)];
-      }
-      throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
-    }) as unknown as typeof fs.readdir);
-
-    try {
-      const result = await findFilesRecursive({
-        directory: root,
-        depth: 4,
-        matcher: (file) => file.name.endsWith(".xcworkspace"),
-      });
-      expect(result).toEqual([path.join(root, "App.xcworkspace")]);
     } finally {
       spy.mockRestore();
     }

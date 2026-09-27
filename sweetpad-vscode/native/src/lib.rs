@@ -692,6 +692,28 @@ pub fn parse_scheme(path: String) -> napi::Result<SchemeInfo> {
     Ok(scheme_to_napi(scheme))
 }
 
+/// The `.xcscheme` file behind the scheme `name` of a `.xcworkspace`,
+/// `.xcodeproj` or `Package.swift`: the one `xcodebuild` reads, from the
+/// container, its member projects and its local packages, and only the
+/// current user's `xcuserdata`. `null` for a scheme with no file (autocreated)
+/// or a name the container doesn't list.
+#[napi]
+#[must_use]
+pub fn locate_scheme(container: String, name: String) -> Option<String> {
+    scheme::locate(Path::new(&container), &name).map(|p| p.display().to_string())
+}
+
+/// Every file named for the scheme `name` in the places [`locate_scheme`]
+/// looks, the one it returns first.
+#[napi]
+#[must_use]
+pub fn scheme_files(container: String, name: String) -> Vec<String> {
+    scheme::locate_all(Path::new(&container), &name)
+        .into_iter()
+        .map(|p| p.display().to_string())
+        .collect()
+}
+
 fn buildable_to_napi(b: scheme::BuildableRef) -> SchemeBuildable {
     SchemeBuildable {
         blueprint_name: b.blueprint_name,

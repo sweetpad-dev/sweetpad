@@ -10,6 +10,7 @@ import { ExtensionError } from "../errors";
 import { exec } from "../exec";
 import { getShellDeveloperDir } from "../tasks/shell-env";
 import {
+  findSchemeFile,
   getBuildSettingsList,
   getSchemes,
   getSimulatorAppPath,
@@ -30,6 +31,7 @@ vi.mock("@sweetpad/native", async (importOriginal) => ({
   supportedPlatforms: vi.fn(),
   schemes: vi.fn(),
   targets: vi.fn(),
+  locateScheme: vi.fn(),
 }));
 
 const mockGetConfiguration = vscode.workspace.getConfiguration as Mock;
@@ -41,6 +43,7 @@ const mockPickApp = sweetpadLib.pickApp as Mock;
 const mockSupportedPlatforms = sweetpadLib.supportedPlatforms as Mock;
 const mockSchemes = sweetpadLib.schemes as Mock;
 const mockTargets = sweetpadLib.targets as Mock;
+const mockLocateScheme = sweetpadLib.locateScheme as Mock;
 
 /** `getWorkspaceConfig` reads `getConfiguration("sweetpad").get(key)`. */
 function mockConfig(values: Record<string, unknown>) {
@@ -501,6 +504,27 @@ describe("getSupportedPlatforms", () => {
     expect(
       getSupportedPlatforms({ scheme: "App", configuration: "Debug", xcworkspace: "/proj/App.xcodeproj" }),
     ).toBeUndefined();
+  });
+});
+
+describe("findSchemeFile", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  // The addon reads the file `xcodebuild` reads for this container: never another user's
+  // `xcuserdata`, never a same-named scheme outside the container.
+  it("asks the addon for the container's own scheme file", async () => {
+    mockLocateScheme.mockReturnValue("/proj/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme");
+    expect(await findSchemeFile("/proj/App.xcworkspace", "App")).toBe(
+      "/proj/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme",
+    );
+    expect(mockLocateScheme).toHaveBeenCalledWith("/proj/App.xcworkspace", "App");
+  });
+
+  it("has no file for an autocreated scheme", async () => {
+    mockLocateScheme.mockReturnValue(null);
+    expect(await findSchemeFile("/proj/App.xcodeproj", "App")).toBeUndefined();
   });
 });
 

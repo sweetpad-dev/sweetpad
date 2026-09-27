@@ -1259,22 +1259,12 @@ fn multi_select(kind: &str, items: &[String], color: bool) -> Result<Vec<String>
 /// first one with build entries (or an autocreated scheme, which has none on
 /// disk but always builds) is used; falls back to the first scheme.
 fn first_scheme(container: &Container) -> Option<String> {
+    if let Container::SwiftPackage(_) = container {
+        return None;
+    }
     let names = resolve::schemes(container).ok()?;
-    // Where a scheme's `.xcscheme` may live: the container itself, plus every
-    // member project for a workspace.
-    let dirs: Vec<PathBuf> = match container {
-        Container::Project(p) => vec![p.clone()],
-        Container::Workspace(p) => {
-            let mut dirs = vec![p.clone()];
-            if let Ok(ws) = sweetpad_lib::workspace::open(p) {
-                dirs.extend(ws.project_refs);
-            }
-            dirs
-        }
-        Container::SwiftPackage(_) => return None,
-    };
     for name in &names {
-        if scheme_builds(&dirs, name) {
+        if scheme_builds(container.path(), name) {
             return Some(name.clone());
         }
     }
@@ -1284,11 +1274,8 @@ fn first_scheme(container: &Container) -> Option<String> {
 /// Whether a scheme builds something: it has no materialized file (an
 /// autocreated scheme for a buildable target) or its `BuildAction` has entries.
 /// An unparseable file is assumed buildable rather than skipped.
-fn scheme_builds(dirs: &[PathBuf], name: &str) -> bool {
-    match dirs
-        .iter()
-        .find_map(|d| sweetpad_lib::scheme::find_scheme_file(d, name))
-    {
+fn scheme_builds(container: &Path, name: &str) -> bool {
+    match sweetpad_lib::scheme::locate(container, name) {
         None => true,
         Some(file) => match sweetpad_lib::scheme::parse_file(&file) {
             Ok(scheme) => !scheme.build_entries.is_empty(),
