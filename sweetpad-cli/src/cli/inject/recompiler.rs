@@ -460,16 +460,19 @@ fn capture_combined(prog: &str, argv: &[String], tmpdir: Option<&Path>) -> Resul
 }
 
 /// Parse `swiftc -###` output into the per-file frontend *compile* jobs (each a
-/// token vector). `-###` prints each job on a line with every argument
-/// double-quoted; we keep the lines that are frontend invocations carrying a
-/// `-primary-file` and a compile flag (skipping the module-merge / link jobs).
+/// token vector). `-###` prints each job on a line, quoted the way a shell
+/// reads it: Xcode 27 leaves most arguments bare and single-quotes the ones
+/// with a space or a `#`, while older toolchains double-quote every argument.
+/// [`shell_tokens`] reads both. We keep the lines that are frontend invocations
+/// carrying a `-primary-file` and a compile flag (skipping the module-merge /
+/// link jobs).
 fn parse_frontend_jobs(text: &str) -> Vec<Vec<String>> {
     let mut jobs = Vec::new();
     for line in text.lines() {
         if !line.contains("-frontend") {
             continue;
         }
-        let tokens = parse_quoted_tokens(line);
+        let tokens = shell_tokens(line);
         let has_primary = tokens.iter().any(|t| t == "-primary-file");
         let is_compile = tokens.iter().any(|t| t == "-c" || t == "-emit-object");
         if has_primary && is_compile {
@@ -477,22 +480,6 @@ fn parse_frontend_jobs(text: &str) -> Vec<Vec<String>> {
         }
     }
     jobs
-}
-
-/// Tokenize a `-###` job line. `-###` wraps every argument in double quotes, so
-/// the tokens are the odd-indexed `"`-split segments; fall back to whitespace
-/// splitting for any unquoted line.
-fn parse_quoted_tokens(line: &str) -> Vec<String> {
-    let line = line.trim();
-    if line.contains('"') {
-        line.split('"')
-            .enumerate()
-            .filter(|(i, _)| i % 2 == 1)
-            .map(|(_, s)| s.to_string())
-            .collect()
-    } else {
-        line.split_whitespace().map(str::to_string).collect()
-    }
 }
 
 /// Strip the driver flags that orchestrate xcodebuild's *incremental, batched,
@@ -986,12 +973,56 @@ mod tests {
     #[test]
     fn parses_quoted_dash_dash_dash_tokens() {
         let line = r#"  "/x/swift-frontend" "-frontend" "-c" "-primary-file" "/p/A.swift" "-target" "arm64-apple-ios16.0-simulator""#;
-        let t = parse_quoted_tokens(line);
+        let t = shell_tokens(line);
         assert_eq!(t[0], "/x/swift-frontend");
         assert!(t.contains(&"-primary-file".to_string()));
         assert!(t.contains(&"/p/A.swift".to_string()));
-        // Unquoted fallback still splits on whitespace.
-        assert_eq!(parse_quoted_tokens("a b c"), vec!["a", "b", "c"]);
+        assert_eq!(shell_tokens("a b c"), vec!["a", "b", "c"]);
+    }
+
+    /// Xcode 27's `-###` prints arguments bare and single-quotes the ones a
+    /// shell would split: a path with a space, and the `#`-joined plugin
+    /// paths. Captured from `swiftc -### -disable-batch-mode -c` on Xcode 27.0,
+    /// with the sources under `/Users/me/sp ace`.
+    #[test]
+    fn a_spaced_path_in_an_xcode_27_job_stays_one_token() {
+        let dev = "/Applications/Xcode.app/Contents/Developer";
+        let toolchain = format!("{dev}/Toolchains/XcodeDefault.xctoolchain/usr");
+        let platform = format!("{dev}/Platforms/MacOSX.platform/Developer");
+        let line = format!(
+            "{toolchain}/bin/swift-frontend -frontend -c -primary-file '/Users/me/sp ace/A.swift' \
+             '/Users/me/sp ace/B.swift' -target arm64-apple-macos14.0 -Xllvm -aarch64-use-tbi \
+             -enable-objc-interop -stack-check -sdk {platform}/SDKs/MacOSX27.0.sdk \
+             -no-color-diagnostics -Xcc -fno-color-diagnostics \
+             -new-driver-path {toolchain}/bin/swift-driver -empty-abi-descriptor \
+             -no-auto-bridging-header-chaining -module-name M -disable-clang-spi \
+             -target-sdk-version 27.0 -target-sdk-name macosx27.0 \
+             -external-plugin-path '{platform}/usr/lib/swift/host/plugins#{platform}/usr/bin/swift-plugin-server' \
+             -in-process-plugin-server-path {toolchain}/lib/swift/host/libSwiftInProcPluginServer.dylib \
+             -plugin-path {toolchain}/lib/swift/host/plugins -o A.o"
+        );
+        let jobs = parse_frontend_jobs(&line);
+        assert_eq!(jobs.len(), 1);
+        let job = &jobs[0];
+        assert_eq!(
+            primary_file(job).as_deref(),
+            Some("/Users/me/sp ace/A.swift")
+        );
+        assert!(
+            job.iter().any(|t| t == "/Users/me/sp ace/B.swift"),
+            "{job:?}"
+        );
+        let plugin = job
+            .iter()
+            .skip_while(|t| *t != "-external-plugin-path")
+            .nth(1)
+            .unwrap();
+        assert_eq!(
+            plugin,
+            &format!(
+                "{platform}/usr/lib/swift/host/plugins#{platform}/usr/bin/swift-plugin-server"
+            )
+        );
     }
 
     #[test]
