@@ -178,27 +178,18 @@ fn gather() -> Result<Vec<Dest>, crate::cli::CliError> {
 
     // Devices are best-effort: no devices (or no devicectl) just means none.
     for d in devicectl::list().unwrap_or_default() {
-        let platform = simctl_platform(&d.platform).to_string();
         dests.push(Dest {
             kind: "device",
             name: d.name.clone(),
-            os: platform.clone(),
+            os: d.platform_label().to_string(),
             os_version: d.os_version.clone(),
             booted: None,
-            specifier: format!("platform={platform},id={}", d.udid),
+            specifier: d.destination(),
             udid: Some(d.udid.clone()),
             device: Some(d),
         });
     }
     Ok(dests)
-}
-
-/// xcodebuild destination platform name for a physical device's platform.
-fn simctl_platform(platform: &str) -> &str {
-    match platform {
-        "" | "iOS" => "iOS",
-        other => other,
-    }
 }
 
 #[cfg(test)]
@@ -218,6 +209,7 @@ mod tests {
             connection: "disconnected".to_string(),
             transport: "localNetwork".to_string(),
             pairing: "paired".to_string(),
+            ..Default::default()
         };
         let list = DestList {
             dests: vec![

@@ -442,6 +442,7 @@ mod tests {
             connection: "connected".to_string(),
             transport: "localNetwork".to_string(),
             pairing: "paired".to_string(),
+            ..Default::default()
         }
     }
 

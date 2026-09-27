@@ -1341,15 +1341,7 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
                     CliError::new("device not found").kind(ErrorKind::TargetResolution)
                 })?
         };
-        let platform = if dev.platform.is_empty() {
-            "iOS"
-        } else {
-            &dev.platform
-        };
-        (
-            format!("platform={platform},id={}", dev.udid),
-            Target::Device(dev.udid.clone()),
-        )
+        (dev.destination(), Target::Device(dev.udid.clone()))
     } else {
         // Scheme and configuration are already settled above; resolve only the
         // destination here so the scheme picker doesn't run a second time. A

@@ -21,6 +21,7 @@
 
 use std::path::{Path, PathBuf};
 
+use sweetpad_core::devices::simctl::version_key;
 use sweetpad_lib::destination::{DestinationSpec, Platform};
 
 use crate::cli::config::Defaults;
@@ -1047,23 +1048,10 @@ pub(crate) fn platform_word(word: &str) -> Option<&'static str> {
 }
 
 fn device_target(dev: &crate::cli::devicectl::Device) -> OnTarget {
-    let platform = if dev.platform.is_empty() {
-        "iOS"
-    } else {
-        &dev.platform
-    };
     OnTarget::Device {
         udid: dev.udid.clone(),
-        specifier: format!("platform={platform},id={}", dev.udid),
+        specifier: dev.destination(),
     }
-}
-
-/// Numeric sort key for an OS version string (`"17.0"` → `[17, 0]`).
-fn version_key(version: &str) -> Vec<u32> {
-    version
-        .split('.')
-        .map(|part| part.parse().unwrap_or(0))
-        .collect()
 }
 
 /// A fully-settled build target: the three things `xcodebuild` always needs.
@@ -1846,6 +1834,7 @@ mod tests {
             available: true,
             os: "iOS".into(),
             os_version: "17.0".into(),
+            ..Default::default()
         };
         let mut state = State::default();
         track_destination(&mut state, "/p", &sim("A"));
@@ -2137,6 +2126,7 @@ mod tests {
             available: true,
             os: "iOS".into(),
             os_version: "17.0".into(),
+            ..Default::default()
         }
     }
 
