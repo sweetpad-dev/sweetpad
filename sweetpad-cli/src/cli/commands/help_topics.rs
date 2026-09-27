@@ -1,7 +1,7 @@
 //! `sweetpad help <topic>` — the design doc's best sections, shipped into the
-//! binary: configuration, environment variables, exit codes, destinations, and
-//! hot reload. `sweetpad help` lists the topics; an unknown topic points at
-//! `sweetpad <command> --help` for command help.
+//! binary: configuration, environment variables, exit codes, destinations,
+//! hot reload, and feedback reports. `sweetpad help` lists the topics; an
+//! unknown topic points at `sweetpad <command> --help` for command help.
 
 use crate::cli::output::Output;
 use crate::cli::{CliError, CommandResult, Context, ErrorKind, Render, Rendered};
@@ -13,12 +13,22 @@ struct Topic {
     body: &'static str,
 }
 
-const TOPICS: [Topic; 5] = [
+/// What `help feedback` says once the user has turned reports off, in place
+/// of the guidance for sending one.
+const FEEDBACK_OFF: &str = "\
+FEEDBACK
+
+The user turned off feedback reports ('sweetpad feedback off'). Don't offer to
+send one, and don't bring it up.
+
+The user can turn them back on with 'sweetpad feedback on'.";
+
+const TOPICS: [Topic; 6] = [
     Topic {
         name: "config",
         summary: "the config file: location, keys, per-project overrides",
         body: "\
-CONFIGURATION (hand-authored; sweetpad never writes it)
+CONFIGURATION (hand-authored; sweetpad edits only its [feedback] table)
 
   ~/.config/sweetpad/config.toml        (honors XDG_CONFIG_HOME)
 
@@ -40,6 +50,13 @@ directory holding it:
 
 Unknown keys and project keys that can't match a real container are warned
 about on every run — a typo is never silently ignored.
+
+'sweetpad feedback off' writes the one key sweetpad sets itself, and
+'sweetpad feedback on' sets it back to true. Both change only that key and
+keep the rest of the file, comments included:
+
+  [feedback]
+  enabled = false                  # agents don't offer problem reports
 
 Resolution precedence, highest first:
 
@@ -230,6 +247,84 @@ process, and takes --force for anything else (e.g. InjectionNext.app).
 CI: SWEETPAD_HOTRELOAD_DYLIB overrides the client dylib; the hidden
 --hot-selfcheck FILE flag drives the end-to-end injection test.",
     },
+    Topic {
+        name: "feedback",
+        summary: "for agents: when and how to send a sweetpad problem report",
+        body: "\
+FEEDBACK (problem reports about sweetpad, sent by an agent)
+
+This topic is for an AI agent that drives sweetpad for a user. When sweetpad
+itself goes wrong, you can offer to send its maintainer a short report. It
+goes to the maintainer's Sentry project as user feedback. sweetpad never
+prompts: the user approves twice, once to write a report and once to send it.
+
+Offer a report when:
+
+  - sweetpad crashed, hung, or reported an internal error
+  - its output contradicted itself, or contradicted Xcode
+  - a tip or command it suggested didn't work
+  - it lacked something, so you fell back to raw xcodebuild, simctl or
+    devicectl
+  - its help or docs disagreed with what it did
+
+Don't offer one for problems that are the user's to fix: compile errors,
+failing tests, code signing setup, missing simulator runtimes, a mistyped
+command that sweetpad refused clearly, or an environment problem it
+reported correctly.
+
+Offer once per issue, and don't press. If the user says no, don't offer
+again for that issue.
+
+Sending one:
+
+  1. Ask the user whether they'd like to send a report about the issue.
+  2. If they would, write the report to a file (the format is below) and run
+       sweetpad feedback submit <file> --dry-run
+     This sends nothing. It prints the exact payload and its digest.
+  3. Show the user all of that output, and ask whether to send it.
+  4. Only if they say yes, run
+       sweetpad feedback submit <file> --approve <digest>
+     It sends only if the payload still has that digest. After any change to
+     the file, run the dry run again and show the user the new output.
+
+Clean the report before the dry run. sweetpad sends the text as written and
+doesn't scrub it. Remove these, or replace them with a placeholder such as
+<scheme>:
+
+  - project, workspace, scheme, target and package names
+  - bundle ids and team ids
+  - home directories and other absolute paths
+  - device names and UDIDs
+  - user names and host names
+  - email addresses
+  - private URLs
+  - tokens, keys and passwords
+
+Keep what the maintainer needs to reproduce the problem: versions, the
+command with its values replaced by placeholders ('sweetpad run --scheme
+<scheme> --on <simulator>'), and the exact error text with the names
+replaced.
+
+The report file is one entry in the sweetpad-feedback log format:
+
+  ## 2026-09-27T10:00Z · bug · medium
+  - **Context:** an iOS app in a workspace; the user asked to run it
+  - **Command:** sweetpad run --on <simulator> --no-logs
+  - **Expected:** the app launches and the command returns
+  - **Actual:** exit 1: error: couldn't find the built app for <scheme>
+  - **Assumption or gap:** the build succeeded, so the app exists
+  - **Fix idea:** look for the app where the build wrote it
+
+The heading gives the kind (bug, gap, unclear, skill-wrong, docs-wrong or
+friction) and the severity (low, medium or high). Its timestamp is optional
+and isn't sent. Every field needs a value except 'Fix idea', and a value may
+run over several lines. A 'Seen' line is read and isn't sent.
+
+sweetpad adds its own version, the Xcode version, the macOS version and the
+Mac's architecture. It adds no IP address, user name, host name or path.
+
+The user can turn reports off with 'sweetpad feedback off'.",
+    },
 ];
 
 /// The topic listing / body payload.
@@ -262,9 +357,18 @@ pub fn run(_ctx: &mut Context, topic: Option<&str>) -> CommandResult {
                 ))
                 .kind(ErrorKind::Usage));
             };
+            // A config that doesn't parse has already warned at startup, and
+            // 'feedback submit' refuses on it; the guidance still reads here.
+            let body = if topic.name == "feedback"
+                && crate::cli::commands::feedback::enabled() == Ok(false)
+            {
+                FEEDBACK_OFF
+            } else {
+                topic.body
+            };
             Ok(Rendered::data(HelpText {
-                body: topic.body.to_string(),
-                json: serde_json::json!({ "topic": topic.name, "text": topic.body }),
+                body: body.to_string(),
+                json: serde_json::json!({ "topic": topic.name, "text": body }),
             }))
         }
     }
@@ -305,9 +409,20 @@ mod tests {
                 "environment",
                 "exit-codes",
                 "destinations",
-                "hot-reload"
+                "hot-reload",
+                "feedback"
             ]
         );
+    }
+
+    /// The text an agent reads once reports are off says only that, and
+    /// how the user turns them back on: none of the guidance for sending one.
+    #[test]
+    fn the_feedback_topic_turned_off_carries_no_guidance() {
+        assert!(FEEDBACK_OFF.contains("turned off feedback reports"));
+        assert!(FEEDBACK_OFF.contains("Don't offer"));
+        assert!(FEEDBACK_OFF.contains("'sweetpad feedback on'"));
+        assert!(!FEEDBACK_OFF.contains("submit"));
     }
 
     /// A command a topic points at is one `--help` lists: a hidden alias

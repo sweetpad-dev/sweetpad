@@ -116,6 +116,7 @@ sweetpad merge <install|run>      semantic conflict resolution (pbxproj/spm
 sweetpad context <show|select|set|alias|remove>
 sweetpad settings show [-- XCODEBUILD_ARGS]   resolved build settings (porcelain; §9f/§9g)
 sweetpad pbxproj <resolve|settings|folder|membership|fileref|group>  plumbing (§9g)
+sweetpad feedback <submit|off|on|status>  an agent's problem report to the maintainer (§9t)
 ```
 
 Destination selection is `--on <ref>` (fuzzy name / `booted` / `mac` /
@@ -317,8 +318,9 @@ on a verb it means nothing to (`test build --failed`, `build diagnostics
 flag value out of range (`--pid 0`, `--nth 0`, `archive --on toaster`), an
 argument no project could make valid (`pbxproj membership add` naming no
 file, a `pbxproj settings set` argument with no `=`, a `project new` name
-with a space, `context alias mac`, an unknown `help` topic). Those take the
-envelope with `code: "usage_error"`. Where the command line alone settles
+with a space, `context alias mac`, an unknown `help` topic, `feedback submit`
+with neither `--dry-run` nor `--approve`, a report file missing a field).
+Those take the envelope with `code: "usage_error"`. Where the command line alone settles
 one, the command checks it before looking for a project, so the refusal is
 the same from any directory. The typed flags alone decide it, and a
 committed default never causes one: `[run] hot = true` yields to the flags
@@ -423,7 +425,9 @@ the tool never clobbers hand-authored config:
   canonicalized **container** path — the `.xcworkspace`/`.xcodeproj`/
   `Package.swift` itself, *not* the directory holding it:
   `[projects."/abs/path/to/Proj.xcodeproj"]`.
-- The tool **reads** this and **never rewrites** it (preserves comments/format).
+- The tool **reads** this and **never rewrites** it, with one exception:
+  `feedback off`/`on` set `[feedback] enabled` (§9t) through `toml_edit`, which
+  changes that key and keeps every other line and comment as written.
   Unknown keys and `[projects."…"]` keys that can't match a real container are
   **warned about** on load (with a did-you-mean where possible), never
   silently ignored.
@@ -448,6 +452,8 @@ configuration = "Test"
   values when unset (mirrors the extension's `sweetpad.testing.*` settings);
   `target` narrows the run to `-only-testing:<target>` when no explicit
   selector is given.
+- A top-level `[feedback]` table holds `enabled` (default true), the switch
+  for `feedback submit` (§9t).
 
 ### Project file — committed, team-shared
 - An *optional, hand-authored* `sweetpad.toml` at the project root. This is how
@@ -3264,6 +3270,174 @@ spelled. The resolver's chain keeps `<project>/../x/sym2/Debug/…`, so the
 locator normalizes the product's directory the same way, and `productPath`
 and the launched executable name the bundle as `xcodebuild` does; `settings
 show` still prints those keys unnormalized.
+
+## 9t. v8 — `feedback`: an agent's problem report to the maintainer
+
+The agents that drive sweetpad hit its bugs first: a tip that doesn't work, a
+gap that sends them back to raw `xcodebuild`, help that disagrees with what a
+command does. Without a way to send them, those findings stay in the
+agent's session. `feedback` lets the agent send one to the maintainer, with
+the user's approval, after the agent has taken the user's names out of it.
+
+```
+sweetpad feedback submit <FILE> --dry-run
+sweetpad feedback submit <FILE> --approve <DIGEST>
+sweetpad feedback off | on | status
+sweetpad help feedback
+```
+
+**Two approvals, and no prompt.** The CLI never reads stdin, because an agent
+must not block on it; the approvals are the agent asking the user. The agent
+asks once per issue whether the user would like to send a report. If so, it
+writes the report file and runs `--dry-run`, which prints the exact payload
+and its digest and sends nothing. The agent shows that to the user, and only
+after the user approves it runs `--approve <digest>`. That rebuilds the
+payload from the file and sends only if the digest still matches; otherwise
+it exits 1 without sending and asks for a fresh dry run. The refusal does
+not print the new digest, so an agent can't send a payload the user never
+saw by copying it from the error. `submit` with neither flag is a usage error
+pointing at `--dry-run`; clap refuses both at once.
+
+**The agent cleans the report; sweetpad doesn't scrub it.** The agent knows
+which names in the text are the user's, and a scrubber in the CLI would only
+guess. `help feedback` and `skills/sweetpad/SKILL.md` list what to remove
+(project, workspace, scheme, target and package names; bundle and team ids;
+home and other absolute paths; device names and UDIDs; user and host names;
+emails; private URLs; tokens) and what to keep (versions, the command with
+its values replaced by placeholders, the exact error text with names
+replaced). The same two say when to offer a report: sweetpad crashed, hung
+or reported an internal error; its output contradicted itself or Xcode; a
+tip or command it suggested didn't work; a gap forced a fall-back to raw
+`xcodebuild`, `simctl` or `devicectl`; help or docs disagreed with behavior.
+Not for the user's own problems (compile errors, failing tests, signing
+setup, missing runtimes, a mistyped command sweetpad refused clearly, an
+environment problem it reported correctly). Offer once per issue, and never
+again once declined. Error messages elsewhere don't mention `feedback`.
+
+**The file is a sweetpad-feedback log entry**, so an agent can send one it
+already logged:
+
+```
+## 2026-09-27T10:00Z · bug · medium
+- **Seen:** 1× (2026-09-27T10:00Z)
+- **Context:** an iOS app in a workspace; the user asked to run it on a simulator
+- **Command:** `sweetpad run --on <simulator> --no-logs`
+- **Expected:** the app launches and the command returns
+- **Actual:** exit 1: `error: couldn't find the built app for <scheme>`
+- **Assumption or gap:** the build succeeded, so the app should be where the build wrote it
+- **Fix idea:** look for the app under the build's -derivedDataPath
+```
+
+The heading gives the kind (`bug`, `gap`, `unclear`, `skill-wrong`,
+`docs-wrong`, `friction`; the log's `correction` and `resolved` describe the
+log itself and are refused) and the severity (`low`, `medium`, `high`); its
+timestamp may be left out. Context, Command, Expected, Actual and Assumption
+or gap are required, Fix idea is optional, and field names match without
+case. A value runs to the next field line, so it may wrap or hold a code
+block. The heading's timestamp and the `Seen:` line, sub-bullets included,
+are read and not sent: they carry dates, and the sub-bullets name the other
+projects an issue turned up in. An unknown field, text before the first
+field, a repeated field and a second heading are usage errors naming the
+line, and a report missing fields names every one. The message the fields
+become is capped at the 4096 characters Sentry keeps.
+
+**Where it goes.** The VS Code extension's Sentry project: its DSN from
+`sweetpad-vscode/.env.example` is a constant (a DSN key is a public client
+key). The send is one `POST` of an envelope to
+`https://o325723.ingest.us.sentry.io/api/4507950563328000/envelope/` with
+`X-Sentry-Auth` carrying the key, holding one `feedback` item. `minreq` with
+`native-tls` (Security.framework) makes the request, with a 10-second
+deadline covering connect and read. A failure exits 1 and says what
+happened: `couldn't send the report: no answer from <host> within 10
+seconds`, `… can't reach <host>: <io error>`, or `the report was not
+accepted: <host> answered HTTP <code> <reason>: <body>`. `-o json` returns
+`{sent: true, eventId, digest}` from the send and `{sent: false, digest,
+endpoint, payload, addedAtSend: ["timestamp"], added: {sweetpad, xcode,
+macos, arch}, sendCommand}` from the dry run.
+
+The item is an event with the report in `contexts.feedback.message`, tagged
+so the CLI's reports are apart from the extension's errors:
+
+```json
+{
+  "contexts": {
+    "feedback": { "message": "bug · medium\n\nContext: …\nCommand: …\nExpected: …\nActual: …\nAssumption or gap: …\nFix idea: …" },
+    "os": { "build": "26A428", "name": "macOS", "version": "27.0" }
+  },
+  "environment": "development",
+  "event_id": "7acaa8e48af249a3a7b64d34b945988f",
+  "level": "info",
+  "platform": "other",
+  "release": "sweetpad-cli@0.1.10-dev+c6bdf0a0",
+  "sdk": { "name": "sweetpad-cli", "settings": { "infer_ip": "never" }, "version": "0.1.10-dev+c6bdf0a0" },
+  "tags": { "arch": "arm64", "kind": "bug", "severity": "medium", "source": "cli", "xcode": "27.0 (27A266a)" }
+}
+```
+
+`environment` is `development` for a `-dev+<sha>` build and `production` for a
+tagged one. The envelope header holds `event_id` and the `sdk` name and
+version; the item header holds `type: "feedback"` and the length; the event
+gains `timestamp` (Unix seconds) at send time. Xcode's version comes from the
+active install's `version.plist`, macOS's from `sysctl`
+(`kern.osproductversion`, `kern.osversion`), the arch from the running
+binary. Nothing names the Mac, the user or a path.
+
+**No IP address, set on the client.** Relay fills `user.ip_address` from the
+connection in two cases: the event sends `{{auto}}` (or
+`sdk.settings.infer_ip: "auto"`), or, under the default `legacy` setting, the
+platform is `javascript`, `cocoa` or `objc` and the event names no IP
+(`normalize_ip_addresses` in `relay-event-normalization/src/event.rs`, per
+develop.sentry.dev's SDK `settings.infer_ip`). The payload sends
+`platform: "other"`, `infer_ip: "never"`, and no `user` object, so neither
+applies. The location is a separate lookup: `normalize_user_geoinfo` fills
+`user.geo` (country, region, city) from the connection's address for every
+event that has no geo, and it is handed the unfiltered client address, so
+neither `infer_ip` nor the project's "Prevent Storing of IP Addresses"
+reaches it. No client field stops it reliably: `user.geo` is skipped when
+empty, so a placeholder `{}` would vanish at the first Relay that
+re-serializes the event. The server-side switch is an Advanced Data Scrubbing
+rule removing `$user.geo`. "Prevent Storing of IP Addresses" is still worth
+turning on as a second line: besides the known IP fields, it replaces
+IP-looking text in every string field, which covers an address an agent
+left in pasted output. It does nothing for the location.
+
+**The digest.** SHA-256 of the compact JSON `{"endpoint": <url>, "event":
+<the event without event_id or timestamp>}`; `serde_json` sorts keys, so the
+bytes are the same on every run. The digest is the hash's first 16 hex
+digits. `event_id` is its last 32, with the version and variant digits set
+so it reads as the UUID v4 Sentry's feedback spec asks for, and the dry run
+shows the event id the send will use. Everything the dry run prints is
+covered, the added versions and the endpoint included: an Xcode update
+between the two steps is a mismatch, and so is a different endpoint. `timestamp` is added at send time
+and is not hashed. The hash is CommonCrypto's `CC_SHA256` from libSystem,
+which every macOS process links, so it adds no crate; nothing in the
+dependency tree had one.
+
+**The off switch** is `[feedback] enabled = false` in config.toml; unset means
+on. `off` writes it, creating the table or the file when missing; `on` sets
+an `enabled` key that exists to true and otherwise touches nothing, so it
+never creates a config file. Both edit through `toml_edit` (already in the
+tree under `toml`), keep every other line and comment, and write a temporary
+file beside the config and rename it over, at the target when config.toml is
+a symlink. While reports are off, `submit` exits 1 in both modes, and `help
+feedback` prints only that the user turned them off, that the agent shouldn't
+offer one, and that `feedback on` turns them back on. A config that doesn't
+parse also makes `submit` refuse, since it may be the file that turned
+reports off.
+
+**Testing.** The hidden `SWEETPAD_FEEDBACK_URL` points the send at another
+envelope URL. `tests/feedback.rs` runs every command against a
+`std::net::TcpListener` stub on 127.0.0.1 with its own HOME and XDG
+directories, and no test reaches Sentry: the dry run's shape, the sent
+envelope equal to the dry run's payload plus `timestamp`, no `ip_address` or
+`{{auto}}` anywhere, a changed file refused with nothing received, off/on/status
+keeping the config's comments, the turned-off help text, malformed reports,
+a refused connection, and an HTTP 429.
+
+*Deliberately not built:* scrubbing in the CLI; a prompt; reading the report
+from stdin; attachments or logs; the VS Code extension. `minreq`'s proxy
+support is off, so a network that only allows traffic through an HTTP proxy
+can't send.
 
 ## 10. Testing
 

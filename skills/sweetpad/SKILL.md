@@ -273,6 +273,59 @@ sweetpad context set scheme MyApp          # remember a scheme (no prompt)
 sweetpad context alias work-phone <UDID>   # then use: --on work-phone
 ```
 
+## Report a sweetpad problem to its maintainer
+
+When sweetpad itself goes wrong, you can offer to send its maintainer a short
+report. Run `sweetpad help feedback` first. If it says the user turned
+reports off, don't offer one and don't bring it up.
+
+Offer a report when sweetpad crashed, hung, or reported an internal error; its
+output contradicted itself or Xcode; a tip or command it suggested didn't
+work; something was missing, so you fell back to raw `xcodebuild`, `simctl` or
+`devicectl`; or its help or docs disagreed with what it did. Don't offer one
+for the user's own problems: compile errors, failing tests, code signing
+setup, missing simulator runtimes, a mistyped command sweetpad refused
+clearly, or an environment problem it reported correctly. Offer once per
+issue, and don't press. If the user says no, don't offer again for that issue.
+
+The user approves twice, and sweetpad never prompts:
+
+1. Ask whether they'd like to send a report about the issue.
+2. If yes, write the report file and run
+   `sweetpad feedback submit <file> --dry-run`. It sends nothing, and prints
+   the exact payload and a digest.
+3. Show the user all of that output and ask whether to send it.
+4. Only if they approve, run `sweetpad feedback submit <file> --approve <digest>`.
+   It sends only while the payload still has that digest. After any change to
+   the file, run the dry run again and show the new output.
+
+sweetpad sends the text as you wrote it and doesn't scrub it, so clean it
+first. Remove, or replace with a placeholder such as `<scheme>`: project,
+workspace, scheme, target and package names; bundle ids and team ids; home
+directories and other absolute paths; device names and UDIDs; user names and
+host names; email addresses; private URLs; tokens, keys and passwords. Keep
+versions, the command with its values replaced by placeholders
+(`sweetpad run --scheme <scheme> --on <simulator>`), and the exact error text
+with the names replaced.
+
+The file is one entry in this format:
+
+```markdown
+## 2026-09-27T10:00Z · bug · medium
+- **Context:** an iOS app in a workspace; the user asked to run it
+- **Command:** `sweetpad run --on <simulator> --no-logs`
+- **Expected:** the app launches and the command returns
+- **Actual:** exit 1: `error: couldn't find the built app for <scheme>`
+- **Assumption or gap:** the build succeeded, so the app exists
+- **Fix idea:** look for the app where the build wrote it
+```
+
+The heading gives the kind (`bug`, `gap`, `unclear`, `skill-wrong`,
+`docs-wrong` or `friction`) and the severity (`low`, `medium` or `high`); the
+timestamp is optional and isn't sent. Every field needs a value except
+`Fix idea`. sweetpad adds its version, the Xcode and macOS versions and the
+Mac's architecture, and no IP address, user name, host name or path.
+
 ## Discover everything else
 
 This skill covers the common flows. For anything not here, the CLI is
@@ -283,5 +336,5 @@ self-describing — prefer these over guessing:
 - `sweetpad <command> --help` — flags and subcommands for one command, e.g.
   `sweetpad app --help`, `sweetpad simulator --help`.
 - `sweetpad help <topic>` — prose guides: `config`, `environment`,
-  `exit-codes`, `destinations`, `hot-reload`.
+  `exit-codes`, `destinations`, `hot-reload`, `feedback`.
 - Add `-o json` to any read command for structured output.

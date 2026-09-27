@@ -10,8 +10,8 @@ live, and they exist because they answer different questions:
 
 - **`sweetpad.toml`**, committed next to your project: *what does this project need?* Everyone who
   clones the repo gets it.
-- **`~/.config/sweetpad/config.toml`**, yours alone: *what do I prefer?* SweetPad never writes this
-  file.
+- **`~/.config/sweetpad/config.toml`**, yours alone: *what do I prefer?* SweetPad writes only its
+  `[feedback]` table there, and only when you run `sweetpad feedback off` or `on`.
 - **Remembered context**, managed for you: *what did I pick last time?* This is where the answers to
   interactive prompts go.
 
@@ -126,8 +126,10 @@ settings in an xcconfig unless you specifically want them only when building thr
 
 ## Your personal config
 
-`~/.config/sweetpad/config.toml` holds your own preferences, and it's never written to by SweetPad.
-It's a file you own. It honors `XDG_CONFIG_HOME` if you set one.
+`~/.config/sweetpad/config.toml` holds your own preferences. It's a file you own, and it honors
+`XDG_CONFIG_HOME` if you set one. SweetPad writes to it in one case: `sweetpad feedback off` sets
+`enabled = false` under `[feedback]` (see [Feedback reports](./feedback.md)), and `sweetpad feedback on`
+sets it back. Both change only that key and keep the rest of the file, comments included.
 
 It has a `[defaults]` table for values that apply everywhere, plus per-project tables:
 
@@ -216,7 +218,7 @@ this is the one part of the config system that's deliberately noisy.
 | Path                                   | What                                              |
 | -------------------------------------- | ------------------------------------------------- |
 | `sweetpad.toml`                        | Project defaults. Committed, hand-authored.       |
-| `~/.config/sweetpad/config.toml`       | Your defaults. Hand-authored, never written to.   |
+| `~/.config/sweetpad/config.toml`       | Your defaults. Hand-authored; `sweetpad feedback off` sets one key. |
 | `~/.local/state/sweetpad/state.toml`   | Remembered context. Managed; use `sweetpad context`. |
 
 `sweetpad open config` opens your personal config in your editor, and `sweetpad help config` has this

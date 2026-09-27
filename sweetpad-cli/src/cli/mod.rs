@@ -679,7 +679,14 @@ pub enum Resource {
     },
     /// Update sweetpad (Homebrew installs run 'brew upgrade sweetpad').
     SelfUpdate,
-    /// Explain a topic: config, environment, exit-codes, destinations, hot-reload.
+    /// Send the maintainer a problem report about sweetpad, after the user
+    /// approves it, or turn that off ('sweetpad help feedback' explains it).
+    Feedback {
+        #[command(subcommand)]
+        action: commands::feedback::Action,
+    },
+    /// Explain a topic: config, environment, exit-codes, destinations,
+    /// hot-reload, feedback.
     Help {
         /// The topic to explain (omit to list the topics).
         topic: Option<String>,
@@ -1047,6 +1054,7 @@ pub fn run(argv: &[String]) -> ExitCode {
             commands::status::run(&mut ctx)
         }
         Resource::SelfUpdate => commands::self_update::run(&mut ctx),
+        Resource::Feedback { action } => commands::feedback::run(&mut ctx, &action),
         Resource::Help { topic } => commands::help_topics::run(&mut ctx, topic.as_deref()),
         Resource::Completions { .. } => unreachable!("handled above"),
     };

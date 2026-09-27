@@ -58,6 +58,7 @@ const sidebars: SidebarsConfig = {
     group('Automation'),
     'cli/scripts-and-ci',
     'cli/agent-skills',
+    'cli/feedback',
     'cli/agent-cli',
     group('Reference'),
     'cli/troubleshooting',

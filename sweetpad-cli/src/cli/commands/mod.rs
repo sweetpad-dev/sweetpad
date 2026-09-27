@@ -59,6 +59,7 @@ pub mod derived_data;
 pub mod destination;
 pub mod device;
 pub mod doctor;
+pub mod feedback;
 pub mod format;
 pub mod help_topics;
 pub mod hot;

@@ -13,7 +13,8 @@ Commands follow a resource-then-action grammar (`sweetpad scheme list`, `sweetpa
 and the everyday actions have top-level shortcuts (`sweetpad build`, `sweetpad test`, `sweetpad run`).
 The CLI describes itself, and that is the authority: `sweetpad --help` lists the full command tree,
 `sweetpad <command> --help` covers the flags and subcommands this page doesn't repeat, and
-`sweetpad help <topic>` explains config, environment, exit codes, destinations, and hot reload.
+`sweetpad help <topic>` explains config, environment, exit codes, destinations, hot reload, and
+feedback reports.
 
 ## Commands
 
@@ -220,7 +221,9 @@ Alias: `sim`. Most take an optional target (name or UDID) and default to the boo
 | `sweetpad hot reset`            | End a hot-reload listener a dead `--hot` session left behind (`--force` for a non-sweetpad holder). |
 | `sweetpad completions <shell>`  | Generate completions for bash, zsh, fish, elvish, or PowerShell.      |
 | `sweetpad self-update`          | Update sweetpad (Homebrew installs run brew upgrade instead).         |
-| `sweetpad help [topic]`         | Built-in guides: `config`, `environment`, `exit-codes`, `destinations`, `hot-reload`. |
+| `sweetpad feedback submit`      | Send the maintainer a problem report an agent wrote, once you approve it. `--dry-run` prints the exact payload and a digest; `--approve <digest>` sends it. See [Feedback reports](./feedback.md). |
+| `sweetpad feedback off`         | Turn feedback reports off (`on` turns them back on, `status` says which is in effect). |
+| `sweetpad help [topic]`         | Built-in guides: `config`, `environment`, `exit-codes`, `destinations`, `hot-reload`, `feedback`. |
 | `sweetpad vscode <method>`      | Drive a running VSCode window. See [Agent CLI & RPC server](./agent-cli.md). |
 
 ## Global flags
@@ -257,7 +260,8 @@ Three layers, from personal to shared:
 
 - **`~/.config/sweetpad/config.toml`**: your personal defaults. A `[defaults]` table for global
   values, plus `[projects."<path to .xcodeproj/.xcworkspace/Package.swift>"]` tables for per-project
-  overrides. SweetPad never writes this file; it's yours.
+  overrides. It's yours: the only thing SweetPad writes there is the `[feedback]` table, when you run
+  `sweetpad feedback off` or `on`.
 - **`sweetpad.toml`** next to the project: team defaults, meant to be committed. Same keys
   (`scheme`, `configuration`, `destination`, `sdk`), plus `developer_dir` and `[run]`, `[format]`,
   `[testing]`, and `[xcodebuild]` tables.

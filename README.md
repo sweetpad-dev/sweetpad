@@ -79,7 +79,7 @@ sweetpad build -- SWIFT_ACTIVE_COMPILATION_CONDITIONS="DEBUG STAGING"
 ```
 
 The tool documents itself offline too: `sweetpad --help`, `sweetpad <command> --help`, and
-`sweetpad help <topic>` for config, environment, exit-codes, destinations, and hot-reload.
+`sweetpad help <topic>` for config, environment, exit-codes, destinations, hot-reload, and feedback.
 
 ## Prefer to work in VS Code?
 

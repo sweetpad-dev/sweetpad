@@ -1,9 +1,11 @@
 //! Hand-authored configuration: `~/.config/sweetpad/config.toml`.
 //!
 //! Global settings plus optional per-project overrides keyed by canonicalized
-//! project path. **The tool only ever reads this file** — it never rewrites it,
-//! so user comments and formatting are preserved. Machine-written remembered
-//! selections live separately in [`crate::cli::state`].
+//! project path. The file is the user's: the one write is `feedback off|on`
+//! setting `[feedback] enabled` through [`set_feedback_enabled`], which edits
+//! that key in place and keeps every other line, comments included.
+//! Machine-written remembered selections live separately in
+//! [`crate::cli::state`].
 //!
 //! Honors `XDG_CONFIG_HOME`, falling back to `~/.config`.
 
@@ -20,6 +22,8 @@ pub struct Config {
     pub defaults: Defaults,
     /// Per-project overrides, keyed by absolute project/workspace path.
     pub projects: BTreeMap<String, Defaults>,
+    /// `[feedback]`: whether `feedback submit` may send a report.
+    pub feedback: FeedbackConfig,
     /// Lint findings from [`load`](Config::load): unknown keys (typos parse
     /// cleanly and are silently ignored otherwise) and `[projects."…"]` tables
     /// whose key can't match a real container. Surfaced as warnings by the
@@ -56,6 +60,13 @@ pub struct TestingDefaults {
     /// Default test target: `test run` narrows to `-only-testing:<target>`
     /// when no explicit `--only-testing` selector is given.
     pub target: Option<String>,
+}
+
+/// The `[feedback]` table. Unset means on.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default)]
+pub struct FeedbackConfig {
+    pub enabled: Option<bool>,
 }
 
 impl Config {
@@ -119,6 +130,105 @@ impl Config {
     }
 }
 
+/// What [`set_feedback_enabled`] did to `config.toml`.
+#[derive(Debug)]
+pub struct FeedbackEdit {
+    pub path: PathBuf,
+    /// Whether the file was written.
+    pub changed: bool,
+}
+
+/// Set `[feedback] enabled` in the user's `config.toml`, editing that key and
+/// keeping the rest of the file as written.
+///
+/// Turning feedback off writes `enabled = false`, creating the table, and the
+/// file, when they are missing. Turning it on sets an `enabled` key that is
+/// there to true and otherwise leaves the file alone, since unset means on, so
+/// `on` never creates a config file.
+///
+/// The write goes to a temporary file beside the real one and is renamed over
+/// it, so an interrupted write leaves the old file. A symlinked config (a
+/// dotfiles checkout) is written at the link's target, with its permissions.
+pub fn set_feedback_enabled(enabled: bool) -> Result<FeedbackEdit, String> {
+    let path = Config::path()
+        .ok_or("can't locate config.toml: neither XDG_CONFIG_HOME nor HOME is set")?;
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    let edited =
+        edit_feedback_enabled(&text, enabled).map_err(|e| format!("{}: {e}", path.display()))?;
+    let Some(edited) = edited.filter(|new| *new != text) else {
+        return Ok(FeedbackEdit {
+            path,
+            changed: false,
+        });
+    };
+    let target = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+    let write = || -> std::io::Result<()> {
+        if let Some(dir) = target.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let tmp = target.with_file_name(format!(
+            ".{}.sweetpad-{}",
+            target
+                .file_name()
+                .map_or_else(|| "config.toml".into(), |n| n.to_string_lossy()),
+            std::process::id()
+        ));
+        std::fs::write(&tmp, &edited)?;
+        if let Ok(meta) = std::fs::metadata(&target) {
+            std::fs::set_permissions(&tmp, meta.permissions())?;
+        }
+        std::fs::rename(&tmp, &target).inspect_err(|_| {
+            let _ = std::fs::remove_file(&tmp);
+        })
+    };
+    write().map_err(|e| format!("{}: {e}", target.display()))?;
+    Ok(FeedbackEdit {
+        path,
+        changed: true,
+    })
+}
+
+/// `text` with `[feedback] enabled` set to `enabled`, or `None` when turning
+/// feedback on needs no edit. A trailing comment on an existing `enabled`
+/// line stays on it.
+fn edit_feedback_enabled(text: &str, enabled: bool) -> Result<Option<String>, String> {
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|e: toml_edit::TomlError| e.to_string())?;
+    match doc.get_mut("feedback") {
+        None if enabled => return Ok(None),
+        None => {
+            let mut table = toml_edit::Table::new();
+            table.insert("enabled", toml_edit::value(false));
+            doc.insert("feedback", toml_edit::Item::Table(table));
+        }
+        Some(item) => {
+            let Some(table) = item.as_table_like_mut() else {
+                return Err("'feedback' must be a table: [feedback]".to_string());
+            };
+            match table
+                .get_mut("enabled")
+                .and_then(toml_edit::Item::as_value_mut)
+            {
+                Some(value) => {
+                    let decor = value.decor().clone();
+                    *value = toml_edit::Value::from(enabled);
+                    *value.decor_mut() = decor;
+                }
+                None if enabled => return Ok(None),
+                None => {
+                    table.insert("enabled", toml_edit::value(false));
+                }
+            }
+        }
+    }
+    Ok(Some(doc.to_string()))
+}
+
 /// Overlay a per-project override onto a base value, keeping the base when the
 /// override is unset.
 fn layer(base: &mut Option<String>, over: Option<&String>) {
@@ -148,8 +258,15 @@ fn lint(raw: &toml::Value) -> Vec<String> {
                     }
                 }
             }
+            "feedback" => {
+                if let Some(table) = value.as_table() {
+                    for key in table.keys().filter(|k| *k != "enabled") {
+                        warnings.push(format!("config: unknown key '{key}' in [feedback]"));
+                    }
+                }
+            }
             other => warnings.push(format!(
-                "config: unknown key '{other}' (did you mean 'defaults' or 'projects'?)"
+                "config: unknown key '{other}' (did you mean 'defaults', 'projects' or 'feedback'?)"
             )),
         }
     }
@@ -756,6 +873,73 @@ mod tests {
         let cfg = Config::parse(&text).unwrap();
         assert!(cfg.warnings.is_empty(), "warnings: {:?}", cfg.warnings);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn feedback_off_adds_the_key_and_keeps_the_rest_of_the_file() {
+        let text = "# my defaults\n[defaults]\nscheme = \"App\"   # the main one\n\n\
+                    [projects.\"/work/App.xcodeproj\"]\nconfiguration = \"Debug\"\n";
+        let off = edit_feedback_enabled(text, false).unwrap().unwrap();
+        assert!(off.starts_with(text), "{off}");
+        assert!(off.ends_with("[feedback]\nenabled = false\n"), "{off}");
+        let cfg = Config::parse(&off).unwrap();
+        assert_eq!(cfg.feedback.enabled, Some(false));
+        assert!(cfg.warnings.is_empty(), "{:?}", cfg.warnings);
+
+        // On sets the same key back, comment and all; a second off is the
+        // file it started as.
+        let with_comment = off.replace("enabled = false", "enabled = false # quiet, please");
+        let on = edit_feedback_enabled(&with_comment, true).unwrap().unwrap();
+        assert!(on.contains("enabled = true # quiet, please"), "{on}");
+        assert_eq!(on.replace("true", "false"), with_comment);
+        assert_eq!(
+            edit_feedback_enabled(&on, false).unwrap().unwrap(),
+            with_comment
+        );
+    }
+
+    #[test]
+    fn feedback_on_needs_no_file_and_no_table() {
+        assert_eq!(edit_feedback_enabled("", true).unwrap(), None);
+        assert_eq!(
+            edit_feedback_enabled("[defaults]\nscheme = \"A\"\n", true).unwrap(),
+            None
+        );
+        // Off on an empty file is the table alone.
+        assert_eq!(
+            edit_feedback_enabled("", false).unwrap().unwrap(),
+            "[feedback]\nenabled = false\n"
+        );
+        // A dotted key and an inline table are edited where they are.
+        assert_eq!(
+            edit_feedback_enabled("feedback.enabled = true\n", false)
+                .unwrap()
+                .unwrap(),
+            "feedback.enabled = false\n"
+        );
+        assert_eq!(
+            edit_feedback_enabled("feedback = { enabled = false }\n", true)
+                .unwrap()
+                .unwrap(),
+            "feedback = { enabled = true }\n"
+        );
+    }
+
+    #[test]
+    fn feedback_edits_refuse_a_file_they_cant_read_as_toml() {
+        let err = edit_feedback_enabled("[defaults\n", false).unwrap_err();
+        assert!(!err.is_empty());
+        let err = edit_feedback_enabled("feedback = 1\n", false).unwrap_err();
+        assert!(err.contains("[feedback]"), "{err}");
+        // An unknown key in the table is a lint warning, like any other.
+        let cfg = Config::parse("[feedback]\nenable = false\n").unwrap();
+        assert!(
+            cfg.warnings
+                .iter()
+                .any(|w| w.contains("'enable' in [feedback]")),
+            "{:?}",
+            cfg.warnings
+        );
     }
 
     #[test]
