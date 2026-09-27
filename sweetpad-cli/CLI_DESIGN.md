@@ -179,10 +179,14 @@ pass '--bogus' as a value, use '-- --bogus'") would hand the flag to
 dash or two, gets a tip that shows it after `--` with one: `xcodebuild flags
 go after '--': 'sweetpad build -- -allowProvisioningUpdates'`. clap splits a
 one-dash word into short flags and names a single letter (`-a`), so the error
-names the whole word instead. For a flag sweetpad passes itself, the tip names
-the sweetpad flag, as the tail's refusal does. So it does for a flag with a
-value when the verb has a flag of the same name (`pass '--destination'
-instead of '-destination'`). A flag nothing takes gets no tip. The list is
+names the whole word instead. clap can also take the rest of the word as a
+value: `-only-testing:App/Tests` reads as `-o nly-testing:App/Tests`, an
+invalid output format. When the whole word is an `xcodebuild` flag, that error
+gives way to the same unknown-flag error and tip. For a flag sweetpad passes
+itself, the tip names the sweetpad flag, as the tail's refusal does. So it
+does for a flag with a value when the verb has a flag of the same name (`pass
+'--destination' instead of '-destination'`). A flag nothing takes gets no
+tip. The list is
 what `xcodebuild -help` shows for Xcode 27, less the flags that make it do
 something other than build, test or archive (`-showBuildSettings`, `-list`).
 The verbs with a hidden tail (`build diagnostics`, `test output`) refuse one,

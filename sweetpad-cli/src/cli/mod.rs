@@ -1491,13 +1491,27 @@ fn takes_output_file(argv: &[String]) -> bool {
 /// A verb whose tail is hidden refuses one, so it gets none of these. clap
 /// splits a one-dash word such as `-quiet` into short flags and names the
 /// first one the verb lacks (`-u`), so the error names the word instead when
-/// it is an xcodebuild flag. Every other usage error renders as clap wrote it.
-fn hint_tail_flag(mut err: clap::Error, argv: &[String]) -> clap::Error {
+/// it is an xcodebuild flag.
+///
+/// clap can also read such a word as a short flag that takes the rest of it
+/// as its value: `-only-testing:App/Tests` as `-o nly-testing:App/Tests`, an
+/// invalid output format. When the whole word is an xcodebuild flag, that
+/// error gives way to the unknown-flag error naming the word, with its tip.
+/// Every other usage error renders as clap wrote it.
+fn hint_tail_flag(err: clap::Error, argv: &[String]) -> clap::Error {
+    use clap::error::ErrorKind;
+
+    match err.kind() {
+        ErrorKind::UnknownArgument => hint_unknown_flag(err, argv),
+        ErrorKind::InvalidValue => hint_taken_word(err, argv),
+        _ => err,
+    }
+}
+
+/// [`hint_tail_flag`] for a flag clap doesn't know.
+fn hint_unknown_flag(mut err: clap::Error, argv: &[String]) -> clap::Error {
     use clap::error::{ContextKind, ContextValue};
 
-    if err.kind() != clap::error::ErrorKind::UnknownArgument {
-        return err;
-    }
     let Some(ContextValue::String(arg)) = err.get(ContextKind::InvalidArg) else {
         return err;
     };
@@ -1515,42 +1529,88 @@ fn hint_tail_flag(mut err: clap::Error, argv: &[String]) -> clap::Error {
             err.insert(ContextKind::Suggested, ContextValue::StyledStrs(tips));
         }
     }
-    let flag = verb.flag.as_str();
-    let action = match verb.bin.as_str() {
-        "sweetpad test" | "sweetpad test run" => xcodebuild::Action::Test,
-        "sweetpad archive" => xcodebuild::Action::Archive,
-        _ => xcodebuild::Action::Build,
-    };
-    let tip = if verb.bin == "sweetpad app diagnose"
-        && matches!(verb.word.as_str(), "--batch" | "--cmd" | "--on-crash")
-    {
-        err.remove(ContextKind::SuggestedArg);
-        format!(
-            "'{}' belongs to 'app debug': 'sweetpad app debug --batch --cmd <LLDB_CMD>' runs \
-             your own lldb commands",
-            verb.word
-        )
-    } else if !verb.tail_shown {
-        return err;
-    } else if let Some(owned) = xcodebuild::owned_flag(action, flag) {
-        err.remove(ContextKind::SuggestedArg);
-        xcodebuild::instead_of_owned(owned)
-    } else if verb.named_alike {
-        err.remove(ContextKind::SuggestedArg);
-        format!("pass '-{flag}' instead of '{flag}'")
-    } else if xcodebuild::takes_flag(flag) {
-        format!("xcodebuild flags go after '--': '{} -- {flag}'", verb.bin)
-    } else {
+    let Some(tip) = verb.tip() else {
         return err;
     };
+    if tip.replaces_suggestion {
+        err.remove(ContextKind::SuggestedArg);
+    }
     if verb.word != arg {
         err.insert(ContextKind::InvalidArg, ContextValue::String(verb.word));
     }
     err.insert(
         ContextKind::Suggested,
-        ContextValue::StyledStrs(vec![tip.into()]),
+        ContextValue::StyledStrs(vec![tip.text.into()]),
     );
     err
+}
+
+/// [`hint_tail_flag`] for a one-dash word clap read as a short flag that
+/// takes the rest of it as its value.
+fn hint_taken_word(err: clap::Error, argv: &[String]) -> clap::Error {
+    use clap::error::{ContextKind, ContextValue, ErrorKind};
+
+    let Some(ContextValue::String(value)) = err.get(ContextKind::InvalidValue) else {
+        return err;
+    };
+    let value = value.clone();
+    with_invoked(argv, |cmd| {
+        let Some(word) = taken_word(cmd, argv, &value) else {
+            return err;
+        };
+        let Some(verb) = TailVerb::typed(cmd, word) else {
+            return err;
+        };
+        let Some(tip) = verb.tip() else {
+            return err;
+        };
+        let mut unknown = clap::Error::new(ErrorKind::UnknownArgument).with_cmd(cmd);
+        unknown.insert(ContextKind::InvalidArg, ContextValue::String(verb.word));
+        unknown.insert(
+            ContextKind::Suggested,
+            ContextValue::StyledStrs(vec![tip.text.into()]),
+        );
+        unknown.insert(
+            ContextKind::Usage,
+            ContextValue::StyledStr(cmd.clone().render_usage()),
+        );
+        unknown
+    })
+}
+
+/// The one-dash word in `argv`, ahead of any `--`, that clap read as short
+/// switches ending in a flag that took `value`, the rest of the word, as its
+/// value (`-only` read as `-o nly`).
+fn taken_word<'a>(cmd: &clap::Command, argv: &'a [String], value: &str) -> Option<&'a str> {
+    argv.iter()
+        .take_while(|a| *a != "--")
+        .map(String::as_str)
+        .find(|word| {
+            split_short(cmd, word).is_some_and(|(arg, rest)| {
+                arg.get_action().takes_values()
+                    && !rest.is_empty()
+                    && rest.strip_prefix('=').unwrap_or(rest) == value
+            })
+        })
+}
+
+/// The short flag clap stops at in the one-dash `word`, past the switches
+/// that lead it, and the rest of the word after that flag.
+fn split_short<'c, 'w>(cmd: &'c clap::Command, word: &'w str) -> Option<(&'c clap::Arg, &'w str)> {
+    use clap::ArgAction;
+
+    let short = |c: char| cmd.get_arguments().find(|a| a.get_short() == Some(c));
+    let switch = |c: char| {
+        short(c).is_some_and(|a| {
+            matches!(
+                a.get_action(),
+                ArgAction::SetTrue | ArgAction::SetFalse | ArgAction::Count
+            )
+        })
+    };
+    let letters = word.strip_prefix('-').filter(|l| !l.starts_with('-'))?;
+    let (at, c) = letters.char_indices().find(|&(_, c)| !switch(c))?;
+    Some((short(c)?, &letters[at + c.len_utf8()..]))
 }
 
 /// The subcommand an unknown flag was typed on, when it has a `--` tail, for
@@ -1570,19 +1630,31 @@ struct TailVerb {
     named_alike: bool,
 }
 
+/// What [`TailVerb::tip`] suggests in place of a flag.
+struct TailTip {
+    text: String,
+    /// Whether it replaces clap's nearest-flag suggestion, which names the
+    /// wrong flag.
+    replaces_suggestion: bool,
+}
+
 impl TailVerb {
+    /// The verb, for the flag clap names as `arg`.
     fn of(cmd: &clap::Command, argv: &[String], arg: &str) -> Option<Self> {
+        if arg.starts_with("--") {
+            return Self::typed(cmd, arg.split('=').next().unwrap_or_default());
+        }
+        let short = arg.strip_prefix('-')?.chars().next()?;
+        Self::typed(cmd, clustered_word(cmd, argv, short).unwrap_or(arg))
+    }
+
+    /// The verb, for the flag typed as `word`.
+    fn typed(cmd: &clap::Command, word: &str) -> Option<Self> {
         let tail = cmd.get_arguments().find(|a| a.is_last_set())?;
-        let word = if arg.starts_with("--") {
-            arg.split('=').next().unwrap_or_default().to_string()
-        } else {
-            let short = arg.strip_prefix('-')?.chars().next()?;
-            clustered_word(cmd, argv, short).unwrap_or(arg).to_string()
-        };
         let flag = word
             .strip_prefix('-')
             .filter(|w| w.starts_with('-'))
-            .unwrap_or(&word);
+            .unwrap_or(word);
         let named_alike = sweetpad_core::xcodebuild_args::VALUE_FLAGS.contains(&flag)
             && cmd
                 .get_arguments()
@@ -1592,8 +1664,46 @@ impl TailVerb {
             tail_shown: !tail.is_hide_set(),
             flag: flag.to_string(),
             named_alike,
-            word,
+            word: word.to_string(),
         })
+    }
+
+    /// The tip [`hint_tail_flag`] gives for the flag, if any.
+    fn tip(&self) -> Option<TailTip> {
+        let flag = self.flag.as_str();
+        let action = match self.bin.as_str() {
+            "sweetpad test" | "sweetpad test run" => xcodebuild::Action::Test,
+            "sweetpad archive" => xcodebuild::Action::Archive,
+            _ => xcodebuild::Action::Build,
+        };
+        let replacing = |text: String| {
+            Some(TailTip {
+                text,
+                replaces_suggestion: true,
+            })
+        };
+        if self.bin == "sweetpad app diagnose"
+            && matches!(self.word.as_str(), "--batch" | "--cmd" | "--on-crash")
+        {
+            replacing(format!(
+                "'{}' belongs to 'app debug': 'sweetpad app debug --batch --cmd <LLDB_CMD>' runs \
+                 your own lldb commands",
+                self.word
+            ))
+        } else if !self.tail_shown {
+            None
+        } else if let Some(owned) = xcodebuild::owned_flag(action, flag) {
+            replacing(xcodebuild::instead_of_owned(owned))
+        } else if self.named_alike {
+            replacing(format!("pass '-{flag}' instead of '{flag}'"))
+        } else if xcodebuild::takes_flag(flag) {
+            Some(TailTip {
+                text: format!("xcodebuild flags go after '--': '{} -- {flag}'", self.bin),
+                replaces_suggestion: false,
+            })
+        } else {
+            None
+        }
     }
 }
 
@@ -3273,6 +3383,61 @@ mod tail_flag_hint_tests {
         assert!(text.contains("to pass '--bogus' as a value"), "{text}");
         let text = rendered(&["app", "launch", "-allowProvisioningUpdates"]);
         assert!(text.contains("unexpected argument '-a' found"), "{text}");
+    }
+
+    /// clap reads a one-dash word as a short flag that takes the rest of it:
+    /// `-only-testing:…` as an invalid '-o' format. An xcodebuild word gets
+    /// the error and tip an unknown one does.
+    #[test]
+    fn an_xcodebuild_word_read_as_a_short_flag_is_shown_after_the_tail() {
+        for (args, word, shown) in [
+            (
+                &["test", "-only-testing:App/Tests"][..],
+                "-only-testing:App/Tests",
+                "sweetpad test -- -only-testing:App/Tests",
+            ),
+            (
+                &["build", "-onlyUsePackageVersionsFromResolvedFile"],
+                "-onlyUsePackageVersionsFromResolvedFile",
+                "sweetpad build -- -onlyUsePackageVersionsFromResolvedFile",
+            ),
+            (
+                &["test", "run", "-q", "-only-test-configuration", "Fast"],
+                "-only-test-configuration",
+                "sweetpad test run -- -only-test-configuration",
+            ),
+        ] {
+            let text = rendered(args);
+            assert!(
+                text.contains(&format!("error: unexpected argument '{word}' found")),
+                "{args:?}:\n{text}"
+            );
+            assert!(
+                text.contains(&format!("tip: xcodebuild flags go after '--': '{shown}'")),
+                "{args:?}:\n{text}"
+            );
+            assert!(!text.contains("possible values"), "{args:?}:\n{text}");
+        }
+        // The usage and the pointer to '--help' read as clap's own do.
+        let tail = |text: String| text.lines().skip(3).collect::<Vec<_>>().join("\n");
+        assert_eq!(
+            tail(rendered(&[
+                "build",
+                "-onlyUsePackageVersionsFromResolvedFile"
+            ])),
+            tail(rendered(&["build", "-quiet"]))
+        );
+    }
+
+    /// A word that is no xcodebuild flag keeps clap's error.
+    #[test]
+    fn other_words_stay_as_clap_reads_them() {
+        let text = rendered(&["test", "-oops"]);
+        assert!(
+            text.contains("invalid value 'ops' for '--output <OUTPUT>'"),
+            "{text}"
+        );
+        assert!(!text.contains("go after '--'"), "{text}");
     }
 }
 
