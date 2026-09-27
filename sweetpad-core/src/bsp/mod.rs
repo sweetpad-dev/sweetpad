@@ -17,7 +17,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
@@ -111,9 +111,9 @@ pub fn run_with(args: &[String], command_line: CommandLine) -> Result<(), String
     let server = Arc::new(Server::resolve(args, command_line)?);
     let stdin = io::stdin();
     let mut reader = stdin.lock();
-    // Each write locks stdout for one whole frame rather than holding the lock
-    // across the loop, so the worker threads (change-watcher, prepare) can
-    // interleave their messages between requests.
+    // Each write locks the output for one whole frame rather than holding the
+    // lock across the loop, so the worker threads (change-watcher, prepare)
+    // can interleave their messages between requests.
     let mut watching = false;
 
     // `buildTarget/prepare` runs `xcodebuild` (seconds-to-minutes), and
@@ -261,6 +261,9 @@ struct Server {
     config_path: Option<PathBuf>,
     /// Verbosity of the `bsp/log` stream, retunable live via `bsp/setLogLevel`.
     log_level: Arc<AtomicU8>,
+    /// Where the protocol goes: stdout, the BSP channel, for a real server.
+    /// [`Self::send`] holds the lock for a whole frame.
+    out: Mutex<Box<dyn Write + Send>>,
     /// The prepare worker's process and the `TMPDIR` its `swiftc`s get (see
     /// [`PrepareProcess`]).
     prepare_process: Mutex<PrepareProcess>,
@@ -604,7 +607,13 @@ impl Server {
 
         if let Some(root) = flags.get("workspace").or_else(|| flags.get("project")) {
             let config = ResolvedConfig::from_flags(PathBuf::from(root), &flags);
-            return Self::build(config, None, log_level, command_line);
+            return Self::build(
+                config,
+                None,
+                log_level,
+                command_line,
+                Box::new(io::stdout()),
+            );
         }
 
         let config_file = match flags.get("config") {
@@ -612,14 +621,23 @@ impl Server {
             None => discover_config_from_cwd()?,
         };
         let config = ResolvedConfig::from_file(&config_file, &flags)?;
-        Self::build(config, Some(config_file), log_level, command_line)
+        Self::build(
+            config,
+            Some(config_file),
+            log_level,
+            command_line,
+            Box::new(io::stdout()),
+        )
     }
 
+    /// The server for `config`, sending the protocol to `out`: stdout for a
+    /// real server, a buffer for a test.
     fn build(
         config: ResolvedConfig,
         config_path: Option<PathBuf>,
         log_level: Arc<AtomicU8>,
         command_line: CommandLine,
+        out: Box<dyn Write + Send>,
     ) -> Result<Self, String> {
         // A `.xcworkspace` root expands to its member projects; a `.xcodeproj`
         // root is a one-element list. Targets are the union across members.
@@ -672,6 +690,7 @@ impl Server {
             telemetry: Mutex::new(None),
             config_path,
             log_level,
+            out: Mutex::new(out),
             prepare_process: Mutex::new(PrepareProcess::default()),
             prepare_queue: PrepareQueue::default(),
             prepared: Mutex::new(BTreeMap::new()),
@@ -2025,13 +2044,13 @@ impl Server {
         self.send(&resp)
     }
 
-    /// Write one JSON-RPC message to stdout, holding the lock for the whole frame
-    /// so the request loop and the watcher thread never interleave output.
+    /// Write one JSON-RPC message to the output, holding the lock for the whole
+    /// frame so the request loop and the watcher thread never interleave
+    /// output.
     fn send(&self, msg: &Value) -> Result<(), String> {
         self.trace(&format!("send: {msg}"));
-        let stdout = io::stdout();
-        let mut writer = stdout.lock();
-        write_message(&mut writer, &msg.to_string())
+        let mut out = self.out.lock().unwrap_or_else(PoisonError::into_inner);
+        write_message(&mut *out, &msg.to_string())
     }
 }
 
@@ -2077,9 +2096,36 @@ mod tests {
         CommandLine, LogLevel, ResolvedConfig, Server, editor_sdk_for, parse_flags, path_from_uri,
     };
     use std::collections::BTreeMap;
+    use std::io::{self, Write};
     use std::path::PathBuf;
-    use std::sync::Arc;
     use std::sync::atomic::AtomicU8;
+    use std::sync::{Arc, Mutex};
+
+    /// The protocol output of a server under test, kept where the test can
+    /// read it. On stdout its frames would run into cargo's test lines.
+    #[derive(Clone, Default)]
+    struct Sent(Arc<Mutex<Vec<u8>>>);
+
+    impl Sent {
+        fn writer(&self) -> Box<dyn Write + Send> {
+            Box::new(self.clone())
+        }
+
+        fn text(&self) -> String {
+            String::from_utf8_lossy(&self.0.lock().unwrap()).into_owned()
+        }
+    }
+
+    impl Write for Sent {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn the_projects_command_line_reaches_resolution_and_the_prepare_build() {
@@ -2103,6 +2149,7 @@ mod tests {
             None,
             Arc::new(AtomicU8::new(LogLevel::Info as u8)),
             command_line.clone(),
+            Sent::default().writer(),
         )
         .unwrap();
 
@@ -2156,6 +2203,7 @@ mod tests {
                 "A=b=c",
             ],
         }));
+        let sent = Sent::default();
         let server = Server::build(
             ResolvedConfig::from_file(&config, &BTreeMap::new()).unwrap(),
             Some(config.clone()),
@@ -2164,6 +2212,7 @@ mod tests {
                 xcconfig: None,
                 overrides: vec![("A".into(), "typed".into())],
             },
+            sent.writer(),
         )
         .unwrap();
         let pair = |k: &str, v: &str| (k.to_string(), v.to_string());
@@ -2203,6 +2252,12 @@ mod tests {
                 pair("SWIFT_ACTIVE_COMPILATION_CONDITIONS", "BETA"),
                 pair("A", "typed"),
             ]
+        );
+        // The change tells the client to pull the targets' options again.
+        let told = sent.text();
+        assert!(
+            told.starts_with("Content-Length: ") && told.contains(r#""buildTarget/didChange""#),
+            "{told}"
         );
 
         write(serde_json::json!({ "workspacePath": *scratch, "projectPath": project }));
