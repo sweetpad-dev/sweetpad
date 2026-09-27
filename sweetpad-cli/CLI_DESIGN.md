@@ -2141,6 +2141,11 @@ Build settings are resolved only when a row refers to one. The `--arg`s
 follow the scheme's arguments, and an `--env` replaces a scheme variable with
 the same name. A Swift package's `swift run` takes only the typed ones. The
 extension reads the same function through the addon (`schemeLaunchSettings`).
+Ahead of the scheme's variables, every app launch carries `NSUnbufferedIO=YES`,
+as Xcode's launches do (`xcodebuild test` shows it in the test process). A
+macOS app's stdout is a pipe or a file on every launch, and Foundation
+block-buffers `print` there, so without it a foreground `run --mac`, a
+session and a detached launch show nothing until 4 KB have piled up.
 
 Every macOS launch sweetpad drives (`run --mac` and its session's
 relaunches, `--hot`, `app launch --mac`, `app debug --mac`, `app diagnose

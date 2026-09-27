@@ -1397,6 +1397,7 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
     // lldb's. `swift run` has no scheme to read them from.
     if !matches!(plan.target, Target::SpmRun(_)) {
         add_scheme_launch(&mut plan)?;
+        add_xcode_launch_env(&mut plan.launch);
     }
     if matches!(plan.target, Target::Mac) {
         let args = mac_launch_args(&plan.launch.args, plan.launch.restore_state);
@@ -1466,6 +1467,24 @@ fn expansion_settings(
         return Ok(settings);
     }
     Ok(located.settings)
+}
+
+/// The environment Xcode launches every app with, whatever the scheme says:
+/// `NSUnbufferedIO=YES` has Foundation leave stdout unbuffered, so a `print`
+/// reaches a pipe or a file as it happens. Buffered, it waits for 4 KB to pile
+/// up, and a macOS app's output goes through a pipe or file on every launch
+/// but a terminal session's.
+const XCODE_LAUNCH_ENV: [(&str, &str); 1] = [("NSUnbufferedIO", "YES")];
+
+/// Put [`XCODE_LAUNCH_ENV`] ahead of the scheme's variables and the `--env`s,
+/// so either can still set it.
+fn add_xcode_launch_env(launch: &mut LaunchArgs) {
+    launch.env.splice(
+        0..0,
+        XCODE_LAUNCH_ENV
+            .iter()
+            .map(|(key, value)| format!("{key}={value}")),
+    );
 }
 
 /// Put the scheme's arguments ahead of the `--arg`s and its environment ahead
@@ -9215,6 +9234,25 @@ Target 0: (crash) stopped.\n"
         assert_eq!(resolved["SIMCTL_CHILD_SHARED"], "typed");
         assert_eq!(resolved["SIMCTL_CHILD_URL"], "a=b");
         assert_eq!(resolved["SIMCTL_CHILD_OWN"], "1");
+    }
+
+    /// Every launch leaves the app's stdout unbuffered, as Xcode's do, unless
+    /// the scheme or an '--env' says otherwise.
+    #[test]
+    fn launches_leave_stdout_unbuffered_unless_told_otherwise() {
+        let resolved = |env: &[&str]| {
+            let mut launch = LaunchArgs {
+                env: env.iter().map(|e| (*e).to_string()).collect(),
+                ..LaunchArgs::default()
+            };
+            add_xcode_launch_env(&mut launch);
+            let pairs = launch.env_pairs("").unwrap();
+            pairs
+                .into_iter()
+                .collect::<std::collections::HashMap<_, _>>()
+        };
+        assert_eq!(resolved(&[])["NSUnbufferedIO"], "YES");
+        assert_eq!(resolved(&["NSUnbufferedIO=NO"])["NSUnbufferedIO"], "NO");
     }
 
     /// '--restore-state' belongs to every verb that launches the app.

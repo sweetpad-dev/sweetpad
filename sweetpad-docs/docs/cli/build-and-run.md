@@ -140,7 +140,8 @@ sweetpad run --env API_BASE=https://staging.example.com --env LOG_LEVEL=debug
 The app also gets what its scheme's Run action sets, the way Xcode passes it: the checked arguments
 and environment variables, with build settings like `$(SRCROOT)` filled in, and the App Language and
 App Region options. `--arg` adds to the scheme's arguments. `--env` replaces a scheme variable with
-the same name.
+the same name. Like Xcode, SweetPad sets `NSUnbufferedIO=YES`, so what the app prints shows up right
+away.
 
 ## Running in the background
 
