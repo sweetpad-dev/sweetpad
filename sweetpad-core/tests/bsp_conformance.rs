@@ -1354,6 +1354,24 @@ fn stub_swiftc(bin: &std::path::Path, rest: &str) {
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
+/// An `xcodebuild` for the warm-up's fallback to find first on `PATH`. It
+/// leaves in its `TMPDIR` what a real build does: a `TemporaryDirectory.*`
+/// holding the driver's `.keep-directory`, from the build service's `swiftc
+/// --version`, and one of SwiftPM's lock files.
+fn stub_xcodebuild(bin: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::create_dir_all(bin).unwrap();
+    let path = bin.join("xcodebuild");
+    std::fs::write(
+        &path,
+        "#!/bin/sh\nd=$(mktemp -d \"$TMPDIR/TemporaryDirectory.XXXXXX\") || exit 1\n\
+         : > \"$d/.keep-directory\"\n: > \"$TMPDIR/_Users_stub_.swiftpm.lock\"\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
 /// A server warming up the multi-module fixture, whose closure is pure Swift,
 /// so its prepare runs the `swiftc` in `bin` rather than `xcodebuild`, with
 /// `tmp` as its `TMPDIR` and its products in `dd`. Read off-thread: stdout
@@ -1480,6 +1498,36 @@ fn a_warm_up_leaves_nothing_in_the_servers_tmpdir() {
         "the stub swiftc never ran"
     );
     assert_eq!(entries(&tmp), Vec::<String>::new());
+}
+
+/// The warm-up's `xcodebuild` keeps the user's `TMPDIR`, where SwiftPM's
+/// locks are shared, and each build leaves a `TemporaryDirectory.*` there.
+/// The server removes the ones its builds left once each exits, and keeps the
+/// locks and a directory that was there before it started.
+#[test]
+fn a_warm_up_removes_what_its_xcodebuild_left_in_tmpdir() {
+    let scratch =
+        sweetpad_core::scratch::ScratchDir::new("sweetpad-bsp-tmpdir-xcodebuild").unwrap();
+    let (bin, tmp, dd) = (scratch.join("bin"), scratch.join("tmp"), scratch.join("dd"));
+    let theirs = tmp.join("TemporaryDirectory.theirs");
+    std::fs::create_dir_all(&theirs).unwrap();
+    std::fs::write(theirs.join(".keep-directory"), "").unwrap();
+    // The fast path fails, so each prepare falls back to xcodebuild.
+    stub_swiftc(&bin, "exit 1");
+    stub_xcodebuild(&bin);
+
+    let server = WarmUp::start(&bin, &tmp, &dd, &[]);
+    let warmed = server.wait_until(|s| s.output().contains("buildTarget/didChange"));
+    server.exit();
+
+    assert!(warmed, "the warm-up never finished");
+    let mut left = entries(&tmp);
+    left.sort();
+    assert_eq!(
+        left,
+        ["TemporaryDirectory.theirs", "_Users_stub_.swiftpm.lock"],
+        "the stub xcodebuild never ran, or its leftovers stayed"
+    );
 }
 
 /// `build/exit` in the middle of a warm-up kills the `swiftc` it is running

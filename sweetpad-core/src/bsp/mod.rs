@@ -25,7 +25,7 @@ use serde_json::{Value, json};
 use crate::build_context::BuildContext;
 use crate::build_settings::{self, BuildSettingsOptions};
 use crate::framing::{read_message, write_message};
-use crate::scratch::ScratchDir;
+use crate::scratch::{DriverLeftovers, ScratchDir};
 use crate::xcodebuild_args;
 use control::{LogLevel, TelemetryServer};
 use sweetpad_lib::{compiler_args, derived_data, project};
@@ -1406,7 +1406,17 @@ impl Server {
     fn xcodebuild_prepare(&self, target: &str, stamps: Vec<Option<(u64, SystemTime)>>) -> bool {
         let (mut cmd, how) = self.prepare_command(target);
         self.log(&format!("prepare: building {how} for target {target}"));
-        let (status, stderr_buf) = match self.run_prepare_process(&mut cmd) {
+        // The build keeps the server's `TMPDIR`, the user's, where SwiftPM's
+        // locks are shared, and leaves a `TemporaryDirectory.*` there.
+        let leftovers = DriverLeftovers::before_run(&std::env::temp_dir());
+        let ran = self.run_prepare_process(&mut cmd);
+        let removed = leftovers.remove_new();
+        if removed > 0 {
+            self.log(&format!(
+                "prepare: removed {removed} TemporaryDirectory.* the build left in TMPDIR"
+            ));
+        }
+        let (status, stderr_buf) = match ran {
             Ok(ran) => ran,
             Err(e) => {
                 let detail = format!("could not launch xcodebuild: {e}");

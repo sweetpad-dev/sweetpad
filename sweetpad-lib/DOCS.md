@@ -648,7 +648,12 @@ the build server via `buildTarget/prepare` — *we* must produce the modules.
   - a failure is recorded and pushed as a `failed` status, which the
     extension's Doctor reports. The reply is still sent — a missing one wedges
     sourcekit-lsp's semantics for that target — so the failure needs a channel
-    of its own.
+    of its own;
+  - the build keeps the user's `TMPDIR`, where SwiftPM's locks are shared, and
+    the build service's `swiftc --version` leaves a `TemporaryDirectory.*`
+    there. Once the build exits, the server removes each new one that holds
+    only the driver's `.keep-directory` (`scratch::DriverLeftovers`), unless a
+    Swift driver with that `TMPDIR` is running or a process names it.
 
   The `swiftc` fast path below produces no header maps, but needs none: it
   requires the whole closure to be pure Swift.
