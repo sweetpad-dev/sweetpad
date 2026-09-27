@@ -5264,6 +5264,11 @@ struct DiagnoseOutcome {
     exception_name: Option<String>,
     exception_reason: Option<String>,
     backtrace: Vec<String>,
+    /// Whether lldb's command chain printed its closing sentinel, which it
+    /// does once the backtrace is dumped. lldb stops a `-b` chain at the
+    /// first command that fails, so `false` with no timeout means it
+    /// stopped partway.
+    chain_complete: bool,
 }
 
 impl DiagnoseOutcome {
@@ -5357,6 +5362,7 @@ fn parse_diagnose(transcript: &str, attached: bool) -> DiagnoseOutcome {
                 .collect()
         })
         .unwrap_or_default();
+    let chain_complete = transcript.lines().any(|l| l.trim() == SENTINEL_END);
 
     DiagnoseOutcome {
         pid,
@@ -5368,6 +5374,7 @@ fn parse_diagnose(transcript: &str, attached: bool) -> DiagnoseOutcome {
         exception_name,
         exception_reason,
         backtrace,
+        chain_complete,
     }
 }
 
@@ -5489,16 +5496,25 @@ fn kill_lldb_and_inferior(child: &mut std::process::Child, cleanup_pids: impl Fn
     let _ = child.wait();
 }
 
+/// What a captured lldb run left: its transcript, whether it ran out its
+/// timeout, and lldb's own exit code. The code is `None` when lldb was
+/// killed, at the timeout or by a signal.
+struct LldbCapture {
+    transcript: String,
+    timed_out: bool,
+    status: Option<i32>,
+}
+
 /// Spawn `lldb <args>` with its output **captured** to a temp file, wait up to
-/// `timeout`, and on expiry kill the inferior and lldb. Returns the transcript
-/// and whether it timed out. Capturing to a file (not a pipe) avoids a
-/// full-pipe deadlock when a chatty app blocks lldb inside `run`.
+/// `timeout`, and on expiry kill the inferior and lldb. Capturing to a file
+/// (not a pipe) avoids a full-pipe deadlock when a chatty app blocks lldb
+/// inside `run`.
 fn run_lldb_captured(
     args: &[String],
     env: &[(String, String)],
     timeout: Duration,
     cleanup_pids: impl Fn() -> Vec<i32>,
-) -> Result<(String, bool), CliError> {
+) -> Result<LldbCapture, CliError> {
     let path = std::env::temp_dir().join(format!("sweetpad-diagnose-{}.log", std::process::id()));
     let file = std::fs::OpenOptions::new()
         .create(true)
@@ -5525,13 +5541,21 @@ fn run_lldb_captured(
         .map_err(|e| CliError::new(format!("failed to run 'lldb': {e}")))?;
     let slot = crate::cli::signals::register_child(child.id());
     let timed_out = wait_with_timeout(&mut child, timeout);
-    if timed_out {
+    let status = if timed_out {
         kill_lldb_and_inferior(&mut child, cleanup_pids);
-    }
+        None
+    } else {
+        // Already reaped by the wait, so this returns its status at once.
+        child.wait().ok().and_then(|s| s.code())
+    };
     crate::cli::signals::unregister_child(slot);
     let transcript = std::fs::read_to_string(&path).unwrap_or_default();
     let _ = std::fs::remove_file(&path);
-    Ok((transcript, timed_out))
+    Ok(LldbCapture {
+        transcript,
+        timed_out,
+        status,
+    })
 }
 
 /// Spawn `lldb <args>` with stdio inherited (output **streams** to the
@@ -5609,13 +5633,12 @@ fn diagnose_mac(ctx: &mut Context, plan: &RunPlan, timeout_secs: u64) -> Command
     // lldb prints `Process <pid> launched` only once `run` returns, so a run
     // that times out still running names its pid only through the kill.
     let killed = std::cell::RefCell::new(Vec::new());
-    let (transcript, timed_out) =
-        run_lldb_captured(&args, &env, batch_timeout(timeout_secs), || {
-            let pids = macwin::pids_for_executable(&executable).unwrap_or_default();
-            killed.borrow_mut().clone_from(&pids);
-            pids
-        })?;
-    let outcome = parse_diagnose(&transcript, false);
+    let capture = run_lldb_captured(&args, &env, batch_timeout(timeout_secs), || {
+        let pids = macwin::pids_for_executable(&executable).unwrap_or_default();
+        killed.borrow_mut().clone_from(&pids);
+        pids
+    })?;
+    let outcome = parse_diagnose(&capture.transcript, false);
     let pid = outcome.pid.or_else(|| {
         killed
             .borrow()
@@ -5626,10 +5649,11 @@ fn diagnose_mac(ctx: &mut Context, plan: &RunPlan, timeout_secs: u64) -> Command
         target: "macOS",
         bundle_id: app.bundle_id,
         pid,
-        timed_out,
+        timed_out: capture.timed_out,
         timeout_secs,
+        lldb_status: capture.status,
         outcome,
-        transcript,
+        transcript: capture.transcript,
     }))
 }
 
@@ -5643,16 +5667,16 @@ fn diagnose_sim(ctx: &mut Context, plan: &RunPlan, udid: &str, timeout_secs: u64
         app.bundle_id
     ));
     let pid_i32 = i32::try_from(pid).unwrap_or(0);
-    let (transcript, timed_out) =
-        run_lldb_captured(&args, &[], batch_timeout(timeout_secs), || vec![pid_i32])?;
+    let capture = run_lldb_captured(&args, &[], batch_timeout(timeout_secs), || vec![pid_i32])?;
     Ok(Rendered::data(DiagnoseReport {
         target: "simulator",
         bundle_id: app.bundle_id,
         pid: Some(pid),
-        timed_out,
+        timed_out: capture.timed_out,
         timeout_secs,
-        outcome: parse_diagnose(&transcript, true),
-        transcript,
+        lldb_status: capture.status,
+        outcome: parse_diagnose(&capture.transcript, true),
+        transcript: capture.transcript,
     }))
 }
 
@@ -5665,6 +5689,8 @@ struct DiagnoseReport {
     pid: Option<u32>,
     timed_out: bool,
     timeout_secs: u64,
+    /// lldb's own exit code (see [`LldbCapture`]).
+    lldb_status: Option<i32>,
     outcome: DiagnoseOutcome,
     transcript: String,
 }
@@ -5702,14 +5728,33 @@ impl DiagnoseReport {
             (None, None, Some(status)) => {
                 format!("exited cleanly (status {status}) — no exception or crash observed")
             }
-            _ => match &outcome.fault {
-                Some(fault) => format!("crashed: {} ({})", fault.what, fault.exception),
-                None => outcome
-                    .stop_reason
-                    .clone()
-                    .unwrap_or_else(|| "no stop observed".to_string()),
+            _ => match (&outcome.fault, &outcome.stop_reason) {
+                (Some(fault), _) => format!("crashed: {} ({})", fault.what, fault.exception),
+                (None, Some(reason)) => reason.clone(),
+                (None, None) => self
+                    .stopped_partway()
+                    .unwrap_or_else(|| "no stop observed".into()),
             },
         }
+    }
+
+    /// The verdict for an lldb that failed partway through its chain before
+    /// the app stopped or exited, a failed attach say: its exit code and its
+    /// first error line. `None` when the chain ran to its end or lldb exited
+    /// 0.
+    fn stopped_partway(&self) -> Option<String> {
+        let status = self.lldb_status.filter(|s| *s != 0)?;
+        if self.outcome.chain_complete {
+            return None;
+        }
+        let error = self
+            .transcript
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("error: "));
+        Some(match error {
+            Some(error) => format!("lldb stopped partway with status {status}: {error}"),
+            None => format!("lldb stopped partway with status {status}"),
+        })
     }
 }
 
@@ -5734,6 +5779,8 @@ impl Render for DiagnoseReport {
             "pid": self.pid,
             "timedOut": self.timed_out,
             "timeoutSecs": self.timeout_secs,
+            "lldbStatus": self.lldb_status,
+            "chainComplete": self.outcome.chain_complete,
             "stopped": self.outcome.stopped(),
             "stopReason": self.outcome.stop_reason,
             "signal": self.outcome.signal,
@@ -8113,6 +8160,7 @@ frame #1: 0x0002 CoreFoundation`+[NSException raise:format:] + 128\n\
         assert_eq!(o.exit_status, None); // killed by us, not a real exit
         assert_eq!(o.backtrace.len(), 2);
         assert!(o.backtrace[0].contains("objc_exception_throw"));
+        assert!(o.chain_complete);
     }
 
     #[test]
@@ -8311,6 +8359,7 @@ Process Instance Registry, error: Error Domain=NSCocoaErrorDomain Code=4097\r\n"
             assert_eq!(o.exit_status, None, "{name}");
             let report = DiagnoseReport {
                 timed_out: true,
+                lldb_status: None,
                 ..diagnose_report(o, &t)
             };
             let json = report.json();
@@ -8347,9 +8396,67 @@ Target 0: (crash) stopped.\n"
             pid: outcome.pid,
             timed_out: false,
             timeout_secs: 30,
+            lldb_status: Some(0),
             outcome,
             transcript: transcript.into(),
         }
+    }
+
+    /// lldb's exit code and whether its chain reached the closing sentinel
+    /// are in the JSON beside the transcript. A crash, an Objective-C throw
+    /// and a clean exit all run the chain to its end; a timeout kills lldb
+    /// first, and a failed attach ends the chain before it starts, which the
+    /// verdict says instead of "no stop observed".
+    #[test]
+    fn the_report_says_whether_lldbs_chain_ran_to_its_end() {
+        for name in [
+            "mac-segv",
+            "sim-segv",
+            "mac-swift-fatal",
+            "sim-swift-fatal",
+            "mac-swift-trap-optimized",
+            "mac-clean-exit",
+            "sim-clean-exit",
+        ] {
+            let t = diagnose_fixture(name);
+            let json = diagnose_report(parse_diagnose(&t, name.starts_with("sim")), &t).json();
+            assert_eq!(json["chainComplete"], true, "{name}");
+            assert_eq!(json["lldbStatus"], 0, "{name}");
+        }
+
+        for name in ["mac-timeout", "sim-timeout"] {
+            let t = diagnose_fixture(name);
+            let report = DiagnoseReport {
+                timed_out: true,
+                lldb_status: None,
+                ..diagnose_report(parse_diagnose(&t, name.starts_with("sim")), &t)
+            };
+            let json = report.json();
+            assert_eq!(json["chainComplete"], false, "{name}");
+            assert_eq!(json["lldbStatus"], serde_json::Value::Null, "{name}");
+        }
+
+        // Captured from the simulator chain attaching to a pid that had gone.
+        let t = diagnose_fixture("sim-attach-failed");
+        let report = DiagnoseReport {
+            lldb_status: Some(1),
+            ..diagnose_report(parse_diagnose(&t, true), &t)
+        };
+        let json = report.json();
+        assert_eq!(json["chainComplete"], false);
+        assert_eq!(json["lldbStatus"], 1);
+        assert_eq!(json["stopped"], false);
+        assert_eq!(
+            json["verdict"],
+            "lldb stopped partway with status 1: attach failed: no such process"
+        );
+
+        // A chain that stopped with no error line still says so.
+        let report = DiagnoseReport {
+            lldb_status: Some(1),
+            ..diagnose_report(parse_diagnose("", true), "")
+        };
+        assert_eq!(report.verdict(), "lldb stopped partway with status 1");
     }
 
     /// lldb reports a crash on Apple platforms as the Mach exception, before

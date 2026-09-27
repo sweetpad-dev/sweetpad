@@ -2114,8 +2114,9 @@ Both build before they hand off to lldb, so both take the `--` tail (§3).
 **`app diagnose`** is the agent-facing verb: build, launch under `lldb -b` with a
 breakpoint on `objc_exception_throw`, run bounded by `--timeout`, and on the
 first stop print a structured report — `pid`, `stopReason`, `signal`,
-`exitStatus`, `exception { name, reason }`, `verdict`, `backtrace`, and the
-full lldb `transcript` — then kill the app and quit. On a simulator the pid is the one
+`exitStatus`, `exception { name, reason }`, `verdict`, `backtrace`,
+`lldbStatus`, `chainComplete`, and the full lldb `transcript` — then kill the
+app and quit. On a simulator the pid is the one
 `simctl` launched; on macOS lldb owns the launch, so it is read from lldb's
 `Process <pid> launched|stopped|exited` line, and a run that times out while
 lldb's `run` still blocks (so no such line has printed) takes it from the
@@ -2175,10 +2176,24 @@ run` does — a live lldb session has no coherent one-shot envelope; that is
 exactly what `diagnose` is for.
 
 **The exit code reflects the launch, not the finding.** `lldb -b` returns `0`
-whether the debuggee crashed, an attach was denied, or nothing happened, so
-neither verb derives success from it. `diagnose`'s answer is the report (an agent
+whether the debuggee crashed, threw or exited, so neither verb derives success
+from it. `diagnose`'s answer is the report (an agent
 reads `stopped`/`stopReason`/`exception`); `--batch`'s answer is the streamed
 transcript. The help says so on both.
+
+**`diagnose` still reports how lldb itself ended.** lldb stops a `-b` chain at
+the first command that fails and exits 1. A failed attach does this (a pid that
+is gone, or one owned by another user), and the chain never reaches the stop it
+was waiting for. Two fields say so without reading the `transcript`:
+`lldbStatus` is lldb's exit code (null when the timeout killed it), and
+`chainComplete` is whether the transcript holds the closing
+sentinel, which the chain prints once the backtrace is dumped. A crash, a throw
+and a clean exit all read `lldbStatus: 0` and `chainComplete: true`, on the
+`-o` chain or the `-k` one. A timeout reads `null` and `false`. A non-zero
+status with the chain incomplete and no stop parsed gets its own verdict,
+`lldb stopped partway with status 1: attach failed: no such process`, with
+lldb's first `error:` line after the colon, instead of `no stop observed`
+(`DiagnoseReport::stopped_partway`).
 
 **Timeout is mandatory, not optional.** `lldb -b`'s `run` blocks until the
 process stops or exits, so an app that launches and stays up (the common GUI

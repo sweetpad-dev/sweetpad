@@ -254,6 +254,16 @@ com.example.MyApp: crashed with SIGTRAP: Swift fatal error "Index out of range"
 
 The report of a crash also lists its backtrace, with the frame lldb stopped in marked `*`.
 
+The JSON also says how lldb itself ended. `lldbStatus` is lldb's exit code, and it's `null` when the
+timeout killed lldb. `chainComplete` is `true` when lldb ran all of its commands through the
+backtrace. A crash, an exception, and a clean exit all give `0` and `true`. If lldb fails partway,
+for example because it can't attach to the app, it stops with status 1 and `chainComplete` is
+`false`. The verdict then gives lldb's error:
+
+```text
+com.example.MyApp: lldb stopped partway with status 1: attach failed: no such process
+```
+
 ## The app's files
 
 `sweetpad app container` prints where the app keeps its files, for a script that seeds a fixture
