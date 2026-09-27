@@ -28,6 +28,7 @@ use std::path::{Path, PathBuf};
 
 use crate::pbxproj::{Dict, Value};
 use crate::spm_pbxproj::fresh_guid;
+use crate::tree::navigator_label;
 
 const REF_ISA: &str = "PBXFileReference";
 const GROUP_ISA: &str = "PBXGroup";
@@ -515,10 +516,10 @@ pub fn fileref_for_path(root: &Value, path: &str) -> Result<Option<String>, Stri
 /// against the navigator path first. That spelling addresses a group in either
 /// document format ([`crate::tree_xcproj`] has only the navigator path), and it
 /// tells organizational groups (a `name` with no `path`) apart, since they all
-/// resolve to their parent's directory. The navigator root's path is empty, so
-/// `""` and `/` name the mainGroup. Only a path that is no group's navigator
-/// path is matched against resolved directories. Naming no group, or two, is an
-/// error rather than a pick.
+/// resolve to their parent's directory. `/` names the mainGroup, and so does
+/// its empty navigator path unless a group with no name at the root shares it.
+/// Only a path that is no group's navigator path is matched against resolved
+/// directories. Naming no group, or two, is an error rather than a pick.
 fn settle_group(objects: &Dict, spec: Option<&str>) -> Result<String, String> {
     match spec {
         Some(spec) => resolve_group(objects, spec),
@@ -543,13 +544,30 @@ fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
             Err(format!("{spec} is a {}, not a group", isa(node)))
         };
     }
+    // `/` always names the navigator root. The empty path does too, unless a
+    // group with no name at the root shares it.
+    if spec == "/"
+        && let Some(root) = main_group(objects)
+    {
+        return Ok(root);
+    }
     let wanted = normalize(spec);
     let navigator = navigator_index(objects);
-    let mut by_navigator: Vec<String> = Vec::new();
-    for (guid, path) in &navigator {
-        if *path == wanted && !by_navigator.contains(guid) {
-            by_navigator.push(guid.clone());
+    let navigator_hits = |matches: &dyn Fn(&str) -> bool| {
+        let mut hits: Vec<String> = Vec::new();
+        for (guid, path) in &navigator {
+            if matches(path) && !hits.contains(guid) {
+                hits.push(guid.clone());
+            }
         }
+        hits
+    };
+    // The path as typed first: under a group with no name, a navigator path
+    // holds an empty component (`/Products`, `App//Inner`) that trimming the
+    // slashes would lose.
+    let mut by_navigator = navigator_hits(&|path| path == spec);
+    if by_navigator.is_empty() {
+        by_navigator = navigator_hits(&|path| normalize(path) == wanted);
     }
     let (hits, spelling) = if by_navigator.is_empty() {
         let by_directory: Vec<String> = objects
@@ -572,19 +590,15 @@ fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
         n => {
             // Each candidate as `group list` prints it, so the id to pass
             // sits next to the spellings that tell the groups apart.
+            let root = main_group(objects);
             let candidates: Vec<String> = hits
                 .iter()
                 .map(|guid| {
-                    let path = navigator.iter().find(|(g, _)| g == guid).map_or(
-                        "(not in the navigator)",
-                        |(_, path)| {
-                            if path.is_empty() {
-                                "(navigator root)"
-                            } else {
-                                path.as_str()
-                            }
-                        },
-                    );
+                    let path = navigator
+                        .iter()
+                        .find(|(g, _)| g == guid)
+                        .map(|(_, path)| path.as_str());
+                    let path = navigator_label(path, root.as_ref() == Some(guid));
                     let dir = group_directory(objects, guid);
                     let dir = if dir.is_empty() {
                         "(project root)"
@@ -594,8 +608,9 @@ fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
                     format!("{guid} {path} [{dir}]")
                 })
                 .collect();
+            let shown = if wanted.is_empty() { "''" } else { spec };
             Err(format!(
-                "{wanted} is the {spelling} of {n} groups ({}); pass the id you mean",
+                "{shown} is the {spelling} of {n} groups ({}); pass the id you mean",
                 candidates.join(", ")
             ))
         }
@@ -621,8 +636,20 @@ fn navigator_index(objects: &Dict) -> Vec<(String, String)> {
 /// Every group's navigator path — the display names from the mainGroup down,
 /// joined by `/`, which is how a `project.xcproj` addresses its nodes and the
 /// only spelling that tells two organizational groups apart.
+///
+/// A group with neither a name nor a path is still a navigator node holding
+/// its children, and its display name is empty, so it contributes an empty
+/// component. That is Xcode's own spelling: converting a project with one at
+/// the root names the product inside it `/Products/App.app`.
 fn navigator_paths(objects: &Dict) -> Vec<(String, String)> {
-    fn walk(objects: &Dict, guid: &str, base: &str, depth: usize, out: &mut Vec<(String, String)>) {
+    /// `base` is `None` at the mainGroup, which contributes no component.
+    fn walk(
+        objects: &Dict,
+        guid: &str,
+        base: Option<&str>,
+        depth: usize,
+        out: &mut Vec<(String, String)>,
+    ) {
         if depth >= crate::project::MAX_GROUP_DEPTH {
             return;
         }
@@ -633,21 +660,18 @@ fn navigator_paths(objects: &Dict) -> Vec<(String, String)> {
             if !GROUP_ISAS.contains(&isa(node)) {
                 continue;
             }
-            let Some(name) = display_name(node) else {
-                continue;
+            let name = display_name(node).unwrap_or_default();
+            let path = match base {
+                None => name.to_string(),
+                Some(base) => format!("{base}/{name}"),
             };
-            let path = if base.is_empty() {
-                name.to_string()
-            } else {
-                format!("{base}/{name}")
-            };
-            walk(objects, &child, &path, depth + 1, out);
+            walk(objects, &child, Some(&path), depth + 1, out);
             out.push((child.clone(), path));
         }
     }
     let mut out = Vec::new();
     if let Some(root) = main_group(objects) {
-        walk(objects, &root, "", 0, &mut out);
+        walk(objects, &root, None, 0, &mut out);
     }
     out
 }
@@ -1232,10 +1256,110 @@ mod tests {
         assert!(attach(&mut root, "FR1", "G3").is_ok(), "the id settles it");
     }
 
+    /// A group with neither a name nor a path is a navigator node, and Xcode
+    /// spells a path through it with an empty component (`/Products/App.app`
+    /// for a product inside one at the root). Its subtree is walked, and each
+    /// spelling names its group.
+    #[test]
+    fn a_group_with_no_name_and_no_path_is_walked_through() {
+        let mut root = parsed();
+        let dict = objects_mut(&mut root).unwrap();
+        for (guid, name, path, parent) in [
+            ("N1", None, None, "MG"),
+            ("P2", Some("Products"), None, "N1"),
+            ("RP", Some("Products"), None, "MG"),
+            ("N2", None, None, "G1"),
+            ("I1", None, Some("Inner"), "N2"),
+        ] {
+            let mut group = Dict::new();
+            group.insert("isa".into(), vstr(GROUP_ISA));
+            group.insert("children".into(), Value::Array(Vec::new()));
+            if let Some(name) = name {
+                group.insert("name".into(), vstr(name));
+            }
+            if let Some(path) = path {
+                group.insert("path".into(), vstr(path));
+            }
+            group.insert("sourceTree".into(), vstr("<group>"));
+            dict.insert(guid.into(), Value::Dict(group));
+            push_child(dict, parent, guid);
+        }
+
+        let groups = list_groups(&root).unwrap();
+        let path_of = |id: &str| {
+            groups
+                .iter()
+                .find(|g| g.address == id)
+                .and_then(|g| g.navigator_path.clone())
+        };
+        assert_eq!(path_of("N1").as_deref(), Some(""));
+        assert_eq!(path_of("P2").as_deref(), Some("/Products"));
+        assert_eq!(path_of("RP").as_deref(), Some("Products"));
+        assert_eq!(path_of("N2").as_deref(), Some("App/"));
+        assert_eq!(path_of("I1").as_deref(), Some("App//Inner"));
+        assert_eq!(
+            groups.iter().find(|g| g.address == "I1").unwrap().resolved,
+            "App/Inner",
+            "a group with no path adds no directory"
+        );
+
+        let objects = objects(&root).unwrap();
+        assert_eq!(resolve_group(objects, "/Products").as_deref(), Ok("P2"));
+        assert_eq!(resolve_group(objects, "Products").as_deref(), Ok("RP"));
+        assert_eq!(resolve_group(objects, "App//Inner").as_deref(), Ok("I1"));
+        assert_eq!(resolve_group(objects, "App/").as_deref(), Ok("N2"));
+        assert_eq!(resolve_group(objects, "App").as_deref(), Ok("G1"));
+        assert_eq!(resolve_group(objects, "/").as_deref(), Ok("MG"));
+        let err = resolve_group(objects, "").unwrap_err();
+        assert!(
+            err.contains("'' is the navigator path of 2 groups"),
+            "{err}"
+        );
+        assert!(
+            err.contains("MG (navigator root) [(project root)]"),
+            "{err}"
+        );
+        assert!(err.contains("N1 (unnamed) [(project root)]"), "{err}");
+
+        assert_eq!(unselected_spellings(&root), Vec::<String>::new());
+    }
+
+    /// Every spelling `group list` prints that neither selects its group nor
+    /// is refused with that group's id among the candidates. A directory that
+    /// is also a navigator path may go to the group or groups holding that
+    /// path instead, since the navigator path wins.
+    fn unselected_spellings(root: &Value) -> Vec<String> {
+        let objects = objects(root).unwrap();
+        let paths = navigator_index(objects);
+        let holds = |guid: &str, spec: &str| {
+            paths
+                .iter()
+                .any(|(g, path)| g == guid && normalize(path) == normalize(spec))
+        };
+        let is_navigator_path = |spec: &str| paths.iter().any(|(g, _)| holds(g, spec));
+        let mut misses = Vec::new();
+        for group in list_groups(root).unwrap() {
+            let guid = &group.address;
+            let mut spellings = vec![(guid.clone(), false), (group.resolved.clone(), true)];
+            spellings.extend(group.navigator_path.clone().map(|p| (p, false)));
+            for (spec, is_directory) in spellings {
+                let selects = match resolve_group(objects, &spec) {
+                    Ok(hit) => hit == *guid || (is_directory && holds(&hit, &spec)),
+                    Err(err) => {
+                        err.contains(guid.as_str()) || (is_directory && is_navigator_path(&spec))
+                    }
+                };
+                if !selects {
+                    misses.push(format!("'{spec}' does not select {guid}"));
+                }
+            }
+        }
+        misses
+    }
+
     /// Every spelling `group list` prints for a group in the committed
     /// fixtures selects that group, or is refused with its id among the
-    /// candidates. A directory may instead select the group whose navigator
-    /// path it is, since the navigator path wins.
+    /// candidates.
     #[test]
     fn every_listed_spelling_selects_its_group_across_the_fixtures() {
         fn pbxprojs(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -1264,29 +1388,8 @@ mod tests {
             let Ok(root) = crate::pbxproj::parse(&text) else {
                 continue;
             };
-            let objects = objects(&root).unwrap();
-            let paths = navigator_index(objects);
-            let is_navigator_path =
-                |guid: &str, spec: &str| paths.iter().any(|(g, path)| g == guid && path == spec);
-            for group in list_groups(&root).unwrap() {
-                let guid = &group.address;
-                let mut spellings = vec![(guid.clone(), false), (group.resolved.clone(), true)];
-                spellings.extend(group.navigator_path.clone().map(|p| (p, false)));
-                for (spec, is_directory) in spellings {
-                    let selects = match resolve_group(objects, &spec) {
-                        Ok(hit) => {
-                            hit == *guid
-                                || (is_directory && is_navigator_path(&hit, &normalize(&spec)))
-                        }
-                        Err(err) => err.contains(guid.as_str()),
-                    };
-                    if !selects {
-                        failures.push(format!(
-                            "{}: '{spec}' does not select {guid}",
-                            file.display()
-                        ));
-                    }
-                }
+            for miss in unselected_spellings(&root) {
+                failures.push(format!("{}: {miss}", file.display()));
             }
         }
         assert!(failures.is_empty(), "{}", failures.join("\n"));

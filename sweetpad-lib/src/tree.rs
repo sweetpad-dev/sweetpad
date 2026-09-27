@@ -59,8 +59,23 @@ pub struct GroupRow {
     /// The display names from the navigator root down, joined by `/`
     /// (`Sources/App`): what Xcode shows, and a spelling every group argument
     /// takes. Empty for the navigator root itself, which `/` also names, and
-    /// `None` for a group that no group in the navigator lists.
+    /// `None` for a group that no group in the navigator lists. A group with
+    /// neither a name nor a path adds an empty component, as Xcode spells it
+    /// (`/Products` under one at the root).
     pub navigator_path: Option<String>,
+}
+
+/// How a listing shows a navigator path: the path itself, or a label where
+/// the path is empty or missing. `is_root` tells the navigator root from a
+/// group at the root with no name, whose path is empty too.
+#[must_use]
+pub fn navigator_label(path: Option<&str>, is_root: bool) -> &str {
+    match path {
+        Some("") if is_root => "(navigator root)",
+        Some("") => "(unnamed)",
+        Some(path) => path,
+        None => "(not in the navigator)",
+    }
 }
 
 /// What `add_fileref` did.

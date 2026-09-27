@@ -1662,7 +1662,15 @@ friction, without collapsing the axes:
   it is the spelling a `project.xcproj` has (see the addressing amendment
   below). So `App` names the group shown as `App` even when another group's
   directory is also `App`. The navigator root's path is empty, and `""` and
-  `/` both name it, in either format. A path that matches no group is an
+  `/` both name it, in either format. Xcode keeps a group with neither a name
+  nor a path as a navigator node with its children under it, and it adds an
+  empty component to the paths below it. Xcode 27.2 spells them that way when
+  it converts such a project: a product inside one at the root is
+  `/Products/App.app`. `group list` prints those paths the same way
+  (`/Products`, `App//Inner`), and a path is matched as typed before its
+  slashes are trimmed. At the root such a group's own path is empty, like the
+  root's, so there `""` is refused as naming two groups, and `/` still names
+  the root. A path that matches no group is an
   error, and so is one that matches two groups by the same spelling. That
   refusal lists each candidate's id with its navigator path and directory.
   `group list` prints all three on each row (`navigatorPath` in JSON, empty

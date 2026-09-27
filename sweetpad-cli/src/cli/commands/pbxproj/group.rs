@@ -14,7 +14,7 @@ use clap::{Args, Subcommand};
 use crate::cli::output::Output;
 use crate::cli::pbxedit::Editable;
 use crate::cli::{CliError, CommandResult, ContainerArgs, Context, Render, Rendered};
-use sweetpad_lib::tree::{AddGroupOutcome, GroupRow, MoveOutcome, RemoveOutcome};
+use sweetpad_lib::tree::{AddGroupOutcome, GroupRow, MoveOutcome, RemoveOutcome, navigator_label};
 use sweetpad_lib::tree_pbxproj::{self, LinkOutcome};
 use sweetpad_lib::tree_xcproj;
 
@@ -233,11 +233,7 @@ impl Render for ListResult {
 fn group_line(g: &GroupRow) -> String {
     let dir = display_dir(&g.resolved);
     let children = g.children.len();
-    let navigator = match g.navigator_path.as_deref() {
-        Some("") => "(navigator root)",
-        Some(path) => path,
-        None => "(not in the navigator)",
-    };
+    let navigator = navigator_label(g.navigator_path.as_deref(), g.parent.is_none());
     if navigator == g.address {
         format!("{}  [{dir}, {children} child(ren)]", g.address)
     } else {
