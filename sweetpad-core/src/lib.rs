@@ -21,4 +21,5 @@ pub mod package_members;
 pub mod paths;
 pub mod scratch;
 pub mod supported_platforms;
+pub mod test_markers;
 pub mod xcodebuild_args;

@@ -302,6 +302,10 @@ For the machine-readable form, `-o json` returns the run as a single envelope an
 one event per line as tests finish. In both cases a successful envelope means the command ran, and the
 pass/fail counts are inside the payload, under `data.passed`.
 
+Each finished test streams as `{"event":"test","status":"passed","name":…}`, with `failed` or
+`skipped` in place of `passed`. XCTest and Swift Testing tests both stream, in serial and parallel
+runs.
+
 [Scripts and CI](./scripts-and-ci.md) has the whole automation surface, including a workflow file that
 does the above.
 

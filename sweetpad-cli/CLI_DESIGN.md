@@ -342,6 +342,12 @@ builds it with real `xcodebuild`.
   `{"event":"result","ok":false,"error":{code,message}}` on failure (the
   compact stderr envelope is also emitted, as the machine-parsed error
   surface). Non-streaming commands degenerate to just the result line.
+- A `test` event says `passed`, `failed` or `skipped` for one test, and a
+  `suite` event names a suite as it starts. They come from the lines the run
+  prints, read by `sweetpad_core::test_markers`: XCTest's, Swift Testing's,
+  and the `Test case '…' passed on '<runner>'` form `xcodebuild` uses for a
+  parallel run. A serial Swift Testing line names the test without its suite.
+  The counts in the result come from the result bundle.
 - Human chatter stays on stderr; child tools are run captured/quiet so their
   raw stdout never interleaves with the events.
 - **Exceptions:** `app run` rejects ndjson exactly where it rejects `--json`

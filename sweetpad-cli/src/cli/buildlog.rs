@@ -9,6 +9,8 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use sweetpad_core::test_markers;
+
 use crate::cli::output::Output;
 use crate::cli::progress::Spinner;
 use crate::cli::{CliError, process};
@@ -37,6 +39,8 @@ pub enum Event {
     TestPassed { name: String, duration: String },
     /// A failed test case.
     TestFailed { name: String },
+    /// A skipped test case (`XCTSkip`, or a disabled Swift Testing test).
+    TestSkipped { name: String },
     /// A test suite that just started.
     SuiteStarted { name: String },
     /// A terminal `** … **` banner.
@@ -103,31 +107,28 @@ fn parse_banner(t: &str) -> Option<Event> {
     Some(Event::Result(kind))
 }
 
-/// Test case and suite lines.
+/// A test case's end, or a suite's start, in any of the forms XCTest, Swift
+/// Testing and a parallel run print ([`test_markers`]). A case's start is left
+/// to the other parsers, as unrecognized output.
 fn parse_test(t: &str) -> Option<Event> {
-    if let Some(rest) = t.strip_prefix("Test Case '")
-        && let Some((name, tail)) = rest.split_once("' ")
-    {
-        let name = clean_test_name(name);
-        if tail.starts_with("passed") {
-            return Some(Event::TestPassed {
+    if let Some(marker) = test_markers::parse_case(t) {
+        let name = marker.display_name();
+        return match marker.status {
+            test_markers::Status::Started => None,
+            test_markers::Status::Passed => Some(Event::TestPassed {
                 name,
-                duration: parse_paren(tail),
-            });
-        }
-        if tail.starts_with("failed") {
-            return Some(Event::TestFailed { name });
-        }
+                duration: marker
+                    .seconds
+                    .map(|s| format!("{s} seconds"))
+                    .unwrap_or_default(),
+            }),
+            test_markers::Status::Failed => Some(Event::TestFailed { name }),
+            test_markers::Status::Skipped => Some(Event::TestSkipped { name }),
+        };
     }
-    if let Some(rest) = t.strip_prefix("Test Suite '")
-        && t.contains("started")
-        && let Some((name, _)) = rest.split_once('\'')
-    {
-        return Some(Event::SuiteStarted {
-            name: name.to_string(),
-        });
-    }
-    None
+    test_markers::parse_suite_started(t).map(|name| Event::SuiteStarted {
+        name: name.to_string(),
+    })
 }
 
 /// Compiler/linker diagnostics, with or without a `file:line:col` prefix.
@@ -326,6 +327,7 @@ pub fn render(event: &Event, color: bool, verbose: bool, quiet: bool) -> Option<
             .then(|| diagnostic_line(kind, location.as_deref(), message, color)),
         Event::TestPassed { name, duration } => Some(c.green(&format!("  ✓ {name} ({duration})"))),
         Event::TestFailed { name } => Some(c.red(&format!("  ✗ {name}"))),
+        Event::TestSkipped { name } => Some(c.yellow(&format!("  ⊘ {name} (skipped)"))),
         Event::SuiteStarted { name } => Some(c.bold(&format!("Suite {name}"))),
         Event::Result(kind) => Some(match kind {
             ResultKind::BuildSucceeded => c.green_bold("✓ Build succeeded"),
@@ -945,15 +947,10 @@ impl BuildDiagnostics {
 }
 
 /// Whether `line` is a test run's own output rather than its build step's:
-/// XCTest's `Test Suite '…' started` and `Test Case '…'` lines, their
-/// lowercase `… on '<runner>'` form in a parallel run, and Swift Testing's
-/// `◇ Test run started.`
+/// a suite or case marker of XCTest, Swift Testing or a parallel run, or
+/// Swift Testing's `◇ Test run started.` ([`test_markers::is_test_output`]).
 fn starts_the_tests(line: &str) -> bool {
-    let t = line.trim();
-    ["Test Suite '", "Test suite '", "Test Case '", "Test case '"]
-        .iter()
-        .any(|marker| t.starts_with(marker))
-        || t.ends_with(" Test run started.")
+    test_markers::is_test_output(line)
 }
 
 /// Watches a build's output for a failure that no diagnostic describes and no
@@ -1067,6 +1064,9 @@ pub fn event_json(event: &Event) -> Option<serde_json::Value> {
             json!({ "event": "test", "status": "passed", "name": name, "duration": duration })
         }
         Event::TestFailed { name } => json!({ "event": "test", "status": "failed", "name": name }),
+        Event::TestSkipped { name } => {
+            json!({ "event": "test", "status": "skipped", "name": name })
+        }
         Event::SuiteStarted { name } => json!({ "event": "suite", "name": name }),
         Event::Result(_) | Event::Other(_) => return None,
     })
@@ -1155,20 +1155,6 @@ fn source_name(line: &str) -> Option<String> {
 /// Last whitespace-separated token of a line.
 fn last_token(line: &str) -> Option<String> {
     line.split_whitespace().last().map(str::to_string)
-}
-
-/// `-[AppTests testArithmetic]` → `AppTests.testArithmetic`.
-fn clean_test_name(raw: &str) -> String {
-    raw.trim_matches(|c| c == '-' || c == '+' || c == '[' || c == ']')
-        .replace(' ', ".")
-}
-
-/// Extract `0.123 seconds` from `passed (0.123 seconds).`.
-fn parse_paren(tail: &str) -> String {
-    match (tail.find('('), tail.find(')')) {
-        (Some(a), Some(b)) if b > a + 1 => tail[a + 1..b].to_string(),
-        _ => String::new(),
-    }
 }
 
 /// One diagnostic as the build log shows it, `error: <location>: <message>`:
@@ -1958,6 +1944,77 @@ xcodebuild: error: Unable to find a destination matching the provided destinatio
                 name: "AppTests.testBoom".to_string()
             }
         );
+        assert_eq!(
+            parse_line("Test Case '-[App.BetaTests testSkipped]' skipped (0.002 seconds)."),
+            Event::TestSkipped {
+                name: "App.BetaTests.testSkipped".to_string()
+            }
+        );
+        // A case's start is output, not a result.
+        assert!(matches!(
+            parse_line("Test Case '-[AppTests testBoom]' started."),
+            Event::Other(_)
+        ));
+    }
+
+    /// A parallel run reports every test in `xcodebuild`'s own form, and a
+    /// serial run prints Swift Testing's lines as they are (Xcode 27.0).
+    #[test]
+    fn parses_parallel_and_swift_testing_cases() {
+        let passed = |name: &str, duration: &str| Event::TestPassed {
+            name: name.to_string(),
+            duration: duration.to_string(),
+        };
+        let failed = |name: &str| Event::TestFailed {
+            name: name.to_string(),
+        };
+        let on = "on 'Clone 1 of iPhone 17 - App (27767)'";
+        assert_eq!(
+            parse_line(&format!(
+                "Test case 'BetaTests.testPassesToo()' passed {on} (0.206 seconds)"
+            )),
+            passed("BetaTests.testPassesToo", "0.206 seconds")
+        );
+        assert_eq!(
+            parse_line(&format!(
+                "Test case 'AlphaTests.testFails()' failed {on} (0.422 seconds)"
+            )),
+            failed("AlphaTests.testFails")
+        );
+        assert_eq!(
+            parse_line(&format!(
+                "Test case 'GammaSuite/disabled()' skipped {on} (0.000 seconds)"
+            )),
+            Event::TestSkipped {
+                name: "GammaSuite/disabled()".to_string()
+            }
+        );
+        assert_eq!(
+            parse_line("Test suite 'AlphaTests' started on 'My Mac - xctest (27838)'"),
+            Event::SuiteStarted {
+                name: "AlphaTests".to_string()
+            }
+        );
+        assert_eq!(
+            parse_line("✔ Test passing() passed after 0.001 seconds."),
+            passed("passing()", "0.001 seconds")
+        );
+        assert_eq!(
+            parse_line("✘ Test \"Named failing test\" failed after 0.001 seconds with 1 issue."),
+            failed("Named failing test")
+        );
+        assert_eq!(
+            parse_line("◇ Suite GammaSuite started."),
+            Event::SuiteStarted {
+                name: "GammaSuite".to_string()
+            }
+        );
+        assert!(matches!(
+            parse_line(
+                "✘ Test run with 5 tests in 1 suite failed after 0.002 seconds with 1 issue."
+            ),
+            Event::Other(_)
+        ));
     }
 
     #[test]

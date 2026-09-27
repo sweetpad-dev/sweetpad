@@ -1756,27 +1756,20 @@ struct CaseMarker<'a> {
 
 /// XCTest brackets each test's console output with these, on the test
 /// process's own stdout: `Test Case '-[Module.Class method]' started.` … then
-/// `passed`/`failed`. Everything between is what that test wrote.
+/// `passed`/`failed`/`skipped`. Everything between is what that test wrote.
+/// Only XCTest's form counts ([`sweetpad_core::test_markers`]): Swift Testing
+/// runs a process's tests at the same time, so its lines bracket nothing.
 fn parse_case_marker(line: &str) -> Option<CaseMarker<'_>> {
-    let rest = line.strip_prefix("Test Case '-[")?;
-    let (inner, tail) = rest.split_once("]' ")?;
-    let (qualified, method) = inner.split_once(' ')?;
-    let started = tail.starts_with("started");
-    if !started && !tail.starts_with("passed") && !tail.starts_with("failed") {
-        return None;
-    }
+    use sweetpad_core::test_markers::{self, Form, Status};
+    let marker = test_markers::parse_case(line).filter(|m| m.form == Form::XCTest)?;
     // The marker spells the class module-qualified; the result bundle
-    // does not.
-    let class = qualified.rsplit('.').next().unwrap_or(qualified);
-    let seconds = tail
-        .split_once(" (")
-        .and_then(|(_, time)| time.split_once(" seconds)"))
-        .and_then(|(time, _)| time.parse().ok());
+    // does not, and names a nested class without its outer types.
+    let class = marker.class?.rsplit('.').next()?;
     Some(CaseMarker {
-        module: qualified.split_once('.').map(|(module, _)| module),
-        test: format!("{class}/{method}"),
-        started,
-        seconds,
+        module: marker.module,
+        test: format!("{class}/{}", marker.name),
+        started: marker.status == Status::Started,
+        seconds: marker.seconds.and_then(|s| s.parse().ok()),
     })
 }
 
@@ -2299,6 +2292,30 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         let (mut tests, mut rest) = (Vec::new(), String::new());
         let split = split_output(text, &TestTargets::default(), &mut tests, &mut rest);
         (split, tests, rest)
+    }
+
+    /// XCTest ends a skipped test with `skipped` (Xcode 27.0), so what comes
+    /// after it is no longer that test's.
+    #[test]
+    fn a_skipped_test_ends_at_its_skipped_marker() {
+        let (found, tests, rest) = split(
+            "Test Case '-[M.A testSkipped]' started.\n\
+             before skip\n\
+             /src/A.swift:19: -[M.A testSkipped] : Test skipped - not today\n\
+             Test Case '-[M.A testSkipped]' skipped (0.002 seconds).\n\
+             between\n\
+             Test Case '-[M.A testB]' started.\n\
+             b1\n\
+             Test Case '-[M.A testB]' passed (0.1 seconds).\n",
+        );
+        assert!(!found.crossed);
+        assert_eq!(tests[0].test, "A/testSkipped");
+        assert_eq!(
+            tests[0].output,
+            "before skip\n/src/A.swift:19: -[M.A testSkipped] : Test skipped - not today\n"
+        );
+        assert_eq!(tests[1].output, "b1\n");
+        assert_eq!(rest, "between\n");
     }
 
     #[test]
