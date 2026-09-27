@@ -395,7 +395,13 @@ pub fn move_node(
     let from = node.parent.clone();
     let name = display_name(node.value).to_string();
     let rewrite = if source_tree(node.value) == "<group>" {
-        match moved_path(&resolved, &to_base, stored_path(node.value).is_some()) {
+        let has_name = node.value.get("name").is_some();
+        match moved_path(
+            &resolved,
+            &to_base,
+            stored_path(node.value).is_some(),
+            has_name,
+        ) {
             MovedPath::Unchanged => None,
             MovedPath::InGroup(path) => Some(path),
             MovedPath::FromProject(path) => Some(format!("<PROJECT>/{path}")),
@@ -422,10 +428,14 @@ pub fn move_node(
     let before = root.clone();
     let mut moved = splice_out(root, &indices)?;
     if let Some(stored) = rewrite {
-        moved
+        let moved = moved
             .as_object_mut()
-            .ok_or_else(|| format!("{address} is not an object"))?
-            .insert("path".to_string(), Value::String(stored));
+            .ok_or_else(|| format!("{address} is not an object"))?;
+        if stored.is_empty() {
+            moved.remove("path");
+        } else {
+            crate::schema_xcproj::insert_node_key(moved, "path", Value::String(stored));
+        }
     }
     // The target's own indices shift when the node came out of an earlier
     // sibling of the same container, so re-resolve rather than reusing them.

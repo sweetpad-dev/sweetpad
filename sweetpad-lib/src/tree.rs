@@ -154,21 +154,35 @@ pub(crate) enum MovedPath {
     /// Nothing to write: the node has no path, and the new group's directory
     /// is the one it already resolves to.
     Unchanged,
-    /// A path relative to the new group, whose directory holds the node.
+    /// A path relative to the new group, whose directory holds the node. An
+    /// empty one means the node needs no path there, and loses the one it has.
     InGroup(String),
     /// A path from the project directory, where the new group's does not.
     FromProject(String),
 }
 
-/// How a node that resolves to `resolved`, and has a stored path when
-/// `has_path`, is spelled inside a group whose directory is `group_dir`.
+/// How a node that resolves to `resolved` is spelled inside a group whose
+/// directory is `group_dir`. `has_path` says whether it stores a path, and
+/// `has_name` whether it stores a name, which then shows in place of one.
 ///
 /// A path from the group is what Xcode writes where one reaches the node. Where
 /// none does, it has both spellings available, and the anchor at the project is
-/// the one that does not depend on how deep the group sits.
-pub(crate) fn moved_path(resolved: &str, group_dir: &str, has_path: bool) -> MovedPath {
-    if !has_path && resolved == group_dir {
-        return MovedPath::Unchanged;
+/// the one that does not depend on how deep the group sits. A named node that
+/// resolves to the group's own directory needs no path at all, which is how an
+/// organizational group moved out and back gets its original spelling back.
+pub(crate) fn moved_path(
+    resolved: &str,
+    group_dir: &str,
+    has_path: bool,
+    has_name: bool,
+) -> MovedPath {
+    if resolved == group_dir {
+        if !has_path {
+            return MovedPath::Unchanged;
+        }
+        if has_name {
+            return MovedPath::InGroup(String::new());
+        }
     }
     if group_dir.is_empty() {
         return MovedPath::InGroup(resolved.to_string());

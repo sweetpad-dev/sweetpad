@@ -2076,7 +2076,11 @@ different file under a different group, so a move rewrites it: the new group's
 directory comes off the front when it prefixes the resolved path, and the node
 is anchored at the project root when it does not. Each outcome reports the
 resolved path, so the preservation is checkable rather than promised, and a
-move and its reverse leave the document byte for byte as it was.
+move and its reverse leave the document byte for byte as it was. A named group
+moved into a group whose directory is its own needs no path there and loses
+the one it has, so an organizational group moved out and back gets its
+original spelling back. A path the first move had to anchor at the project
+stays anchored, as any anchored path does.
 
 In a `project.xcproj` a move also changes the node's address, and the document
 names nodes by address: a configuration's xcconfig `file` or its `anchor`, a

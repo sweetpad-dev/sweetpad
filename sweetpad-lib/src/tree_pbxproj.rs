@@ -32,6 +32,7 @@ use std::path::Path;
 use crate::pbxproj::{Dict, Value};
 use crate::pbxproj_refs::{self, Referrer};
 use crate::project::Parents;
+use crate::settings_pbxproj::insert_sorted;
 use crate::spm_pbxproj::fresh_guid;
 use crate::tree::{MovedPath, moved_path, nameless_move_refusal, navigator_label};
 
@@ -495,7 +496,8 @@ pub fn move_node(
     let rewrite = if str_field(node, "sourceTree").unwrap_or("<group>") == "<group>" {
         let group_dir = display(&parents.group_dir(&group, Path::new("")));
         let has_path = str_field(node, "path").is_some_and(|p| !p.is_empty());
-        match moved_path(&resolved, &group_dir, has_path) {
+        let has_name = str_field(node, "name").is_some_and(|n| !n.is_empty());
+        match moved_path(&resolved, &group_dir, has_path, has_name) {
             MovedPath::Unchanged => None,
             MovedPath::InGroup(path) => Some((path, "<group>")),
             MovedPath::FromProject(path) => Some((path, "SOURCE_ROOT")),
@@ -515,12 +517,13 @@ pub fn move_node(
     if let Some((path, source_tree)) = rewrite
         && let Some(node) = objects.get_mut(child).and_then(Value::as_dict_mut)
     {
+        // Xcode keeps an object's keys sorted, so a new one goes in place.
         if path.is_empty() {
             node.remove("path");
         } else {
-            node.insert("path".into(), vstr(&path));
+            insert_sorted(node, "path", vstr(&path));
         }
-        node.insert("sourceTree".into(), vstr(source_tree));
+        insert_sorted(node, "sourceTree", vstr(source_tree));
     }
     Ok(MoveOutcome::Moved {
         address: child.to_string(),
@@ -1782,6 +1785,28 @@ mod tests {
         assert!(text.contains("path = App/Main.swift"), "{text}");
         assert!(text.contains("sourceTree = SOURCE_ROOT"), "{text}");
         assert_eq!(list_filerefs(&root).unwrap()[0].resolved, "App/Main.swift");
+    }
+
+    /// An organizational group moved out needs its parent's directory as a
+    /// path, written where Xcode keeps it among the sorted keys. Moved back,
+    /// it needs no path again, and the document is as it was.
+    #[test]
+    fn an_organizational_group_moved_out_and_back_is_as_it_was() {
+        let mut root = parsed();
+        let AddGroupOutcome::Created { address: org, .. } =
+            add_group(&mut root, "Org", Some("G1"), None, "<group>").unwrap()
+        else {
+            panic!("expected a fresh group");
+        };
+        let before = crate::pbxproj_writer::serialize(&root, "Fix");
+        move_node(&mut root, &org, Some("MG")).unwrap();
+        let text = round_trips(&root);
+        assert!(
+            text.contains("name = Org;\n\t\t\tpath = App;\n\t\t\tsourceTree = \"<group>\";"),
+            "{text}"
+        );
+        move_node(&mut root, &org, Some("G1")).unwrap();
+        assert_eq!(crate::pbxproj_writer::serialize(&root, "Fix"), before);
     }
 
     #[test]

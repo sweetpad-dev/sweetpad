@@ -577,7 +577,8 @@ fn guids_with(objects: &Dict, want_isa: &str, key: &str, value: &str) -> Vec<Str
 
 fn push_into_array(obj: &mut Dict, key: &str, value: Value) {
     if !obj.contains_key(key) {
-        obj.insert(key.to_string(), Value::Array(vec![value]));
+        // Xcode keeps an object's keys sorted, so a new list goes in place.
+        crate::settings_pbxproj::insert_sorted(obj, key, Value::Array(vec![value]));
         return;
     }
     if let Some(arr) = obj.get_mut(key).and_then(Value::as_array_mut) {
