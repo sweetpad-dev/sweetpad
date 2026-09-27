@@ -279,20 +279,22 @@ fn archive_destination(
 /// word alone decides the refusal, so it is a usage error, and [`run`]
 /// checks it before looking for the project.
 fn on_platform(on: &str) -> Result<&'static str, CliError> {
-    Ok(match on.to_ascii_lowercase().as_str() {
-        "mac" | "macos" => "macOS",
-        "ios" | "iphone" | "ipad" | "device" => "iOS",
-        "watchos" => "watchOS",
-        "tvos" => "tvOS",
-        "visionos" | "xros" => "visionOS",
-        other => {
-            return Err(CliError::new(format!(
+    let other = on.to_ascii_lowercase();
+    let family = if other == "device" {
+        Some("iOS")
+    } else {
+        resolve::platform_word(&other)
+    };
+    family
+        .and_then(sweetpad_lib::destination::Platform::device_for_os)
+        .map(|p| p.label)
+        .ok_or_else(|| {
+            CliError::new(format!(
                 "archive targets a generic device platform; --on {other:?} doesn't name one \
                  (use mac, ios, watchos, tvos, or visionos — or --destination for the raw form)"
             ))
-            .kind(ErrorKind::Usage));
-        }
-    })
+            .kind(ErrorKind::Usage)
+        })
 }
 
 /// The `--show-command` payload: both xcodebuild invocations, and the

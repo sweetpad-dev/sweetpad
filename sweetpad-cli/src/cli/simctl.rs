@@ -79,15 +79,13 @@ impl Simulator {
     }
 }
 
-/// Map a simulator OS to its xcodebuild destination platform name.
+/// Map a simulator OS to its xcodebuild destination platform name. An OS the
+/// platform table doesn't know keeps its own name (`fooOS Simulator`), the
+/// likeliest spelling for a platform newer than the table.
 #[must_use]
-pub fn platform(os: &str) -> &'static str {
-    match os {
-        "watchOS" => "watchOS Simulator",
-        "tvOS" => "tvOS Simulator",
-        "xrOS" => "visionOS Simulator",
-        _ => "iOS Simulator",
-    }
+pub fn platform(os: &str) -> String {
+    sweetpad_lib::destination::Platform::simulator_for_os(os)
+        .map_or_else(|| format!("{os} Simulator"), |p| p.label.to_string())
 }
 
 /// Enumerate every available simulator in picker order — platform first (iOS

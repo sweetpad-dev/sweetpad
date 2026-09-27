@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use clap::Subcommand;
 use sweetpad_core::xcodebuild_args;
+use sweetpad_lib::destination::DestinationSpec;
 
 mod ax;
 mod macwin;
@@ -1369,13 +1370,13 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
             .unwrap_or(d),
             None => resolve::pick_destination_for(ctx, &resolved, &scheme, &configuration, true)?,
         };
-        let platform = destination_platform(&destination).unwrap_or_default();
-        if platform.eq_ignore_ascii_case("macOS") {
+        let spec = DestinationSpec::parse(&destination);
+        if spec.is_macos() {
             // The picker's "My Mac" row (or a config/remembered macOS
             // destination, with or without extra keys like arch=) runs the
             // native-app flow, not a simulator.
             (destination, Target::Mac)
-        } else if !platform.is_empty() && !platform.to_ascii_lowercase().contains("simulator") {
+        } else if spec.is_device() {
             // A physical-device destination (platform=iOS,id=…) routes to
             // devicectl — handing its udid to simctl would fail with an
             // unrelated "Invalid device" much later.
@@ -1612,7 +1613,7 @@ fn record_last_launched(ctx: &mut Context, plan: &RunPlan) {
             "device",
             None,
             Some(id.clone()),
-            destination_platform(&plan.destination),
+            DestinationSpec::parse(&plan.destination).platform_label,
         ),
         Target::Mac => ("macos", None, None, None),
         Target::SpmRun(_) => return,
@@ -1644,13 +1645,6 @@ fn record_last_launched(ctx: &mut Context, plan: &RunPlan) {
 /// `log stream` reject the whole predicate.
 fn predicate_escape(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
-/// The `platform=` value from a `-destination` specifier, e.g. `iOS`.
-fn destination_platform(spec: &str) -> Option<String> {
-    spec.split(',')
-        .find_map(|kv| kv.trim().strip_prefix("platform="))
-        .map(str::to_string)
 }
 
 /// `swift run <product>` in the package directory: builds and runs the
@@ -7602,16 +7596,12 @@ fn ran_for(ms: u64) -> String {
 
 /// Extract the simulator UDID from a `platform=…,id=<udid>` destination.
 fn udid(destination: &str) -> Result<String, CliError> {
-    destination
-        .split(',')
-        .find_map(|kv| kv.trim().strip_prefix("id="))
-        .map(str::to_string)
-        .ok_or_else(|| {
-            CliError::new(format!(
-                "app commands need a destination with an id= (got {destination:?})"
-            ))
-            .kind(ErrorKind::TargetResolution)
-        })
+    DestinationSpec::parse(destination).id.ok_or_else(|| {
+        CliError::new(format!(
+            "app commands need a destination with an id= (got {destination:?})"
+        ))
+        .kind(ErrorKind::TargetResolution)
+    })
 }
 
 /// The simulator a destination addresses: `id=` names it outright; a `name=`
@@ -7622,17 +7612,14 @@ fn destination_udid(destination: &str) -> Result<String, CliError> {
     if let Ok(u) = udid(destination) {
         return Ok(u);
     }
-    let Some(name) = destination
-        .split(',')
-        .find_map(|kv| kv.trim().strip_prefix("name="))
-    else {
+    let Some(name) = DestinationSpec::parse(destination).name else {
         return Err(CliError::new(format!(
             "app commands need a destination with an id= or name= (got {destination:?})"
         ))
         .kind(ErrorKind::TargetResolution));
     };
     let sims = simctl::list()?;
-    simctl::find(&sims, name)
+    simctl::find(&sims, &name)
         .map(|s| s.udid.clone())
         .ok_or_else(|| {
             CliError::new(format!(

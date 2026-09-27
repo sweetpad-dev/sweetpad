@@ -77,18 +77,6 @@ pub struct BuildContext {
 /// anything that isn't a platform fall back to `macosx`, the SDK a
 /// multiplatform target's no-platform view resolves under.
 fn default_sdk(layers: &[Vec<Assignment>]) -> String {
-    const PLATFORMS: [&str; 10] = [
-        "macosx",
-        "iphoneos",
-        "iphonesimulator",
-        "appletvos",
-        "appletvsimulator",
-        "watchos",
-        "watchsimulator",
-        "xros",
-        "xrsimulator",
-        "driverkit",
-    ];
     project::natural_sdkroot(layers)
         .map(|sdkroot| {
             // A path to an SDK names it by its directory, `iPhoneOS17.0.sdk`.
@@ -96,7 +84,7 @@ fn default_sdk(layers: &[Vec<Assignment>]) -> String {
             let name = name.strip_suffix(".sdk").unwrap_or(name);
             project::canonicalize_sdk_base(&name.to_ascii_lowercase())
         })
-        .filter(|sdk| PLATFORMS.contains(&sdk.as_str()))
+        .filter(|sdk| sweetpad_lib::destination::Platform::from_sdk(sdk).is_some())
         .unwrap_or_else(|| "macosx".to_string())
 }
 

@@ -10,6 +10,7 @@ use sweetpad_core::app_locator::path_value;
 pub use sweetpad_core::app_locator::{AppBundle, CommandLineSettings, Located, ProductKind};
 use sweetpad_core::build_settings::BuildSettingsOptions;
 use sweetpad_core::xcodebuild_args::{self, dangling_flag, last_value};
+use sweetpad_lib::destination::DestinationSpec;
 
 use crate::cli::output::Output;
 use crate::cli::resolve::Container;
@@ -262,7 +263,10 @@ impl BuildPlan<'_> {
             // without either protection. (A sandbox declared in an explicit
             // entitlements file is beyond build settings — the mac preflight
             // catches that case with instructions.)
-            if self.destination.is_some_and(is_macos_destination) {
+            if self
+                .destination
+                .is_some_and(|d| DestinationSpec::parse(d).is_macos())
+            {
                 args.push("ENABLE_HARDENED_RUNTIME=NO".into());
                 args.push("ENABLE_APP_SANDBOX=NO".into());
                 // An explicit entitlements plist outranks those settings at
@@ -475,34 +479,20 @@ pub(crate) fn device_tip(args: &[String], diagnostics: &[serde_json::Value]) -> 
         return None;
     }
     let spec = xcodebuild_args::values(args, "-destination")
-        .find(|spec| crate::cli::resolve::is_device_destination(spec))?;
-    let key = |k: &str| {
-        spec.split(',')
-            .find_map(|kv| kv.trim().strip_prefix(k))
-            .map(str::trim)
-    };
-    let device = key("id=")
-        .or_else(|| key("name="))
-        .map_or_else(String::new, |d| {
-            // The tip is single-quoted, so a name that needs quoting gets double
-            // quotes inside it.
-            if shell_quote(d) == d {
-                format!(" {d}")
-            } else {
-                format!(" \"{d}\"")
-            }
-        });
+        .map(DestinationSpec::parse)
+        .find(DestinationSpec::is_device)?;
+    let device = spec.id.or(spec.name).map_or_else(String::new, |d| {
+        // The tip is single-quoted, so a name that needs quoting gets double
+        // quotes inside it.
+        if shell_quote(&d) == d {
+            format!(" {d}")
+        } else {
+            format!(" \"{d}\"")
+        }
+    });
     Some(format!(
         "run 'sweetpad device info{device}' to see why the device isn't ready"
     ))
-}
-
-/// Whether a `-destination` specifier targets native macOS (the platform whose
-/// hot builds need the injectability settings).
-fn is_macos_destination(spec: &str) -> bool {
-    spec.split(',')
-        .find_map(|kv| kv.trim().strip_prefix("platform="))
-        .is_some_and(|p| p.trim() == "macOS")
 }
 
 /// `-workspace <path>` / `-project <path>`; nothing for a Swift package (it's

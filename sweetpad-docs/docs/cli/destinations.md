@@ -49,7 +49,7 @@ permissions, and managing the pool.
 | `--on booted`               | Whatever simulator is already running.              |
 | `--on mac`                  | Your Mac, for macOS schemes.                        |
 | `--on device`               | Your connected physical device.                     |
-| `--on ios` / `--on watchos` | Any destination of that platform.                   |
+| `--on ios` / `--on visionos` | The newest simulator of that platform. `watchos` and `tvos` work too. |
 | `--on work-phone`           | An alias you created yourself (see below).          |
 | `--on <UDID>`               | That exact simulator or device.                     |
 

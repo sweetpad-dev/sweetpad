@@ -1425,23 +1425,17 @@ impl ExitLog {
     /// The log `destination`'s app exits land in; `None` for a destination
     /// with none to read (a device).
     fn of(destination: &str) -> Option<Self> {
-        let field = |key: &str| {
-            destination
-                .split(',')
-                .find_map(|kv| kv.trim().strip_prefix(key))
-                .map(str::to_string)
-        };
-        let platform = field("platform=")?;
-        if platform == "macOS" {
+        let spec = sweetpad_lib::destination::DestinationSpec::parse(destination);
+        if spec.is_macos() {
             return Some(Self::Mac);
         }
-        if !platform.ends_with(" Simulator") {
+        if !spec.is_simulator() || spec.generic {
             return None;
         }
-        let udid = if let Some(id) = field("id=") {
+        let udid = if let Some(id) = spec.id {
             id
         } else {
-            let name = field("name=")?;
+            let name = spec.name?;
             let sims = simctl::list().ok()?;
             simctl::find(&sims, &name)?.udid.clone()
         };

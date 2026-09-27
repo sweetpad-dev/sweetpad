@@ -68,18 +68,16 @@ impl Drop for HotSession {
 /// the rest (devices, generic).
 #[must_use]
 pub fn sdk_for_destination(destination: &str) -> Option<&'static str> {
-    let platform = destination
-        .split(',')
-        .find_map(|kv| kv.trim().strip_prefix("platform="))
-        .unwrap_or("")
-        .trim();
-    match platform {
-        "iOS Simulator" => Some("iphonesimulator"),
-        "tvOS Simulator" => Some("appletvsimulator"),
-        "visionOS Simulator" => Some("xrsimulator"),
-        "macOS" => Some("macosx"),
-        _ => None,
+    let spec = sweetpad_lib::destination::DestinationSpec::parse(destination);
+    if spec.generic {
+        return None;
     }
+    spec.sdk().filter(|sdk| {
+        matches!(
+            *sdk,
+            "iphonesimulator" | "appletvsimulator" | "xrsimulator" | "macosx"
+        )
+    })
 }
 
 /// Whether the project depends on the `Inject` package (krzysztofzablocki/Inject),

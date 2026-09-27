@@ -1921,7 +1921,7 @@ fn file_uri(path: &Path) -> String {
     out
 }
 
-fn path_from_uri(uri: &str) -> PathBuf {
+pub(crate) fn path_from_uri(uri: &str) -> PathBuf {
     PathBuf::from(percent_decode(uri.strip_prefix("file://").unwrap_or(uri)))
 }
 
@@ -2050,17 +2050,10 @@ fn arg_values(args: &[String], flag: &str) -> Vec<String> {
 /// The `xcodebuild -destination 'generic/platform=…'` name for an SDK, used to
 /// build a target for the platform the editor analyzes it as.
 fn platform_name(sdk: &str) -> &'static str {
-    match sdk {
-        s if s.starts_with("iphonesimulator") => "iOS Simulator",
-        s if s.starts_with("iphoneos") => "iOS",
-        s if s.starts_with("appletvsimulator") => "tvOS Simulator",
-        s if s.starts_with("appletvos") => "tvOS",
-        s if s.starts_with("watchsimulator") => "watchOS Simulator",
-        s if s.starts_with("watchos") => "watchOS",
-        s if s.starts_with("xrsimulator") => "visionOS Simulator",
-        s if s.starts_with("xros") => "visionOS",
-        _ => "macOS",
-    }
+    sweetpad_lib::destination::Platform::from_sdk(&sweetpad_lib::project::canonicalize_sdk_base(
+        sdk,
+    ))
+    .map_or("macOS", |p| p.label)
 }
 
 impl Server {

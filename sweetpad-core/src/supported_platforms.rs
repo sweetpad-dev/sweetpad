@@ -4,6 +4,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use sweetpad_lib::destination::Platform;
 use sweetpad_lib::{project, workspace};
 
 use crate::app_locator::find_scheme;
@@ -65,7 +66,11 @@ impl SupportedPlatforms {
                     ),
                     None => {
                         if let Some(sdk) = project::natural_sdkroot(&layers) {
-                            tokens.extend(sdk_platform_tokens(&sdk));
+                            tokens.extend(
+                                Platform::sdk_family_tokens(&sdk)
+                                    .into_iter()
+                                    .map(str::to_string),
+                            );
                         }
                     }
                 }
@@ -96,14 +101,7 @@ impl SupportedPlatforms {
     /// filtering must never hide something it doesn't understand.
     #[must_use]
     pub fn allows_simulator(&self, os: &str) -> bool {
-        let token = match os {
-            "iOS" => "iphonesimulator",
-            "watchOS" => "watchsimulator",
-            "tvOS" => "appletvsimulator",
-            "xrOS" | "visionOS" => "xrsimulator",
-            _ => return true,
-        };
-        self.0.contains(token)
+        Platform::simulator_for_os(os).is_none_or(|p| self.0.contains(p.sdk))
     }
 
     /// Whether the Mac is the only destination the scheme supports: the case
@@ -133,27 +131,6 @@ fn scheme_build_targets(container: &Path, scheme: &str) -> Option<BTreeSet<Strin
         .map(|e| e.buildable.blueprint_name.clone())
         .collect();
     (!names.is_empty()).then_some(names)
-}
-
-/// The platform tokens an `SDKROOT` value implies (a device SDK brings its
-/// simulator sibling, mirroring Xcode's default `SUPPORTED_PLATFORMS`).
-/// Accepts the short name (`macosx`), a versioned one (`iphoneos17.5`), or a
-/// full SDK path (`…/MacOSX15.2.sdk`).
-fn sdk_platform_tokens(sdk: &str) -> Vec<String> {
-    let name = Path::new(sdk)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or(sdk)
-        .trim_end_matches(|c: char| c.is_ascii_digit() || c == '.')
-        .to_ascii_lowercase();
-    match name.as_str() {
-        "macosx" => vec!["macosx".to_string()],
-        "iphoneos" => vec!["iphoneos".to_string(), "iphonesimulator".to_string()],
-        "watchos" => vec!["watchos".to_string(), "watchsimulator".to_string()],
-        "appletvos" => vec!["appletvos".to_string(), "appletvsimulator".to_string()],
-        "xros" => vec!["xros".to_string(), "xrsimulator".to_string()],
-        _ => Vec::new(),
-    }
 }
 
 #[cfg(test)]
@@ -196,19 +173,27 @@ mod tests {
 
     #[test]
     fn sdk_platform_tokens_bring_the_simulator_sibling() {
-        assert_eq!(sdk_platform_tokens("macosx"), vec!["macosx"]);
+        let tokens = Platform::sdk_family_tokens;
+        assert_eq!(tokens("macosx"), vec!["macosx"]);
+        assert_eq!(tokens("iphoneos17.5"), vec!["iphoneos", "iphonesimulator"]);
+        assert_eq!(tokens("xros"), vec!["xros", "xrsimulator"]);
         assert_eq!(
-            sdk_platform_tokens("iphoneos17.5"),
-            vec!["iphoneos", "iphonesimulator"]
-        );
-        assert_eq!(sdk_platform_tokens("xros"), vec!["xros", "xrsimulator"]);
-        assert_eq!(
-            sdk_platform_tokens(
+            tokens(
                 "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.2.sdk"
             ),
             vec!["macosx"]
         );
-        assert!(sdk_platform_tokens("somethingelse").is_empty());
+        assert!(tokens("somethingelse").is_empty());
+    }
+
+    /// simctl names visionOS's runtime `xrOS`, devicectl names it `visionOS`;
+    /// both reach the one simulator token through the platform table.
+    #[test]
+    fn both_visionos_spellings_filter_on_the_xrsimulator_token() {
+        let vision = SupportedPlatforms::from_tokens(&["xros", "xrsimulator"]);
+        assert!(vision.allows_simulator("xrOS"));
+        assert!(vision.allows_simulator("visionOS"));
+        assert!(!vision.allows_simulator("iOS"));
     }
 
     #[test]

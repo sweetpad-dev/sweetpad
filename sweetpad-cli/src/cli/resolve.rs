@@ -21,6 +21,8 @@
 
 use std::path::{Path, PathBuf};
 
+use sweetpad_lib::destination::{DestinationSpec, Platform};
+
 use crate::cli::config::Defaults;
 use crate::cli::state::{SelectedDestination, State};
 use crate::cli::{CliError, Context, ErrorKind};
@@ -928,18 +930,11 @@ pub fn resolve_on(
 
     // Platform words: the newest matching simulator, most-used first among
     // equals.
-    let platform = match lower.as_str() {
-        "ios" | "iphone" | "ipad" => Some("iOS"),
-        "watchos" => Some("watchOS"),
-        "tvos" => Some("tvOS"),
-        "visionos" | "xros" => Some("visionOS"),
-        _ => None,
-    };
-    if let Some(platform) = platform {
+    if let Some(platform) = platform_word(&lower).and_then(Platform::simulator_for_os) {
         let mut candidates: Vec<&crate::cli::simctl::Simulator> = sims
             .iter()
             .filter(|s| {
-                s.os.eq_ignore_ascii_case(platform)
+                platform.matches_os(&s.os)
                     && (lower != "ipad" || s.name.to_ascii_lowercase().contains("ipad"))
                     && (lower != "iphone" || s.name.to_ascii_lowercase().contains("iphone"))
             })
@@ -1034,6 +1029,21 @@ pub fn resolve_on(
             }
         }
     }
+}
+
+/// The OS family a platform word names, ignoring case: `mac`/`macos`,
+/// `ios`/`iphone`/`ipad`, `watchos`, `tvos`, `visionos`/`xros`. `--on` reads
+/// it as the newest simulator of the family, `archive --on` as the family's
+/// generic device platform.
+pub(crate) fn platform_word(word: &str) -> Option<&'static str> {
+    Some(match word.to_ascii_lowercase().as_str() {
+        "mac" | "macos" => "macOS",
+        "ios" | "iphone" | "ipad" => "iOS",
+        "watchos" => "watchOS",
+        "tvos" => "tvOS",
+        "visionos" | "xros" => "visionOS",
+        _ => return None,
+    })
 }
 
 fn device_target(dev: &crate::cli::devicectl::Device) -> OnTarget {
@@ -1371,12 +1381,7 @@ fn recover_stale(
 /// destination errors that end on a `device info` tip
 /// ([`xcodebuild::device_tip`](crate::cli::xcodebuild::device_tip)).
 pub(crate) fn is_device_destination(spec: &str) -> bool {
-    spec.split(',')
-        .filter_map(|part| part.trim().strip_prefix("platform="))
-        .any(|platform| {
-            let p = platform.trim().to_ascii_lowercase();
-            !p.contains("simulator") && p != "macos" && p != "my mac"
-        })
+    DestinationSpec::parse(spec).is_device()
 }
 
 pub(crate) fn refresh_stale_destination(
@@ -1388,10 +1393,7 @@ pub(crate) fn refresh_stale_destination(
     configuration: &str,
     track: bool,
 ) -> Result<Option<String>, CliError> {
-    let Some(udid) = spec
-        .split(',')
-        .find_map(|part| part.trim().strip_prefix("id="))
-    else {
+    let Some(udid) = DestinationSpec::parse(spec).id else {
         return Ok(None);
     };
     let state_sourced = ctx.state.projects.get(key).is_some_and(|p| {
@@ -2136,6 +2138,26 @@ mod tests {
             os: "iOS".into(),
             os_version: "17.0".into(),
         }
+    }
+
+    /// simctl names visionOS's runtime `xrOS`, so the platform word has to
+    /// reach it through the platform table, in either spelling.
+    #[test]
+    fn on_visionos_finds_the_xros_simulator() {
+        let c = ctx();
+        let mut vision = sim("VVVV", "Apple Vision Pro", false);
+        vision.os = "xrOS".into();
+        let sims = vec![sim("AAAA", "iPhone 17", true), vision];
+        for word in ["visionos", "xros", "visionOS"] {
+            let target = resolve_on(&c, "k", word, &sims).unwrap();
+            assert!(
+                matches!(&target, OnTarget::Simulator { udid, .. } if udid == "VVVV"),
+                "{word}"
+            );
+            assert_eq!(target.specifier(), "platform=visionOS Simulator,id=VVVV");
+        }
+        let target = resolve_on(&c, "k", "ios", &sims).unwrap();
+        assert_eq!(target.specifier(), "platform=iOS Simulator,id=AAAA");
     }
 
     #[test]
