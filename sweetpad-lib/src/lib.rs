@@ -10,6 +10,11 @@
 //! interfaces). Public entry points are plain Rust: [`xcode::active_install`],
 //! [`project::open`], [`workspace::open`].
 
+// The test scratch directory is one file shared with the CLI's tests, which
+// name this crate the way a dependent does.
+#[cfg(test)]
+extern crate self as sweetpad_lib;
+
 pub mod bplist;
 pub mod catalog_cache;
 pub mod compiler_args;
@@ -28,6 +33,7 @@ mod project_xcproj;
 pub mod resolver;
 pub mod schema_xcproj;
 pub mod scheme;
+pub mod scratch;
 pub mod settings_pbxproj;
 pub mod settings_xcproj;
 pub mod spm;

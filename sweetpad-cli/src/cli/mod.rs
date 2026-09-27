@@ -46,6 +46,7 @@ pub mod simctl;
 pub mod state;
 pub mod swiftpm;
 #[cfg(test)]
+#[path = "../../../sweetpad-lib/src/testdir.rs"]
 pub(crate) mod testdir;
 pub mod xcodebuild;
 

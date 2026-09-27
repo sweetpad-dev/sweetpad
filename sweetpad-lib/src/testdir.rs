@@ -1,29 +1,40 @@
-//! Scratch directories for the unit tests. The integration tests carry their
-//! own copy in `tests/common`, since they cannot see this crate's test code.
+//! The scratch directory every crate's tests make fixtures in: a
+//! [`ScratchDir`] that panics instead of returning an error.
+//!
+//! This one file serves this crate's unit tests, its integration tests
+//! (`tests/common`), and the CLI's unit and integration tests, which include
+//! it by path since they cannot see this crate's test code.
 
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+#![allow(dead_code)] // each includer uses its own share of this
+
+use std::ffi::OsStr;
+use std::ops::Deref;
+use std::path::Path;
+
+use sweetpad_lib::scratch::ScratchDir;
 
 /// A fresh, empty directory under the temp directory, removed with everything
 /// in it when this drops: at the end of the test, or while a failed assertion
 /// unwinds out of it.
-pub struct TempDir(PathBuf);
+pub struct TempDir(ScratchDir);
 
 impl TempDir {
-    /// `<temp>/<name>-<pid>-<n>`, where `n` counts the directories this
-    /// process has made. One an earlier process with the same pid left behind
-    /// is cleared first.
+    /// `<temp>/<name>-<pid>-<n>`, as [`ScratchDir::new`] names it.
     pub fn new(name: &str) -> Self {
-        static MADE: AtomicUsize = AtomicUsize::new(0);
-        let n = MADE.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("{name}-{}-{n}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        Self::new_in(&std::env::temp_dir(), name)
+    }
+
+    /// [`TempDir::new`] under `parent` instead of the temp directory: `/tmp`
+    /// for a unix socket, whose path has to fit in 104 bytes however long
+    /// `$TMPDIR` is.
+    pub fn new_in(parent: &Path, name: &str) -> Self {
+        let dir = ScratchDir::new_in(parent, name)
+            .unwrap_or_else(|e| panic!("make a scratch directory in {}: {e}", parent.display()));
         Self(dir)
     }
 }
 
-impl std::ops::Deref for TempDir {
+impl Deref for TempDir {
     type Target = Path;
 
     fn deref(&self) -> &Path {
@@ -31,8 +42,14 @@ impl std::ops::Deref for TempDir {
     }
 }
 
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+impl AsRef<Path> for TempDir {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<OsStr> for TempDir {
+    fn as_ref(&self) -> &OsStr {
+        self.0.as_os_str()
     }
 }

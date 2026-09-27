@@ -166,6 +166,12 @@ another.
   `~/Library/Developer/Xcode/DerivedData`. A spawned `bsp-server` that
   warms up after `build/initialized` gets a `HOME` in `CARGO_TARGET_TMPDIR`,
   which the DerivedData locator follows, or a `--derived-data-path`.
+- A test makes its fixtures in a directory that goes when the test ends, a
+  failed one included. There is one such guard, `scratch::ScratchDir` in this
+  crate, which sweetpad-core re-exports. This crate's tests and the CLI's take
+  it as `TempDir` (`src/testdir.rs`), which panics instead of returning an
+  error. The CLI's tests and this crate's integration tests include that file
+  by path, since they can't see this crate's test code.
 - After **every** capture or resolver change, re-run the full oracle suite on
   **all** captured versions — a fix for one version must not silently regress
   another.
