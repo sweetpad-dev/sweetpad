@@ -9,6 +9,10 @@
 # (resolver default + build-log), on *both* targets (iOS Simulator + native
 # macOS). Run by .github/workflows/xcode-tests.yaml.
 #
+# Each save logs '[hot] » <file> recompiling…' when the watcher hands it over
+# and '[hot] » <file> recompiled in <n>s, loading…' when the recompile ends. A
+# self-check that times out says which step the save stopped at.
+#
 # Requires: SWEETPAD_BIN (the built binary); the fixture generated with xcodegen.
 # Client resolution is the CLI's job: SWEETPAD_HOTRELOAD_DYLIB (override) if set,
 # else the per-SDK client bundled into the binary (vendor/injection-client), else

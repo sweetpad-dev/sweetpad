@@ -1511,7 +1511,14 @@ push/PR). Two jobs:
   client **bundled into the binary** (Milestone 5), for **both** recompilers
   (resolver + build-log). The self-check builds with the interposable/frontend
   flags, starts the `:8887` server, launches with the client injected, edits a
-  Swift file once, and asserts `.injected` — exiting non-zero otherwise. (An
+  Swift file once, and asserts `.injected` — exiting non-zero otherwise. Each
+  save logs a line when the watcher hands it over (`recompiling…`) and one when
+  the recompile ends (`recompiled in 1.1s, loading…`). A self-check that times
+  out names the step the save stopped at: the watcher never reported the edit,
+  the save ended before a load request, the recompile never finished, the load
+  request was never sent, or the app never answered it. The watcher snapshots
+  the tree before `HotSession::start` returns, so an edit made right after it
+  returns still fires. (An
   earlier `hot-reload` job ran the same e2e against a *prebuilt-download* client
   that still linked XCTest, so it carried the per-Xcode ABI skew — flaky, and
   removed once the bundled XCTest-free client made one prebuilt portable.)

@@ -153,6 +153,41 @@ fn bind_failure(e: &std::io::Error) -> String {
     )
 }
 
+/// How far the saves [`InjectServer::inject`] was handed got, counted per
+/// step. The self-check compares two of these to say where a save that never
+/// got a verdict stopped.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Progress {
+    /// Saves the watcher reported.
+    pub seen: usize,
+    /// Recompiles that produced a dylib.
+    pub recompiled: usize,
+    /// `.load` requests written to the app.
+    pub sent: usize,
+    /// Saves that ended before a `.load` request went out, each with a
+    /// `[hot] ✗` line saying why.
+    pub dropped: usize,
+}
+
+impl Progress {
+    /// The step the first save after `baseline` stopped at, for a verdict
+    /// that never came.
+    #[must_use]
+    pub fn stalled_since(&self, baseline: &Progress) -> &'static str {
+        if self.seen == baseline.seen {
+            "the watcher never reported the edit"
+        } else if self.dropped > baseline.dropped {
+            "the save ended before a load request was sent (the '[hot] ✗' line says why)"
+        } else if self.recompiled == baseline.recompiled {
+            "the recompile never finished"
+        } else if self.sent == baseline.sent {
+            "the load request was never sent"
+        } else {
+            "the app never answered the load request"
+        }
+    }
+}
+
 /// A running injection server bound to `:8887` for one `--hot` session.
 pub struct InjectServer {
     recompiler: Arc<dyn Recompile>,
@@ -164,6 +199,8 @@ pub struct InjectServer {
     /// `.injected` / `.failed` counts (for the `--hot-selfcheck` CI assertion).
     injected: Arc<AtomicUsize>,
     failed: Arc<AtomicUsize>,
+    /// How far each save got (for the `--hot-selfcheck` timeout message).
+    progress: Mutex<Progress>,
 }
 
 impl InjectServer {
@@ -198,6 +235,7 @@ impl InjectServer {
             stop: Arc::clone(&stop),
             injected: Arc::clone(&injected),
             failed: Arc::clone(&failed),
+            progress: Mutex::new(Progress::default()),
         };
 
         // Non-blocking accept loop: serve each client in turn (a relaunch on `r`
@@ -255,43 +293,71 @@ impl InjectServer {
     /// [`response_loop`] tallies it) so the final line can name the file too.
     pub fn inject(&self, file: &std::path::Path) {
         let name = file.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+        self.advance(|p| p.seen += 1);
+        let drop_save = |why: String| {
+            (self.log)(&format!("[hot] ✗ {name} {why}"));
+            self.advance(|p| p.dropped += 1);
+        };
         if !self.is_connected() {
-            (self.log)(&format!(
-                "[hot] ✗ {name} not connected (press r to relaunch)"
-            ));
+            drop_save("not connected (press r to relaunch)".into());
             return;
         }
-        // In-progress line: the filename leads (so the line starts capitalized and the
-        // save is acknowledged) and it ends with `…`, so the logger draws it in place
-        // and the outcome below overwrites it.
+        // In-progress lines: the filename leads (so the line starts capitalized and the
+        // save is acknowledged) and each ends with `…`, so the logger draws it in place
+        // and the next one, then the outcome below, overwrites it.
         (self.log)(&format!("[hot] » {name} recompiling…"));
+        let started = Instant::now();
         let dylib = match self.recompiler.recompile(file) {
             Ok(p) => p,
             Err(e) => {
-                (self.log)(&format!("[hot] ✗ {name} recompile failed: {e}"));
+                drop_save(format!("recompile failed: {e}"));
                 return;
             }
         };
+        self.advance(|p| p.recompiled += 1);
+        (self.log)(&format!(
+            "[hot] » {name} recompiled in {:.1}s, loading…",
+            started.elapsed().as_secs_f64()
+        ));
         let baseline = self.result_counts();
         {
             let mut guard = self.conn.lock().unwrap();
             let Some(stream) = guard.as_mut() else {
-                (self.log)(&format!("[hot] ✗ {name} connection lost"));
+                drop_save("connection lost".into());
                 return;
             };
             if let Err(e) =
                 protocol::write_command(stream, command::LOAD, Some(&dylib.to_string_lossy()))
             {
-                (self.log)(&format!("[hot] ✗ {name} send failed: {e}"));
+                drop_save(format!("send failed: {e}"));
                 return;
             }
         }
+        self.advance(|p| p.sent += 1);
         // Await the app's verdict so the final line can name the file too.
         match self.wait_for_result(baseline, Duration::from_secs(15)) {
             Some(true) => (self.log)(&format!("[hot] ✓ {name} injected")),
             Some(false) => (self.log)(&format!("[hot] ✗ {name} injection rejected")),
             None => (self.log)(&format!("[hot] ✗ {name} timed out")),
         }
+    }
+
+    /// How far the saves handed to [`Self::inject`] have got so far.
+    #[must_use]
+    pub fn progress(&self) -> Progress {
+        *self
+            .progress
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn advance(&self, step: impl FnOnce(&mut Progress)) {
+        step(
+            &mut self
+                .progress
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
     }
 
     /// `(injected, failed)` response counts so far.
@@ -591,11 +657,61 @@ mod tests {
 
         assert_eq!(client.join().unwrap(), dylib.to_string_lossy());
         assert_eq!(server.result_counts().0, 1);
+        assert_eq!(
+            server.progress(),
+            Progress {
+                seen: 1,
+                recompiled: 1,
+                sent: 1,
+                dropped: 0
+            }
+        );
         server.shutdown();
 
         let log = sink.lock().unwrap().join("\n");
         assert!(log.contains("recompiling"), "log: {log}");
+        assert!(log.contains("recompiled in"), "log: {log}");
+        assert!(log.contains("loading"), "log: {log}");
         assert!(log.contains("injected"), "log: {log}");
+    }
+
+    /// A save with no verdict names the step it stopped at, which each
+    /// counter moving past the baseline rules out in turn.
+    #[test]
+    fn a_stalled_save_names_the_step_it_stopped_at() {
+        let base = Progress {
+            seen: 2,
+            recompiled: 1,
+            sent: 1,
+            dropped: 1,
+        };
+        let after = |seen, recompiled, sent, dropped| Progress {
+            seen: base.seen + seen,
+            recompiled: base.recompiled + recompiled,
+            sent: base.sent + sent,
+            dropped: base.dropped + dropped,
+        };
+        assert_eq!(
+            after(0, 0, 0, 0).stalled_since(&base),
+            "the watcher never reported the edit"
+        );
+        assert_eq!(
+            after(1, 0, 0, 0).stalled_since(&base),
+            "the recompile never finished"
+        );
+        assert!(
+            after(1, 0, 0, 1)
+                .stalled_since(&base)
+                .starts_with("the save ended before a load request was sent")
+        );
+        assert_eq!(
+            after(1, 1, 0, 0).stalled_since(&base),
+            "the load request was never sent"
+        );
+        assert_eq!(
+            after(1, 1, 1, 0).stalled_since(&base),
+            "the app never answered the load request"
+        );
     }
 
     #[test]
@@ -641,6 +757,14 @@ mod tests {
             "a failed recompile yields no inject result"
         );
         assert!(client.join().unwrap(), "server must not send .load");
+        assert!(
+            server
+                .progress()
+                .stalled_since(&Progress::default())
+                .starts_with("the save ended before a load request was sent"),
+            "{:?}",
+            server.progress()
+        );
         server.shutdown();
         assert!(
             sink.lock().unwrap().join("\n").contains("boom"),

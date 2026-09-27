@@ -2311,6 +2311,7 @@ fn hot_selfcheck(
         ));
     }
     let baseline = server.result_counts();
+    let steps = server.progress();
 
     // A signal can kill the process anywhere in the (long) wait below, after
     // the nonce write but before the restore — so the pristine source is
@@ -2358,6 +2359,8 @@ fn hot_selfcheck(
     // Be generous so a slow/contended CI runner doesn't flake (the real watcher
     // loop has no such deadline — this bound only guards the self-check).
     let result = server.wait_for_result(baseline, Duration::from_secs(180));
+    // Read before the restore below, which is a save of its own.
+    let stalled = server.progress().stalled_since(&steps);
     // Restore the fixture regardless of outcome, and drop the backup only
     // once the pristine content is verifiably back in place — a failed
     // restore must keep the backup so the next run can self-heal.
@@ -2376,9 +2379,9 @@ fn hot_selfcheck(
         Some(true) => ctx.out.note("hot reload self-check: ✅ .injected"),
         Some(false) => return Err(CliError::new("hot reload self-check: ❌ injection failed")),
         None => {
-            return Err(CliError::new(
-                "hot reload self-check: ❌ timed out waiting for .injected",
-            ));
+            return Err(CliError::new(format!(
+                "hot reload self-check: ❌ timed out waiting for .injected: {stalled}"
+            )));
         }
     }
 

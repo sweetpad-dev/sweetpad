@@ -36,7 +36,9 @@ const IGNORED_DIRS: &[&str] = &[
 const POLL_INTERVAL: Duration = Duration::from_millis(300);
 
 impl Watcher {
-    /// Start watching `root` (recursively) for `.swift` saves.
+    /// Start watching `root` (recursively) for `.swift` saves. The files already
+    /// there are snapshotted before this returns, so a save made right after it
+    /// counts as one.
     pub fn start(root: &Path, on_change: OnChange) -> Watcher {
         let root = root.to_path_buf();
         let stop = Arc::new(AtomicBool::new(false));
@@ -59,13 +61,15 @@ impl Watcher {
             }
         });
 
-        let handle = std::thread::spawn(move || {
-            // Initial snapshot — don't fire for files that already exist.
-            let mut mtimes: HashMap<PathBuf, SystemTime> = HashMap::new();
-            scan(&root, &mut |path, mtime| {
-                mtimes.insert(path, mtime);
-            });
+        // Initial snapshot, so the files that already exist don't fire. Taken
+        // here rather than on the poll thread: a save made before that thread
+        // got to the file would land in the snapshot and never fire.
+        let mut mtimes: HashMap<PathBuf, SystemTime> = HashMap::new();
+        scan(&root, &mut |path, mtime| {
+            mtimes.insert(path, mtime);
+        });
 
+        let handle = std::thread::spawn(move || {
             while !stop_thread.load(Ordering::Relaxed) {
                 std::thread::sleep(POLL_INTERVAL);
                 if stop_thread.load(Ordering::Relaxed) {
@@ -181,8 +185,8 @@ mod tests {
         });
         let _w = Watcher::start(&dir, on_change);
 
-        // Let the initial snapshot settle, then modify + add files.
-        std::thread::sleep(Duration::from_millis(450));
+        // The snapshot is taken by the time `start` returns, so a save made
+        // straight after it counts.
         std::fs::write(dir.join("Existing.swift"), "// v2 changed").unwrap();
         std::fs::write(dir.join("New.swift"), "// brand new").unwrap();
         std::thread::sleep(Duration::from_millis(700));
