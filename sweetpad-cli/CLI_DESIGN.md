@@ -1875,6 +1875,11 @@ of `group detach 85BB78F9ECC9184F5BA8114B --group Sources/App --json`:
  "group": "71376D09ABE451C1E73CAAE7", "changed": true}
 ```
 
+`group add` also returns the group's `navigatorPath`, and its human line
+starts the way the group's `group list` row does: the address, the navigator
+path, then the directory. An organizational group resolves to its parent's
+directory, so the directory alone would not say which group was made.
+
 The navigator path is not the on-disk path. A node stored as
 `<PROJECT>/Sources/Deep.swift` but listed at the root appears as `Deep.swift`,
 so the listings carry both and `--under` still filters on the disk one.

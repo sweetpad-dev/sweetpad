@@ -217,6 +217,7 @@ pub fn add_group(
             0,
         ));
         return Ok(AddGroupOutcome::AlreadyExists {
+            navigator_path: shown_paths(objects_ref).remove(&existing),
             address: existing,
             resolved,
         });
@@ -240,6 +241,7 @@ pub fn add_group(
 
     let resolved = display(&crate::project::group_dir(objects, &guid, Path::new(""), 0));
     Ok(AddGroupOutcome::Created {
+        navigator_path: shown_paths(objects).remove(&guid),
         address: guid,
         resolved,
     })
@@ -1099,15 +1101,43 @@ mod tests {
         let AddGroupOutcome::Created {
             address: guid,
             resolved,
+            navigator_path,
         } = outcome
         else {
             panic!("expected a fresh group");
         };
         assert_eq!(resolved, "App/Views");
+        assert_eq!(navigator_path.as_deref(), Some("App/Views"));
         // A path equal to the name means Xcode omits `name`.
         let text = round_trips(&root);
         let block = text.split(&guid).nth(1).unwrap();
         assert!(!block[..120].contains("name = Views"), "{block}");
+    }
+
+    /// An organizational group resolves to its parent's directory, so the
+    /// outcome carries the navigator path that names it.
+    #[test]
+    fn a_new_group_reports_its_navigator_path() {
+        let mut root = parsed();
+        let AddGroupOutcome::Created {
+            address,
+            resolved,
+            navigator_path,
+        } = add_group(&mut root, "Frameworks", None, None, "<group>").unwrap()
+        else {
+            panic!("expected a fresh group");
+        };
+        assert_eq!(resolved, "", "the project directory");
+        assert_eq!(navigator_path.as_deref(), Some("Frameworks"));
+
+        assert_eq!(
+            add_group(&mut root, "Frameworks", Some("/"), None, "<group>").unwrap(),
+            AddGroupOutcome::AlreadyExists {
+                address,
+                resolved: String::new(),
+                navigator_path: Some("Frameworks".into()),
+            }
+        );
     }
 
     #[test]

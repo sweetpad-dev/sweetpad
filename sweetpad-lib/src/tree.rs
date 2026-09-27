@@ -97,11 +97,20 @@ pub enum AddRefOutcome {
     AlreadyExists { address: String, resolved: String },
 }
 
-/// What `add_group` did.
+/// What `add_group` did. `navigator_path` is the group's, as
+/// [`GroupRow::navigator_path`] carries it.
 #[derive(Debug, PartialEq, Eq)]
 pub enum AddGroupOutcome {
-    Created { address: String, resolved: String },
-    AlreadyExists { address: String, resolved: String },
+    Created {
+        address: String,
+        resolved: String,
+        navigator_path: Option<String>,
+    },
+    AlreadyExists {
+        address: String,
+        resolved: String,
+        navigator_path: Option<String>,
+    },
 }
 
 /// What `remove_fileref` or `remove_group` did.

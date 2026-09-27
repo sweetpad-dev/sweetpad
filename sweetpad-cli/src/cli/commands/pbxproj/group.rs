@@ -231,13 +231,22 @@ impl Render for ListResult {
 /// argument takes. A `project.xcproj` addresses a group by its navigator
 /// path, so its rows print that once.
 fn group_line(g: &GroupRow) -> String {
-    let dir = display_dir(&g.resolved);
-    let children = g.children.len();
-    let navigator = navigator_label(g.navigator_path.as_deref(), g.is_navigator_root);
-    if g.navigator_path.as_deref() == Some(g.address.as_str()) {
-        format!("{navigator}  [{dir}, {children} child(ren)]")
+    format!(
+        "{}  [{}, {} child(ren)]",
+        row_head(&g.address, g.navigator_path.as_deref(), g.is_navigator_root),
+        display_dir(&g.resolved),
+        g.children.len()
+    )
+}
+
+/// The address and the navigator path that open a group's row, or the path
+/// alone where it is the address.
+fn row_head(address: &str, navigator_path: Option<&str>, is_root: bool) -> String {
+    let navigator = navigator_label(navigator_path, is_root);
+    if navigator_path == Some(address) {
+        navigator.to_string()
     } else {
-        format!("{}  {navigator}  [{dir}, {children} child(ren)]", g.address)
+        format!("{address}  {navigator}")
     }
 }
 
@@ -273,30 +282,45 @@ fn add(ctx: &mut Context, args: &AddArgs) -> CommandResult {
     }
     .map_err(CliError::new)?;
 
-    let under = args
-        .parent
-        .as_deref()
-        .filter(|parent| !parent.trim_matches('/').is_empty())
-        .unwrap_or("the navigator root");
+    // The group as its 'group list' row names it, so the output says which
+    // group this is rather than only the directory it resolves to.
     let (line, changed, json) = match &outcome {
-        AddGroupOutcome::Created { address, resolved } => (
-            format!("{address}  {} under {under}", display_dir(resolved)),
+        AddGroupOutcome::Created {
+            address,
+            resolved,
+            navigator_path,
+        } => (
+            format!(
+                "{}  [{}]",
+                row_head(address, navigator_path.as_deref(), false),
+                display_dir(resolved)
+            ),
             true,
             serde_json::json!({
                 "action": "add",
                 "address": address,
                 "resolved": resolved,
+                "navigatorPath": navigator_path,
                 "parent": args.parent,
                 "changed": true,
             }),
         ),
-        AddGroupOutcome::AlreadyExists { address, resolved } => (
-            format!("{address}  {} (already a group)", display_dir(resolved)),
+        AddGroupOutcome::AlreadyExists {
+            address,
+            resolved,
+            navigator_path,
+        } => (
+            format!(
+                "{}  [{}] (already a group)",
+                row_head(address, navigator_path.as_deref(), false),
+                display_dir(resolved)
+            ),
             false,
             serde_json::json!({
                 "action": "add",
                 "address": address,
                 "resolved": resolved,
+                "navigatorPath": navigator_path,
                 "changed": false,
             }),
         ),

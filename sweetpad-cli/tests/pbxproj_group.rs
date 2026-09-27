@@ -307,3 +307,57 @@ fn group_list_walks_through_an_xcproj_group_with_no_name() {
         "{refs}"
     );
 }
+
+/// 'group add' names the group it made the way its 'group list' row does: by
+/// address and navigator path, then the directory. An organizational group
+/// resolves to its parent's directory, so the directory alone says nothing.
+#[test]
+fn group_add_names_the_new_group() {
+    let (dir, project) = fixture("sweetpad-group-add");
+    let project = project.as_str();
+    let add = ["pbxproj", "group", "add", "Foo", "--project", project];
+
+    let data = sweetpad(&[&add[..], &["--json"]].concat(), &dir);
+    let address = data["address"].as_str().unwrap().to_string();
+    assert_eq!(data["navigatorPath"], "Foo", "{data}");
+    assert_eq!(data["resolved"], "", "{data}");
+    assert_eq!(
+        human(&add, &dir).trim_end(),
+        format!("{address}  Foo  [(project root)] (already a group)")
+    );
+
+    let line = human(
+        &[
+            "pbxproj",
+            "group",
+            "add",
+            "Views",
+            "--parent",
+            "Sources/App",
+            "--path",
+            "Views",
+            "--project",
+            project,
+        ],
+        &dir,
+    );
+    assert!(
+        line.trim_end()
+            .ends_with("  Sources/App/Views  [Sources/App/Views]"),
+        "{line}"
+    );
+
+    let (dir, project) = xcproj_fixture("sweetpad-group-add-xcproj");
+    let line = human(
+        &[
+            "pbxproj",
+            "group",
+            "add",
+            "Foo",
+            "--project",
+            project.as_str(),
+        ],
+        &dir,
+    );
+    assert_eq!(line.trim_end(), "Foo  [(project root)]");
+}

@@ -211,6 +211,7 @@ pub fn add_group(
     let address = child_address(parent_address.as_deref(), display);
     if let Some(existing) = nodes(root)?.into_iter().find(|n| n.address == address) {
         return Ok(AddGroupOutcome::AlreadyExists {
+            navigator_path: Some(address.clone()),
             address,
             resolved: existing.resolved,
         });
@@ -230,7 +231,11 @@ pub fn add_group(
 
     let resolved = resolve(&base, &Value::Object(node.clone()));
     children_mut(root, &indices)?.push(Value::Object(node));
-    Ok(AddGroupOutcome::Created { address, resolved })
+    Ok(AddGroupOutcome::Created {
+        navigator_path: Some(address.clone()),
+        address,
+        resolved,
+    })
 }
 
 /// Delete a file node.

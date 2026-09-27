@@ -177,6 +177,7 @@ fn a_group_is_added_with_or_without_a_directory() {
         AddGroupOutcome::Created {
             address: "Sources/Views".into(),
             resolved: "Sources/Views".into(),
+            navigator_path: Some("Sources/Views".into()),
         }
     );
     // A group that titles rather than paths resolves to its parent's directory.
@@ -185,6 +186,7 @@ fn a_group_is_added_with_or_without_a_directory() {
         AddGroupOutcome::Created {
             address: "Frameworks".into(),
             resolved: String::new(),
+            navigator_path: Some("Frameworks".into()),
         }
     );
     let text = xcproj::serialize(&doc);
