@@ -3513,7 +3513,26 @@ key). The send is one `POST` of an envelope to
 deadline covering connect and read. A failure exits 1 and says what
 happened: `couldn't send the report: no answer from <host> within 10
 seconds`, `… can't reach <host>: <io error>`, or `the report was not
-accepted: <host> answered HTTP <code> <reason>: <body>`. `-o json` returns
+accepted: <host> answered HTTP <code> <reason>: <body>`.
+
+**Through a proxy.** The send honors `https_proxy` and `HTTPS_PROXY`, read
+in that order as curl reads them, unless `no_proxy` or `NO_PROXY` exempts
+the host. A `no_proxy` entry is `*` or a host name, and it covers the hosts
+under it with or without a leading dot. The proxy is an HTTP one, written
+`http://host:port` or `http://user:password@host:port` (port 1080 when
+none is given). `minreq`'s `proxy` feature opens a `CONNECT` tunnel through
+it, with Basic credentials when the URL has them, and TLS runs inside the
+tunnel. The feature adds one crate, `base64` 0.22 with no dependencies, and
+about 36 KB to the release binary. Left to itself, `minreq` applies the
+lower-case `https_proxy` to any request that names no proxy and reads no
+`no_proxy`, so `send` removes `https_proxy`, `http_proxy` and `all_proxy`
+from its own environment after choosing, and names the proxy on the request.
+A value it can't use (`socks5://`, `https://`, a bad port) refuses the send
+without echoing the value, which can hold a password. The proxy's answers
+have their own messages: `the proxy at <host:port> (HTTPS_PROXY) wouldn't open
+a connection to <host>` for a refusal, `… asks for credentials; put them in
+HTTPS_PROXY as 'http://user:password@<host:port>'` for a 407 without them,
+and `… refused its credentials` for one with them. `-o json` returns
 `{sent: true, eventId, digest}` from the send and `{sent: false, digest,
 endpoint, payload, addedAtSend: ["timestamp"], added: {sweetpad, xcode,
 macos, arch}, sendCommand}` from the dry run.
@@ -3595,12 +3614,15 @@ directories, and no test reaches Sentry: the dry run's shape, the sent
 envelope equal to the dry run's payload plus `timestamp`, no `ip_address` or
 `{{auto}}` anywhere, a changed file refused with nothing received, off/on/status
 keeping the config's comments, the turned-off help text, malformed reports,
-a refused connection, and an HTTP 429.
+a refused connection, and an HTTP 429. The proxy tests send to
+`https://sentry.invalid/…`, which no resolver answers for, with the stub as
+the proxy: the `CONNECT sentry.invalid:443` it receives and its Basic
+credentials, a 403 and a 407, `no_proxy` sending around a lower-case
+`https_proxy` (nothing reaches the stub), and a `socks5://` value refused.
 
 *Deliberately not built:* scrubbing in the CLI; a prompt; reading the report
-from stdin; attachments or logs; the VS Code extension. `minreq`'s proxy
-support is off, so a network that only allows traffic through an HTTP proxy
-can't send.
+from stdin; attachments or logs; the VS Code extension; SOCKS proxies and
+proxies reached over HTTPS, which `minreq` doesn't support.
 
 ## 10. Testing
 

@@ -45,9 +45,12 @@ impl Received {
 }
 
 /// A local envelope endpoint answering every request with `status` and
-/// `body`, and handing each request to the test.
+/// `body`, and handing each request to the test. As a proxy it answers a
+/// `CONNECT` the same way.
 struct Stub {
     url: String,
+    /// `127.0.0.1:<port>`.
+    addr: String,
     received: mpsc::Receiver<Received>,
 }
 
@@ -75,6 +78,7 @@ impl Stub {
         });
         Self {
             url: format!("http://127.0.0.1:{port}/api/1/envelope/"),
+            addr: format!("127.0.0.1:{port}"),
             received,
         }
     }
@@ -143,7 +147,26 @@ fn home(tag: &str) -> TempDir {
 
 /// Run sweetpad in `home` with its sends going to `endpoint`.
 fn sweetpad(home: &Path, endpoint: &str, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_sweetpad"))
+    sweetpad_with(home, endpoint, &[], args)
+}
+
+/// [`sweetpad`] with `env` set, and no proxy variable but those in it.
+fn sweetpad_with(home: &Path, endpoint: &str, env: &[(&str, &str)], args: &[&str]) -> Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_sweetpad"));
+    for var in [
+        "https_proxy",
+        "HTTPS_PROXY",
+        "http_proxy",
+        "HTTP_PROXY",
+        "all_proxy",
+        "ALL_PROXY",
+        "no_proxy",
+        "NO_PROXY",
+    ] {
+        command.env_remove(var);
+    }
+    command.envs(env.iter().copied());
+    command
         .args(args)
         .current_dir(home)
         .env("HOME", home)
@@ -595,4 +618,121 @@ fn a_report_the_server_refuses_is_an_error() {
     assert!(message.contains("HTTP 429 Too Many Requests"), "{message}");
     assert!(message.contains("rate limited"), "{message}");
     stub.next();
+}
+
+/// An endpoint no resolver answers for, so a send that skipped the proxy
+/// reaches nothing at all.
+const UNRESOLVABLE: &str = "https://sentry.invalid/api/1/envelope/";
+
+fn approve(home: &Path, env: &[(&str, &str)]) -> Output {
+    let digest = dry_run(home, UNRESOLVABLE)["digest"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    sweetpad_with(
+        home,
+        UNRESOLVABLE,
+        env,
+        &[
+            "feedback",
+            "submit",
+            "entry.txt",
+            "--approve",
+            &digest,
+            "-o",
+            "json",
+        ],
+    )
+}
+
+#[test]
+fn an_https_send_asks_the_proxy_in_https_proxy_for_a_tunnel() {
+    let proxy = Stub::start("403 Forbidden", "");
+    let home = home("proxy");
+    let value = format!("http://me:secret@{}/", proxy.addr);
+    let out = approve(&home, &[("HTTPS_PROXY", &value)]);
+
+    let connect = proxy.next();
+    assert_eq!(connect.request_line, "CONNECT sentry.invalid:443 HTTP/1.1");
+    assert_eq!(
+        connect.header("Proxy-Authorization"),
+        Some("Basic bWU6c2VjcmV0"),
+        "me:secret, as Basic credentials"
+    );
+    assert_eq!(out.status.code(), Some(1), "{out:?}");
+    let message = stderr_error(&out)["message"].as_str().unwrap().to_string();
+    assert_eq!(
+        message,
+        format!(
+            "couldn't send the report: the proxy at {} (HTTPS_PROXY) wouldn't open a \
+             connection to sentry.invalid",
+            proxy.addr
+        )
+    );
+}
+
+#[test]
+fn the_lower_case_variable_wins_and_a_proxy_asking_for_credentials_says_how() {
+    let proxy = Stub::start("407 Proxy Authentication Required", "");
+    let home = home("proxy-auth");
+    let value = format!("http://{}", proxy.addr);
+    let out = approve(
+        &home,
+        &[
+            ("https_proxy", &value),
+            ("HTTPS_PROXY", "http://127.0.0.1:9"),
+        ],
+    );
+
+    let connect = proxy.next();
+    assert_eq!(connect.request_line, "CONNECT sentry.invalid:443 HTTP/1.1");
+    assert_eq!(connect.header("Proxy-Authorization"), None);
+    assert_eq!(out.status.code(), Some(1), "{out:?}");
+    let message = stderr_error(&out)["message"].as_str().unwrap().to_string();
+    assert_eq!(
+        message,
+        format!(
+            "couldn't send the report: the proxy at {0} (https_proxy) asks for credentials; \
+             put them in https_proxy as 'http://user:password@{0}'",
+            proxy.addr
+        )
+    );
+}
+
+/// `no_proxy` is honored even for the lower-case `https_proxy`, which the
+/// HTTP client would otherwise apply on its own.
+#[test]
+fn no_proxy_sends_around_the_proxy() {
+    let proxy = Stub::start("403 Forbidden", "");
+    let home = home("no-proxy");
+    let value = format!("http://{}", proxy.addr);
+    let out = approve(
+        &home,
+        &[("https_proxy", &value), ("no_proxy", "localhost,.invalid")],
+    );
+
+    proxy.assert_nothing_received();
+    assert_eq!(out.status.code(), Some(1), "{out:?}");
+    let message = stderr_error(&out)["message"].as_str().unwrap().to_string();
+    assert!(
+        message.starts_with("couldn't send the report: can't reach sentry.invalid"),
+        "{message}"
+    );
+    assert!(!message.contains("proxy"), "{message}");
+}
+
+#[test]
+fn a_proxy_sweetpad_cant_use_is_refused_without_echoing_it() {
+    let home = home("socks");
+    let out = approve(
+        &home,
+        &[("HTTPS_PROXY", "socks5://me:secret@127.0.0.1:1080")],
+    );
+    assert_eq!(out.status.code(), Some(1), "{out:?}");
+    let message = stderr_error(&out)["message"].as_str().unwrap().to_string();
+    assert_eq!(
+        message,
+        "HTTPS_PROXY names a proxy sweetpad can't use, so nothing was sent. It takes an HTTP \
+         proxy, written 'http://host:port' or 'http://user:password@host:port'"
+    );
 }

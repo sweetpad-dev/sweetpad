@@ -62,6 +62,17 @@ with the report, but it does look up an approximate location (country, region an
 
 :::
 
+## Sending through a proxy
+
+If your network allows HTTPS only through a proxy, SweetPad reads the same variables curl does. Set
+`HTTPS_PROXY` (or `https_proxy`) to the proxy, for example `http://proxy.example.com:3128`, or
+`http://user:password@proxy.example.com:3128` when it needs credentials. SweetPad opens a tunnel
+through the proxy, so the report stays encrypted between your Mac and Sentry. Hosts listed in
+`NO_PROXY` (or `no_proxy`) skip the proxy.
+
+SweetPad works with HTTP proxies only. A SOCKS proxy, or a proxy you reach over HTTPS, isn't
+supported.
+
 ## Turning reports off
 
 ```bash

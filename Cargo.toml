@@ -38,8 +38,9 @@ toml_edit = "0.22"
 libc = "0.2"
 # `feedback submit`'s one HTTPS POST. native-tls is Security.framework on
 # macOS, which keeps this to minreq plus the Security/CoreFoundation bindings
-# and their tempfile dependency.
-minreq = { version = "3", features = ["https-native-tls"] }
+# and their tempfile dependency. `proxy` adds only `base64`, for a proxy's
+# Basic credentials.
+minreq = { version = "3", features = ["https-native-tls", "proxy"] }
 # N-API addon only (sweetpad-vscode/native).
 napi = { version = "3", default-features = false, features = ["napi8"] }
 napi-derive = "3"
