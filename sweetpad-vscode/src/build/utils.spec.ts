@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import type { Mock } from "vitest";
@@ -365,6 +366,41 @@ describe("prepareDerivedDataPath", () => {
     // xcodebuild runs in the workspace folder, so it reads a relative path against it.
     expect(path.resolve("/w", built)).toBe(derivedDataPath);
     expect(derivedDataPath).toBe("/w/dd-b");
+  });
+
+  // xcodebuild reads a relative path against the physical directory it runs in, and the CLI joins the
+  // project's standardized directory for that reason. A folder opened through a symlink has to name the same
+  // directory the same way.
+  it("resolves a relative path against the directory a symlinked folder points at", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "sweetpad-dd-link-"));
+    try {
+      mkdirSync(path.join(root, "real", "app"), { recursive: true });
+      symlinkSync(path.join(root, "real", "app"), path.join(root, "link"));
+      const link = path.join(root, "link");
+      const real = path.join(root, "real", "app");
+
+      mockConfig({ "build.derivedDataPath": "dd" });
+      const inside = prepareDerivedDataPath({ workspaceRoot: link });
+      expect(inside).toBe(prepareDerivedDataPath({ workspaceRoot: real }));
+      expect(inside).toMatch(/\/real\/app\/dd$/);
+
+      // `..` leaves the real directory, not the symlink.
+      mockConfig({ "build.args": ["-derivedDataPath", "../dd"] });
+      const beside = prepareDerivedDataPath({ workspaceRoot: link });
+      expect(beside).toBe(prepareDerivedDataPath({ workspaceRoot: real }));
+      expect(beside).toMatch(/\/real\/dd$/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("drops the /private that a root symlink adds", () => {
+    mockConfig({ "build.derivedDataPath": "dd" });
+    expect(prepareDerivedDataPath({ workspaceRoot: "/private/tmp" })).toBe("/tmp/dd");
+    expect(prepareDerivedDataPath({ workspaceRoot: "/tmp" })).toBe("/tmp/dd");
+    // An absolute path is the user's spelling.
+    mockConfig({ "build.derivedDataPath": "/private/tmp/dd" });
+    expect(prepareDerivedDataPath({ workspaceRoot: "/tmp" })).toBe("/private/tmp/dd");
   });
 });
 

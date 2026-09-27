@@ -1,4 +1,4 @@
-import { type Dirent, existsSync } from "node:fs";
+import { type Dirent, existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 
 import * as sweetpadLib from "@sweetpad/native";
@@ -319,7 +319,9 @@ export async function prepareBundleDir(vscodeContext: vscode.ExtensionContext, s
  * app locator, and the BSP index through `bsp.json`. A `-derivedDataPath` in `sweetpad.build.args` replaces
  * the extension's own on the build's command line, so the last one there wins over
  * `sweetpad.build.derivedDataPath`. A relative path resolves against the workspace folder, where the builds
- * run xcodebuild. `null` leaves the location to xcodebuild.
+ * run xcodebuild. xcodebuild reads such a path against the folder's physical directory, so a folder opened
+ * through a symlink is standardized first (`standardizeDirectory`), as the CLI does. `null` leaves the
+ * location to xcodebuild.
  */
 export function prepareDerivedDataPath(options: { workspaceRoot: string }): string | null {
   const buildArgs: string[] = getWorkspaceConfig("build.args") ?? [];
@@ -334,10 +336,35 @@ export function prepareDerivedDataPath(options: { workspaceRoot: string }): stri
   let derivedDataPath: string = configPath;
   if (!path.isAbsolute(configPath)) {
     // Example: .biuld/ -> /Users/username/Projects/project/.build
-    derivedDataPath = path.join(options.workspaceRoot, configPath);
+    derivedDataPath = path.join(standardizeDirectory(options.workspaceRoot), configPath);
   }
 
   return derivedDataPath;
+}
+
+/**
+ * Xcode's spelling of a directory, the one `sweetpad_lib::project::standardize` gives: symlinks resolved, then a
+ * leading `/private` dropped when the shorter path is the same directory (`/private/tmp/app` is `/tmp/app`). A
+ * literal `/private/…` directory that no root symlink reaches keeps its prefix. A directory that can't be
+ * resolved, such as one that doesn't exist, keeps the spelling it was given. Synchronous, and one or two
+ * `realpath` calls.
+ */
+function standardizeDirectory(dir: string): string {
+  let resolved: string;
+  try {
+    resolved = realpathSync.native(dir);
+  } catch {
+    return path.resolve(dir);
+  }
+  if (!resolved.startsWith("/private/")) {
+    return resolved;
+  }
+  const shorter = resolved.slice("/private".length);
+  try {
+    return realpathSync.native(shorter) === resolved ? shorter : resolved;
+  } catch {
+    return resolved;
+  }
 }
 
 /**
