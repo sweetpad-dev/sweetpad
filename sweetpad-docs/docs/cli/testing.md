@@ -212,6 +212,10 @@ SweetpadCIAppTests/AppTests/testGreeting
 Long output is trimmed to the last few KB per test; `--full` prints all of it. A test's own `print`
 lands here. XCTest's assertion messages and a UI test's screenshots do not.
 
+Parallel testing doesn't change this, since each worker writes its own output. If one test runs
+another inside itself, their lines can't be told apart. SweetPad then warns and names the
+directory that holds the output as it was written.
+
 ### Screenshots and UI dumps
 
 `sweetpad test attachments` exports what a UI test recorded, meaning screenshots and view hierarchy dumps, as

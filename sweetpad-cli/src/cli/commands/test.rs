@@ -1662,10 +1662,35 @@ struct OutputReport {
     unattributed: Option<String>,
     sources: Vec<PathBuf>,
     recorded_at: Option<f64>,
-    /// Attribution brackets a test's output between its own markers, which
-    /// only holds while one test runs at a time.
+    /// Whether the run said it ran its tests serially. Carried for the machine
+    /// modes only: a parallel run's workers each write a stream of their own,
+    /// so it changes nothing about which test a line is under.
     serial: bool,
+    /// Whether a stream's case markers overlapped, which leaves some lines
+    /// under the wrong test (see [`OutputReport::overlap_warning`]).
+    overlapped: bool,
     note: Option<String>,
+}
+
+impl OutputReport {
+    /// The warning an overlap earns, pointing at the kept streams: they hold
+    /// the output in the order it was written, which the per-test slices of
+    /// an overlapping stream don't.
+    fn overlap_warning(&self) -> Option<String> {
+        self.overlapped.then(|| {
+            let where_ = self
+                .sources
+                .first()
+                .and_then(|p| p.parent())
+                .map_or_else(String::new, |d| {
+                    format!("; read {} for the output as written", d.display())
+                });
+            format!(
+                "tests overlapped in one test process, so some lines may be listed under the \
+                 wrong test{where_}"
+            )
+        })
+    }
 }
 
 struct TestOutputEntry {
@@ -1711,11 +1736,8 @@ impl Render for OutputReport {
                 "output was cut to its last {OUTPUT_CAP} bytes; pass '--full' for all of it{where_}"
             ));
         }
-        if !self.serial {
-            out.warn(
-                "the run did not report itself as serial — output is attributed by the \
-                 markers around each test, which parallel workers interleave",
-            );
+        if let Some(warning) = self.overlap_warning() {
+            out.warn(&warning);
         }
         if let Some(note) = &self.note {
             out.note(note);
@@ -1741,6 +1763,7 @@ impl Render for OutputReport {
             "sources": self.sources.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
             "recordedAt": self.recorded_at,
             "serial": self.serial,
+            "overlapped": self.overlapped,
             "note": self.note,
         })
     }
@@ -1796,6 +1819,7 @@ fn output(ctx: &mut Context, args: &TestArgs, opts: &OutputArgs) -> CommandResul
         sources: run.sources,
         recorded_at: recorded_at(&bundle),
         serial: run.serial,
+        overlapped: run.overlapped,
         note,
     }))
 }
@@ -3242,6 +3266,33 @@ mod tests {
         let many: Vec<String> = (0..8).map(|i| format!("T/C/test{i}")).collect();
         let message = no_output_match(&many, &["X".to_string()]).to_string();
         assert!(message.contains("and 3 more"), "{message}");
+    }
+
+    #[test]
+    fn test_output_warns_only_when_the_markers_overlapped() {
+        let report = |serial, overlapped| OutputReport {
+            tests: Vec::new(),
+            unattributed: None,
+            sources: vec![PathBuf::from("/state/App-output/AppTests.txt")],
+            recorded_at: None,
+            serial,
+            overlapped,
+            note: None,
+        };
+        // Parallel workers each write a stream of their own, so a run that
+        // didn't say it was serial is read the same way as one that did.
+        assert_eq!(report(false, false).overlap_warning(), None);
+        assert_eq!(report(true, false).overlap_warning(), None);
+        assert_eq!(
+            report(false, true).overlap_warning().as_deref(),
+            Some(
+                "tests overlapped in one test process, so some lines may be listed under the \
+                 wrong test; read /state/App-output for the output as written"
+            )
+        );
+        let json = report(false, true).json();
+        assert_eq!(json["overlapped"], true);
+        assert_eq!(json["serial"], false);
     }
 
     #[test]

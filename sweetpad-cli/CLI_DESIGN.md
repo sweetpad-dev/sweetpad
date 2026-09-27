@@ -2518,10 +2518,17 @@ unit test through whole and holds a UI trace to its end, where a failure is.
 `--full` lifts the cap, and the streams themselves are kept beside the bundle so
 the untruncated text stays readable either way.
 
-**Attribution is only as good as the run being serial**, since it brackets
-output between one test's markers. `scheduling.log` states this outright
-(`Parallelization disabled; …`), so the report claims serial only from that line
-and warns when it cannot.
+**Attribution holds while each test process runs one test at a time**, since
+it brackets output between one test's markers. A parallel run keeps to that:
+each worker is a process of its own and writes a stream of its own. On macOS,
+a scheme marked `parallelizable` ran its three test classes on three workers,
+and each stream held one class's tests in turn. So the warning keys on the
+markers rather than the run's mode. It fires when a test in one stream ends
+while another is open, or with none open, as a test that runs another case
+inside itself writes them. The lines after the inner start can't be sorted
+between the two tests, so the warning names the kept streams, which hold the
+output as it was written. JSON carries this as `overlapped`, beside `serial`,
+which comes from `scheduling.log`'s `Parallelization disabled` line.
 
 **Output written outside a test case is reported only when nothing was
 attributed.** Between tests the stream carries XCTest's own bookkeeping and the

@@ -1658,10 +1658,13 @@ pub struct RunOutput {
     pub unattributed: String,
     /// The files it was read from, for the part that doesn't fit in a payload.
     pub sources: Vec<PathBuf>,
-    /// Whether every target reported running its tests serially. Attribution
-    /// keys on `started`/`passed` markers bracketing a test's output, which
-    /// interleaved parallel workers would scramble.
+    /// Whether every target reported running its tests serially. A parallel
+    /// run's workers each write a stream of their own, one test at a time, so
+    /// this alone says nothing about attribution; [`Self::overlapped`] does.
     pub serial: bool,
+    /// Whether the case markers in some stream overlapped (see
+    /// [`split_output`]), which leaves some lines under the wrong test.
+    pub overlapped: bool,
 }
 
 pub struct TestOutput {
@@ -1705,14 +1708,22 @@ fn parse_case_marker(line: &str) -> Option<CaseMarker<'_>> {
 }
 
 /// Split one test process's stdout into per-test slices, each named by the
-/// target `targets` says ran it.
+/// target `targets` says ran it. Returns whether the markers overlapped: a
+/// test that ends while another one is open, or with none open, as a nested
+/// or concurrent run in the one process writes them. The slices hold whole
+/// lines between markers, so some of those lines land under the wrong test.
 fn split_output(
     text: &str,
     targets: &TestTargets,
     into: &mut Vec<TestOutput>,
     unattributed: &mut String,
-) {
+) -> bool {
     let mut current: Option<TestOutput> = None;
+    // The test that started last and has not ended. A test that crashes never
+    // ends, and the next one to start takes its place, so a crash alone is no
+    // overlap.
+    let mut open: Option<(Option<&str>, String)> = None;
+    let mut overlapped = false;
     for line in text.lines() {
         if let Some(marker) = parse_case_marker(line) {
             if let Some(done) = current.take()
@@ -1721,12 +1732,15 @@ fn split_output(
                 into.push(done);
             }
             if marker.started {
+                open = Some((marker.module, marker.test.clone()));
                 let target = targets.target_of(&marker.test, marker.module);
                 current = Some(TestOutput {
                     identifier: test_selector(target, &marker.test, None),
                     test: marker.test,
                     output: String::new(),
                 });
+            } else {
+                overlapped |= open.take() != Some((marker.module, marker.test));
             }
             continue;
         }
@@ -1747,6 +1761,7 @@ fn split_output(
     {
         into.push(done);
     }
+    overlapped
 }
 
 /// Export a `.xcresult`'s diagnostics into `staging` and read back what the
@@ -1794,11 +1809,12 @@ pub fn export_run_output(
     let mut tests = Vec::new();
     let mut unattributed = String::new();
     let mut sources = Vec::new();
+    let mut overlapped = false;
     for path in &streams {
         let Ok(text) = std::fs::read_to_string(path) else {
             continue;
         };
-        split_output(&text, &targets, &mut tests, &mut unattributed);
+        overlapped |= split_output(&text, &targets, &mut tests, &mut unattributed);
         let label = stream_label(path, sources.len());
         let mut kept = keep.join(format!("{label}.txt"));
         // Two targets resolving to one label would silently cost a stream.
@@ -1821,6 +1837,7 @@ pub fn export_run_output(
         unattributed,
         sources,
         serial,
+        overlapped,
     })
 }
 
@@ -2226,6 +2243,44 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
         assert!(rest.contains("Failed to send CA Event"), "{rest}");
         assert!(!rest.contains("Test Suite"), "{rest}");
         assert!(!rest.contains("BOOK REFLOW"), "{rest}");
+    }
+
+    #[test]
+    fn only_markers_that_overlap_count_as_overlapping() {
+        let split = |text: &str| {
+            let (mut tests, mut rest) = (Vec::new(), String::new());
+            let overlapped = split_output(text, &TestTargets::default(), &mut tests, &mut rest);
+            (overlapped, tests)
+        };
+        assert!(!split(STREAM).0);
+
+        // A test that crashed never ends; the next one's start closes it, and
+        // each line is still under the test that wrote it.
+        let (overlapped, tests) = split(
+            "Test Case '-[M.A testA]' started.\n\
+             a1\n\
+             Test Case '-[M.A testB]' started.\n\
+             b1\n\
+             Test Case '-[M.A testB]' passed (0.1 seconds).\n",
+        );
+        assert!(!overlapped);
+        assert_eq!(tests[0].output.trim(), "a1");
+        assert_eq!(tests[1].output.trim(), "b1");
+
+        // Two tests open at once, or one run inside another: the lines after
+        // the second start can't be told apart.
+        for text in [
+            "Test Case '-[M.A testA]' started.\n\
+             Test Case '-[M.A testB]' started.\n\
+             Test Case '-[M.A testA]' passed (0.1 seconds).\n\
+             Test Case '-[M.A testB]' passed (0.1 seconds).\n",
+            "Test Case '-[M.A testA]' started.\n\
+             Test Case '-[M.A testB]' started.\n\
+             Test Case '-[M.A testB]' passed (0.1 seconds).\n\
+             Test Case '-[M.A testA]' passed (0.1 seconds).\n",
+        ] {
+            assert!(split(text).0, "{text}");
+        }
     }
 
     #[test]
