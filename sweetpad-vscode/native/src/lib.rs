@@ -257,6 +257,66 @@ pub fn targets(
     })
 }
 
+/// A container the discovery walk found.
+#[napi(object)]
+pub struct DiscoveredContainer {
+    /// The `.xcworkspace`, `.xcodeproj` or `Package.swift`.
+    pub path: String,
+    /// `"workspace"`, `"project"` or `"package"`.
+    pub kind: String,
+    /// How many directories below the root it sits: 0 for one in the root.
+    pub depth: u32,
+}
+
+pub struct DiscoverTask {
+    root: String,
+    max_depth: u32,
+}
+
+impl napi::Task for DiscoverTask {
+    type Output = Vec<DiscoveredContainer>;
+    type JsValue = Vec<DiscoveredContainer>;
+
+    fn compute(&mut self) -> napi::Result<Self::Output> {
+        use sweetpad_lib::discover::{self, Kind};
+        let max_depth = usize::try_from(self.max_depth).unwrap_or(usize::MAX);
+        Ok(discover::containers(Path::new(&self.root), max_depth)
+            .into_iter()
+            .map(|(kind, depth, path)| DiscoveredContainer {
+                path: path.display().to_string(),
+                kind: match kind {
+                    Kind::Workspace => "workspace",
+                    Kind::Project => "project",
+                    Kind::Package => "package",
+                }
+                .to_string(),
+                depth: u32::try_from(depth).unwrap_or(u32::MAX),
+            })
+            .collect())
+    }
+
+    fn resolve(&mut self, _env: napi::Env, output: Self::Output) -> napi::Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// Every container from `root` down to `maxDepth` directories below it — the
+/// walk the CLI's auto-discovery takes. Vendored trees (`Pods`,
+/// `node_modules`, `Carthage`, `vendor`, `DerivedData`, `build`,
+/// `SourcePackages`), dotted directories (`.build`, `.swiftpm`) and bundles
+/// are never entered, nor is a symlink. Nearer directories come first, and a
+/// directory's workspaces before its projects before its package, so the
+/// first is the one to open when nothing says which. A promise, since a big
+/// tree takes a while to read: the walk runs on a worker thread.
+#[napi(ts_return_type = "Promise<Array<DiscoveredContainer>>")]
+#[must_use]
+pub fn discover_containers(
+    root: String,
+    max_depth: u32,
+) -> napi::bindgen_prelude::AsyncTask<DiscoverTask> {
+    napi::bindgen_prelude::AsyncTask::new(DiscoverTask { root, max_depth })
+}
+
 /// Build-configuration names for a `.xcodeproj` or `.xcworkspace`. For a
 /// workspace, the distinct configurations across member projects.
 #[napi]

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync }
 import os from "node:os";
 import path from "node:path";
 
+import * as sweetpadLib from "@sweetpad/native";
 import type { Mock } from "vitest";
 import * as vscode from "vscode";
 
@@ -11,7 +12,7 @@ import {
   generateSweetpadBuildServerConfig,
   getSweetpadCliPath,
 } from "../common/cli/scripts";
-import { findFilesRecursive, isFileExists, readJsonFile } from "../common/files";
+import { isFileExists, readJsonFile } from "../common/files";
 import { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import {
@@ -19,6 +20,7 @@ import {
   XcodeCommandBuilder,
   activateCurrentXcodeWorkspacePath,
   detectXcodeWorkspacesPaths,
+  findXcodeWorkspaceInDirectory,
   generateBuildServerConfigOnBuild,
   getCurrentXcodeWorkspacePath,
   launchActionToSettings,
@@ -29,8 +31,8 @@ import {
 } from "./utils";
 
 // `./utils` imports the native `@sweetpad/native` addon at module level; stub it so
-// this spec runs without the compiled addon (none of the tested paths touch it).
-vi.mock("@sweetpad/native", () => ({}));
+// this spec runs without the compiled addon. Container discovery is the addon's walk.
+vi.mock("@sweetpad/native", () => ({ discoverContainers: vi.fn() }));
 
 vi.mock("../common/cli/scripts", () => ({
   generateBuildServerConfig: vi.fn(),
@@ -41,7 +43,6 @@ vi.mock("../common/cli/scripts", () => ({
 }));
 
 vi.mock("../common/files", () => ({
-  findFilesRecursive: vi.fn(),
   isFileExists: vi.fn(),
   readJsonFile: vi.fn(),
 }));
@@ -436,7 +437,7 @@ describe("prepareDerivedDataPath", () => {
 });
 
 describe("Xcode container discovery", () => {
-  const mockFind = findFilesRecursive as Mock;
+  const mockDiscover = sweetpadLib.discoverContainers as Mock;
   const mockExists = isFileExists as Mock;
 
   beforeEach(() => {
@@ -445,25 +446,49 @@ describe("Xcode container discovery", () => {
   });
 
   it("addresses a project through its embedded workspace, and a bare one by itself (issue #339)", async () => {
-    mockFind.mockResolvedValue([
-      "/repo/App.xcodeproj",
-      "/repo/App.xcodeproj/project.xcworkspace",
-      "/repo/Tool/Tool.xcodeproj",
-      "/repo/Pkg/Package.swift",
+    mockDiscover.mockResolvedValue([
+      { path: "/repo/App.xcodeproj", kind: "project", depth: 0 },
+      { path: "/repo/Pkg/Package.swift", kind: "package", depth: 1 },
+      { path: "/repo/Tool/Tool.xcodeproj", kind: "project", depth: 1 },
     ]);
     mockExists.mockImplementation(async (p: string) => p === "/repo/App.xcodeproj/project.xcworkspace");
 
     expect(await detectXcodeWorkspacesPaths()).toEqual([
       "/repo/App.xcodeproj/project.xcworkspace",
-      "/repo/Tool/Tool.xcodeproj",
       "/repo/Pkg/Package.swift",
+      "/repo/Tool/Tool.xcodeproj",
     ]);
-    const { matcher } = mockFind.mock.calls[0][0] as { matcher: (f: { name: string }) => boolean };
-    expect(["A.xcworkspace", "A.xcodeproj", "Package.swift", "A.swift"].filter((name) => matcher({ name }))).toEqual([
-      "A.xcworkspace",
-      "A.xcodeproj",
-      "Package.swift",
+    // Four levels down, the depth the picker has always searched.
+    expect(mockDiscover).toHaveBeenCalledWith("/repo", 4);
+  });
+
+  it("offers a project reached from two nested folders once", async () => {
+    (vscode.workspace as { workspaceFolders?: unknown }).workspaceFolders = [
+      { uri: { fsPath: "/repo" } },
+      { uri: { fsPath: "/repo/ios" } },
+    ];
+    mockDiscover.mockImplementation(async (root: string) =>
+      root === "/repo"
+        ? [{ path: "/repo/ios/App.xcworkspace", kind: "workspace", depth: 1 }]
+        : [{ path: "/repo/ios/App.xcworkspace", kind: "workspace", depth: 0 }],
+    );
+    mockExists.mockResolvedValue(false);
+
+    expect(await detectXcodeWorkspacesPaths()).toEqual(["/repo/ios/App.xcworkspace"]);
+  });
+
+  // The walk puts the nearest container first, and a workspace ahead of the project beside it, so a
+  // CocoaPods checkout opens its workspace rather than whichever entry `readdir` listed first.
+  it("opens the first container the walk finds in a directory", async () => {
+    mockDiscover.mockResolvedValue([
+      { path: "/wt/App.xcworkspace", kind: "workspace", depth: 0 },
+      { path: "/wt/App.xcodeproj", kind: "project", depth: 0 },
     ]);
+    mockExists.mockResolvedValue(true);
+
+    expect(await findXcodeWorkspaceInDirectory("/wt")).toBe("/wt/App.xcworkspace");
+    mockDiscover.mockResolvedValue([]);
+    expect(await findXcodeWorkspaceInDirectory("/wt")).toBeUndefined();
   });
 
   it("passes a bare project to xcodebuild as a project", () => {

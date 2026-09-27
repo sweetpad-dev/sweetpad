@@ -21,6 +21,7 @@ pub mod compiler_args;
 pub mod condition;
 pub mod derived_data;
 pub mod destination;
+pub mod discover;
 mod file_cache;
 pub mod membership;
 pub mod membership_pbxproj;

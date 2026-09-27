@@ -107,11 +107,11 @@ Every command then works from anywhere in the checkout, with no '-C'. The
 container resolves as: --workspace/--project > this key > auto-discovery.
 
 Auto-discovery searches upward to the git root, then up to two levels down
-(skipping Pods, node_modules, Carthage, vendor, DerivedData, build and
-dotfiles), so nested layouts like 'ios/App.xcodeproj' need no setup at all.
-Projects tied at the same depth — say 'ios/' and 'macos/' — are reported as an
-error listing each one, rather than picked for you; name the one you want with
---project or the 'project' key above.
+(skipping Pods, node_modules, Carthage, vendor, DerivedData, build,
+SourcePackages and dotfiles), so nested layouts like 'ios/App.xcodeproj' need no
+setup at all. Projects tied at the same depth — say 'ios/' and 'macos/' — are
+reported as an error listing each one, rather than picked for you; name the one
+you want with --project or the 'project' key above.
 
 Remembered state lives separately in
 ~/.local/state/sweetpad/state.toml (machine-managed — inspect and edit it

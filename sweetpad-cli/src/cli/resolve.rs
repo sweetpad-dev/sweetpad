@@ -260,35 +260,32 @@ pub fn discover(dir: &Path) -> Option<Container> {
 }
 
 /// Everything discoverable in a directory, each kind sorted by name so the
-/// pick never depends on `read_dir` order.
+/// pick never depends on `read_dir` order ([`sweetpad_lib::discover::Found`]).
 #[derive(Debug, Default)]
-pub struct Discovery {
-    workspaces: Vec<PathBuf>,
-    projects: Vec<PathBuf>,
-    package: Option<PathBuf>,
-}
+pub struct Discovery(sweetpad_lib::discover::Found);
 
 impl Discovery {
     /// The winning container: workspace > project > package, alphabetically
     /// first within a kind.
     #[must_use]
     pub fn best(&self) -> Option<Container> {
-        self.workspaces
-            .first()
-            .cloned()
-            .map(Container::Workspace)
-            .or_else(|| self.projects.first().cloned().map(Container::Project))
-            .or_else(|| self.package.clone().map(Container::SwiftPackage))
+        use sweetpad_lib::discover::Kind;
+        self.0.containers().next().map(|(kind, path)| match kind {
+            Kind::Workspace => Container::Workspace(path.to_path_buf()),
+            Kind::Project => Container::Project(path.to_path_buf()),
+            Kind::Package => Container::SwiftPackage(path.to_path_buf()),
+        })
     }
 
     /// A warning when the *winning kind* has several candidates — the pick is
     /// then a policy (alphabetical), not the user's intent.
     #[must_use]
     pub fn ambiguity(&self) -> Option<String> {
-        let (kind, flag, candidates) = if self.workspaces.len() > 1 {
-            ("workspaces", "--workspace", &self.workspaces)
-        } else if self.workspaces.is_empty() && self.projects.len() > 1 {
-            ("projects", "--project", &self.projects)
+        let found = &self.0;
+        let (kind, flag, candidates) = if found.workspaces.len() > 1 {
+            ("workspaces", "--workspace", &found.workspaces)
+        } else if found.workspaces.is_empty() && found.projects.len() > 1 {
+            ("projects", "--project", &found.projects)
         } else {
             return None;
         };
@@ -306,25 +303,7 @@ impl Discovery {
 
 /// Collect every container in `dir`, sorted by file name within each kind.
 fn discover_all(dir: &Path) -> Discovery {
-    let mut found = Discovery::default();
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return found;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        match path.extension().and_then(|e| e.to_str()) {
-            Some("xcworkspace") => found.workspaces.push(path),
-            Some("xcodeproj") => found.projects.push(path),
-            _ => {
-                if path.file_name().and_then(|f| f.to_str()) == Some("Package.swift") {
-                    found.package = Some(path);
-                }
-            }
-        }
-    }
-    found.workspaces.sort();
-    found.projects.sort();
-    found
+    Discovery(sweetpad_lib::discover::in_dir(dir))
 }
 
 /// How far below a directory the downward scan looks. One level reaches the
@@ -334,76 +313,24 @@ fn discover_all(dir: &Path) -> Discovery {
 /// the container in `sweetpad.toml` is the better answer.
 const MAX_SCAN_DEPTH: usize = 2;
 
-/// Build output and vendored dependency trees, which hold projects that are
-/// never the one meant — `Pods/Pods.xcodeproj` above all.
-const VENDORED_DIRS: [&str; 6] = [
-    "node_modules",
-    "Pods",
-    "Carthage",
-    "vendor",
-    "DerivedData",
-    "build",
-];
-
-/// Directories the scan never enters: [vendored trees](VENDORED_DIRS), dotted
-/// directories, and bundles — which are directories on macOS and so would
-/// otherwise be walked like ordinary ones.
-fn skip_dir(path: &Path) -> bool {
-    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-        return true;
-    };
-    if name.starts_with('.') {
-        return true;
-    }
-    VENDORED_DIRS.contains(&name)
-        || matches!(
-            path.extension().and_then(|e| e.to_str()),
-            Some("xcodeproj" | "xcworkspace" | "app" | "framework" | "bundle" | "playground")
-        )
-}
-
 /// Search below `root`, breadth-first, returning one [`Discovery`] per
 /// directory at the shallowest level that holds anything — a project one level
 /// down beats three of them two levels down, the same "nearest wins" the
 /// upward walk applies. More than one entry means directories tied at that
 /// depth, which is the ambiguity no policy should silently resolve.
 ///
-/// Symlinks are skipped for free: [`std::fs::DirEntry::file_type`] doesn't
-/// follow them, so a link to a directory never reports `is_dir`, and the scan
-/// can't cycle or escape the tree it was pointed at.
+/// The walk is [`sweetpad_lib::discover::below`], the one the extension's
+/// project picker takes: vendored trees (`Pods`, `node_modules`, …), dotted
+/// directories and bundles are never entered, and neither is a symlink.
 fn scan_down(root: &Path) -> Vec<Discovery> {
-    let mut frontier = vec![root.to_path_buf()];
-    for _ in 0..MAX_SCAN_DEPTH {
-        let mut hits = Vec::new();
-        let mut next = Vec::new();
-        for parent in &frontier {
-            let Ok(entries) = std::fs::read_dir(parent) else {
-                continue;
-            };
-            let mut dirs: Vec<PathBuf> = entries
-                .flatten()
-                .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-                .map(|e| e.path())
-                .filter(|p| !skip_dir(p))
-                .collect();
-            // Sorted so a same-depth tie resolves the same way on every
-            // machine, `read_dir` order being arbitrary.
-            dirs.sort();
-            for dir in dirs {
-                let found = discover_all(&dir);
-                if found.best().is_some() {
-                    hits.push(found);
-                } else {
-                    next.push(dir);
-                }
-            }
-        }
-        if !hits.is_empty() {
-            return hits;
-        }
-        frontier = next;
-    }
-    Vec::new()
+    let hits = sweetpad_lib::discover::below(root, MAX_SCAN_DEPTH);
+    let Some(nearest) = hits.iter().map(|h| h.depth).filter(|&d| d > 0).min() else {
+        return Vec::new();
+    };
+    hits.into_iter()
+        .filter(|h| h.depth == nearest)
+        .map(|h| Discovery(h.found))
+        .collect()
 }
 
 /// Look below the working directory, then below the repository root — nearest

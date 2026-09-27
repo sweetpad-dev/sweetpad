@@ -74,6 +74,19 @@ describe("workspace handlers", () => {
     expect(out.candidates.map((c) => c.path)).toEqual([path.join(tmp, "Real.xcodeproj")]);
   });
 
+  // The same walk as the CLI's auto-discovery: a vendored tree's projects are never the one meant.
+  it("workspace.detect skips CocoaPods, Carthage and package checkouts", async () => {
+    await fs.mkdir(path.join(tmp, "Pods", "Pods.xcodeproj"), { recursive: true });
+    await fs.mkdir(path.join(tmp, "Carthage", "Checkouts", "Lib", "Lib.xcodeproj"), { recursive: true });
+    await fs.mkdir(path.join(tmp, "SourcePackages", "checkouts", "Dep"), { recursive: true });
+    await fs.writeFile(path.join(tmp, "SourcePackages", "checkouts", "Dep", "Package.swift"), "");
+    await fs.mkdir(path.join(tmp, "App.xcworkspace"));
+
+    const ctx = makeContext({ workspacePath: tmp });
+    const out = await workspaceDetect({}, ctx);
+    expect(out.candidates).toEqual([{ path: path.join(tmp, "App.xcworkspace"), kind: "xcworkspace" }]);
+  });
+
   it("workspace.use writes the path into state and tracks it in recent (newest first)", async () => {
     const xc = path.join(tmp, "App.xcworkspace");
     await fs.mkdir(xc);

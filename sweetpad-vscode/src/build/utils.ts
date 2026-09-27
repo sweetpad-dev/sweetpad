@@ -1,4 +1,4 @@
-import { type Dirent, existsSync, realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 
 import * as sweetpadLib from "@sweetpad/native";
@@ -27,7 +27,7 @@ import {
 } from "../common/cli/scripts";
 import { getWorkspaceConfig } from "../common/config";
 import { ExtensionError } from "../common/errors";
-import { createDirectory, findFilesRecursive, isFileExists, readJsonFile, removeDirectory } from "../common/files";
+import { createDirectory, isFileExists, readJsonFile, removeDirectory } from "../common/files";
 import { commonLogger } from "../common/logger";
 import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 import type { TaskTerminal } from "../common/tasks/types";
@@ -804,9 +804,15 @@ export function xcodeContainerArgs(xcworkspace: string): ["-project" | "-workspa
   return xcworkspace.endsWith(".xcodeproj") ? ["-project", xcworkspace] : ["-workspace", xcworkspace];
 }
 
-/** A directory entry that is an Xcode workspace, an Xcode project or a Swift package manifest. */
-function isContainerEntry(file: Dirent): boolean {
-  return file.name.endsWith(".xcworkspace") || file.name.endsWith(".xcodeproj") || file.name === "Package.swift";
+/**
+ * Every workspace, project and `Package.swift` in `directory` and up to `depth` directories below
+ * it, found by the addon's walk: nearest first, a directory's workspaces before its projects before
+ * its package. The walk never enters a vendored tree (`Pods`, `node_modules`, `Carthage`,
+ * `SourcePackages`, …), a dotted directory (`.build`, `.swiftpm`) or a bundle, the same walk the
+ * CLI's auto-discovery takes.
+ */
+async function discoverContainers(directory: string, depth: number): Promise<string[]> {
+  return (await sweetpadLib.discoverContainers(directory, depth)).map((found) => found.path);
 }
 
 /**
@@ -836,16 +842,8 @@ export async function detectXcodeWorkspacesPaths(): Promise<string[]> {
     throw new ExtensionError("No workspace folder found");
   }
 
-  // Get every workspace, project and Package.swift (4 depth) in every folder
-  const results = await Promise.all(
-    folders.map((folder) =>
-      findFilesRecursive({
-        directory: folder,
-        depth: 4,
-        matcher: isContainerEntry,
-      }),
-    ),
-  );
+  // Every workspace, project and Package.swift down to 4 levels in every folder
+  const results = await Promise.all(folders.map((folder) => discoverContainers(folder, 4)));
   // Workspace folders may nest (both "/repo" and "/repo/ios" can be added), in which case the same
   // project is found by more than one scan. Collapse those so each project is offered once.
   return await containerPaths(results.flat());
@@ -1431,19 +1429,12 @@ export async function detectGitWorktrees(options: { workspaceRoot: string }): Pr
 }
 
 /**
- * Find Xcode workspace/project or SPM package files inside a given directory (up to 4 levels).
- * Returns the first one found, addressed the way `detectXcodeWorkspacesPaths` addresses it, or
- * undefined.
+ * The Xcode workspace, project or SPM package to open in a directory (up to 4 levels down): the
+ * nearest, and of those the kind Xcode prefers, addressed the way `detectXcodeWorkspacesPaths`
+ * addresses it. Undefined when there is none.
  */
 export async function findXcodeWorkspaceInDirectory(directory: string): Promise<string | undefined> {
-  const paths = await findFilesRecursive({
-    directory,
-    depth: 4,
-    ignore: ["Pods", "DerivedData", ".build", "node_modules"],
-    maxResults: 1,
-    matcher: isContainerEntry,
-  });
-  return (await containerPaths(paths))[0];
+  return (await containerPaths(await discoverContainers(directory, 4)))[0];
 }
 
 /** The subset of a parsed scheme that drives launch argv/env. */

@@ -449,8 +449,10 @@ explicit flag  >  env var  >  config file  >  remembered state  >  auto-discover
   `ios/App.xcodeproj`, `Sources/App.xcodeproj`, `apps/ios/App.xcodeproj` — none
   of which the upward walk can reach from the repository root. Build output and
   vendored trees (`Pods`, `node_modules`, `Carthage`, `vendor`, `DerivedData`,
-  `build`, dotfiles) are never entered, so `Pods/Pods.xcodeproj` is never a
-  candidate, and symlinks are never followed.
+  `build`, `SourcePackages`, dotfiles) are never entered, so
+  `Pods/Pods.xcodeproj` is never a candidate, and symlinks are never followed.
+  The walk is `sweetpad_lib::discover`, which the extension's project picker
+  and its `workspace.detect` RPC take too, four and three levels down.
   - The **shallowest** level holding anything wins outright, and within a
     single directory the usual workspace > project > package ordering applies
     — so a `ios/` holding both a workspace and a project resolves silently to

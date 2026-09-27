@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
-import * as path from "node:path";
+
+import * as sweetpadLib from "@sweetpad/native";
 
 import { getCurrentXcodeWorkspacePath, getWorkspaceFolderPaths } from "../../build/utils";
 import { SweetpadRpcError } from "../rpc";
@@ -8,9 +9,14 @@ import { requireString } from "./_common";
 import type { HandlerFn } from "./context";
 
 const RECENT_MAX = 10;
-const SKIP_DIRS = new Set(["node_modules", ".build", "DerivedData", ".git"]);
 
 type Candidate = { path: string; kind: "xcworkspace" | "xcodeproj" | "spm" };
+
+const CANDIDATE_KIND: Record<string, Candidate["kind"]> = {
+  workspace: "xcworkspace",
+  project: "xcodeproj",
+  package: "spm",
+};
 
 export const workspaceDetect: HandlerFn<
   { depth?: number },
@@ -18,7 +24,7 @@ export const workspaceDetect: HandlerFn<
 > = async (params, ctx) => {
   const depth = typeof params?.depth === "number" && params.depth > 0 ? Math.min(params.depth, 6) : 3;
   // The server is advertised under every folder of the window, so a detect run from any of
-  // them has to list the whole window's projects, not just the active folder's. `scan`
+  // them has to list the whole window's projects, not just the active folder's. The walk
   // reports an unreadable directory as empty, so one bad folder can't sink the others.
   const roots = getWorkspaceFolderPaths();
   const scanned = await Promise.all((roots.length > 0 ? roots : [ctx.workspacePath]).map((root) => scan(root, depth)));
@@ -64,38 +70,14 @@ function order(kind: Candidate["kind"]): number {
   return 2;
 }
 
+/**
+ * Every container in `root` and up to `depth` directories below it: the addon's walk, the one the
+ * CLI's auto-discovery takes, which never enters a vendored tree (`Pods`, `node_modules`,
+ * `.build`, …), a dotted directory or a bundle.
+ */
 async function scan(root: string, depth: number): Promise<Candidate[]> {
-  if (depth < 0) return [];
-  let entries: { name: string; isDirectory(): boolean; isFile(): boolean }[];
-  try {
-    entries = await fs.readdir(root, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  // Direct hits + nested-directory descents are independent — fan them out
-  // and let Promise.all flatten the result.
-  const tasks: Promise<Candidate[]>[] = [];
-  const direct: Candidate[] = [];
-  for (const e of entries) {
-    if (e.name.startsWith(".")) continue;
-    if (SKIP_DIRS.has(e.name)) continue;
-    const child = path.join(root, e.name);
-    if (e.isFile() && e.name === "Package.swift") {
-      direct.push({ path: child, kind: "spm" });
-      continue;
-    }
-    if (!e.isDirectory()) continue;
-    if (e.name.endsWith(".xcworkspace")) {
-      direct.push({ path: child, kind: "xcworkspace" });
-      continue;
-    }
-    if (e.name.endsWith(".xcodeproj")) {
-      // Inner xcworkspace is structural — stop here so we don't list it twice.
-      direct.push({ path: child, kind: "xcodeproj" });
-      continue;
-    }
-    tasks.push(scan(child, depth - 1));
-  }
-  const nested = (await Promise.all(tasks)).flat();
-  return [...direct, ...nested];
+  return (await sweetpadLib.discoverContainers(root, depth)).map((found) => ({
+    path: found.path,
+    kind: CANDIDATE_KIND[found.kind],
+  }));
 }
