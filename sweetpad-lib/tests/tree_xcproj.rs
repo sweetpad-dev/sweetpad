@@ -651,6 +651,26 @@ fn a_group_with_no_name_and_no_path_is_walked_through() {
             resolved: "Sources/App/New.swift".into(),
         }
     );
+
+    // A group whose directory is already its own takes it with no path, so
+    // it keeps no name.
+    tree::add_group(&mut doc, "Org", Some("Sources"), None, "<group>").unwrap();
+    let moved = tree::move_node(&mut doc, "Sources/", Some("Sources/Org")).unwrap();
+    assert_eq!(
+        moved,
+        MoveOutcome::Moved {
+            address: "Sources/Org/".into(),
+            from: Some("Sources".into()),
+            to: "Sources/Org".into(),
+            resolved: "Sources".into(),
+        }
+    );
+    let groups = tree::list_groups(&doc).unwrap();
+    let nameless = groups.iter().find(|g| g.address == "Sources/Org/").unwrap();
+    assert_eq!(
+        (nameless.name.as_deref(), nameless.path.as_deref()),
+        (None, None)
+    );
 }
 
 /// The same navigator in both formats lists each group in the same directory:

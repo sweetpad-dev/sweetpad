@@ -1782,9 +1782,11 @@ friction, without collapsing the axes:
   `id:<id>`. A configuration's `file` and `anchor`, a target's `product` and
   the `products-group` all use that form. The xcconfig lookup reads it, and
   `id:<id>` also names the node as an argument. A group at the root with no
-  name and no id cannot be the group a verb adds to or moves into. `group move` refuses to move a group with no name in
-  that format, because keeping its children's files would give it a path, and
-  Xcode shows the path as its name. A `project.pbxproj` group listed in two
+  name and no id cannot be the group a verb adds to or moves into. In either
+  format, `group move` moves a group with neither a name nor a path only into
+  a group whose directory is already its own. Anywhere else, keeping its
+  children's files would give it a path, and Xcode shows the path as its name,
+  so the move is refused. A `project.pbxproj` group listed in two
   places has two paths, and either one selects it. Xcode 27.2 refuses to open
   such a project. Xcode 27.0 opens it with a warning and keeps the listing in
   the group it reads last, reading a group's children before the group itself:

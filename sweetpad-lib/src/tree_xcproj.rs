@@ -43,6 +43,7 @@ pub use crate::tree::{
     AddGroupOutcome, AddRefOutcome, FileRefRow, GroupRow, MoveOutcome, RemoveOutcome,
 };
 
+use crate::tree::{MovedPath, moved_path, nameless_move_refusal};
 use crate::xcproj::{Array, Object, Value};
 
 /// The node kinds that hold `children`. Variant and version groups list them
@@ -335,16 +336,16 @@ pub fn remove_group(root: &mut Value, address: &str, force: bool) -> Result<Remo
 /// This is `group attach`/`detach`'s counterpart: a node sits in exactly one
 /// place here, so listing it somewhere else is moving it. A `<group>`-relative
 /// stored path means a different file under a different group, so it is
-/// rewritten — the new group's directory stripped off when it prefixes the
-/// resolved path, the `<PROJECT>` anchor when it does not. A descending
-/// relative path is what Xcode writes where one reaches the file; where none
-/// does it has both spellings available, and the anchor is the one that does
-/// not depend on how deep the group sits. An already-anchored path ignores the
-/// group chain and is left alone.
+/// rewritten the way [`crate::tree::moved_path`] spells it, with the
+/// `<PROJECT>` anchor where the new group's directory does not hold it. An
+/// already-anchored path ignores the group chain and is left alone. A node with
+/// neither a name nor a path moves only where no path has to be written, since
+/// Xcode would show that path as its name.
 ///
 /// # Errors
 /// Returns a message when the document is malformed, either address names no
-/// node (or more than one), or the move would put a group inside itself.
+/// node (or more than one), the move would put a group inside itself, or it
+/// would have to write a path on a node with no name.
 pub fn move_node(
     root: &mut Value,
     address: &str,
@@ -375,20 +376,23 @@ pub fn move_node(
     let resolved = node.resolved.clone();
     let from = node.parent.clone();
     let name = display_name(node.value).to_string();
-    // The move writes a path to keep the node's files, and a node with no
-    // name takes its display name from that path.
-    if name.is_empty() {
-        return Err(format!(
-            "'{address}' has neither a name nor a path. Moving it would give it a path, \
-             which Xcode shows as its name; move its children instead"
-        ));
+    let rewrite = if source_tree(node.value) == "<group>" {
+        match moved_path(&resolved, &to_base, stored_path(node.value).is_some()) {
+            MovedPath::Unchanged => None,
+            MovedPath::InGroup(path) => Some(path),
+            MovedPath::FromProject(path) => Some(format!("<PROJECT>/{path}")),
+        }
+    } else {
+        None
+    };
+    // A node with no name takes its display name from the path a move writes.
+    if rewrite.is_some() && name.is_empty() {
+        return Err(nameless_move_refusal(address));
     }
-    let relative = source_tree(node.value) == "<group>";
     let indices = node.indices.clone();
 
     let mut moved = splice_out(root, &indices)?;
-    if relative {
-        let stored = reanchor(&resolved, &to_base);
+    if let Some(stored) = rewrite {
         moved
             .as_object_mut()
             .ok_or_else(|| format!("{address} is not an object"))?
@@ -407,18 +411,6 @@ pub fn move_node(
         to: to_address.unwrap_or_default(),
         resolved,
     })
-}
-
-/// How to spell `resolved` from inside a group at `group_dir`: relative when
-/// the directory contains it, anchored at the project root when it does not.
-fn reanchor(resolved: &str, group_dir: &str) -> String {
-    if group_dir.is_empty() {
-        return resolved.to_string();
-    }
-    match resolved.strip_prefix(&format!("{group_dir}/")) {
-        Some(rest) => rest.to_string(),
-        None => format!("<PROJECT>/{resolved}"),
-    }
 }
 
 /// A node in the navigator, with how to reach it and where it lives.

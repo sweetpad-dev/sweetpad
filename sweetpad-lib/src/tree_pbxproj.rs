@@ -30,7 +30,7 @@ use std::path::Path;
 use crate::pbxproj::{Dict, Value};
 use crate::project::Parents;
 use crate::spm_pbxproj::fresh_guid;
-use crate::tree::navigator_label;
+use crate::tree::{MovedPath, moved_path, nameless_move_refusal, navigator_label};
 
 const REF_ISA: &str = "PBXFileReference";
 const GROUP_ISA: &str = "PBXGroup";
@@ -382,15 +382,18 @@ pub fn detach(root: &mut Value, child: &str, group: &str) -> Result<LinkOutcome,
 /// a node sits in exactly one place and [`attach`]/[`detach`] have no
 /// counterpart. The node's stored `path` is rewritten when it has to be: a
 /// `<group>`-anchored path means something different under a different group,
-/// so the new group's directory is stripped off the resolved path when it
-/// prefixes it, and the reference is re-anchored to `SOURCE_ROOT` when it does
-/// not. Any other `sourceTree` already ignores the group chain and is left
-/// alone. The outcome carries the resolved path so the preservation is
+/// so it is spelled the way [`crate::tree::moved_path`] spells it, re-anchored
+/// to `SOURCE_ROOT` where the new group's directory does not hold it. Any other
+/// `sourceTree` already ignores the group chain and is left alone. A group
+/// with neither a name nor a path moves only where no path has to be written,
+/// since Xcode would show that path as its name, the rule a `project.xcproj`
+/// follows too. The outcome carries the resolved path so the preservation is
 /// checkable rather than promised.
 ///
 /// # Errors
-/// Returns a message when the tree is malformed, `child` does not exist, or
-/// `group` names no group (or more than one).
+/// Returns a message when the tree is malformed, `child` does not exist,
+/// `group` names no group (or more than one), or the move would have to write
+/// a path on a group with no name.
 pub fn move_node(
     root: &mut Value,
     child: &str,
@@ -419,24 +422,37 @@ pub fn move_node(
         });
     }
     let resolved = display(&parents.group_dir(child, Path::new("")));
-    let anchored = str_field(node, "sourceTree").unwrap_or("<group>") == "<group>";
-    let group_dir = display(&parents.group_dir(&group, Path::new("")));
+    // A `<group>` path means a different file under a different group, so it
+    // is rewritten. Any other `sourceTree` ignores the group chain.
+    let rewrite = if str_field(node, "sourceTree").unwrap_or("<group>") == "<group>" {
+        let group_dir = display(&parents.group_dir(&group, Path::new("")));
+        let has_path = str_field(node, "path").is_some_and(|p| !p.is_empty());
+        match moved_path(&resolved, &group_dir, has_path) {
+            MovedPath::Unchanged => None,
+            MovedPath::InGroup(path) => Some((path, "<group>")),
+            MovedPath::FromProject(path) => Some((path, "SOURCE_ROOT")),
+        }
+    } else {
+        None
+    };
+    if rewrite.is_some() && display_name(node).is_none() {
+        return Err(nameless_move_refusal(child));
+    }
 
     let objects = objects_mut(root)?;
     if let Some(from) = &from {
         remove_child(objects, from, child);
     }
     push_child(objects, &group, child);
-    if anchored {
-        let (path, source_tree) = reanchor(&resolved, &group_dir);
-        if let Some(node) = objects.get_mut(child).and_then(Value::as_dict_mut) {
-            if path.is_empty() {
-                node.remove("path");
-            } else {
-                node.insert("path".into(), vstr(&path));
-            }
-            node.insert("sourceTree".into(), vstr(source_tree));
+    if let Some((path, source_tree)) = rewrite
+        && let Some(node) = objects.get_mut(child).and_then(Value::as_dict_mut)
+    {
+        if path.is_empty() {
+            node.remove("path");
+        } else {
+            node.insert("path".into(), vstr(&path));
         }
+        node.insert("sourceTree".into(), vstr(source_tree));
     }
     Ok(MoveOutcome::Moved {
         address: child.to_string(),
@@ -444,18 +460,6 @@ pub fn move_node(
         to: group,
         resolved,
     })
-}
-
-/// How to spell `resolved` from inside a group at `group_dir`: relative when
-/// the directory contains it, anchored at the project root when it does not.
-fn reanchor(resolved: &str, group_dir: &str) -> (String, &'static str) {
-    if group_dir.is_empty() {
-        return (resolved.to_string(), "<group>");
-    }
-    match resolved.strip_prefix(&format!("{group_dir}/")) {
-        Some(rest) => (rest.to_string(), "<group>"),
-        None => (resolved.to_string(), "SOURCE_ROOT"),
-    }
 }
 
 /// Whether `descendant` is reachable from `ancestor` through `children`.
@@ -1573,6 +1577,62 @@ mod tests {
         let mut root = parsed();
         let err = move_node(&mut root, "G1", Some("G2")).unwrap_err();
         assert!(err.contains("is inside G1"), "{err}");
+    }
+
+    /// A group with neither a name nor a path takes its display name from any
+    /// path a move writes, so it moves only into a group whose directory is
+    /// already its own. An organizational group moved that way keeps no path
+    /// either.
+    #[test]
+    fn a_group_with_no_name_moves_only_where_no_path_is_written() {
+        let mut root = parsed();
+        let dict = objects_mut(&mut root).unwrap();
+        for (guid, name, parent) in [
+            ("N1", None, "G1"),
+            ("ORG", Some("Org"), "G1"),
+            ("ORG2", Some("Org2"), "G1"),
+            ("TOP", Some("Top"), "MG"),
+        ] {
+            let mut group = Dict::new();
+            group.insert("isa".into(), vstr(GROUP_ISA));
+            group.insert("children".into(), Value::Array(Vec::new()));
+            if let Some(name) = name {
+                group.insert("name".into(), vstr(name));
+            }
+            group.insert("sourceTree".into(), vstr("<group>"));
+            dict.insert(guid.into(), Value::Dict(group));
+            push_child(dict, parent, guid);
+        }
+        let before = crate::pbxproj_writer::serialize(&root, "Fix");
+
+        let err = move_node(&mut root, "N1", Some("TOP")).unwrap_err();
+        assert!(err.contains("'N1' has neither a name nor a path"), "{err}");
+        assert!(err.contains("move its children instead"), "{err}");
+        assert_eq!(
+            crate::pbxproj_writer::serialize(&root, "Fix"),
+            before,
+            "the refusal wrote nothing"
+        );
+
+        // Org resolves to App, the directory N1 already has.
+        let outcome = move_node(&mut root, "N1", Some("ORG")).unwrap();
+        assert_eq!(
+            outcome,
+            MoveOutcome::Moved {
+                address: "N1".into(),
+                from: Some("G1".into()),
+                to: "ORG".into(),
+                resolved: "App".into(),
+            }
+        );
+        move_node(&mut root, "ORG2", Some("ORG")).unwrap();
+        round_trips(&root);
+        let objects = objects(&root).unwrap();
+        for guid in ["N1", "ORG2"] {
+            let node = objects.get(guid).unwrap();
+            assert_eq!(str_field(node, "path"), None, "{guid} got a path");
+            assert_eq!(str_field(node, "sourceTree"), Some("<group>"), "{guid}");
+        }
     }
 
     /// Without a group the navigator root is meant, which is the `mainGroup`

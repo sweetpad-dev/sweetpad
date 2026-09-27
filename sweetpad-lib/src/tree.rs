@@ -127,6 +127,48 @@ pub struct RemoveOutcome {
     pub orphaned: Vec<String>,
 }
 
+/// The stored path a moved node needs to keep resolving where it does, when
+/// its path is relative to its group. Both formats' `move_node` write this,
+/// each in its own spelling of the anchor.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum MovedPath {
+    /// Nothing to write: the node has no path, and the new group's directory
+    /// is the one it already resolves to.
+    Unchanged,
+    /// A path relative to the new group, whose directory holds the node.
+    InGroup(String),
+    /// A path from the project directory, where the new group's does not.
+    FromProject(String),
+}
+
+/// How a node that resolves to `resolved`, and has a stored path when
+/// `has_path`, is spelled inside a group whose directory is `group_dir`.
+///
+/// A path from the group is what Xcode writes where one reaches the node. Where
+/// none does, it has both spellings available, and the anchor at the project is
+/// the one that does not depend on how deep the group sits.
+pub(crate) fn moved_path(resolved: &str, group_dir: &str, has_path: bool) -> MovedPath {
+    if !has_path && resolved == group_dir {
+        return MovedPath::Unchanged;
+    }
+    if group_dir.is_empty() {
+        return MovedPath::InGroup(resolved.to_string());
+    }
+    match resolved.strip_prefix(&format!("{group_dir}/")) {
+        Some(rest) => MovedPath::InGroup(rest.to_string()),
+        None => MovedPath::FromProject(resolved.to_string()),
+    }
+}
+
+/// The refusal for moving a node with neither a name nor a path somewhere a
+/// path would have to be written: Xcode shows that path as the node's name.
+pub(crate) fn nameless_move_refusal(address: &str) -> String {
+    format!(
+        "'{address}' has neither a name nor a path. Moving it would give it a path, which \
+         Xcode shows as its name; move its children instead"
+    )
+}
+
 /// What `move_node` did.
 #[derive(Debug, PartialEq, Eq)]
 pub enum MoveOutcome {
