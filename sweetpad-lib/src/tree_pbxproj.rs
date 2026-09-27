@@ -89,10 +89,7 @@ pub fn list_groups(root: &Value) -> Result<Vec<GroupRow>, String> {
     // A group listed in two places has two paths; the first one found names
     // it, and either spelling still selects it.
     let mut navigator: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    if let Some(main) = main_group(objects) {
-        navigator.insert(main, String::new());
-    }
-    for (guid, path) in navigator_paths(objects) {
+    for (guid, path) in navigator_index(objects) {
         navigator.entry(guid).or_insert(path);
     }
     let mut rows: Vec<GroupRow> = objects
@@ -515,11 +512,13 @@ pub fn fileref_for_path(root: &Value, path: &str) -> Result<Option<String>, Stri
 /// directory.
 ///
 /// An id is unambiguous by construction, so it wins outright. A path is matched
-/// against both the navigator path and the resolved directory, which is what
-/// lets one spelling address a group in either document format —
-/// [`crate::tree_xcproj`] has only the navigator path, and an organizational
-/// group (a `name` with no `path`) has a navigator path but resolves to its
-/// parent's directory. Naming no group, or two, is an error rather than a pick.
+/// against the navigator path first. That spelling addresses a group in either
+/// document format ([`crate::tree_xcproj`] has only the navigator path), and it
+/// tells organizational groups (a `name` with no `path`) apart, since they all
+/// resolve to their parent's directory. The navigator root's path is empty, so
+/// `""` and `/` name the mainGroup. Only a path that is no group's navigator
+/// path is matched against resolved directories. Naming no group, or two, is an
+/// error rather than a pick.
 fn settle_group(objects: &Dict, spec: Option<&str>) -> Result<String, String> {
     match spec {
         Some(spec) => resolve_group(objects, spec),
@@ -545,33 +544,78 @@ fn resolve_group(objects: &Dict, spec: &str) -> Result<String, String> {
         };
     }
     let wanted = normalize(spec);
-    let mut hits: Vec<String> = navigator_paths(objects)
-        .into_iter()
-        .filter(|(_, path)| *path == wanted)
-        .map(|(guid, _)| guid)
-        .collect();
-    for (guid, _) in objects
-        .iter()
-        .filter(|(_, o)| GROUP_ISAS.contains(&isa(o)))
-        .filter(|(guid, _)| {
-            display(&crate::project::group_dir(objects, guid, Path::new(""), 0)) == wanted
-        })
-    {
-        if !hits.contains(guid) {
-            hits.push(guid.clone());
+    let navigator = navigator_index(objects);
+    let mut by_navigator: Vec<String> = Vec::new();
+    for (guid, path) in &navigator {
+        if *path == wanted && !by_navigator.contains(guid) {
+            by_navigator.push(guid.clone());
         }
     }
+    let (hits, spelling) = if by_navigator.is_empty() {
+        let by_directory: Vec<String> = objects
+            .iter()
+            .filter(|(_, o)| GROUP_ISAS.contains(&isa(o)))
+            // A stored `path` can end in `/`, and the listing prints it so.
+            .filter(|(guid, _)| normalize(&group_directory(objects, guid)) == wanted)
+            .map(|(guid, _)| guid.clone())
+            .collect();
+        (by_directory, "directory")
+    } else {
+        (by_navigator, "navigator path")
+    };
     match hits.len() {
         1 => Ok(hits.into_iter().next().unwrap_or_default()),
         0 => Err(format!(
             "no group with id, navigator path, or directory {spec}; 'pbxproj group list' \
              shows all three"
         )),
-        n => Err(format!(
-            "{wanted} names {n} groups ({}); pass the id you mean",
-            hits.join(", ")
-        )),
+        n => {
+            // Each candidate as `group list` prints it, so the id to pass
+            // sits next to the spellings that tell the groups apart.
+            let candidates: Vec<String> = hits
+                .iter()
+                .map(|guid| {
+                    let path = navigator.iter().find(|(g, _)| g == guid).map_or(
+                        "(not in the navigator)",
+                        |(_, path)| {
+                            if path.is_empty() {
+                                "(navigator root)"
+                            } else {
+                                path.as_str()
+                            }
+                        },
+                    );
+                    let dir = group_directory(objects, guid);
+                    let dir = if dir.is_empty() {
+                        "(project root)"
+                    } else {
+                        &dir
+                    };
+                    format!("{guid} {path} [{dir}]")
+                })
+                .collect();
+            Err(format!(
+                "{wanted} is the {spelling} of {n} groups ({}); pass the id you mean",
+                candidates.join(", ")
+            ))
+        }
     }
+}
+
+/// A group's directory, resolved up the chain from the project directory.
+fn group_directory(objects: &Dict, guid: &str) -> String {
+    display(&crate::project::group_dir(objects, guid, Path::new(""), 0))
+}
+
+/// Every navigator path a group answers to: the mainGroup's empty one, then
+/// the path of each place a group is listed.
+fn navigator_index(objects: &Dict) -> Vec<(String, String)> {
+    let mut index: Vec<(String, String)> = main_group(objects)
+        .map(|root| (root, String::new()))
+        .into_iter()
+        .collect();
+    index.extend(navigator_paths(objects));
+    index
 }
 
 /// Every group's navigator path — the display names from the mainGroup down,
@@ -1066,8 +1110,7 @@ mod tests {
 
     /// `group list` carries each group's navigator path, and a path it prints
     /// names that group back, which is what the miss hint promises. `App` is
-    /// also `Other`'s directory, so that spelling is refused rather than
-    /// picked, and the id settles it.
+    /// also `Other`'s directory, and the navigator path wins over it.
     #[test]
     fn listed_groups_carry_a_navigator_path_that_names_them() {
         let mut root = parsed();
@@ -1103,23 +1146,150 @@ mod tests {
         let objects = objects(&root).unwrap();
         assert_eq!(resolve_group(objects, "App/Legacy").as_deref(), Ok("G2"));
         assert_eq!(resolve_group(objects, "Other"), Ok(other.clone()));
-        let err = resolve_group(objects, "App").unwrap_err();
-        assert!(err.contains("App names 2 groups"), "{err}");
+        assert_eq!(
+            resolve_group(objects, "App").as_deref(),
+            Ok("G1"),
+            "the navigator path, though it is Other's directory too"
+        );
+    }
+
+    /// The navigator root prints an empty navigator path, and every
+    /// organizational group at the root shares its directory. The empty path
+    /// and `/` still name the root.
+    #[test]
+    fn the_navigator_root_answers_to_an_empty_path_and_a_slash() {
+        let mut root = parsed();
+        add_group(&mut root, "Products", Some("MG"), None, "<group>").unwrap();
+        let objects = objects(&root).unwrap();
+        assert_eq!(resolve_group(objects, "").as_deref(), Ok("MG"));
+        assert_eq!(resolve_group(objects, "/").as_deref(), Ok("MG"));
+
+        assert_eq!(
+            attach(&mut root, "FR1", "").unwrap(),
+            LinkOutcome::Linked {
+                child: "FR1".into(),
+                group: "MG".into()
+            }
+        );
     }
 
     #[test]
     fn a_directory_naming_two_groups_is_refused_rather_than_picked() {
         let mut root = parsed();
-        // A second group whose directory is also `App` — legal, and exactly the
-        // case where only the caller knows which one it meant.
-        add_group(&mut root, "Other", Some("MG"), Some("App"), "<group>").unwrap();
+        // Two groups titled apart but both reading `Sources`, a directory that
+        // is no group's navigator path. That is legal, and exactly the case
+        // where only the caller knows which one it meant.
+        let AddGroupOutcome::Created { address: src, .. } =
+            add_group(&mut root, "Src", Some("MG"), Some("Sources"), "<group>").unwrap()
+        else {
+            panic!("expected a fresh group");
+        };
+        let AddGroupOutcome::Created { address: code, .. } =
+            add_group(&mut root, "Code", Some("MG"), Some("Sources"), "<group>").unwrap()
+        else {
+            panic!("expected a fresh group");
+        };
 
-        let err = add_fileref(&mut root, "X.swift", None, "<group>", Some("App")).unwrap_err();
-        assert!(err.contains("App names 2 groups"), "{err}");
+        let err = add_fileref(&mut root, "X.swift", None, "<group>", Some("Sources")).unwrap_err();
+        assert!(
+            err.contains("Sources is the directory of 2 groups"),
+            "{err}"
+        );
+        assert!(err.contains(&format!("{src} Src [Sources]")), "{err}");
+        assert!(err.contains(&format!("{code} Code [Sources]")), "{err}");
         assert!(err.contains("pass the id you mean"), "{err}");
 
-        // The id still names one of them outright.
-        assert!(add_fileref(&mut root, "X.swift", None, "<group>", Some("G1")).is_ok());
+        // The id still names one of them outright, and so does its navigator
+        // path.
+        assert!(add_fileref(&mut root, "X.swift", None, "<group>", Some(&src)).is_ok());
+        assert!(add_fileref(&mut root, "Y.swift", None, "<group>", Some("Code")).is_ok());
+    }
+
+    /// Two siblings can share a display name, and then they share a navigator
+    /// path. That path is refused, and each candidate is listed with its id.
+    #[test]
+    fn a_navigator_path_naming_two_groups_is_refused_rather_than_picked() {
+        let mut root = parsed();
+        // `group add` returns the existing sibling for a repeated name, so the
+        // twin goes in by hand.
+        let objects = objects_mut(&mut root).unwrap();
+        let mut twin = Dict::new();
+        twin.insert("isa".into(), vstr(GROUP_ISA));
+        twin.insert("children".into(), Value::Array(Vec::new()));
+        twin.insert("name".into(), vstr("App"));
+        twin.insert("path".into(), vstr("Twin"));
+        twin.insert("sourceTree".into(), vstr("<group>"));
+        objects.insert("G3".into(), Value::Dict(twin));
+        push_child(objects, "MG", "G3");
+
+        let err = attach(&mut root, "FR1", "App").unwrap_err();
+        assert!(
+            err.contains("App is the navigator path of 2 groups"),
+            "{err}"
+        );
+        assert!(err.contains("G1 App [App]"), "{err}");
+        assert!(err.contains("G3 App [Twin]"), "{err}");
+        assert!(attach(&mut root, "FR1", "G3").is_ok(), "the id settles it");
+    }
+
+    /// Every spelling `group list` prints for a group in the committed
+    /// fixtures selects that group, or is refused with its id among the
+    /// candidates. A directory may instead select the group whose navigator
+    /// path it is, since the navigator path wins.
+    #[test]
+    fn every_listed_spelling_selects_its_group_across_the_fixtures() {
+        fn pbxprojs(dir: &Path, out: &mut Vec<PathBuf>) {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    pbxprojs(&path, out);
+                } else if path.file_name().is_some_and(|n| n == "project.pbxproj") {
+                    out.push(path);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        pbxprojs(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures"),
+            &mut files,
+        );
+        assert!(files.len() >= 5, "found {} fixtures", files.len());
+
+        let mut failures = Vec::new();
+        for file in &files {
+            let text = std::fs::read_to_string(file).unwrap();
+            let Ok(root) = crate::pbxproj::parse(&text) else {
+                continue;
+            };
+            let objects = objects(&root).unwrap();
+            let paths = navigator_index(objects);
+            let is_navigator_path =
+                |guid: &str, spec: &str| paths.iter().any(|(g, path)| g == guid && path == spec);
+            for group in list_groups(&root).unwrap() {
+                let guid = &group.address;
+                let mut spellings = vec![(guid.clone(), false), (group.resolved.clone(), true)];
+                spellings.extend(group.navigator_path.clone().map(|p| (p, false)));
+                for (spec, is_directory) in spellings {
+                    let selects = match resolve_group(objects, &spec) {
+                        Ok(hit) => {
+                            hit == *guid
+                                || (is_directory && is_navigator_path(&hit, &normalize(&spec)))
+                        }
+                        Err(err) => err.contains(guid.as_str()),
+                    };
+                    if !selects {
+                        failures.push(format!(
+                            "{}: '{spec}' does not select {guid}",
+                            file.display()
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 
     #[test]

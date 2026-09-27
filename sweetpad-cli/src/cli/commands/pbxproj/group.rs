@@ -53,7 +53,7 @@ pub struct AddArgs {
     pub container: ContainerArgs,
 
     /// Group to create it under, named as 'pbxproj group list' prints it.
-    /// Defaults to the navigator root.
+    /// Defaults to the navigator root, which '/' also names.
     #[arg(long)]
     pub parent: Option<String>,
 
@@ -117,7 +117,8 @@ pub struct MoveArgs {
     #[command(flatten)]
     pub container: ContainerArgs,
 
-    /// Group to move it into. Defaults to the navigator root.
+    /// Group to move it into. Defaults to the navigator root, which '/' also
+    /// names.
     #[arg(long)]
     pub to: Option<String>,
 
@@ -144,8 +145,9 @@ pub struct LinkArgs {
     pub container: ContainerArgs,
 
     /// The group whose children list changes: its id, its navigator path, or
-    /// its resolved directory ('Sources/App'). 'pbxproj group list' prints
-    /// all three.
+    /// its resolved directory ('Sources/App'), with '/' for the navigator
+    /// root. 'pbxproj group list' prints all three. A navigator path wins
+    /// over a directory that reads the same.
     #[arg(long)]
     pub group: String,
 
@@ -275,7 +277,11 @@ fn add(ctx: &mut Context, args: &AddArgs) -> CommandResult {
     }
     .map_err(CliError::new)?;
 
-    let under = args.parent.as_deref().unwrap_or("the navigator root");
+    let under = args
+        .parent
+        .as_deref()
+        .filter(|parent| !parent.trim_matches('/').is_empty())
+        .unwrap_or("the navigator root");
     let (line, changed, json) = match &outcome {
         AddGroupOutcome::Created { address, resolved } => (
             format!("{address}  {} under {under}", display_dir(resolved)),

@@ -276,6 +276,31 @@ fn moving_a_node_keeps_the_file_it_resolves_to() {
     );
 }
 
+/// `""` and `/` name the navigator root, as they name the mainGroup in a
+/// `project.pbxproj`, so a root spelling carries across the two formats.
+#[test]
+fn the_navigator_root_answers_to_an_empty_path_and_a_slash() {
+    let mut doc = document();
+    let moved = tree::move_node(&mut doc, "Sources/App/ContentView.swift", Some("/")).unwrap();
+    let MoveOutcome::Moved { address, to, .. } = moved else {
+        panic!("expected a move");
+    };
+    assert_eq!((address.as_str(), to.as_str()), ("ContentView.swift", ""));
+
+    let AddGroupOutcome::Created { address, .. } =
+        tree::add_group(&mut doc, "Library", Some(""), None, "<group>").unwrap()
+    else {
+        panic!("expected a new group");
+    };
+    assert_eq!(address, "Library");
+    let AddRefOutcome::Created { address, .. } =
+        tree::add_fileref(&mut doc, "Extra.swift", None, "<group>", Some("/")).unwrap()
+    else {
+        panic!("expected a new node");
+    };
+    assert_eq!(address, "Extra.swift");
+}
+
 /// Under a group that does not contain the file, no relative spelling reaches
 /// it, so the node is anchored at the project root instead.
 #[test]

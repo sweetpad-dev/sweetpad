@@ -1655,15 +1655,21 @@ friction, without collapsing the axes:
   directory** (`--group Sources/App`), everywhere a group is selected:
   `fileref add --group`, `group add --parent`, `group move --to`,
   `group attach/detach --group`. Ids are unambiguous by construction, so an id
-  that exists wins outright; otherwise the path must match exactly one group by
-  either spelling. Naming none, or two, is an error that lists the candidates.
-  The navigator path is the one that tells apart organizational groups (a
-  `name` with no `path`), which all resolve to their parent's directory, and it
-  is the spelling a `project.xcproj` has — see the addressing amendment below.
+  that exists wins outright. A path is tried as a navigator path next, and as
+  a directory only when it is no group's navigator path. The navigator path
+  goes first because it is the one that tells apart organizational groups (a
+  `name` with no `path`), which all resolve to their parent's directory, and
+  it is the spelling a `project.xcproj` has (see the addressing amendment
+  below). So `App` names the group shown as `App` even when another group's
+  directory is also `App`. The navigator root's path is empty, and `""` and
+  `/` both name it, in either format. A path that matches no group is an
+  error, and so is one that matches two groups by the same spelling. That
+  refusal lists each candidate's id with its navigator path and directory.
   `group list` prints all three on each row (`navigatorPath` in JSON, empty
   for the navigator root and null for a group nothing lists), so the miss
-  error can point there. This removes the `group list` lookup that otherwise
-  preceded every add; it is a rule that errors, not a guess that picks.
+  error can point there. This removes the
+  `group list` lookup that otherwise preceded every add; it is a rule that
+  errors, not a guess that picks.
 - **`fileref add` is batched**, like every other mutating verb here.
   `--type`/`--source-tree`/`--group` apply to the whole batch, which is the
   case that actually recurs (a directory of new sources); files that disagree

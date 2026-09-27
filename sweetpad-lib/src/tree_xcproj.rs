@@ -135,7 +135,7 @@ pub fn add_fileref(
     let stored = anchor.spell(&path);
     let name = basename(&stored).to_string();
 
-    let (indices, base, group_address) = match group {
+    let (indices, base, group_address) = match below_root(group) {
         Some(spec) => {
             let group = find_group(root, spec)?;
             (group.indices, group.resolved, Some(group.address))
@@ -191,7 +191,7 @@ pub fn add_group(
     let anchor = anchor_for(source_tree)?;
     let stored = path.map(|p| anchor.spell(&normalize(p)));
 
-    let (indices, base, parent_address) = match parent {
+    let (indices, base, parent_address) = match below_root(parent) {
         Some(spec) => {
             let group = find_group(root, spec)?;
             (group.indices, group.resolved, Some(group.address))
@@ -337,6 +337,7 @@ pub fn move_node(
     group: Option<&str>,
 ) -> Result<MoveOutcome, String> {
     let node = find_node(root, address)?;
+    let group = below_root(group);
     let (to_indices, to_base, to_address) = match group {
         Some(spec) => {
             let to = find_group(root, spec)?;
@@ -485,6 +486,12 @@ fn find_node<'a>(root: &'a Value, address: &str) -> Result<Node<'a>, String> {
              display name, which only Xcode's navigator can tell apart"
         )),
     }
+}
+
+/// A group argument, or `None` for the navigator root, which `""` and `/`
+/// name here as they name the mainGroup in a `project.pbxproj`.
+fn below_root(spec: Option<&str>) -> Option<&str> {
+    spec.filter(|spec| !normalize(spec).is_empty())
 }
 
 /// The one group at `address`.

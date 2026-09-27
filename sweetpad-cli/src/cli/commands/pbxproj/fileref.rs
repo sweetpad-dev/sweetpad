@@ -62,9 +62,10 @@ pub struct AddArgs {
     pub source_tree: String,
 
     /// Group to put the new files under, named as 'pbxproj group list' prints
-    /// it. Without it a project.xcproj puts them at the navigator root, while
-    /// a project.pbxproj leaves the references with no group showing them —
-    /// attach them later with 'pbxproj group attach'.
+    /// it, or '/' for the navigator root. Without it a project.xcproj puts
+    /// them at the navigator root, while a project.pbxproj leaves the
+    /// references with no group showing them. Attach them later with
+    /// 'pbxproj group attach'.
     #[arg(long)]
     pub group: Option<String>,
 

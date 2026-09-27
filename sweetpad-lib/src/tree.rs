@@ -58,8 +58,8 @@ pub struct GroupRow {
     pub resolved: String,
     /// The display names from the navigator root down, joined by `/`
     /// (`Sources/App`): what Xcode shows, and a spelling every group argument
-    /// takes. Empty for the navigator root itself, and `None` for a group
-    /// that no group in the navigator lists.
+    /// takes. Empty for the navigator root itself, which `/` also names, and
+    /// `None` for a group that no group in the navigator lists.
     pub navigator_path: Option<String>,
 }
 
