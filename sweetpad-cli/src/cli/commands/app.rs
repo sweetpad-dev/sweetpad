@@ -5810,19 +5810,45 @@ impl Render for DiagnoseReport {
 /// them.
 pub(crate) fn follow_up(ctx: &Context, verb: &str, rest: &[&str]) -> String {
     let t = &ctx.targeting;
+    hint_command(
+        ctx,
+        verb,
+        &[
+            ("--scheme", t.scheme.clone()),
+            ("--configuration", t.configuration.clone()),
+            ("--sdk", t.sdk.clone()),
+        ],
+        rest,
+    )
+}
+
+/// A [`follow_up`] for a verb that reads the last run's result bundle back,
+/// such as 'test attachments': it takes the project flags, which pick the
+/// bundle, and refuses the target flags.
+pub(crate) fn read_back_follow_up(ctx: &Context, verb: &str, rest: &[&str]) -> String {
+    hint_command(ctx, verb, &[], rest)
+}
+
+/// `sweetpad <verb>` with the project flags this invocation was given, then
+/// `target` for those that are set, then `rest`, quoted for a message.
+fn hint_command(
+    ctx: &Context,
+    verb: &str,
+    target: &[(&str, Option<String>)],
+    rest: &[&str],
+) -> String {
+    let t = &ctx.targeting;
     let path = |p: &Option<std::path::PathBuf>| p.as_ref().map(|p| p.display().to_string());
     let mut words = vec!["sweetpad".to_string()];
     if let Some(dir) = path(&ctx.global.chdir) {
         words.extend(["-C".to_string(), hint_quote(&dir)]);
     }
     words.push(verb.to_string());
-    for (flag, value) in [
+    let project = [
         ("--workspace", path(&t.workspace)),
         ("--project", path(&t.project)),
-        ("--scheme", t.scheme.clone()),
-        ("--configuration", t.configuration.clone()),
-        ("--sdk", t.sdk.clone()),
-    ] {
+    ];
+    for (flag, value) in project.iter().chain(target).cloned() {
         if let Some(value) = value {
             words.extend([flag.to_string(), hint_quote(&value)]);
         }
@@ -8924,6 +8950,13 @@ Target 0: (crash) stopped.\n"
             follow_up(&ctx, "build", &["--on", "mac"]),
             "'sweetpad -C \"My Apps\" build --project ios/App.xcodeproj --scheme \"My App\" \
              --configuration Release --sdk iphonesimulator --on mac'"
+        );
+        // A verb that reads the last run back takes the project, which picks
+        // the result bundle, and refuses the rest.
+        assert_eq!(
+            read_back_follow_up(&ctx, "test attachments", &["--only-testing", "T/C/t(n:)"]),
+            "'sweetpad -C \"My Apps\" test attachments --project ios/App.xcodeproj \
+             --only-testing \"T/C/t(n:)\"'"
         );
 
         ctx.targeting = crate::cli::Targeting::default();

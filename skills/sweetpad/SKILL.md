@@ -242,7 +242,10 @@ leave no crash report. An assertion that only mentions a crash in its own text
 gets none. A crash with no crash report also
 gets a `note`: macOS stops saving an app's reports past a limit, so the
 `exception` detail can be missing. When no exit was found at all, the `note`
-names the `sweetpad app logs --exits` command to run instead.
+names the `sweetpad app logs --exits` command to run instead. A unit-test
+bundle with no host app runs in `xctest` (`Crash: xctest at …`), which has no
+exit record. Its `note` names the `sweetpad test attachments --only-testing …`
+command that exports the crash log XCTest attached.
 
 A host app crash can fail tests other than the one that crashed it: every
 test running in parallel at the time, or the test after one that left work

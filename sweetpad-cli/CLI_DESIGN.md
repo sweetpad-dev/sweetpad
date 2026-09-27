@@ -2945,6 +2945,28 @@ project and target flags the run was given (`--project`, `--scheme`, …), so it
 reads the same log for the same app. A device destination has no exit log to
 read and gets no line.
 
+**A hostless bundle crashes `xctest`.** A unit-test bundle with no host app
+runs in `xctest`, which xcodebuild starts itself. launchd logs no exit for it,
+and there is no app to read one for. XCTest names the process: `Crash: xctest
+at static xctest.main()`, also under `Exceeded max restart count`. That wording
+is read as `xctest` rather than the host app, and no exit is looked up for it.
+The host app fallback would give it a wrong one: in a macOS run of a hostless
+target beside a hosted one, the hostless crash would get the hosted target's
+app `exited normally`. XCTest waits for the crash report and attaches it to the
+failing test as `Crash Log <date>.ips`, so the failure's line, and its `note`
+in JSON, names the `test attachments` command that exports it:
+
+```
+      the tests ran in 'xctest', which launchd logs no exit for; 'sweetpad test attachments --only-testing B8TestHostless/CrashTests/testACrash' exports the crash log XCTest attached
+```
+
+The command carries `-C`, the project flags and, when the run named its own,
+`--result-bundle`, since those pick the bundle. `test attachments` refuses the
+target flags. The same report is in `~/Library/Logs/DiagnosticReports` as
+`xctest-<date>.ips`, but its header names no bundle id, and every hostless
+crash on the Mac writes one under that name. The attachment is the one tied to
+this test.
+
 **A crash without its report says why.** The fault's detail (`EXC_BREAKPOINT`,
 the address) comes from the crash report, and a suite that crashes its app all
 day stops getting reports. osanalyticshelper counts the reports it saves for an

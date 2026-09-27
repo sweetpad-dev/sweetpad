@@ -101,6 +101,10 @@ If SweetPad can't find the exit at all, the line under the failure says so and g
 app's recent exits.
 The JSON failure's `note` has the same text.
 
+A unit-test bundle with no host app runs in `xctest`, and a crash there reads "Crash: xctest at …".
+The system keeps no exit record for `xctest`, so the line under the failure gives a
+`sweetpad test attachments` command instead. It exports the crash log XCTest attached to the test.
+
 A crash in a unit test's host app doesn't always fail the test that caused it. When tests run in
 parallel, XCTest fails every test that was running at the time, all with the same message. When the
 crash comes from work a test left running after it passed, XCTest fails whichever test runs next.
@@ -239,7 +243,7 @@ export. Each test gets its own directory, and the listing names tests in the sam
 
 `--only-failures` keeps everything a failed test attached, including the crash log and screen
 recording Xcode adds to a UI test whose app crashed, and the crash log it adds on macOS when a test
-crashes its host app. Xcode's own marking can't be relied on for this: on an iOS simulator it marks
+crashes its host app or `xctest`. Xcode's own marking can't be relied on for this: on an iOS simulator it marks
 none of a UI test's files as belonging to a failure, not even the crash log, so SweetPad goes by
 which tests failed. When nothing is left, the note says whether
 the run had no failures or its failing tests attached nothing. The listing marks a failed test's

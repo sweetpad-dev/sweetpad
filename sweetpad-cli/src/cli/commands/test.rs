@@ -398,6 +398,9 @@ struct TestReport {
     /// found for it. `None` when no failure says so, or the destination keeps
     /// no exit log to read.
     exits_command: Option<String>,
+    /// Per failure, the 'test attachments' command that exports the crash log
+    /// XCTest attached to it, for a failure that says `xctest` crashed.
+    crash_log_commands: Vec<Option<String>>,
     coverage: Option<f64>,
     result_bundle: String,
 }
@@ -496,8 +499,15 @@ impl TestReport {
             )),
             Some(_) => None,
             None => {
+                let (cause, _) = vanishing(self.summary.test_failures.get(i)?)?;
+                if cause == Vanished::Xctest {
+                    let export = self.crash_log_commands.get(i)?.as_deref()?;
+                    return Some(format!(
+                        "the tests ran in 'xctest', which launchd logs no exit for; {export} \
+                         exports the crash log XCTest attached"
+                    ));
+                }
                 let exits = self.exits_command.as_deref()?;
-                vanishing(self.summary.test_failures.get(i)?)?;
                 Some(format!("couldn't find launchd's exit record; try {exits}"))
             }
         }
@@ -854,11 +864,26 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
 
     let exits_command =
         exit_log.map(|log| super::app::follow_up(ctx, "app logs", &log.exits_args()));
+    let crash_log_commands = summary
+        .test_failures
+        .iter()
+        .map(|failure| {
+            let (cause, _) = vanishing(failure)?;
+            (cause == Vanished::Xctest).then(|| {
+                crash_log_command(
+                    ctx,
+                    args.result_bundle.is_some().then_some(&*bundle),
+                    failure,
+                )
+            })
+        })
+        .collect();
     let report = TestReport {
         passed,
         summary,
         terminations,
         exits_command,
+        crash_log_commands,
         coverage,
         result_bundle: bundle.display().to_string(),
     };
@@ -868,6 +893,23 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         // A red suite still renders its summary, but exits 3 (build/test failure).
         Ok(Rendered::data_with_exit(report, 3))
     }
+}
+
+/// The 'test attachments' command that exports what `failure`'s test attached,
+/// the crash log among it, from `bundle` when the run named its own.
+fn crash_log_command(
+    ctx: &Context,
+    bundle: Option<&Path>,
+    failure: &xcodebuild::TestFailure,
+) -> String {
+    let bundle = bundle.map(|b| b.display().to_string());
+    let selector = failure.selector();
+    let mut rest = Vec::new();
+    if let Some(bundle) = &bundle {
+        rest.extend(["--result-bundle", bundle.as_str()]);
+    }
+    rest.extend(["--only-testing", selector.as_str()]);
+    super::app::read_back_follow_up(ctx, "test attachments", &rest)
 }
 
 /// The error for a run that died before any test executed — nearly always a
@@ -935,6 +977,10 @@ enum Vanished {
     /// The process running the tests: a UI test's `.xctrunner`, or the host
     /// app a unit test runs in (see [`RUNNER_VANISHED`]).
     Runner,
+    /// `xctest`, which runs a unit-test bundle that has no host app, named as
+    /// the process that crashed (`Crash: xctest at static xctest.main()`).
+    /// xcodebuild starts it rather than launchd, so launchd logs no exit for it.
+    Xctest,
 }
 
 /// How XCTest's harness words the process running the tests going away, each
@@ -955,6 +1001,14 @@ const RUNNER_VANISHED: [&str; 7] = [
     "The test runner exited with code ",
     "Lost connection to the test runner",
     "Lost connection to test process",
+];
+
+/// The wordings in [`RUNNER_VANISHED`] that go on to name the process running
+/// the tests, the host app's executable or `xctest`.
+const RUNNER_NAMED: [&str; 3] = [
+    "Crash: ",
+    "The test runner crashed before establishing connection: ",
+    "The test runner crashed while preparing to run tests: ",
 ];
 
 /// The same, where the harness writes the whole message and nothing follows.
@@ -1007,6 +1061,18 @@ fn vanished(message: &str) -> Option<Vanished> {
         if before.is_some_and(|w| w.eq_ignore_ascii_case("application")) {
             return Some(named.map_or(Vanished::App, Vanished::Named));
         }
+    }
+    let hostless = RUNNER_NAMED
+        .iter()
+        .filter_map(|p| message.strip_prefix(p))
+        .any(|named| {
+            named
+                .split(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-')
+                .next()
+                == Some("xctest")
+        });
+    if hostless {
+        return Some(Vanished::Xctest);
     }
     let runner = RUNNER_VANISHED.iter().any(|p| message.starts_with(p))
         || RUNNER_VANISHED_EXACTLY.contains(&message);
@@ -1085,6 +1151,9 @@ fn terminations(
         .zip(failures)
         .map(|(cause, failure)| {
             let (cause, message) = cause?;
+            if cause == Vanished::Xctest {
+                return None;
+            }
             budget = budget.checked_sub(1)?;
             let times =
                 xcodebuild::failure_times(run.bundle, &failure.test_identifier_string, message)?;
@@ -1217,6 +1286,9 @@ impl ExitWindow {
             // the host app, so that is the fallback.
             Vanished::Runner => last_of(&|e| e.bundle_id.ends_with(".xctrunner"))
                 .or_else(|| app_id().and_then(|id| last_of(&|e| e.bundle_id == id))),
+            // launchd logs no exit for `xctest`, and an app's exit in the
+            // window is some other test target's host.
+            Vanished::Xctest => None,
         }
     }
 }
@@ -3439,6 +3511,48 @@ mod tests {
     }
 
     #[test]
+    fn a_hostless_bundle_that_crashed_names_xctest() {
+        // Xcode 27 on macOS 27, a unit-test bundle with no host app: a test
+        // that crashed, and XCTest's own crash after a nested run.
+        for message in [
+            "Crash: xctest at static xctest.main()",
+            "Crash: xctest at static xctest.main(). libsystem_c.dylib: abort() called",
+            "Exceeded max restart count of 2. (Underlying Error: Crash: xctest at static \
+             xctest.main())",
+            "The test runner crashed before establishing connection: xctest",
+        ] {
+            assert_eq!(vanished(message), Some(Vanished::Xctest), "{message}");
+        }
+        // A host app whose name only starts like it is still the host.
+        assert_eq!(
+            vanished("Crash: xctestHost at -[AppDelegate boom]"),
+            Some(Vanished::Runner)
+        );
+    }
+
+    #[test]
+    fn a_crash_in_xctest_never_takes_a_host_apps_exit() {
+        // A hostless target crashed while a hosted one's app exited in the
+        // same window, as in a macOS run of both targets at once.
+        const HOST: &str = "dev.sweetpad.b8test.mac";
+        let found = vec![exit_at(
+            HOST,
+            64890,
+            "2026-09-27 14:56:07.500000+0200",
+            "exited due to exit(0), ran for 2600ms",
+        )];
+        let at = found[0].epoch_seconds().expect("a time");
+        let window = |cause| ExitWindow {
+            cause,
+            from: at - 5.0,
+            until: at + 5.0,
+        };
+        let host = &mut || Some(HOST.to_string());
+        assert!(window(Vanished::Runner).exit_in(&found, host).is_some());
+        assert!(window(Vanished::Xctest).exit_in(&found, host).is_none());
+    }
+
+    #[test]
     fn a_failure_that_only_mentions_a_crash_is_not_one() {
         // An XCTFail and a Swift Testing issue whose text says "crashed", as
         // Xcode 27 recorded them, and other messages that share a word with
@@ -3515,6 +3629,7 @@ mod tests {
             },
             terminations,
             exits_command: None,
+            crash_log_commands: Vec::new(),
             coverage: None,
             result_bundle: "/tmp/ExitProbe.xcresult".into(),
         }
@@ -3541,6 +3656,31 @@ mod tests {
         let device = failed_report(vec![None, None]);
         assert_eq!(device.failure_lines().len(), 2);
         assert!(device.json()["failures"][0].get("note").is_none());
+    }
+
+    #[test]
+    fn a_crash_in_xctest_points_at_its_crash_log() {
+        let mut report = failed_report(vec![None, None]);
+        report.summary.test_failures[0] = xcodebuild::TestFailure {
+            test_name: "testACrash()".into(),
+            target_name: "B8TestHostless".into(),
+            failure_text: "Crash: xctest at static xctest.main()".into(),
+            test_identifier_string: "CrashTests/testACrash()".into(),
+            ..Default::default()
+        };
+        report.exits_command = Some("'sweetpad app logs --exits --mac'".into());
+        report.crash_log_commands = vec![
+            Some(
+                "'sweetpad test attachments --only-testing B8TestHostless/CrashTests/testACrash'"
+                    .into(),
+            ),
+            None,
+        ];
+        let note = "the tests ran in 'xctest', which launchd logs no exit for; 'sweetpad test \
+                    attachments --only-testing B8TestHostless/CrashTests/testACrash' exports the \
+                    crash log XCTest attached";
+        assert_eq!(report.failure_lines()[1], format!("      {note}"));
+        assert_eq!(report.json()["failures"][0]["note"], note);
     }
 
     #[test]
@@ -3777,6 +3917,7 @@ mod tests {
             },
             terminations: vec![Some(termination()), Some(termination())],
             exits_command: None,
+            crash_log_commands: Vec::new(),
             coverage: None,
             result_bundle: "/tmp/App.xcresult".into(),
         }
