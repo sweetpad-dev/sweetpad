@@ -102,8 +102,8 @@ fn project_packages() -> Vec<PathBuf> {
 }
 
 /// Manifests are Swift source, so every assertion here needs the toolchain.
-/// The probe gets a `TMPDIR` of its own: the driver leaves a temp dir there on
-/// every run.
+/// The probe gets a `TMPDIR` of its own: `swift --version` leaves a temp dir
+/// there.
 fn have_swift() -> bool {
     let tmp = ScratchDir::new("sweetpad-swift-probe").unwrap();
     Command::new("swift")

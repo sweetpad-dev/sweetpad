@@ -899,17 +899,22 @@ Notes / heuristics:
 - `doctor` probes each tool with both stdio streams captured (so the report
   stays clean) and reports the first version line; the runtime-count, summary,
   status-glyph, and `first_line` helpers are pure and unit-tested. The Swift
-  driver leaves a `TemporaryDirectory.*` in `$TMPDIR` on every run, so
-  `swift --version` (here and in the Swift 6 check of `dependency add`) runs
-  with a `TMPDIR` that sweetpad removes afterwards. Every `dump-package` does
-  the same: the one that reads a local package's schemes, and the one behind
-  `project info` and the `dependency` verbs for a package. It also gets a
-  scratch path of its own, so reading a manifest leaves no `.build/` in the
-  package. The `swiftc` that a `bsp serve` prepare runs to emit a module
-  cleans up after itself unless it dies first: killed, or stopped by a
-  warning it writes to a pipe nobody reads once the server is gone. So those
-  runs share a `TMPDIR` of the server's own. The server removes it when it
-  exits, after it kills a `swiftc` that is still running.
+  driver makes a `TemporaryDirectory.*` in `$TMPDIR` for each run. It removes
+  the directory only after a run whose jobs it runs itself. When it hands the
+  whole run to one `swift-frontend` that replaces it, the directory stays: on
+  Swift 6.4 (Xcode 27.0) that happens for `--version`, `-print-target-info`,
+  `-typecheck` and a single-file `-c`. A `-###` dry run and a driver that dies
+  leave one too. So `swift --version` (here and in the Swift 6 check of
+  `dependency add`) runs with a `TMPDIR` that sweetpad removes afterwards.
+  Every `dump-package` does the same, since SwiftPM runs
+  `swiftc -print-target-info` first: the one that reads a local package's
+  schemes, and the one behind `project info` and the `dependency` verbs for a
+  package. It also gets a scratch path of its own, so reading a manifest
+  leaves no `.build/` in the package. The `swiftc` that a `bsp serve` prepare
+  runs to emit a module cleans up after itself unless it dies first: killed,
+  or stopped by a warning it writes to a pipe nobody reads once the server is
+  gone. So those runs share a `TMPDIR` of the server's own. The server
+  removes it when it exits, after it kills a `swiftc` that is still running.
 - DerivedData scoping is by container, not by name. Every checkout, worktree
   and copy of a project writes its own `<Name>-<hash>` folder, so the
   container's file-stem (exact name or `<Name>-` prefix, tested against

@@ -155,9 +155,9 @@ fn tool_backed_commands_are_enveloped_or_error() {
     }
 }
 
-/// `doctor` runs `swift --version`, and the Swift driver leaves a
-/// `TemporaryDirectory.*` in `$TMPDIR` on every run unless it is handed a
-/// `TMPDIR` of its own.
+/// `doctor` runs `swift --version`, which leaves a `TemporaryDirectory.*` in
+/// `$TMPDIR` unless it is handed a `TMPDIR` of its own: the driver hands the
+/// run to a `swift-frontend` that takes its place, so nothing removes it.
 #[test]
 fn doctor_leaves_nothing_in_tmpdir() {
     let home = tmp("doctor-home");

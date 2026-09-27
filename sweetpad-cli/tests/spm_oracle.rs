@@ -213,9 +213,9 @@ fn live_schemes_match_xcodebuild() {
 }
 
 /// Reading a package's manifest leaves nothing behind. `swift package
-/// dump-package` makes a `.build/` in the package, and the manifest compile a
-/// `TemporaryDirectory.*` and a lock file in `$TMPDIR`, unless it runs with a
-/// scratch path and `TMPDIR` of its own.
+/// dump-package` makes a `.build/` in the package, and its `swiftc
+/// -print-target-info` probe a `TemporaryDirectory.*` and a lock file in
+/// `$TMPDIR`, unless it runs with a scratch path and `TMPDIR` of its own.
 #[test]
 fn reading_a_manifest_leaves_nothing_behind() {
     let root = TempDir::new("sweetpad-spm-manifest");

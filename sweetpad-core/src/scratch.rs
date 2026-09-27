@@ -1,10 +1,13 @@
 //! Throwaway directories for tool runs that leave files in `$TMPDIR`.
 //!
-//! The Swift driver makes a `TemporaryDirectory.*` in `$TMPDIR` on every run,
-//! `swift --version` included, and never removes it; SwiftPM adds a lock file
-//! there named for the scratch path it builds in. A child whose `TMPDIR` is a
-//! [`ScratchDir`] leaves all of that in a directory that goes when the run is
-//! done.
+//! The Swift driver makes a `TemporaryDirectory.*` in `$TMPDIR` for each run
+//! and removes it only after a run whose jobs it runs itself, such as a
+//! compile and a link. A run it hands to one `swift-frontend` that takes its
+//! place leaves it behind: `--version`, `-print-target-info`, `-typecheck` and
+//! a single-file `-c` do, on Swift 6.4 (Xcode 27.0). So do a `-###` dry run
+//! and a driver that dies. SwiftPM adds a lock file there named for the
+//! scratch path it builds in. A child whose `TMPDIR` is a [`ScratchDir`]
+//! leaves all of that in a directory that goes when the run is done.
 
 use std::io;
 use std::path::{Path, PathBuf};

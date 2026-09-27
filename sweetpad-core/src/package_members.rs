@@ -466,8 +466,9 @@ fn dump_package(dir: &Path, developer_dir: Option<&Path>) -> Option<Value> {
 /// directory, so a fresh one costs no re-evaluation.
 ///
 /// The child's `TMPDIR` is that same throwaway directory. Each dump would
-/// otherwise leave the manifest compile's `TemporaryDirectory.*` and a lock
-/// file named for the scratch path in the user's `$TMPDIR`. SwiftPM keeps its
+/// otherwise leave a `TemporaryDirectory.*` (from the `swiftc
+/// -print-target-info` SwiftPM runs first) and a lock file named for the
+/// scratch path in the user's `$TMPDIR`. SwiftPM keeps its
 /// lock files for the shared manifest cache there too, so a dump does not
 /// take the lock other SwiftPM processes hold; the cache is SQLite, which
 /// serializes the writes itself.
@@ -815,7 +816,7 @@ mod tests {
 
     #[test]
     fn a_dump_writes_nothing_into_the_package() {
-        // The driver leaves a temp dir in $TMPDIR on every run.
+        // `swift --version` leaves a temp dir in $TMPDIR.
         let tmp = ScratchDir::new("sweetpad-swift-probe").unwrap();
         let have_swift = Command::new("swift")
             .arg("--version")

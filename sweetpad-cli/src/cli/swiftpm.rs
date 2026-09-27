@@ -391,8 +391,9 @@ pub fn swift_major_version() -> Option<u32> {
 /// Stderr is captured too: the driver writes `swift-driver version: 1.168.6 `
 /// there with no newline (Swift 6.4), which would otherwise run into the next
 /// line sweetpad writes there — under `--json`, the error envelope. The driver
-/// also leaves a `TemporaryDirectory.*` in `$TMPDIR` on every run, so the probe
-/// gets a `TMPDIR` of its own that goes when it's done.
+/// also leaves a `TemporaryDirectory.*` in `$TMPDIR`, since it hands
+/// `--version` to a `swift-frontend` that takes its place, so the probe gets a
+/// `TMPDIR` of its own that goes when it's done.
 #[must_use]
 pub fn swift_version() -> Option<String> {
     let scratch = ScratchDir::new("sweetpad-swift-version").ok()?;
