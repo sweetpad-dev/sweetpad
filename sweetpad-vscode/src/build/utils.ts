@@ -314,8 +314,16 @@ export async function prepareBundleDir(vscodeContext: vscode.ExtensionContext, s
   return bundleDir;
 }
 
+/**
+ * The DerivedData the extension's builds write, for every reader of it to share: the builds themselves, the
+ * app locator, and the BSP index through `bsp.json`. A `-derivedDataPath` in `sweetpad.build.args` replaces
+ * the extension's own on the build's command line, so the last one there wins over
+ * `sweetpad.build.derivedDataPath`. A relative path resolves against the workspace folder, where the builds
+ * run xcodebuild. `null` leaves the location to xcodebuild.
+ */
 export function prepareDerivedDataPath(options: { workspaceRoot: string }): string | null {
-  const configPath = getWorkspaceConfig("build.derivedDataPath");
+  const buildArgs: string[] = getWorkspaceConfig("build.args") ?? [];
+  const configPath = lastFlagValue(buildArgs, "-derivedDataPath") ?? getWorkspaceConfig("build.derivedDataPath");
 
   // No config -> path will be provided by xcodebuild
   if (!configPath) {
@@ -330,6 +338,22 @@ export function prepareDerivedDataPath(options: { workspaceRoot: string }): stri
   }
 
   return derivedDataPath;
+}
+
+/**
+ * The value after the last `flag` in `args`, read the way `XcodeCommandBuilder.addAdditionalArgs` reads one:
+ * the next argument, unless it starts with `-`. A `flag` with no value after it gives none.
+ */
+function lastFlagValue(args: string[], flag: string): string | undefined {
+  let value: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const next = args[i + 1];
+    if (args[i] === flag && next !== undefined && !next.startsWith("-")) {
+      value = next;
+      i++;
+    }
+  }
+  return value;
 }
 
 /**

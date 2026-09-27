@@ -59,8 +59,9 @@ A few things to know:
   multi-project workspace works the same as a single `.xcodeproj`.
 - The build settings and the `-xcconfig` file in `sweetpad.build.args`, such as
   `SWIFT_ACTIVE_COMPILATION_CONDITIONS=STAGING` or `-xcconfig ci.xcconfig`, apply to autocomplete too, so the editor
-  compiles each file the way your builds do. Other flags in that setting don't affect autocomplete. An older `sweetpad`
-  CLI ignores them.
+  compiles each file the way your builds do. An older `sweetpad` CLI ignores them. A `-derivedDataPath` in that setting
+  moves the index to your builds' DerivedData once the language server restarts. Other flags in that setting don't
+  affect autocomplete.
 - A Swift package takes a different route: SourceKit-LSP reads `Package.swift` and indexes it natively, so SweetPad
   writes no `buildServer.json` at all. If one is already sitting in the package directory, delete it, because its presence
   overrides that native support.

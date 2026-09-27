@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import path from "node:path";
 
 import type { Mock } from "vitest";
 import * as vscode from "vscode";
@@ -19,6 +20,7 @@ import {
   generateBuildServerConfigOnBuild,
   getCurrentXcodeWorkspacePath,
   launchActionToSettings,
+  prepareDerivedDataPath,
   repairStaleBuildServerConfig,
   workspaceFoldersContaining,
   xcodeContainerArgs,
@@ -232,6 +234,55 @@ describe("XcodeCommandBuilder.addAdditionalArgs", () => {
     const before = command.build();
     command.addAdditionalArgs([]);
     expect(command.build()).toEqual(before);
+  });
+});
+
+// Builds, the app locator and the BSP index all read DerivedData through `prepareDerivedDataPath`, so a
+// `-derivedDataPath` in `sweetpad.build.args` has to move all of them.
+describe("prepareDerivedDataPath", () => {
+  const mockGetConfiguration = vscode.workspace.getConfiguration as Mock;
+
+  function mockConfig(values: Record<string, unknown>) {
+    mockGetConfiguration.mockReturnValue({
+      get: vi.fn((key: string) => values[key]),
+    });
+  }
+
+  afterEach(() => {
+    mockGetConfiguration.mockReset();
+  });
+
+  it("leaves the location to xcodebuild when nothing sets it", () => {
+    mockConfig({});
+    expect(prepareDerivedDataPath({ workspaceRoot: "/w" })).toBeNull();
+  });
+
+  it("resolves the setting against the workspace folder", () => {
+    mockConfig({ "build.derivedDataPath": ".build/dd" });
+    expect(prepareDerivedDataPath({ workspaceRoot: "/w" })).toBe("/w/.build/dd");
+  });
+
+  it("takes the last -derivedDataPath in the build args over the setting", () => {
+    mockConfig({
+      "build.derivedDataPath": "/setting/dd",
+      "build.args": ["-derivedDataPath", "dd-a", "-quiet", "-derivedDataPath", "/abs/dd-b", "-derivedDataPath"],
+    });
+    expect(prepareDerivedDataPath({ workspaceRoot: "/w" })).toBe("/abs/dd-b");
+  });
+
+  it("names the directory the build's own command line does", () => {
+    const buildArgs = ["-derivedDataPath", "dd-a", "-derivedDataPath", "dd-b"];
+    mockConfig({ "build.derivedDataPath": "/setting/dd", "build.args": buildArgs });
+    const derivedDataPath = prepareDerivedDataPath({ workspaceRoot: "/w" });
+
+    const command = new XcodeCommandBuilder();
+    command.addParameters("-derivedDataPath", derivedDataPath ?? "");
+    command.addAdditionalArgs(buildArgs);
+    const parts = command.build();
+    const built = parts[parts.lastIndexOf("-derivedDataPath") + 1];
+    // xcodebuild runs in the workspace folder, so it reads a relative path against it.
+    expect(path.resolve("/w", built)).toBe(derivedDataPath);
+    expect(derivedDataPath).toBe("/w/dd-b");
   });
 });
 

@@ -3353,6 +3353,17 @@ older extension, has none. The CLI's own server reads `sweetpad.toml` only at
 startup, so an edit to it reaches the index when the editor restarts the
 server.
 
+A `-derivedDataPath` in `sweetpad.build.args` replaces the extension's own on
+its builds' command line, so it has to move the index too. The extension
+resolves it, not `serve`: the last one in the setting wins over
+`sweetpad.build.derivedDataPath`, a relative one is read against
+`workspacePath`, and the result is `bsp.json`'s `derivedDataPath`. The same
+resolver answers the extension's app locator and its CLI server, so builds,
+launches and the index share one answer. `serve` ignores the flag in
+`buildArgs`, which keeps one field in charge of the location. It reads that
+field at startup only, since the index store it advertises in `initialize`
+lives there, so a change reaches the index when the server restarts.
+
 ### Settings that move the product are followed (decided)
 
 `SYMROOT=`, `OBJROOT=` and `CONFIGURATION_BUILD_DIR=` were refused before a

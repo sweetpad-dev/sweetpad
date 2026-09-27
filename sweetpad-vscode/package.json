@@ -1006,7 +1006,7 @@
           "type": "string",
           "default": null,
           "required": false,
-          "description": "Path to derived data directory. Can be absolute or relative to the workspace root."
+          "description": "Path to derived data directory. Can be absolute or relative to the workspace root. A `-derivedDataPath` in `sweetpad.build.args` wins over it."
         },
         "sweetpad.build.arch": {
           "type": "string",

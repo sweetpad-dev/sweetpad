@@ -26,7 +26,7 @@ Covered in depth in [Build & Run](./build.md).
 | `sweetpad.build.env`                     | `{}`    | Environment variables for the `xcodebuild` process itself. `${env:VAR}` expands; `null` unsets an inherited value. |
 | `sweetpad.build.launchArgs`              | `[]`    | Arguments passed to your app when it launches.                                                                      |
 | `sweetpad.build.launchEnv`               | `{}`    | Environment variables passed to your app when it launches.                                                          |
-| `sweetpad.build.derivedDataPath`         | —       | Custom DerivedData location, absolute or relative to the VSCode folder.                                             |
+| `sweetpad.build.derivedDataPath`         | —       | Custom DerivedData location, absolute or relative to the VSCode folder. A `-derivedDataPath` in `sweetpad.build.args` wins over it. |
 | `sweetpad.build.xcodebuildCommand`       | —       | Alternative `xcodebuild` binary, such as Xcode-beta's copy. `${env:VAR}` expands.                                     |
 | `sweetpad.build.swiftCommand`            | —       | Alternative `swift` binary, for Swift Package builds. `${env:VAR}` expands.                                          |
 | `sweetpad.build.arch`                    | —       | Force an architecture (`arm64` or `x86_64`). Useful for Rosetta builds on Apple Silicon.                             |

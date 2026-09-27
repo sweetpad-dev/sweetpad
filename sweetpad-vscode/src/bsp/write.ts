@@ -22,6 +22,10 @@ export type BspResolvedConfig = {
   developerDir: string | null;
   scheme: string | null;
   configuration: string;
+  /**
+   * The DerivedData the extension's builds write (`prepareDerivedDataPath`), which follows a
+   * `-derivedDataPath` in `buildArgs`. The server reads it once at startup.
+   */
   derivedDataPath: string | null;
   /** Debug log file. Defaults to the per-project state dir (out of the project tree); overridable via `sweetpad.buildServer.logPath`. */
   logPath: string;

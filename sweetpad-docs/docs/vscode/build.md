@@ -279,6 +279,9 @@ override the path:
 }
 ```
 
+A `-derivedDataPath` in `sweetpad.build.args` wins over this setting. Builds, app launches and autocomplete all use
+the same location.
+
 ## Pass extra arguments to xcodebuild
 
 Pass any extra `xcodebuild` flags through `sweetpad.build.args`. For example, to skip Swift macro validation:
