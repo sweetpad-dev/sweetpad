@@ -3503,7 +3503,7 @@ A `TARGET_BUILD_DIR=` override is followed through the same layer.
 
 The locator was the only resolver caller that took the command line, so
 `settings show` and the `--hot` recompiler could disagree with the build they
-describe. The arguments are read once, as `xcodebuild::CommandLineSettings`
+describe. The arguments are read once, as sweetpad-core's `app_locator::CommandLineSettings`
 (the `-derivedDataPath`, the `-xcconfig` overlay, the `KEY=VALUE`
 assignments), and handed to each caller from the arguments it has:
 
@@ -3715,6 +3715,48 @@ declare it, and all three agree with `xcodebuild`. The corpus oracle declares
 the workspace its captures were taken through, and its canonical score rose
 from 97% to 99%. The per-target and project-defaults suites, captured with
 `-project`, rose too.
+
+### The app the Run action launches
+
+A scheme can build more than one app: a helper app, a second app, or a share
+extension listed ahead of the app it runs. The locator took the first `.app`
+whose `SUPPORTED_PLATFORMS` covers the destination. On Xcode 27, a scheme that
+builds `LocMac` and `LocMacHelper` and runs `LocMacHelper` reported
+`LocMac.app` as `build -o json`'s `productPath`, and `app launch --mac`
+started `LocMac`. The locator now takes the target the scheme's Run action
+launches (its `BuildableProductRunnable`, or a watch scheme's
+`RemoteRunnable`) when that target builds a `.app` that can run on the
+destination. Otherwise the destination's platform picks, as before, so a
+watch scheme run on an iPhone simulator still gets the iPhone app. A scheme
+with no file (an autocreated one) has no Run action to read and keeps the old
+pick.
+
+### The extension locates the app with the same code
+
+The VS Code extension found the app with its own copy of the rules, and the
+settings it read ignored `sweetpad.build.args`. The build applies those
+arguments, so a `PRODUCT_NAME=`, `PRODUCT_BUNDLE_IDENTIFIER=`, `SYMROOT=` or
+`-xcconfig` there built one bundle and launched another, or none. A
+`-configuration Release` there built Release and looked for Debug. The
+locator now lives in sweetpad-core (`app_locator`). The CLI calls it, and the
+addon exposes it as `locateApp`. That call takes the extension's build options
+plus the raw build arguments and the directory the build runs `xcodebuild`
+in. It reads the arguments the way the extension's build reads them. The
+settings and `-xcconfig` go into the resolver, as a CLI passthrough does. A
+`-scheme`, `-configuration` or `-derivedDataPath` there replaces the
+extension's own, as it does on the build's command line. The extension's
+`buildSettings` queries take the same arguments. With a customized
+`sweetpad.build.xcodebuildCommand`, the extension asks `xcodebuild
+-showBuildSettings` with the build's arguments and picks with `pickApp`,
+which applies the same rules to settings resolved outside the addon. The RPC
+server's `appPath.find` and `bundleId.get` answer from the locator as well.
+They took the first target with a wrapper or a bundle id, which could be a
+framework, a test bundle or the watch app.
+
+A macOS command-line tool builds no `.app`. The extension runs one on the Mac,
+so the locator returns it, marked as a tool, when a scheme builds no app and
+the destination is the Mac. The CLI's `app` verbs install and launch bundles,
+so they still refuse it.
 
 ## 9t. v8 — `feedback`: an agent's problem report to the maintainer
 

@@ -6,7 +6,7 @@ import * as vscode from "vscode";
 import { getBuildServerProvider } from "../bsp/commands";
 import {
   type XcodeScheme,
-  getBuildSettingsToLaunch,
+  locateBuiltApp,
   getIsXcbeautifyInstalled,
   getIsXBSInstalled,
   getSchemes,
@@ -708,7 +708,7 @@ export class BuildManager {
   ) {
     this.progress.updateText("Extracting build settings");
     const destinationRaw = buildDestinationString({ platform: "macOS" });
-    const buildSettings = await getBuildSettingsToLaunch({
+    const buildSettings = await locateBuiltApp({
       workspaceRoot: options.workspaceRoot,
       scheme: options.scheme,
       configuration: options.configuration,
@@ -775,7 +775,7 @@ export class BuildManager {
 
     this.progress.updateText("Extracting build settings");
     const destinationRaw = getXcodeBuildDestinationString({ destination: options.destination });
-    const buildSettings = await getBuildSettingsToLaunch({
+    const buildSettings = await locateBuiltApp({
       workspaceRoot: options.workspaceRoot,
       scheme: options.scheme,
       configuration: options.configuration,
@@ -893,7 +893,7 @@ export class BuildManager {
 
     this.progress.updateText("Extracting build settings");
     const destinationRaw = getXcodeBuildDestinationString({ destination: destination });
-    const buildSettings = await getBuildSettingsToLaunch({
+    const buildSettings = await locateBuiltApp({
       workspaceRoot: option.workspaceRoot,
       scheme: scheme,
       configuration: configuration,

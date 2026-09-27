@@ -82,7 +82,7 @@ fn serve_command_line(ctx: &Context) -> sweetpad_core::bsp::CommandLine {
     };
     match ctx.xcodebuild_args(crate::cli::xcodebuild::Action::Build, &[]) {
         Ok(args) => {
-            let settings = crate::cli::xcodebuild::CommandLineSettings::of(&args, &container);
+            let settings = crate::cli::xcodebuild::command_line_settings(&args, &container);
             sweetpad_core::bsp::CommandLine {
                 xcconfig: settings.xcconfig,
                 overrides: settings.overrides,

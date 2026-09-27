@@ -13,6 +13,8 @@ Open the folder containing your Xcode project, then open the SweetPad sidebar on
 **Build** section, and click ▶️ next to the scheme name. SweetPad asks you to pick a simulator or device, then builds
 and launches the app on it.
 
+When a scheme builds more than one app, SweetPad launches the one the scheme's Run action names, as Xcode does.
+
 For prettier build output, install `xcbeautify`:
 
 ```bash
@@ -295,6 +297,10 @@ Pass any extra `xcodebuild` flags through `sweetpad.build.args`. For example, to
 A flag in this list replaces the one SweetPad passes itself, such as `-destination` or `-derivedDataPath`. Flags that
 `xcodebuild` accepts more than once, such as `-skip-testing` or `-only-testing`, keep every copy in order. For other
 flags, the last copy wins.
+
+SweetPad reads these arguments when it looks for the app to launch, too. A `PRODUCT_NAME=`,
+`PRODUCT_BUNDLE_IDENTIFIER=` or `SYMROOT=` setting, an `-xcconfig`, or a `-configuration` here changes which app gets
+installed and launched, just as it changes what gets built.
 
 You can also pass environment variables to `xcodebuild` itself (not to the launched app) with `sweetpad.build.env`.
 This is useful for forwarding tokens or paths that your project's build scripts read from the environment:

@@ -10,7 +10,7 @@ import {
   createMockDeviceWithOS,
   createMockTerminal,
 } from "../__mocks__/devices";
-import { getBuildSettingsToLaunch, getXcodeVersionInstalled } from "../common/cli/scripts";
+import { getXcodeVersionInstalled, locateBuiltApp } from "../common/cli/scripts";
 import { ExecutionScopeService } from "../common/execution-scope";
 import { isFileExists, readJsonFile, tempFilePath } from "../common/files";
 import type { WorkspaceStateService } from "../common/workspace-state";
@@ -33,7 +33,7 @@ vi.mock("../common/exec", () => ({
 
 vi.mock("../common/cli/scripts", () => ({
   getXcodeVersionInstalled: vi.fn(),
-  getBuildSettingsToLaunch: vi.fn(),
+  locateBuiltApp: vi.fn(),
   getIsXcbeautifyInstalled: vi.fn(),
   getIsXcodeBuildServerInstalled: vi.fn(),
   generateBuildServerConfig: vi.fn(),
@@ -145,7 +145,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         appName: "TestApp",
         executableName: "TestApp",
       };
-      (getBuildSettingsToLaunch as Mock).mockResolvedValue(mockBuildSettings);
+      (locateBuiltApp as Mock).mockResolvedValue(mockBuildSettings);
     });
 
     describe("with iOS 17+ device (uses devicectl)", () => {

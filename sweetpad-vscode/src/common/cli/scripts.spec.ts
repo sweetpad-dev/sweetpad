@@ -13,6 +13,7 @@ import {
   getBuildSettingsList,
   getSimulatorAppPath,
   getXcodeBuildCommand,
+  locateBuiltApp,
   packageSchemes,
   parseCliJsonOutput,
 } from "./scripts";
@@ -22,12 +23,23 @@ vi.mock("../tasks/shell-env", () => ({ getShellDeveloperDir: vi.fn() }));
 vi.mock("@sweetpad/native", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sweetpad/native")>()),
   buildSettings: vi.fn(),
+  locateApp: vi.fn(),
+  pickApp: vi.fn(),
 }));
 
 const mockGetConfiguration = vscode.workspace.getConfiguration as Mock;
 const mockExec = exec as Mock;
 const mockGetShellDeveloperDir = getShellDeveloperDir as Mock;
 const mockBuildSettings = sweetpadLib.buildSettings as Mock;
+const mockLocateApp = sweetpadLib.locateApp as Mock;
+const mockPickApp = sweetpadLib.pickApp as Mock;
+
+/** `getWorkspaceConfig` reads `getConfiguration("sweetpad").get(key)`. */
+function mockConfig(values: Record<string, unknown>) {
+  mockGetConfiguration.mockReturnValue({
+    get: vi.fn((key: string) => values[key]),
+  });
+}
 
 describe("getXcodeBuildCommand", () => {
   const originalEnv = process.env;
@@ -159,13 +171,6 @@ const xcodebuildJson = (target: string) =>
   JSON.stringify([{ action: "build", target, buildSettings: { PRODUCT_NAME: target } }]);
 
 describe("getBuildSettingsList", () => {
-  /** `getWorkspaceConfig` reads `getConfiguration("sweetpad").get(key)`. */
-  function mockConfig(values: Record<string, unknown>) {
-    mockGetConfiguration.mockReturnValue({
-      get: vi.fn((key: string) => values[key]),
-    });
-  }
-
   beforeEach(() => {
     vi.resetAllMocks();
   });
@@ -297,6 +302,52 @@ describe("getBuildSettingsList", () => {
     expect(mockExec).toHaveBeenCalledTimes(1);
   });
 
+  // The build runs xcodebuild in the workspace root with build.args on its command line, so the settings are
+  // the ones those arguments give.
+  it("gives the resolver sweetpad.build.args and the directory the build runs in", async () => {
+    mockConfig({ "build.args": ["PRODUCT_NAME=Other", "-configuration", "Release"] });
+    mockBuildSettings.mockReturnValue([{ target: "App", settings: {} }]);
+
+    await getBuildSettingsList({
+      workspaceRoot: "/test/workspace",
+      scheme: "App",
+      configuration: "Debug",
+      sdk: undefined,
+      xcworkspace: "/proj/App.xcodeproj",
+    });
+
+    expect(mockBuildSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        buildArgs: ["PRODUCT_NAME=Other", "-configuration", "Release"],
+        workingDirectory: "/test/workspace",
+      }),
+    );
+  });
+
+  it("adds sweetpad.build.args to the xcodebuild query as the build adds them", async () => {
+    mockConfig({
+      "build.xcodebuildCommand": "/usr/local/bin/xcodebuild-wrapper",
+      "build.args": ["PRODUCT_NAME=Other", "-configuration", "Release"],
+    });
+    mockExec.mockResolvedValue(xcodebuildJson("App"));
+
+    await getBuildSettingsList({
+      workspaceRoot: "/test/workspace",
+      scheme: "App",
+      configuration: "Debug",
+      sdk: undefined,
+      xcworkspace: "/proj/App.xcodeproj",
+    });
+
+    const call = mockExec.mock.calls[0][0] as { command: string; args: string[] };
+    expect(call.command).toBe("/usr/local/bin/xcodebuild-wrapper");
+    expect(call.args).toContain("PRODUCT_NAME=Other");
+    expect(call.args).toContain("-showBuildSettings");
+    // The typed configuration replaces the picked one, as on the build's command line.
+    expect(call.args[call.args.indexOf("-configuration") + 1]).toBe("Release");
+    expect(call.args).not.toContain("Debug");
+  });
+
   it("keeps using xcodebuild for SPM packages, from the package directory", async () => {
     mockConfig({});
     mockExec.mockResolvedValue(xcodebuildJson("MyPackage"));
@@ -312,6 +363,107 @@ describe("getBuildSettingsList", () => {
     expect(settings[0].target).toBe("MyPackage");
     expect(mockBuildSettings).not.toHaveBeenCalled();
     expect(mockExec).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/proj" }));
+  });
+});
+
+describe("locateBuiltApp", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  const located = {
+    target: "App",
+    path: "/dd/Build/Products/Debug/App.app",
+    bundleId: "com.example.app",
+    executable: "/dd/Build/Products/Debug/App.app/Contents/MacOS/App",
+    settings: { EXECUTABLE_NAME: "App", ENABLE_DEBUG_DYLIB: "YES" },
+  };
+
+  it("asks the shared locator, with the build's own arguments", async () => {
+    mockConfig({ "build.args": ["PRODUCT_NAME=Other"] });
+    mockLocateApp.mockReturnValue(located);
+
+    const app = await locateBuiltApp({
+      workspaceRoot: "/test/workspace",
+      scheme: "App",
+      configuration: "Debug",
+      sdk: "macosx",
+      xcworkspace: "/proj/App.xcworkspace",
+      destination: "platform=macOS",
+    });
+
+    expect(mockLocateApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspace: "/proj/App.xcworkspace",
+        scheme: "App",
+        configuration: "Debug",
+        destination: "platform=macOS",
+        buildArgs: ["PRODUCT_NAME=Other"],
+        workingDirectory: "/test/workspace",
+      }),
+    );
+    expect(mockBuildSettings).not.toHaveBeenCalled();
+    expect(app.appPath).toBe("/dd/Build/Products/Debug/App.app");
+    expect(app.executablePath).toBe("/dd/Build/Products/Debug/App.app/Contents/MacOS/App");
+    expect(app.bundleIdentifier).toBe("com.example.app");
+    expect(app.appName).toBe("App.app");
+    expect(app.executableName).toBe("App");
+    expect(app.enableDebugDylib).toBe(true);
+  });
+
+  it("picks among xcodebuild's settings by the same rules on the xcodebuild route", async () => {
+    mockConfig({ "build.xcodebuildCommand": "/usr/local/bin/xcodebuild-wrapper" });
+    mockExec.mockResolvedValue(xcodebuildJson("App"));
+    mockPickApp.mockReturnValue(located);
+
+    const app = await locateBuiltApp({
+      workspaceRoot: "/test/workspace",
+      scheme: "App",
+      configuration: "Debug",
+      sdk: "iphonesimulator",
+      xcworkspace: "/proj/App.xcodeproj",
+      destination: "platform=iOS Simulator,id=U",
+    });
+
+    expect(mockLocateApp).not.toHaveBeenCalled();
+    expect(mockPickApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targets: [{ target: "App", settings: { PRODUCT_NAME: "App" } }],
+        container: "/proj/App.xcodeproj",
+        scheme: "App",
+        destination: "platform=iOS Simulator,id=U",
+        sdk: "iphonesimulator",
+      }),
+    );
+    const args = mockExec.mock.calls[0][0].args as string[];
+    expect(args[args.indexOf("-destination") + 1]).toBe("platform=iOS Simulator,id=U");
+    expect(app.target).toBe("App");
+  });
+
+  it("runs a Swift package's first target, which builds no .app", async () => {
+    mockConfig({});
+    mockExec.mockResolvedValue(
+      JSON.stringify([
+        {
+          action: "build",
+          target: "Tool",
+          buildSettings: { TARGET_BUILD_DIR: "/dd/Debug", EXECUTABLE_PATH: "Tool", FULL_PRODUCT_NAME: "Tool" },
+        },
+      ]),
+    );
+
+    const app = await locateBuiltApp({
+      workspaceRoot: "/test/workspace",
+      scheme: "Tool",
+      configuration: "Debug",
+      sdk: "macosx",
+      xcworkspace: "/proj/Package.swift",
+      destination: "platform=macOS",
+    });
+
+    expect(mockLocateApp).not.toHaveBeenCalled();
+    expect(mockPickApp).not.toHaveBeenCalled();
+    expect(app.executablePath).toBe("/dd/Debug/Tool");
   });
 });
 

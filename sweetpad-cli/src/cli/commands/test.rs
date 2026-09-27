@@ -1512,10 +1512,9 @@ fn app_bundle_id(run: &RunContext) -> Option<String> {
         passthrough: run.passthrough,
         action: xcodebuild::BuildAction::Build,
     };
-    let settings = xcodebuild::resolved_settings(&plan).ok()?;
-    xcodebuild::app_bundle(&settings, Some(&run.target.destination))
+    xcodebuild::located(&plan)
         .ok()
-        .map(|app| app.bundle_id)
+        .map(|located| located.app.bundle_id)
 }
 
 fn epoch_seconds(time: SystemTime) -> f64 {

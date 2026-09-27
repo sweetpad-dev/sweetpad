@@ -66,7 +66,7 @@ pub struct BuildSettingsOptions {
 }
 
 /// One target's resolved build settings.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TargetSettings {
     pub target: String,
     pub settings: BTreeMap<String, String>,

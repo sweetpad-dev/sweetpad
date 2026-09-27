@@ -6,9 +6,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
-use sweetpad_core::build_settings::{BuildSettingsOptions, resolve_build_settings};
+use sweetpad_core::app_locator::path_value;
+pub use sweetpad_core::app_locator::{AppBundle, CommandLineSettings, Located, ProductKind};
+use sweetpad_core::build_settings::BuildSettingsOptions;
 use sweetpad_core::xcodebuild_args::{self, dangling_flag, last_value};
-use sweetpad_lib::project::{absolutize, standardize};
 
 use crate::cli::output::Output;
 use crate::cli::resolve::Container;
@@ -2096,102 +2097,6 @@ fn collect_diagnostic_files(dir: &Path, streams: &mut Vec<PathBuf>, schedules: &
     }
 }
 
-/// One target's resolved build settings, the shape [`app_bundle`] reads to
-/// locate the built product. Field names mirror `xcodebuild -showBuildSettings
-/// -json` so the values can be deserialized straight from that format in tests.
-#[derive(Debug, Deserialize)]
-pub struct TargetBuildSettings {
-    pub target: String,
-    #[serde(rename = "buildSettings")]
-    pub settings: BTreeMap<String, String>,
-}
-
-/// The launchable app produced by a build: the `.app` path, its bundle id, and
-/// the executable inside it (used to launch macOS apps directly).
-#[derive(Debug, Clone)]
-pub struct AppBundle {
-    pub path: PathBuf,
-    pub bundle_id: String,
-    /// `TARGET_BUILD_DIR/EXECUTABLE_PATH` — the binary to run for a macOS app.
-    pub executable: PathBuf,
-}
-
-/// Pick the launchable app's *target* from resolved settings. Candidates are
-/// targets that build a `.app` wrapper and declare a bundle id; among them,
-/// one whose `SUPPORTED_PLATFORMS` covers the destination's platform wins —
-/// in an iOS + watchOS scheme the watch companion builds *first* (dependency
-/// order), and blind first-pick would install the watch app onto the iPhone
-/// simulator. Targets that don't state their platforms (or an unmappable/
-/// absent destination) fall back to first-candidate order — and when the
-/// filter rejects *every* candidate (Mac Catalyst declaring `iphoneos` under
-/// a `platform=macOS` destination), the first `.app` still wins over a
-/// nothing-to-launch error.
-pub fn app_target<'a>(
-    settings: &'a [TargetBuildSettings],
-    destination: Option<&str>,
-) -> Result<&'a TargetBuildSettings, CliError> {
-    let wanted = destination.and_then(destination_sdk_token);
-    let mut fallback: Option<&TargetBuildSettings> = None;
-    let mut first_app: Option<&TargetBuildSettings> = None;
-    for t in settings {
-        if bundle_of(t).is_none() {
-            continue;
-        }
-        if first_app.is_none() {
-            first_app = Some(t);
-        }
-        let supported = t.settings.get("SUPPORTED_PLATFORMS");
-        match (wanted, supported) {
-            // The target states its platforms and covers the destination —
-            // a definitive pick.
-            (Some(tok), Some(platforms)) if platforms.split_whitespace().any(|p| p == tok) => {
-                return Ok(t);
-            }
-            // States its platforms and the destination is not among them —
-            // not this app (the watch-companion case).
-            (Some(_), Some(_)) => {}
-            // No filter requested, or the target doesn't say — candidate in
-            // declaration order.
-            _ => {
-                if fallback.is_none() {
-                    fallback = Some(t);
-                }
-            }
-        }
-    }
-    fallback.or(first_app).ok_or_else(|| {
-        CliError::new("could not find a launchable .app in the resolved build settings")
-    })
-}
-
-/// The launchable bundle a target's resolved settings describe, if it builds
-/// a `.app` wrapper with a bundle id — the candidacy test behind
-/// [`app_target`].
-fn bundle_of(t: &TargetBuildSettings) -> Option<AppBundle> {
-    let wrapper = t
-        .settings
-        .get("WRAPPER_NAME")
-        .or_else(|| t.settings.get("FULL_PRODUCT_NAME"))?;
-    let build_dir = t.settings.get("TARGET_BUILD_DIR")?;
-    let bundle_id = t.settings.get("PRODUCT_BUNDLE_IDENTIFIER")?;
-    if !Path::new(wrapper)
-        .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("app"))
-    {
-        return None;
-    }
-    let build_dir = Path::new(build_dir);
-    let executable = t
-        .settings
-        .get("EXECUTABLE_PATH")
-        .map_or_else(|| build_dir.join(wrapper), |rel| build_dir.join(rel));
-    Some(AppBundle {
-        path: build_dir.join(wrapper),
-        bundle_id: bundle_id.clone(),
-        executable,
-    })
-}
-
 /// The part of the project file's `[xcodebuild] args` that `action` takes:
 /// all of it but the flags `xcodebuild` fails on for that action, and their
 /// values, with a note per flag left out. The file applies to every action, so
@@ -2257,74 +2162,47 @@ const TEST_ONLY_FLAGS: [&str; 5] = [
     "-testProductsPath",
 ];
 
-/// The value after the last `flag` in a passthrough, read by
-/// [`last_value`], which the BSP server reads the extension's arguments with
-/// too, as a path, joined onto [`working_dir`] when relative, the way
-/// `xcodebuild` running there reads it. A `-derivedDataPath build/dd` typed
+/// The value after the last `flag` in a passthrough, read by [`last_value`],
+/// which the BSP server reads the extension's arguments with too, as a path,
+/// joined onto [`working_dir`] when relative, the way `xcodebuild` running
+/// there reads it (see [`path_value`]). A `-derivedDataPath build/dd` typed
 /// in a nested source directory names a directory beside the project, not
 /// below the caller.
-///
-/// `xcodebuild` knows the directory it runs in by its physical path, so a
-/// relative path joins that directory's [`standardize`] spelling. For a
-/// project reached through a symlinked `link`, `xcodebuild` reports
-/// `-derivedDataPath dd` as `real/dd` and `../dd` as the real directory's
-/// sibling.
 fn passthrough_path(passthrough: &[String], flag: &str, container: &Container) -> Option<PathBuf> {
-    let path = PathBuf::from(last_value(passthrough, flag)?);
-    if path.is_absolute() {
-        return Some(path);
-    }
-    // No working directory runs `xcodebuild` in the caller's.
-    let base = working_dir(container).unwrap_or_else(|| PathBuf::from("."));
-    Some(absolutize(&standardize(&base).join(path)))
+    path_value(passthrough, flag, working_dir(container).as_deref())
 }
 
-/// What a passthrough adds to the build settings `xcodebuild` resolves, above
-/// every project layer: the `-derivedDataPath` that places the build, the
-/// `-xcconfig` overlay, and the `KEY=VALUE` assignments. Each caller that
-/// resolves settings for a build reads them from the same arguments the build
-/// takes, so the locator, `settings show` and the hot-reload recompiler agree
-/// with it.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct CommandLineSettings {
-    pub derived_data_path: Option<PathBuf>,
-    /// `xcodebuild` takes one `-xcconfig` and refuses a second, so this is
-    /// the last one given.
-    pub xcconfig: Option<PathBuf>,
-    pub overrides: Vec<(String, String)>,
+/// What `passthrough` adds to the build settings `xcodebuild` resolves:
+/// [`CommandLineSettings::of`] reading it from the directory `xcodebuild`
+/// runs in for `container` ([`working_dir`]), so a relative `-derivedDataPath`
+/// or `-xcconfig` names what the build reads.
+#[must_use]
+pub fn command_line_settings(passthrough: &[String], container: &Container) -> CommandLineSettings {
+    CommandLineSettings::of(passthrough, working_dir(container).as_deref())
 }
 
-impl CommandLineSettings {
-    /// Read them from `passthrough`, which is the project's `[xcodebuild]
-    /// args` followed by the typed `--` tail. The paths of the two flags
-    /// resolve against the directory `xcodebuild` runs from, as the build
-    /// reads them. The settings stay as typed: the resolver reads a relative
-    /// `SYMROOT=build` against each target's project directory, as
-    /// `xcodebuild` does.
-    #[must_use]
-    pub fn of(passthrough: &[String], container: &Container) -> Self {
-        Self {
-            derived_data_path: passthrough_path(passthrough, "-derivedDataPath", container),
-            xcconfig: passthrough_path(passthrough, "-xcconfig", container),
-            overrides: xcodebuild_args::settings(passthrough),
-        }
-    }
-}
-
-/// Resolve every target's build settings for a plan through the in-process
-/// resolver (the engine behind `settings show`), with no `xcodebuild` spawn —
-/// including a passthrough's [`CommandLineSettings`]. Feed the result to
-/// [`app_bundle`] to name the product a build of this plan writes. Swift
-/// packages build no `.app`, so they have nothing to resolve here.
+/// Locate the app a build of `plan` writes, through the in-process resolver
+/// (the engine behind `settings show`), with no `xcodebuild` spawn, and with
+/// the passthrough's [`CommandLineSettings`]. Swift packages build no `.app`,
+/// so they have nothing to locate here.
 ///
 /// `app`'s `RunPlan` locates its install/launch bundle through this same
-/// function: one locator, so the CLI cannot report one bundle and install
-/// another.
-pub fn resolved_settings(plan: &BuildPlan<'_>) -> Result<Vec<TargetBuildSettings>, CliError> {
-    resolve_options(&settings_options(plan)?)
+/// function, and so does `build -o json`'s `productPath`: one locator, so the
+/// CLI cannot report one bundle and install another. The `app` verbs install
+/// and launch `.app` bundles, so a scheme whose product is a command-line tool
+/// has nothing for them.
+pub fn located(plan: &BuildPlan<'_>) -> Result<Located, CliError> {
+    let located =
+        sweetpad_core::app_locator::locate(settings_options(plan)?).map_err(CliError::new)?;
+    if located.kind != ProductKind::App {
+        return Err(CliError::new(
+            "could not find a launchable .app in the resolved build settings",
+        ));
+    }
+    Ok(located)
 }
 
-/// The resolver options [`resolved_settings`] resolves `plan` with.
+/// The resolver options [`located`] resolves `plan` with.
 fn settings_options(plan: &BuildPlan<'_>) -> Result<BuildSettingsOptions, CliError> {
     let (project, workspace) = match plan.container {
         Container::Project(p) => (Some(p.clone()), None),
@@ -2333,7 +2211,7 @@ fn settings_options(plan: &BuildPlan<'_>) -> Result<BuildSettingsOptions, CliErr
             return Err(CliError::new("Swift packages have no .app bundle"));
         }
     };
-    let command_line = CommandLineSettings::of(plan.passthrough, plan.container);
+    let command_line = command_line_settings(plan.passthrough, plan.container);
     let opts = BuildSettingsOptions {
         project,
         workspace,
@@ -2358,7 +2236,7 @@ fn settings_options(plan: &BuildPlan<'_>) -> Result<BuildSettingsOptions, CliErr
         derived_data_path: command_line.derived_data_path,
         overrides: command_line.overrides,
         // Callers install, launch, and report what this resolves, so it has to
-        // name the bundle `xcodebuild` actually wrote — including when the user
+        // name the bundle `xcodebuild` actually wrote, including when the user
         // has moved Derived Data in Xcode (issue #306).
         read_xcode_locations: true,
         keys: None,
@@ -2366,54 +2244,12 @@ fn settings_options(plan: &BuildPlan<'_>) -> Result<BuildSettingsOptions, CliErr
     Ok(opts)
 }
 
-/// Resolve `opts` into each target's settings.
-fn resolve_options(opts: &BuildSettingsOptions) -> Result<Vec<TargetBuildSettings>, CliError> {
-    let resolved = resolve_build_settings(opts).map_err(CliError::new)?;
-    Ok(resolved
-        .into_iter()
-        .map(|t| TargetBuildSettings {
-            target: t.target,
-            settings: t.settings,
-        })
-        .collect())
-}
-
-/// Pick the launchable app from resolved settings — [`app_target`]'s bundle.
-pub fn app_bundle(
-    settings: &[TargetBuildSettings],
-    destination: Option<&str>,
-) -> Result<AppBundle, CliError> {
-    let target = app_target(settings, destination)?;
-    bundle_of(target).ok_or_else(|| {
-        CliError::new("could not find a launchable .app in the resolved build settings")
-    })
-}
-
-/// The SDK token a `-destination platform=…` implies, as spelled in
-/// `SUPPORTED_PLATFORMS` (e.g. `iOS Simulator` → `iphonesimulator`).
-fn destination_sdk_token(spec: &str) -> Option<&'static str> {
-    let platform = spec
-        .split(',')
-        .find_map(|kv| kv.trim().strip_prefix("platform="))?;
-    Some(match platform {
-        "iOS Simulator" => "iphonesimulator",
-        "iOS" => "iphoneos",
-        "macOS" => "macosx",
-        "watchOS Simulator" => "watchsimulator",
-        "watchOS" => "watchos",
-        "tvOS Simulator" => "appletvsimulator",
-        "tvOS" => "appletvos",
-        "visionOS Simulator" => "xrsimulator",
-        "visionOS" => "xros",
-        _ => return None,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cli::resolve::Container;
     use std::path::PathBuf;
+    use sweetpad_lib::project::standardize;
 
     fn project() -> Container {
         Container::Project(PathBuf::from("/work/App.xcodeproj"))
@@ -3030,13 +2866,6 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
         );
     }
 
-    /// Build `TargetBuildSettings` from a `-showBuildSettings -json` payload,
-    /// skipping any preamble — a convenience for the `app_bundle` tests.
-    fn parse_settings(stdout: &str) -> Vec<TargetBuildSettings> {
-        let json = &stdout[stdout.find('[').expect("no JSON array")..];
-        serde_json::from_str(json).expect("invalid build settings JSON")
-    }
-
     #[test]
     fn build_args_for_project() {
         let c = project();
@@ -3471,41 +3300,6 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
     }
 
     #[test]
-    fn parses_settings_skipping_preamble() {
-        let stdout =
-            "warning: blah\n[{\"target\":\"App\",\"buildSettings\":{\"PRODUCT_NAME\":\"App\"}}]";
-        let parsed = parse_settings(stdout);
-        assert_eq!(parsed.len(), 1);
-        assert_eq!(parsed[0].target, "App");
-        assert_eq!(parsed[0].settings.get("PRODUCT_NAME").unwrap(), "App");
-    }
-
-    #[test]
-    fn app_bundle_picks_the_app_target() {
-        let stdout = r#"[
-          {"target":"AppTests","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"AppTests.xctest","PRODUCT_BUNDLE_IDENTIFIER":"com.x.tests"}},
-          {"target":"App","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"App.app","PRODUCT_BUNDLE_IDENTIFIER":"com.x.app"}}
-        ]"#;
-        let settings = parse_settings(stdout);
-        let app = app_bundle(&settings, None).unwrap();
-        assert_eq!(app.path, PathBuf::from("/d/App.app"));
-        assert_eq!(app.bundle_id, "com.x.app");
-    }
-
-    #[test]
-    fn app_bundle_resolves_macos_executable() {
-        let stdout = r#"[{"target":"App","buildSettings":{
-            "TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"App.app",
-            "EXECUTABLE_PATH":"App.app/Contents/MacOS/App","PRODUCT_BUNDLE_IDENTIFIER":"com.x.app"}}]"#;
-        let settings = parse_settings(stdout);
-        let app = app_bundle(&settings, None).unwrap();
-        assert_eq!(
-            app.executable,
-            PathBuf::from("/d/App.app/Contents/MacOS/App")
-        );
-    }
-
-    #[test]
     fn working_dir_is_none_for_relative_container() {
         // A relative project path must not produce an empty cwd (which would
         // make the spawn fail and look like a missing xcodebuild).
@@ -3557,7 +3351,7 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
     fn a_relative_derived_data_path_resolves_where_xcodebuild_runs() {
         let args = |dir: &str| vec!["-derivedDataPath".to_string(), dir.to_string()];
         let dd = |args: &[String], container: &Container| {
-            CommandLineSettings::of(args, container).derived_data_path
+            command_line_settings(args, container).derived_data_path
         };
         let nested = Container::Project(PathBuf::from("/work/ios/App.xcodeproj"));
         // xcodebuild runs from the project's directory, whatever the caller's.
@@ -3591,7 +3385,7 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
         let container = Container::Project(root.join("link/App.xcodeproj"));
         let read = |dir: &str| {
             let args = vec!["-derivedDataPath".to_string(), dir.to_string()];
-            CommandLineSettings::of(&args, &container).derived_data_path
+            command_line_settings(&args, &container).derived_data_path
         };
         let physical = standardize(&root.join("real"));
         assert_eq!(read("dd"), Some(physical.join("app/dd")));
@@ -3609,7 +3403,7 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
     fn the_command_line_settings_are_read_the_way_xcodebuild_reads_them() {
         let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
         let nested = Container::Project(PathBuf::from("/work/ios/App.xcodeproj"));
-        let read = CommandLineSettings::of(
+        let read = command_line_settings(
             &s(&[
                 "-xcconfig",
                 "Config/Over.xcconfig",
@@ -3638,10 +3432,10 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
             }
         );
         // An absolute path stays as typed, and none given is none.
-        let absolute = CommandLineSettings::of(&s(&["-xcconfig", "/x/Over.xcconfig"]), &nested);
+        let absolute = command_line_settings(&s(&["-xcconfig", "/x/Over.xcconfig"]), &nested);
         assert_eq!(absolute.xcconfig, Some(PathBuf::from("/x/Over.xcconfig")));
         assert_eq!(
-            CommandLineSettings::of(&[], &nested),
+            command_line_settings(&[], &nested),
             CommandLineSettings::default()
         );
     }
@@ -3659,19 +3453,19 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
         assert_eq!(err.error_kind(), ErrorKind::Usage);
         assert_eq!(err.to_string(), "'-xcconfig' after '--' needs a value");
         assert_eq!(
-            CommandLineSettings::of(&tail, &project).xcconfig,
+            command_line_settings(&tail, &project).xcconfig,
             sweetpad_core::xcodebuild_args::last_value(&tail, "-xcconfig")
                 .map(|p| PathBuf::from("/work/ios").join(p)),
         );
         assert_eq!(
-            CommandLineSettings::of(&tail, &project).xcconfig,
+            command_line_settings(&tail, &project).xcconfig,
             Some(PathBuf::from("/work/ios/a.xcconfig"))
         );
 
         // A value spelled like a flag is a value, as xcodebuild reads it.
         let tail = s(&["-derivedDataPath", "-xcconfig"]);
         assert!(refuse_dangling_flag(&tail).is_ok());
-        let read = CommandLineSettings::of(&tail, &project);
+        let read = command_line_settings(&tail, &project);
         assert_eq!(
             read.derived_data_path,
             Some(PathBuf::from("/work/ios/-xcconfig"))
@@ -3689,7 +3483,7 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
     fn a_passthroughs_settings_are_read_as_typed() {
         let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
         let project = Container::Project(PathBuf::from("/work/ios/App.xcodeproj"));
-        let read = CommandLineSettings::of(
+        let read = command_line_settings(
             &s(&["SYMROOT=build", "OBJROOT=/tmp/obj", "PRODUCT_NAME=Renamed"]),
             &project,
         );
@@ -3733,7 +3527,7 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
         let cache = crate::cli::testdir::TempDir::new("sweetpad-locator-catalog");
         let mut opts = settings_options(&plan).unwrap();
         opts.catalog_cache = Some(cache.join("catalog.bin"));
-        app_bundle(&resolve_options(&opts).unwrap(), plan.destination).unwrap()
+        sweetpad_core::app_locator::locate(opts).unwrap().app
     }
 
     #[test]
@@ -3906,33 +3700,6 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
             assert!(xcodebuild_args::takes_value(flag), "{flag}");
             assert!(for_action(Action::Clean, &file, &[]).0.is_empty(), "{flag}");
         }
-    }
-
-    #[test]
-    fn app_bundle_errors_without_app() {
-        let settings = parse_settings(
-            r#"[{"target":"Lib","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"Lib.framework","PRODUCT_BUNDLE_IDENTIFIER":"com.x.lib"}}]"#,
-        );
-        assert!(app_bundle(&settings, None).is_err());
-    }
-
-    #[test]
-    fn app_bundle_prefers_the_destination_platform() {
-        // Dependency order builds the watch companion first; the destination
-        // platform must pick the iOS app anyway.
-        let stdout = r#"[
-          {"target":"WatchApp","buildSettings":{"TARGET_BUILD_DIR":"/w","WRAPPER_NAME":"Watch App.app","PRODUCT_BUNDLE_IDENTIFIER":"com.x.watch","SUPPORTED_PLATFORMS":"watchos watchsimulator"}},
-          {"target":"App","buildSettings":{"TARGET_BUILD_DIR":"/d","WRAPPER_NAME":"App.app","PRODUCT_BUNDLE_IDENTIFIER":"com.x.app","SUPPORTED_PLATFORMS":"iphoneos iphonesimulator"}}
-        ]"#;
-        let settings = parse_settings(stdout);
-        let ios = app_bundle(&settings, Some("platform=iOS Simulator,id=U")).unwrap();
-        assert_eq!(ios.bundle_id, "com.x.app");
-        let watch = app_bundle(&settings, Some("platform=watchOS Simulator,id=U")).unwrap();
-        assert_eq!(watch.bundle_id, "com.x.watch");
-        // No destination (or targets without SUPPORTED_PLATFORMS) keeps the
-        // declaration-order pick.
-        let first = app_bundle(&settings, None).unwrap();
-        assert_eq!(first.bundle_id, "com.x.watch");
     }
 
     #[test]

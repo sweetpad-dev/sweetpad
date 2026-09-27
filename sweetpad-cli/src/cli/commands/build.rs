@@ -435,12 +435,8 @@ fn product_path(
     if !(ctx.out.is_json() || ctx.out.is_ndjson()) || plan.action == BuildAction::BuildForTesting {
         return Ok(None);
     }
-    let located = || -> Result<std::path::PathBuf, CliError> {
-        let settings = xcodebuild::resolved_settings(plan)?;
-        Ok(xcodebuild::app_bundle(&settings, plan.destination)?.path)
-    };
-    located()
-        .map(Some)
+    xcodebuild::located(plan)
+        .map(|located| Some(located.app.path))
         .map_err(|e| format!("the product couldn't be located: {e}"))
 }
 

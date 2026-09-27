@@ -173,7 +173,7 @@ fn show(
         .as_deref()
         .or(resolved.destination.as_deref())
         .and_then(sweetpad_lib::destination::parse_destination_arg);
-    let command_line = xcodebuild::CommandLineSettings::of(&passthrough, &resolved.container);
+    let command_line = xcodebuild::command_line_settings(&passthrough, &resolved.container);
 
     let opts = BuildSettingsOptions {
         project,

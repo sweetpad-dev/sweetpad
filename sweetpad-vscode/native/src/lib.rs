@@ -16,7 +16,9 @@ use std::path::{Path, PathBuf};
 
 use napi_derive::napi;
 
-use sweetpad_lib::destination::parse_destination_arg;
+use sweetpad_core::app_locator::CommandLineSettings;
+use sweetpad_core::xcodebuild_args;
+use sweetpad_lib::destination::{RunDestination, parse_destination_arg};
 use sweetpad_lib::{compiler_args, project, scheme, workspace, xcode};
 
 /// Active Xcode toolchain info. Mirrors `xcrun xcodebuild -version` plus the
@@ -244,6 +246,15 @@ pub struct BuildSettingsOptions {
     pub xcode: Option<String>,
     /// `xcodebuild -derivedDataPath` override.
     pub derived_data_path: Option<String>,
+    /// The arguments the extension's builds add to their own
+    /// (`sweetpad.build.args`), read as `xcodebuild` reads them: their
+    /// `KEY=VALUE` settings sit above every project layer, and a `-xcconfig`,
+    /// `-derivedDataPath`, `-scheme` or `-configuration` among them replaces
+    /// the one these options name, as it does on the build's command line.
+    pub build_args: Option<Vec<String>>,
+    /// The directory the build runs `xcodebuild` in, which a relative path in
+    /// `buildArgs` is read against.
+    pub working_directory: Option<String>,
     /// Restrict each target's returned settings to these keys. The resolver
     /// still computes the full map (settings reference each other via `$(…)`),
     /// but only these keys cross the boundary — pass the handful you read to
@@ -258,34 +269,50 @@ pub struct TargetBuildSettings {
     pub settings: HashMap<String, String>,
 }
 
+/// Parse an `xcodebuild -destination` string, refusing one without a platform.
+fn destination(spec: Option<&str>) -> napi::Result<Option<RunDestination>> {
+    spec.map(|s| {
+        parse_destination_arg(s)
+            .ok_or_else(|| napi::Error::from_reason(format!("invalid destination: {s:?}")))
+    })
+    .transpose()
+}
+
 /// Map the N-API options to the library's `BuildSettingsOptions`, parsing the
-/// destination string. Shared by `buildSettings` and `compilerArguments`.
+/// destination string and reading the build's own arguments. Shared by
+/// `buildSettings`, `locateApp` and `compilerArguments`.
 fn core_options(
     options: BuildSettingsOptions,
 ) -> napi::Result<sweetpad_core::build_settings::BuildSettingsOptions> {
-    let destination = match options.destination.as_deref() {
-        Some(s) => Some(
-            parse_destination_arg(s)
-                .ok_or_else(|| napi::Error::from_reason(format!("invalid destination: {s:?}")))?,
-        ),
-        None => None,
-    };
+    let destination = destination(options.destination.as_deref())?;
+    let args = options.build_args.unwrap_or_default();
+    let command_line =
+        CommandLineSettings::of(&args, options.working_directory.as_deref().map(Path::new));
+    // The extension's builds let a flag in `sweetpad.build.args` replace the
+    // one they pass themselves, so the build ran with the last one given.
+    let last = |flag: &str| xcodebuild_args::last_value(&args, flag).map(String::from);
     Ok(sweetpad_core::build_settings::BuildSettingsOptions {
         project: options.project.map(PathBuf::from),
         workspace: options.workspace.map(PathBuf::from),
-        scheme: options.scheme,
+        scheme: options
+            .scheme
+            .map(|picked| last("-scheme").unwrap_or(picked)),
         target: options.target,
-        configuration: options.configuration,
+        configuration: last("-configuration").unwrap_or(options.configuration),
         sdk: options.sdk.unwrap_or_else(|| "macosx".into()),
         arch: options.arch.unwrap_or_else(|| "arm64".into()),
         destination,
-        xcconfig: options.xcconfig.map(PathBuf::from),
+        xcconfig: command_line
+            .xcconfig
+            .or_else(|| options.xcconfig.map(PathBuf::from)),
         xcode: options.xcode.map(PathBuf::from),
         xcspec_root: None,
         sdksettings_root: None,
         catalog_cache: None,
-        derived_data_path: options.derived_data_path.map(PathBuf::from),
-        overrides: Vec::new(),
+        derived_data_path: command_line
+            .derived_data_path
+            .or_else(|| options.derived_data_path.map(PathBuf::from)),
+        overrides: command_line.overrides,
         // The extension locates the built app from these paths, so they must
         // follow the host's Xcode Derived Data configuration.
         read_xcode_locations: true,
@@ -307,6 +334,88 @@ pub fn build_settings(options: BuildSettingsOptions) -> napi::Result<Vec<TargetB
             settings: t.settings.into_iter().collect(),
         })
         .collect())
+}
+
+/// The app a build produced: the target that builds it, the `.app` path, its
+/// bundle id, the executable inside it, and the target's resolved settings.
+#[napi(object)]
+pub struct LocatedApp {
+    pub target: String,
+    pub path: String,
+    pub bundle_id: String,
+    /// `TARGET_BUILD_DIR/EXECUTABLE_PATH`, the binary to run for a macOS app.
+    pub executable: String,
+    pub settings: HashMap<String, String>,
+}
+
+fn located_to_napi(located: sweetpad_core::app_locator::Located) -> LocatedApp {
+    LocatedApp {
+        target: located.settings.target,
+        path: located.app.path.display().to_string(),
+        bundle_id: located.app.bundle_id,
+        executable: located.app.executable.display().to_string(),
+        settings: located.settings.settings.into_iter().collect(),
+    }
+}
+
+/// Find the app a build with these options writes, through the in-process
+/// resolver: the target the scheme's Run action launches, or the one that
+/// runs on the destination, with the product path, bundle id and executable
+/// the build's own arguments give it. The CLI's `app` verbs locate the app
+/// the same way. `keys` trims the located target's returned settings.
+#[napi]
+pub fn locate_app(options: BuildSettingsOptions) -> napi::Result<LocatedApp> {
+    let opts = core_options(options)?;
+    sweetpad_core::app_locator::locate(opts)
+        .map(located_to_napi)
+        .map_err(to_napi_err)
+}
+
+/// Options for [`pick_app`].
+#[napi(object)]
+pub struct PickAppOptions {
+    /// Each target's settings, as `xcodebuild -showBuildSettings` reported
+    /// them for the build.
+    pub targets: Vec<TargetBuildSettings>,
+    /// The `.xcodeproj` or `.xcworkspace` and the scheme the settings are
+    /// for: the scheme's Run action names the target Xcode launches.
+    pub container: String,
+    pub scheme: String,
+    /// The build's `xcodebuild -destination` string.
+    pub destination: Option<String>,
+    /// The build's SDK, which narrows the pick when there is no destination.
+    pub sdk: Option<String>,
+    /// Restrict the picked target's returned settings to these keys.
+    pub keys: Option<Vec<String>>,
+}
+
+/// Pick the app among build settings resolved outside the addon (through a
+/// customized `xcodebuild`), by the rules [`locate_app`] uses.
+#[napi]
+pub fn pick_app(options: PickAppOptions) -> napi::Result<LocatedApp> {
+    let targets = options
+        .targets
+        .into_iter()
+        .map(|t| sweetpad_core::build_settings::TargetSettings {
+            target: t.target,
+            settings: t.settings.into_iter().collect(),
+        })
+        .collect();
+    let destination = destination(options.destination.as_deref())?;
+    let platform = sweetpad_core::app_locator::platform(
+        destination.as_ref(),
+        options.sdk.as_deref().unwrap_or_default(),
+    );
+    let launch =
+        sweetpad_core::app_locator::launch_target(Path::new(&options.container), &options.scheme);
+    sweetpad_core::app_locator::pick(
+        targets,
+        platform.as_deref(),
+        launch.as_deref(),
+        options.keys.as_deref(),
+    )
+    .map(located_to_napi)
+    .map_err(to_napi_err)
 }
 
 /// One generated tool invocation: the tool, its argv, and the input files it

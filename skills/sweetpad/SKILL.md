@@ -136,6 +136,10 @@ Pass arguments and environment to the app with `--arg` and `--env KEY=VALUE`
 (both repeatable) — both work on `app run`, `app debug`, and `app diagnose`
 alike. `--detach` (`app run` only) leaves the app running after the CLI exits.
 
+A scheme that builds more than one app runs the one its Run action names, as
+Xcode does. When that app can't run on the destination, it runs the app that
+can. `build -o json` reports the same app as `productPath`.
+
 A wedged simulator never answers an install, launch, or terminate. SweetPad
 gives each of those steps two minutes, then fails with exit 1 and a `tip`
 naming `sweetpad simulator shutdown <udid>` and `sweetpad simulator boot

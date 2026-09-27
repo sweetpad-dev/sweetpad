@@ -1059,22 +1059,19 @@ impl RunPlan {
         }
     }
 
-    /// Resolve every target's build settings for this plan — the same
-    /// [`xcodebuild::resolved_settings`] the build side reports its product
-    /// from, so the two can't disagree about where the `.app` landed. Swift
-    /// packages never reach here: they run via `swift run`, not a
-    /// build/install/launch.
-    fn resolved_settings(&self) -> Result<Vec<xcodebuild::TargetBuildSettings>, CliError> {
-        xcodebuild::resolved_settings(&self.build_plan())
+    /// Locate the app this plan builds: the same [`xcodebuild::located`] the
+    /// build side reports its product from, so the two can't disagree about
+    /// where the `.app` landed. The scheme's Run action and the destination
+    /// narrow multi-app schemes (iOS + watch companion, a helper app) to the
+    /// app that actually runs there. Swift packages never reach here: they run
+    /// via `swift run`, not a build/install/launch.
+    fn located(&self) -> Result<xcodebuild::Located, CliError> {
+        xcodebuild::located(&self.build_plan())
     }
 
-    /// Locate the built `.app`: [`resolved_settings`](Self::resolved_settings)
-    /// computes the same TARGET_BUILD_DIR/product the build produced. The
-    /// destination narrows multi-app schemes (iOS + watch companion) to the
-    /// app that actually runs there.
+    /// The built `.app`: [`located`](Self::located)'s bundle.
     fn app_bundle(&self) -> Result<AppBundle, CliError> {
-        let settings = self.resolved_settings()?;
-        xcodebuild::app_bundle(&settings, Some(&self.destination))
+        Ok(self.located()?.app)
     }
 }
 
@@ -1471,8 +1468,7 @@ fn hot_sandbox_override(
     // already applied. A relative value is SRCROOT-relative (how the signer
     // reads it).
     let effective = || -> Result<Option<std::path::PathBuf>, CliError> {
-        let settings = plan.resolved_settings()?;
-        let target = xcodebuild::app_target(&settings, Some(&plan.destination))?;
+        let target = plan.located()?.settings;
         let Some(value) = target
             .settings
             .get("CODE_SIGN_ENTITLEMENTS")
@@ -2172,7 +2168,7 @@ fn run_hot_session(
         &plan.resolved.container,
         plan.scheme.clone(),
         plan.configuration.clone(),
-        xcodebuild::CommandLineSettings::of(&plan.passthrough, &plan.resolved.container),
+        xcodebuild::command_line_settings(&plan.passthrough, &plan.resolved.container),
         sdk.to_string(),
         inject::host_arch(),
         developer_dir,

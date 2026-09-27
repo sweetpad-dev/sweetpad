@@ -674,7 +674,7 @@ fn xcconfig_warnings(
 /// args`, so an effect row reads what a build of the project would use.
 fn project_command_line(ctx: &Context) -> Result<xcodebuild::CommandLineSettings, CliError> {
     Ok(match resolve::container_silently(ctx) {
-        Some(container) => xcodebuild::CommandLineSettings::of(
+        Some(container) => xcodebuild::command_line_settings(
             &ctx.xcodebuild_args(xcodebuild::Action::Build, &[])?,
             &container,
         ),

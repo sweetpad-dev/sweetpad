@@ -25,6 +25,10 @@ simulators, and most work on physical devices and native macOS apps too.
 | `sweetpad app sample`     | Sample it and say whether its main thread is idle or stuck.      |
 | `sweetpad app ui`         | Read and drive a macOS app's UI through accessibility.           |
 
+When a scheme builds more than one app, such as a helper app or a watch app beside the main one, the
+`app` verbs act on the app the scheme's Run action names, as Xcode does. If that app can't run on the
+destination, they take the app that can.
+
 SweetPad remembers which app it last launched, so most of these need no arguments. `app stop` stops
 the thing you just started. Flags that describe that same launch, such as `--scheme MyAppMac --on mac`
 after `app launch --mac`, still find it, even when it runs out of a `--derived-data-path` build. Flags
