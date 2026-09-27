@@ -625,12 +625,9 @@ fn build_one_context(
     // Xcode keys DerivedData by whichever container it opened. When the caller
     // selected a `-workspace`, every member project's DerivedData paths
     // (`BUILD_DIR`, `OBJROOT`, `BUILT_PRODUCTS_DIR`, …) must hash the WORKSPACE
-    // path, not the project's own location. Declare it explicitly so the
-    // context doesn't fall back to inferring a container from the project —
-    // inference (`find_derived_data_container`) only finds a workspace sitting
-    // in the project's parent or grandparent dir, so a member nested deeper, or
-    // a workspace living elsewhere, resolves the wrong tree and the built app
-    // can't be found (issue #265).
+    // path, not the project's own location, or the built app can't be found
+    // (issue #265). With no workspace the context hashes the project, as a
+    // `-project` build does.
     if let Some(ws) = workspace {
         ctx = ctx.with_derived_data_container(ws);
     }

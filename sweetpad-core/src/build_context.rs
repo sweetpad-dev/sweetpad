@@ -347,9 +347,10 @@ impl BuildContext {
 
     /// Declare the container this build was opened with (the
     /// `.xcworkspace` of a `-workspace` invocation). DerivedData paths
-    /// (`BUILD_DIR`, `OBJROOT`, `SYMROOT`, …) hash this path instead of
-    /// inferring a container from the project's own location — Xcode keys
-    /// DerivedData by whatever was opened, for every member project.
+    /// (`BUILD_DIR`, `OBJROOT`, `SYMROOT`, …) hash this path instead of the
+    /// project's own. Xcode keys DerivedData by whatever was opened, for
+    /// every member project, and `xcodebuild -project` opens the project even
+    /// when a workspace beside it lists it.
     #[must_use]
     pub fn with_derived_data_container(mut self, container: impl Into<PathBuf>) -> Self {
         self.derived_data_container = Some(container.into());
@@ -1374,6 +1375,49 @@ mod tests {
         assert!(
             !build_dir.contains(&format!("project-{stub_hash}")),
             "BUILD_DIR must not use the project.xcworkspace stub: {build_dir}"
+        );
+    }
+
+    /// `xcodebuild -project Scratch.xcodeproj` on Xcode 27 builds into
+    /// `Scratch-<hash of the project>`, whose `info.plist` names the
+    /// `.xcodeproj` as its `WorkspacePath`, even with a workspace beside it
+    /// that lists the project. Only a declared workspace keys DerivedData.
+    #[test]
+    fn a_project_beside_a_workspace_that_lists_it_keys_derived_data_by_itself() {
+        let root = crate::scratch::ScratchDir::new("sweetpad-bc-member").unwrap();
+        let xcodeproj = root.join("Scratch.xcodeproj");
+        std::fs::create_dir_all(&xcodeproj).unwrap();
+        std::fs::copy(
+            scratch_path().join("project.pbxproj"),
+            xcodeproj.join("project.pbxproj"),
+        )
+        .unwrap();
+        let workspace = root.join("App.xcworkspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(
+            workspace.join("contents.xcworkspacedata"),
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version = \"1.0\">\n   \
+             <FileRef location = \"group:Scratch.xcodeproj\"></FileRef>\n</Workspace>\n",
+        )
+        .unwrap();
+        let query = ResolveQuery::new("Scratch", "Debug", "macosx", "arm64");
+        let project_hash = sweetpad_lib::derived_data::container_hash(&xcodeproj);
+        let workspace_hash = sweetpad_lib::derived_data::container_hash(&workspace);
+
+        let alone = BuildContext::open(&xcodeproj).unwrap();
+        let build_dir = get(&alone.resolve(&query).unwrap(), "BUILD_DIR");
+        assert!(
+            build_dir.contains(&format!("/Scratch-{project_hash}/")),
+            "{build_dir}"
+        );
+
+        let through = BuildContext::open(&xcodeproj)
+            .unwrap()
+            .with_derived_data_container(&workspace);
+        let build_dir = get(&through.resolve(&query).unwrap(), "BUILD_DIR");
+        assert!(
+            build_dir.contains(&format!("/App-{workspace_hash}/")),
+            "{build_dir}"
         );
     }
 }

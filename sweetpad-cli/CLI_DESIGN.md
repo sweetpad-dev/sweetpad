@@ -3357,6 +3357,21 @@ values. One gap is left: with a scheme, `xcodebuild` keeps
 `SHARED_PRECOMPS_DIR` under DerivedData's intermediates when `OBJROOT`
 moves, where the resolver derives it from `OBJROOT`.
 
+### A project keys DerivedData by itself
+
+`xcodebuild -project App.xcodeproj build` builds into `App-<hash>`, whose
+`info.plist` names the `.xcodeproj` as its `WorkspacePath`, even when an
+`.xcworkspace` beside it lists the project (Xcode 27). The resolver guessed
+otherwise: with no workspace declared, it looked for one beside or above the
+project and keyed DerivedData by it. So `settings show --project` named the
+workspace's folder, while `build --project` and the BSP index read the
+project's. The guess is gone. The resolver keys DerivedData by the project
+unless a workspace is declared, as `--workspace` and a workspace BSP root
+declare it, and all three agree with `xcodebuild`. The corpus oracle declares
+the workspace its captures were taken through, and its canonical score rose
+from 97% to 99%. The per-target and project-defaults suites, captured with
+`-project`, rose too.
+
 ## 9t. v8 — `feedback`: an agent's problem report to the maintainer
 
 The agents that drive sweetpad hit its bugs first: a tip that doesn't work, a

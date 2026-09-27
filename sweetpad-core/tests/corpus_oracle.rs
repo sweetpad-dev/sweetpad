@@ -89,9 +89,12 @@ fn run_oracle(
             .and_then(|stem| stem.split_once("__").map(|(_, rest)| rest))
             .and_then(parse_destination_suffix);
 
-        let ctx = BuildContext::open(&xcodeproj)
+        let mut ctx = BuildContext::open(&xcodeproj)
             .ok()?
             .with_xcspec(catalog.clone());
+        if let Some(workspace) = common::capture_workspace_for_oracle(oracle_path) {
+            ctx = ctx.with_derived_data_container(workspace);
+        }
         let mut query = ResolveQuery::new(target, config, sdk, arch);
         if let Some(d) = destination {
             query = query.with_destination(d);

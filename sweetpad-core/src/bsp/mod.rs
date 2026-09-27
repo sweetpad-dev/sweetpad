@@ -1630,10 +1630,9 @@ impl Server {
         // For a `.xcworkspace` root, resolve *through the workspace* rather than
         // the owning member project: `xcodebuild_prepare` builds with
         // `-workspace`, so DerivedData is keyed by the workspace path, and the
-        // resolver only hashes that container when the workspace is declared
-        // (container *inference* only finds a workspace in the project's parent
-        // or grandparent dir — a member nested deeper would resolve search
-        // paths in a DerivedData tree the prepare build never populates).
+        // resolver only hashes that container when the workspace is declared.
+        // A project root prepares with `-project`, which keys it by the
+        // project, as the resolver does with no workspace declared.
         let (project, workspace) = if self.is_workspace() {
             (None, Some(self.project_path.clone()))
         } else {

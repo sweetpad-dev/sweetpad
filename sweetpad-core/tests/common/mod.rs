@@ -552,6 +552,39 @@ pub fn find_xcodeproj_between(oracle: &Path, marker: &str, project_name: &str) -
     find_dir_named(&root, &target)
 }
 
+/// The `.xcworkspace` a scheme capture was taken through, if any: the one at
+/// the top of the oracle's `raw/` sub-fixture, first by name, which is the
+/// container `02_capture_metadata.py` prefers over a project. `xcodebuild
+/// -workspace` keys DerivedData by it for every member project, so the
+/// resolver has to be told, as a `-workspace` build tells it.
+pub fn capture_workspace_for_oracle(oracle: &Path) -> Option<PathBuf> {
+    let comps: Vec<&OsStr> = oracle.iter().collect();
+    let metadata_idx = comps.iter().rposition(|c| *c == OsStr::new("metadata"))?;
+    let schemes_idx = comps.iter().rposition(|c| *c == OsStr::new("schemes"))?;
+    let mut root = PathBuf::new();
+    for (i, c) in comps.iter().enumerate() {
+        if i < metadata_idx {
+            root.push(c);
+        } else if i == metadata_idx {
+            root.push("raw");
+        } else if i < schemes_idx {
+            root.push(c);
+        }
+    }
+    let mut workspaces: Vec<PathBuf> = fs::read_dir(&root)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_dir()
+                && p.extension() == Some(OsStr::new("xcworkspace"))
+                && p.file_name() != Some(OsStr::new("project.xcworkspace"))
+        })
+        .collect();
+    workspaces.sort();
+    workspaces.into_iter().next()
+}
+
 pub fn find_file_named(dir: &Path, name: &str) -> Option<PathBuf> {
     if !dir.is_dir() {
         return None;
