@@ -367,7 +367,11 @@ fn move_node(ctx: &mut Context, args: &MoveArgs) -> CommandResult {
             to,
             resolved,
         } => (
-            format!("{address} now under {} (still {resolved})", display_dir(to)),
+            format!(
+                "{address} now under {}, still at {}",
+                display_group(to),
+                display_dir(resolved)
+            ),
             true,
             serde_json::json!({
                 "action": "move",
@@ -379,7 +383,7 @@ fn move_node(ctx: &mut Context, args: &MoveArgs) -> CommandResult {
             }),
         ),
         MoveOutcome::AlreadyThere { address, group } => (
-            format!("{address} is already under {}", display_dir(group)),
+            format!("{address} is already under {}", display_group(group)),
             false,
             serde_json::json!({
                 "action": "move",
@@ -464,5 +468,15 @@ fn display_dir(resolved: &str) -> &str {
         "(project root)"
     } else {
         resolved
+    }
+}
+
+/// A group's address in a sentence. A project.xcproj has no node for its
+/// navigator root, so an outcome gives the root's address as empty.
+fn display_group(address: &str) -> &str {
+    if address.is_empty() {
+        "the navigator root"
+    } else {
+        address
     }
 }

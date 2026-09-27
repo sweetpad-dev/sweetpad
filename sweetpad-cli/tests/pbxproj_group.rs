@@ -34,6 +34,30 @@ fn sweetpad(args: &[&str], home: &Path) -> Value {
     envelope["data"].clone()
 }
 
+/// Human output, from a command that has to succeed.
+fn human(args: &[&str], home: &Path) -> String {
+    let out = run(args, home);
+    assert!(out.status.success(), "{args:?}: {out:?}");
+    String::from_utf8(out.stdout).unwrap()
+}
+
+/// A scratch copy of the committed project.xcproj fixture, and its project
+/// path.
+fn xcproj_fixture(name: &str) -> (TempDir, String) {
+    let dir = TempDir::new(name);
+    std::fs::create_dir_all(dir.join(".git")).unwrap();
+    let project = dir.join("SweetpadCIApp.xcodeproj");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::copy(
+        Path::new(env!("SWEETPAD_LIB_DIR"))
+            .join("fixtures/_xcproj/SweetpadCIApp.xcodeproj/project.xcproj"),
+        project.join("project.xcproj"),
+    )
+    .unwrap();
+    let project = project.to_str().unwrap().to_string();
+    (dir, project)
+}
+
 /// A scratch copy of the committed classic fixture, and its project path.
 fn fixture(name: &str) -> (TempDir, String) {
     let dir = TempDir::new(name);
@@ -167,5 +191,66 @@ fn group_list_prints_each_groups_navigator_path() {
              'pbxproj group list' shows all three"
         ),
         "{stderr}"
+    );
+}
+
+/// 'group move' says where the node still resolves the way 'group list' says
+/// it, so an organizational group, which resolves to the project directory,
+/// reads '(project root)' rather than nothing.
+#[test]
+fn group_move_names_the_directory_the_node_keeps() {
+    const RECOVERED: &str = "BCD3F34330601BEC003C7AE7";
+    const SOURCES: &str = "670938FBEBAD9090CCFDAD2B";
+    let (dir, project) = fixture("sweetpad-group-move");
+    let project = project.as_str();
+
+    let line = human(
+        &[
+            "pbxproj",
+            "group",
+            "move",
+            RECOVERED,
+            "--to",
+            "Sources",
+            "--project",
+            project,
+        ],
+        &dir,
+    );
+    assert_eq!(
+        line.trim_end(),
+        format!("{RECOVERED} now under {SOURCES}, still at (project root)")
+    );
+}
+
+/// A project.xcproj has no node for its navigator root, and a move there says
+/// so in words rather than as a directory.
+#[test]
+fn group_move_to_the_xcproj_root_names_the_navigator_root() {
+    let (dir, project) = xcproj_fixture("sweetpad-group-move-xcproj");
+    let project = project.as_str();
+
+    let move_to_root = |node: &str| {
+        human(
+            &[
+                "pbxproj",
+                "group",
+                "move",
+                node,
+                "--to",
+                "/",
+                "--project",
+                project,
+            ],
+            &dir,
+        )
+    };
+    assert_eq!(
+        move_to_root("Sources/App/ContentView.swift").trim_end(),
+        "ContentView.swift now under the navigator root, still at Sources/App/ContentView.swift"
+    );
+    assert_eq!(
+        move_to_root("ContentView.swift").trim_end(),
+        "ContentView.swift is already under the navigator root"
     );
 }
