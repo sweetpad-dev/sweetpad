@@ -24,6 +24,9 @@ export const destinationList: HandlerFn<
   { type?: string; platform?: string; booted?: boolean },
   { destinations: DestinationEntity[] }
 > = async (params, ctx) => {
+  // Each simulator's state comes back with it, and a `booted` filter reads it, so it has to be
+  // simctl's current answer rather than the cache's (see loadSimulators).
+  await ctx.destinationsManager.refreshSimulators();
   const destinations = await ctx.destinationsManager.getDestinations({ mostUsedSort: true });
   const selected = ctx.destinationsManager.getSelectedXcodeDestinationForBuild();
   const entities = destinations.map((d) => toEntity(d, selected?.id));

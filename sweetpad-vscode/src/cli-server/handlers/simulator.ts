@@ -16,8 +16,14 @@ export type SimulatorEntity = {
   isAvailable: boolean;
 };
 
+/**
+ * The simulators as simctl reports them now. The destinations cache is only as fresh as its
+ * last refresh, and a simulator booted or shut down since (from Simulator.app, simctl or
+ * another tool) would otherwise be reported, started and refused on a state it no longer
+ * has. Reading it costs one "simctl list".
+ */
 export async function loadSimulators(ctx: RpcContext): Promise<SimulatorEntity[]> {
-  const list = await ctx.destinationsManager.getSimulators();
+  const list = await ctx.destinationsManager.refreshSimulators();
   return list.map((s) => ({
     id: s.id,
     udid: s.udid,
@@ -75,7 +81,6 @@ export const simulatorStart: HandlerFn<
     const message = err instanceof Error ? err.message : String(err);
     throw new SweetpadRpcError(ERROR_CODES.SIMULATOR_OP_FAILED, `Failed to boot ${sim.name}: ${message}`);
   }
-  await ctx.destinationsManager.refreshSimulators();
   const refreshed = await findSimulator(ctx, sim.udid);
   return { booted: true, alreadyRunning: false, simulator: refreshed };
 };
@@ -93,12 +98,10 @@ export const simulatorStop: HandlerFn<
     const message = err instanceof Error ? err.message : String(err);
     throw new SweetpadRpcError(ERROR_CODES.SIMULATOR_OP_FAILED, `Failed to shutdown ${sim.name}: ${message}`);
   }
-  await ctx.destinationsManager.refreshSimulators();
   const refreshed = await findSimulator(ctx, sim.udid);
   return { stopped: true, alreadyStopped: false, simulator: refreshed };
 };
 
 export const simulatorRefresh: HandlerFn<unknown, { simulators: SimulatorEntity[] }> = async (_params, ctx) => {
-  await ctx.destinationsManager.refreshSimulators();
   return { simulators: await loadSimulators(ctx) };
 };
