@@ -265,3 +265,79 @@ fn reading_a_manifest_leaves_nothing_behind() {
         .collect();
     assert!(left.is_empty(), "left in TMPDIR: {left:?}");
 }
+
+/// A package's manifest is read with the Xcode its `sweetpad.toml` pins, also
+/// when the package is found below the working directory, where nothing else
+/// loads that file before the read. The pinned Xcode is a stub whose `xcrun`,
+/// which the `swift` shim in `/usr/bin` hands every call to, answers
+/// `dump-package` with a manifest of its own.
+#[test]
+fn a_manifest_is_read_with_the_xcode_its_sweetpad_toml_pins() {
+    use std::os::unix::fs::PermissionsExt;
+
+    if !Path::new("/usr/bin/swift").exists() {
+        eprintln!("skipping: needs the /usr/bin/swift shim that follows DEVELOPER_DIR");
+        return;
+    }
+    let root = TempDir::new("sweetpad-spm-pinned-xcode");
+    std::fs::create_dir_all(root.join(".git")).unwrap();
+    let xcrun = root.join("Pinned.app/Contents/Developer/usr/bin/xcrun");
+    std::fs::create_dir_all(xcrun.parent().unwrap()).unwrap();
+    std::fs::write(
+        &xcrun,
+        "#!/bin/sh\n\
+         case \"$*\" in\n\
+         *dump-package*) echo '{\"name\": \"FromPinnedXcode\", \"dependencies\": \
+         [{\"fileSystem\": [{\"identity\": \"pinned-dep\", \"path\": \"/pinned/dep\"}]}]}' ;;\n\
+         *) exit 1 ;;\n\
+         esac\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&xcrun, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let package = root.join("packages/Dumped");
+    std::fs::create_dir_all(&package).unwrap();
+    std::fs::write(
+        package.join("Package.swift"),
+        "// swift-tools-version:5.9\nimport PackageDescription\n\
+         let package = Package(name: \"FromDefaultXcode\")\n",
+    )
+    .unwrap();
+    std::fs::write(
+        package.join("sweetpad.toml"),
+        format!(
+            "developer_dir = \"{}\"\n",
+            root.join("Pinned.app/Contents/Developer").display()
+        ),
+    )
+    .unwrap();
+    let temp = root.join("tmp");
+    std::fs::create_dir_all(&temp).unwrap();
+
+    let sweetpad = |args: &[&str]| -> serde_json::Value {
+        let out = Command::new(env!("CARGO_BIN_EXE_sweetpad"))
+            .args(args)
+            .current_dir(&*root)
+            .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+            .env_remove("DEVELOPER_DIR")
+            .env("XDG_STATE_HOME", &*root)
+            .env("XDG_CONFIG_HOME", &*root)
+            .env("XDG_CACHE_HOME", &*root)
+            .env("TMPDIR", &temp)
+            .output()
+            .expect("failed to run the sweetpad binary");
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        serde_json::from_slice(&out.stdout).unwrap()
+    };
+
+    let info = sweetpad(&["project", "info", "--json"]);
+    assert_eq!(info["data"]["name"], "FromPinnedXcode", "{info}");
+    let deps = sweetpad(&["dependency", "list", "--json"]);
+    assert_eq!(
+        deps["data"]["direct"][0]["identity"], "pinned-dep",
+        "{deps}"
+    );
+}

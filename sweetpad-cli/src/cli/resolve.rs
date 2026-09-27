@@ -83,7 +83,19 @@ fn absolutize(path: &Path) -> PathBuf {
 /// explicitly flagged path must exist: passing it through would mint state
 /// entries for typos (silently pruned or kept as garbage) and die later inside
 /// xcodebuild with a worse message.
+///
+/// The container's `sweetpad.toml` is loaded here too. A `developer_dir` it
+/// pins only takes effect once the file is loaded, and every tool the command
+/// spawns has to run under that Xcode, including the manifest reads and
+/// package resolves that come before anything asks the file for a default.
 pub fn container(ctx: &Context) -> Result<Container, CliError> {
+    let container = locate_container(ctx)?;
+    ctx.project_file(&container);
+    Ok(container)
+}
+
+/// [`container`]'s search, without loading the container's `sweetpad.toml`.
+fn locate_container(ctx: &Context) -> Result<Container, CliError> {
     let must_exist = |path: &Path, flag: &str| -> Result<(), CliError> {
         if path.exists() {
             Ok(())

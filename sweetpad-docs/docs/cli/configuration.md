@@ -46,7 +46,7 @@ The top level takes the same targeting values as the flags:
 | `configuration` | Default build configuration.                                        |
 | `destination`   | Default destination, as a raw specifier.                            |
 | `sdk`           | SDK override. Rarely needed, since the destination usually implies it.   |
-| `developer_dir` | Pin the Xcode this project builds with.                             |
+| `developer_dir` | Pin the Xcode this project uses, for builds and manifest reads.     |
 | `workspace`     | Name the `.xcworkspace`, relative to this file. See below.          |
 | `project`       | Name the `.xcodeproj`, relative to this file. See below.            |
 | `generator`     | Declare the project as [generated](./generated-projects.md), e.g. `"xcodegen"`. |

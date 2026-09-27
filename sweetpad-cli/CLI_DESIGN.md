@@ -514,7 +514,7 @@ App/
 
 - Keys: `workspace`/`project` (which container this file belongs to, relative
   to the file — `workspace` wins if both are set), `scheme`, `configuration`,
-  `destination`, `sdk`, a `[testing]` sub-table
+  `destination`, `sdk`, `developer_dir`, a `[testing]` sub-table
   (`scheme`/`configuration`/`destination`/`target`), plus the tool defaults
   that previously had flags but no home:
 
@@ -538,6 +538,11 @@ tool = "swiftlint"
 args = ["-skipMacroValidation"]   # added to every command that builds
 ```
 
+- **`developer_dir`** pins the project's Xcode: sweetpad sets
+  `DEVELOPER_DIR` to it for every tool it spawns, unless `--developer-dir` or
+  the environment already chose one. sweetpad loads the file as soon as it
+  resolves the container, so a manifest read or package resolve that runs
+  before anything asks the file for a default uses the pinned Xcode too.
 - **`[xcodebuild] args`** is the committed form of the `-- XCODEBUILD_ARGS`
   tail (§3): a list joined onto every `xcodebuild` this project spawns —
   `build`, `test`, `archive`, and the builds inside `app
