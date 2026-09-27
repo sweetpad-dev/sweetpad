@@ -77,7 +77,9 @@ fn xcodebuild_clean_args(
         configuration,
     ];
     args.extend(xcodebuild::container_args(container));
-    args.extend(xcodebuild::clean_passthrough(&ctx.xcodebuild_args(&[])?));
+    args.extend(xcodebuild::clean_passthrough(
+        &ctx.xcodebuild_args(xcodebuild::Action::Clean, &[])?,
+    ));
     Ok(args)
 }
 

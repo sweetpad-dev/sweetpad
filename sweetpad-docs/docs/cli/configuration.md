@@ -105,7 +105,15 @@ guessing, and this is how you settle it.
 ### Arguments SweetPad won't let you put here
 
 `[xcodebuild] args` refuses the arguments SweetPad settles itself, naming the key to use instead:
-`-scheme`, `-configuration`, `-destination`, `-sdk`, `-workspace`, `-project`, and `-resultBundlePath`.
+`-scheme`, `-configuration`, `-destination`, `-sdk`, `-workspace`, and `-project`.
+
+It also refuses the paths SweetPad names for itself. `sweetpad test` writes and reads back its own
+`-resultBundlePath`, so name one per run with `sweetpad test --result-bundle`, or pass it after `--`
+on a build. `sweetpad archive` names its own `-archivePath`, `-exportPath`, and `-exportOptionsPlist`,
+so use `--output-file` and `--export-options` instead.
+
+`-enableCodeCoverage` and `-test-iterations` can stay in the file. When you pass `--coverage` or
+`--retry-flaky` to `sweetpad test`, the flag replaces the file's copy, and `-v` says so.
 
 `-derivedDataPath` is refused too. Only the builds, `sweetpad clean`, and the `app` commands would
 follow it, while `sweetpad clean --purge`, `sweetpad derived-data`, and the editor's index would keep

@@ -780,7 +780,8 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
             ctx.targeting = args.target.clone().into();
             settle_mode(ctx, args.mac, args.device, args.device_id.as_deref())?;
             let (hot, hot_mode) = hot_settings(ctx, args);
-            let passthrough = ctx.xcodebuild_args(&args.xcodebuild.passthrough)?;
+            let passthrough =
+                ctx.xcodebuild_args(xcodebuild::Action::Build, &args.xcodebuild.passthrough)?;
             // The live build-and-run session streams its own output until you quit.
             run_app(
                 ctx,
@@ -840,7 +841,8 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         } => {
             ctx.targeting = target.clone().into();
             settle_stage_mode(ctx, stage)?;
-            let passthrough = ctx.xcodebuild_args(&xcodebuild.passthrough)?;
+            let passthrough =
+                ctx.xcodebuild_args(xcodebuild::Action::Build, &xcodebuild.passthrough)?;
             debug(ctx, stage, launch, batch, &passthrough)
         }
         Action::Diagnose {
@@ -852,7 +854,8 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         } => {
             ctx.targeting = target.clone().into();
             settle_stage_mode(ctx, stage)?;
-            let passthrough = ctx.xcodebuild_args(&xcodebuild.passthrough)?;
+            let passthrough =
+                ctx.xcodebuild_args(xcodebuild::Action::Build, &xcodebuild.passthrough)?;
             diagnose(ctx, stage, launch, *timeout, &passthrough)
         }
         Action::Uninstall { target, stage } => {
@@ -4140,7 +4143,7 @@ enum Stage {
 /// without them looks somewhere other than where `build` wrote it, or runs a
 /// stale product that `build` and `app run` refuse to go near.
 fn project_xcodebuild_args(ctx: &Context) -> Result<Vec<String>, CliError> {
-    ctx.xcodebuild_args(&[])
+    ctx.xcodebuild_args(xcodebuild::Action::Build, &[])
 }
 
 /// `tail` is what this invocation adds to the project's arguments: the `--`
@@ -4168,7 +4171,7 @@ fn simple(
 
     // Every stage plans with the project's `[xcodebuild] args`, not only the
     // one that builds (see `project_xcodebuild_args`).
-    let passthrough = ctx.xcodebuild_args(tail)?;
+    let passthrough = ctx.xcodebuild_args(xcodebuild::Action::Build, tail)?;
     // Simulator by default (the common headless case); --device/--device-id
     // switch every stage to devicectl.
     let opts = RunOpts {

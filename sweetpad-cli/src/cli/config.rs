@@ -485,7 +485,7 @@ pub fn effective_xcodebuild_args(
 /// (`-scheme`, `-derivedDataPath`, …) are not listed, and neither are the
 /// value flags a build may repeat (`-destination`, `-arch`, `-toolchain`,
 /// `-packageCachePath`).
-const SINGLE_USE_FLAGS: [&str; 34] = [
+const SINGLE_USE_FLAGS: [&str; 31] = [
     "-xcconfig",
     "-jobs",
     "-destination-timeout",
@@ -494,9 +494,6 @@ const SINGLE_USE_FLAGS: [&str; 34] = [
     "-resultBundleVersion",
     "-xctestrun",
     "-testProductsPath",
-    "-archivePath",
-    "-exportPath",
-    "-exportOptionsPlist",
     "-enableCodeCoverage",
     "-enableAddressSanitizer",
     "-enableThreadSanitizer",
@@ -523,9 +520,10 @@ const SINGLE_USE_FLAGS: [&str; 34] = [
 ];
 
 /// Why a given argument can't live in a committed `[xcodebuild] args`, if it
-/// can't. Three groups: the inputs the resolver settles and passes itself (a
+/// can't. Four groups: the inputs the resolver settles and passes itself (a
 /// second copy makes the build depend on which `xcodebuild` honors), the
-/// result bundle the CLI writes and then reads back, and `-derivedDataPath`.
+/// result bundle `test` writes and then reads back, the paths `archive`
+/// names for its archive and export, and `-derivedDataPath`.
 /// Only the builds, `clean` and the app locator read this file, so a
 /// committed location would split them from `clean --purge`, `derived-data`
 /// and the BSP index, which keep the default one. A relative value would also
@@ -544,9 +542,13 @@ fn configured_arg_refusal(arg: &str) -> Option<&'static str> {
              the project's directory, not this file's; pass it per command instead"
         }
         "-resultBundlePath" => {
-            "sweetpad writes and reads back its own result bundle; pass it per command \
-             if you need a second one"
+            "'sweetpad test' writes and reads back its own result bundle; name one per run \
+             with 'test --result-bundle', or after '--' on a build"
         }
+        "-archivePath" | "-exportPath" => {
+            "'sweetpad archive' names its own; use 'archive --output-file'"
+        }
+        "-exportOptionsPlist" => "'sweetpad archive' names its own; use 'archive --export-options'",
         _ => return None,
     })
 }
@@ -1066,7 +1068,15 @@ mod tests {
             ("-workspace", "'workspace'/'project' key"),
             ("-project", "'workspace'/'project' key"),
             ("-derivedDataPath", "per command"),
-            ("-resultBundlePath", "own result bundle"),
+            // The fix names the flags that work: a build takes a typed
+            // '-resultBundlePath' after '--', and 'test' has its own flag.
+            (
+                "-resultBundlePath",
+                "'test --result-bundle', or after '--' on a build",
+            ),
+            ("-archivePath", "'archive --output-file'"),
+            ("-exportPath", "'archive --output-file'"),
+            ("-exportOptionsPlist", "'archive --export-options'"),
         ] {
             let err = effective_xcodebuild_args(&s(&[arg, "value"]), &[])
                 .expect_err("a refused argument must not merge");

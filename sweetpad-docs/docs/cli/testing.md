@@ -269,7 +269,8 @@ sweetpad test --destination 'platform=iOS Simulator,name=iPhone 16 Pro' --junit 
 ```
 
 `--result-bundle <path>` puts the `.xcresult` somewhere you control, which is what you want when the
-job archives it as a build artifact.
+job archives it as a build artifact. Use it rather than `-- -resultBundlePath`, which `sweetpad test`
+refuses because it passes its own.
 
 For the machine-readable form, `-o json` returns the run as a single envelope and `-o ndjson` streams
 one event per line as tests finish. In both cases a successful envelope means the command ran, and the

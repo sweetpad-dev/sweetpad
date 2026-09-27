@@ -111,7 +111,7 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
     if let Some(on) = &ctx.targeting.on {
         on_platform(on)?;
     }
-    let passthrough = ctx.xcodebuild_args(&args.passthrough)?;
+    let passthrough = ctx.xcodebuild_args(xcodebuild::Action::Archive, &args.passthrough)?;
     let mut resolved = resolve::resolve(ctx)?;
     if matches!(resolved.container, Container::SwiftPackage(_)) {
         return Err(CliError::new(

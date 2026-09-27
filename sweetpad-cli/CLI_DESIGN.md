@@ -139,6 +139,24 @@ reaches no `xcodebuild` but previews what a build given it resolves. A
 project that always needs the same argument writes it in `sweetpad.toml`'s
 `[xcodebuild] args` instead of typing it each time (§6).
 
+The tail can't name what sweetpad passes `xcodebuild` itself, because
+`xcodebuild` fails a second copy ("option '-scheme' may only be provided
+once") and the failure would read as a broken build. So `-scheme`,
+`-configuration`, `-sdk`, `-workspace` and `-project` in the tail are a
+usage error naming the sweetpad flag to use, checked before any project is
+looked for. So are `test`'s `-resultBundlePath` (`--result-bundle`) and
+`archive`'s `-archivePath`, `-exportPath` (`--output-file`) and
+`-exportOptionsPlist` (`--export-options`), and on `test` a
+`-enableCodeCoverage` beside `--coverage` or a `-test-iterations` beside
+`--retry-flaky`. `-destination` stays: `xcodebuild` takes several and builds
+or tests for each. A build is the one place that adopts the typed copy.
+Nothing reads the build's own result bundle back (it is passed only so
+`xcodebuild` writes the activity log the editor's index reads), so a typed
+`-resultBundlePath` replaces it. That bundle is the caller's. It is kept, and
+it is cleared only when an earlier build of the same process wrote it (the
+next `--watch` round, a run-session rebuild). One that was there first is left
+for `xcodebuild` to refuse.
+
 ## 3a. `project new` — scaffolding
 
 `project new` creates a fresh, buildable **minimal SwiftUI iOS app** with no
@@ -314,7 +332,9 @@ Exit 2 has two sources. clap reports what it can't parse, in its own text
 even under `--json`. The command reports what it parses but refuses: a flag
 on a verb it means nothing to (`test build --failed`, `build diagnostics
 --clean`), two flags that can't go together (`--on` with `--destination`,
-`--gh-annotations` with `-o json`, `app debug --batch` with `-o json`), a
+`--gh-annotations` with `-o json`, `app debug --batch` with `-o json`,
+`test --coverage -- -enableCodeCoverage NO`), a `--` argument naming what
+sweetpad passes `xcodebuild` itself (`build -- -scheme App`; §3), a
 flag value out of range (`--pid 0`, `--nth 0`, `archive --on toaster`), an
 argument no project could make valid (`pbxproj membership add` naming no
 file, a `pbxproj settings set` argument with no `=`, a `project new` name
@@ -527,8 +547,14 @@ args = ["-skipMacroValidation"]   # added to every command that builds
 - The arguments the CLI settles itself are **refused** in the file, naming the
   key to use instead: `-scheme`, `-configuration`, `-destination`, `-sdk`,
   `-workspace`, `-project` (a second copy makes the build depend on which one
-  xcodebuild honors), `-resultBundlePath` (the CLI writes and reads back its
-  own), and `-derivedDataPath`. A refusal is an error rather than a warning:
+  xcodebuild honors), `-resultBundlePath` (`test` writes and reads back its
+  own; the refusal names `test --result-bundle`, and a build's `--` tail,
+  which takes one per run), `-archivePath`, `-exportPath` and
+  `-exportOptionsPlist` (`archive` names its own; `--output-file` and
+  `--export-options` set them), and `-derivedDataPath`. `--coverage` and
+  `--retry-flaky` pass `-enableCodeCoverage` and `-test-iterations`, which the
+  file may carry, so under either flag `test` leaves the file's copy out and
+  `-v` says so. A refusal is an error rather than a warning:
   the alternative is handing xcodebuild two answers to one question. Swift
   packages ignore the table entirely, since `swift build` knows none of these
   flags.

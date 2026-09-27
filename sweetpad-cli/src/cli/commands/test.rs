@@ -235,7 +235,26 @@ pub fn run(ctx: &mut Context, args: &TestArgs, action: Option<&Action>) -> Comma
     if let Some(Action::Build(_)) = action {
         return build(ctx, args);
     }
-    let passthrough = ctx.xcodebuild_args(&args.passthrough)?;
+    let twins = flag_twins(args);
+    if let Some((ours, theirs)) = twins
+        .iter()
+        .find(|(_, theirs)| args.passthrough.iter().any(|a| a == theirs))
+    {
+        return Err(CliError::new(format!(
+            "'{ours}' passes '{theirs}' itself, and xcodebuild takes it only once; give one \
+             or the other"
+        ))
+        .kind(ErrorKind::Usage));
+    }
+    let (passthrough, left_out) = without_file_twins(
+        &twins,
+        ctx.xcodebuild_args(xcodebuild::Action::Test, &args.passthrough)?,
+    );
+    if ctx.out.is_verbose() {
+        for note in &left_out {
+            ctx.out.note(note);
+        }
+    }
     let run_args = RunArgs {
         only_testing: &args.only_testing,
         skip_testing: &args.skip_testing,
@@ -285,6 +304,50 @@ fn refuse_run_flags(given: &[&str], why: &str) -> Result<(), CliError> {
         (format!("{} and {last}", rest.join(", ")), "apply")
     };
     Err(CliError::new(format!("{flags} {verb} to a test run{why}")).kind(ErrorKind::Usage))
+}
+
+/// The `xcodebuild` flags a typed `test` flag passes itself, as `(sweetpad
+/// flag, xcodebuild flag)`: '--coverage' passes '-enableCodeCoverage YES' and
+/// '--retry-flaky N' passes '-test-iterations N'. `xcodebuild` takes each
+/// only once, so [`run`] refuses a typed copy after '--' and
+/// [`without_file_twins`] leaves out the project file's.
+fn flag_twins(args: &TestArgs) -> Vec<(&'static str, &'static str)> {
+    [
+        ("--coverage", "-enableCodeCoverage", args.coverage),
+        (
+            "--retry-flaky",
+            "-test-iterations",
+            args.retry_flaky.is_some(),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(ours, theirs, given)| given.then_some((ours, theirs)))
+    .collect()
+}
+
+/// `passthrough` without the project file's copy of each of `twins` and its
+/// value, and the notes naming what it left out: the typed flag replaces the
+/// copy, as a typed `--` tail replaces a single-use flag in the file. The tail
+/// holds none by now ([`run`] refused them), so any copy left is the file's.
+fn without_file_twins(
+    twins: &[(&'static str, &'static str)],
+    passthrough: Vec<String>,
+) -> (Vec<String>, Vec<String>) {
+    let mut kept = Vec::with_capacity(passthrough.len());
+    let mut notes = Vec::new();
+    let mut iter = passthrough.into_iter();
+    while let Some(arg) = iter.next() {
+        let Some((ours, theirs)) = twins.iter().find(|(_, theirs)| arg == *theirs) else {
+            kept.push(arg);
+            continue;
+        };
+        let value = iter.next().unwrap_or_default();
+        notes.push(format!(
+            "leaving out sweetpad.toml's '{theirs} {value}': '{ours}' passes its own, and \
+             xcodebuild takes '{theirs}' only once"
+        ));
+    }
+    (kept, notes)
 }
 
 /// Why `test <verb>` refuses a run flag.
@@ -2293,6 +2356,43 @@ mod tests {
             Some(crate::cli::Resource::Test { args, action }) => (args, action),
             other => panic!("parsed as {other:?}"),
         }
+    }
+
+    #[test]
+    fn coverage_and_retry_flaky_replace_the_files_copy_of_their_flag() {
+        // xcodebuild takes '-enableCodeCoverage' and '-test-iterations' once,
+        // and '--coverage'/'--retry-flaky' pass their own.
+        let (args, _) = parse_test(&["--coverage", "--retry-flaky", "3"]);
+        let twins = flag_twins(&args);
+        assert_eq!(
+            twins,
+            [
+                ("--coverage", "-enableCodeCoverage"),
+                ("--retry-flaky", "-test-iterations")
+            ]
+        );
+        let file = [
+            "-enableCodeCoverage",
+            "NO",
+            "-skipMacroValidation",
+            "-test-iterations",
+            "5",
+        ]
+        .map(String::from)
+        .to_vec();
+        let (kept, notes) = without_file_twins(&twins, file.clone());
+        assert_eq!(kept, ["-skipMacroValidation"]);
+        assert_eq!(
+            notes[0],
+            "leaving out sweetpad.toml's '-enableCodeCoverage NO': '--coverage' passes its own, \
+             and xcodebuild takes '-enableCodeCoverage' only once"
+        );
+        assert_eq!(notes.len(), 2);
+        // Without the typed flags, the file's copies stay.
+        let (args, _) = parse_test(&[]);
+        let (kept, notes) = without_file_twins(&flag_twins(&args), file.clone());
+        assert_eq!(kept, file);
+        assert!(notes.is_empty());
     }
 
     #[test]

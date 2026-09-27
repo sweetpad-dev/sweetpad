@@ -31,6 +31,115 @@ impl BuildAction {
     }
 }
 
+/// The `xcodebuild` action a command's passthrough goes to, which decides the
+/// arguments sweetpad passes beside it. The commands that resolve settings
+/// in-process instead of spawning `xcodebuild` (`settings show`, the `app`
+/// verbs that find a built product, the editor's index) model a build, so
+/// they name [`Action::Build`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    Build,
+    BuildForTesting,
+    Test,
+    Archive,
+    Clean,
+}
+
+impl From<BuildAction> for Action {
+    fn from(action: BuildAction) -> Self {
+        match action {
+            BuildAction::Build => Self::Build,
+            BuildAction::BuildForTesting => Self::BuildForTesting,
+        }
+    }
+}
+
+/// An `xcodebuild` flag sweetpad passes itself: the flag, who passes it, what
+/// it sets, and the sweetpad flag that sets it instead.
+type OwnedFlag = (&'static str, &'static str, &'static str, &'static str);
+
+/// The flags sweetpad passes itself on every action. `xcodebuild` refuses a
+/// second copy of each ("option '-scheme' may only be provided once"). A
+/// `-destination` is not here: `xcodebuild` takes several, and builds or tests
+/// for each one.
+const OWNED_FLAGS: [OwnedFlag; 5] = [
+    ("-scheme", "sweetpad", "the scheme", "--scheme"),
+    (
+        "-configuration",
+        "sweetpad",
+        "the configuration",
+        "--configuration",
+    ),
+    ("-sdk", "sweetpad", "the SDK", "--sdk"),
+    ("-workspace", "sweetpad", "the workspace", "--workspace"),
+    ("-project", "sweetpad", "the project", "--project"),
+];
+
+/// The flag only `test` passes itself. A build takes a typed
+/// `-resultBundlePath` in place of its own (see [`BuildPlan::result_bundle`]),
+/// since nothing reads the build's bundle back.
+const OWNED_BY_TEST: [OwnedFlag; 1] = [(
+    "-resultBundlePath",
+    "'sweetpad test'",
+    "the result bundle",
+    "--result-bundle",
+)];
+
+/// The flags only `archive` passes itself. The archive step takes
+/// `-archivePath` once and fails on `-exportOptionsPlist`; the export step,
+/// which names both of the others, never sees the tail.
+const OWNED_BY_ARCHIVE: [OwnedFlag; 3] = [
+    (
+        "-archivePath",
+        "'sweetpad archive'",
+        "the archive path",
+        "--output-file",
+    ),
+    (
+        "-exportPath",
+        "'sweetpad archive'",
+        "the export directory",
+        "--output-file",
+    ),
+    (
+        "-exportOptionsPlist",
+        "'sweetpad archive'",
+        "the export options",
+        "--export-options",
+    ),
+];
+
+/// Refuse a typed `--` argument that names what sweetpad passes `xcodebuild`
+/// itself for `action`, naming the sweetpad flag to use instead. The typed
+/// flags alone decide it, so it is a usage error, raised before any project
+/// is looked for. Only the exact token counts: `xcodebuild` reads
+/// `-scheme=App` as something other than a scheme.
+///
+/// # Errors
+/// A usage error naming the first such argument.
+pub fn refuse_owned_flags(action: Action, tail: &[String]) -> Result<(), CliError> {
+    let specific: &[OwnedFlag] = match action {
+        Action::Test => &OWNED_BY_TEST,
+        Action::Archive => &OWNED_BY_ARCHIVE,
+        Action::Build | Action::BuildForTesting | Action::Clean => &[],
+    };
+    let mut iter = tail.iter();
+    while let Some(arg) = iter.next() {
+        if let Some((flag, who, what, instead)) =
+            OWNED_FLAGS.iter().chain(specific).find(|f| arg == f.0)
+        {
+            return Err(CliError::new(format!(
+                "{who} sets {what} itself; pass '{instead}' instead of '{flag}' after '--'"
+            ))
+            .kind(ErrorKind::Usage));
+        }
+        if VALUE_FLAGS.contains(&arg.as_str()) {
+            iter.next();
+        }
+    }
+    Ok(())
+}
+
 /// Everything needed to invoke `xcodebuild build` (or `build-for-testing`) for
 /// a resolved target.
 pub struct BuildPlan<'a> {
@@ -61,12 +170,20 @@ pub struct BuildPlan<'a> {
     /// `xcode-build-server` has for a file's compiler arguments. A build without
     /// it leaves the editor's index stale, so autocomplete degrades to "cannot
     /// find <Foundation/Foundation.h>" while the build itself succeeds.
+    ///
+    /// A `-resultBundlePath` in the passthrough replaces it: the build writes
+    /// that bundle instead and keeps it (see [`Self::typed_result_bundle`]).
     pub result_bundle: Option<PathBuf>,
     /// Extra arguments passed through to xcodebuild verbatim (everything after
     /// `--` on the command line) — the escape hatch for flags/settings the CLI
     /// doesn't model.
     pub passthrough: &'a [String],
 }
+
+/// The typed result bundles this process's builds were about to write, for
+/// [`BuildPlan::prepare_result_bundle`] to tell a bundle it may replace from
+/// one that was there first.
+static TYPED_BUNDLES_WRITTEN: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
 
 impl BuildPlan<'_> {
     /// The `xcodebuild` argument vector: `[clean] build|build-for-testing
@@ -90,7 +207,7 @@ impl BuildPlan<'_> {
             args.push("-sdk".into());
             args.push(sdk.into());
         }
-        if let Some(bundle) = &self.result_bundle {
+        if let Some(bundle) = self.own_result_bundle() {
             args.push("-resultBundlePath".into());
             args.push(bundle.display().to_string());
         }
@@ -131,11 +248,43 @@ impl BuildPlan<'_> {
         (self.args(), working_dir(self.container))
     }
 
+    /// The `-resultBundlePath` the passthrough gives, as `xcodebuild` resolves
+    /// it from [`working_dir`]. It replaces [`Self::result_bundle`], so a
+    /// build writes its bundle where the caller asked, and the activity log
+    /// the editor's index reads is written all the same.
+    fn typed_result_bundle(&self) -> Option<PathBuf> {
+        passthrough_path(self.passthrough, "-resultBundlePath", self.container)
+    }
+
+    /// The slot sweetpad passes as `-resultBundlePath`, unless the passthrough
+    /// names its own.
+    fn own_result_bundle(&self) -> Option<&PathBuf> {
+        self.result_bundle
+            .as_ref()
+            .filter(|_| self.typed_result_bundle().is_none())
+    }
+
     /// Clear the result-bundle slot: `xcodebuild` refuses to write into a path
     /// that already exists, and the slot is reused across builds. Call this
     /// immediately before spawning — never on the `--show-command` path, which
     /// must not touch state.
+    ///
+    /// A typed bundle is the caller's, so it is cleared only when an earlier
+    /// build of this same process wrote it (the next round of `build
+    /// --watch`, or a rebuild in the run session). One that was there before
+    /// the command started stays, for `xcodebuild` to refuse.
     pub fn prepare_result_bundle(&self) {
+        if let Some(typed) = self.typed_result_bundle() {
+            let mut written = TYPED_BUNDLES_WRITTEN
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if written.contains(&typed) {
+                let _ = std::fs::remove_dir_all(&typed);
+            } else if !typed.exists() {
+                written.push(typed);
+            }
+            return;
+        }
         let Some(bundle) = &self.result_bundle else {
             return;
         };
@@ -1821,17 +1970,16 @@ pub fn clean_passthrough(passthrough: &[String]) -> Vec<String> {
 
 /// The flags a build or test takes and `xcodebuild clean` fails on, each of
 /// which takes a value, as Xcode 27 refuses them: the testing ones ("The flag
-/// -enableCodeCoverage is only supported when testing"), `-resultStreamPath`,
-/// which needs the `-resultBundlePath` sweetpad passes only to a build, and
-/// `-exportOptionsPlist`, which needs `-exportArchive`.
-const NOT_FOR_CLEAN: [&str; 7] = [
+/// -enableCodeCoverage is only supported when testing"), and
+/// `-resultStreamPath`, which needs the `-resultBundlePath` sweetpad passes
+/// only to a build.
+const NOT_FOR_CLEAN: [&str; 6] = [
     "-enableCodeCoverage",
     "-testPlan",
     "-testLanguage",
     "-testRegion",
     "-test-repetition-relaunch-enabled",
     "-resultStreamPath",
-    "-exportOptionsPlist",
 ];
 
 /// `path` with its `.` components dropped and each `..` folded into the
@@ -2670,6 +2818,136 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
                 "/work/App.xcodeproj",
             ]
         );
+    }
+
+    fn build_plan<'a>(c: &'a Container, bundle: &Path, passthrough: &'a [String]) -> BuildPlan<'a> {
+        BuildPlan {
+            action: BuildAction::Build,
+            container: c,
+            scheme: "App",
+            configuration: "Debug",
+            destination: Some("platform=macOS"),
+            passthrough,
+            sdk: None,
+            clean: false,
+            hot: false,
+            hot_entitlements: None,
+            result_bundle: Some(bundle.to_path_buf()),
+        }
+    }
+
+    #[test]
+    fn a_typed_result_bundle_replaces_the_builds_own() {
+        // xcodebuild refuses a second '-resultBundlePath', and nothing reads
+        // the build's bundle back, so the typed one is passed alone. The
+        // activity log the editor's index reads is written either way.
+        let c = project();
+        let slot = PathBuf::from("/state/App-build.xcresult");
+        let tail = vec!["-resultBundlePath".to_string(), "mine.xcresult".to_string()];
+        let args = build_plan(&c, &slot, &tail).args();
+        assert_eq!(
+            args.iter().filter(|a| *a == "-resultBundlePath").count(),
+            1,
+            "{args:?}"
+        );
+        assert!(!args.contains(&slot.display().to_string()), "{args:?}");
+        assert!(args.ends_with(&tail), "{args:?}");
+    }
+
+    #[test]
+    fn a_typed_result_bundle_is_replaced_only_after_this_process_wrote_it() {
+        let dir = crate::cli::testdir::TempDir::new("sweetpad-typed-bundle");
+        let c = Container::Project(dir.join("App.xcodeproj"));
+        let slot = dir.join("slot.xcresult");
+        // A bundle that was there first is the caller's: it stays, and
+        // xcodebuild says it exists.
+        let theirs = dir.join("theirs.xcresult");
+        std::fs::create_dir_all(theirs.join("Data")).unwrap();
+        let tail = vec![
+            "-resultBundlePath".to_string(),
+            "theirs.xcresult".to_string(),
+        ];
+        build_plan(&c, &slot, &tail).prepare_result_bundle();
+        assert!(theirs.join("Data").exists());
+        // One this process's first build wrote is replaced on the next build,
+        // as a 'build --watch' round or a run-session rebuild needs.
+        let tail = vec!["-resultBundlePath".to_string(), "ours.xcresult".to_string()];
+        let plan = build_plan(&c, &slot, &tail);
+        plan.prepare_result_bundle();
+        std::fs::create_dir_all(dir.join("ours.xcresult/Data")).unwrap();
+        plan.prepare_result_bundle();
+        assert!(!dir.join("ours.xcresult").exists());
+        // The slot sweetpad would have used is left alone throughout.
+        std::fs::create_dir_all(&slot).unwrap();
+        plan.prepare_result_bundle();
+        assert!(slot.exists());
+    }
+
+    #[test]
+    fn a_tail_naming_what_sweetpad_passes_is_a_usage_error_naming_its_flag() {
+        let s = |args: &[&str]| args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>();
+        for (action, tail, instead) in [
+            (Action::Build, &["-scheme", "App"][..], "--scheme"),
+            (
+                Action::BuildForTesting,
+                &["-configuration", "Release"],
+                "--configuration",
+            ),
+            (Action::Test, &["-sdk", "macosx"], "--sdk"),
+            (
+                Action::Archive,
+                &["-workspace", "A.xcworkspace"],
+                "--workspace",
+            ),
+            (
+                Action::Build,
+                &["FOO=1", "-project", "A.xcodeproj"],
+                "--project",
+            ),
+            (
+                Action::Test,
+                &["-resultBundlePath", "r.xcresult"],
+                "--result-bundle",
+            ),
+            (
+                Action::Archive,
+                &["-archivePath", "A.xcarchive"],
+                "--output-file",
+            ),
+            (Action::Archive, &["-exportPath", "out"], "--output-file"),
+            (
+                Action::Archive,
+                &["-exportOptionsPlist", "E.plist"],
+                "--export-options",
+            ),
+        ] {
+            let err = refuse_owned_flags(action, &s(tail)).expect_err(&format!("{tail:?}"));
+            assert_eq!(err.error_kind(), ErrorKind::Usage, "{tail:?}");
+            assert!(
+                err.to_string()
+                    .contains(&format!("pass '{instead}' instead")),
+                "{tail:?}: {err}"
+            );
+        }
+        for (action, tail) in [
+            // A build writes a typed bundle in place of its own.
+            (Action::Build, &["-resultBundlePath", "r.xcresult"][..]),
+            (
+                Action::BuildForTesting,
+                &["-resultBundlePath", "r.xcresult"],
+            ),
+            // xcodebuild takes several destinations.
+            (Action::Test, &["-destination", "platform=macOS"]),
+            // Only the exact token is the flag.
+            (Action::Build, &["-scheme=App"]),
+            // A flag's value is not a flag.
+            (Action::Build, &["-xcconfig", "-scheme"]),
+            // Archive's own paths are its alone.
+            (Action::Build, &["-archivePath", "A.xcarchive"]),
+            (Action::Test, &["-exportPath", "out"]),
+        ] {
+            assert!(refuse_owned_flags(action, &s(tail)).is_ok(), "{tail:?}");
+        }
     }
 
     #[test]

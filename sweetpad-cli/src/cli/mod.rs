@@ -803,7 +803,17 @@ impl Context {
     /// empty tail, so they look where the build put the `.app`. A file
     /// argument the tail replaces (a flag `xcodebuild` takes once) is named
     /// under `-v`.
-    pub fn xcodebuild_args(&self, tail: &[String]) -> Result<Vec<String>, CliError> {
+    ///
+    /// `action` is the `xcodebuild` action the arguments go to. A tail that
+    /// names what sweetpad passes itself for it (`-scheme`, `test`'s
+    /// `-resultBundlePath`, …) is refused here, from the command line alone,
+    /// before any project is looked for.
+    pub fn xcodebuild_args(
+        &self,
+        action: xcodebuild::Action,
+        tail: &[String],
+    ) -> Result<Vec<String>, CliError> {
+        xcodebuild::refuse_owned_flags(action, tail)?;
         // Silent resolution: this runs *before* the command resolves for real,
         // and `container` narrates its discovery ("using X (found below …)") —
         // saying it twice per build would be the whole visible effect of a peek

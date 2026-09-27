@@ -79,7 +79,7 @@ fn serve_command_line(ctx: &Context) -> sweetpad_core::bsp::CommandLine {
     let Some(container) = resolve::container_silently(ctx) else {
         return sweetpad_core::bsp::CommandLine::default();
     };
-    match ctx.xcodebuild_args(&[]) {
+    match ctx.xcodebuild_args(crate::cli::xcodebuild::Action::Build, &[]) {
         Ok(args) => {
             let settings = crate::cli::xcodebuild::CommandLineSettings::of(&args, &container);
             sweetpad_core::bsp::CommandLine {

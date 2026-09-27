@@ -277,6 +277,18 @@ fn a_refused_flag_is_a_usage_error() {
             "--no-git",
         ],
         &["help", "no-such-topic"],
+        // A '--' tail naming what sweetpad passes xcodebuild itself would
+        // fail inside xcodebuild ("may only be provided once"), so the flag
+        // that sets it is named instead.
+        &["build", "--", "-scheme", "App"],
+        &["test", "build", "--", "-configuration", "Release"],
+        &["test", "--", "-resultBundlePath", "r.xcresult"],
+        &["test", "--coverage", "--", "-enableCodeCoverage", "NO"],
+        &["test", "--retry-flaky", "2", "--", "-test-iterations", "3"],
+        &["archive", "--", "-archivePath", "App.xcarchive"],
+        &["app", "run", "--mac", "--", "-sdk", "macosx"],
+        &["app", "install", "--", "-project", "Other.xcodeproj"],
+        &["settings", "show", "--", "-workspace", "Other.xcworkspace"],
     ];
     for args in refused {
         let human = sweetpad(args, &cwd, &home);
@@ -284,7 +296,9 @@ fn a_refused_flag_is_a_usage_error() {
         let stderr = String::from_utf8(human.stderr).unwrap();
         assert!(stderr.contains("error:"), "{args:?}: {stderr}");
 
-        let json_args = [*args, &["--json"]].concat();
+        // Ahead of any '--' tail, which would take it as xcodebuild's.
+        let tail = args.iter().position(|a| *a == "--").unwrap_or(args.len());
+        let json_args = [&args[..tail], &["--json"], &args[tail..]].concat();
         let out = sweetpad(&json_args, &cwd, &home);
         assert_eq!(out.status.code(), Some(2), "{json_args:?}: {out:?}");
         let err = parse_stderr_error(&out, &json_args);

@@ -82,9 +82,17 @@ as -xcconfig, is left out of the file's list when the tail gives it, and -v
 says so. 'sweetpad status' prints the effective
 list. The arguments sweetpad settles itself are refused there, naming the key
 to use instead: -scheme, -configuration, -destination, -sdk, -workspace,
--project, -resultBundlePath, and -derivedDataPath (a relative value would
+-project, -resultBundlePath (use 'test --result-bundle'), -archivePath,
+-exportPath and -exportOptionsPlist (use 'archive --output-file' and
+'--export-options'), and -derivedDataPath (a relative value would
 mean a different directory depending on where the command ran — pass that one
 per command). Swift packages ignore the table: they build with 'swift build'.
+
+The '--' tail can't repeat what sweetpad passes itself either, since
+xcodebuild fails on a second copy: -scheme, -configuration, -sdk, -workspace
+and -project there are a usage error naming the flag to use, as are test's
+-resultBundlePath and archive's own paths. A build writes a typed
+-resultBundlePath in place of its own.
 
 When the project is not a sibling of that file, name it with 'workspace' or
 'project', relative to the file itself:

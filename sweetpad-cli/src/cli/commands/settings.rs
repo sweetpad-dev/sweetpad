@@ -113,6 +113,12 @@ fn show(
     key: Option<&str>,
     passthrough: &[String],
 ) -> CommandResult {
+    // The settings a build with this tail resolves: the project's
+    // `[xcodebuild] args` carry command-line settings and an `-xcconfig`
+    // every build takes, and the typed tail layers on them as a build's does.
+    // Read before resolving, so a tail a build would refuse is refused from
+    // the command line alone.
+    let passthrough = ctx.xcodebuild_args(xcodebuild::Action::Build, passthrough)?;
     let mut resolved = resolve::resolve(ctx)?;
 
     let (project, workspace): (Option<PathBuf>, Option<PathBuf>) = match &resolved.container {
@@ -167,13 +173,7 @@ fn show(
         .as_deref()
         .or(resolved.destination.as_deref())
         .and_then(sweetpad_lib::destination::parse_destination_arg);
-    // The settings a build with this tail resolves: the project's
-    // `[xcodebuild] args` carry command-line settings and an `-xcconfig`
-    // every build takes, and the typed tail layers on them as a build's does.
-    let command_line = xcodebuild::CommandLineSettings::of(
-        &ctx.xcodebuild_args(passthrough)?,
-        &resolved.container,
-    );
+    let command_line = xcodebuild::CommandLineSettings::of(&passthrough, &resolved.container);
 
     let opts = BuildSettingsOptions {
         project,

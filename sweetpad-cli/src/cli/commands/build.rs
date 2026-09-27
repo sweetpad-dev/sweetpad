@@ -269,7 +269,7 @@ fn start(
 ) -> CommandResult {
     // Both entry points (`build` and each `--watch` iteration) land here, so
     // the project file's `[xcodebuild] args` join the tail once.
-    let passthrough = &ctx.xcodebuild_args(passthrough)?;
+    let passthrough = &ctx.xcodebuild_args(action.into(), passthrough)?;
     // A test build compiles what `test run` would run, so it settles on the
     // same scheme, configuration, and destination: the testing context.
     let testing = action == BuildAction::BuildForTesting;

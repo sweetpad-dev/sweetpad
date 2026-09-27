@@ -89,6 +89,26 @@ The commands that run a build accept it: `build`, `test`, `archive`, and `app ru
 (`launch`, `uninstall`, `logs`, `stop`) reject it rather than accept arguments that would reach no
 `xcodebuild`.
 
+The tail can't repeat what SweetPad already passes, because `xcodebuild` fails on a second copy.
+SweetPad refuses these before it builds and names its own flag to use:
+
+| In the tail              | Use instead                                  |
+| ------------------------ | -------------------------------------------- |
+| `-scheme`                | `--scheme`                                   |
+| `-configuration`         | `--configuration`                            |
+| `-sdk`                   | `--sdk`                                      |
+| `-workspace`, `-project` | `--workspace`, `--project`                   |
+| `-resultBundlePath`      | `--result-bundle`, on `test` only            |
+| `-archivePath`, `-exportPath` | `--output-file`, on `archive` only      |
+| `-exportOptionsPlist`    | `--export-options`, on `archive` only        |
+| `-enableCodeCoverage`    | nothing, when `test` has `--coverage`        |
+| `-test-iterations`       | nothing, when `test` has `--retry-flaky`     |
+
+`-destination` is allowed, since `xcodebuild` builds or tests for each one it gets. A build takes a
+typed `-resultBundlePath` in place of its own, and keeps the bundle there. `xcodebuild` won't write
+into a bundle that already exists, so remove it before the next build. Rounds of `build --watch`
+and rebuilds in a run session replace it for you.
+
 A `-derivedDataPath` in the tail is honored when locating the built `.app`, so the bundle SweetPad
 installs is the one the build just wrote:
 
@@ -151,8 +171,9 @@ out, and `-v` says so.
 where it came from.
 
 Arguments SweetPad settles itself are refused in the file, naming the key to use instead: `-scheme`,
-`-configuration`, `-destination`, `-sdk`, `-workspace`, `-project`, and `-resultBundlePath` (SweetPad
-writes and reads back its own). `-derivedDataPath` is refused too: `clean --purge`, `derived-data`,
+`-configuration`, `-destination`, `-sdk`, `-workspace`, and `-project`. So are the paths SweetPad
+names itself: `-resultBundlePath`, which `test` writes and reads back, and `archive`'s
+`-archivePath`, `-exportPath`, and `-exportOptionsPlist`. `-derivedDataPath` is refused too: `clean --purge`, `derived-data`,
 and the editor's index would keep using the DerivedData location Xcode's settings name, and a relative value would resolve against
 the project's directory rather than the file. Pass it per command instead. Swift packages ignore the
 table entirely: they build with `swift build`, which knows none of `xcodebuild`'s flags.
