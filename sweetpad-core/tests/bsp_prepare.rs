@@ -13,15 +13,15 @@
 //! * the startup warm-up reaches a target **no scheme builds**, which needs a
 //!   `-target` build with the output roots named explicitly.
 //!
-//! Opt-in: runs `xcodebuild`, so gated on `BSP_ORACLE=1` (+ Xcode 26.5).
+//! Opt-in: runs `xcodebuild`, so gated on `BSP_ORACLE=1`. It builds with the
+//! Xcode `BSP_ORACLE_XCODE` names (the `.app` or its `Developer` directory),
+//! else the selected one: `DEVELOPER_DIR`, then `xcode-select -p`.
 
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-
-const XCODE: &str = "/Applications/Xcode-26.5.0.app";
 
 /// Long enough for a cold `xcodebuild` on a small fixture, short enough that a
 /// wedged server fails the run rather than hanging it.
@@ -38,16 +38,37 @@ fn fixture(name: &str, proj: &str) -> String {
     )
 }
 
-/// Whether the gated preconditions hold; prints why when they don't.
+/// The Xcode `BSP_ORACLE_XCODE` names, if it is set.
+fn pinned_xcode() -> Option<PathBuf> {
+    std::env::var_os("BSP_ORACLE_XCODE")
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+}
+
+/// The Xcode the server builds with.
+fn xcode() -> PathBuf {
+    pinned_xcode().unwrap_or_else(sweetpad_lib::xcode::detect_developer_dir)
+}
+
+/// Whether the gated preconditions hold; prints why when they don't. An Xcode
+/// `BSP_ORACLE_XCODE` names has to exist.
 fn gated() -> bool {
     if std::env::var("BSP_ORACLE").is_err() {
         eprintln!("skipping: set BSP_ORACLE=1 to run the BSP prepare oracle");
         return false;
     }
-    if !Path::new(XCODE).exists() {
-        eprintln!("skipping: {XCODE} not installed");
+    let xcode = xcode();
+    if let Some(pinned) = pinned_xcode() {
+        assert!(
+            pinned.exists(),
+            "BSP_ORACLE_XCODE names {}, which does not exist",
+            pinned.display()
+        );
+    } else if !xcode.exists() {
+        eprintln!("skipping: no Xcode at {}", xcode.display());
         return false;
     }
+    eprintln!("building with {}", xcode.display());
     true
 }
 
@@ -64,7 +85,7 @@ impl Session {
     fn start(project: &str, dd: &Path, log: &Path) -> Session {
         let mut child = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
             .args(["bsp", "--project", project, "--xcode"])
-            .arg(format!("{XCODE}/Contents/Developer"))
+            .arg(xcode())
             .arg("--derived-data-path")
             .arg(dd)
             .env("SWEETPAD_BSP_LOG", log)
