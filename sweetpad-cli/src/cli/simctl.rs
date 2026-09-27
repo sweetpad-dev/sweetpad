@@ -357,14 +357,6 @@ pub fn install(udid: &str, app_path: &str) -> Result<(), CliError> {
     .context("installing the app on the simulator"))
 }
 
-/// Launch an installed app by bundle id; returns simctl's stdout (`bundle: pid`).
-/// `--terminate-running-process` replaces any already-running instance, so the
-/// freshly-installed build actually starts — a plain `simctl launch` attaches to the
-/// existing process and the new binary never runs.
-pub fn launch(udid: &str, bundle_id: &str) -> Result<String, CliError> {
-    launch_opts(udid, bundle_id, &LaunchOptions::default())
-}
-
 /// Extra launch inputs: process arguments, environment pairs (forwarded via
 /// `SIMCTL_CHILD_*` vars, which simctl strips and passes into the app), and
 /// `--wait-for-debugger` for attach-first debugging flows.
@@ -376,28 +368,11 @@ pub struct LaunchOptions<'a> {
     pub wait_for_debugger: bool,
 }
 
-/// Launch with extra environment forwarded to `xcrun simctl`. Used by `--hot` to
-/// pass `SIMCTL_CHILD_*` vars so the injection client dylib is
-/// `DYLD_INSERT_LIBRARIES`-loaded. Returns stdout.
-pub fn launch_with_env(
-    udid: &str,
-    bundle_id: &str,
-    env: &[(String, String)],
-) -> Result<String, CliError> {
-    launch_opts(
-        udid,
-        bundle_id,
-        &LaunchOptions {
-            env,
-            ..LaunchOptions::default()
-        },
-    )
-}
-
-/// Launch with [`LaunchOptions`], within [`STEP_TIMEOUT`]. Returns stdout
-/// (`<bundle>: <pid>`). `--terminate-running-process` forces a fresh launch:
-/// forwarded env and args only take effect on a new process, so an
-/// already-running instance must be replaced or they silently never apply.
+/// Launch an installed app with [`LaunchOptions`], within [`STEP_TIMEOUT`].
+/// Returns stdout (`<bundle>: <pid>`). `--terminate-running-process` forces a
+/// fresh launch: a plain `simctl launch` attaches to a running instance, so a
+/// freshly installed build would never run and forwarded env and args would
+/// never apply.
 /// `--wait-for-debugger` returns once the app is started suspended, so it
 /// fits the same bound.
 pub fn launch_opts(udid: &str, bundle_id: &str, opts: &LaunchOptions) -> Result<String, CliError> {

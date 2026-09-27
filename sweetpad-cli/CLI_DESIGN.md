@@ -1151,7 +1151,7 @@ full rebuild+relaunch; `q`/Ctrl-C/Ctrl-D quit and tear the server down.
 1. **Socket spike — ✅ done.** Validated transport + a recompile/`.load`/`.injected`
    round-trip using the **(A)** live build-log command.
 2. **Build-flag + launch-env plumbing — ✅ done.** `BuildPlan.hot` appends
-   `-interposable` + `EMIT_FRONTEND_COMMAND_LINES`; `simctl::launch_with_env`
+   `-interposable` + `EMIT_FRONTEND_COMMAND_LINES`; `simctl::launch_opts`
    forwards the `SIMCTL_CHILD_*` injection vars (`app run --hot`, simulator-gated).
 3. **Recompiler — ✅ done.** Both strategies in `cli/inject/recompiler.rs`
    converge on a cached single-file frontend command: **F** (default) recovers it
