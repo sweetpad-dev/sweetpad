@@ -2955,25 +2955,7 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
             ctx.out.step("Booting simulator", || simctl::boot(udid))?;
             ctx.out
                 .step("Installing app", || simctl::install(udid, &app_path))?;
-            // `--console-pty` keeps the launch attached, so this child's stdout/stderr
-            // are the app's; its exit means the app exited. Its start is bounded
-            // like any other launch; a process of the app already running (one
-            // a stuck terminate left behind) doesn't count as this one starting.
-            let env = plan.launch.env_pairs("SIMCTL_CHILD_")?;
-            let opts = plan.simctl_launch(&env);
-            let app_dir = app_dir_name(&app.path);
-            let exe = process_name(&app).to_string();
-            let before = simctl::app_pids(udid, &app_dir, &exe);
-            let mut child = ctx.out.step("Launching app", || {
-                let mut child = simctl::spawn_console(udid, &app.bundle_id, &opts)?;
-                simctl::await_console_start(&mut child, udid, || {
-                    simctl::app_pids(udid, &app_dir, &exe)
-                        .iter()
-                        .any(|pid| !before.contains(pid))
-                })?;
-                Ok::<_, CliError>(child)
-            })?;
-            render_console(&mut child, ctx.out.use_color(), filter, OwnLines::of(plan));
+            let (mut child, _) = launch_sim_console(ctx, plan, &app, udid, filter)?;
             // A console child that already ended was reaped by the wait, and
             // its pid may belong to someone else by now.
             let reap_slot = match child.try_wait() {
@@ -3043,6 +3025,42 @@ fn start_app(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Result<Ru
         }
         Target::SpmRun(_) => unreachable!("SPM run does not use the interactive session"),
     }
+}
+
+/// Launch the installed app on `udid` with its console attached, rendering
+/// what the app writes to stdout and stderr (`print`, NSLog's stderr leg) as it
+/// arrives, which a plain `simctl launch` drops. Returns the console child,
+/// which lives as long as the app does, and the app's pid once its process
+/// shows up.
+///
+/// `--console-pty` keeps the launch attached, so the child's stdout/stderr are
+/// the app's and its exit means the app exited. Its start is bounded like any
+/// other launch. A process of the app already running (one a stuck terminate
+/// left behind) doesn't count as this one starting.
+fn launch_sim_console(
+    ctx: &Context,
+    plan: &RunPlan,
+    app: &AppBundle,
+    udid: &str,
+    filter: &Arc<AtomicU8>,
+) -> Result<(Child, Option<u32>), CliError> {
+    let env = plan.launch.env_pairs("SIMCTL_CHILD_")?;
+    let opts = plan.simctl_launch(&env);
+    let app_dir = app_dir_name(&app.path);
+    let exe = process_name(app).to_string();
+    let before = simctl::app_pids(udid, &app_dir, &exe);
+    let started = || {
+        simctl::app_pids(udid, &app_dir, &exe)
+            .into_iter()
+            .find(|pid| !before.contains(pid))
+    };
+    let mut child = ctx.out.step("Launching app", || {
+        let mut child = simctl::spawn_console(udid, &app.bundle_id, &opts)?;
+        simctl::await_console_start(&mut child, udid, || started().is_some())?;
+        Ok::<_, CliError>(child)
+    })?;
+    render_console(&mut child, ctx.out.use_color(), filter, OwnLines::of(plan));
+    Ok((child, started()))
 }
 
 /// Detach from the running app: stop watching without stopping the app (the
@@ -3325,16 +3343,30 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
     let app = build_and_install(plan, &ctx.out)?;
     match &plan.target {
         Target::Simulator(udid) => {
-            let env = plan.launch.env_pairs("SIMCTL_CHILD_")?;
-            let launched = simctl::launch_opts(udid, &app.bundle_id, &plan.simctl_launch(&env))?;
-            ctx.out
-                .note(&format!("Launched {} → {}", app.bundle_id, launched.trim()));
-            stream_logs(
+            // Launched with its console, as the session launches it, so the
+            // app's own stdout and stderr show next to its os_log stream.
+            let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
+            let (mut console, pid) = launch_sim_console(ctx, plan, &app, udid, &filter)?;
+            ctx.out.note(&match pid {
+                Some(pid) => format!("Launched {} (pid {pid})", app.bundle_id),
+                None => format!("Launched {}", app.bundle_id),
+            });
+            let reap_slot = match console.try_wait() {
+                Ok(None) => crate::cli::signals::register_child(console.id()),
+                _ => None,
+            };
+            let streamed = stream_logs(
                 ctx,
                 &LogSource::Simulator(udid),
                 &app,
                 &LogFilterArgs::default(),
-            )
+            );
+            // The console only watches the app, which keeps running, as it
+            // does after a plain launch.
+            crate::cli::signals::unregister_child(reap_slot);
+            let _ = console.kill();
+            let _ = console.wait();
+            streamed
         }
         Target::Device(id) => {
             ctx.out.note(&format!(

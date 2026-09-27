@@ -12,7 +12,8 @@ sweetpad run
 ```
 
 It builds the app, installs it on your chosen simulator or device, launches it, and streams its logs
-into your terminal. When you're done, Ctrl-C stops following the logs.
+into your terminal: what it writes with `os_log` or `Logger`, and what it prints. When you're done,
+Ctrl-C stops following the logs.
 
 The first time you run it in a project, SweetPad asks which scheme and destination to use and
 remembers the answer, so every run after that is just `sweetpad run`. See

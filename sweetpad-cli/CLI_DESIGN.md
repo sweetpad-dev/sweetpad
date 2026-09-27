@@ -861,6 +861,9 @@ sweetpad completions <shell>          clap_complete-generated scripts
   queue a spurious rebuild. The build runs `xcodebuild` in its own process group
   with piped stdout fed through the [`buildlog`] beautifier. Non-interactive /
   piped runs (and `--no-logs`) fall back to a one-shot launch + inline follow.
+  On a simulator that launch attaches the console the session's does
+  (`--console-pty`), so the app's `print` output streams next to its os_log.
+  The console only watches: the app keeps running once the follow ends.
 
 - **bounded simulator steps** — `simctl install`, `launch` and `terminate`
   each get two minutes (`simctl::STEP_TIMEOUT`). A wedged simulator accepts
