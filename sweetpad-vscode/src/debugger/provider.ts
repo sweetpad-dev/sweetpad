@@ -165,16 +165,10 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
       timeoutMs: 15000, // wait for 15 seconds before giving up
     });
 
-    const deviceExecutableURL = process.executable;
-    if (!deviceExecutableURL) {
-      throw new Error("No device app path found");
-    }
-
-    // Remove the "file://" prefix and remove everything after the app name
-    // Result should be something like:
-    //  - "/private/var/containers/Bundle/Application/5045C7CE-DFB9-4C17-BBA9-94D8BCD8F565/Mastodon.app"
-    const deviceAppPath = deviceExecutableURL.match(/^file:\/\/(.*\.app)/)?.[1];
-    const processId = process.processIdentifier;
+    // The bundle's decoded path on the device, e.g.
+    // "/private/var/containers/Bundle/Application/5045C7CE-DFB9-4C17-BBA9-94D8BCD8F565/Mastodon.app"
+    const deviceAppPath = process.appPath;
+    const processId = process.pid;
 
     const continueOnAttach = config.continueOnAttach ?? true;
 
@@ -196,7 +190,7 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
       ...(config.preRunCommands || []),
       // Adjusts the loaded module’s file specification to point to the actual location of the binary on the remote device.
       // This ensures symbol resolution and breakpoints align correctly with the actual remote binary.
-      `script lldb.target.module[0].SetPlatformFileSpec(lldb.SBFileSpec(${quotePythonString(deviceAppPath ?? "")}))`,
+      `script lldb.target.module[0].SetPlatformFileSpec(lldb.SBFileSpec(${quotePythonString(deviceAppPath)}))`,
     ];
 
     // LLDB commands executed to create/attach the debuggee process.

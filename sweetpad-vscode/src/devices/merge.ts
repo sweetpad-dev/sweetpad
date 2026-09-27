@@ -1,4 +1,4 @@
-import { type DeviceCtlDevice, type DeviceCtlDeviceType, deviceType, deviceUdid } from "../common/xcode/devicectl";
+import { type DeviceCtlDeviceType, type DevicectlDevice, deviceType } from "../common/xcode/devicectl";
 import type { XcdeviceDevice } from "../common/xcode/xcdevice";
 import type { DeviceRaw } from "./types";
 
@@ -53,6 +53,8 @@ function inferDeviceTypeFromXcdevice(xc: XcdeviceDevice): DeviceCtlDeviceType | 
 
 /**
  * Merge devicectl and xcdevice outputs into a deduplicated list of source-record pairs.
+ * The devicectl side is already physical devices only: the addon drops the simulators
+ * Xcode 27's devicectl lists beside them.
  *
  * Scenario examples:
  *
@@ -74,7 +76,7 @@ function inferDeviceTypeFromXcdevice(xc: XcdeviceDevice): DeviceCtlDeviceType | 
  *   → 1 record with just xcdevice (DeviceDestination will render as unavailable).
  */
 export function mergeDeviceSources(
-  devicectlDevices: DeviceCtlDevice[],
+  devicectlDevices: DevicectlDevice[],
   xcdeviceDevices: XcdeviceDevice[],
 ): DeviceRaw[] {
   const xcByUdid = new Map<string, XcdeviceDevice>();
@@ -92,7 +94,7 @@ export function mergeDeviceSources(
       continue;
     }
 
-    const dcUdid = deviceUdid(dc)?.toLowerCase();
+    const dcUdid = dc.udid?.toLowerCase();
     const matchedXc = dcUdid ? xcByUdid.get(dcUdid) : undefined;
 
     // Rule 1: pair devicectl + xcdevice when UDIDs match (case-insensitive,

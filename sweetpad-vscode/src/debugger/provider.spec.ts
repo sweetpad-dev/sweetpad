@@ -15,14 +15,13 @@ import type {
   LastLaunchedAppDeviceContext,
   WorkspaceStateService,
 } from "../common/workspace-state";
-import { getRunningProcesses } from "../common/xcode/devicectl";
+import { getRunningProcessesJson } from "../common/xcode/devicectl";
 import { registerDebugConfigurationProvider } from "./provider";
 
-// Only the spawning entry point is replaced; the pure accessors the merge layer
-// calls stay real, or they come back undefined.
+// Only the spawning entry point is replaced; the addon reads the JSON it returns.
 vi.mock("../common/xcode/devicectl", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../common/xcode/devicectl")>()),
-  getRunningProcesses: vi.fn(),
+  getRunningProcessesJson: vi.fn(),
 }));
 
 vi.mock("../common/logger", () => ({
@@ -74,6 +73,11 @@ const DEVICE_CONTEXT: LastLaunchedAppDeviceContext = {
   destinationType: "iOSDevice",
 };
 
+/** "devicectl device info processes --json-output" JSON listing these processes. */
+function processList(runningProcesses: { executable: string; processIdentifier: number }[]): string {
+  return JSON.stringify({ result: { runningProcesses } });
+}
+
 const DEBUGSERVER: IosDeployDebugserverContext = {
   port: 12345,
   deviceAppPath: "/private/var/containers/Bundle/Application/C82BF61B-1E77-49F4-B17C-71A0F6520873/MyApp.app",
@@ -92,7 +96,7 @@ describe("DynamicDebugConfigurationProvider", () => {
       const config = await createProvider(context).resolve();
 
       expect(config.processCreateCommands).toEqual(["gdb-remote 127.0.0.1:12345", "process launch"]);
-      expect(getRunningProcesses).not.toHaveBeenCalled();
+      expect(getRunningProcessesJson).not.toHaveBeenCalled();
     });
 
     it("selects the remote-ios platform with the device's symbols as sysroot", async () => {
@@ -175,16 +179,51 @@ describe("DynamicDebugConfigurationProvider", () => {
 
   describe("device without a debugserver (iOS 17+, devicectl)", () => {
     beforeEach(() => {
-      (getRunningProcesses as Mock).mockResolvedValue({
-        result: {
-          runningProcesses: [
-            {
-              executable: `file://${DEBUGSERVER.deviceAppPath}/MyApp`,
-              processIdentifier: 19350,
-            },
-          ],
-        },
-      });
+      (getRunningProcessesJson as Mock).mockResolvedValue(
+        processList([{ executable: `file://${DEBUGSERVER.deviceAppPath}/MyApp`, processIdentifier: 19350 }]),
+      );
+    });
+
+    it("attaches to the app it launched, not one whose name ends the same way", async () => {
+      // "App.app" is a suffix of "MyApp.app", and a widget extension runs out of the
+      // app's own bundle; both are listed ahead of the app's executable.
+      const bundles = "file:///private/var/containers/Bundle/Application";
+      (getRunningProcessesJson as Mock).mockResolvedValue(
+        processList([
+          { executable: `${bundles}/AAAA/MyApp.app/MyApp`, processIdentifier: 100 },
+          { executable: `${bundles}/BBBB/App.app/PlugIns/Widget.appex/Widget`, processIdentifier: 200 },
+          { executable: `${bundles}/BBBB/App.app/App`, processIdentifier: 300 },
+        ]),
+      );
+
+      const config = await createProvider({ ...DEVICE_CONTEXT, appName: "App.app", executableName: "App" }).resolve();
+
+      expect(config.pid).toBe("300");
+      expect(config.preRunCommands).toEqual([
+        `script lldb.target.module[0].SetPlatformFileSpec(lldb.SBFileSpec('/private/var/containers/Bundle/Application/BBBB/App.app'))`,
+      ]);
+    });
+
+    it("finds an app whose bundle name has a space, which the executable URL encodes", async () => {
+      (getRunningProcessesJson as Mock).mockResolvedValue(
+        processList([
+          {
+            executable: "file:///private/var/containers/Bundle/Application/CCCC/My%20App.app/My%20App",
+            processIdentifier: 400,
+          },
+        ]),
+      );
+
+      const config = await createProvider({
+        ...DEVICE_CONTEXT,
+        appName: "My App.app",
+        executableName: "My App",
+      }).resolve();
+
+      expect(config.pid).toBe("400");
+      expect(config.preRunCommands).toEqual([
+        `script lldb.target.module[0].SetPlatformFileSpec(lldb.SBFileSpec('/private/var/containers/Bundle/Application/CCCC/My App.app'))`,
+      ]);
     });
 
     it("attaches to the running process by pid", async () => {

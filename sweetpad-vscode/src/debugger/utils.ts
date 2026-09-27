@@ -1,6 +1,7 @@
+import * as sweetpadLib from "@sweetpad/native";
 import type * as vscode from "vscode";
 
-import { type DeviceCtlProcess, getRunningProcesses } from "../common/xcode/devicectl";
+import { type DevicectlAppProcess, getRunningProcessesJson } from "../common/xcode/devicectl";
 
 /**
  * Wrap a value as a double-quoted LLDB command argument. LLDB's command interpreter splits
@@ -21,6 +22,9 @@ export function quotePythonString(value: string): string {
 
 /**
  * Wait while the process is launched on the device and return the process information.
+ * The app's own executable is the one directly inside its bundle ("Mastodon.app/Mastodon");
+ * the bundle directory has to match whole, so "App.app" never matches "MyApp.app", and an
+ * extension running out of "PlugIns/" is passed over.
  */
 export async function waitForProcessToLaunch(
   vscodeContext: vscode.ExtensionContext,
@@ -29,7 +33,7 @@ export async function waitForProcessToLaunch(
     appName: string;
     timeoutMs: number;
   },
-): Promise<DeviceCtlProcess> {
+): Promise<DevicectlAppProcess> {
   const { appName, deviceId, timeoutMs } = options;
 
   const startTime = Date.now(); // in milliseconds
@@ -45,19 +49,8 @@ export async function waitForProcessToLaunch(
     }
 
     // Query the running processes on the device using the devicectl command
-    const result = await getRunningProcesses(vscodeContext, { deviceId: deviceId });
-    const runningProcesses = result?.result?.runningProcesses ?? [];
-    if (runningProcesses.length === 0) {
-      throw new Error("No running processes found on the device");
-    }
-
-    // Example of a running process:
-    // {
-    //   "executable" : "file:///private/var/containers/Bundle/Application/5045C7CE-DFB9-4C17-BBA9-94D8BCD8F565/Mastodon.app/Mastodon",
-    //   "processIdentifier" : 19350
-    // },
-    // Example of appName: "Mastodon.app"
-    const process = runningProcesses.find((p) => p.executable?.includes(appName));
+    const json = await getRunningProcessesJson(vscodeContext, { deviceId: deviceId });
+    const process = sweetpadLib.devicectlAppProcesses(json, appName).find((p) => p.main);
     if (process) {
       return process;
     }

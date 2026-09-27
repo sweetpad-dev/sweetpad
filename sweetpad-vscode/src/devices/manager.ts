@@ -1,9 +1,10 @@
 import events from "node:events";
 
+import * as sweetpadLib from "@sweetpad/native";
 import type * as vscode from "vscode";
 
 import { checkUnreachable } from "../common/types";
-import { listDevices } from "../common/xcode/devicectl";
+import { listDevicesJson } from "../common/xcode/devicectl";
 import { listDevicesWithXcdevice } from "../common/xcode/xcdevice";
 import { mergeDeviceSources, resolveDeviceType } from "./merge";
 import {
@@ -61,11 +62,11 @@ export class DevicesManager {
     // The iOS <= 16 recovery path relies on xcdevice — we must not drop xcdevice
     // results just because devicectl (ENOENT on old Xcode, sandboxed env) blew up.
     const [devicectlResult, xcdeviceResult] = await Promise.allSettled([
-      listDevices(this.vscodeContext),
+      listDevicesJson(this.vscodeContext).then((json) => sweetpadLib.parseDevicectlDevices(json)),
       listDevicesWithXcdevice(),
     ]);
 
-    const devicectlDevices = devicectlResult.status === "fulfilled" ? devicectlResult.value.result.devices : [];
+    const devicectlDevices = devicectlResult.status === "fulfilled" ? devicectlResult.value : [];
     const xcdeviceList = xcdeviceResult.status === "fulfilled" ? xcdeviceResult.value : [];
 
     const merged = mergeDeviceSources(devicectlDevices, xcdeviceList);

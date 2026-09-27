@@ -647,6 +647,99 @@ fn scheme_to_napi(s: scheme::Scheme) -> SchemeInfo {
     }
 }
 
+/// A physical device from `devicectl list devices` JSON, in either of the
+/// shapes devicectl writes. Each optional field is `undefined` when devicectl
+/// leaves it out.
+#[napi(object)]
+pub struct DevicectlDevice {
+    /// CoreDevice's identifier, which devicectl's `--device` takes.
+    pub identifier: String,
+    /// The hex hardware UDID (`00008110-000559182E90401E`) xcodebuild's `id=`
+    /// takes. `undefined` for the entries devicectl lists with an empty
+    /// hardware section (some USB devices on iOS 16 and older).
+    pub udid: Option<String>,
+    pub name: Option<String>,
+    /// `iPhone 13`.
+    pub marketing_name: Option<String>,
+    /// `iPhone14,5`.
+    pub product_type: Option<String>,
+    /// `iPhone`, `iPad`, `appleWatch`, `appleTV`, `appleVision`,
+    /// `realityDevice`.
+    pub device_type: Option<String>,
+    /// devicectl's platform, `iOS` when it reports none.
+    pub platform: String,
+    /// `27.0`.
+    pub os_version: Option<String>,
+    /// `connected` / `disconnected` / `unavailable`.
+    pub connection: Option<String>,
+    /// `wired` / `localNetwork`.
+    pub transport: Option<String>,
+    /// `paired` once the device trusts this Mac.
+    pub pairing: Option<String>,
+    /// When the device last connected, in milliseconds since the Unix epoch.
+    pub last_connection_ms: Option<f64>,
+}
+
+/// Parse `devicectl list devices --json-output` JSON into the physical
+/// devices, sorted by name. The simulators Xcode 27's devicectl lists beside
+/// them are left out: `parseSimulators` reads those from simctl.
+#[napi]
+pub fn parse_devicectl_devices(json: String) -> napi::Result<Vec<DevicectlDevice>> {
+    let present = |s: String| (!s.is_empty()).then_some(s);
+    let devices = sweetpad_core::devices::devicectl::parse_list(&json).map_err(to_napi_err)?;
+    Ok(devices
+        .into_iter()
+        .map(|d| DevicectlDevice {
+            udid: d.has_hardware_udid.then_some(d.udid),
+            identifier: d.identifier,
+            name: present(d.name),
+            marketing_name: present(d.marketing_name),
+            product_type: present(d.product_type),
+            device_type: present(d.device_type),
+            platform: d.platform,
+            os_version: present(d.os_version),
+            connection: present(d.connection),
+            transport: present(d.transport),
+            pairing: present(d.pairing),
+            last_connection_ms: d.last_connection_ms,
+        })
+        .collect())
+}
+
+/// A process running out of an app bundle on a device.
+#[napi(object)]
+pub struct DevicectlAppProcess {
+    pub pid: i64,
+    /// The executable as devicectl reports it, a `file://` URL.
+    pub executable: String,
+    /// The bundle's path on the device, decoded:
+    /// `/private/var/containers/Bundle/Application/<id>/My App.app`.
+    pub app_path: String,
+    /// Whether this is the app's own executable rather than an extension's.
+    pub main: bool,
+}
+
+/// The processes in `devicectl device info processes --json-output` JSON that
+/// run out of the `.app` directory named `appDirName` (`My App.app`). The
+/// directory has to match whole, so `App.app` never matches `MyApp.app`.
+#[napi]
+pub fn devicectl_app_processes(
+    json: String,
+    app_dir_name: String,
+) -> napi::Result<Vec<DevicectlAppProcess>> {
+    let processes = sweetpad_core::devices::devicectl::parse_app_processes(&json, &app_dir_name)
+        .map_err(to_napi_err)?;
+    Ok(processes
+        .into_iter()
+        .map(|p| DevicectlAppProcess {
+            pid: p.pid,
+            executable: p.executable,
+            app_path: p.app_path,
+            main: p.main,
+        })
+        .collect())
+}
+
 fn to_napi_err(e: impl std::fmt::Display) -> napi::Error {
     napi::Error::from_reason(e.to_string())
 }

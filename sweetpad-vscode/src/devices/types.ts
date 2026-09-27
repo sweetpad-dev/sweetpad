@@ -1,14 +1,4 @@
-import {
-  type DeviceCtlDevice,
-  type DeviceCtlDeviceType,
-  deviceLastConnectionDate,
-  deviceMarketingName,
-  deviceName,
-  deviceOsVersion,
-  deviceProductType,
-  deviceTunnelState,
-  deviceUdid,
-} from "../common/xcode/devicectl";
+import { type DeviceCtlDeviceType, type DevicectlDevice, deviceTunnelState } from "../common/xcode/devicectl";
 import type { XcdeviceDevice } from "../common/xcode/xcdevice";
 import type { IDestination } from "../destination/types";
 import { resolveDeviceType } from "./merge";
@@ -31,7 +21,7 @@ type DeviceState = "connected" | "disconnected" | "unavailable";
  *   or launch apps; deploy via "ios-deploy" instead.
  */
 export type DeviceRaw = {
-  devicectl?: DeviceCtlDevice;
+  devicectl?: DevicectlDevice;
   xcdevice?: XcdeviceDevice;
 };
 
@@ -109,7 +99,7 @@ export abstract class DeviceDestinationBase {
   get udid(): string {
     const dc = this.raw.devicectl;
     const xc = this.raw.xcdevice;
-    return (dc ? deviceUdid(dc) : undefined) ?? xc?.identifier ?? dc?.identifier ?? "unknown";
+    return dc?.udid ?? xc?.identifier ?? dc?.identifier ?? "unknown";
   }
 
   /**
@@ -129,8 +119,8 @@ export abstract class DeviceDestinationBase {
   get name(): string {
     const dc = this.raw.devicectl;
     const xc = this.raw.xcdevice;
-    const dcName = dc ? deviceName(dc) : undefined;
-    const marketing = dc ? deviceMarketingName(dc) : undefined;
+    const dcName = dc?.name;
+    const marketing = dc?.marketingName;
 
     // devicectl sometimes returns the marketing name as the device name for iOS <17 —
     // in that case prefer xcdevice's customized name.
@@ -155,7 +145,7 @@ export abstract class DeviceDestinationBase {
     }
 
     // Last-resort fallback: raw model code like "iPhone14,2".
-    const modelCode = (dc ? deviceProductType(dc) : undefined) ?? xc?.modelCode;
+    const modelCode = dc?.productType ?? xc?.modelCode;
     return modelCode ?? "Unknown Device";
   }
 
@@ -173,7 +163,7 @@ export abstract class DeviceDestinationBase {
    */
   get osVersion(): string {
     const dc = this.raw.devicectl;
-    const dcVersion = dc ? deviceOsVersion(dc) : undefined;
+    const dcVersion = dc?.osVersion;
     if (dcVersion) {
       return dcVersion;
     }
@@ -248,11 +238,11 @@ export abstract class DeviceDestinationBase {
    * Timestamp of the device's most recent connection, from devicectl. Used by the
    * destination sort to surface recently-used devices ahead of long-stale paired
    * entries. Null for xcdevice-only devices (iOS <= 16) and when devicectl omits the
-   * field. Invalid date strings also yield null so callers can treat "unknown" as oldest.
+   * field or writes one that doesn't parse, so callers can treat "unknown" as oldest.
    */
   get lastConnectionDate(): Date | null {
-    const dc = this.raw.devicectl;
-    return dc ? deviceLastConnectionDate(dc) : null;
+    const ms = this.raw.devicectl?.lastConnectionMs;
+    return ms === undefined || ms === null ? null : new Date(ms);
   }
 }
 

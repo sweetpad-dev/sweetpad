@@ -1,103 +1,97 @@
 /**
- * Unit tests for the accessors that read devicectl's two device shapes.
+ * The devicectl listing as the addon reads it, and the two narrowing accessors on top.
  */
 
-import { createMockDevice, createMockDeviceV5 } from "../../__mocks__/devices";
-import {
-  type DeviceCtlDevice,
-  deviceLastConnectionDate,
-  deviceMarketingName,
-  deviceName,
-  deviceOsVersion,
-  deviceProductType,
-  deviceTunnelState,
-  deviceType,
-  deviceUdid,
-} from "./devicectl";
+import * as sweetpadLib from "@sweetpad/native";
 
-describe("devicectl device accessors", () => {
+import { createMockDevice } from "../../__mocks__/devices";
+import { deviceTunnelState, deviceType } from "./devicectl";
+
+function listing(devices: unknown[]): string {
+  return JSON.stringify({ result: { devices } });
+}
+
+describe("parseDevicectlDevices", () => {
   it("reads a jsonVersion 4 device from the deprecated property bags", () => {
-    const device = createMockDevice();
+    const [device] = sweetpadLib.parseDevicectlDevices(
+      listing([
+        {
+          identifier: "ID-1",
+          connectionProperties: { tunnelState: "connected", lastConnectionDate: "2026-09-19T22:21:56.000Z" },
+          deviceProperties: { name: "iPhone 14 Pro", osVersionNumber: "17.0" },
+          hardwareProperties: {
+            deviceType: "iPhone",
+            marketingName: "iPhone 14 Pro",
+            productType: "iPhone15,2",
+            udid: "00008110-001234567890001E",
+            platform: "iOS",
+          },
+        },
+      ]),
+    );
 
-    expect(deviceUdid(device)).toBe("00008110-001234567890001E");
-    expect(deviceName(device)).toBe("iPhone 14 Pro");
-    expect(deviceMarketingName(device)).toBe("iPhone 14 Pro");
-    expect(deviceProductType(device)).toBe("iPhone15,2");
-    expect(deviceType(device)).toBe("iPhone");
-    expect(deviceOsVersion(device)).toBe("17.0");
-    expect(deviceTunnelState(device)).toBe("connected");
+    expect(device).toMatchObject({
+      identifier: "ID-1",
+      udid: "00008110-001234567890001E",
+      name: "iPhone 14 Pro",
+      marketingName: "iPhone 14 Pro",
+      productType: "iPhone15,2",
+      deviceType: "iPhone",
+      osVersion: "17.0",
+      connection: "connected",
+    });
+    expect(new Date(device.lastConnectionMs ?? Number.NaN).toISOString()).toBe("2026-09-19T22:21:56.000Z");
   });
 
   it("reads a jsonVersion 5 device from the properties dictionary", () => {
-    const device = createMockDeviceV5();
+    const [device] = sweetpadLib.parseDevicectlDevices(
+      listing([
+        {
+          identifier: "ID-1",
+          properties: {
+            connection: { state: "connected", lastConnectionDate: 811_549_316 },
+            hardware: { deviceType: "iPhone", udid: "00008110-001234567890001E" },
+            software: { osVersionNumber: { stringValue: "17.0" } },
+            state: { name: "iPhone 14 Pro" },
+          },
+        },
+      ]),
+    );
 
-    expect(deviceUdid(device)).toBe("00008110-001234567890001E");
-    expect(deviceName(device)).toBe("iPhone 14 Pro");
-    expect(deviceMarketingName(device)).toBe("iPhone 14 Pro");
-    expect(deviceProductType(device)).toBe("iPhone15,2");
-    expect(deviceType(device)).toBe("iPhone");
-    // The version-5 osVersionNumber is an object, not the string itself.
-    expect(deviceOsVersion(device)).toBe("17.0");
-    // …and tunnelState is spelled "state" under "connection".
-    expect(deviceTunnelState(device)).toBe("connected");
+    expect(device).toMatchObject({ udid: "00008110-001234567890001E", osVersion: "17.0", connection: "connected" });
+    // Core Foundation absolute time, counted from 2001-01-01.
+    expect(new Date(device.lastConnectionMs ?? Number.NaN).toISOString()).toBe("2026-09-19T22:21:56.000Z");
   });
 
-  it("returns undefined for a device with neither shape", () => {
-    const device: DeviceCtlDevice = { capabilities: [], identifier: "ID-1", visibilityClass: "default" };
+  it("leaves out what devicectl leaves out, and the hardware udid of an empty hardware section", () => {
+    const [device] = sweetpadLib.parseDevicectlDevices(listing([{ identifier: "ID-1", hardwareProperties: {} }]));
 
-    expect(deviceUdid(device)).toBeUndefined();
-    expect(deviceName(device)).toBeUndefined();
-    expect(deviceOsVersion(device)).toBeUndefined();
-    expect(deviceTunnelState(device)).toBeUndefined();
+    expect(device.identifier).toBe("ID-1");
+    expect(device.udid).toBeUndefined();
+    expect(device.name).toBeUndefined();
+    expect(device.deviceType).toBeUndefined();
+    expect(device.lastConnectionMs).toBeUndefined();
+    expect(device.platform).toBe("iOS");
   });
 
-  /**
-   * Xcode 27 fills both shapes at once and they agree; this pins which one is
-   * believed if they ever don't.
-   */
-  it("prefers the properties dictionary over the deprecated bags", () => {
-    const device = createMockDevice({
-      properties: {
-        connection: { state: "disconnected" },
-        hardware: { marketingName: "iPhone 18 Pro", udid: "UDID-NEW" },
-        software: { osVersionNumber: { stringValue: "27.0" } },
-        state: { name: "My iPhone" },
-      },
-    });
+  it("drops the simulators Xcode 27's devicectl lists beside the devices", () => {
+    const devices = sweetpadLib.parseDevicectlDevices(
+      listing([
+        { identifier: "PHONE", properties: { hardware: { deviceType: "iPhone", reality: "physical", udid: "U1" } } },
+        { identifier: "SIM", properties: { hardware: { deviceType: "iPhone", reality: "simulated", udid: "SIM" } } },
+      ]),
+    );
 
-    expect(deviceUdid(device)).toBe("UDID-NEW");
-    expect(deviceName(device)).toBe("My iPhone");
-    expect(deviceMarketingName(device)).toBe("iPhone 18 Pro");
-    expect(deviceOsVersion(device)).toBe("27.0");
-    expect(deviceTunnelState(device)).toBe("disconnected");
-    // Not carried in the override, so the deprecated bag still answers.
-    expect(deviceProductType(device)).toBe("iPhone15,2");
+    expect(devices.map((d) => d.identifier)).toEqual(["PHONE"]);
   });
 });
 
-describe("deviceLastConnectionDate", () => {
-  it("parses the deprecated ISO-8601 string", () => {
-    const device = createMockDevice({
-      connectionProperties: { pairingState: "paired", lastConnectionDate: "2026-09-19T22:21:56.000Z" },
-    });
-
-    expect(deviceLastConnectionDate(device)?.toISOString()).toBe("2026-09-19T22:21:56.000Z");
-  });
-
-  it("converts the version-5 value from Core Foundation absolute time", () => {
-    const device = createMockDeviceV5({
-      properties: { connection: { lastConnectionDate: 811_549_316 } },
-    });
-
-    expect(deviceLastConnectionDate(device)?.toISOString()).toBe("2026-09-19T22:21:56.000Z");
-  });
-
-  it("is null when the field is absent or unparseable", () => {
-    expect(deviceLastConnectionDate(createMockDevice())).toBeNull();
-    expect(
-      deviceLastConnectionDate(
-        createMockDevice({ connectionProperties: { pairingState: "paired", lastConnectionDate: "not a date" } }),
-      ),
-    ).toBeNull();
+describe("narrowing accessors", () => {
+  it("keep the device types and states a destination class covers", () => {
+    expect(deviceType(createMockDevice())).toBe("iPhone");
+    expect(deviceType(createMockDevice({ deviceType: "toaster" }))).toBeUndefined();
+    expect(deviceType(createMockDevice({ deviceType: undefined }))).toBeUndefined();
+    expect(deviceTunnelState(createMockDevice())).toBe("connected");
+    expect(deviceTunnelState(createMockDevice({ connection: "napping" }))).toBeUndefined();
   });
 });

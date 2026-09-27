@@ -7,7 +7,7 @@ import * as path from "node:path";
 import type { Mock } from "vitest";
 
 import { createMockContext } from "../__mocks__/devices";
-import { listDevices } from "../common/xcode/devicectl";
+import { listDevicesJson } from "../common/xcode/devicectl";
 import { listDevicesWithXcdevice } from "../common/xcode/xcdevice";
 import { DevicesManager } from "./manager";
 
@@ -15,16 +15,21 @@ vi.mock("../common/exec", () => ({
   exec: vi.fn(),
 }));
 
-// Only the spawning entry point is replaced; the pure accessors the merge layer
-// calls stay real, or they come back undefined.
+// Only the spawning entry point is replaced; the addon parses the JSON it returns, and
+// the accessors the merge layer calls stay real.
 vi.mock("../common/xcode/devicectl", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../common/xcode/devicectl")>()),
-  listDevices: vi.fn(),
+  listDevicesJson: vi.fn(),
 }));
 
 vi.mock("../common/xcode/xcdevice", () => ({
   listDevicesWithXcdevice: vi.fn(),
 }));
+
+/** A devicectl fixture as the JSON text devicectl writes, which the addon parses for real. */
+function loadFixtureText(relativePath: string): string {
+  return fs.readFileSync(path.join(__dirname, "../..", relativePath), "utf8");
+}
 
 function loadFixture(relativePath: string): any {
   return JSON.parse(fs.readFileSync(path.join(__dirname, "../..", relativePath), "utf8"));
@@ -42,17 +47,17 @@ describe("DevicesManager", () => {
 
   describe("refresh", () => {
     it("fetches devices from both devicectl and xcdevice in parallel", async () => {
-      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
+      (listDevicesJson as Mock).mockResolvedValue(loadFixtureText("tests/devicectl-data/devicectl-ios-17-modern.json"));
       (listDevicesWithXcdevice as Mock).mockResolvedValue(loadFixture("tests/xcdevice-data/xcdevice-ios-devices.json"));
 
       await manager.refresh();
 
-      expect(listDevices).toHaveBeenCalledWith(mockContext.vscodeContext);
+      expect(listDevicesJson).toHaveBeenCalledWith(mockContext.vscodeContext);
       expect(listDevicesWithXcdevice).toHaveBeenCalledWith();
     });
 
     it("wraps iOS 17+ devicectl device when xcdevice is empty", async () => {
-      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
+      (listDevicesJson as Mock).mockResolvedValue(loadFixtureText("tests/devicectl-data/devicectl-ios-17-modern.json"));
       (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
       const devices = await manager.refresh();
@@ -95,7 +100,7 @@ describe("DevicesManager", () => {
         },
       ];
 
-      (listDevices as Mock).mockResolvedValue(devicectlData);
+      (listDevicesJson as Mock).mockResolvedValue(JSON.stringify(devicectlData));
       (listDevicesWithXcdevice as Mock).mockResolvedValue(xcdeviceData);
 
       const devices = await manager.refresh();
@@ -105,7 +110,7 @@ describe("DevicesManager", () => {
     });
 
     it("recovers iOS 16 Wi-Fi device when devicectl returns no devices", async () => {
-      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-no-devices.json"));
+      (listDevicesJson as Mock).mockResolvedValue(loadFixtureText("tests/devicectl-data/devicectl-no-devices.json"));
       (listDevicesWithXcdevice as Mock).mockResolvedValue(loadFixture("tests/xcdevice-data/xcdevice-ios-16-wifi.json"));
 
       const devices = await manager.refresh();
@@ -121,8 +126,8 @@ describe("DevicesManager", () => {
     });
 
     it("recovers iOS 16 USB device when devicectl returns empty hardwareProperties", async () => {
-      (listDevices as Mock).mockResolvedValue(
-        loadFixture("tests/devicectl-data/devicectl-ios-16-usb-empty-hardware.json"),
+      (listDevicesJson as Mock).mockResolvedValue(
+        loadFixtureText("tests/devicectl-data/devicectl-ios-16-usb-empty-hardware.json"),
       );
       (listDevicesWithXcdevice as Mock).mockResolvedValue(
         loadFixture("tests/xcdevice-data/xcdevice-ios-16-usb-match.json"),
@@ -138,7 +143,7 @@ describe("DevicesManager", () => {
     });
 
     it("shows an unavailable xcdevice entry as disconnected", async () => {
-      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-no-devices.json"));
+      (listDevicesJson as Mock).mockResolvedValue(loadFixtureText("tests/devicectl-data/devicectl-no-devices.json"));
       (listDevicesWithXcdevice as Mock).mockResolvedValue(loadFixture("tests/xcdevice-data/xcdevice-unavailable.json"));
 
       const devices = await manager.refresh();
@@ -149,8 +154,8 @@ describe("DevicesManager", () => {
     });
 
     it("drops devicectl entries with empty hardwareProperties and no xcdevice match", async () => {
-      (listDevices as Mock).mockResolvedValue(
-        loadFixture("tests/devicectl-data/devicectl-ios-16-usb-empty-hardware.json"),
+      (listDevicesJson as Mock).mockResolvedValue(
+        loadFixtureText("tests/devicectl-data/devicectl-ios-16-usb-empty-hardware.json"),
       );
       (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
@@ -192,7 +197,7 @@ describe("DevicesManager", () => {
         },
       };
 
-      (listDevices as Mock).mockResolvedValue(devicectlData);
+      (listDevicesJson as Mock).mockResolvedValue(JSON.stringify(devicectlData));
       (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
       const devices = await manager.refresh();
@@ -202,7 +207,7 @@ describe("DevicesManager", () => {
     });
 
     it("creates correct device type instances from mixed xcdevice platforms", async () => {
-      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-no-devices.json"));
+      (listDevicesJson as Mock).mockResolvedValue(loadFixtureText("tests/devicectl-data/devicectl-no-devices.json"));
       (listDevicesWithXcdevice as Mock).mockResolvedValue(
         loadFixture("tests/xcdevice-data/xcdevice-mixed-platforms.json"),
       );
@@ -218,25 +223,37 @@ describe("DevicesManager", () => {
     });
 
     it("creates correct device type instances from devicectl fixtures", async () => {
-      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-multiple-devices.json"));
+      (listDevicesJson as Mock).mockResolvedValue(
+        loadFixtureText("tests/devicectl-data/devicectl-multiple-devices.json"),
+      );
       (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
       const devices = await manager.refresh();
 
       expect(devices).toHaveLength(5);
-      expect(devices.map((d) => d.type)).toEqual([
-        "iOSDevice",
-        "iOSDevice",
-        "watchOSDevice",
-        "tvOSDevice",
-        "visionOSDevice",
+      // The addon sorts the listing by name, as the CLI does.
+      expect(devices.map((d) => d.type).toSorted()).toEqual(
+        ["iOSDevice", "iOSDevice", "watchOSDevice", "tvOSDevice", "visionOSDevice"].toSorted(),
+      );
+    });
+
+    it("lists no simulator as a device from Xcode 27's devicectl listing", async () => {
+      (listDevicesJson as Mock).mockResolvedValue(
+        loadFixtureText("tests/devicectl-data/devicectl-xcode-27-with-simulators.json"),
+      );
+      (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
+
+      const devices = await manager.refresh();
+
+      expect(devices.map((d) => [d.type, d.name, d.udid])).toEqual([
+        ["iOSDevice", "Iphone 13", "00008110-000559182E90401E"],
       ]);
     });
 
     it("handles ENOENT error by setting failed to 'no-devicectl'", async () => {
       const error: any = new Error("devicectl not found");
       error.error = { code: "ENOENT" };
-      (listDevices as Mock).mockRejectedValue(error);
+      (listDevicesJson as Mock).mockRejectedValue(error);
       (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
       const devices = await manager.refresh();
@@ -246,7 +263,7 @@ describe("DevicesManager", () => {
     });
 
     it("handles other errors by setting failed to 'unknown'", async () => {
-      (listDevices as Mock).mockRejectedValue(new Error("Unknown error"));
+      (listDevicesJson as Mock).mockRejectedValue(new Error("Unknown error"));
       (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
       const devices = await manager.refresh();
@@ -256,17 +273,17 @@ describe("DevicesManager", () => {
     });
 
     it("caches device list after refresh", async () => {
-      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
+      (listDevicesJson as Mock).mockResolvedValue(loadFixtureText("tests/devicectl-data/devicectl-ios-17-modern.json"));
       (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
       await manager.refresh();
       await manager.getDevices();
 
-      expect(listDevices).toHaveBeenCalledTimes(1);
+      expect(listDevicesJson).toHaveBeenCalledTimes(1);
     });
 
     it("emits updated event after refresh", async () => {
-      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
+      (listDevicesJson as Mock).mockResolvedValue(loadFixtureText("tests/devicectl-data/devicectl-ios-17-modern.json"));
       (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
 
       const listener = vi.fn();
@@ -280,25 +297,25 @@ describe("DevicesManager", () => {
 
   describe("getDevices", () => {
     beforeEach(() => {
-      (listDevices as Mock).mockResolvedValue(loadFixture("tests/devicectl-data/devicectl-ios-17-modern.json"));
+      (listDevicesJson as Mock).mockResolvedValue(loadFixtureText("tests/devicectl-data/devicectl-ios-17-modern.json"));
       (listDevicesWithXcdevice as Mock).mockResolvedValue([]);
     });
 
     it("returns cached devices without refresh", async () => {
       await manager.refresh();
       await manager.getDevices();
-      expect(listDevices).toHaveBeenCalledTimes(1);
+      expect(listDevicesJson).toHaveBeenCalledTimes(1);
     });
 
     it("forces refresh when options.refresh is true", async () => {
       await manager.refresh();
       await manager.getDevices({ refresh: true });
-      expect(listDevices).toHaveBeenCalledTimes(2);
+      expect(listDevicesJson).toHaveBeenCalledTimes(2);
     });
 
     it("fetches devices when cache is empty", async () => {
       await manager.getDevices();
-      expect(listDevices).toHaveBeenCalledTimes(1);
+      expect(listDevicesJson).toHaveBeenCalledTimes(1);
     });
   });
 });

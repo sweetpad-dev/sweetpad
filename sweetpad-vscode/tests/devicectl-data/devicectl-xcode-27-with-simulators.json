@@ -1,0 +1,347 @@
+{
+  "info": {
+    "commandType": "devicectl.list.devices",
+    "jsonVersion": 5,
+    "outcome": "success",
+    "version": "651.13.2"
+  },
+  "result": {
+    "devices": [
+      {
+        "identifier": "2CD2A3F5-8763-46B5-B7FC-F04117966B44",
+        "visibilityClass": "simulators",
+        "connectionProperties": {
+          "lastConnectionDate": "2026-09-19T22:21:56.000Z",
+          "pairingState": "paired",
+          "transportType": "sameMachine",
+          "tunnelState": "disconnected"
+        },
+        "deviceProperties": {
+          "bootState": "shutdown",
+          "name": "Apple TV 4K (3rd generation)",
+          "osVersionNumber": "27.0"
+        },
+        "hardwareProperties": {
+          "deviceType": "appleTV",
+          "marketingName": "Apple TV 4K (3rd generation)",
+          "platform": "tvOS",
+          "productType": "AppleTV14,1",
+          "reality": "simulated",
+          "udid": "2CD2A3F5-8763-46B5-B7FC-F04117966B44"
+        },
+        "properties": {
+          "connection": {
+            "lastConnectionDate": 811549316,
+            "pairingState": "paired",
+            "state": "disconnected",
+            "transportType": "sameMachine"
+          },
+          "hardware": {
+            "deviceType": "appleTV",
+            "marketingName": "Apple TV 4K (3rd generation)",
+            "platform": "tvOS",
+            "productType": "AppleTV14,1",
+            "reality": "simulated",
+            "udid": "2CD2A3F5-8763-46B5-B7FC-F04117966B44"
+          },
+          "software": {
+            "osVersionNumber": {
+              "components": [
+                27,
+                0,
+                0,
+                0,
+                0
+              ],
+              "stringValue": "27.0"
+            }
+          },
+          "state": {
+            "bootState": "shutdown",
+            "name": "Apple TV 4K (3rd generation)",
+            "visibilityClass": "simulators"
+          }
+        }
+      },
+      {
+        "identifier": "1D09DF49-C00E-42A6-90D7-6D1997FFEA6D",
+        "visibilityClass": "simulators",
+        "connectionProperties": {
+          "lastConnectionDate": "2026-09-19T22:21:58.000Z",
+          "pairingState": "paired",
+          "transportType": "sameMachine",
+          "tunnelState": "disconnected"
+        },
+        "deviceProperties": {
+          "bootState": "shutdown",
+          "name": "Apple Vision Pro",
+          "osVersionNumber": "27.0"
+        },
+        "hardwareProperties": {
+          "deviceType": "realityDevice",
+          "marketingName": "Apple Vision Pro",
+          "platform": "visionOS",
+          "productType": "RealityDevice14,1",
+          "reality": "simulated",
+          "udid": "1D09DF49-C00E-42A6-90D7-6D1997FFEA6D"
+        },
+        "properties": {
+          "connection": {
+            "lastConnectionDate": 811549318,
+            "pairingState": "paired",
+            "state": "disconnected",
+            "transportType": "sameMachine"
+          },
+          "hardware": {
+            "deviceType": "realityDevice",
+            "marketingName": "Apple Vision Pro",
+            "platform": "visionOS",
+            "productType": "RealityDevice14,1",
+            "reality": "simulated",
+            "udid": "1D09DF49-C00E-42A6-90D7-6D1997FFEA6D"
+          },
+          "software": {
+            "osVersionNumber": {
+              "components": [
+                27,
+                0,
+                0,
+                0,
+                0
+              ],
+              "stringValue": "27.0"
+            }
+          },
+          "state": {
+            "bootState": "shutdown",
+            "name": "Apple Vision Pro",
+            "visibilityClass": "simulators"
+          }
+        }
+      },
+      {
+        "identifier": "ABD4EBF9-910F-4A29-89D7-9B40DB2D7D18",
+        "visibilityClass": "simulators",
+        "connectionProperties": {
+          "lastConnectionDate": "2026-09-20T16:18:51.000Z",
+          "pairingState": "paired",
+          "transportType": "sameMachine",
+          "tunnelState": "disconnected"
+        },
+        "deviceProperties": {
+          "bootState": "shutdown",
+          "name": "Apple Watch Series 12 (46mm)",
+          "osVersionNumber": "27.0"
+        },
+        "hardwareProperties": {
+          "deviceType": "appleWatch",
+          "marketingName": "Apple Watch Series 12 (46mm)",
+          "platform": "watchOS",
+          "productType": "Watch8,3",
+          "reality": "simulated",
+          "udid": "ABD4EBF9-910F-4A29-89D7-9B40DB2D7D18"
+        },
+        "properties": {
+          "connection": {
+            "lastConnectionDate": 811613931,
+            "pairingState": "paired",
+            "state": "disconnected",
+            "transportType": "sameMachine"
+          },
+          "hardware": {
+            "deviceType": "appleWatch",
+            "marketingName": "Apple Watch Series 12 (46mm)",
+            "platform": "watchOS",
+            "productType": "Watch8,3",
+            "reality": "simulated",
+            "udid": "ABD4EBF9-910F-4A29-89D7-9B40DB2D7D18"
+          },
+          "software": {
+            "osVersionNumber": {
+              "components": [
+                27,
+                0,
+                0,
+                0,
+                0
+              ],
+              "stringValue": "27.0"
+            }
+          },
+          "state": {
+            "bootState": "shutdown",
+            "name": "Apple Watch Series 12 (46mm)",
+            "visibilityClass": "simulators"
+          }
+        }
+      },
+      {
+        "identifier": "8648BE6E-199F-55FE-B508-5B42071FEE92",
+        "visibilityClass": "default",
+        "connectionProperties": {
+          "lastConnectionDate": "2026-09-26T21:50:00.000Z",
+          "pairingState": "paired",
+          "transportType": "localNetwork",
+          "tunnelState": "disconnected"
+        },
+        "deviceProperties": {
+          "bootState": "booted",
+          "name": "Iphone 13",
+          "osVersionNumber": "27.0"
+        },
+        "hardwareProperties": {
+          "deviceType": "iPhone",
+          "marketingName": "iPhone 13",
+          "platform": "iOS",
+          "productType": "iPhone14,5",
+          "reality": "physical",
+          "udid": "00008110-000559182E90401E"
+        },
+        "properties": {
+          "connection": {
+            "lastConnectionDate": 812152200,
+            "pairingState": "paired",
+            "state": "disconnected",
+            "transportType": "localNetwork"
+          },
+          "hardware": {
+            "deviceType": "iPhone",
+            "marketingName": "iPhone 13",
+            "platform": "iOS",
+            "productType": "iPhone14,5",
+            "reality": "physical",
+            "udid": "00008110-000559182E90401E"
+          },
+          "software": {
+            "osVersionNumber": {
+              "components": [
+                27,
+                0,
+                0,
+                0,
+                0
+              ],
+              "stringValue": "27.0"
+            }
+          },
+          "state": {
+            "bootState": "booted",
+            "name": "Iphone 13"
+          }
+        }
+      },
+      {
+        "identifier": "F13C004A-0824-4870-B4F2-29AAEE36636E",
+        "visibilityClass": "simulators",
+        "connectionProperties": {
+          "lastConnectionDate": "2026-09-26T21:53:59.000Z",
+          "pairingState": "paired",
+          "transportType": "sameMachine",
+          "tunnelState": "connected"
+        },
+        "deviceProperties": {
+          "bootState": "booted",
+          "name": "iPhone 17",
+          "osVersionNumber": "27.0"
+        },
+        "hardwareProperties": {
+          "deviceType": "iPhone",
+          "marketingName": "iPhone 17",
+          "platform": "iOS",
+          "productType": "iPhone18,3",
+          "reality": "simulated",
+          "udid": "F13C004A-0824-4870-B4F2-29AAEE36636E"
+        },
+        "properties": {
+          "connection": {
+            "lastConnectionDate": 812152439,
+            "pairingState": "paired",
+            "state": "connected",
+            "transportType": "sameMachine"
+          },
+          "hardware": {
+            "deviceType": "iPhone",
+            "marketingName": "iPhone 17",
+            "platform": "iOS",
+            "productType": "iPhone18,3",
+            "reality": "simulated",
+            "udid": "F13C004A-0824-4870-B4F2-29AAEE36636E"
+          },
+          "software": {
+            "osVersionNumber": {
+              "components": [
+                27,
+                0,
+                0,
+                0,
+                0
+              ],
+              "stringValue": "27.0"
+            }
+          },
+          "state": {
+            "bootState": "booted",
+            "name": "iPhone 17",
+            "visibilityClass": "simulators"
+          }
+        }
+      },
+      {
+        "identifier": "C25725CE-4886-4E68-B032-55EB2918FF60",
+        "visibilityClass": "simulators",
+        "connectionProperties": {
+          "lastConnectionDate": "2026-09-27T14:23:37.000Z",
+          "pairingState": "paired",
+          "transportType": "sameMachine",
+          "tunnelState": "disconnected"
+        },
+        "deviceProperties": {
+          "bootState": "shutdown",
+          "name": "iPhone 18 Pro",
+          "osVersionNumber": "27.0"
+        },
+        "hardwareProperties": {
+          "deviceType": "iPhone",
+          "marketingName": "iPhone 18 Pro",
+          "platform": "iOS",
+          "productType": "iPhone19,2",
+          "reality": "simulated",
+          "udid": "C25725CE-4886-4E68-B032-55EB2918FF60"
+        },
+        "properties": {
+          "connection": {
+            "lastConnectionDate": 812211817,
+            "pairingState": "paired",
+            "state": "disconnected",
+            "transportType": "sameMachine"
+          },
+          "hardware": {
+            "deviceType": "iPhone",
+            "marketingName": "iPhone 18 Pro",
+            "platform": "iOS",
+            "productType": "iPhone19,2",
+            "reality": "simulated",
+            "udid": "C25725CE-4886-4E68-B032-55EB2918FF60"
+          },
+          "software": {
+            "osVersionNumber": {
+              "components": [
+                27,
+                0,
+                0,
+                0,
+                0
+              ],
+              "stringValue": "27.0"
+            }
+          },
+          "state": {
+            "bootState": "shutdown",
+            "name": "iPhone 18 Pro",
+            "visibilityClass": "simulators"
+          }
+        }
+      }
+    ]
+  }
+}

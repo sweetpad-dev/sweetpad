@@ -3,9 +3,11 @@
  * (status priority + lastConnectionDate) added for sweetpad-dev/sweetpad#234.
  */
 
+import * as sweetpadLib from "@sweetpad/native";
+
 import { createMockDevice } from "../__mocks__/devices";
 import type { WorkspaceStateService } from "../common/workspace-state";
-import type { DeviceCtlDevice } from "../common/xcode/devicectl";
+import type { DevicectlDevice } from "../common/xcode/devicectl";
 import { DevicesManager } from "../devices/manager";
 import { iOSDeviceDestination } from "../devices/types";
 import type { SimulatorsManager } from "../simulators/manager";
@@ -28,24 +30,14 @@ function makeDevice(overrides: {
   state?: "connected" | "disconnected" | "unavailable";
   lastConnectionDate?: string | null;
 }): iOSDeviceDestination {
-  const dc: DeviceCtlDevice = createMockDevice({
-    deviceProperties: { name: overrides.name, osVersionNumber: "17.0" },
-    hardwareProperties: {
-      deviceType: "iPhone",
-      marketingName: "iPhone 15 Pro",
-      productType: "iPhone16,1",
-      udid: overrides.udid,
-      platform: "iOS",
-    },
-    connectionProperties: {
-      tunnelState: overrides.state ?? "connected",
-      pairingState: "paired",
-      ...(overrides.lastConnectionDate === null
-        ? {}
-        : overrides.lastConnectionDate !== undefined
-          ? { lastConnectionDate: overrides.lastConnectionDate }
-          : {}),
-    },
+  const dc: DevicectlDevice = createMockDevice({
+    name: overrides.name,
+    osVersion: "17.0",
+    marketingName: "iPhone 15 Pro",
+    productType: "iPhone16,1",
+    udid: overrides.udid,
+    connection: overrides.state ?? "connected",
+    lastConnectionMs: overrides.lastConnectionDate ? Date.parse(overrides.lastConnectionDate) : undefined,
   });
   return new iOSDeviceDestination({ devicectl: dc });
 }
@@ -163,14 +155,8 @@ describe("DestinationsManager.sortCompareFn", () => {
 });
 
 describe("DeviceDestinationBase.lastConnectionDate", () => {
-  it("parses ISO 8601 lastConnectionDate from devicectl", () => {
-    const dc = createMockDevice({
-      connectionProperties: {
-        tunnelState: "connected",
-        pairingState: "paired",
-        lastConnectionDate: "2026-04-25T10:00:00Z",
-      },
-    });
+  it("dates the last connection from the time the addon read", () => {
+    const dc = createMockDevice({ lastConnectionMs: Date.parse("2026-04-25T10:00:00Z") });
     const dest = new iOSDeviceDestination({ devicectl: dc });
 
     expect(dest.lastConnectionDate?.toISOString()).toBe("2026-04-25T10:00:00.000Z");
@@ -198,13 +184,19 @@ describe("DeviceDestinationBase.lastConnectionDate", () => {
   });
 
   it("returns null when devicectl lastConnectionDate is unparseable", () => {
-    const dc = createMockDevice({
-      connectionProperties: {
-        tunnelState: "connected",
-        pairingState: "paired",
-        lastConnectionDate: "not-a-date",
-      },
-    });
+    const [dc] = sweetpadLib.parseDevicectlDevices(
+      JSON.stringify({
+        result: {
+          devices: [
+            {
+              identifier: "ID-1",
+              connectionProperties: { tunnelState: "connected", lastConnectionDate: "not-a-date" },
+              hardwareProperties: { deviceType: "iPhone", udid: "00008110-001234567890001E" },
+            },
+          ],
+        },
+      }),
+    );
     const dest = new iOSDeviceDestination({ devicectl: dc });
 
     expect(dest.lastConnectionDate).toBeNull();

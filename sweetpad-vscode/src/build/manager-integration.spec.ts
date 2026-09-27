@@ -430,7 +430,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
         const destination = new iOSDeviceDestination({ devicectl: device });
         // Manually set properties to simulate missing deviceId
         Object.defineProperty(device, "identifier", { get: () => undefined });
-        Object.defineProperty(device.hardwareProperties, "udid", { get: () => undefined });
+        Object.defineProperty(device, "udid", { get: () => undefined });
 
         await expect(
           buildManager.runOniOSDevice(mockTerminal, {
@@ -441,15 +441,10 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
       });
 
       it("throws error with device name in message", async () => {
-        const device = createMockDevice({
-          deviceProperties: {
-            name: "Test iPhone",
-            osVersionNumber: "17.0",
-          },
-        });
+        const device = createMockDevice({ name: "Test iPhone", osVersion: "17.0" });
         const destination = new iOSDeviceDestination({ devicectl: device });
         Object.defineProperty(device, "identifier", { get: () => undefined });
-        Object.defineProperty(device.hardwareProperties, "udid", { get: () => undefined });
+        Object.defineProperty(device, "udid", { get: () => undefined });
 
         await expect(
           buildManager.runOniOSDevice(mockTerminal, {
@@ -463,7 +458,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
     describe("device type support", () => {
       it("supports watchOS devices with appropriate version check", async () => {
         const device = createMockDeviceOfType("appleWatch");
-        device.deviceProperties.osVersionNumber = "10.0";
+        device.osVersion = "10.0";
         const watchDevice = new watchOSDeviceDestination({ devicectl: device });
 
         // Should use devicectl for watchOS 10+
@@ -472,7 +467,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
 
       it("supports tvOS devices with appropriate version check", async () => {
         const device = createMockDeviceOfType("appleTV");
-        device.deviceProperties.osVersionNumber = "17.0";
+        device.osVersion = "17.0";
         const tvDevice = new tvOSDeviceDestination({ devicectl: device });
 
         // Should use devicectl for tvOS 17+
@@ -481,7 +476,7 @@ describe("BuildManager - iOS Device Deployment Integration", () => {
 
       it("supports visionOS devices with appropriate version check", async () => {
         const device = createMockDeviceOfType("appleVision");
-        device.deviceProperties.osVersionNumber = "1.0";
+        device.osVersion = "1.0";
         const visionDevice = new visionOSDeviceDestination({ devicectl: device });
 
         // Should use devicectl for visionOS 1+

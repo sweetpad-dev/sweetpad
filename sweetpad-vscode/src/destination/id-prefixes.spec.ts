@@ -48,7 +48,7 @@ function simulator<T>(
 
 function device<T>(Ctor: new (options: any) => T): T {
   return new Ctor({
-    devicectl: createMockDevice({ hardwareProperties: { udid: UDID } as any }),
+    devicectl: createMockDevice({ udid: UDID }),
   });
 }
 
