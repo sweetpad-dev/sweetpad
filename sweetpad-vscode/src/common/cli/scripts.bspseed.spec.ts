@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import type { Mock } from "vitest";
 
 import { assembleBspConfig, hasBspConfig, writeBspConfig } from "../../bsp/write";
+import { getWorkspaceConfig } from "../config";
 import { generateSweetpadBuildServerConfig } from "./scripts";
 
 vi.mock("@sweetpad/native", () => ({}));
@@ -54,6 +55,9 @@ describe("generateSweetpadBuildServerConfig — bsp.json comes first", () => {
 
   it("writes bsp.json before the buildServer.json that points at it", async () => {
     mockHasBspConfig.mockResolvedValue(false);
+    (getWorkspaceConfig as Mock).mockImplementation((key: string) =>
+      key === "build.args" ? ["SWIFT_ACTIVE_COMPILATION_CONDITIONS=STAGING"] : undefined,
+    );
 
     await generateSweetpadBuildServerConfig({
       workspaceRoot: "/workspace",
@@ -71,6 +75,7 @@ describe("generateSweetpadBuildServerConfig — bsp.json comes first", () => {
         xcworkspace: "/workspace/App.xcworkspace",
         scheme: "App",
         configuration: "Release",
+        buildArgs: ["SWIFT_ACTIVE_COMPILATION_CONDITIONS=STAGING"],
       }),
     );
   });

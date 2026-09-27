@@ -58,6 +58,8 @@ export class BspService implements vscode.Disposable {
       onDidChangeConfiguration((event) => {
         if (event.affectsConfiguration("sweetpad.buildServer.provider")) void this.activate();
         if (event.affectsConfiguration("sweetpad.buildServer.logLevel")) this.applyLogLevel();
+        // The server re-reads bsp.json when it changes, so the index follows the builds' settings.
+        if (event.affectsConfiguration("sweetpad.build.args")) void this.saveConfig();
       }),
       // Both the socket and the config file are named by a hash of the workspace folder, so a
       // project in another folder means a different socket to dial and a different file to write.

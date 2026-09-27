@@ -27,6 +27,12 @@ export type BspResolvedConfig = {
   logPath: string;
   /** Unix socket the BSP server binds for telemetry; the extension connects to it for live logs/status. */
   socket: string;
+  /**
+   * `sweetpad.build.args`, which the extension's builds add to the xcodebuild command line. The
+   * server applies its `KEY=VALUE` settings and `-xcconfig` (relative to `workspacePath`, where
+   * those builds run) so the index resolves each target the way they build it.
+   */
+  buildArgs: string[];
 };
 
 /**
@@ -40,6 +46,7 @@ export function assembleBspConfig(parts: {
   scheme: string | null;
   configuration: string;
   derivedDataPath: string | null;
+  buildArgs: string[];
 }): BspResolvedConfig {
   return {
     workspacePath: parts.workspacePath,
@@ -50,6 +57,7 @@ export function assembleBspConfig(parts: {
     derivedDataPath: parts.derivedDataPath,
     logPath: resolveBspLogPath(parts.workspacePath),
     socket: getBspSocketPath(parts.workspacePath),
+    buildArgs: parts.buildArgs,
   };
 }
 

@@ -3271,16 +3271,21 @@ like any xcconfig `SYMROOT` (the `symroot_override_oracle` capture): a `build
 the file's `SYMROOT`, where the build wrote it, instead of a stale one under
 `dd`.
 
-The BSP server the VS Code extension configures sees none of this. The
-extension's `buildServer.json` runs `sweetpad bsp serve --config <bsp.json>`,
-and the container, configuration and DerivedData come from that `bsp.json`,
-which has no field for command-line settings. `serve` reads no `sweetpad.toml`
-for it: the extension's own builds take its `sweetpad.build.args` setting, not
-the file, and discovery from the working directory could name a container
-other than the one `bsp.json` does. Making that index follow the extension's
-builds would take a `bsp.json` field the extension fills from
-`sweetpad.build.args`. The server also reads `sweetpad.toml` only at startup,
-so an edit to it reaches the index when the editor restarts the server.
+The BSP server the VS Code extension configures reads no `sweetpad.toml`.
+The extension's `buildServer.json` runs `sweetpad bsp serve --config
+<bsp.json>`, and the container, configuration and DerivedData come from that
+`bsp.json`. The extension's own builds take its `sweetpad.build.args` setting,
+not the file, and discovery from the working directory could name a container
+other than the one `bsp.json` does. So the extension writes that setting into
+`bsp.json` as `buildArgs`, and `serve` reads its `KEY=VALUE` settings and last
+`-xcconfig` the way the CLI reads `[xcodebuild] args` (the parser lives in
+sweetpad-core's `xcodebuild_args`). A relative `-xcconfig` is read against
+`workspacePath`, where the extension's builds run `xcodebuild`. The extension
+rewrites `bsp.json` when the setting changes, and the server re-reads it as it
+does a new scheme or configuration. A `bsp.json` without `buildArgs`, from an
+older extension, has none. The CLI's own server reads `sweetpad.toml` only at
+startup, so an edit to it reaches the index when the editor restarts the
+server.
 
 ### Settings that move the product are followed (decided)
 

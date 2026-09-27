@@ -25,6 +25,7 @@ use serde_json::{Value, json};
 use crate::build_context::BuildContext;
 use crate::build_settings::{self, BuildSettingsOptions};
 use crate::framing::{read_message, write_message};
+use crate::xcodebuild_args;
 use control::{LogLevel, TelemetryServer};
 use sweetpad_lib::{compiler_args, derived_data, project};
 
@@ -88,8 +89,10 @@ pub fn write_config(args: &[String], serve_subcommand: &[&str]) -> Result<(), St
 /// Build settings the project's builds add above every project layer, from
 /// the command line they run `xcodebuild` with: an `-xcconfig` overlay and
 /// `KEY=VALUE` assignments, in order. The sweetpad CLI reads them from the
-/// project's `sweetpad.toml`; a server started from `bsp.json` has none.
-#[derive(Debug, Clone, Default)]
+/// project's `sweetpad.toml`; a server started from `bsp.json` reads them
+/// from that file's `buildArgs`, which the extension fills from
+/// `sweetpad.build.args`.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct CommandLine {
     pub xcconfig: Option<PathBuf>,
     pub overrides: Vec<(String, String)>,
@@ -237,8 +240,9 @@ struct Server {
     arch: Option<String>,
     xcode: Option<PathBuf>,
     derived_data_path: Option<PathBuf>,
-    /// The settings the project's builds pass on the command line, applied
-    /// to every resolution and to the prepare build.
+    /// The settings the project's builds pass on the command line, from the
+    /// caller, applied to every resolution and to the prepare build above the
+    /// ones `bsp.json` carries (see [`Self::command_line`]).
     command_line: CommandLine,
     /// Target names in pbxproj order (cached at startup).
     targets: Vec<String>,
@@ -375,6 +379,8 @@ const PREPARE_RETRY_AFTER: Duration = Duration::from_secs(60);
 struct LiveConfig {
     configuration: String,
     scheme: Option<String>,
+    /// The settings in `bsp.json`'s `buildArgs`.
+    command_line: CommandLine,
 }
 
 /// The inputs the server needs, however they were obtained — from `--project`
@@ -392,6 +398,10 @@ struct ResolvedConfig {
     /// Telemetry socket to bind, assigned by the extension in `bsp.json`. `None`
     /// in `--project` standalone mode (no telemetry).
     socket: Option<PathBuf>,
+    /// The settings in `bsp.json`'s `buildArgs`: what the extension's builds
+    /// pass `xcodebuild` from `sweetpad.build.args`. Empty for a `--project`
+    /// server and for a `bsp.json` without them.
+    command_line: CommandLine,
 }
 
 /// The `SWEETPAD_BSP_LOG` env path (used by tests and the standalone paths).
@@ -452,6 +462,7 @@ impl ResolvedConfig {
             derived_data_path: flags.get("derived-data-path").map(PathBuf::from),
             log_path: env_log(),
             socket: None,
+            command_line: CommandLine::default(),
         }
     }
 
@@ -506,6 +517,7 @@ impl ResolvedConfig {
                 .map(&resolve),
             log_path: pull("logPath").map(&resolve).or_else(env_log),
             socket: pull("socket").map(&resolve),
+            command_line: command_line_of(value, base),
         })
     }
 
@@ -519,18 +531,43 @@ impl ResolvedConfig {
             std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
         let value: Value =
             serde_json::from_str(&raw).map_err(|e| format!("parse {}: {e}", path.display()))?;
-        let base = value
-            .get("workspacePath")
-            .and_then(Value::as_str)
-            .map_or_else(
-                || {
-                    path.parent()
-                        .unwrap_or_else(|| Path::new("."))
-                        .to_path_buf()
-                },
-                PathBuf::from,
-            );
-        Self::from_json(&value, &base, flags)
+        Self::from_json(&value, &config_base(&value, path), flags)
+    }
+}
+
+/// The directory a relative path in the `bsp.json` at `path` resolves
+/// against: the workspace root it names in `workspacePath`, else its own.
+fn config_base(value: &Value, path: &Path) -> PathBuf {
+    value
+        .get("workspacePath")
+        .and_then(Value::as_str)
+        .map_or_else(
+            || {
+                path.parent()
+                    .unwrap_or_else(|| Path::new("."))
+                    .to_path_buf()
+            },
+            PathBuf::from,
+        )
+}
+
+/// The command-line settings in a `bsp.json`'s `buildArgs`: the arguments
+/// the extension's builds add to `xcodebuild`, from `sweetpad.build.args`.
+/// Its `KEY=VALUE` settings and last `-xcconfig` are read as `xcodebuild`
+/// reads them, a relative `-xcconfig` against `base`, the directory those
+/// builds run in. A file without `buildArgs` has none.
+fn command_line_of(value: &Value, base: &Path) -> CommandLine {
+    let args: Vec<String> = value
+        .get("buildArgs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect();
+    CommandLine {
+        xcconfig: xcodebuild_args::last_value(&args, "-xcconfig").map(|p| base.join(p)),
+        overrides: xcodebuild_args::settings(&args),
     }
 }
 
@@ -542,7 +579,7 @@ impl Server {
     /// — when that's absent (an older or hand-written stub) — by discovering it
     /// from the cwd via the host-wide index the extension maintains. Either way it
     /// is then read and watched for live changes. `command_line` is layered on
-    /// every resolution either way.
+    /// every resolution either way, above the settings a `bsp.json` carries.
     fn resolve(args: &[String], command_line: CommandLine) -> Result<Self, String> {
         let flags = parse_flags(args);
         let log_level = Arc::new(AtomicU8::new(LogLevel::Info as u8));
@@ -605,6 +642,7 @@ impl Server {
             live: Mutex::new(LiveConfig {
                 configuration: config.configuration,
                 scheme: config.scheme,
+                command_line: config.command_line,
             }),
             sdk: config.sdk,
             arch: config.arch,
@@ -628,7 +666,7 @@ impl Server {
             server.project_path.display(),
             server.xcode,
             server.derived_data_path,
-            server.command_line,
+            server.command_line(),
             server.telemetry.lock().is_ok_and(|t| t.is_some()),
             server.config_path,
             server.targets,
@@ -643,10 +681,34 @@ impl Server {
             .map_or_else(|_| "Debug".into(), |c| c.configuration.clone())
     }
 
+    /// The command-line settings every resolution and prepare build take:
+    /// those in `bsp.json` (swapped live when it changes), then the caller's,
+    /// which win. The caller's `-xcconfig` replaces the file's.
+    fn command_line(&self) -> CommandLine {
+        let from_file = self
+            .live
+            .lock()
+            .map(|c| c.command_line.clone())
+            .unwrap_or_default();
+        CommandLine {
+            xcconfig: self.command_line.xcconfig.clone().or(from_file.xcconfig),
+            overrides: from_file
+                .overrides
+                .into_iter()
+                .chain(self.command_line.overrides.iter().cloned())
+                .collect(),
+        }
+    }
+
     /// Swap the live config and, when it actually changed, tell the client to
     /// re-pull options via `buildTarget/didChange`. A missing `configuration`
     /// keeps the current value; the diff prevents redundant refresh storms.
-    fn apply_config(&self, configuration: Option<&str>, scheme: Option<String>) {
+    fn apply_config(
+        &self,
+        configuration: Option<&str>,
+        scheme: Option<String>,
+        command_line: CommandLine,
+    ) {
         let next = {
             let Ok(mut live) = self.live.lock() else {
                 return;
@@ -655,6 +717,7 @@ impl Server {
                 configuration: configuration
                     .map_or_else(|| live.configuration.clone(), str::to_string),
                 scheme,
+                command_line,
             };
             if updated == *live {
                 return;
@@ -663,14 +726,15 @@ impl Server {
             updated
         };
         self.log(&format!(
-            "config changed: configuration={} scheme={:?}",
-            next.configuration, next.scheme
+            "config changed: configuration={} scheme={:?} command_line={:?}",
+            next.configuration, next.scheme, next.command_line
         ));
         self.notify_targets_changed();
     }
 
     /// Re-read `bsp.json` after a change: apply the volatile selection
-    /// (configuration + scheme) live via [`Self::apply_config`], and bind the
+    /// (configuration, scheme and command-line settings) live via
+    /// [`Self::apply_config`], and bind the
     /// telemetry socket if one has just appeared. Immutable fields (project/
     /// xcode/derived data) are deliberately not refreshed — they're fixed at
     /// startup, so a change to them needs a server restart.
@@ -686,7 +750,8 @@ impl Server {
             .get("scheme")
             .and_then(Value::as_str)
             .map(str::to_string);
-        self.apply_config(configuration, scheme);
+        let command_line = command_line_of(&value, &config_base(&value, path));
+        self.apply_config(configuration, scheme, command_line);
         let socket = value
             .get("socket")
             .and_then(Value::as_str)
@@ -1241,11 +1306,12 @@ impl Server {
         // The settings the project's builds take, so the prepare build writes
         // what the arguments above resolve against. Before the fixed ones
         // below, which win: prepare never signs.
-        if let Some(xcconfig) = &self.command_line.xcconfig {
+        let command_line = self.command_line();
+        if let Some(xcconfig) = &command_line.xcconfig {
             cmd.args(["-xcconfig".as_ref(), xcconfig.as_os_str()]);
         }
         cmd.args(
-            self.command_line
+            command_line
                 .overrides
                 .iter()
                 .map(|(k, v)| format!("{k}={v}")),
@@ -1638,6 +1704,7 @@ impl Server {
         } else {
             (Some(self.project_for_target(target)), None)
         };
+        let command_line = self.command_line();
         BuildSettingsOptions {
             project,
             workspace,
@@ -1649,13 +1716,13 @@ impl Server {
             destination: None,
             // The project's builds pass these on the command line, and the
             // index has to read the target the way they build it.
-            xcconfig: self.command_line.xcconfig.clone(),
+            xcconfig: command_line.xcconfig,
             xcode: self.xcode.clone(),
             xcspec_root: None,
             sdksettings_root: None,
             catalog_cache: None,
             derived_data_path: self.derived_data_path.clone(),
-            overrides: self.command_line.overrides.clone(),
+            overrides: command_line.overrides,
             // The index must point at the same tree the editor's builds write
             // to, so honour whatever this machine's Xcode is configured with.
             read_xcode_locations: true,
@@ -1942,6 +2009,7 @@ mod tests {
     use super::{
         CommandLine, LogLevel, ResolvedConfig, Server, editor_sdk_for, parse_flags, path_from_uri,
     };
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::atomic::AtomicU8;
@@ -1992,6 +2060,88 @@ mod tests {
         let allowed = at("CODE_SIGNING_ALLOWED=YES").expect("the setting");
         let unsigned = at("CODE_SIGNING_ALLOWED=NO").expect("prepare's own setting");
         assert!(staging < unsigned && allowed < unsigned, "{args:?}");
+    }
+
+    /// The extension writes `sweetpad.build.args` into `bsp.json` as
+    /// `buildArgs`. Their settings and `-xcconfig` reach resolution and the
+    /// prepare build under the caller's, follow the file when it changes, and
+    /// a file without them has none.
+    #[test]
+    fn the_command_line_in_bsp_json_is_read_and_follows_the_file() {
+        let project = format!(
+            "{}/fixtures/_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj",
+            env!("SWEETPAD_LIB_DIR")
+        );
+        let scratch = crate::scratch::ScratchDir::new("sweetpad-bsp-json").unwrap();
+        let config = scratch.join("bsp.json");
+        let write = |body: serde_json::Value| {
+            std::fs::write(&config, body.to_string()).unwrap();
+        };
+        write(serde_json::json!({
+            "workspacePath": *scratch,
+            "projectPath": project,
+            "buildArgs": [
+                "SWIFT_ACTIVE_COMPILATION_CONDITIONS=STAGING",
+                "-destination",
+                "platform=macOS",
+                "-xcconfig",
+                "ci.xcconfig",
+                "A=b=c",
+            ],
+        }));
+        let server = Server::build(
+            ResolvedConfig::from_file(&config, &BTreeMap::new()).unwrap(),
+            Some(config.clone()),
+            Arc::new(AtomicU8::new(LogLevel::Info as u8)),
+            CommandLine {
+                xcconfig: None,
+                overrides: vec![("A".into(), "typed".into())],
+            },
+        )
+        .unwrap();
+        let pair = |k: &str, v: &str| (k.to_string(), v.to_string());
+
+        let opts = server.options_for("SweetpadCIMac", "macosx", "arm64");
+        assert_eq!(opts.xcconfig, Some(scratch.join("ci.xcconfig")));
+        assert_eq!(
+            opts.overrides,
+            [
+                pair("SWIFT_ACTIVE_COMPILATION_CONDITIONS", "STAGING"),
+                pair("A", "b=c"),
+                pair("A", "typed"),
+            ]
+        );
+        let (cmd, _) = server.prepare_command("SweetpadCIMac");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            args.iter()
+                .any(|a| a == "SWIFT_ACTIVE_COMPILATION_CONDITIONS=STAGING"),
+            "{args:?}"
+        );
+
+        write(serde_json::json!({
+            "workspacePath": *scratch,
+            "projectPath": project,
+            "buildArgs": ["SWIFT_ACTIVE_COMPILATION_CONDITIONS=BETA"],
+        }));
+        server.reload_from_file(&config);
+        let opts = server.options_for("SweetpadCIMac", "macosx", "arm64");
+        assert_eq!(opts.xcconfig, None);
+        assert_eq!(
+            opts.overrides,
+            [
+                pair("SWIFT_ACTIVE_COMPILATION_CONDITIONS", "BETA"),
+                pair("A", "typed"),
+            ]
+        );
+
+        write(serde_json::json!({ "workspacePath": *scratch, "projectPath": project }));
+        server.reload_from_file(&config);
+        let opts = server.options_for("SweetpadCIMac", "macosx", "arm64");
+        assert_eq!(opts.overrides, [pair("A", "typed")]);
     }
 
     #[test]

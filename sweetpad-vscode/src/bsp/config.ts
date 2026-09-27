@@ -1,6 +1,7 @@
 import type { BuildManager } from "../build/manager";
 import { activateCurrentXcodeWorkspacePath, prepareDerivedDataPath } from "../build/utils";
 import { getDeveloperDir } from "../common/cli/scripts";
+import { getWorkspaceConfig } from "../common/config";
 import type { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
 import { type BspResolvedConfig, assembleBspConfig } from "./write";
@@ -32,5 +33,6 @@ export async function buildBspResolvedConfig(deps: {
     scheme: deps.buildManager.getDefaultSchemeForBuild() ?? null,
     configuration: deps.buildManager.getDefaultConfigurationForBuild() ?? "Debug",
     derivedDataPath: prepareDerivedDataPath({ workspaceRoot: deps.workspacePath }) ?? null,
+    buildArgs: getWorkspaceConfig("build.args") ?? [],
   });
 }

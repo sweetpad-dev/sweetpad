@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use sweetpad_core::build_settings::{BuildSettingsOptions, resolve_build_settings};
+use sweetpad_core::xcodebuild_args::VALUE_FLAGS;
 
 use crate::cli::output::Output;
 use crate::cli::resolve::Container;
@@ -2067,58 +2068,10 @@ impl CommandLineSettings {
         Self {
             derived_data_path: passthrough_path(passthrough, "-derivedDataPath", container),
             xcconfig: passthrough_path(passthrough, "-xcconfig", container),
-            overrides: passthrough_settings(passthrough),
+            overrides: sweetpad_core::xcodebuild_args::settings(passthrough),
         }
     }
 }
-
-/// The `KEY=VALUE` build settings in a passthrough, in order: what
-/// `xcodebuild` applies above every project layer. The value after a flag
-/// that takes one is skipped, since `-destination platform=macOS` is a
-/// specifier, not a setting named `platform`. A flag missing from
-/// [`VALUE_FLAGS`] reads as a switch, which costs at most one setting read
-/// from its value.
-fn passthrough_settings(passthrough: &[String]) -> Vec<(String, String)> {
-    let mut settings = Vec::new();
-    let mut iter = passthrough.iter();
-    while let Some(arg) = iter.next() {
-        if VALUE_FLAGS.contains(&arg.as_str()) {
-            iter.next();
-        } else if let Some((key, value)) = arg.split_once('=')
-            && key.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
-            && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-        {
-            settings.push((key.to_string(), value.to_string()));
-        }
-    }
-    settings
-}
-
-/// The `xcodebuild` flags that take the next argument as their value.
-const VALUE_FLAGS: [&str; 22] = [
-    "-project",
-    "-workspace",
-    "-target",
-    "-scheme",
-    "-configuration",
-    "-sdk",
-    "-arch",
-    "-destination",
-    "-destination-timeout",
-    "-xcconfig",
-    "-xctestrun",
-    "-testPlan",
-    "-toolchain",
-    "-jobs",
-    "-derivedDataPath",
-    "-resultBundlePath",
-    "-resultStreamPath",
-    "-archivePath",
-    "-exportPath",
-    "-exportOptionsPlist",
-    "-clonedSourcePackagesDirPath",
-    "-packageCachePath",
-];
 
 /// Resolve every target's build settings for a plan through the in-process
 /// resolver (the engine behind `settings show`), with no `xcodebuild` spawn —
@@ -3133,33 +3086,6 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
                 pair("SYMROOT", "build"),
                 pair("OBJROOT", "/tmp/obj"),
                 pair("PRODUCT_NAME", "Renamed"),
-            ]
-        );
-    }
-
-    #[test]
-    fn a_passthroughs_settings_are_its_assignments_not_its_flag_values() {
-        let args: Vec<String> = [
-            "-quiet",
-            "PRODUCT_BUNDLE_IDENTIFIER=com.x.y",
-            "-destination",
-            "OS=17.0,platform=iOS Simulator",
-            "-derivedDataPath",
-            "A=b",
-            "SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG STAGING",
-            "-only-testing:App/T=1",
-            "PRODUCT_NAME=",
-        ]
-        .iter()
-        .map(|a| (*a).to_string())
-        .collect();
-        let pair = |k: &str, v: &str| (k.to_string(), v.to_string());
-        assert_eq!(
-            passthrough_settings(&args),
-            [
-                pair("PRODUCT_BUNDLE_IDENTIFIER", "com.x.y"),
-                pair("SWIFT_ACTIVE_COMPILATION_CONDITIONS", "DEBUG STAGING"),
-                pair("PRODUCT_NAME", ""),
             ]
         );
     }

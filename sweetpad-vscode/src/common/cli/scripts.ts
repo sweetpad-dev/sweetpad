@@ -886,6 +886,7 @@ async function seedBspConfig(options: {
         scheme: options.scheme ?? null,
         configuration: options.configuration ?? "Debug",
         derivedDataPath: prepareDerivedDataPath({ workspaceRoot: workspaceRoot }) ?? null,
+        buildArgs: getWorkspaceConfig("build.args") ?? [],
       }),
     );
   } catch (error) {
