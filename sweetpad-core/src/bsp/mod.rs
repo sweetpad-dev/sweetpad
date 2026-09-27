@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::fs::OpenOptions;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -25,6 +25,7 @@ use serde_json::{Value, json};
 use crate::build_context::BuildContext;
 use crate::build_settings::{self, BuildSettingsOptions};
 use crate::framing::{read_message, write_message};
+use crate::scratch::ScratchDir;
 use crate::xcodebuild_args;
 use control::{LogLevel, TelemetryServer};
 use sweetpad_lib::{compiler_args, derived_data, project};
@@ -260,11 +261,9 @@ struct Server {
     config_path: Option<PathBuf>,
     /// Verbosity of the `bsp/log` stream, retunable live via `bsp/setLogLevel`.
     log_level: Arc<AtomicU8>,
-    /// The in-flight `buildTarget/prepare` xcodebuild, if one is running. Held
-    /// so shutdown can kill it: `build/exit` during a prepare would otherwise
-    /// orphan a minutes-long xcodebuild (reparented to init, still burning CPU
-    /// after every editor restart). The prepare worker reaps it.
-    prepare_child: Mutex<Option<std::process::Child>>,
+    /// The prepare worker's process and the `TMPDIR` its `swiftc`s get (see
+    /// [`PrepareProcess`]).
+    prepare_process: Mutex<PrepareProcess>,
     /// Work waiting for the prepare worker (see [`PrepareQueue`]).
     prepare_queue: PrepareQueue,
     /// Per-target record of the last prepare, so repeats over unchanged project
@@ -354,6 +353,25 @@ impl PrepareQueue {
         }
         self.ready.notify_all();
     }
+}
+
+/// The process a prepare is running, held where shutdown can reach it.
+#[derive(Default)]
+struct PrepareProcess {
+    /// The `xcodebuild` or `swiftc` running now, if any. Held so shutdown can
+    /// kill it: `build/exit` during a prepare would otherwise orphan it
+    /// (reparented to init, a minutes-long xcodebuild still burning CPU after
+    /// every editor restart). The prepare worker reaps it.
+    child: Option<Child>,
+    /// The `TMPDIR` every prepare `swiftc` runs with, made for the first one
+    /// and removed at shutdown. The Swift driver leaves a
+    /// `TemporaryDirectory.*` in its `TMPDIR` whenever it dies before it
+    /// finishes: killed at shutdown, or by its own diagnostics once nobody
+    /// reads its pipe. The server runs under the user's editor, so that would
+    /// be the user's `$TMPDIR`.
+    swiftc_tmp: Option<ScratchDir>,
+    /// Set at shutdown, after which nothing more is spawned.
+    stopped: bool,
 }
 
 /// What the last prepare of a target did, so a repeat over unchanged inputs can
@@ -654,7 +672,7 @@ impl Server {
             telemetry: Mutex::new(None),
             config_path,
             log_level,
-            prepare_child: Mutex::new(None),
+            prepare_process: Mutex::new(PrepareProcess::default()),
             prepare_queue: PrepareQueue::default(),
             prepared: Mutex::new(BTreeMap::new()),
             last_prepare_failure: Mutex::new(None),
@@ -1222,6 +1240,10 @@ impl Server {
         if std::fs::create_dir_all(&products).is_err() {
             return false;
         }
+        let Some(tmp) = self.swiftc_tmp() else {
+            self.log(&format!("prepare: no TMPDIR to emit {module_name} in"));
+            return false;
+        };
         let swiftc = self.developer_dir().map_or_else(
             || PathBuf::from("swiftc"),
             |dev| dev.join("Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"),
@@ -1230,20 +1252,21 @@ impl Server {
         if let Some(dev) = self.developer_dir() {
             cmd.env("DEVELOPER_DIR", dev);
         }
-        cmd.arg("-emit-module")
+        cmd.env("TMPDIR", &tmp)
+            .arg("-emit-module")
             .arg("-emit-module-path")
             .arg(&module_path)
             .args(&args);
-        match cmd.output() {
-            Ok(out) if out.status.success() => {
+        match self.run_prepare_process(&mut cmd) {
+            Ok((Some(status), _)) if status.success() => {
                 self.log(&format!(
                     "prepare: emitted module {module_name} -> {}",
                     module_path.display()
                 ));
                 true
             }
-            Ok(out) => {
-                let stderr = String::from_utf8_lossy(&out.stderr);
+            Ok((_, stderr)) => {
+                let stderr = String::from_utf8_lossy(&stderr);
                 let tail: String = stderr.lines().rev().take(6).collect::<Vec<_>>().join(" | ");
                 self.log(&format!("prepare: emit {module_name} failed: {tail}"));
                 false
@@ -1341,14 +1364,8 @@ impl Server {
     fn xcodebuild_prepare(&self, target: &str, stamps: Vec<Option<(u64, SystemTime)>>) -> bool {
         let (mut cmd, how) = self.prepare_command(target);
         self.log(&format!("prepare: building {how} for target {target}"));
-        // Spawn (rather than `output()`) so the child stays killable: the pipe
-        // handles are taken first, then the child is parked in `prepare_child`
-        // where shutdown can reach it while this thread drains the pipes.
-        cmd.stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let mut child = match cmd.spawn() {
-            Ok(c) => c,
+        let (status, stderr_buf) = match self.run_prepare_process(&mut cmd) {
+            Ok(ran) => ran,
             Err(e) => {
                 let detail = format!("could not launch xcodebuild: {e}");
                 self.log(&format!("prepare: {target} {detail}"));
@@ -1356,34 +1373,6 @@ impl Server {
                 return false;
             }
         };
-        let stdout_pipe = child.stdout.take();
-        let stderr_pipe = child.stderr.take();
-        if let Ok(mut slot) = self.prepare_child.lock() {
-            *slot = Some(child);
-        }
-        // Drain stdout on a helper thread so neither pipe fills and wedges the
-        // build; stderr (the interesting stream on failure) drains here.
-        let stdout_drain = stdout_pipe.map(|mut s| {
-            std::thread::spawn(move || {
-                let mut sink = Vec::new();
-                let _ = s.read_to_end(&mut sink);
-            })
-        });
-        let mut stderr_buf = Vec::new();
-        if let Some(mut s) = stderr_pipe {
-            let _ = s.read_to_end(&mut stderr_buf);
-        }
-        if let Some(t) = stdout_drain {
-            let _ = t.join();
-        }
-        // Reap. Shutdown may have killed the child, but it leaves the handle in
-        // the slot for us — `wait` then just collects the killed status.
-        let status = self
-            .prepare_child
-            .lock()
-            .ok()
-            .and_then(|mut slot| slot.take())
-            .and_then(|mut c| c.wait().ok());
         match status {
             Some(st) if st.success() => {
                 self.log(&format!("prepare: {target} build ok"));
@@ -1422,15 +1411,93 @@ impl Server {
         })
     }
 
-    /// Kill the in-flight prepare build, if any (the prepare worker still owns
-    /// reaping — the handle stays in the slot). Called on shutdown so
-    /// `build/exit` doesn't orphan a running xcodebuild.
-    fn kill_prepare(&self) {
-        if let Ok(mut slot) = self.prepare_child.lock()
-            && let Some(child) = slot.as_mut()
-        {
-            let _ = child.kill();
+    /// Run `cmd` to the end as the prepare worker's process and return how it
+    /// exited (`None` when that can't be read) and what it wrote to stderr.
+    ///
+    /// Spawned rather than run with `output()` so the child stays killable: the
+    /// pipe handles are taken first, then the child is parked in
+    /// [`PrepareProcess::child`], where shutdown can reach it while this thread
+    /// drains the pipes. The spawn happens under the lock shutdown takes, so a
+    /// process is either parked before shutdown kills it or never spawned.
+    ///
+    /// # Errors
+    ///
+    /// When `cmd` can't be spawned, or the server is shutting down.
+    fn run_prepare_process(&self, cmd: &mut Command) -> io::Result<(Option<ExitStatus>, Vec<u8>)> {
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let (stdout_pipe, stderr_pipe) = {
+            let mut process = self
+                .prepare_process
+                .lock()
+                .map_err(|_| io::Error::other("the prepare lock is poisoned"))?;
+            if process.stopped {
+                return Err(io::Error::other("the server is shutting down"));
+            }
+            let mut child = cmd.spawn()?;
+            let pipes = (child.stdout.take(), child.stderr.take());
+            process.child = Some(child);
+            pipes
+        };
+        // Drain stdout on a helper thread so neither pipe fills and wedges the
+        // process; stderr (the interesting stream on failure) drains here.
+        let stdout_drain = stdout_pipe.map(|mut s| {
+            std::thread::spawn(move || {
+                let mut sink = Vec::new();
+                let _ = s.read_to_end(&mut sink);
+            })
+        });
+        let mut stderr = Vec::new();
+        if let Some(mut s) = stderr_pipe {
+            let _ = s.read_to_end(&mut stderr);
         }
+        if let Some(t) = stdout_drain {
+            let _ = t.join();
+        }
+        // Reap. Shutdown may have killed the child, but it leaves the handle in
+        // the slot for us — `wait` then just collects the killed status.
+        let status = self
+            .prepare_process
+            .lock()
+            .ok()
+            .and_then(|mut process| process.child.take())
+            .and_then(|mut c| c.wait().ok());
+        Ok((status, stderr))
+    }
+
+    /// The `TMPDIR` for a prepare `swiftc` (see [`PrepareProcess::swiftc_tmp`]),
+    /// made on first use. `None` once the server is shutting down, or when the
+    /// directory can't be made.
+    fn swiftc_tmp(&self) -> Option<PathBuf> {
+        let mut process = self.prepare_process.lock().ok()?;
+        if process.stopped {
+            return None;
+        }
+        if process.swiftc_tmp.is_none() {
+            process.swiftc_tmp = ScratchDir::new("sweetpad-bsp-swiftc").ok();
+        }
+        process.swiftc_tmp.as_deref().map(Path::to_path_buf)
+    }
+
+    /// Stop the prepare worker's processes: kill the one running, if any, wait
+    /// for it, and remove the `TMPDIR` the `swiftc`s ran with. Nothing is
+    /// spawned after this. Called on shutdown, so `build/exit` neither orphans
+    /// a running prepare nor leaves what it wrote in `TMPDIR`. The handle
+    /// stays in the slot for the worker to reap, which then collects the
+    /// status this wait already did.
+    fn kill_prepare(&self) {
+        let Ok(mut process) = self.prepare_process.lock() else {
+            return;
+        };
+        process.stopped = true;
+        if let Some(child) = process.child.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        // Removed only now that the process is gone: a live one could still
+        // be writing there.
+        process.swiftc_tmp = None;
     }
 
     fn sources(&self, params: Option<&Value>) -> Value {

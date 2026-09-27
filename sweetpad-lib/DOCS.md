@@ -657,7 +657,12 @@ the build server via `buildTarget/prepare` — *we* must produce the modules.
   products, C-family sources, script phases, or build rules), emit each
   dependency with `swiftc -emit-module` directly (topo order, reusing the
   editor args; ~1s vs ~5s), falling back to the v2 xcodebuild path for any
-  non-self-buildable closure or failed self-build. Remaining for "full" v3:
+  non-self-buildable closure or failed self-build. The `swiftc`s share a
+  `TMPDIR` that the server removes when it exits, and exiting kills a
+  `swiftc` that is still running, as it does a prepare `xcodebuild`. The
+  server inherits the user's `TMPDIR`, and the driver leaves a
+  `TemporaryDirectory.*` in its `TMPDIR` when it dies before it finishes.
+  Remaining for "full" v3:
   per-target mixing, code-gen-resource classification, owning more
   output-layout geometry for mixed-language deps.
 
@@ -1565,8 +1570,8 @@ A full library audit (line references against `54c40a1`) landed with commit
   tell whether the sweetpad that reads another format is still installed. That
   includes the unversioned `catalog-<hash>.bin` written by releases through
   0.1.9.
-- Server exit mid-prepare orphans the spawned `xcodebuild`; `$/cancelRequest`
-  is ignored — keep the child handle, kill on shutdown.
+- `$/cancelRequest` is ignored, so a cancelled prepare runs to the end. The
+  child handle is kept for shutdown already; kill it on a cancel too.
 - No lifecycle gating: requests served before `build/initialize` / after
   `build/shutdown` — BSP expects `-32002`-style errors.
 - The change watcher polls only member `project.pbxproj` files — watch

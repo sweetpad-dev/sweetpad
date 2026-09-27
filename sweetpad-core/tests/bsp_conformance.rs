@@ -1334,3 +1334,185 @@ fn bsp_rejects_oversized_content_length() {
         "expected clean error exit (a None code means a signal/abort): {status:?}"
     );
 }
+
+/// A `swiftc` for the warm-up's fast path to find first on `PATH`: it leaves a
+/// `TemporaryDirectory.*` in its `TMPDIR`, as the Swift driver does when it
+/// dies before it finishes, then runs `rest`.
+fn stub_swiftc(bin: &std::path::Path, rest: &str) {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::create_dir_all(bin).unwrap();
+    let path = bin.join("swiftc");
+    std::fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\nmktemp -d \"$TMPDIR/TemporaryDirectory.XXXXXX\" > /dev/null || exit 1\n\
+             {rest}\n"
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// A server warming up the multi-module fixture, whose closure is pure Swift,
+/// so its prepare runs the `swiftc` in `bin` rather than `xcodebuild`, with
+/// `tmp` as its `TMPDIR` and its products in `dd`. Read off-thread: stdout
+/// stays open while the warm-up runs.
+struct WarmUp {
+    child: std::process::Child,
+    stdin: std::process::ChildStdin,
+    out: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    reader: std::thread::JoinHandle<()>,
+}
+
+impl WarmUp {
+    fn start(
+        bin: &std::path::Path,
+        tmp: &std::path::Path,
+        dd: &std::path::Path,
+        env: &[(&str, &std::path::Path)],
+    ) -> WarmUp {
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let mut child = bsp_server()
+            .args(["bsp", "--project", &project(), "--derived-data-path"])
+            .arg(dd)
+            .env("PATH", path)
+            .env("TMPDIR", tmp)
+            .envs(env.iter().copied())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn bsp server");
+        let mut stdin = child.stdin.take().unwrap();
+        let mut stdout = child.stdout.take().unwrap();
+        let out = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = std::sync::Arc::clone(&out);
+        let reader = std::thread::spawn(move || {
+            let mut chunk = [0u8; 4096];
+            while let Ok(n) = stdout.read(&mut chunk) {
+                if n == 0 {
+                    break;
+                }
+                sink.lock().unwrap().extend_from_slice(&chunk[..n]);
+            }
+        });
+        for m in [
+            json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
+            json!({"jsonrpc":"2.0","method":"build/initialized"}),
+        ] {
+            stdin.write_all(&frame(&m)).unwrap();
+        }
+        stdin.flush().unwrap();
+        WarmUp {
+            child,
+            stdin,
+            out,
+            reader,
+        }
+    }
+
+    /// Poll until `done` holds, returning whether it did within a minute.
+    fn wait_until(&self, done: impl Fn(&WarmUp) -> bool) -> bool {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        while std::time::Instant::now() < deadline {
+            if done(self) {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        false
+    }
+
+    fn output(&self) -> String {
+        String::from_utf8_lossy(&self.out.lock().unwrap()).into_owned()
+    }
+
+    /// Send `build/exit` and return how long the server took to go.
+    fn exit(mut self) -> std::time::Duration {
+        let asked = std::time::Instant::now();
+        let _ = self
+            .stdin
+            .write_all(&frame(&json!({"jsonrpc":"2.0","method":"build/exit"})));
+        let _ = self.stdin.flush();
+        drop(self.stdin);
+        let _ = self.child.wait();
+        let took = asked.elapsed();
+        let _ = self.reader.join();
+        took
+    }
+}
+
+fn entries(dir: &std::path::Path) -> Vec<String> {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect()
+}
+
+/// The Swift driver leaves a `TemporaryDirectory.*` in its `TMPDIR` whenever
+/// it dies before it finishes, and the server runs in the user's editor, so
+/// the warm-up's `swiftc`s get a `TMPDIR` of the server's own, which goes when
+/// the server does. The stub here leaves one on every run.
+#[test]
+fn a_warm_up_leaves_nothing_in_the_servers_tmpdir() {
+    let scratch = sweetpad_core::scratch::ScratchDir::new("sweetpad-bsp-tmpdir").unwrap();
+    let (bin, tmp, dd) = (scratch.join("bin"), scratch.join("tmp"), scratch.join("dd"));
+    std::fs::create_dir_all(&tmp).unwrap();
+    // Writes the module it's asked for, so the fast path counts it built.
+    stub_swiftc(
+        &bin,
+        r#"while [ $# -gt 0 ]; do [ "$1" = -emit-module-path ] && : > "$2"; shift; done"#,
+    );
+
+    let server = WarmUp::start(&bin, &tmp, &dd, &[]);
+    let warmed = server.wait_until(|s| s.output().contains("buildTarget/didChange"));
+    server.exit();
+
+    assert!(warmed, "the warm-up never finished");
+    assert!(
+        dd.join("Build/Products/Debug/ModuleA.swiftmodule").exists(),
+        "the stub swiftc never ran"
+    );
+    assert_eq!(entries(&tmp), Vec::<String>::new());
+}
+
+/// `build/exit` in the middle of a warm-up kills the `swiftc` it is running
+/// rather than leaving it behind, and still removes that `swiftc`'s `TMPDIR`.
+#[test]
+fn an_exit_during_the_warm_up_stops_its_swiftc_and_leaves_nothing() {
+    let scratch = sweetpad_core::scratch::ScratchDir::new("sweetpad-bsp-tmpdir-exit").unwrap();
+    let (bin, tmp, dd) = (scratch.join("bin"), scratch.join("tmp"), scratch.join("dd"));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let pid_file = scratch.join("swiftc.pid");
+    // Says it started, then runs longer than the test waits.
+    stub_swiftc(
+        &bin,
+        r#"echo $$ > "$STUB_PID.tmp" && mv "$STUB_PID.tmp" "$STUB_PID"; exec sleep 30"#,
+    );
+
+    let server = WarmUp::start(&bin, &tmp, &dd, &[("STUB_PID", pid_file.as_path())]);
+    let started = server.wait_until(|_| pid_file.exists());
+    let took = server.exit();
+
+    assert!(started, "the stub swiftc never ran");
+    let pid = std::fs::read_to_string(&pid_file).unwrap();
+    let pid = pid.trim();
+    let alive = Command::new("kill")
+        .args(["-0", pid])
+        .stderr(Stdio::null())
+        .status()
+        .unwrap()
+        .success();
+    assert!(!alive, "the server left its swiftc (pid {pid}) running");
+    assert!(
+        took < std::time::Duration::from_secs(20),
+        "the server took {took:?} to exit"
+    );
+    assert_eq!(entries(&tmp), Vec::<String>::new());
+}

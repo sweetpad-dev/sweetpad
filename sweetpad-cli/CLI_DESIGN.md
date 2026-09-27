@@ -865,7 +865,11 @@ Notes / heuristics:
   the same: the one that reads a local package's schemes, and the one behind
   `project info` and the `dependency` verbs for a package. It also gets a
   scratch path of its own, so reading a manifest leaves no `.build/` in the
-  package.
+  package. The `swiftc` that a `bsp serve` prepare runs to emit a module
+  cleans up after itself unless it dies first: killed, or stopped by a
+  warning it writes to a pipe nobody reads once the server is gone. So those
+  runs share a `TMPDIR` of the server's own. The server removes it when it
+  exits, after it kills a `swiftc` that is still running.
 - DerivedData scoping is by container, not by name. Every checkout, worktree
   and copy of a project writes its own `<Name>-<hash>` folder, so the
   container's file-stem (exact name or `<Name>-` prefix, tested against
