@@ -272,6 +272,7 @@ pub(super) fn fnv1a_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::testdir::TempDir;
 
     #[test]
     fn dylib_and_platform_map_simulator_sdks() {
@@ -370,13 +371,12 @@ mod tests {
 
     #[test]
     fn resolve_override_returns_existing_path() {
-        let tmp =
-            std::env::temp_dir().join(format!("sweetpad-override-{}.dylib", std::process::id()));
+        let dir = TempDir::new("sweetpad-override");
+        let tmp = dir.join("client.dylib");
         std::fs::write(&tmp, b"x").unwrap();
         let got =
             resolve_dylib(&opts("iphonesimulator", Some(tmp.clone())), &|_: &str| {}).unwrap();
         assert_eq!(got, tmp);
-        std::fs::remove_file(&tmp).ok();
     }
 
     #[test]
@@ -392,7 +392,8 @@ mod tests {
     /// does: an existing file is enough, and a missing one is named.
     #[test]
     fn the_check_before_a_build_follows_the_override() {
-        let tmp = std::env::temp_dir().join(format!("sweetpad-check-{}.dylib", std::process::id()));
+        let dir = TempDir::new("sweetpad-check");
+        let tmp = dir.join("client.dylib");
         std::fs::write(&tmp, b"x").unwrap();
         assert_eq!(check_available("macosx", Some(&tmp)), Ok(()));
         std::fs::remove_file(&tmp).ok();
@@ -434,14 +435,13 @@ mod tests {
 
     #[test]
     fn materialize_empty_client_errors() {
-        let dir = std::env::temp_dir().join(format!("sweetpad-mat-empty-{}", std::process::id()));
+        let dir = TempDir::new("sweetpad-mat-empty");
         assert!(materialize_client(&[], &dir).is_err());
     }
 
     #[test]
     fn materialize_writes_then_reuses() {
-        let root = std::env::temp_dir().join(format!("sweetpad-mat-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root = TempDir::new("sweetpad-mat");
         let bytes = b"fake-injection-client";
 
         let p1 = materialize_client(bytes, &root).unwrap();
@@ -452,7 +452,5 @@ mod tests {
         // Different bytes → a different directory.
         let p3 = materialize_client(b"other-client-bytes", &root).unwrap();
         assert_ne!(p1.parent(), p3.parent());
-
-        std::fs::remove_dir_all(&root).ok();
     }
 }

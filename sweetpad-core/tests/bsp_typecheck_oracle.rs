@@ -27,6 +27,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use sweetpad_core::build_settings::{self, BuildSettingsOptions};
+use sweetpad_core::scratch::ScratchDir;
 use sweetpad_lib::compiler_args::TargetCompilerArguments;
 
 // ⚠️ Xcode 26.5 only for now (DOCS.md §8 "expand later").
@@ -233,35 +234,35 @@ fn bsp_typecheck_oracle() {
 
     // Swift cross-module: ModuleB imports ModuleA.
     let multimodule = fixture("_synthetic-multimodule", "MultiModule.xcodeproj");
-    let dd1 = std::env::temp_dir().join(format!("sweetpad-bsp-mm-{}", std::process::id()));
+    let dd1 = ScratchDir::new("sweetpad-bsp-mm").unwrap();
     let _ = build_fixture(&multimodule, "ModuleB", &dd1);
     errors.extend(check_target(&multimodule, "ModuleA", &dd1, true));
     errors.extend(check_target(&multimodule, "ModuleB", &dd1, true));
-    let _ = std::fs::remove_dir_all(&dd1);
+    drop(dd1);
 
     // ObjC header search path: widget.m #imports include/widget.h via HEADER_SEARCH_PATHS.
     let objc = fixture("_synthetic-objc-headers", "ObjCHeaders.xcodeproj");
-    let dd2 = std::env::temp_dir().join(format!("sweetpad-bsp-objc-{}", std::process::id()));
+    let dd2 = ScratchDir::new("sweetpad-bsp-objc").unwrap();
     let _ = build_fixture(&objc, "ObjCHeaders", &dd2);
     errors.extend(check_target(&objc, "ObjCHeaders", &dd2, false));
-    let _ = std::fs::remove_dir_all(&dd2);
+    drop(dd2);
 
     // Swift Package product: SpmApp imports `Dep` from a local package, whose
     // module Xcode builds into the products dir / PackageFrameworks.
     let spm = fixture("_synthetic-spm", "SpmApp.xcodeproj");
-    let dd3 = std::env::temp_dir().join(format!("sweetpad-bsp-spm-{}", std::process::id()));
+    let dd3 = ScratchDir::new("sweetpad-bsp-spm").unwrap();
     let _ = build_fixture(&spm, "SpmApp", &dd3);
     errors.extend(check_target(&spm, "SpmApp", &dd3, true));
-    let _ = std::fs::remove_dir_all(&dd3);
+    drop(dd3);
 
     // Header maps + generated sources: none of Widget.m's imports is reachable
     // through HEADER_SEARCH_PATHS, which the fixture doesn't set at all.
     let hmaps = fixture("_synthetic-headermaps", "HeaderMaps.xcodeproj");
-    let dd4 = std::env::temp_dir().join(format!("sweetpad-bsp-hmap-{}", std::process::id()));
+    let dd4 = ScratchDir::new("sweetpad-bsp-hmap").unwrap();
     let _ = build_fixture(&hmaps, "HeaderMaps", &dd4);
     errors.extend(check_target(&hmaps, "HeaderMapsCore", &dd4, false));
     errors.extend(check_target(&hmaps, "HeaderMaps", &dd4, false));
-    let _ = std::fs::remove_dir_all(&dd4);
+    drop(dd4);
 
     assert!(
         errors.is_empty(),
@@ -350,7 +351,7 @@ fn bsp_clang_search_paths_cover_xcodes() {
     }
 
     let project = fixture("_synthetic-headermaps", "HeaderMaps.xcodeproj");
-    let dd = std::env::temp_dir().join(format!("sweetpad-bsp-cover-{}", std::process::id()));
+    let dd = ScratchDir::new("sweetpad-bsp-cover").unwrap();
     let log = build_fixture(&project, "HeaderMaps", &dd);
 
     let mut missing = Vec::new();
@@ -378,7 +379,7 @@ fn bsp_clang_search_paths_cover_xcodes() {
             missing.push(format!("{target}: {p}"));
         }
     }
-    let _ = std::fs::remove_dir_all(&dd);
+    drop(dd);
 
     assert!(
         missing.is_empty(),

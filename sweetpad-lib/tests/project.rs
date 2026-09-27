@@ -1,8 +1,11 @@
+mod common;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use common::TempDir;
 use sweetpad_lib::project::{
     Target, is_self_buildable, open, target_dependencies, target_has_package_products,
     target_source_files, transitive_dependencies,
@@ -153,8 +156,7 @@ fn icecubes_shared_schemes_discovered() {
 /// skip headers and other non-compiled files.
 #[test]
 fn synchronized_folder_sources_are_walked() {
-    let root = std::env::temp_dir().join(format!("sweetpad-sync-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root = TempDir::new("sweetpad-sync");
     let xcodeproj = root.join("App.xcodeproj");
     let sources = root.join("App/Sources");
     fs::create_dir_all(xcodeproj.join("..")).unwrap();
@@ -191,7 +193,6 @@ fn synchronized_folder_sources_are_walked() {
         .filter_map(|p| p.file_name().and_then(OsStr::to_str))
         .collect();
     names.sort_unstable();
-    let _ = fs::remove_dir_all(&root);
 
     assert_eq!(
         names,
@@ -213,8 +214,7 @@ fn synchronized_folder_sources_are_walked() {
 /// projects this way.
 #[test]
 fn a_package_product_linked_only_through_a_product_ref_counts() {
-    let root = std::env::temp_dir().join(format!("sweetpad-productref-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root = TempDir::new("sweetpad-productref");
     let xcodeproj = root.join("App.xcodeproj");
     fs::create_dir_all(&xcodeproj).unwrap();
 
@@ -239,14 +239,11 @@ fn a_package_product_linked_only_through_a_product_ref_counts() {
 
     assert!(target_has_package_products(&xcodeproj, "App").unwrap());
     assert!(!target_has_package_products(&xcodeproj, "Bare").unwrap());
-
-    let _ = fs::remove_dir_all(&root);
 }
 
 #[test]
 fn synchronized_folder_membership_exception_is_included_for_a_non_member() {
-    let root = std::env::temp_dir().join(format!("sweetpad-sync-inc-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root = TempDir::new("sweetpad-sync-inc");
     let xcodeproj = root.join("App.xcodeproj");
     let sources = root.join("App/Sources");
     fs::create_dir_all(&xcodeproj).unwrap();
@@ -288,14 +285,11 @@ fn synchronized_folder_membership_exception_is_included_for_a_non_member() {
     // takes nothing away from it.
     assert_eq!(names("App"), ["AppOnly.swift", "Shared.swift"]);
     assert_eq!(names("Ext"), ["Shared.swift"]);
-
-    let _ = fs::remove_dir_all(&root);
 }
 
 #[test]
 fn synchronized_folder_membership_exception_is_excluded() {
-    let root = std::env::temp_dir().join(format!("sweetpad-sync-exc-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root = TempDir::new("sweetpad-sync-exc");
     let xcodeproj = root.join("App.xcodeproj");
     let sources = root.join("App/Sources");
     fs::create_dir_all(&xcodeproj).unwrap();
@@ -327,7 +321,6 @@ fn synchronized_folder_membership_exception_is_excluded() {
         .filter_map(|p| p.file_name().and_then(OsStr::to_str))
         .collect();
     names.sort_unstable();
-    let _ = fs::remove_dir_all(&root);
 
     assert_eq!(
         names,

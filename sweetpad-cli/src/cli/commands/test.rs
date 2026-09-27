@@ -2460,6 +2460,7 @@ fn spm_test(ctx: &mut Context, resolved: &resolve::Resolved, args: &RunArgs) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::testdir::TempDir;
     use std::fmt::Write as _;
     use std::path::PathBuf;
 
@@ -3017,8 +3018,7 @@ mod tests {
     fn a_taken_name_never_overwrites_the_earlier_file() {
         // Attachment names are not unique — that is why XCTest appends a
         // uniquifier at all — so two files sharing one name must both survive.
-        let dir = std::env::temp_dir().join(format!("sweetpad-att-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = TempDir::new("sweetpad-att");
         let first = unique_path(&dir, "shot.png");
         assert_eq!(first.file_name().unwrap(), "shot.png");
         std::fs::write(&first, b"a").unwrap();
@@ -3030,7 +3030,6 @@ mod tests {
             "shot-3.png"
         );
         assert_eq!(std::fs::read(&first).unwrap(), b"a");
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -3153,8 +3152,7 @@ mod tests {
         // failure that strands it leaves our scratch dir sitting in a directory
         // they expect to hold only their files. The cleanup has to sit on the
         // error path too, which is why the rename is its own function.
-        let root = std::env::temp_dir().join(format!("sweetpad-rename-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root = TempDir::new("sweetpad-rename");
         let staging = root.join(".sweetpad-export");
         std::fs::create_dir_all(&staging).unwrap();
         std::fs::write(staging.join("aaaa"), "shot").unwrap();
@@ -3196,7 +3194,6 @@ mod tests {
                 .join("shot.png")
                 .exists()
         );
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -3205,8 +3202,7 @@ mod tests {
         // itself, and off an iOS simulator UI test's crash log too, so the
         // mark alone would leave '(failure)' off them. The test tree's verdict
         // decides, and a mark still counts on its own.
-        let root = std::env::temp_dir().join(format!("sweetpad-marked-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root = TempDir::new("sweetpad-marked");
         let staging = root.join(".sweetpad-export");
         std::fs::create_dir_all(&staging).unwrap();
         let attachment = |test: &str, file: &str, failure, failed_test| {
@@ -3241,7 +3237,7 @@ mod tests {
             ]
         );
         let report = AttachmentsReport {
-            output_dir: root.clone(),
+            output_dir: root.to_path_buf(),
             tests,
             recorded_at: None,
             note: None,
@@ -3251,7 +3247,6 @@ mod tests {
             report.json()["tests"][2]["attachments"][0]["failure"],
             false
         );
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// [`select_output`] over `(Target/Class/method, output)` pairs, which is
@@ -4271,7 +4266,7 @@ mod tests {
     fn junit_report_escapes_and_counts() {
         // With no test tree to read, the failures are all there is to list,
         // and the suite keeps the summary's totals.
-        let dir = std::env::temp_dir().join(format!("sweetpad-junit-{}", std::process::id()));
+        let dir = TempDir::new("sweetpad-junit");
         let path = dir.join("r.xml");
         let summary = xcodebuild::TestSummary {
             result: "Failed".into(),
@@ -4302,7 +4297,6 @@ mod tests {
             "{xml}"
         );
         assert_eq!(xml.matches("<testcase ").count(), 1, "{xml}");
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// The fixture's run as the summary and the test tree give it: a pass, a

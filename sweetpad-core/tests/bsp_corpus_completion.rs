@@ -30,6 +30,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use sweetpad_core::scratch::ScratchDir;
 
 const XCODE: &str = "/Applications/Xcode-26.5.0.app";
 const DEFAULT_SAMPLE: usize = 30;
@@ -500,18 +501,14 @@ fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
     }
 
     // A slug can contain '/' (a nested Tuist example path), so flatten it for the
-    // throwaway temp file names.
-    let tag = p.slug.replace('/', "-");
-    let dd = std::env::temp_dir().join(format!("sweetpad-corpus-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&dd);
+    // throwaway directory's name.
+    let scratch =
+        ScratchDir::new(&format!("sweetpad-corpus-{}", p.slug.replace('/', "-"))).unwrap();
+    let dd = scratch.join("dd");
 
     // Build once so the module graph + generated inputs exist where our search
     // paths point.
-    let errlog = std::env::temp_dir().join(format!(
-        "sweetpad-corpus-{}-{}.err",
-        tag,
-        std::process::id()
-    ));
+    let errlog = scratch.join("build.err");
     let timeout = build_timeout();
     eprintln!(
         "[{}] building scheme {:?} for {} (≤{}s) …",
@@ -563,33 +560,27 @@ fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
                 "build failed: {}",
                 tail.into_iter().rev().collect::<Vec<_>>().join(" | ")
             ));
-            let _ = std::fs::remove_dir_all(&dd);
-            let _ = std::fs::remove_file(&errlog);
             return report;
         }
         Err(e) => {
             report.skipped = Some(format!("build {e}"));
-            let _ = std::fs::remove_dir_all(&dd);
-            let _ = std::fs::remove_file(&errlog);
             return report;
         }
     }
-    let _ = std::fs::remove_file(&errlog);
 
     // Point sourcekit-lsp at our server (config dog-foods the real command).
-    let build_server = project_dir.join("buildServer.json");
+    let build_server = RemovedOnDrop(project_dir.join("buildServer.json"));
     let cfg = Command::new(env!("CARGO_BIN_EXE_bsp-server"))
         .args(["config", "--project"])
         .arg(&xcodeproj)
         .args(["--xcode", XCODE, "--derived-data-path"])
         .arg(&dd)
         .arg("--output")
-        .arg(&build_server)
+        .arg(&build_server.0)
         .stderr(Stdio::null())
         .status();
     if !cfg.map(|s| s.success()).unwrap_or(false) {
         report.skipped = Some("config (buildServer.json) failed".into());
-        let _ = std::fs::remove_dir_all(&dd);
         return report;
     }
 
@@ -608,16 +599,21 @@ fn measure_project(p: &CorpusProject, sample_cap: usize) -> Report {
     report.sampled = files.len();
     if files.is_empty() {
         report.skipped = Some("no swift sources discovered".into());
-        let _ = std::fs::remove_dir_all(&dd);
-        let _ = std::fs::remove_file(&build_server);
         return report;
     }
 
     measure_files(&project_dir, &xcodeproj, &dd, &files, p.strict, &mut report);
-
-    let _ = std::fs::remove_dir_all(&dd);
-    let _ = std::fs::remove_file(&build_server);
     report
+}
+
+/// A file written into a project that must not outlive the run, a panicking
+/// one included.
+struct RemovedOnDrop(PathBuf);
+
+impl Drop for RemovedOnDrop {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 /// Split a `Content-Length`-framed BSP stream into JSON values.

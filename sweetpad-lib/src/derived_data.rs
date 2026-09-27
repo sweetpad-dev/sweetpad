@@ -930,11 +930,8 @@ mod tests {
     /// captured from one.
     #[test]
     fn reads_the_container_a_folder_was_written_for() {
-        let folder = std::env::temp_dir().join(format!(
-            "sweetpad-dd-{}-info/MacGen-cdprgyivuobbvbdieefufitplmbl",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&folder);
+        let root = TempDir::new("sweetpad-dd-info");
+        let folder = root.join("MacGen-cdprgyivuobbvbdieefufitplmbl");
         std::fs::create_dir_all(&folder).expect("create folder");
         std::fs::write(
             folder.join("info.plist"),
@@ -957,7 +954,6 @@ mod tests {
         );
         std::fs::remove_file(folder.join("info.plist")).expect("remove info.plist");
         assert_eq!(workspace_path(&folder), None);
-        let _ = std::fs::remove_dir_all(folder.parent().expect("scratch root"));
     }
 
     #[test]

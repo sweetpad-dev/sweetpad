@@ -18,6 +18,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use sweetpad_core::scratch::ScratchDir;
 
 const XCODE: &str = "/Applications/Xcode-26.5.0.app";
 
@@ -104,9 +105,7 @@ fn bsp_lsp_e2e() {
     }
 
     // Isolate everything in a temp copy of the fixture.
-    let root = std::env::temp_dir().join(format!("sweetpad-lsp-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).unwrap();
+    let root = ScratchDir::new("sweetpad-lsp").unwrap();
     copy_fixture(&root);
     let project_dir = root.join("project");
     let xcodeproj = project_dir.join("MultiModule.xcodeproj");
@@ -265,7 +264,6 @@ fn bsp_lsp_e2e() {
     drop(stdin);
     let _ = lsp.wait();
     let _ = reader.join();
-    let _ = std::fs::remove_dir_all(&root);
 
     match &def_uri {
         Some(u) => {
@@ -323,9 +321,7 @@ fn prepare_resolves_cross_module_without_prior_build() {
         return;
     }
 
-    let root = std::env::temp_dir().join(format!("sweetpad-lsp-prep-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).unwrap();
+    let root = ScratchDir::new("sweetpad-lsp-prep").unwrap();
     copy_fixture(&root);
     let project_dir = root.join("project");
     let xcodeproj = project_dir.join("MultiModule.xcodeproj");
@@ -448,7 +444,6 @@ fn prepare_resolves_cross_module_without_prior_build() {
     let _ = reader.join();
     // Confirm prepare actually built the dependency into the clean DerivedData.
     let dep_built = dd.join("Build/Products/Debug/ModuleA.swiftmodule").exists();
-    let _ = std::fs::remove_dir_all(&root);
 
     assert!(
         synchronized,

@@ -1,8 +1,8 @@
 //! The change-watcher pushes `buildTarget/didChange` when the project file is
 //! edited mid-session, so the client re-queries targets/sources without an LSP
-//! restart. Hermetic: copies the multi-module fixture into Cargo's scratch
-//! space (so its pbxproj can be mutated), drives the server with a short watch
-//! interval, edits the pbxproj, and checks the notification arrives.
+//! restart. Hermetic: copies the multi-module fixture into a scratch
+//! directory (so its pbxproj can be mutated), drives the server with a short
+//! watch interval, edits the pbxproj, and checks the notification arrives.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use sweetpad_core::scratch::ScratchDir;
 
 fn frame(body: &str) -> Vec<u8> {
     format!("Content-Length: {}\r\n\r\n{body}", body.len()).into_bytes()
@@ -46,16 +48,19 @@ fn bsp_server() -> Command {
 fn buildtarget_did_change_on_pbxproj_edit() {
     let src =
         PathBuf::from(env!("SWEETPAD_LIB_DIR")).join("fixtures/_synthetic-multimodule/project");
-    // The same path on every run: the warm-up keys a DerivedData folder by
-    // the copy's path, so a fresh name each run would leave a folder each run.
-    let tmp = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("bsp-did-change");
-    let _ = fs::remove_dir_all(&tmp);
+    // What the warm-up after `build/initialized` builds goes in the scratch
+    // directory too, rather than in a DerivedData folder keyed by the copy's
+    // path that nothing removes.
+    let scratch = ScratchDir::new("sweetpad-bsp-did-change").unwrap();
+    let tmp = scratch.join("project");
     copy_dir(&src, &tmp);
     let proj = tmp.join("MultiModule.xcodeproj");
     let pbxproj = proj.join("project.pbxproj");
 
     let mut child = bsp_server()
         .args(["bsp", "--project", proj.to_str().unwrap()])
+        .arg("--derived-data-path")
+        .arg(scratch.join("dd"))
         .env("SWEETPAD_BSP_WATCH_MS", "100")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -109,7 +114,6 @@ fn buildtarget_did_change_on_pbxproj_edit() {
     drop(stdin);
     let _ = child.wait();
     let _ = reader.join();
-    let _ = fs::remove_dir_all(&tmp);
 
     assert!(
         got.contains("buildTarget/didChange"),

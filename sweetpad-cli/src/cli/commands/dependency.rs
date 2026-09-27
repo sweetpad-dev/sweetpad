@@ -1834,6 +1834,7 @@ fn parse_resolved(text: &str) -> HashMap<String, Pin> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::testdir::TempDir;
 
     fn lockfile(pins: &[(&str, &str)]) -> String {
         let pins: Vec<serde_json::Value> = pins
@@ -1923,8 +1924,7 @@ mod tests {
     /// the temp path shortened.
     #[test]
     fn dropping_the_clone_dir_removes_its_lock_files() {
-        let temp = std::env::temp_dir().join(format!("sweetpad-clonedir-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&temp);
+        let temp = TempDir::new("sweetpad-clonedir");
         let clone = CloneDir {
             path: temp.join("sweetpad-spm-7"),
         };
@@ -1943,13 +1943,12 @@ mod tests {
             std::fs::write(temp.join(name), "").unwrap();
         }
         drop(clone);
-        let mut left: Vec<String> = std::fs::read_dir(&temp)
+        let mut left: Vec<String> = std::fs::read_dir(&*temp)
             .unwrap()
             .flatten()
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .collect();
         left.sort();
-        let _ = std::fs::remove_dir_all(&temp);
         assert_eq!(left, unrelated);
     }
 

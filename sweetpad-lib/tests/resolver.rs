@@ -1,5 +1,8 @@
+mod common;
+
 use std::path::PathBuf;
 
+use common::TempDir;
 use sweetpad_lib::resolver::{ResolveContext, flatten_xcconfig, resolve};
 
 fn fixtures_root() -> PathBuf {
@@ -119,8 +122,7 @@ fn diamond_includes_are_flattened_once() {
     // include-once rule (matching Xcode's "already included" skip) keeps the
     // flatten linear. Before the fix, 24 two-include files meant 2^23
     // assignments and a multi-second hang.
-    let dir = std::env::temp_dir().join(format!("sweetpad-include-once-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = TempDir::new("sweetpad-include-once");
     for i in 0..24 {
         let body = if i == 23 {
             "LEAF = yes\n".to_string()
@@ -133,7 +135,6 @@ fn diamond_includes_are_flattened_once() {
         std::fs::write(dir.join(format!("f{i}.xcconfig")), body).unwrap();
     }
     let ass = flatten_xcconfig(&dir.join("f0.xcconfig")).unwrap();
-    let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(ass.len(), 1, "LEAF must be inlined exactly once");
 }
 
@@ -141,8 +142,7 @@ fn diamond_includes_are_flattened_once() {
 fn double_dollar_escape_stays_literal() {
     // `$$` means a literal `$` (swift-build semantics): `$$(inherited)` must
     // not be folded at merge time nor expanded by a later pass.
-    let dir = std::env::temp_dir().join(format!("sweetpad-dollar-escape-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = TempDir::new("sweetpad-dollar-escape");
     std::fs::write(dir.join("lower.xcconfig"), "FOO = bar\n").unwrap();
     std::fs::write(
         dir.join("upper.xcconfig"),
@@ -152,7 +152,6 @@ fn double_dollar_escape_stays_literal() {
     let lower = flatten_xcconfig(&dir.join("lower.xcconfig")).unwrap();
     let upper = flatten_xcconfig(&dir.join("upper.xcconfig")).unwrap();
     let r = resolve(&[&lower, &upper], &ctx("macosx", "arm64", "Debug"));
-    let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(
         r.get("FOO").map(String::as_str),
         Some("$(inherited) extra"),

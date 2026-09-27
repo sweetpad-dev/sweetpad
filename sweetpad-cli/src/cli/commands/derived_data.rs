@@ -684,18 +684,11 @@ mod tests {
 
     #[test]
     fn dir_size_sums_nested_files() {
-        let dir = std::env::temp_dir().join(format!(
-            "sweetpad-dd-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let dir = TempDir::new("sweetpad-dd-size");
         let sub = dir.join("nested");
         std::fs::create_dir_all(&sub).unwrap();
         std::fs::write(dir.join("a.txt"), b"1234").unwrap(); // 4 bytes
         std::fs::write(sub.join("b.txt"), b"567890").unwrap(); // 6 bytes
         assert_eq!(dir_size(&dir), 10);
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -7644,6 +7644,7 @@ fn destination_udid(destination: &str) -> Result<String, CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::testdir::TempDir;
 
     #[test]
     fn the_pid_is_read_from_simctls_bundle_colon_pid_line() {
@@ -8139,8 +8140,7 @@ mod tests {
 
     #[test]
     fn captured_tail_ends_on_an_until_match_without_waiting_for_stop() {
-        let dir = std::env::temp_dir().join(format!("sweetpad-until-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = TempDir::new("sweetpad-until");
         let path = dir.join("captured.log");
         std::fs::write(&path, b"booting\nlistening on 8080\nstill going\n").unwrap();
 
@@ -8154,7 +8154,6 @@ mod tests {
         // test would hang rather than pass if the tail ignored it.
         follow_console_file(&path, false, false, &AtomicBool::new(false), Some(&watch));
         assert!(hit.load(Ordering::Relaxed));
-        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
@@ -8748,14 +8747,7 @@ Target 0: (crash) stopped.\n"
     /// the default DerivedData for a product the build would put elsewhere.
     #[test]
     fn the_verbs_that_find_a_built_product_read_the_projects_xcodebuild_args() {
-        let dir = std::env::temp_dir().join(format!(
-            "sweetpad-app-configured-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let dir = TempDir::new("sweetpad-app-configured");
         let project = dir.join("App.xcodeproj");
         std::fs::create_dir_all(&project).unwrap();
         std::fs::write(
@@ -8813,8 +8805,6 @@ Target 0: (crash) stopped.\n"
         refused("sample", result.err());
         let result = resolve_ui_app(&mut project_ctx(&project), None);
         refused("ui", result.err());
-
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// Targeting flags that name the recorded launch keep it: after 'app
@@ -8824,14 +8814,7 @@ Target 0: (crash) stopped.\n"
     /// else yield to the resolve.
     #[test]
     fn targeting_flags_that_agree_with_the_recorded_launch_keep_it() {
-        let dir = std::env::temp_dir().join(format!(
-            "sweetpad-app-record-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let dir = TempDir::new("sweetpad-app-record");
         let project = dir.join("App.xcodeproj");
         std::fs::create_dir_all(&project).unwrap();
         let mac = LastLaunchedApp {
@@ -8924,8 +8907,6 @@ Target 0: (crash) stopped.\n"
             flags(Some("AppMac"), Some("mac")),
             &none
         ));
-
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// A hint's command carries the project and target flags that found the

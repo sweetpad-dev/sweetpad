@@ -620,6 +620,7 @@ impl<'a> Reader<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testdir::TempDir;
 
     fn asg(key: &str, value: &str) -> Assignment {
         Assignment {
@@ -796,8 +797,7 @@ mod tests {
     /// reaches neither.
     #[test]
     fn fingerprint_stats_only_the_sdk_settings_the_catalog_reads() {
-        let root = std::env::temp_dir().join(format!("sweetpad-fp-walk-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
+        let root = TempDir::new("sweetpad-fp-walk");
         let plant = |sdk_dir: &Path| {
             fs::create_dir_all(sdk_dir).unwrap();
             let plist = sdk_dir.join("SDKSettings.plist");
@@ -824,7 +824,6 @@ mod tests {
         assert_eq!(source_fingerprint(&no_specs, Some(&platforms)), before);
         fs::write(&macos, "changed settings").unwrap();
         assert_ne!(source_fingerprint(&no_specs, Some(&platforms)), before);
-        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -265,6 +265,7 @@ fn extract_plist_string(xml: &str, key: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testdir::TempDir;
 
     #[test]
     fn major_version_parses_from_short_version() {
@@ -312,7 +313,7 @@ mod tests {
     #[test]
     fn locate_finds_roots_from_any_entry_point() {
         // Minimal Xcode.app skeleton in a temp dir.
-        let root = std::env::temp_dir().join(format!("sweetpad-xcode-{}", std::process::id()));
+        let root = TempDir::new("sweetpad-xcode");
         let app = root.join("Xcode.app");
         let contents = app.join("Contents");
         std::fs::create_dir_all(contents.join("SharedFrameworks")).unwrap();
@@ -340,15 +341,13 @@ mod tests {
             locate(&root).is_err(),
             "bare dir without Contents should fail"
         );
-        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
     fn a_symlinked_spelling_locates_the_same_install() {
         // `/Applications/Xcode-27.0.0.app` pointing at `Xcode.app`: one
         // install, so one layout and one catalog cache key for both.
-        let root = std::env::temp_dir().join(format!("sweetpad-xcode-link-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root = TempDir::new("sweetpad-xcode-link");
         let contents = root.join("Xcode.app/Contents");
         std::fs::create_dir_all(contents.join("SharedFrameworks")).unwrap();
         std::fs::create_dir_all(contents.join("Developer/Platforms")).unwrap();
@@ -371,7 +370,6 @@ mod tests {
         assert_eq!(linked.xcspec_root, real.xcspec_root);
         assert_eq!(linked.sdksettings_root, real.sdksettings_root);
         assert_eq!(linked.cache_key(), real.cache_key());
-        std::fs::remove_dir_all(&root).ok();
     }
 
     /// The snapshot the extension reads for a symlinked install names the
@@ -379,9 +377,7 @@ mod tests {
     /// does, and reads that install's version.
     #[test]
     fn install_at_spells_a_symlinked_install_as_locate_does() {
-        let root =
-            std::env::temp_dir().join(format!("sweetpad-xcode-install-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root = TempDir::new("sweetpad-xcode-install");
         let contents = root.join("Xcode.app/Contents");
         std::fs::create_dir_all(contents.join("SharedFrameworks")).unwrap();
         std::fs::create_dir_all(contents.join("Developer/Platforms")).unwrap();
@@ -410,13 +406,11 @@ mod tests {
         // A directory that isn't there keeps its spelling.
         let missing = root.join("Missing.app/Contents/Developer");
         assert_eq!(install_at(&missing).developer_dir, missing);
-        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
     fn flush_caches_drops_memoized_layouts() {
-        let root =
-            std::env::temp_dir().join(format!("sweetpad-xcode-flush-{}", std::process::id()));
+        let root = TempDir::new("sweetpad-xcode-flush");
         let contents = root.join("Xcode.app/Contents");
         std::fs::create_dir_all(contents.join("SharedFrameworks")).unwrap();
         std::fs::create_dir_all(contents.join("Developer/Platforms")).unwrap();
@@ -438,6 +432,5 @@ mod tests {
         // …until the session caches are flushed.
         flush_caches();
         assert_eq!(locate(&app).unwrap().short_version, "27.0");
-        std::fs::remove_dir_all(&root).ok();
     }
 }

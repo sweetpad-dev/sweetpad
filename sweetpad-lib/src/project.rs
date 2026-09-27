@@ -4455,6 +4455,7 @@ fn scheme_build_action_targets(scheme_path: &Path) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testdir::TempDir;
 
     /// Shorthand for the [`effective_authored_settings`]-shaped map the
     /// built-in/override gates read.
@@ -5341,8 +5342,7 @@ mod tests {
     /// another package gets none, and dotted names are never packages.
     #[test]
     fn finds_packages_under_a_synchronized_folder() {
-        let root = std::env::temp_dir().join(format!("sweetpad-sync-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
+        let root = TempDir::new("sweetpad-sync");
         for rel in [
             "Modules/Shallow",
             "Modules/Nest/Deep",
@@ -5361,7 +5361,6 @@ mod tests {
             found,
             vec![root.join("Modules/Nest/Deep"), root.join("Modules/Shallow")]
         );
-        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -5752,10 +5751,9 @@ mod tests {
         );
 
         // A symlinked directory keeps its symlink spelling.
-        let root = std::env::temp_dir().join(format!("sweetpad-abs-{}", std::process::id()));
+        let root = TempDir::new("sweetpad-abs");
         let target_dir = root.join("target");
         let link = root.join("link");
-        let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&target_dir).unwrap();
         std::os::unix::fs::symlink(&target_dir, &link).unwrap();
         let through_link = link.join("Proj.xcodeproj");
@@ -5765,7 +5763,6 @@ mod tests {
             target_dir.join("Proj.xcodeproj"),
             "must not resolve the symlink"
         );
-        let _ = fs::remove_dir_all(&root);
     }
 
     /// [`standardize`] is the DerivedData hash input, so its whole job is to
@@ -5773,10 +5770,9 @@ mod tests {
     /// xcodebuild hashes.
     #[test]
     fn standardize_resolves_symlinks_and_drops_private() {
-        let root = std::env::temp_dir().join(format!("sweetpad-std-{}", std::process::id()));
+        let root = TempDir::new("sweetpad-std");
         let target_dir = root.join("target");
         let link = root.join("link");
-        let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&target_dir).unwrap();
         std::os::unix::fs::symlink(&target_dir, &link).unwrap();
 
@@ -5802,8 +5798,6 @@ mod tests {
         // back to the lexical form rather than failing.
         let missing = root.join("nope").join("Proj.xcodeproj");
         assert_eq!(standardize(&missing), absolutize(&missing));
-
-        let _ = fs::remove_dir_all(&root);
     }
 
     /// A `-derivedDataPath` loses only the `/private` in front of a root

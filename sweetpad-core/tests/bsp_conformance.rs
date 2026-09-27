@@ -1039,8 +1039,7 @@ fn bsp_per_file_clang_dialect_matrix() {
 /// `workspacePath`, open the folder as a project, and exit before replying.
 #[test]
 fn bsp_starts_from_extension_bsp_json() {
-    let workspace = std::env::temp_dir().join(format!("sweetpad-bsp-json-{}", std::process::id()));
-    std::fs::create_dir_all(&workspace).expect("create workspace");
+    let workspace = sweetpad_core::scratch::ScratchDir::new("sweetpad-bsp-json").unwrap();
     let config = json!({
         "name": "sweetpad",
         "workspacePath": workspace.to_string_lossy(),
@@ -1086,7 +1085,6 @@ fn bsp_starts_from_extension_bsp_json() {
         .read_to_end(&mut out)
         .expect("read stdout");
     let status = child.wait().expect("wait");
-    let _ = std::fs::remove_dir_all(&workspace);
 
     assert!(status.success(), "server exited non-zero: {status:?}");
     let frames = parse_frames(&out);
@@ -1115,7 +1113,7 @@ fn bsp_starts_from_extension_bsp_json() {
 /// path, with a `bspConfig` pointer).
 #[test]
 fn bsp_discovers_config_from_cwd_index() {
-    let root = std::env::temp_dir().join(format!("sweetpad-bsp-cwd-{}", std::process::id()));
+    let root = sweetpad_core::scratch::ScratchDir::new("sweetpad-bsp-cwd").unwrap();
     let workspace = root.join("workspace");
     let state_home = root.join("xdg-state");
     std::fs::create_dir_all(&workspace).expect("create workspace");
@@ -1175,7 +1173,6 @@ fn bsp_discovers_config_from_cwd_index() {
         .read_to_end(&mut out)
         .expect("read stdout");
     let status = child.wait().expect("wait");
-    let _ = std::fs::remove_dir_all(&root);
 
     assert!(status.success(), "server exited non-zero: {status:?}");
     let frames = parse_frames(&out);

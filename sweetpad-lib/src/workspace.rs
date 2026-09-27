@@ -540,11 +540,7 @@ mod tests {
     fn container_refs_anchor_at_workspace_dir_even_inside_groups() {
         // `container:` is always relative to the directory containing the
         // workspace; only `group:` re-anchors with the enclosing Group.
-        use std::sync::atomic::{AtomicU32, Ordering};
-        static N: AtomicU32 = AtomicU32::new(0);
-        let n = N.fetch_add(1, Ordering::Relaxed);
-        let root =
-            std::env::temp_dir().join(format!("sweetpad-ws-container-{}-{n}", std::process::id()));
+        let root = TempDir::new("sweetpad-ws-container");
         let ws = root.join("Test.xcworkspace");
         fs::create_dir_all(&ws).unwrap();
         fs::write(
@@ -567,7 +563,6 @@ mod tests {
                 root.join("Sub/Nested.xcodeproj")
             ],
         );
-        let _ = fs::remove_dir_all(&root);
     }
 
     /// A scratch workspace under the OS temp dir containing one copy of the
@@ -703,14 +698,14 @@ mod tests {
 
     /// A workspace holding the `_synthetic-spm` fixture project, which
     /// declares `XCLocalSwiftPackageReference "Dep"`. `absolute:` keeps the
-    /// scratch workspace from having to copy the fixture.
-    fn workspace_over_the_spm_fixture(tag: &str, also_reference_the_package: bool) -> PathBuf {
-        use std::sync::atomic::{AtomicU32, Ordering};
-        static N: AtomicU32 = AtomicU32::new(0);
-        let n = N.fetch_add(1, Ordering::Relaxed);
+    /// scratch workspace from having to copy the fixture. The workspace goes
+    /// when the returned guard drops.
+    fn workspace_over_the_spm_fixture(
+        tag: &str,
+        also_reference_the_package: bool,
+    ) -> (TempDir, PathBuf) {
         let spm = fixtures_root().join("_synthetic-spm/project");
-        let root =
-            std::env::temp_dir().join(format!("sweetpad-ws-{tag}-{}-{n}", std::process::id()));
+        let root = TempDir::new(&format!("sweetpad-ws-{tag}"));
         let ws_path = root.join("Test.xcworkspace");
         fs::create_dir_all(&ws_path).unwrap();
         let package_ref = if also_reference_the_package {
@@ -729,12 +724,12 @@ mod tests {
             ),
         )
         .unwrap();
-        ws_path
+        (root, ws_path)
     }
 
     #[test]
     fn a_member_projects_local_packages_are_reported_apart_from_the_workspaces_own() {
-        let ws_path = workspace_over_the_spm_fixture("project-pkg", false);
+        let (_root, ws_path) = workspace_over_the_spm_fixture("project-pkg", false);
         let ws = open(&ws_path).unwrap();
 
         // The workspace declares no package itself; the project it holds does,
@@ -744,12 +739,11 @@ mod tests {
             ws.project_package_refs(),
             vec![fixtures_root().join("_synthetic-spm/project/Dep")]
         );
-        let _ = fs::remove_dir_all(ws_path.parent().unwrap());
     }
 
     #[test]
     fn a_package_the_workspace_already_names_is_not_reported_twice() {
-        let ws_path = workspace_over_the_spm_fixture("both-ways", true);
+        let (_root, ws_path) = workspace_over_the_spm_fixture("both-ways", true);
         let ws = open(&ws_path).unwrap();
 
         // Referenced by the workspace *and* by its project: the membership
@@ -759,7 +753,6 @@ mod tests {
             vec![fixtures_root().join("_synthetic-spm/project/Dep")]
         );
         assert!(ws.project_package_refs().is_empty());
-        let _ = fs::remove_dir_all(ws_path.parent().unwrap());
     }
 
     #[test]

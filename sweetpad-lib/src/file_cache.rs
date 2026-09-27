@@ -85,12 +85,12 @@ impl<T> Default for ParseCache<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testdir::TempDir;
     use std::cell::Cell;
 
     #[test]
     fn reuses_parse_until_the_file_changes() {
-        let dir = std::env::temp_dir().join(format!("sweetpad-fc-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
+        let dir = TempDir::new("sweetpad-fc");
         let path = dir.join("f.txt");
         fs::write(&path, "one").unwrap();
 
@@ -114,8 +114,6 @@ mod tests {
         let c = cache.get_or_parse(&path, read).unwrap();
         assert_eq!(*c, "two");
         assert_eq!(calls.get(), 2, "changed file reparsed");
-
-        fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

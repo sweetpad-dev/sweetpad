@@ -441,6 +441,7 @@ fn state_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::testdir::TempDir;
 
     #[test]
     fn round_trips_via_toml() {
@@ -513,8 +514,7 @@ mod tests {
 
     #[test]
     fn pruned_view_drops_deleted_projects_but_keeps_unmounted_ones() {
-        let dir = std::env::temp_dir().join(format!("sweetpad-state-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = TempDir::new("sweetpad-state");
         let mut state = State::default();
         // Parent exists, container doesn't → deleted → pruned.
         let deleted = dir.join("Gone.xcodeproj");
@@ -531,7 +531,6 @@ mod tests {
         assert!(!pruned.projects.contains_key(&*deleted.to_string_lossy()));
         assert!(pruned.projects.contains_key(unmounted));
         assert!(pruned.projects.contains_key(&*live.to_string_lossy()));
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -576,8 +575,7 @@ mod tests {
 
     #[test]
     fn quarantine_paths_never_clobber_an_earlier_backup() {
-        let dir = std::env::temp_dir().join(format!("sweetpad-quarantine-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = TempDir::new("sweetpad-quarantine");
         let path = dir.join("state.toml");
         let first = quarantine_path(&path);
         assert!(first.to_string_lossy().ends_with("state.toml.corrupt"));
@@ -585,7 +583,6 @@ mod tests {
         let second = quarantine_path(&path);
         assert!(second.to_string_lossy().ends_with("state.toml.corrupt.1"));
         assert_ne!(first, second);
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

@@ -693,16 +693,8 @@ mod tests {
     use super::*;
     use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
-    use std::sync::atomic::{AtomicU32, Ordering};
 
-    /// A unique scratch dir under the OS temp dir (no tempfile dep).
-    fn scratch(tag: &str) -> PathBuf {
-        static N: AtomicU32 = AtomicU32::new(0);
-        let n = N.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sweetpad-{tag}-{}-{n}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
+    use crate::scratch::ScratchDir;
 
     fn write_file(path: &Path, bytes: &[u8], exec: bool) {
         std::fs::File::create(path)
@@ -721,7 +713,7 @@ mod tests {
 
     #[test]
     fn macro_plugin_filter_picks_only_host_executables() {
-        let dir = scratch("plugin-filter");
+        let dir = ScratchDir::new("sweetpad-plugin-filter").unwrap();
         let plugin = dir.join("MyMacros"); // the macro plugin: ext-less, +x, Mach-O
         write_file(&plugin, MACHO, true);
         write_file(&dir.join("MyMacros.o"), MACHO, true); // build product (extension)
@@ -743,12 +735,11 @@ mod tests {
                 "should skip {skip}"
             );
         }
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn collect_macro_plugins_scans_the_host_config_dir() {
-        let root = scratch("plugin-collect");
+        let root = ScratchDir::new("sweetpad-plugin-collect").unwrap();
         let host = root.join("Debug");
         std::fs::create_dir_all(&host).unwrap();
         write_file(&host.join("BetaMacros"), MACHO, true);
@@ -767,6 +758,5 @@ mod tests {
 
         // Missing BUILD_DIR/CONFIGURATION → never scans.
         assert!(collect_macro_plugins(&BTreeMap::new()).is_empty());
-        let _ = std::fs::remove_dir_all(&root);
     }
 }

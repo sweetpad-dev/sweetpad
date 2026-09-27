@@ -789,6 +789,7 @@ pub(crate) fn home_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::testdir::TempDir;
 
     #[test]
     fn for_project_layers_overrides_on_defaults() {
@@ -855,7 +856,7 @@ mod tests {
     fn project_key_that_is_a_directory_is_warned() {
         // The CLI_DESIGN doc-example mistake: keying by the project's directory
         // instead of the container path. It parses, then silently never matches.
-        let dir = std::env::temp_dir().join(format!("sweetpad-cfg-{}", std::process::id()));
+        let dir = TempDir::new("sweetpad-cfg");
         std::fs::create_dir_all(dir.join("App.xcodeproj")).unwrap();
         let text = format!("[projects.\"{}\"]\nscheme = \"App\"\n", dir.display());
         let cfg = Config::parse(&text).unwrap();
@@ -866,7 +867,6 @@ mod tests {
             "warnings: {:?}",
             cfg.warnings
         );
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -874,14 +874,13 @@ mod tests {
         // A key with the right shape (even if absent on this machine's disk at
         // lint time it canonicalize-fails → no crash, no false "matches no
         // project on disk" for the container-shaped case).
-        let dir = std::env::temp_dir().join(format!("sweetpad-cfg2-{}", std::process::id()));
+        let dir = TempDir::new("sweetpad-cfg2");
         let proj = dir.join("App.xcodeproj");
         std::fs::create_dir_all(&proj).unwrap();
         let key = std::fs::canonicalize(&proj).unwrap();
         let text = format!("[projects.\"{}\"]\nscheme = \"App\"\n", key.display());
         let cfg = Config::parse(&text).unwrap();
         assert!(cfg.warnings.is_empty(), "warnings: {:?}", cfg.warnings);
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -1150,18 +1149,18 @@ mod tests {
         assert_eq!(d.testing.destination, None);
     }
 
-    /// A scratch directory laid out like the reported case: a git root holding
-    /// the file, a sibling directory to run from, and the project one level
-    /// down.
-    fn nested_repo(tag: &str) -> PathBuf {
-        let n = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("sweetpad-rootfile-{tag}-{n}"));
+    /// Lay `root` out like the reported case: a git root holding the file, a
+    /// sibling directory to run from, and the project one level down.
+    fn lay_out_repo(root: &Path) {
         std::fs::create_dir_all(root.join(".git")).unwrap();
         std::fs::create_dir_all(root.join("Scripts")).unwrap();
         std::fs::create_dir_all(root.join("Sources/App.xcodeproj")).unwrap();
+    }
+
+    /// A scratch directory laid out by [`lay_out_repo`].
+    fn nested_repo(tag: &str) -> TempDir {
+        let root = TempDir::new(&format!("sweetpad-rootfile-{tag}"));
+        lay_out_repo(&root);
         root
     }
 
@@ -1175,33 +1174,25 @@ mod tests {
         .unwrap();
 
         // Found from the root itself and from a sibling directory below it.
-        for start in [root.clone(), root.join("Scripts")] {
+        for start in [root.to_path_buf(), root.join("Scripts")] {
             let (found, warnings) = RootFile::find_upward(&start).expect("file found");
             assert!(warnings.is_empty(), "{warnings:?}");
-            assert_eq!(found.dir, root);
+            assert_eq!(found.dir, *root);
             // Relative to the file, not to the directory the walk started in.
             let declared = found.declared().expect("declares a project");
             assert_eq!(declared.path(), root.join("Sources/App.xcodeproj"));
         }
-
-        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
     fn find_upward_stops_at_the_git_root() {
-        let outer = nested_repo("outer");
         // A file above the repository must not donate its defaults.
-        let above = outer.parent().unwrap().join(format!(
-            "{}-above",
-            outer.file_name().unwrap().to_string_lossy()
-        ));
-        std::fs::create_dir_all(&above).unwrap();
+        let above = TempDir::new("sweetpad-rootfile-above");
         std::fs::write(above.join("sweetpad.toml"), "scheme = \"Stray\"").unwrap();
+        let outer = above.join("repo");
+        lay_out_repo(&outer);
 
         assert!(RootFile::find_upward(&outer.join("Scripts")).is_none());
-
-        std::fs::remove_dir_all(&outer).unwrap();
-        std::fs::remove_dir_all(&above).unwrap();
     }
 
     #[test]
@@ -1238,8 +1229,6 @@ mod tests {
             found.declared().unwrap().path(),
             Path::new("/abs/Other.xcodeproj")
         );
-
-        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -1274,7 +1263,5 @@ mod tests {
         assert!(plain.covers(&crate::cli::resolve::Container::Project(
             root.join("Beside.xcodeproj")
         )));
-
-        std::fs::remove_dir_all(&root).unwrap();
     }
 }

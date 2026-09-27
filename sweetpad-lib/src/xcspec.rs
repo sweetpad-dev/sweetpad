@@ -746,6 +746,7 @@ fn parse_compiler_option(opt: &Value) -> Option<CompilerOption> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testdir::TempDir;
 
     fn xcspec_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("xcspec-cache/xcode-26.5.0")
@@ -919,8 +920,7 @@ mod tests {
     fn sdk_walk_reads_each_sdk_without_walking_its_tree() {
         // A settings file deep inside an SDK, or behind a symlinked directory,
         // is never reached: the walk stops at `*.sdk` and follows no links.
-        let root = std::env::temp_dir().join(format!("sweetpad-sdk-walk-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
+        let root = TempDir::new("sweetpad-sdk-walk");
         let cached = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("xcspec-cache/xcode-27.0.0/sdksettings/Platforms");
         let plant = |platform: &str, sdk_dir: &Path| {
@@ -941,7 +941,6 @@ mod tests {
         let names: Vec<&str> = cat.sdks.keys().map(String::as_str).collect();
         assert_eq!(names, ["macosx27.0"]);
         assert_eq!(cat.sdk_paths.get("macosx"), Some(&macos));
-        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

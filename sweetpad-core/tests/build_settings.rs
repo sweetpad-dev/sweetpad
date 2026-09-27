@@ -154,8 +154,7 @@ fn the_extra_xcconfig_overrides_the_command_line_settings_it_shares() {
     // `FX_C = cli fromxc`, `SWIFT_VERSION = 6.0` and `FX_D = only`: the file
     // sits above the command line, and its `$(inherited)` reads the
     // command-line value.
-    let dir = std::env::temp_dir().join(format!("sweetpad-overlay-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = ScratchDir::new("sweetpad-overlay").unwrap();
     let xcconfig = dir.join("Over.xcconfig");
     std::fs::write(
         &xcconfig,
@@ -172,7 +171,6 @@ fn the_extra_xcconfig_overrides_the_command_line_settings_it_shares() {
         ..scratch_opts()
     };
     let s = resolve_one(opts);
-    std::fs::remove_dir_all(&dir).unwrap();
     assert_eq!(s.get("FX_C").map(String::as_str), Some("cli fromxc"));
     assert_eq!(s.get("SWIFT_VERSION").map(String::as_str), Some("6.0"));
     assert_eq!(s.get("FX_D").map(String::as_str), Some("only"));
@@ -185,8 +183,7 @@ fn sdk_conditions_match_the_versioned_canonical_name() {
     // form matches while a bare unversioned pattern does not — CocoaPods
     // writes `[sdk=iphoneos*]` precisely because `[sdk=iphoneos]` wouldn't
     // match a real (versioned) SDK.
-    let dir = std::env::temp_dir().join(format!("sweetpad-sdkcond-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = ScratchDir::new("sweetpad-sdkcond").unwrap();
     let xcconfig = dir.join("sdk-cond.xcconfig");
     std::fs::write(
         &xcconfig,
@@ -200,7 +197,6 @@ fn sdk_conditions_match_the_versioned_canonical_name() {
     let s = resolve_one(opts);
     assert_eq!(s.get("STAR_SDK_COND").map(String::as_str), Some("star"));
     assert_eq!(s.get("BARE_SDK_COND"), None);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -789,8 +785,7 @@ fn bare_project_under_foreign_workspace_keys_derived_data_by_itself() {
 /// wrongly yield a `-maccatalyst` build dir Xcode never writes).
 #[test]
 fn native_macos_target_opting_out_of_catalyst_is_not_catalyst() {
-    let dir = std::env::temp_dir().join(format!("sweetpad-catalyst-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = ScratchDir::new("sweetpad-catalyst").unwrap();
     // The report's shape: a project-wide iOS-family Base SDK, but the target is
     // a native macOS app that does NOT support Mac Catalyst.
     let xcconfig = dir.join("catalyst.xcconfig");
@@ -813,5 +808,4 @@ fn native_macos_target_opting_out_of_catalyst_is_not_catalyst() {
         Some("-maccatalyst"),
         "a native macOS target must not get the -maccatalyst build dir"
     );
-    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -1507,6 +1507,7 @@ fn target_triple(settings: &Settings, arch: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testdir::TempDir;
 
     #[test]
     fn swift_version_strips_dot_zero() {
@@ -1805,15 +1806,8 @@ mod tests {
     /// A unique scratch dir standing in for a target's build tree — the header
     /// maps and generated-sources dirs are only emitted when they exist, so
     /// these tests have to put real files on disk.
-    fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "sweetpad-hmap-{}-{name}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("create scratch dir");
-        dir
+    fn scratch(name: &str) -> TempDir {
+        TempDir::new(&format!("sweetpad-hmap-{name}"))
     }
 
     /// The `(flag, value)` pairs in an argv, for asserting on search paths.
@@ -1863,7 +1857,6 @@ mod tests {
             let want = (flag.to_string(), format!("{t}/Widget{suffix}"));
             assert!(got.contains(&want), "missing {want:?} in {got:?}");
         }
-        let _ = std::fs::remove_dir_all(&temp);
     }
 
     #[test]
@@ -1877,7 +1870,6 @@ mod tests {
             !args.iter().any(|a| a.contains(".hmap")),
             "named a header map that is not on disk: {args:?}"
         );
-        let _ = std::fs::remove_dir_all(&temp);
     }
 
     #[test]
@@ -1893,7 +1885,6 @@ mod tests {
                 .any(|a| a.ends_with("/DifferentProductName-project-headers.hmap")),
             "keyed the header maps off the target name: {args:?}"
         );
-        let _ = std::fs::remove_dir_all(&temp);
     }
 
     #[test]
@@ -1922,7 +1913,6 @@ mod tests {
             !args.iter().any(|a| a.ends_with("-project-headers.hmap")),
             "HEADERMAP_INCLUDES_PROJECT_HEADERS = NO still emitted it: {args:?}"
         );
-        let _ = std::fs::remove_dir_all(&temp);
     }
 
     #[test]
@@ -1958,7 +1948,6 @@ mod tests {
                 "missing {suffix} in {args:?}"
             );
         }
-        let _ = std::fs::remove_dir_all(&temp);
     }
 
     #[test]
@@ -1998,6 +1987,5 @@ mod tests {
         let got = pairs(&a.into_vec());
         assert!(got.contains(&("-I".to_string(), d.to_string())));
         assert!(!got.contains(&("-I".to_string(), format!("{d}/arm64"))));
-        let _ = std::fs::remove_dir_all(&temp);
     }
 }

@@ -1976,19 +1976,13 @@ mod tests {
     }
 
     use super::*;
+    use crate::cli::testdir::TempDir;
     use crate::cli::{
         Context, GlobalArgs, Targeting, config::Config, output::Output, state::State,
     };
-    use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn temp_dir(tag: &str) -> std::path::PathBuf {
-        let n = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("sweetpad-test-{tag}-{n}"));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+    fn temp_dir(tag: &str) -> TempDir {
+        TempDir::new(&format!("sweetpad-test-{tag}"))
     }
 
     fn ctx() -> Context {
@@ -2053,8 +2047,6 @@ mod tests {
         std::fs::create_dir(dir.join("App.xcworkspace")).unwrap();
         // Workspace beats project.
         assert!(matches!(discover(&dir), Some(Container::Workspace(_))));
-
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// A scheme's launch arguments come back the way Xcode passes them: the
@@ -2087,7 +2079,6 @@ mod tests {
             ["-ApplePersistenceIgnoreState", "NO", "-Plain"]
         );
         assert!(scheme_launch_arguments(&container, "Missing").is_empty());
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -2095,14 +2086,12 @@ mod tests {
         let dir = temp_dir("pkg");
         std::fs::write(dir.join("Package.swift"), "// pkg").unwrap();
         assert!(matches!(discover(&dir), Some(Container::SwiftPackage(_))));
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn discover_none_in_empty_dir() {
         let dir = temp_dir("empty");
         assert!(discover(&dir).is_none());
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// The single container a scan settled on, or `None` when it found nothing
@@ -2124,8 +2113,6 @@ mod tests {
             scanned(&root).map(|c| c.path().to_path_buf()),
             Some(root.join("Sources/App.xcodeproj"))
         );
-
-        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -2141,8 +2128,6 @@ mod tests {
             scanned(&root).map(|c| c.path().to_path_buf()),
             Some(root.join("ios/App.xcodeproj"))
         );
-
-        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -2154,8 +2139,6 @@ mod tests {
         // The CocoaPods/React Native layout: one directory, both kinds, and no
         // ambiguity to report — the workspace wins as it does anywhere else.
         assert!(matches!(scanned(&root), Some(Container::Workspace(_))));
-
-        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -2166,8 +2149,6 @@ mod tests {
 
         assert_eq!(scan_down(&root).len(), 2);
         assert!(scanned(&root).is_none());
-
-        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -2190,8 +2171,6 @@ mod tests {
             scanned(&root).map(|c| c.path().to_path_buf()),
             Some(root.join("Sources/App.xcodeproj"))
         );
-
-        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -2206,8 +2185,6 @@ mod tests {
             scanned(&root).map(|c| c.path().to_path_buf()),
             Some(root.join("x/y/Reachable.xcodeproj"))
         );
-
-        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -2228,13 +2205,11 @@ mod tests {
             Some(root.join("Sources/App.xcodeproj"))
         );
         // The base rides back so the caller can say where it looked.
-        assert_eq!(base, root);
+        assert_eq!(base, *root);
 
         // Without a repository root there is nothing to widen to — scanning
         // down from the filesystem root is never the answer.
         assert!(scan_below(&from, None).0.is_empty());
-
-        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -2245,7 +2220,7 @@ mod tests {
 
         let (found, repo_root) = discover_walk_up(&root.join("Scripts"));
         assert!(found.best().is_none());
-        assert_eq!(repo_root.as_deref(), Some(root.as_path()));
+        assert_eq!(repo_root.as_deref(), Some(&*root));
 
         // A container found on the way up ends the walk before the repository
         // root is known, and none is reported.
@@ -2253,8 +2228,6 @@ mod tests {
         let (found, repo_root) = discover_walk_up(&root.join("Scripts"));
         assert!(found.best().is_some());
         assert!(repo_root.is_none());
-
-        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -2264,7 +2237,6 @@ mod tests {
         std::fs::create_dir(&proj).unwrap();
         let key = Container::Project(proj.clone()).key();
         assert_eq!(key, std::fs::canonicalize(&proj).unwrap().to_string_lossy());
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -2600,7 +2572,5 @@ mod tests {
         // read as "don't filter" rather than as an empty target set, which
         // would resolve no platforms at all.
         assert!(scheme_build_targets(&container, "Ghost").is_none());
-
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

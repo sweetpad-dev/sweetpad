@@ -23,6 +23,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use sweetpad_core::scratch::ScratchDir;
+
 /// Long enough for a cold `xcodebuild` on a small fixture, short enough that a
 /// wedged server fails the run rather than hanging it.
 const BUILD_TIMEOUT: Duration = Duration::from_secs(300);
@@ -172,10 +174,8 @@ fn prepare_builds_dependency_module_from_clean_deriveddata() {
         return;
     }
     let project = fixture("_synthetic-multimodule", "MultiModule.xcodeproj");
-    let dd = std::env::temp_dir().join(format!("sweetpad-bsp-prep-{}", std::process::id()));
-    let log = std::env::temp_dir().join(format!("sweetpad-bsp-prep-log-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dd);
-    let _ = std::fs::remove_file(&log);
+    let scratch = ScratchDir::new("sweetpad-bsp-prep").unwrap();
+    let (dd, log) = (scratch.join("dd"), scratch.join("bsp.log"));
     let dep_module = dd.join("Build/Products/Debug/ModuleA.swiftmodule");
 
     let mut session = Session::start(&project, &dd, &log);
@@ -190,8 +190,6 @@ fn prepare_builds_dependency_module_from_clean_deriveddata() {
 
     let module_exists = dep_module.exists();
     let log_text = std::fs::read_to_string(&log).unwrap_or_default();
-    let _ = std::fs::remove_dir_all(&dd);
-    let _ = std::fs::remove_file(&log);
 
     assert!(replied, "server never answered buildTarget/prepare");
     assert!(
@@ -226,10 +224,8 @@ fn prepare_publishes_header_maps_and_notifies() {
         "{}/fixtures/_synthetic-headermaps/project/Top/Widget.m",
         env!("SWEETPAD_LIB_DIR")
     );
-    let dd = std::env::temp_dir().join(format!("sweetpad-bsp-hm-{}", std::process::id()));
-    let log = std::env::temp_dir().join(format!("sweetpad-bsp-hm-log-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dd);
-    let _ = std::fs::remove_file(&log);
+    let scratch = ScratchDir::new("sweetpad-bsp-hm").unwrap();
+    let (dd, log) = (scratch.join("dd"), scratch.join("bsp.log"));
 
     let options = |id: u32| {
         format!(
@@ -258,8 +254,6 @@ fn prepare_publishes_header_maps_and_notifies() {
     let transcript = session.shutdown();
 
     let log_text = std::fs::read_to_string(&log).unwrap_or_default();
-    let _ = std::fs::remove_dir_all(&dd);
-    let _ = std::fs::remove_file(&log);
 
     assert!(replied, "server never answered buildTarget/prepare");
     assert!(re_replied, "server never re-answered sourceKitOptions");
@@ -295,10 +289,8 @@ fn startup_warmup_prepares_a_target_no_scheme_builds() {
         return;
     }
     let project = fixture("_synthetic-headermaps", "HeaderMaps.xcodeproj");
-    let dd = std::env::temp_dir().join(format!("sweetpad-bsp-orphan-{}", std::process::id()));
-    let log = std::env::temp_dir().join(format!("sweetpad-bsp-orphan-log-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dd);
-    let _ = std::fs::remove_file(&log);
+    let scratch = ScratchDir::new("sweetpad-bsp-orphan").unwrap();
+    let (dd, log) = (scratch.join("dd"), scratch.join("bsp.log"));
     let orphan_hmap = dd.join(
         "Build/Intermediates.noindex/HeaderMaps.build/Debug/HeaderMapsOrphan.build/\
          HeaderMapsOrphan-project-headers.hmap",
@@ -320,8 +312,6 @@ fn startup_warmup_prepares_a_target_no_scheme_builds() {
     session.shutdown();
 
     let log_text = std::fs::read_to_string(&log).unwrap_or_default();
-    let _ = std::fs::remove_dir_all(&dd);
-    let _ = std::fs::remove_file(&log);
 
     assert!(
         appeared,
@@ -343,11 +333,8 @@ fn a_repeat_prepare_over_unchanged_inputs_is_skipped() {
         return;
     }
     let project = fixture("_synthetic-headermaps", "HeaderMaps.xcodeproj");
-    let dd = std::env::temp_dir().join(format!("sweetpad-bsp-coalesce-{}", std::process::id()));
-    let log =
-        std::env::temp_dir().join(format!("sweetpad-bsp-coalesce-log-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dd);
-    let _ = std::fs::remove_file(&log);
+    let scratch = ScratchDir::new("sweetpad-bsp-coalesce").unwrap();
+    let (dd, log) = (scratch.join("dd"), scratch.join("bsp.log"));
 
     let prepare = |id: u32| {
         format!(
@@ -363,8 +350,6 @@ fn a_repeat_prepare_over_unchanged_inputs_is_skipped() {
     session.shutdown();
 
     let log_text = std::fs::read_to_string(&log).unwrap_or_default();
-    let _ = std::fs::remove_dir_all(&dd);
-    let _ = std::fs::remove_file(&log);
 
     assert!(first && second, "both prepares must be answered");
     assert_eq!(

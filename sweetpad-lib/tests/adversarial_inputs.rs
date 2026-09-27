@@ -3,8 +3,11 @@
 //! stack, or expanding without limit. Each case here reproduces a concrete
 //! failure mode that existed before the corresponding guard was added.
 
+mod common;
+
 use std::time::Instant;
 
+use common::TempDir;
 use sweetpad_lib::{bplist, pbxproj, pbxproj_writer, xcscheme};
 
 // ---------------------------------------------------------------------------
@@ -249,7 +252,7 @@ fn project_group_cycles_resolve_without_overflow() {
     };
 }
 "#;
-    let dir = std::env::temp_dir().join(format!("sweetpad-group-cycle-{}", std::process::id()));
+    let dir = TempDir::new("sweetpad-group-cycle");
     let proj = dir.join("Cycle.xcodeproj");
     std::fs::create_dir_all(&proj).expect("create xcodeproj dir");
     std::fs::write(proj.join("project.pbxproj"), pbxproj).expect("write pbxproj");
@@ -266,7 +269,6 @@ fn project_group_cycles_resolve_without_overflow() {
         })
         .expect("spawn");
     handle.join().expect("walk must not overflow the stack");
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // ---------------------------------------------------------------------------

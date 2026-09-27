@@ -158,16 +158,11 @@ fn scan_inner(
 mod tests {
     use super::*;
     use std::sync::Mutex;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn temp_dir(tag: &str) -> PathBuf {
-        let n = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("sweetpad-watch-{tag}-{n}"));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+    use crate::cli::testdir::TempDir;
+
+    fn temp_dir(tag: &str) -> TempDir {
+        TempDir::new(&format!("sweetpad-watch-{tag}"))
     }
 
     #[test]
@@ -205,6 +200,5 @@ mod tests {
             !seen.contains(&"Ignored.swift".to_string()),
             "DerivedData must be ignored"
         );
-        std::fs::remove_dir_all(&dir).ok();
     }
 }

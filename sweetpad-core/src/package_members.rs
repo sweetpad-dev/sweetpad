@@ -602,12 +602,8 @@ mod tests {
     /// A package directory with nothing in it but, optionally, a scheme
     /// container holding `<file>.xcscheme` naming `<blueprint>` — Xcode's mark
     /// that the package has been opened in it.
-    fn package_dir(tag: &str, scheme_file: Option<(&str, &str)>) -> PathBuf {
-        use std::sync::atomic::{AtomicU32, Ordering};
-        static N: AtomicU32 = AtomicU32::new(0);
-        let n = N.fetch_add(1, Ordering::Relaxed);
-        let dir =
-            std::env::temp_dir().join(format!("sweetpad-pkg-{tag}-{}-{n}", std::process::id()));
+    fn package_dir(tag: &str, scheme_file: Option<(&str, &str)>) -> ScratchDir {
+        let dir = ScratchDir::new(&format!("sweetpad-pkg-{tag}")).unwrap();
         let schemes = package_scheme_root(&dir).join("xcshareddata/xcschemes");
         fs::create_dir_all(&schemes).unwrap();
         if let Some((file, blueprint)) = scheme_file {
@@ -669,7 +665,6 @@ mod tests {
             schemes_for(&dir, PackageRole::Dependency, &names),
             vec!["runner"]
         );
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -680,7 +675,6 @@ mod tests {
             schemes_for(&dir, PackageRole::WorkspaceMember, &names),
             vec!["LibA", "LibATests", "MyPlugin"]
         );
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -691,7 +685,6 @@ mod tests {
             schemes_for(&dir, PackageRole::Dependency, &names),
             vec!["LibA", "MyPlugin"]
         );
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -702,7 +695,6 @@ mod tests {
             schemes_for(&dir, PackageRole::Dependency, &names),
             vec!["LibA", "LibATests", "MyPlugin"]
         );
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -716,7 +708,6 @@ mod tests {
             schemes_for(&dir, PackageRole::Dependency, &names),
             vec!["LibA", "MyPlugin", "NetworkTests"]
         );
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -729,7 +720,6 @@ mod tests {
             schemes_for(&dir, PackageRole::Dependency, &names)
                 .contains(&"MyLib-Package".to_string())
         );
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -759,7 +749,6 @@ mod tests {
             vec!["CoreTests"]
         );
         assert!(schemes_for(&dir, PackageRole::Dependency, &names).is_empty());
-        let _ = fs::remove_dir_all(&dir);
         // The same manifest still reports both as targets.
         assert_eq!(names.targets, vec!["Core", "CoreTests"]);
     }
@@ -837,6 +826,5 @@ mod tests {
         let manifest = dump_package(&dir, None).expect("the manifest evaluates");
         assert_eq!(manifest.get("name").and_then(Value::as_str), Some("Dumped"));
         assert!(!dir.join(".build").exists());
-        let _ = fs::remove_dir_all(&dir);
     }
 }

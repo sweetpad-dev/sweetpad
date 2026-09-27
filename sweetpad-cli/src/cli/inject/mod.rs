@@ -326,13 +326,7 @@ mod tests {
 
     #[test]
     fn inject_dependency_detection() {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let n = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("sweetpad-inject-dep-{n}"));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::cli::testdir::TempDir::new("sweetpad-inject-dep");
 
         // No Package.resolved → unknown (stay quiet).
         assert_eq!(inject_dependency_present(&dir), None);
@@ -352,7 +346,5 @@ mod tests {
         )
         .unwrap();
         assert_eq!(inject_dependency_present(&dir), Some(true));
-
-        std::fs::remove_dir_all(&dir).ok();
     }
 }
