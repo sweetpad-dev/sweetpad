@@ -3249,7 +3249,7 @@ Test Suite 'All tests' passed at 2026-08-09 16:24:00.
     #[test]
     fn a_relocated_product_path_has_no_dot_dot() {
         let container = fixture_app();
-        let project_dir = working_dir(&container).unwrap();
+        let project_dir = sweetpad_lib::project::standardize(&working_dir(&container).unwrap());
         let beside = located(&container, &["SYMROOT=build".to_string()]);
         assert_eq!(
             beside.path,

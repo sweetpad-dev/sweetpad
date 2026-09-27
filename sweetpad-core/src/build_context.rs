@@ -1288,6 +1288,86 @@ mod tests {
         );
     }
 
+    /// `PROJECT_DIR`, `SRCROOT`, `PROJECT_FILE_PATH` and every location read
+    /// against them take the one spelling `xcodebuild -showBuildSettings`
+    /// prints however the project is named: symlinks resolved, and a leading
+    /// `/private` dropped.
+    ///
+    /// Captured on Xcode 27 for a project at `/private/tmp/…/app`, opened as
+    /// `/tmp/…/app`, as `/private/tmp/…/app` and through a symlinked
+    /// `/private/tmp/…/link`, each as an absolute `-project` and as a relative
+    /// one from a directory reached that way. All six reported `PROJECT_DIR =
+    /// /tmp/…/app`, and with `SYMROOT=build` on the command line, `SYMROOT =
+    /// BUILD_DIR = /tmp/…/app/build`. A symlinked checkout under `/Users`
+    /// reported its real directory. A `-derivedDataPath` loses the `/private`
+    /// and keeps the symlink: `/private/tmp/…/link/dd` reported `BUILD_DIR =
+    /// /tmp/…/link/dd/Build/Products`. The scratch project here sits under
+    /// `$TMPDIR`, which `/var` reaches the way `/tmp` reaches `/private/tmp`.
+    #[test]
+    fn project_paths_take_the_spelling_xcodebuild_prints() {
+        let root = ScratchDir::new("sweetpad-bc-spelling").unwrap();
+        let private = std::fs::canonicalize(&*root).unwrap();
+        let short = sweetpad_lib::project::standardize(&private);
+        if short == private {
+            eprintln!(
+                "skipped: {} is not under a /private root",
+                private.display()
+            );
+            return;
+        }
+        let real = private.join("real");
+        std::fs::create_dir_all(real.join("Scratch.xcodeproj")).unwrap();
+        std::fs::copy(
+            scratch_path().join("project.pbxproj"),
+            real.join("Scratch.xcodeproj/project.pbxproj"),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(&real, private.join("link")).unwrap();
+
+        let dir = short.join("real").display().to_string();
+        let query = ResolveQuery::new("Scratch", "Debug", "macosx", "arm64");
+        for opened in [
+            short.join("real/Scratch.xcodeproj"),
+            private.join("real/Scratch.xcodeproj"),
+            private.join("link/Scratch.xcodeproj"),
+            short.join("link/Scratch.xcodeproj"),
+        ] {
+            let ctx = BuildContext::open(&opened).unwrap();
+            let relocated = ctx
+                .resolve(&query.clone().with_override("SYMROOT", "build"))
+                .unwrap();
+            for (key, value) in [
+                ("PROJECT_DIR", dir.clone()),
+                ("SRCROOT", dir.clone()),
+                ("PROJECT_FILE_PATH", format!("{dir}/Scratch.xcodeproj")),
+                ("SYMROOT", format!("{dir}/build")),
+                ("BUILD_DIR", format!("{dir}/build")),
+                ("TARGET_BUILD_DIR", format!("{dir}/build/Debug")),
+            ] {
+                assert_eq!(
+                    get(&relocated, key),
+                    value,
+                    "{key} for {}",
+                    opened.display()
+                );
+            }
+
+            let moved = ctx
+                .resolve(
+                    &query
+                        .clone()
+                        .with_derived_data_path(private.join("link/dd")),
+                )
+                .unwrap();
+            assert_eq!(
+                get(&moved, "BUILD_DIR"),
+                short.join("link/dd/Build/Products").display().to_string(),
+                "BUILD_DIR for {}",
+                opened.display()
+            );
+        }
+    }
+
     /// The DerivedData container hash uses the *standardized* project path —
     /// symlinks resolved, a leading `/private` dropped for the symlinked roots
     /// — because that is the spelling xcodebuild hashes.

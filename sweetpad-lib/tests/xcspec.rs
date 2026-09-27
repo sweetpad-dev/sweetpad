@@ -247,11 +247,11 @@ fn scratch_resolves_against_captured_oracle_with_decent_coverage() {
     // location on disk) and that BUILD_DIR + BUILT_PRODUCTS_DIR are now
     // emitted in DerivedData layout (`~/Library/Developer/Xcode/DerivedData/
     // <Container>-<HASH>/Build/Products[/Config]`).
-    let canonical = std::fs::canonicalize(&xcodeproj_path).unwrap();
-    let canonical_project_dir = canonical.parent().unwrap().display().to_string();
+    let standardized = project::standardize(&xcodeproj_path);
+    let project_dir = standardized.parent().unwrap().display().to_string();
     assert_eq!(
         resolved.get("PROJECT_DIR").map(String::as_str),
-        Some(canonical_project_dir.as_str())
+        Some(project_dir.as_str())
     );
     let build_dir = resolved.get("BUILD_DIR").map(String::as_str).unwrap();
     assert!(

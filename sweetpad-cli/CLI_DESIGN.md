@@ -3334,7 +3334,9 @@ $(inherited) x` and `SWIFT_VERSION = 6.0`, to `FOO = cli x` and
 of a key the overlay also sets just below the overlay, and keeps every other
 override on top. Against `xcodebuild -showBuildSettings` on the fixture, with
 that file and those settings, `settings show` differs in the same keys as
-with none: a `/tmp` versus `/private/tmp` spelling. `CODE_SIGN_IDENTITY`
+with none: a `/tmp` versus `/private/tmp` spelling, which the resolver
+follows (see "The project path is spelled the way xcodebuild spells it"
+below). `CODE_SIGN_IDENTITY`
 differed too, and the reason was not the fixture's `CODE_SIGNING_ALLOWED =
 NO`: Xcode 27 reports `-` for a macOS app with no `DEVELOPMENT_TEAM` and no
 authored identity whatever `CODE_SIGNING_ALLOWED` or `CODE_SIGN_STYLE` say,
@@ -3450,6 +3452,30 @@ off `CONFIGURATION_BUILD_DIR` rather than `BUILT_PRODUCTS_DIR`. The
 values. One gap is left: with a scheme, `xcodebuild` keeps
 `SHARED_PRECOMPS_DIR` under DerivedData's intermediates when `OBJROOT`
 moves, where the resolver derives it from `OBJROOT`.
+
+### The project path is spelled the way xcodebuild spells it
+
+`xcodebuild` prints one spelling of the project's directory, however the
+project is named. On Xcode 27, with the project at `/private/tmp/…/app`,
+`-showBuildSettings` was run with `-project` as `/tmp/…/app/…`, as
+`/private/tmp/…/app/…` and through a symlinked `/private/tmp/…/link`, both
+absolute and relative from a directory reached the same way. All six printed
+`PROJECT_DIR = /tmp/…/app`. With `SYMROOT=build` they printed
+`SYMROOT = /tmp/…/app/build`. A symlinked checkout under `/Users` printed its
+real directory. That is the standardized path DerivedData is hashed over
+(symlinks resolved, a leading `/private` dropped), so the resolver gives
+`PROJECT_DIR`, `SRCROOT` and `PROJECT_FILE_PATH` that path. Every location
+read against them follows. It used the canonical path, so `settings show`
+printed `/private/tmp/…` for a project under `/tmp`.
+
+A `-derivedDataPath` loses only the `/private`. `/private/tmp/…/link/dd`
+printed `BUILD_DIR = /tmp/…/link/dd/Build/Products`, symlink kept, and the
+resolver spells it that way too. A setting given an absolute path keeps its
+spelling: `SYMROOT=/private/tmp/…/sym` printed as typed. The BSP server's
+source lists stay on the canonical project directory, and it compares
+spellings when it matches a file, so the index finds a file either way. The
+sweetpad-core test `project_paths_take_the_spelling_xcodebuild_prints`
+quotes the measurements.
 
 ### A project keys DerivedData by itself
 

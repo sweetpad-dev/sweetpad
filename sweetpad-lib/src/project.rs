@@ -1511,6 +1511,28 @@ pub fn standardize(path: &Path) -> PathBuf {
     }
 }
 
+/// Xcode's spelling of a `-derivedDataPath`: a leading `/private` dropped
+/// when the directory after it is one of the root symlinks into `/private`
+/// (`/tmp`, `/var`, `/etc`), and nothing else touched. Unlike [`standardize`],
+/// a symlink further down stays, and the path need not exist yet:
+/// `xcodebuild -showBuildSettings -derivedDataPath /private/tmp/x/link/dd`
+/// reports `BUILD_DIR = /tmp/x/link/dd/Build/Products`.
+#[must_use]
+pub fn without_private_root(path: &Path) -> PathBuf {
+    let Ok(rest) = path.strip_prefix("/private") else {
+        return path.to_path_buf();
+    };
+    let Some(Component::Normal(root)) = rest.components().next() else {
+        return path.to_path_buf();
+    };
+    let private_root = Path::new("/private").join(root);
+    if fs::canonicalize(Path::new("/").join(root)).is_ok_and(|c| c == private_root) {
+        Path::new("/").join(rest)
+    } else {
+        path.to_path_buf()
+    }
+}
+
 /// Join `rel` onto `base`, collapsing `.` / `..` lexically (without touching the
 /// filesystem) so a group path like `../Shared` resolves cleanly.
 pub(crate) fn join_normalized(base: &Path, rel: &str) -> PathBuf {
@@ -1730,11 +1752,15 @@ pub fn built_in_settings(
     // `ResolveQuery::scheme_sanitizers`).
     scheme_sanitizers: crate::scheme::SanitizerEnables,
 ) -> Vec<Assignment> {
-    // Resolve to an absolute path so PROJECT_DIR / SRCROOT / BUILD_DIR match
-    // xcodebuild's behaviour (it always emits absolute paths). Fall back to
-    // the input if canonicalization fails — e.g. when the path doesn't exist.
-    let abs_path =
-        fs::canonicalize(xcodeproj_path).unwrap_or_else(|_| xcodeproj_path.to_path_buf());
+    // PROJECT_DIR / SRCROOT and every setting built on them take the project
+    // path in xcodebuild's standardized spelling: absolute, symlinks resolved,
+    // and `/private/tmp/…` spelled `/tmp/…`. `xcodebuild -showBuildSettings`
+    // prints that one spelling whether the project is named through `/tmp`,
+    // `/private/tmp` or a symlinked checkout, as a relative `-project` from a
+    // directory reached any of those ways or as an absolute one (sweetpad-core's
+    // `project_paths_take_the_spelling_xcodebuild_prints`). It is the spelling
+    // DerivedData is hashed over too.
+    let abs_path = standardize(xcodeproj_path);
     let project_dir = abs_path
         .parent()
         .map_or_else(PathBuf::new, Path::to_path_buf);
@@ -5764,6 +5790,33 @@ mod tests {
         assert_eq!(standardize(&missing), absolutize(&missing));
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    /// A `-derivedDataPath` loses only the `/private` in front of a root
+    /// symlink, whether or not the directory exists yet, and keeps every
+    /// other part of its spelling.
+    #[test]
+    fn without_private_root_drops_only_the_private_prefix() {
+        if !Path::new("/private/tmp").exists() {
+            return;
+        }
+        for (given, spelled) in [
+            ("/private/tmp/x/link/dd", "/tmp/x/link/dd"),
+            ("/private/var/folders/x/dd", "/var/folders/x/dd"),
+            ("/private/tmp", "/tmp"),
+            ("/tmp/x/dd", "/tmp/x/dd"),
+            ("/Users/x/dd", "/Users/x/dd"),
+            // No `/sweetpad-none` symlink leads into it.
+            ("/private/sweetpad-none/dd", "/private/sweetpad-none/dd"),
+            ("/private", "/private"),
+            ("dd", "dd"),
+        ] {
+            assert_eq!(
+                without_private_root(Path::new(given)),
+                PathBuf::from(spelled),
+                "{given}"
+            );
+        }
     }
 
     /// `normalize_stub_workspace` is pure-lexical (no filesystem), so pin it

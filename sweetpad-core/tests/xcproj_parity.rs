@@ -42,10 +42,10 @@ fn xcproj_project() -> (ScratchDir, PathBuf) {
         project.join("project.xcproj"),
     )
     .unwrap();
-    // `/var` is a symlink to `/private/var`, and a resolved setting holds the
-    // real path; comparing against the link would report every one of them
-    // as a difference.
-    let project = project.canonicalize().unwrap();
+    // A resolved setting holds the project path the way xcodebuild spells it
+    // (`/var/…`, symlinks resolved, `/private` dropped), so the copy is
+    // compared in that spelling.
+    let project = sweetpad_lib::project::standardize(&project);
     (root, project)
 }
 
@@ -66,7 +66,9 @@ fn copy_tree(from: &Path, to: &Path) {
 /// legitimately: their own directory, and the DerivedData container name,
 /// whose 28-character hash is derived from that directory.
 fn normalize(settings: &BTreeMap<String, String>, project: &Path) -> BTreeMap<String, String> {
-    let dir = project.parent().unwrap().display().to_string();
+    let dir = sweetpad_lib::project::standardize(project.parent().unwrap())
+        .display()
+        .to_string();
     settings
         .iter()
         .map(|(k, v)| (k.clone(), mask_hash(&v.replace(&dir, "<DIR>"))))
@@ -325,10 +327,15 @@ fn bsp_session(project: &Path) -> (Vec<String>, Vec<String>) {
                 .collect()
         })
         .unwrap_or_default();
+    // The source list is built on the canonicalized project dir, and the
+    // settings on the standardized one: `/private/var/…` and `/var/…` for the
+    // copy under `$TMPDIR`. The longer spelling goes first, since it holds the
+    // shorter.
+    let real = std::fs::canonicalize(dir).unwrap().display().to_string();
     let dir = dir.display().to_string();
     let arguments = strings(result(3).and_then(|r| r.get("compilerArguments")))
         .iter()
-        .map(|a| a.replace(&dir, "<DIR>"))
+        .map(|a| a.replace(&real, "<DIR>").replace(&dir, "<DIR>"))
         .collect();
     (targets, arguments)
 }
