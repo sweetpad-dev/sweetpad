@@ -1,6 +1,6 @@
 import { ExtensionError } from "../common/errors";
 import type { DestinationsManager } from "../destination/manager";
-import type { SimulatorDestination, SimulatorOS, SimulatorType } from "./types";
+import type { SimulatorDestination, SimulatorType } from "./types";
 
 export async function getSimulatorByUdid(
   destinationsManager: DestinationsManager,
@@ -55,60 +55,6 @@ export function parseDeviceTypeIdentifier(deviceTypeIdentifier: string): Simulat
   }
   if (deviceType.startsWith("Apple-Vision")) {
     return "AppleVision";
-  }
-  return null;
-}
-
-/**
- * Parse the simulator runtime to get the OS version. Examples:
- *  - com.apple.CoreSimulator.SimRuntime.xrOS-2-0
- *  - com.apple.CoreSimulator.SimRuntime.iOS-15-2
- *  - com.apple.CoreSimulator.SimRuntime.tvOS-18-0
- *  - com.apple.CoreSimulator.SimRuntime.watchOS-8-5
- */
-export function parseSimulatorRuntime(runtime: string): {
-  os: SimulatorOS;
-  version: string;
-} | null {
-  const prefix = "com.apple.CoreSimulator.SimRuntime.";
-  if (!runtime?.startsWith(prefix)) {
-    return null;
-  }
-
-  // // com.apple.CoreSimulator.SimRuntime.iOS-15-2 -> 15.2
-  // const rawOSVersion = runtime.split(".").slice(-1)[0];
-  // const osVersion = rawOSVersion.replace(/^(\w+)-(\d+)-(\d+)$/, "$2.$3");
-
-  // examples:
-  // - xrOS-2-0 -> { os: "xrOS", version: "2.0" }
-  // - iOS-15-2 -> { os: "iOS", version: "15.2" }
-  // - tvOS-18-0 -> { os: "tvOS", version: "18.0" }
-  // - watchOS-8-5 -> { os: "watchOS", version: "8.5" }
-  const simRuntime = runtime.slice(prefix.length);
-  if (!simRuntime) {
-    return null;
-  }
-
-  const regex = /^(\w+)-(\d+)-(\d+)$/;
-  const matches = simRuntime.match(regex);
-  if (!matches) {
-    return null;
-  }
-
-  const rawOs = matches[1] as string;
-  const version = `${matches[2]}.${matches[3]}`;
-
-  if (rawOs === "xrOS") {
-    return { os: "xrOS", version };
-  }
-  if (rawOs === "iOS") {
-    return { os: "iOS", version };
-  }
-  if (rawOs === "tvOS") {
-    return { os: "tvOS", version };
-  }
-  if (rawOs === "watchOS") {
-    return { os: "watchOS", version };
   }
   return null;
 }

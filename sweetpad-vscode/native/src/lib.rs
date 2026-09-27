@@ -684,6 +684,46 @@ pub fn parse_destination(destination: String) -> DestinationFields {
     }
 }
 
+/// A simulator from `simctl list --json devices`.
+#[napi(object)]
+pub struct SimctlSimulator {
+    pub udid: String,
+    pub name: String,
+    /// `Booted` / `Shutdown` / `Booting` …, as simctl reports it.
+    pub state: String,
+    /// The runtime's OS: `iOS`, `watchOS`, `tvOS`, `xrOS`.
+    pub os: String,
+    /// `27.0`.
+    pub os_version: String,
+    /// `com.apple.CoreSimulator.SimRuntime.iOS-27-0`.
+    pub runtime: String,
+    /// `com.apple.CoreSimulator.SimDeviceType.iPhone-17`; empty when simctl
+    /// leaves it out.
+    pub device_type_identifier: String,
+    /// The `-destination` specifier for it: `platform=iOS Simulator,id=<udid>`.
+    pub destination: String,
+}
+
+/// Parse `simctl list --json devices` output into the available simulators,
+/// in the CLI's picker order. Unavailable simulators are left out.
+#[napi]
+pub fn parse_simulators(json: String) -> napi::Result<Vec<SimctlSimulator>> {
+    let sims = sweetpad_core::devices::simctl::parse_list(&json).map_err(to_napi_err)?;
+    Ok(sims
+        .into_iter()
+        .map(|s| SimctlSimulator {
+            destination: s.destination(),
+            udid: s.udid,
+            name: s.name,
+            state: s.state,
+            os: s.os,
+            os_version: s.os_version,
+            runtime: s.runtime,
+            device_type_identifier: s.device_type,
+        })
+        .collect())
+}
+
 /// A physical device from `devicectl list devices` JSON, in either of the
 /// shapes devicectl writes. Each optional field is `undefined` when devicectl
 /// leaves it out.

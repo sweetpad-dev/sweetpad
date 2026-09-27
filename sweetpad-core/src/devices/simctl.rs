@@ -75,8 +75,14 @@ impl Simulator {
 /// then device family (iPhone before iPad) and a numeric-aware name sort.
 /// Unavailable devices are dropped (they can't be booted or targeted).
 pub fn parse_list(raw: &str) -> Result<Vec<Simulator>, String> {
-    let parsed: Value =
-        serde_json::from_str(raw).map_err(|e| format!("parsing simctl output: {e}"))?;
+    // simctl's stdout can carry a warning ahead of the JSON (a CoreSimulator
+    // notice); the listing is the first object in it.
+    let json = raw.find('{').map_or(raw, |start| &raw[start..]);
+    let parsed: Value = serde_json::Deserializer::from_str(json)
+        .into_iter::<Value>()
+        .next()
+        .unwrap_or_else(|| serde_json::from_str::<Value>(""))
+        .map_err(|e| format!("parsing simctl output: {e}"))?;
     let devices = parsed
         .get("devices")
         .and_then(Value::as_object)
@@ -373,6 +379,13 @@ mod tests {
     fn a_listing_without_devices_is_an_error() {
         assert!(parse_list("{}").is_err());
         assert!(parse_list("not json").is_err());
+        assert!(parse_list("").is_err());
+    }
+
+    #[test]
+    fn a_notice_around_the_json_is_skipped() {
+        let raw = format!("CoreSimulator notice: something\n{SAMPLE}\ntrailing line\n");
+        assert_eq!(parse_list(&raw).unwrap().len(), 3);
     }
 
     #[test]

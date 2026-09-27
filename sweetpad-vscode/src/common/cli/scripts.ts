@@ -26,21 +26,6 @@ import { assertUnreachable } from "../types";
 // Injected by rolldown at build time (see rolldown.config.mjs).
 declare const GLOBAL_RELEASE_VERSION: string | undefined;
 
-export type SimulatorOutput = {
-  dataPath: string;
-  dataPathSize: number;
-  logPath: string;
-  udid: string;
-  isAvailable: boolean;
-  deviceTypeIdentifier: string;
-  state: string;
-  name: string;
-};
-
-type SimulatorsOutput = {
-  devices: { [key: string]: SimulatorOutput[] };
-};
-
 export type XcodeScheme = {
   name: string;
 };
@@ -111,13 +96,13 @@ export function parseCliJsonOutput<T>(output: string): T {
   }
 }
 
-export async function getSimulators(): Promise<SimulatorsOutput> {
-  const simulatorsRaw = await exec({
+/** Run "simctl list --json devices" and return its output, for the addon's "parseSimulators" to read. */
+export async function getSimulatorsJson(): Promise<string> {
+  return await exec({
     command: "xcrun",
     args: ["simctl", "list", "--json", "devices"],
     cwd: null,
   });
-  return parseCliJsonOutput<SimulatorsOutput>(simulatorsRaw);
 }
 
 export type BuildSettingsOutput = BuildSettingOutput[];

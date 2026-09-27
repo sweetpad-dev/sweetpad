@@ -1,8 +1,9 @@
 import events from "node:events";
 
-import { type SimulatorOutput, getSimulators } from "../common/cli/scripts";
+import * as sweetpadLib from "@sweetpad/native";
+
+import { getSimulatorsJson } from "../common/cli/scripts";
 import { commonLogger } from "../common/logger";
-import { assertUnreachable } from "../common/types";
 import {
   type SimulatorDestination,
   iOSSimulatorDestination,
@@ -10,7 +11,7 @@ import {
   visionOSSimulatorDestination,
   watchOSSimulatorDestination,
 } from "./types";
-import { parseDeviceTypeIdentifier, parseSimulatorRuntime } from "./utils";
+import { parseDeviceTypeIdentifier } from "./utils";
 
 type IEventMap = {
   updated: [];
@@ -29,91 +30,55 @@ export class SimulatorsManager {
   }
 
   /**
-   * Convert the raw data from the system to a simulator destinations: iOSDestination, watchOSDestination, etc.
+   * Convert a simulator the addon read from simctl to a destination: iOSDestination,
+   * watchOSDestination, etc. A runtime OS this code has no destination class for is
+   * logged and left out.
    */
-  private prepareSimulator(rawRuntime: string, simulator: SimulatorOutput): SimulatorDestination | null {
+  private prepareSimulator(simulator: sweetpadLib.SimctlSimulator): SimulatorDestination | null {
     const simulatorType = parseDeviceTypeIdentifier(simulator.deviceTypeIdentifier);
     if (!simulatorType) {
       commonLogger.log("Can not parse device type", {
-        runtime: rawRuntime,
+        runtime: simulator.runtime,
         simulator: simulator,
       });
       return null;
     }
 
-    const runtime = parseSimulatorRuntime(rawRuntime);
-    if (!runtime) {
-      commonLogger.log("Can not parse runtime", {
-        runtime: rawRuntime,
-        simulator: simulator,
-      });
-      return null;
+    const common = {
+      udid: simulator.udid,
+      isAvailable: true,
+      state: simulator.state as "Booted",
+      name: simulator.name,
+      osVersion: simulator.osVersion,
+      rawDeviceTypeIdentifier: simulator.deviceTypeIdentifier,
+      rawRuntime: simulator.runtime,
+    };
+    switch (simulator.os) {
+      case "iOS":
+        // NOTE: iPadOS is just a variation of iOS, so we can use the same class.
+        return new iOSSimulatorDestination({ ...common, simulatorType: simulatorType, os: "iOS" });
+      case "watchOS":
+        return new watchOSSimulatorDestination({ ...common, os: "watchOS" });
+      case "tvOS":
+        return new tvOSSimulatorDestination({ ...common, os: "tvOS" });
+      case "xrOS":
+        return new visionOSSimulatorDestination({ ...common, os: "xrOS" });
+      default:
+        commonLogger.log("Can not parse runtime", {
+          runtime: simulator.runtime,
+          simulator: simulator,
+        });
+        return null;
     }
-
-    if (runtime.os === "iOS") {
-      // NOTE: iPadOS is just a variation of iOS, so we can use the same class.
-      return new iOSSimulatorDestination({
-        udid: simulator.udid,
-        isAvailable: simulator.isAvailable,
-        state: simulator.state as "Booted",
-        name: simulator.name,
-        simulatorType: simulatorType,
-        os: runtime.os,
-        osVersion: runtime.version,
-        rawDeviceTypeIdentifier: simulator.deviceTypeIdentifier,
-        rawRuntime: rawRuntime,
-      });
-    }
-    if (runtime.os === "watchOS") {
-      return new watchOSSimulatorDestination({
-        udid: simulator.udid,
-        isAvailable: simulator.isAvailable,
-        state: simulator.state as "Booted",
-        name: simulator.name,
-        os: runtime.os,
-        osVersion: runtime.version,
-        rawDeviceTypeIdentifier: simulator.deviceTypeIdentifier,
-        rawRuntime: rawRuntime,
-      });
-    }
-    if (runtime.os === "tvOS") {
-      return new tvOSSimulatorDestination({
-        udid: simulator.udid,
-        isAvailable: simulator.isAvailable,
-        state: simulator.state as "Booted",
-        name: simulator.name,
-        os: runtime.os,
-        osVersion: runtime.version,
-        rawDeviceTypeIdentifier: simulator.deviceTypeIdentifier,
-        rawRuntime: rawRuntime,
-      });
-    }
-    if (runtime.os === "xrOS") {
-      return new visionOSSimulatorDestination({
-        udid: simulator.udid,
-        isAvailable: simulator.isAvailable,
-        state: simulator.state as "Booted",
-        name: simulator.name,
-        os: runtime.os,
-        osVersion: runtime.version,
-        rawDeviceTypeIdentifier: simulator.deviceTypeIdentifier,
-        rawRuntime: rawRuntime,
-      });
-    }
-    assertUnreachable(runtime.os);
   }
 
   /**
    * Fetch the list of simulators from the system. It returns iOS, watchOS, and other types of simulators.
+   * The addon drops the unavailable ones.
    */
   private async fetchSimulators(): Promise<SimulatorDestination[]> {
-    const output = await getSimulators();
-    const simulators = Object.entries(output.devices)
-      .flatMap(([key, simualtors]) => simualtors.map((simulator) => this.prepareSimulator(key, simulator)))
-      .filter((simulator) => simulator !== null)
-      .filter((simulator) => simulator.isAvailable);
-
-    return simulators;
+    const simulators = sweetpadLib.parseSimulators(await getSimulatorsJson());
+    return simulators.map((simulator) => this.prepareSimulator(simulator)).filter((simulator) => simulator !== null);
   }
 
   async refresh(): Promise<SimulatorDestination[]> {
