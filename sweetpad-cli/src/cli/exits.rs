@@ -96,7 +96,8 @@ impl Origin {
 pub struct Exit {
     /// launchd's timestamp as logged (`2026-09-26 17:33:10.087799+0200`).
     pub time: String,
-    /// The bundle id the job was launched for.
+    /// The bundle id the job was launched for. Empty for `xctest`, which has
+    /// none ([`xctest_exit`]).
     pub bundle_id: String,
     pub pid: Option<u32>,
     pub cause: Cause,
@@ -519,7 +520,8 @@ impl Exit {
     }
 
     /// The machine form: every field present, `null` where this exit's cause
-    /// has none, so a consumer reads one shape whatever the cause.
+    /// has none, so a consumer reads one shape whatever the cause. A process
+    /// with no bundle id has a `null` `bundleId`.
     #[must_use]
     pub fn json(&self, crash_report: Option<&Path>) -> serde_json::Value {
         let (kind, namespace, exit_status, sent_by) = match &self.cause {
@@ -529,7 +531,7 @@ impl Exit {
         };
         serde_json::json!({
             "time": self.time,
-            "bundleId": self.bundle_id,
+            "bundleId": (!self.bundle_id.is_empty()).then_some(&self.bundle_id),
             "pid": self.pid,
             "kind": kind,
             "reason": self.reason(),
@@ -667,7 +669,8 @@ pub fn crashed_thread_symbols(report: &Path) -> Vec<String> {
 /// [`crashed_thread_symbols`] over a report's text: the JSON body after its
 /// one-line header, whose `faultingThread` indexes `threads` (the thread
 /// marked `triggered` when the index is missing).
-fn crashed_thread_symbols_in(text: &str) -> Option<Vec<String>> {
+#[must_use]
+pub fn crashed_thread_symbols_in(text: &str) -> Option<Vec<String>> {
     let (_, body) = text.split_once('\n')?;
     let body: serde_json::Value = serde_json::from_str(body).ok()?;
     let threads = body.get("threads")?.as_array()?;
@@ -734,21 +737,16 @@ pub fn crash_reports(
 }
 
 /// The exit an `.ips` crash report records, when it belongs to one of
-/// `bundle_ids` (any app when empty) on `source`: the signal that ended the
-/// process and who sent it, the exception type when it says more than
-/// `EXC_CRASH` does (a fault's `EXC_BAD_ACCESS` and address, a Swift trap's
-/// `EXC_BREAKPOINT`), and how long the process ran. The report is a one-line
-/// JSON header (`bundleID`) followed by a JSON body.
+/// `bundle_ids` (any app when empty) on `source`. The report is a one-line
+/// JSON header (`bundleID`) followed by a JSON body ([`body_exit`]).
 fn report_exit(text: &str, source: &Source, bundle_ids: &[&str]) -> Option<Exit> {
-    use serde_json::Value;
-    let str_of = |v: &Value, key: &str| v.get(key).and_then(Value::as_str).map(str::to_string);
     let (header, body) = text.split_once('\n')?;
-    let header: Value = serde_json::from_str(header).ok()?;
+    let header: serde_json::Value = serde_json::from_str(header).ok()?;
     let bundle_id = str_of(&header, "bundleID")?;
     if !bundle_ids.is_empty() && !bundle_ids.contains(&bundle_id.as_str()) {
         return None;
     }
-    let body: Value = serde_json::from_str(body).ok()?;
+    let body: serde_json::Value = serde_json::from_str(body).ok()?;
     let path = str_of(&body, "procPath").unwrap_or_default();
     let on_this_source = match source {
         Source::Simulator(udid) => path.contains(&format!("/CoreSimulator/Devices/{udid}/")),
@@ -757,6 +755,77 @@ fn report_exit(text: &str, source: &Source, bundle_ids: &[&str]) -> Option<Exit>
     if !on_this_source {
         return None;
     }
+    body_exit(bundle_id, &body)
+}
+
+/// The exit a crash log of `xctest` records, read from its text: the crash
+/// log XCTest attaches to a test whose unit-test bundle has no host app, when
+/// the `xctest` process running it crashed. `xctest` is a command-line tool
+/// and its report's header names no bundle id, so the exit has an empty
+/// [`Exit::bundle_id`]. `None` for any other process's report.
+#[must_use]
+pub fn xctest_exit(text: &str) -> Option<Exit> {
+    let (_, body) = text.split_once('\n')?;
+    let body: serde_json::Value = serde_json::from_str(body).ok()?;
+    if str_of(&body, "procName").as_deref() != Some("xctest") {
+        return None;
+    }
+    body_exit(String::new(), &body)
+}
+
+/// The crash report in `~/Library/Logs/DiagnosticReports` that `text` is a
+/// copy of, found by the `incident_id` both headers carry. XCTest attaches a
+/// copy of the report the system saved. Only reports written since
+/// `not_before` are opened, and only their header line is read.
+#[must_use]
+pub fn saved_report(text: &str, not_before: Option<SystemTime>) -> Option<PathBuf> {
+    let dir = sweetpad_core::paths::home_dir()?.join("Library/Logs/DiagnosticReports");
+    saved_report_in(&dir, text, not_before)
+}
+
+/// [`saved_report`] among the reports in `dir`.
+fn saved_report_in(dir: &Path, text: &str, not_before: Option<SystemTime>) -> Option<PathBuf> {
+    fn incident(header: &str) -> Option<String> {
+        str_of(&serde_json::from_str(header).ok()?, "incident_id")
+    }
+    fn header_line(path: &Path) -> Option<String> {
+        use std::io::BufRead;
+        let mut line = String::new();
+        std::io::BufReader::new(std::fs::File::open(path).ok()?)
+            .read_line(&mut line)
+            .ok()?;
+        Some(line)
+    }
+    let wanted = incident(text.split_once('\n')?.0)?;
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "ips"))
+        .filter(|e| {
+            not_before.is_none_or(|t| {
+                e.metadata()
+                    .and_then(|m| m.modified())
+                    .is_ok_and(|m| m >= t)
+            })
+        })
+        .map(|e| e.path())
+        .find(|path| header_line(path).and_then(|h| incident(&h)).as_ref() == Some(&wanted))
+}
+
+/// A string field of a crash report's JSON.
+fn str_of(value: &serde_json::Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
+/// The exit a crash report's JSON body records for `bundle_id`'s process: the
+/// signal that ended it and who sent it, the exception type when it says more
+/// than `EXC_CRASH` does (a fault's `EXC_BAD_ACCESS` and address, a Swift
+/// trap's `EXC_BREAKPOINT`), and how long the process ran.
+fn body_exit(bundle_id: String, body: &serde_json::Value) -> Option<Exit> {
+    use serde_json::Value;
     let pid = body
         .get("pid")
         .and_then(Value::as_u64)
@@ -799,8 +868,8 @@ fn report_exit(text: &str, source: &Source, bundle_ids: &[&str]) -> Option<Exit>
             None,
         ),
     };
-    let captured = str_of(&body, "captureTime").map(|t| log_style_time(&t))?;
-    let ran_for_ms = str_of(&body, "procLaunch").and_then(|launched| {
+    let captured = str_of(body, "captureTime").map(|t| log_style_time(&t))?;
+    let ran_for_ms = str_of(body, "procLaunch").and_then(|launched| {
         let secs = epoch_seconds(&captured)? - epoch_seconds(&log_style_time(&launched))?;
         millis(secs)
     });
@@ -1503,6 +1572,68 @@ mod tests {
             "SIGKILL (LIBXPC XPC_EXIT_REASON_SIGTERM_TIMEOUT)"
         );
         assert!(!exit.is_crash());
+    }
+
+    /// The crash log XCTest attached to a hostless macOS unit test that called
+    /// `fatalError`, Xcode 27 on macOS 27, trimmed to the fields read and the
+    /// crashed thread's first frames.
+    const XCTEST_TRAP_IPS: &str = r#"{"app_name":"xctest","timestamp":"2026-09-27 16:04:17.00 +0200","app_version":"16.0","platform":1,"bug_type":"309","os_version":"macOS 27.0 (26A428)","incident_id":"46DE6C30-388C-42EC-A0FD-F37448A7EE4C","name":"xctest"}
+{
+  "pid" : 13933,
+  "procName" : "xctest",
+  "procPath" : "\/Applications\/Xcode.app\/Contents\/Developer\/Platforms\/MacOSX.platform\/Developer\/Library\/Xcode\/Agents\/xctest",
+  "parentProc" : "xcodebuild",
+  "captureTime" : "2026-09-27 16:04:16.3634 +0200",
+  "procLaunch" : "2026-09-27 16:04:15.5509 +0200",
+  "exception" : {"codes":"0x0000000000000001, 0x00000001b05d8d4c","rawCodes":[1,7253888332],"type":"EXC_BREAKPOINT","signal":"SIGTRAP"},
+  "termination" : {"flags":0,"code":5,"namespace":"SIGNAL","indicator":"Trace\/BPT trap: 5","byProc":"exc handler","byPid":13933},
+  "faultingThread" : 0,
+  "threads" : [{"triggered":true,"id":1,"frames":[
+    {"imageIndex":33,"symbol":"_assertionFailure(_:_:file:line:flags:)"},
+    {"imageIndex":29,"symbol":"CrashTests.testBFatal()"},
+    {"imageIndex":29,"symbol":"@objc CrashTests.testBFatal()"},
+    {"imageIndex":34,"symbol":"__invoking___"}
+  ]}]
+}"#;
+
+    #[test]
+    fn an_xctest_crash_log_reads_as_its_signal_and_exception() {
+        let exit = xctest_exit(XCTEST_TRAP_IPS).expect("a crash");
+        assert_eq!(exit.pid, Some(13933));
+        assert_eq!(exit.origin, Origin::CrashReport);
+        assert_eq!(exit.time, "2026-09-27 16:04:16.3634+0200");
+        assert_eq!(exit.ran_for_ms, Some(812));
+        assert_eq!(
+            exit.summary(),
+            "crashed with SIGTRAP (sent by exc handler[13933]; EXC_BREAKPOINT)"
+        );
+        // `xctest` has no bundle id to name.
+        assert!(exit.bundle_id.is_empty());
+        assert!(exit.json(None)["bundleId"].is_null());
+        assert_eq!(
+            crashed_thread_symbols_in(XCTEST_TRAP_IPS).expect("a backtrace")[1],
+            "CrashTests.testBFatal()"
+        );
+        // The header names no bundle id, so no app's lookup reads it.
+        assert!(report_exit(XCTEST_TRAP_IPS, &Source::Mac, &[]).is_none());
+        // An app's report is not `xctest`'s.
+        assert!(xctest_exit(MAC_ABORT_IPS).is_none());
+    }
+
+    #[test]
+    fn an_attached_crash_log_finds_the_report_it_copies() {
+        let dir = sweetpad_core::scratch::ScratchDir::new("sweetpad-exits-saved").unwrap();
+        let saved = dir.join("xctest-2026-09-27-160417.ips");
+        std::fs::write(&saved, XCTEST_TRAP_IPS).unwrap();
+        let other = XCTEST_TRAP_IPS.replace("46DE6C30", "D08EB186");
+        std::fs::write(dir.join("xctest-2026-09-27-160419.ips"), &other).unwrap();
+        std::fs::write(dir.join("notes.txt"), XCTEST_TRAP_IPS).unwrap();
+        assert_eq!(saved_report_in(&dir, XCTEST_TRAP_IPS, None), Some(saved));
+        // One written before the run is not this run's.
+        let later = SystemTime::now() + Duration::from_secs(3600);
+        assert_eq!(saved_report_in(&dir, XCTEST_TRAP_IPS, Some(later)), None);
+        let unsaved = XCTEST_TRAP_IPS.replace("46DE6C30", "00000000");
+        assert_eq!(saved_report_in(&dir, &unsaved, None), None);
     }
 
     fn recorded(pid: u32, ended: f64, status: Option<i32>, signal: Option<i32>) -> RecordedExit {

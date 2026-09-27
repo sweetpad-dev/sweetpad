@@ -245,8 +245,11 @@ gets a `note`: macOS stops saving an app's reports past a limit, so the
 `exception` detail can be missing. When no exit was found at all, the `note`
 names the `sweetpad app logs --exits` command to run instead. A unit-test
 bundle with no host app runs in `xctest` (`Crash: xctest at …`), which has no
-exit record. Its `note` names the `sweetpad test attachments --only-testing …`
-command that exports the crash log XCTest attached.
+exit record. Its `terminationReason` (with a `null` `bundleId`) and
+`crashedIn` come from the crash log XCTest attached to the test. When that
+crash log can't be read, or its copy in DiagnosticReports is gone, the `note`
+names the `sweetpad test attachments --only-testing …` command that exports
+it.
 
 A host app crash can fail tests other than the one that crashed it: every
 test running in parallel at the time, or the test after one that left work

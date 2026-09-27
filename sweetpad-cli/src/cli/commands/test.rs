@@ -416,14 +416,24 @@ struct Termination {
 }
 
 impl Termination {
-    /// `app terminated: …` or `test runner terminated: …`, by whose exit it was.
+    /// `app terminated: …`, `test runner terminated: …` or `xctest
+    /// terminated: …`, by whose exit it was.
     fn line(&self) -> String {
         let who = if self.exit.bundle_id.ends_with(".xctrunner") {
             "test runner"
+        } else if self.in_xctest() {
+            "xctest"
         } else {
             "app"
         };
         format!("{who} terminated: {}", self.exit.summary())
+    }
+
+    /// Whether the exit is `xctest`'s, read from the crash log XCTest
+    /// attached ([`attached_crashes`]). Nothing else has an exit with no
+    /// bundle id.
+    fn in_xctest(&self) -> bool {
+        self.exit.bundle_id.is_empty()
     }
 
     /// Whether `other` is the same crash: one host going down fails every
@@ -493,6 +503,15 @@ impl TestReport {
     /// something vanished and has no exit, where else to look for one.
     fn note(&self, i: usize) -> Option<String> {
         match self.terminations.get(i).and_then(Option::as_ref) {
+            // The exit came from the copy XCTest attached, and the report it
+            // copied is not on disk.
+            Some(t) if t.in_xctest() && t.crash_report.is_none() => {
+                let export = self.crash_log_commands.get(i)?.as_deref()?;
+                Some(format!(
+                    "no crash report was found in DiagnosticReports; {export} exports the copy \
+                     XCTest attached"
+                ))
+            }
             Some(t) if t.exit.is_crash() && t.crash_report.is_none() => Some(format!(
                 "no crash report was found; {}",
                 exits::REPORT_LIMIT
@@ -1121,28 +1140,32 @@ const EXIT_QUERY_TIMEOUT: Duration = Duration::from_secs(15);
 const EXIT_RETRY_WAIT: Duration = Duration::from_secs(2);
 
 /// At most this many failures are timed, since each costs an `xcresulttool`
-/// read of the test's activity log.
+/// read of the test's activity log. The same bound holds for the crash logs
+/// read from the result bundle ([`attached_crashes`]).
 const MAX_TIMED_FAILURES: usize = 20;
 
 /// For each failure with a message that says the app or the test runner
 /// vanished, the exit launchd logged for it: the last exit of that process
 /// between the test's start and the moment that message was recorded (just
-/// after it, on a simulator: [`ExitLog::after_failure`]). Best
-/// effort and bounded: an unreadable log, an unsupported destination, or a
-/// failure with no activity log leaves that failure without one. Also the log
-/// that was searched, when there was a failure to search it for.
+/// after it, on a simulator: [`ExitLog::after_failure`]). A failure that says
+/// `xctest` crashed gets the exit in the crash log attached to its test
+/// instead ([`attached_crashes`]). Best effort and bounded: an unreadable log,
+/// an unsupported destination, or a failure with no activity log leaves that
+/// failure without one. Also the log that was searched, when there was a
+/// failure to search it for.
 fn terminations(
     run: &RunContext,
     summary: &xcodebuild::TestSummary,
 ) -> (Vec<Option<Termination>>, Option<ExitLog>) {
     let failures = &summary.test_failures;
-    let none = || failures.iter().map(|_| None).collect();
     let causes: Vec<Option<(Vanished, &str)>> = failures.iter().map(vanishing).collect();
     if causes.iter().all(Option::is_none) {
-        return (none(), None);
+        return (failures.iter().map(|_| None).collect(), None);
     }
+    let tests = run_tests(summary);
+    let attached = attached_crashes(run, failures, &causes, &tests);
     let Some(log) = ExitLog::of(&run.target.destination) else {
-        return (none(), None);
+        return (attached, None);
     };
     let run_start = epoch_seconds(run.started) - EXIT_QUERY_LEAD;
     let mut budget = MAX_TIMED_FAILURES;
@@ -1167,7 +1190,6 @@ fn terminations(
     // Resolved on first need: only a failure that names no bundle id needs it.
     let mut app_id: Option<Option<String>> = None;
     let mut app_id = || app_id.get_or_insert_with(|| app_bundle_id(run)).clone();
-    let tests = run_tests(summary);
     let terminations = find_exits(
         &windows,
         &mut || exits_during(run, &log),
@@ -1175,7 +1197,11 @@ fn terminations(
         &mut app_id,
     )
     .into_iter()
-    .map(|exit| {
+    .zip(attached)
+    .map(|(exit, attached)| {
+        if attached.is_some() {
+            return attached;
+        }
         let exit = exit?;
         let crash_report = exit
             .is_crash()
@@ -1192,6 +1218,48 @@ fn terminations(
     })
     .collect();
     (terminations, Some(log))
+}
+
+/// For each failure that says `xctest` crashed ([`Vanished::Xctest`]), the
+/// exit recorded in the crash log XCTest attached to its test, with the test
+/// the crashed thread is in and the report the system saved, which the
+/// attachment copies. launchd logs no exit for `xctest`, and the saved
+/// report's header names no bundle id, so the attachment is what ties a crash
+/// to its test. A test retried after a crash can hold several, and the latest
+/// is read. At most [`MAX_TIMED_FAILURES`] tests are read.
+fn attached_crashes(
+    run: &RunContext,
+    failures: &[xcodebuild::TestFailure],
+    causes: &[Option<(Vanished, &str)>],
+    tests: &[String],
+) -> Vec<Option<Termination>> {
+    let mut budget = MAX_TIMED_FAILURES;
+    failures
+        .iter()
+        .zip(causes)
+        .map(|(failure, cause)| {
+            if !matches!(cause, Some((Vanished::Xctest, _))) {
+                return None;
+            }
+            budget = budget.checked_sub(1)?;
+            let test_id = if failure.test_identifier_url.is_empty() {
+                &failure.test_identifier_string
+            } else {
+                &failure.test_identifier_url
+            };
+            let (text, exit) = xcodebuild::attached_crash_logs(run.bundle, test_id)
+                .into_iter()
+                .rev()
+                .find_map(|text| exits::xctest_exit(&text).map(|exit| (text, exit)))?;
+            let crashed_in = exits::crashed_thread_symbols_in(&text)
+                .and_then(|frames| crashed_in(&frames, tests));
+            Some(Termination {
+                exit,
+                crash_report: exits::saved_report(&text, Some(run.started)),
+                crashed_in,
+            })
+        })
+        .collect()
 }
 
 /// The run's tests as '-only-testing' names them, for [`crashed_in`] to find
@@ -3675,6 +3743,73 @@ mod tests {
                     attachments --only-testing B8TestHostless/CrashTests/testACrash' exports the \
                     crash log XCTest attached";
         assert_eq!(report.failure_lines()[1], format!("      {note}"));
+        assert_eq!(report.json()["failures"][0]["note"], note);
+    }
+
+    #[test]
+    fn a_crash_in_xctest_takes_its_exit_from_the_attached_crash_log() {
+        const TEST: &str = "B9MiscHostless/CrashTests/testBFatal";
+        let saved = "/Users/me/Library/Logs/DiagnosticReports/xctest-2026-09-27-160417.ips";
+        // What the crash log XCTest attached to a hostless bundle's
+        // `fatalError` records, Xcode 27 on macOS 27.
+        let exit = exits::Exit {
+            time: "2026-09-27 16:04:16.3634+0200".into(),
+            bundle_id: String::new(),
+            pid: Some(13933),
+            cause: exits::Cause::Signal {
+                name: "SIGTRAP".into(),
+                sent_by: Some("exc handler[13933]".into()),
+            },
+            explanation: None,
+            exception: Some("EXC_BREAKPOINT".into()),
+            ran_for_ms: Some(812),
+            message: "Trace/BPT trap: 5".into(),
+            origin: exits::Origin::CrashReport,
+        };
+        let mut report = failed_report(vec![
+            Some(Termination {
+                exit,
+                crash_report: Some(PathBuf::from(saved)),
+                crashed_in: Some(TEST.into()),
+            }),
+            None,
+        ]);
+        report.summary.test_failures[0] = xcodebuild::TestFailure {
+            test_name: "testBFatal()".into(),
+            target_name: "B9MiscHostless".into(),
+            failure_text: "Crash: xctest at static xctest.main()".into(),
+            test_identifier_string: "CrashTests/testBFatal()".into(),
+            ..Default::default()
+        };
+        let export = format!("'sweetpad test attachments --only-testing {TEST}'");
+        report.crash_log_commands = vec![Some(export.clone()), None];
+
+        let lines = report.failure_lines();
+        assert_eq!(
+            lines[1],
+            "      xctest terminated: crashed with SIGTRAP (sent by exc handler[13933]; \
+             EXC_BREAKPOINT)"
+        );
+        // The crash is in this test, and the saved report is named, so
+        // nothing more is said.
+        assert_eq!(lines.len(), 3);
+        let json = report.json();
+        let failure = &json["failures"][0];
+        assert_eq!(failure["crashedIn"], TEST);
+        assert!(failure["terminationReason"]["bundleId"].is_null());
+        assert_eq!(failure["terminationReason"]["source"], "crashReport");
+        assert_eq!(failure["terminationReason"]["crashReport"], saved);
+        assert!(failure.get("note").is_none());
+
+        // With the saved report gone, the attached copy is the only one.
+        if let Some(Some(t)) = report.terminations.get_mut(0) {
+            t.crash_report = None;
+        }
+        let note = format!(
+            "no crash report was found in DiagnosticReports; {export} exports the copy XCTest \
+             attached"
+        );
+        assert_eq!(report.failure_lines()[2], format!("      {note}"));
         assert_eq!(report.json()["failures"][0]["note"], note);
     }
 

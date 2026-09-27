@@ -102,8 +102,19 @@ app's recent exits.
 The JSON failure's `note` has the same text.
 
 A unit-test bundle with no host app runs in `xctest`, and a crash there reads "Crash: xctest at …".
-The system keeps no exit record for `xctest`, so the line under the failure gives a
-`sweetpad test attachments` command instead. It exports the crash log XCTest attached to the test.
+The system keeps no exit record for `xctest`, so SweetPad reads the crash log XCTest attached to the
+test instead:
+
+```console
+  ✗ AppTests/CrashTests/testCBadPointer: Crash: xctest at static xctest.main()
+      xctest terminated: crashed with SIGSEGV (sent by exc handler[18468]; EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x0000000000000010)
+```
+
+With `-o json`, the failure gets `terminationReason` and `crashedIn` from that crash log.
+`bundleId` is `null`, since `xctest` has none, and `crashReport` is the same report in
+`~/Library/Logs/DiagnosticReports`. When that file is missing, or the result bundle holds no crash
+log SweetPad can read, the line under the failure gives a `sweetpad test attachments` command that
+exports the crash log XCTest attached.
 
 A crash in a unit test's host app doesn't always fail the test that caused it. When tests run in
 parallel, XCTest fails every test that was running at the time, all with the same message. When the

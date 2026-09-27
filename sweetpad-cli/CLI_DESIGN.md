@@ -2975,13 +2975,41 @@ read and gets no line.
 **A hostless bundle crashes `xctest`.** A unit-test bundle with no host app
 runs in `xctest`, which xcodebuild starts itself. launchd logs no exit for it,
 and there is no app to read one for. XCTest names the process: `Crash: xctest
-at static xctest.main()`, also under `Exceeded max restart count`. That wording
-is read as `xctest` rather than the host app, and no exit is looked up for it.
-The host app fallback would give it a wrong one: in a macOS run of a hostless
-target beside a hosted one, the hostless crash would get the hosted target's
-app `exited normally`. XCTest waits for the crash report and attaches it to the
-failing test as `Crash Log <date>.ips`, so the failure's line, and its `note`
-in JSON, names the `test attachments` command that exports it:
+at static xctest.main()`, also under `Exceeded max restart count`. `test` reads
+that wording as `xctest`, not the host app, and does not search launchd's log
+for it. The host app fallback would give it a wrong exit: in a macOS run of a
+hostless target beside a hosted one, the hostless crash would get the hosted
+target's app `exited normally`.
+
+XCTest waits for the crash report and attaches it to the failing test as
+`Crash Log <date>.ips`. The same report is in `~/Library/Logs/DiagnosticReports`
+as `xctest-<date>.ips`, but its header names no bundle id, and every hostless
+crash on the Mac writes one under that name. Only the attachment ties a report
+to its test. So `test` exports each such failure's crash logs from the result
+bundle (`xcresulttool export attachments --test-id <url> --filter 'Crash
+Log*'`, about 40ms on Xcode 27) and reads the latest one that is `xctest`'s.
+The report gives the failure its `terminationReason`, with `source:
+crashReport` and a `null` `bundleId`. Its backtrace gives `crashedIn`, the same
+way a host app's report does. Measured on Xcode 27 with a hostless macOS
+bundle, a `fatalError` and a write through a bad pointer:
+
+```
+  ✗ B9MiscHostless/CrashTests/testBFatal: Crash: xctest at static xctest.main()
+      xctest terminated: crashed with SIGTRAP (sent by exc handler[18465]; EXC_BREAKPOINT)
+  ✗ B9MiscHostless/CrashTests/testCBadPointer: Crash: xctest at static xctest.main()
+      xctest terminated: crashed with SIGSEGV (sent by exc handler[18468]; EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x0000000000000010)
+```
+
+`crashReport` names the copy in DiagnosticReports. Both headers carry the same
+`incident_id`, and only reports written since the run started are opened. When
+that copy is gone, the failure keeps its exit and gets a line, and a `note` in
+JSON, naming the `test attachments` command that exports the attached one:
+
+```
+      no crash report was found in DiagnosticReports; 'sweetpad test attachments --only-testing B9MiscHostless/CrashTests/testBFatal' exports the copy XCTest attached
+```
+
+When no crash log could be read, the line names the same command:
 
 ```
       the tests ran in 'xctest', which launchd logs no exit for; 'sweetpad test attachments --only-testing B8TestHostless/CrashTests/testACrash' exports the crash log XCTest attached
@@ -2989,10 +3017,7 @@ in JSON, names the `test attachments` command that exports it:
 
 The command carries `-C`, the project flags and, when the run named its own,
 `--result-bundle`, since those pick the bundle. `test attachments` refuses the
-target flags. The same report is in `~/Library/Logs/DiagnosticReports` as
-`xctest-<date>.ips`, but its header names no bundle id, and every hostless
-crash on the Mac writes one under that name. The attachment is the one tied to
-this test.
+target flags. At most 20 failures have their crash logs read.
 
 **A crash without its report says why.** The fault's detail (`EXC_BREAKPOINT`,
 the address) comes from the crash report, and a suite that crashes its app all

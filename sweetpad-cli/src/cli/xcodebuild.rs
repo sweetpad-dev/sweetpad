@@ -1720,6 +1720,49 @@ pub fn export_attachments(bundle: &Path, staging: &Path) -> Result<AttachmentExp
     })
 }
 
+/// The text of each crash log XCTest attached to test `test_id` in `bundle`,
+/// oldest first. `test_id` is the test's `test://` URL or the id
+/// `xcresulttool` takes as `--test-id`. On macOS, XCTest waits for the crash
+/// report of a test process that crashed and attaches it to the failing test
+/// as `Crash Log <date>.ips`. Only those files are exported, into a scratch
+/// directory that goes when this returns. An export that fails gives none.
+#[must_use]
+pub fn attached_crash_logs(bundle: &Path, test_id: &str) -> Vec<String> {
+    let Ok(staging) = sweetpad_core::scratch::ScratchDir::new("sweetpad-crash-log") else {
+        return Vec::new();
+    };
+    let bundle_arg = bundle.to_string_lossy();
+    let staging_arg = staging.to_string_lossy();
+    let argv = [
+        "xcresulttool",
+        "export",
+        "attachments",
+        "--path",
+        &bundle_arg,
+        "--output-path",
+        &staging_arg,
+        "--test-id",
+        test_id,
+        "--filter",
+        "Crash Log*",
+    ];
+    if process::capture("xcrun", &argv, None).is_err() {
+        return Vec::new();
+    }
+    let Some(entries) = std::fs::read_to_string(staging.join("manifest.json"))
+        .ok()
+        .and_then(|json| serde_json::from_str::<Vec<AttachmentManifestEntry>>(&json).ok())
+    else {
+        return Vec::new();
+    };
+    let mut logs: Vec<ManifestAttachment> =
+        entries.into_iter().flat_map(|e| e.attachments).collect();
+    logs.sort_by(|a, b| a.timestamp.total_cmp(&b.timestamp));
+    logs.iter()
+        .filter_map(|a| std::fs::read_to_string(staging.join(&a.exported_file_name)).ok())
+        .collect()
+}
+
 /// Flatten an attachment manifest to one entry per file, each test named by
 /// the target `targets` puts it under and marked failed when it did.
 fn parse_attachment_manifest(
