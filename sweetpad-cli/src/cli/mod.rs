@@ -522,39 +522,56 @@ pub(crate) fn mac_as_on(targeting: &mut Targeting, mac: bool) -> Result<(), CliE
     Ok(())
 }
 
-/// The destination flags, redeclared hidden under the same ids on the verbs
-/// that read back what the project's last build or run recorded: `build
-/// diagnostics`, `test attachments` and `test output`. The project keeps one
-/// record whatever the destination was, so a destination picks nothing there.
-/// A subcommand's own arg keeps the resource's global one from propagating
-/// into it, so its help leaves them out; a stray one still parses, and its
-/// value reaches the resource's args for [`typed_target_flags`] to name.
+/// The targeting flags past the container, redeclared hidden under the same
+/// ids on the verbs that read back what the project's last build or run
+/// recorded: `build diagnostics`, `test attachments` and `test output`. The
+/// project keeps one record, whatever scheme, configuration, destination or
+/// SDK produced it, so none of them picks anything there; `--workspace` and
+/// `--project` stay listed, since they pick the project. A subcommand's own
+/// arg keeps the resource's global one from propagating into it, so its help
+/// leaves them out; a stray one still parses, and its value reaches the
+/// resource's args for [`typed_target_flags`] to name.
 #[derive(Debug, clap::Args)]
 pub struct HiddenTargetArgs {
+    #[arg(long, hide = true)]
+    pub scheme: Option<String>,
+    #[arg(long, hide = true)]
+    pub configuration: Option<String>,
     #[arg(long, hide = true)]
     pub mac: bool,
     #[arg(long, hide = true)]
     pub on: Option<String>,
     #[arg(long, hide = true)]
     pub destination: Option<String>,
+    #[arg(long, hide = true)]
+    pub sdk: Option<String>,
 }
 
 /// The [`HiddenTargetArgs`] flags given, read off the resource's `target` and
-/// `mac`. `--on` and `--destination` count only when `typed` says they were
-/// typed, since 'SWEETPAD_ON' and 'SWEETPAD_DESTINATION' can set them for
-/// every command.
+/// `mac`. All but `--mac` count only when `typed` says they were typed, since
+/// a 'SWEETPAD_*' variable can set each of them for every command.
 pub(crate) fn typed_target_flags(
     target: &BuildTargetArgs,
     mac: bool,
     typed: impl Fn(&str) -> bool,
 ) -> Vec<&'static str> {
+    let given = |flag: &str, value: Option<&str>| value.is_some() && typed(flag);
     [
+        (
+            "--scheme",
+            given("--scheme", target.scheme.scheme.as_deref()),
+        ),
+        (
+            "--configuration",
+            given("--configuration", target.configuration.as_deref()),
+        ),
         ("--mac", mac),
-        ("--on", target.on.is_some() && typed("--on")),
+        ("--on", given("--on", target.on.as_deref())),
         (
             "--destination",
-            target.destination.is_some() && typed("--destination"),
+            given("--destination", target.destination.as_deref()),
         ),
+        ("--sdk", given("--sdk", target.sdk.as_deref())),
     ]
     .into_iter()
     .filter_map(|(flag, given)| given.then_some(flag))
@@ -578,6 +595,7 @@ pub(crate) fn refuse_flags(given: &[&str], what: &str, why: &str) -> Result<(), 
 
 /// Top-level resources. Each is a noun; actions are its subcommands.
 #[derive(Debug, Subcommand)]
+#[allow(clippy::large_enum_variant)] // parsed once per process, never stored in bulk
 pub enum Resource {
     /// Inspect schemes.
     Scheme {
@@ -2220,8 +2238,9 @@ mod cli_definition_tests {
     }
 
     /// `build diagnostics` re-reads a record, so its help leaves out the
-    /// start-only flags that `build` and `build start` list, while a stray one
-    /// still parses onto the resource's args for the refusal to catch.
+    /// start-only and targeting flags that `build` and `build start` list,
+    /// while a stray one still parses onto the resource's args for the refusal
+    /// to catch.
     #[test]
     fn build_diagnostics_help_lists_no_start_flags() {
         use clap::{CommandFactory, Parser};
@@ -2247,8 +2266,16 @@ mod cli_definition_tests {
                 "build diagnostics --help lists {flag}"
             );
         }
-        // Listed as '--on <ON>', or alone on its line for '--mac'.
-        for flag in ["--mac\n", "--on <", "--destination <"] {
+        // Listed as '--on <ON>', or alone on its line for '--mac'. The
+        // container flags stay: they pick the project whose record is read.
+        for flag in [
+            "--scheme <",
+            "--configuration <",
+            "--mac\n",
+            "--on <",
+            "--destination <",
+            "--sdk <",
+        ] {
             assert!(resource.contains(flag), "build --help lacks {flag}");
             assert!(start.contains(flag), "build start --help lacks {flag}");
             assert!(

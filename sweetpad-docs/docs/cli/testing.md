@@ -194,7 +194,8 @@ sweetpad test --coverage
 ## Looking at what the run left behind
 
 The summary is deliberately small. Two commands dig into the retained result bundle when it isn't
-enough, and neither reruns anything.
+enough, and neither reruns anything. SweetPad keeps one bundle per project, from its last run, so
+neither command takes a scheme, configuration, or destination flag.
 
 ### What the tests printed
 

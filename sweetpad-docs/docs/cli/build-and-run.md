@@ -117,7 +117,8 @@ last build: FAILED (1 error(s), 0 warning(s))
 
 That reads the last build's results from disk, so it's instant and safe to run as many times as you
 like. `sweetpad test` records its build too, so `build diagnostics` always shows the latest build:
-its errors if it failed, its warnings if the tests went on to run.
+its errors if it failed, its warnings if the tests went on to run. There's one record per project,
+so it takes no scheme, configuration, or destination flag.
 
 :::tip
 

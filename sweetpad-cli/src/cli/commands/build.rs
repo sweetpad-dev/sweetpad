@@ -52,10 +52,10 @@ pub enum Action {
 }
 
 /// The start-only flags, redeclared hidden on `build diagnostics` under the
-/// same ids, beside the destination flags. A subcommand's own arg keeps the
-/// resource's global one from propagating into it, so its help leaves out
-/// flags that don't apply; a stray one still parses, and its value reaches
-/// [`StartArgs`] for [`run`] to refuse.
+/// same ids, beside the targeting flags past the container. A subcommand's own
+/// arg keeps the resource's global one from propagating into it, so its help
+/// leaves out flags that don't apply; a stray one still parses, and its value
+/// reaches [`StartArgs`] for [`run`] to refuse.
 #[derive(Debug, clap::Args)]
 pub struct DiagnosticsArgs {
     #[command(flatten)]
@@ -107,7 +107,7 @@ fn refuse_build_flags(args: &StartArgs, typed: impl Fn(&str) -> bool) -> Result<
 }
 
 /// The flags on `args` that shape a build and mean nothing to reading the last
-/// one back. The destination flags count as [`crate::cli::typed_target_flags`]
+/// one back. The targeting flags count as [`crate::cli::typed_target_flags`]
 /// says.
 fn diagnostics_refused_flags(args: &StartArgs, typed: impl Fn(&str) -> bool) -> Vec<&'static str> {
     let mut given = crate::cli::typed_target_flags(&args.target, args.mac, typed);
@@ -469,7 +469,7 @@ mod tests {
     }
 
     #[test]
-    fn build_diagnostics_refuses_a_destination() {
+    fn build_diagnostics_refuses_the_targeting_flags_past_the_container() {
         // The record is the project's, whatever the build was for, so a
         // destination picks nothing here, on either side of the verb.
         let args = parse_build(&["diagnostics", "--mac"]);
@@ -492,8 +492,33 @@ mod tests {
         );
         assert_eq!(err.error_kind().exit_code(), 2);
 
+        // Nor does the scheme, configuration or SDK: the record is one per
+        // project, whichever of them the last build used.
+        let args = parse_build(&[
+            "--scheme",
+            "App",
+            "diagnostics",
+            "--configuration",
+            "Release",
+            "--sdk",
+            "macosx",
+        ]);
+        assert_eq!(
+            diagnostics_refused_flags(&args, |_| true),
+            ["--scheme", "--configuration", "--sdk"]
+        );
+        assert!(diagnostics_refused_flags(&args, |_| false).is_empty());
+
         // A build still takes them.
         assert!(parse_build(&["--mac"]).mac);
+        assert_eq!(
+            parse_build(&["--scheme", "App"])
+                .target
+                .scheme
+                .scheme
+                .as_deref(),
+            Some("App")
+        );
         let args = parse_build(&["start", "--on", "booted"]);
         assert_eq!(args.target.on.as_deref(), Some("booted"));
     }

@@ -123,8 +123,9 @@ pub struct BuildArgs {
 
 /// The run flags that reading the last run back refuses, redeclared hidden on
 /// `test attachments` and `test output` the way [`BuildArgs`] does for `test
-/// build`. The destination flags are among them: the retained bundle is one
-/// per project, whatever the run tested on.
+/// build`. The targeting flags past the container are among them: the
+/// retained bundle is one per project, whatever the run's scheme,
+/// configuration or destination was.
 #[derive(Debug, clap::Args)]
 #[allow(clippy::struct_excessive_bools)] // mirrors TestArgs' toggles, none of them read here
 pub struct HiddenRunArgs {
@@ -344,7 +345,7 @@ fn read_reason(verb: &str) -> String {
 
 /// The flags on `args` that shape a test run and mean nothing to reading one
 /// back. `--only-testing` and `--result-bundle` are not among them: they pick
-/// the tests and the bundle to read. The destination flags count as
+/// the tests and the bundle to read. The targeting flags count as
 /// [`crate::cli::typed_target_flags`] says.
 fn read_refused_flags(args: &TestArgs, typed: impl Fn(&str) -> bool) -> Vec<&'static str> {
     let mut given = crate::cli::typed_target_flags(&args.target, args.mac, typed);
@@ -2530,6 +2531,58 @@ mod tests {
         assert_eq!(args.target.on.as_deref(), Some("booted"));
         let (args, _) = parse_test(&["run", "--mac"]);
         assert!(args.mac);
+    }
+
+    #[test]
+    fn the_read_back_verbs_refuse_a_scheme_configuration_and_sdk() {
+        use clap::CommandFactory;
+        // The bundle is the project's whatever the run's scheme, configuration
+        // or SDK was, so none of them picks one to read.
+        for verb in ["attachments", "output"] {
+            let (args, _) = parse_test(&[
+                "--scheme",
+                "App",
+                verb,
+                "--configuration",
+                "Release",
+                "--sdk",
+                "macosx",
+            ]);
+            assert_eq!(
+                read_refused_flags(&args, |_| true),
+                ["--scheme", "--configuration", "--sdk"],
+                "{verb}"
+            );
+            // Set by 'SWEETPAD_SCHEME', 'SWEETPAD_CONFIGURATION' or
+            // 'SWEETPAD_SDK', not typed.
+            assert!(read_refused_flags(&args, |_| false).is_empty(), "{verb}");
+
+            let mut root = crate::cli::Cli::command();
+            root.build();
+            let help = root
+                .find_subcommand_mut("test")
+                .and_then(|test| test.find_subcommand_mut(verb))
+                .expect("the verb")
+                .render_long_help()
+                .to_string();
+            for flag in ["--scheme <", "--configuration <", "--sdk <"] {
+                assert!(!help.contains(flag), "{verb} lists {flag}");
+            }
+            // The container still picks the project whose bundle is read.
+            assert!(help.contains("--project <PROJECT>"), "{verb}");
+        }
+        let (args, _) = parse_test(&["output", "--scheme", "App"]);
+        let err = refuse_run_flags(&read_refused_flags(&args, |_| true), &read_reason("output"))
+            .expect_err("--scheme was not refused");
+        assert_eq!(
+            err.to_string(),
+            "--scheme applies to a test run: 'test output' reads the last run's result bundle \
+             and runs nothing"
+        );
+        // A run still takes them.
+        let (args, _) = parse_test(&["run", "--scheme", "App", "--sdk", "macosx"]);
+        assert_eq!(args.target.scheme.scheme.as_deref(), Some("App"));
+        assert_eq!(args.target.sdk.as_deref(), Some("macosx"));
     }
 
     #[test]
