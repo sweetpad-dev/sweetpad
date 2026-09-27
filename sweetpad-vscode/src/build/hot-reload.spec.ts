@@ -2,58 +2,11 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import {
-  dylibNameFor,
-  findPackageResolvedFiles,
-  pinsContainInject,
-  platformDirNameFor,
-  prependPath,
-  sdkSupportsHotReload,
-} from "./hot-reload";
+import { findPackageResolvedFiles, pinsContainInject, prependPath } from "./hot-reload";
 
-describe("dylibNameFor", () => {
-  it("maps each supported destination to its lib*Injection.dylib filename", () => {
-    expect(dylibNameFor("iOSSimulator")).toBe("libiphonesimulatorInjection.dylib");
-    expect(dylibNameFor("visionOSSimulator")).toBe("libxrsimulatorInjection.dylib");
-    expect(dylibNameFor("tvOSSimulator")).toBe("libappletvsimulatorInjection.dylib");
-    expect(dylibNameFor("macOS")).toBe("libmacosxInjection.dylib");
-  });
-
-  it("returns null for watchOS and every physical device (no injection dylib ships)", () => {
-    expect(dylibNameFor("watchOSSimulator")).toBeNull();
-    expect(dylibNameFor("iOSDevice")).toBeNull();
-    expect(dylibNameFor("tvOSDevice")).toBeNull();
-    expect(dylibNameFor("watchOSDevice")).toBeNull();
-    expect(dylibNameFor("visionOSDevice")).toBeNull();
-  });
-});
-
-describe("platformDirNameFor", () => {
-  it("maps each supported destination to its Xcode <Platform>.platform dir name", () => {
-    expect(platformDirNameFor("iOSSimulator")).toBe("iPhoneSimulator");
-    expect(platformDirNameFor("visionOSSimulator")).toBe("XRSimulator");
-    expect(platformDirNameFor("tvOSSimulator")).toBe("AppleTVSimulator");
-    expect(platformDirNameFor("macOS")).toBe("MacOSX");
-  });
-
-  it("returns null for destinations we don't compute XCTest search paths for", () => {
-    expect(platformDirNameFor("watchOSSimulator")).toBeNull();
-    expect(platformDirNameFor("iOSDevice")).toBeNull();
-    expect(platformDirNameFor("tvOSDevice")).toBeNull();
-    expect(platformDirNameFor("watchOSDevice")).toBeNull();
-    expect(platformDirNameFor("visionOSDevice")).toBeNull();
-  });
-});
-
-describe("sdkSupportsHotReload", () => {
-  it.each(["iphonesimulator", "appletvsimulator", "xrsimulator", "macosx"])("accepts %s", (sdk) => {
-    expect(sdkSupportsHotReload(sdk)).toBe(true);
-  });
-
-  it.each(["iphoneos", "appletvos", "xros", "watchos", "watchsimulator", ""])("rejects %s", (sdk) => {
-    expect(sdkSupportsHotReload(sdk)).toBe(false);
-  });
-});
+// `./hot-reload` imports the native `@sweetpad/native` addon at module level for the
+// injection tables (tested in sweetpad-core's `hot` module); none of the paths here use it.
+vi.mock("@sweetpad/native", () => ({}));
 
 describe("prependPath", () => {
   it("returns the value alone when no existing path is set", () => {

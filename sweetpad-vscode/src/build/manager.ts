@@ -1,6 +1,7 @@
 import events from "node:events";
 import * as path from "node:path";
 
+import * as sweetpadLib from "@sweetpad/native";
 import * as vscode from "vscode";
 
 import { getBuildServerProvider } from "../bsp/commands";
@@ -40,12 +41,7 @@ import type { ProgressStatusBar } from "../system/status-bar";
 import { BUILD_TASK_PROBLEM_MATCHERS } from "./constants";
 import type { DiagnosticsManager } from "./diagnostics";
 import type { ParsedDiagnostic } from "./diagnostics-parser";
-import {
-  ensureInjectionAppRunning,
-  isHotReloadEnabled,
-  sdkSupportsHotReload,
-  withHotReloadLaunchEnv,
-} from "./hot-reload";
+import { ensureInjectionAppRunning, isHotReloadEnabled, withHotReloadLaunchEnv } from "./hot-reload";
 import type { BuildTreeItem } from "./tree";
 import {
   XcodeCommandBuilder,
@@ -748,7 +744,7 @@ export class BuildManager {
       terminal: terminal,
       state: this.workspaceState,
       launchEnv: options.launchEnv,
-      destinationType: "macOS",
+      sdk: "macosx",
       workspaceRoot: options.workspaceRoot,
     });
     await terminal.runGroup(async (group) => {
@@ -865,7 +861,7 @@ export class BuildManager {
       terminal: terminal,
       state: this.workspaceState,
       launchEnv: options.launchEnv,
-      destinationType: options.destination.type,
+      sdk: options.sdk,
       workspaceRoot: options.workspaceRoot,
     });
     await terminal.runGroup(async (group) => {
@@ -1248,15 +1244,16 @@ export class BuildManager {
       command.addBuildSettings("ONLY_ACTIVE_ARCH", "YES");
     }
 
-    // InjectionNext needs `-Xlinker -interposable` so dyld can swap symbols at runtime,
-    // and EMIT_FRONTEND_COMMAND_LINES=YES so it can recover compile commands from the
-    // build logs when no Xcode IDE is supervising the build (required for Xcode 16.3+).
-    // $(inherited) keeps whatever the project already sets for OTHER_LDFLAGS. Skipped
-    // for SDKs that InjectionNext can't inject into (physical devices, watchOS), so
-    // device builds don't pay for the extra relocations.
-    if (isHotReloadEnabled() && sdkSupportsHotReload(options.sdk)) {
-      command.addBuildSettings("OTHER_LDFLAGS", "$(inherited) -Xlinker -interposable");
-      command.addBuildSettings("EMIT_FRONTEND_COMMAND_LINES", "YES");
+    // Hot reload's build settings, shared with the CLI's `--hot` through the native
+    // addon: an interposable link so dyld can swap symbols, frontend command lines so
+    // InjectionNext can recover compile commands from the build log (Xcode 16.3+), and
+    // on macOS no hardened runtime or App Sandbox, without which injection fails
+    // silently. Empty for SDKs InjectionNext can't inject into (physical devices,
+    // watchOS), so device builds don't pay for the extra relocations.
+    if (isHotReloadEnabled()) {
+      for (const setting of sweetpadLib.hotReloadBuildSettings(options.sdk)) {
+        command.addBuildSettings(setting.name, setting.value);
+      }
     }
 
     command.addParameters("-scheme", options.scheme);

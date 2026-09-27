@@ -3484,8 +3484,10 @@ fn detect_developer_dir() -> String {
         .into_owned()
 }
 
-/// Filesystem name of the platform under `<Xcode>/Contents/Developer/Platforms/`.
-fn platform_dir_name_for(sdk_base: &str) -> &'static str {
+/// Filesystem name of the platform under `<Xcode>/Contents/Developer/Platforms/`
+/// for an SDK name without its version (`iphonesimulator` is `iPhoneSimulator`).
+#[must_use]
+pub fn platform_dir_name_for(sdk_base: &str) -> &'static str {
     match sdk_base {
         "iphoneos" => "iPhoneOS",
         "iphonesimulator" => "iPhoneSimulator",

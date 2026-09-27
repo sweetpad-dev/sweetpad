@@ -12,33 +12,9 @@
 
 use std::path::{Path, PathBuf};
 
+use sweetpad_core::hot;
+
 const INJECTIONNEXT_APP: &str = "/Applications/InjectionNext.app";
-
-/// Map an SDK to the InjectionNext dylib that injects into it. Returns
-/// `None` for SDKs InjectionNext can't inject (devices strip
-/// `DYLD_INSERT_LIBRARIES`; watchOS ships no dylib).
-#[must_use]
-pub fn dylib_name_for(sdk: &str) -> Option<&'static str> {
-    match sdk {
-        "iphonesimulator" => Some("libiphonesimulatorInjection.dylib"),
-        "appletvsimulator" => Some("libappletvsimulatorInjection.dylib"),
-        "xrsimulator" => Some("libxrsimulatorInjection.dylib"),
-        "macosx" => Some("libmacosxInjection.dylib"),
-        _ => None,
-    }
-}
-
-/// The `<Platform>.platform` directory name for an SDK, used to find XCTest.
-#[must_use]
-pub fn platform_dir_for(sdk: &str) -> Option<&'static str> {
-    match sdk {
-        "iphonesimulator" => Some("iPhoneSimulator"),
-        "appletvsimulator" => Some("AppleTVSimulator"),
-        "xrsimulator" => Some("XRSimulator"),
-        "macosx" => Some("MacOSX"),
-        _ => None,
-    }
-}
 
 /// Inputs for resolving/injecting the client.
 pub struct ClientOptions {
@@ -106,7 +82,7 @@ pub fn check_available(sdk: &str, override_path: Option<&Path>) -> Result<(), St
 
 /// The InjectionNext dylib name for `sdk`, or why hot reload can't target it.
 fn client_name(sdk: &str) -> Result<&'static str, String> {
-    dylib_name_for(sdk).ok_or_else(|| format!("hot reload is not supported for the {sdk} SDK"))
+    hot::dylib_name(sdk).ok_or_else(|| format!("hot reload is not supported for the {sdk} SDK"))
 }
 
 /// Where an installed `InjectionNext.app` keeps its client for `name`.
@@ -176,7 +152,7 @@ pub fn launch_env(dylib: &Path, opts: &ClientOptions, prefix: &str) -> Vec<(Stri
 
 /// The Platform-specific XCTest framework + library search paths.
 fn xctest_search_paths(developer_dir: &str, sdk: &str) -> Option<(String, String)> {
-    let platform = platform_dir_for(sdk)?;
+    let platform = hot::platform_dir(sdk)?;
     let dev = Path::new(developer_dir)
         .join("Platforms")
         .join(format!("{platform}.platform"))
@@ -273,18 +249,6 @@ pub(super) fn fnv1a_hex(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use crate::cli::testdir::TempDir;
-
-    #[test]
-    fn dylib_and_platform_map_simulator_sdks() {
-        assert_eq!(
-            dylib_name_for("iphonesimulator"),
-            Some("libiphonesimulatorInjection.dylib")
-        );
-        assert_eq!(platform_dir_for("iphonesimulator"), Some("iPhoneSimulator"));
-        // Devices / unknown SDKs aren't injectable.
-        assert_eq!(dylib_name_for("iphoneos"), None);
-        assert_eq!(platform_dir_for("watchsimulator"), None);
-    }
 
     #[test]
     fn launch_env_sets_dyld_and_injection_vars() {

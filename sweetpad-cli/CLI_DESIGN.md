@@ -1139,7 +1139,10 @@ Two hooks, mirroring the extension's proven `hot-reload.ts` path:
   `OTHER_LDFLAGS=$(inherited) -Xlinker -interposable`
   (lets dyld swap symbols at runtime) and `EMIT_FRONTEND_COMMAND_LINES=YES`
   (needed to recover compile commands on Xcode 16.3+; see the recompiler below).
-  Both are gated to `--hot` so ordinary `build`/`run` never pay for them.
+  Both are gated to `--hot` so ordinary `build`/`run` never pay for them. The
+  list, with the macOS additions below, is `sweetpad_core::hot::build_settings`,
+  which the extension's hot build reads through the addon
+  (`hotReloadBuildSettings`), next to the client dylib and platform tables.
 - **Launch env** — `[`crate::cli::simctl`]` gains an env-passing `launch`
   variant; `--hot` sets `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=<client dylib>`,
   `SIMCTL_CHILD_INJECTION_PROJECT_ROOT=<workspace root>`, and the XCTest

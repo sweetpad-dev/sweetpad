@@ -169,7 +169,7 @@ export class PreviewHostManager {
 
     // Phase 3: hot reload. When enabled and supported, inject InjectionNext so
     // edits to the previewed view refresh the streamed preview without relaunch.
-    const dylib = resolveInjectionDylib("iOSSimulator");
+    const dylib = resolveInjectionDylib("iphonesimulator");
     if (dylib) {
       env.SIMCTL_CHILD_DYLD_INSERT_LIBRARIES = dylib;
       env.SIMCTL_CHILD_INJECTION_PROJECT_ROOT = this.workspaceContext.root;

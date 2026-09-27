@@ -753,6 +753,45 @@ pub fn scheme_launch_settings(
     })
 }
 
+/// One `KEY=VALUE` build setting override.
+#[napi(object)]
+pub struct BuildSettingOverride {
+    pub name: String,
+    pub value: String,
+}
+
+/// The build settings a hot-reload build for `sdk` adds, in order: an
+/// interposable link and frontend command lines, and on macOS no hardened
+/// runtime or App Sandbox, without which injection fails silently. Empty when
+/// hot reload can't inject into `sdk` (devices, watchOS).
+#[napi]
+#[must_use]
+pub fn hot_reload_build_settings(sdk: String) -> Vec<BuildSettingOverride> {
+    sweetpad_core::hot::build_settings(&sdk, None)
+        .into_iter()
+        .map(|(name, value)| BuildSettingOverride {
+            name: name.to_string(),
+            value,
+        })
+        .collect()
+}
+
+/// The InjectionNext client dylib that injects into apps built for `sdk`, or
+/// null when hot reload can't inject into it.
+#[napi]
+#[must_use]
+pub fn hot_reload_dylib_name(sdk: String) -> Option<String> {
+    sweetpad_core::hot::dylib_name(&sdk).map(str::to_string)
+}
+
+/// The `<Platform>.platform` directory of an injectable `sdk`, where the
+/// InjectionNext.app client finds the XCTest it links; null otherwise.
+#[napi]
+#[must_use]
+pub fn hot_reload_platform_dir(sdk: String) -> Option<String> {
+    sweetpad_core::hot::platform_dir(&sdk).map(str::to_string)
+}
+
 fn buildable_to_napi(b: scheme::BuildableRef) -> SchemeBuildable {
     SchemeBuildable {
         blueprint_name: b.blueprint_name,

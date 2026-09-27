@@ -16,6 +16,7 @@ pub mod build_context;
 pub mod build_settings;
 pub mod devices;
 pub mod framing;
+pub mod hot;
 pub mod package_members;
 pub mod paths;
 pub mod scratch;

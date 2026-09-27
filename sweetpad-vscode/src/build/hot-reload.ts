@@ -1,65 +1,20 @@
 import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 
+import * as sweetpadLib from "@sweetpad/native";
+
 import { getDeveloperDir } from "../common/cli/scripts";
 import { getWorkspaceConfig } from "../common/config";
 import { exec } from "../common/exec";
 import { commonLogger } from "../common/logger";
 import type { TaskTerminal } from "../common/tasks/types";
 import type { WorkspaceStateService } from "../common/workspace-state";
-import type { DestinationType } from "../destination/types";
 
 const INJECT_PACKAGE_URL = "https://github.com/krzysztofzablocki/Inject";
 const INJECT_WARNING_MAX = 3;
 
 const INJECTIONNEXT_APP = "/Applications/InjectionNext.app";
 const INJECTIONNEXT_RESOURCES = `${INJECTIONNEXT_APP}/Contents/Resources`;
-
-/**
- * Map a destination type to the InjectionNext dylib that ships inside InjectionNext.app.
- * We use the lib*Injection.dylib files rather than the *Injection.bundle directories
- * because DYLD_INSERT_LIBRARIES needs an actual Mach-O path. Returns null for physical
- * devices (codesigning strips DYLD_INSERT_LIBRARIES) and for watchOS (InjectionNext
- * does not ship a watchOS injection dylib).
- */
-export function dylibNameFor(type: DestinationType): string | null {
-  switch (type) {
-    case "iOSSimulator":
-      return "libiphonesimulatorInjection.dylib";
-    case "visionOSSimulator":
-      return "libxrsimulatorInjection.dylib";
-    case "tvOSSimulator":
-      return "libappletvsimulatorInjection.dylib";
-    case "macOS":
-      return "libmacosxInjection.dylib";
-    case "watchOSSimulator":
-    case "iOSDevice":
-    case "tvOSDevice":
-    case "watchOSDevice":
-    case "visionOSDevice":
-    case "generic":
-      return null;
-  }
-}
-
-/**
- * Xcode's "<Platform>.platform" directory name for a given destination, used to locate
- * XCTest.framework and libXCTestSwiftSupport.dylib that the injection dylib depends on.
- */
-export function platformDirNameFor(type: DestinationType): string | null {
-  switch (type) {
-    case "iOSSimulator":
-      return "iPhoneSimulator";
-    case "visionOSSimulator":
-      return "XRSimulator";
-    case "tvOSSimulator":
-      return "AppleTVSimulator";
-    case "macOS":
-      return "MacOSX";
-    default:
-      return null;
-  }
-}
 
 let cachedDeveloperDir: string | null | undefined = undefined;
 
@@ -82,21 +37,13 @@ export function isHotReloadEnabled(): boolean {
 }
 
 /**
- * Whether InjectionNext can hot-reload binaries built for this SDK. Limited to the
- * simulator slices and macOS — physical-device builds strip DYLD_INSERT_LIBRARIES via
- * codesigning, and InjectionNext doesn't ship a watchOS dylib. Used to skip the
- * `-Xlinker -interposable` / EMIT_FRONTEND_COMMAND_LINES build settings on unsupported
- * SDKs so they don't pay for an injection they can never receive.
+ * Resolve the absolute path to the InjectionNext dylib for an SDK, or null when hot
+ * reload is off, the dylib does not exist, or InjectionNext can't inject into the SDK.
+ * The dylib names come from the native addon, shared with the CLI; they are the
+ * lib*Injection.dylib files rather than the *Injection.bundle directories because
+ * DYLD_INSERT_LIBRARIES needs an actual Mach-O path.
  */
-export function sdkSupportsHotReload(sdk: string): boolean {
-  return sdk === "iphonesimulator" || sdk === "appletvsimulator" || sdk === "xrsimulator" || sdk === "macosx";
-}
-
-/**
- * Resolve the absolute path to the InjectionNext dylib for a destination type, or null
- * when hot reload is off, the dylib does not exist, or the destination is unsupported.
- */
-export function resolveInjectionDylib(destinationType: DestinationType): string | null {
+export function resolveInjectionDylib(sdk: string): string | null {
   if (!isHotReloadEnabled()) return null;
 
   const override = getWorkspaceConfig("hotReload.dylibPath");
@@ -108,15 +55,15 @@ export function resolveInjectionDylib(destinationType: DestinationType): string 
     return override;
   }
 
-  const dylibName = dylibNameFor(destinationType);
+  const dylibName = sweetpadLib.hotReloadDylibName(sdk);
   if (!dylibName) {
-    if (destinationType === "watchOSSimulator") {
+    if (sdk === "watchsimulator") {
       commonLogger.warn("Hot reload: InjectionNext does not ship a watchOS dylib, skipping injection", {
-        destination: destinationType,
+        sdk: sdk,
       });
     } else {
       commonLogger.warn("Hot reload: unsupported destination, skipping injection", {
-        destination: destinationType,
+        sdk: sdk,
       });
     }
     return null;
@@ -134,16 +81,16 @@ export function resolveInjectionDylib(destinationType: DestinationType): string 
 }
 
 /**
- * Resolve the Platform-specific XCTest search paths for a destination, so dyld can find
+ * Resolve the Platform-specific XCTest search paths for an SDK, so dyld can find
  * @rpath/XCTest.framework and @rpath/libXCTestSwiftSupport.dylib that the injection dylib
  * links against. The InjectionNext binaries were built against /Applications/Xcode.app
  * paths that won't exist on machines with a versioned or relocated Xcode install.
  */
 async function getXctestSearchPaths(
   workspaceRoot: string,
-  destinationType: DestinationType,
+  sdk: string,
 ): Promise<{ frameworkPath: string; libraryPath: string } | null> {
-  const platform = platformDirNameFor(destinationType);
+  const platform = sweetpadLib.hotReloadPlatformDir(sdk);
   if (!platform) return null;
   const developerDir = await getXcodeDeveloperDir(workspaceRoot);
   if (!developerDir) return null;
@@ -268,11 +215,11 @@ export async function withHotReloadLaunchEnv(options: {
   terminal: TaskTerminal;
   state: WorkspaceStateService;
   launchEnv: Record<string, string>;
-  destinationType: DestinationType;
+  sdk: string;
   workspaceRoot: string;
 }): Promise<Record<string, string>> {
-  const { launchEnv, destinationType, workspaceRoot } = options;
-  const dylib = resolveInjectionDylib(destinationType);
+  const { launchEnv, sdk, workspaceRoot } = options;
+  const dylib = resolveInjectionDylib(sdk);
   if (!dylib) return launchEnv;
 
   await warnIfInjectMissing(options.terminal, options.state, workspaceRoot);
@@ -283,7 +230,7 @@ export async function withHotReloadLaunchEnv(options: {
     INJECTION_PROJECT_ROOT: workspaceRoot,
   };
 
-  const xctest = await getXctestSearchPaths(workspaceRoot, destinationType);
+  const xctest = await getXctestSearchPaths(workspaceRoot, sdk);
   if (xctest) {
     env.DYLD_FRAMEWORK_PATH = prependPath(launchEnv.DYLD_FRAMEWORK_PATH, xctest.frameworkPath);
     env.DYLD_LIBRARY_PATH = prependPath(launchEnv.DYLD_LIBRARY_PATH, xctest.libraryPath);

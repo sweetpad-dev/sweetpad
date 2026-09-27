@@ -190,7 +190,8 @@ pub struct BuildPlan<'a> {
     /// the destination imply it.
     pub sdk: Option<&'a str>,
     pub clean: bool,
-    /// Hot-reload build: add `-Xlinker -interposable` (so dyld can swap symbols)
+    /// Hot-reload build: add [`sweetpad_core::hot::build_settings`] for the
+    /// destination's SDK, `-Xlinker -interposable` (so dyld can swap symbols)
     /// and `EMIT_FRONTEND_COMMAND_LINES=YES` (so the build-log recompiler can
     /// recover per-file commands). A macOS destination additionally disables the
     /// hardened runtime and App Sandbox so the product is injectable. Set for
@@ -249,32 +250,20 @@ impl BuildPlan<'_> {
             args.push(bundle.display().to_string());
         }
         args.extend(container_args(self.container));
-        if self.hot {
-            // Build settings (KEY=VALUE) after the action; `$(inherited)` keeps
-            // any project OTHER_LDFLAGS. Mirrors the VS Code extension + the
-            // validated spike fixture.
-            args.push("OTHER_LDFLAGS=$(inherited) -Xlinker -interposable".into());
-            args.push("EMIT_FRONTEND_COMMAND_LINES=YES".into());
-            // A native macOS app must be injectable: the hardened runtime makes
-            // dyld strip `DYLD_INSERT_LIBRARIES` and library validation reject
-            // the ad-hoc recompiled dylibs, and the App Sandbox blocks both the
-            // client's socket and dlopen from outside the container. Command-line
-            // settings outrank project ones, so the hot Debug product is built
-            // without either protection. (A sandbox declared in an explicit
-            // entitlements file is beyond build settings — the mac preflight
-            // catches that case with instructions.)
-            if self
+        if self.hot
+            && let Some(sdk) = self
                 .destination
-                .is_some_and(|d| DestinationSpec::parse(d).is_macos())
-            {
-                args.push("ENABLE_HARDENED_RUNTIME=NO".into());
-                args.push("ENABLE_APP_SANDBOX=NO".into());
-                // An explicit entitlements plist outranks those settings at
-                // signing time; the ephemeral stripped copy wins it back.
-                if let Some(entitlements) = self.hot_entitlements {
-                    args.push(format!("CODE_SIGN_ENTITLEMENTS={}", entitlements.display()));
-                }
-            }
+                .and_then(sweetpad_core::hot::sdk_for_destination)
+        {
+            // Build settings (KEY=VALUE) after the action, shared with the VS
+            // Code extension. A sandbox declared in an entitlements file the
+            // stripped copy doesn't replace is beyond build settings: the mac
+            // preflight catches that case with instructions.
+            args.extend(
+                sweetpad_core::hot::build_settings(sdk, self.hot_entitlements)
+                    .into_iter()
+                    .map(|(key, value)| format!("{key}={value}")),
+            );
         }
         args.extend(self.passthrough.iter().cloned());
         args

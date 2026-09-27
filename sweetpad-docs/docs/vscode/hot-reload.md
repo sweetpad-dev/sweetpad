@@ -81,7 +81,12 @@ environment.
 **Build flags.** It appends `OTHER_LDFLAGS=$(inherited) -Xlinker -interposable`
 to xcodebuild so the linker emits Swift functions as interposable symbols, plus
 `EMIT_FRONTEND_COMMAND_LINES=YES` so Xcode 16.3+ logs the per-file frontend
-invocations InjectionNext needs to recompile with.
+invocations InjectionNext needs to recompile with. A macOS build also gets
+`ENABLE_HARDENED_RUNTIME=NO` and `ENABLE_APP_SANDBOX=NO`. The hardened runtime
+stops the injection dylib from loading, and the App Sandbox stops it from
+connecting to InjectionNext. These are the same settings the `sweetpad` CLI uses
+for `app run --hot`. A sandbox turned on in your target's `.entitlements` file
+still applies, so turn App Sandbox off for Debug there.
 
 **Launch env.** It sets `DYLD_INSERT_LIBRARIES` on the simulator/macOS launch so
 the injection dylib loads automatically (no AppDelegate changes), and
