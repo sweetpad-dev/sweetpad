@@ -100,6 +100,8 @@ pub fn list_groups(root: &Value) -> Result<Vec<GroupRow>, String> {
                 .collect(),
             parent: n.parent,
             resolved: n.resolved,
+            // A node's address is its navigator path.
+            navigator_path: Some(n.address.clone()),
             address: n.address,
         })
         .collect())

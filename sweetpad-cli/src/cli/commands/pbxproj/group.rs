@@ -20,8 +20,8 @@ use sweetpad_lib::tree_xcproj;
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
-    /// Show every group: how to name it, its resolved directory, and how many
-    /// children it holds.
+    /// Show every group: its address, its navigator path, its resolved
+    /// directory, and how many children it holds.
     List(ListArgs),
     /// Create a group under a parent group.
     Add(AddArgs),
@@ -145,7 +145,7 @@ pub struct LinkArgs {
 
     /// The group whose children list changes: its id, its navigator path, or
     /// its resolved directory ('Sources/App'). 'pbxproj group list' prints
-    /// each group's id and directory.
+    /// all three.
     #[arg(long)]
     pub group: String,
 
@@ -197,13 +197,7 @@ impl Render for ListResult {
             return;
         }
         for g in &self.groups {
-            let dir = display_dir(&g.resolved);
-            let title = g.name.as_deref().unwrap_or(dir);
-            out.line(&format!(
-                "{}  {title}  [{dir}, {} child(ren)]",
-                g.address,
-                g.children.len()
-            ));
+            out.line(&group_line(g));
         }
     }
 
@@ -219,6 +213,7 @@ impl Render for ListResult {
                     "name": g.name,
                     "path": g.path,
                     "resolved": g.resolved,
+                    "navigatorPath": g.navigator_path,
                     "sourceTree": g.source_tree,
                     "parent": g.parent,
                     "children": g.children,
@@ -226,6 +221,25 @@ impl Render for ListResult {
             })
             .collect();
         serde_json::json!({ "groups": groups })
+    }
+}
+
+/// One `group list` row: the address, the navigator path, then the resolved
+/// directory and the child count. Each of the three is a spelling a group
+/// argument takes. A `project.xcproj` addresses a group by its navigator
+/// path, so its rows print that once.
+fn group_line(g: &GroupRow) -> String {
+    let dir = display_dir(&g.resolved);
+    let children = g.children.len();
+    let navigator = match g.navigator_path.as_deref() {
+        Some("") => "(navigator root)",
+        Some(path) => path,
+        None => "(not in the navigator)",
+    };
+    if navigator == g.address {
+        format!("{}  [{dir}, {children} child(ren)]", g.address)
+    } else {
+        format!("{}  {navigator}  [{dir}, {children} child(ren)]", g.address)
     }
 }
 

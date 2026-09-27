@@ -1562,8 +1562,8 @@ sweetpad pbxproj group list                         the navigator tree
 sweetpad pbxproj group add <name> [--parent G] [--path P] [--source-tree ST]
 sweetpad pbxproj group remove <group> [--orphan-children]
 sweetpad pbxproj group move <node> [--to G]         re-home a node
-sweetpad pbxproj group attach <node> --group ID|DIR list a child (pbxproj only)
-sweetpad pbxproj group detach <node> --group ID|DIR unlist a child (pbxproj only)
+sweetpad pbxproj group attach <node> --group G      list a child (pbxproj only)
+sweetpad pbxproj group detach <node> --group G      unlist a child (pbxproj only)
 ```
 
 - **`settings` splits by layer, not by flag.** Top-level `sweetpad settings
@@ -1636,8 +1636,10 @@ friction, without collapsing the axes:
   The navigator path is the one that tells apart organizational groups (a
   `name` with no `path`), which all resolve to their parent's directory, and it
   is the spelling a `project.xcproj` has — see the addressing amendment below.
-  This removes the `group list` lookup that otherwise preceded every add; it is
-  a rule that errors, not a guess that picks.
+  `group list` prints all three on each row (`navigatorPath` in JSON, empty
+  for the navigator root and null for a group nothing lists), so the miss
+  error can point there. This removes the `group list` lookup that otherwise
+  preceded every add; it is a rule that errors, not a guess that picks.
 - **`fileref add` is batched**, like every other mutating verb here.
   `--type`/`--source-tree`/`--group` apply to the whole batch, which is the
   case that actually recurs (a directory of new sources); files that disagree

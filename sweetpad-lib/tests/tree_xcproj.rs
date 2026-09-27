@@ -103,6 +103,13 @@ fn groups_list_with_their_directories_and_their_children() {
         ["Sources", "Sources/App", "Products"]
     );
 
+    assert!(
+        groups
+            .iter()
+            .all(|g| g.navigator_path.as_deref() == Some(g.address.as_str())),
+        "a node's address is its navigator path"
+    );
+
     let sources = &groups[0];
     assert_eq!(sources.resolved, "Sources");
     assert_eq!(sources.children, ["Sources/App.swift", "Sources/App"]);

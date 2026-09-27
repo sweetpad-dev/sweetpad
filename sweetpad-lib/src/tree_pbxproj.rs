@@ -86,10 +86,20 @@ pub fn list_filerefs(root: &Value) -> Result<Vec<FileRefRow>, String> {
 pub fn list_groups(root: &Value) -> Result<Vec<GroupRow>, String> {
     let objects = objects(root).ok_or("pbxproj has no objects dict")?;
     let project_dir = Path::new("");
+    // A group listed in two places has two paths; the first one found names
+    // it, and either spelling still selects it.
+    let mut navigator: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    if let Some(main) = main_group(objects) {
+        navigator.insert(main, String::new());
+    }
+    for (guid, path) in navigator_paths(objects) {
+        navigator.entry(guid).or_insert(path);
+    }
     let mut rows: Vec<GroupRow> = objects
         .iter()
         .filter(|(_, o)| GROUP_ISAS.contains(&isa(o)))
         .map(|(guid, o)| GroupRow {
+            navigator_path: navigator.get(guid).cloned(),
             address: guid.clone(),
             id: Some(guid.clone()),
             isa: isa(o).to_string(),
@@ -1052,6 +1062,49 @@ mod tests {
         };
         assert!(attached_to.is_some());
         assert_eq!(resolved, "App/X.swift", "it still resolves under App");
+    }
+
+    /// `group list` carries each group's navigator path, and a path it prints
+    /// names that group back, which is what the miss hint promises. `App` is
+    /// also `Other`'s directory, so that spelling is refused rather than
+    /// picked, and the id settles it.
+    #[test]
+    fn listed_groups_carry_a_navigator_path_that_names_them() {
+        let mut root = parsed();
+        let AddGroupOutcome::Created { address: other, .. } =
+            add_group(&mut root, "Other", Some("MG"), Some("App"), "<group>").unwrap()
+        else {
+            panic!("expected a fresh group");
+        };
+        let AddGroupOutcome::Created { address: loose, .. } =
+            add_group(&mut root, "Loose", Some("G1"), Some("Loose"), "<group>").unwrap()
+        else {
+            panic!("expected a fresh group");
+        };
+        detach(&mut root, &loose, "G1").unwrap();
+
+        let groups = list_groups(&root).unwrap();
+        let path_of = |id: &str| {
+            groups
+                .iter()
+                .find(|g| g.address == id)
+                .and_then(|g| g.navigator_path.clone())
+        };
+        assert_eq!(path_of("MG").as_deref(), Some(""), "the navigator root");
+        assert_eq!(path_of("G1").as_deref(), Some("App"));
+        assert_eq!(path_of("G2").as_deref(), Some("App/Legacy"));
+        assert_eq!(
+            path_of(&other).as_deref(),
+            Some("Other"),
+            "the display name, where the directory is App"
+        );
+        assert_eq!(path_of(&loose), None, "no group lists it");
+
+        let objects = objects(&root).unwrap();
+        assert_eq!(resolve_group(objects, "App/Legacy").as_deref(), Ok("G2"));
+        assert_eq!(resolve_group(objects, "Other"), Ok(other.clone()));
+        let err = resolve_group(objects, "App").unwrap_err();
+        assert!(err.contains("App names 2 groups"), "{err}");
     }
 
     #[test]
