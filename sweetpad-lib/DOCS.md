@@ -728,17 +728,21 @@ and the live differential) build with the Xcode that `BSP_ORACLE_XCODE` names
 choice for all of them. Except for `bsp_prepare`, their `xcodebuild`,
 `sourcekit-lsp` and toolchain runs get a `TMPDIR` of the test's own, which goes
 when the test ends. The live differential resolves against the specs of that
-same Xcode, not a committed `xcspec-cache/` capture. On Xcode 27.0 it fails on
-two editor-critical mismatches:
+same Xcode, not a committed `xcspec-cache/` capture.
 
-- `SWIFT_PLATFORM_TARGET_PREFIX` is `ios` in ours and `macos` in xcodebuild
-  for an iOS app bound to `-sdk macosx` (`SweetpadCIApp` in
-  `_synthetic-objectversion-110`, `App` in `_synthetic-cocoapods`).
-- `ARCHS` is `arm64` in ours and `arm64 x86_64` in xcodebuild for
-  `_synthetic-multiplatform` on `iphonesimulator` in Debug.
-
-Both appear with the committed `xcode-27.0.0` catalog too. The fast hermetic
-tiers are version-agnostic.
+The live differential compares each target on the platforms its
+`SUPPORTED_PLATFORMS` names, read under the target's own `SDKROOT` the way a
+plain `-showBuildSettings` reads it. A device or macOS platform is bound with
+`-target … -sdk`. A simulator platform is bound to a concrete simulator
+through the scheme that builds the target (`-scheme … -destination id=…`),
+since every simulator build runs on one: with `-sdk iphonesimulator` alone,
+xcodebuild keeps the full `ARCHS` that a Debug simulator build collapses to
+the active arch, and the resolver models the build. Where no scheme or no
+simulator is available, the cell falls back to `-sdk` and skips `ARCHS`,
+`ONLY_ACTIVE_ARCH` and `BUILD_ACTIVE_RESOURCES_ONLY`. The asserted keys are the
+SDK, platform, arch and triple inputs plus `SWIFT_ACTIVE_COMPILATION_CONDITIONS`,
+`GCC_PREPROCESSOR_DEFINITIONS` and `SWIFT_VERSION`. The fast hermetic tiers are
+version-agnostic.
 
 ### 8.4 Engine fixes the harness drove (knowledge catalog)
 
