@@ -22,6 +22,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
+use crate::app_locator::CommandLineSettings;
 use crate::build_context::BuildContext;
 use crate::build_settings::{self, BuildSettingsOptions};
 use crate::framing::{read_message, write_message};
@@ -111,6 +112,17 @@ pub fn build_server_json_path(container: &Path, output: Option<&Path>) -> PathBu
 pub struct CommandLine {
     pub xcconfig: Option<PathBuf>,
     pub overrides: Vec<(String, String)>,
+}
+
+/// The settings a command line layers on every resolution. Its
+/// `-derivedDataPath` is left out: the server fixes DerivedData at startup.
+impl From<CommandLineSettings> for CommandLine {
+    fn from(settings: CommandLineSettings) -> Self {
+        Self {
+            xcconfig: settings.xcconfig,
+            overrides: settings.overrides,
+        }
+    }
 }
 
 /// Run the BSP server loop over stdin/stdout until EOF or `build/exit`.
@@ -595,9 +607,12 @@ fn config_base(value: &Value, path: &Path) -> PathBuf {
 
 /// The command-line settings in a `bsp.json`'s `buildArgs`: the arguments
 /// the extension's builds add to `xcodebuild`, from `sweetpad.build.args`.
-/// Its `KEY=VALUE` settings and last `-xcconfig` are read as `xcodebuild`
-/// reads them, a relative `-xcconfig` against `base`, the directory those
-/// builds run in. A file without `buildArgs` has none.
+/// They are read as `xcodebuild` running in `base`, the directory those
+/// builds run in, reads them ([`CommandLineSettings::of`], the CLI's reader
+/// too): a relative `-xcconfig` joins the directory's physical path, so
+/// through a symlinked folder `../ci.xcconfig` is the real directory's
+/// sibling. A file without `buildArgs` has none. Its `-derivedDataPath` is
+/// the extension's to resolve into `derivedDataPath`.
 ///
 /// The second half is a warning for a flag that ends `buildArgs` without its
 /// value. The extension's builds fail on it, and the index reads the rest
@@ -617,11 +632,7 @@ fn command_line_of(value: &Value, base: &Path) -> (CommandLine, Option<String>) 
             "ignoring '{flag}' at the end of buildArgs: it has no value, and xcodebuild refuses it"
         )
     });
-    let command_line = CommandLine {
-        xcconfig: xcodebuild_args::last_value(&args, "-xcconfig").map(|p| base.join(p)),
-        overrides: xcodebuild_args::settings(&args),
-    };
-    (command_line, warning)
+    (CommandLineSettings::of(&args, Some(base)).into(), warning)
 }
 
 impl Server {
@@ -2341,7 +2352,10 @@ mod tests {
         let pair = |k: &str, v: &str| (k.to_string(), v.to_string());
 
         let opts = server.options_for("SweetpadCIMac", "macosx", "arm64");
-        assert_eq!(opts.xcconfig, Some(scratch.join("ci.xcconfig")));
+        assert_eq!(
+            opts.xcconfig,
+            Some(sweetpad_lib::project::standardize(&scratch).join("ci.xcconfig"))
+        );
         assert_eq!(
             opts.overrides,
             [
@@ -2389,6 +2403,43 @@ mod tests {
         assert_eq!(opts.overrides, [pair("A", "typed")]);
     }
 
+    /// The extension's builds run `xcodebuild` in the workspace folder, which
+    /// `xcodebuild` knows by its physical path. Through a symlinked folder, a
+    /// relative `-xcconfig ../ci.xcconfig` in `buildArgs` is the real
+    /// folder's sibling, the way the CLI reads its arguments. A
+    /// `-derivedDataPath` there leaves DerivedData to `derivedDataPath`.
+    #[test]
+    fn build_args_paths_are_read_from_the_physical_workspace_folder() {
+        let project = format!(
+            "{}/fixtures/_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj",
+            env!("SWEETPAD_LIB_DIR")
+        );
+        let scratch = crate::scratch::ScratchDir::new("sweetpad-bsp-json-link").unwrap();
+        let real = scratch.join("real/app");
+        std::fs::create_dir_all(&real).unwrap();
+        std::fs::create_dir_all(scratch.join("elsewhere")).unwrap();
+        let link = scratch.join("elsewhere/link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let config = scratch.join("bsp.json");
+        std::fs::write(
+            &config,
+            serde_json::json!({
+                "workspacePath": link,
+                "projectPath": project,
+                "buildArgs": ["-xcconfig", "../ci.xcconfig", "-derivedDataPath", "dd"],
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let resolved = ResolvedConfig::from_file(&config, &BTreeMap::new()).unwrap();
+        let physical = sweetpad_lib::project::standardize(&real);
+        assert_eq!(
+            resolved.command_line.xcconfig,
+            Some(physical.parent().unwrap().join("ci.xcconfig"))
+        );
+        assert_eq!(resolved.derived_data_path, None);
+    }
+
     /// A `buildArgs` that ends with a flag waiting for its value fails the
     /// extension's builds. The index warns and reads the rest, the copy of the
     /// flag before it included, the way the CLI reads the same arguments.
@@ -2422,7 +2473,10 @@ mod tests {
         .unwrap();
 
         let opts = server.options_for("SweetpadCIMac", "macosx", "arm64");
-        assert_eq!(opts.xcconfig, Some(scratch.join("ci.xcconfig")));
+        assert_eq!(
+            opts.xcconfig,
+            Some(sweetpad_lib::project::standardize(&scratch).join("ci.xcconfig"))
+        );
         assert_eq!(opts.overrides, [("FOO".to_string(), "1".to_string())]);
         let logged = std::fs::read_to_string(&log).unwrap();
         assert!(

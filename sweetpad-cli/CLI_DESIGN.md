@@ -3680,9 +3680,12 @@ The extension's `buildServer.json` runs `sweetpad bsp serve --config
 not the file, and discovery from the working directory could name a container
 other than the one `bsp.json` does. So the extension writes that setting into
 `bsp.json` as `buildArgs`, and `serve` reads its `KEY=VALUE` settings and last
-`-xcconfig` the way the CLI reads `[xcodebuild] args` (the parser lives in
-sweetpad-core's `xcodebuild_args`). A relative `-xcconfig` is read against
-`workspacePath`, where the extension's builds run `xcodebuild`. The
+`-xcconfig` the way the CLI reads `[xcodebuild] args`, through the same
+`CommandLineSettings` in sweetpad-core's `app_locator` (the parser lives in
+`xcodebuild_args`). A relative `-xcconfig` is read against `workspacePath`,
+where the extension's builds run `xcodebuild`, by that folder's physical path,
+as `xcodebuild` reads it: through a symlinked folder, `../ci.xcconfig` is the
+real folder's sibling. The
 extension's builds read the setting with a copy of core's `VALUE_FLAGS`
 (`XCODEBUILD_VALUE_FLAGS`), and a spec fails when the two differ, so a build
 and the index agree on which argument is a flag's value: `-xcconfig -quiet`

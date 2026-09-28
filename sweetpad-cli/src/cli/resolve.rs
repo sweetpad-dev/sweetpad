@@ -53,31 +53,10 @@ impl Container {
     #[must_use]
     pub fn key(&self) -> String {
         std::fs::canonicalize(self.path())
-            .unwrap_or_else(|_| absolutize(self.path()))
+            .unwrap_or_else(|_| sweetpad_lib::project::absolutize(self.path()))
             .to_string_lossy()
             .into_owned()
     }
-}
-
-/// Join a path onto the cwd (when relative) and squash `.`/`..` lexically — the
-/// canonicalize fallback that never touches the filesystem.
-fn absolutize(path: &Path) -> PathBuf {
-    use std::path::Component;
-    let mut out = if path.is_absolute() {
-        PathBuf::new()
-    } else {
-        std::env::current_dir().unwrap_or_default()
-    };
-    for comp in path.components() {
-        match comp {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                out.pop();
-            }
-            c => out.push(c.as_os_str()),
-        }
-    }
-    out
 }
 
 /// Resolve the project container from explicit flags, else from a committed
