@@ -1,0 +1,77 @@
+name: DestPlatforms
+options:
+  bundleIdPrefix: dev.sweetpad.fixture
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+# Which SDK one run destination builds each target of a scheme for.
+# `-destination platform=macOS` builds `IPadApp`, which authors no Mac
+# Catalyst support, "Designed for iPad" on the `iphoneos` SDK, along with the
+# framework its scheme builds, and builds `CatApp`, which supports Catalyst,
+# for Mac Catalyst. `Mixed` puts the iOS app beside a macOS app: an iPhone
+# simulator destination builds the macOS app for `macosx`.
+targets:
+  IPadKit:
+    type: framework
+    platform: iOS
+    sources: [Sources/Kit]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.fixture.IPadKit
+        PRODUCT_NAME: Kit
+        CODE_SIGNING_ALLOWED: "NO"
+        SWIFT_VERSION: "6.0"
+  IPadApp:
+    type: application
+    platform: iOS
+    sources: [Sources/App]
+    dependencies:
+      - target: IPadKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.fixture.IPadApp
+        CODE_SIGNING_ALLOWED: "NO"
+        SWIFT_VERSION: "6.0"
+  CatApp:
+    type: application
+    platform: iOS
+    sources: [Sources/App]
+    dependencies:
+      - target: IPadKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.fixture.CatApp
+        CODE_SIGNING_ALLOWED: "NO"
+        SUPPORTS_MACCATALYST: "YES"
+        SWIFT_VERSION: "6.0"
+  MacHelper:
+    type: application
+    platform: macOS
+    sources: [Sources/Helper]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.fixture.MacHelper
+        CODE_SIGNING_ALLOWED: "NO"
+        SWIFT_VERSION: "6.0"
+schemes:
+  IPadApp:
+    build:
+      targets:
+        IPadKit: all
+        IPadApp: all
+  CatApp:
+    build:
+      targets:
+        IPadKit: all
+        CatApp: all
+  Mixed:
+    build:
+      targets:
+        IPadApp: all
+        MacHelper: all
+    run:
+      executable: IPadApp

@@ -2565,9 +2565,12 @@ pub fn built_in_settings(
     // (see `macos_destination_unbound`). Xcode 15.x reported NO in every
     // capture (Catalyst and native alike), so the flip is version-gated
     // to 16+.
+    // A macOS target built for another platform's destination (a macOS app
+    // in a scheme run on an iPhone simulator) flips it too, on Xcode 27.
     let active_resources = if !legacy_xcode15
         && (sdk_base.ends_with("simulator")
-            || (sdk_base != "macosx" && destination.is_some() && !macos_destination_unbound))
+            || (sdk_base != "macosx" && destination.is_some() && !macos_destination_unbound)
+            || (sdk_base == "macosx" && destination.is_some_and(|d| !d.is_macos())))
     {
         "YES"
     } else {
@@ -3193,7 +3196,15 @@ pub fn built_in_overrides(
         // device view there too — full standard ARCHS, no active-arch
         // collapse — overriding even an authored `ONLY_ACTIVE_ARCH = YES`
         // (NetNewsWire's iOS xcconfigs captured against the macOS scheme).
-        if target_is_watch != dest_is_watch || foreign_sim_extension || macos_destination_unbound {
+        // A macOS target built for another platform's destination can't run
+        // there either: a macOS app in a scheme run on an iPhone simulator
+        // reports ARCHS `arm64 x86_64` and OAA NO in Debug on Xcode 27.
+        let foreign_mac = target_sdk == "macosx" && dest_sdk != "macosx";
+        if target_is_watch != dest_is_watch
+            || foreign_sim_extension
+            || macos_destination_unbound
+            || foreign_mac
+        {
             push("ONLY_ACTIVE_ARCH", "NO");
             push("ARCHS", "$(ARCHS_STANDARD)");
         }
@@ -3939,7 +3950,10 @@ fn supported_platforms_for(sdk_base: &str, legacy_xcode15: bool) -> String {
 /// macOS. The destination wins when available; otherwise we infer from
 /// the SDK name's `simulator` suffix.
 fn is_not_simulator_for(sdk_base: &str, destination: Option<&RunDestination>) -> &'static str {
-    if let Some(d) = destination {
+    // A macOS target a build for another platform's destination builds for
+    // `macosx` anyway (a macOS app in a scheme run on an iPhone simulator)
+    // reads its own SDK: xcodebuild reports YES there on Xcode 27.
+    if let Some(d) = destination.filter(|d| sdk_base != "macosx" || d.is_macos()) {
         if d.is_simulator() { "NO" } else { "YES" }
     } else if sdk_base.ends_with("simulator") {
         "NO"

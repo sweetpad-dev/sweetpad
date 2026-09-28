@@ -88,6 +88,18 @@ fn default_sdk(layers: &[Vec<Assignment>]) -> String {
         .unwrap_or_else(|| "macosx".to_string())
 }
 
+/// How an iOS target builds for a macOS run destination
+/// ([`BuildContext::mac_destination_variant`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MacVariant {
+    /// Mac Catalyst: the `macosx` SDK with the iOS support libraries.
+    Catalyst,
+    /// "Designed for iPad": the `iphoneos` SDK, the iOS app run on the Mac.
+    DesignedForIpad,
+    /// Neither: xcodebuild has no macOS destination for it.
+    None,
+}
+
 /// One resolution query against a [`BuildContext`].
 #[derive(Debug, Clone)]
 pub struct ResolveQuery {
@@ -405,6 +417,117 @@ impl BuildContext {
             settings: resolve_folding_locations(layers, &probe.ctx),
             product_type: bundle.product_type,
         })
+    }
+
+    /// The SDK `query`'s target builds with when its run destination's
+    /// platform isn't one the target supports, or `None` when it is. A
+    /// build for one destination builds each target that can't run there for
+    /// its own platform: on Xcode 27, a scheme with an iOS app and a macOS app
+    /// builds the macOS app for `macosx` under an iOS Simulator destination. A
+    /// simulator destination takes the simulator of the target's platform
+    /// where the target supports it (a watchOS app under an iPhone simulator).
+    /// The supported platforms are the target's authored
+    /// `SUPPORTED_PLATFORMS` under its own SDK, else that SDK's default: a
+    /// device SDK and its simulator (`iphoneos iphonesimulator`), or `macosx`.
+    pub fn own_platform_sdk(&self, query: &ResolveQuery) -> Result<Option<String>, Error> {
+        let Some(destination) = &query.destination else {
+            return Ok(None);
+        };
+        let bundle = self.document.build_settings(
+            &self.project.path,
+            &query.target,
+            &query.configuration,
+        )?;
+        let own = default_sdk(&bundle.layers);
+        let probe = ResolveQuery {
+            sdk: own.clone(),
+            destination: None,
+            ..query.clone()
+        };
+        let simulator = own
+            .strip_suffix("os")
+            .map(|family| format!("{family}simulator"));
+        let supported: Vec<String> = self
+            .authored_probe(&bundle, &probe)
+            .settings
+            .get("SUPPORTED_PLATFORMS")
+            .map_or_else(
+                || {
+                    std::iter::once(own.clone())
+                        .chain(simulator.clone())
+                        .collect()
+                },
+                |authored| {
+                    authored
+                        .split_whitespace()
+                        .map(str::to_ascii_lowercase)
+                        .collect()
+                },
+            );
+        let supports = |sdk: &str| supported.iter().any(|p| p == sdk);
+        if supports(&destination.platform) {
+            return Ok(None);
+        }
+        let simulator = simulator.filter(|sim| destination.is_simulator() && supports(sim));
+        Ok(Some(simulator.unwrap_or(own)))
+    }
+
+    /// How `query`'s target builds for a macOS run destination (`-destination
+    /// platform=macOS`) when its own SDK is `iphoneos`, or `None` for any
+    /// other target. xcodebuild picks the Mac Catalyst destination for a
+    /// target that supports Catalyst, and otherwise the "Designed for iPad"
+    /// one, which builds for `iphoneos` and runs the iOS app on the Mac. On
+    /// Xcode 27 an iOS app with neither `SUPPORTS_MACCATALYST` nor
+    /// `SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD` authored reports `PLATFORM_NAME
+    /// = iphoneos` and builds into `Debug-iphoneos` there. An application or
+    /// app extension doesn't support Catalyst unless it says so (their product
+    /// types default `SUPPORTS_MACCATALYST` to `NO`); a framework or library
+    /// does (the iOS platform's default is `YES`). The query's `-xcconfig` and
+    /// `KEY=VALUE` settings count, as they do for the build.
+    pub fn mac_destination_variant(
+        &self,
+        query: &ResolveQuery,
+    ) -> Result<Option<MacVariant>, Error> {
+        let bundle = self.document.build_settings(
+            &self.project.path,
+            &query.target,
+            &query.configuration,
+        )?;
+        if default_sdk(&bundle.layers) != "iphoneos" {
+            return Ok(None);
+        }
+        let ios = ResolveQuery {
+            sdk: "iphoneos".into(),
+            destination: None,
+            ..query.clone()
+        };
+        let authored = self.authored_probe(&bundle, &ios).settings;
+        let yes = |key: &str| authored.get(key).map(|v| v.eq_ignore_ascii_case("YES"));
+        let catalyst = yes("SUPPORTS_MACCATALYST").unwrap_or_else(|| {
+            let default = self.xcspec.as_ref().and_then(|catalog| {
+                let layer = catalog.layer_for(bundle.product_type.as_deref(), Some("iphoneos"));
+                project::last_unconditional_setting(&[layer], "SUPPORTS_MACCATALYST")
+            });
+            default.map_or_else(
+                || {
+                    !matches!(
+                        bundle.product_type.as_deref(),
+                        Some(
+                            "com.apple.product-type.application"
+                                | "com.apple.product-type.app-extension"
+                        )
+                    )
+                },
+                |v| v.eq_ignore_ascii_case("YES"),
+            )
+        });
+        Ok(Some(if catalyst {
+            MacVariant::Catalyst
+        } else if yes("SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD").unwrap_or(true) {
+            MacVariant::DesignedForIpad
+        } else {
+            MacVariant::None
+        }))
     }
 
     /// Turn a scheme's `BuildAction` into a list of [`ResolveQuery`]s

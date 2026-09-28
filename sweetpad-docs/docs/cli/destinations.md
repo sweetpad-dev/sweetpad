@@ -220,6 +220,16 @@ sweetpad build --mac
 The macOS destination is also where the CLI's Mac-only verbs apply: `app screenshot` captures the
 app's window, and `app ui` reads and drives it through accessibility.
 
+For an iOS app, `--on mac` builds what `xcodebuild -destination platform=macOS` builds. An app that
+sets `SUPPORTS_MACCATALYST = YES` builds for Mac Catalyst, into `Debug-maccatalyst`. Any other iOS
+app builds "Designed for iPad" with the iOS device SDK (`iphoneos`), into `Debug-iphoneos`, and so do
+the frameworks its scheme builds. `settings show --on mac` reports the same settings, and the `app`
+commands look for the bundle there.
+
+A scheme can build targets for more than one platform, such as an iOS app and a macOS helper. Each
+target that can't run on the destination builds for its own platform, as it does in `xcodebuild`:
+under an iPhone simulator, the macOS helper still builds for macOS, into `Debug`.
+
 ## The raw escape hatch
 
 `--destination` takes xcodebuild's exact specifier, with no fuzzy matching:

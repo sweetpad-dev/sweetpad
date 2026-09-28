@@ -260,6 +260,7 @@ Hand-built fixtures cover paths no real corpus project exercises:
 | `_synthetic-multiplatform` | One `SDKROOT = auto` target with `SUPPORTED_PLATFORMS = iphoneos iphonesimulator macosx` — the IceCubesApp shape that keeps the SDK-binding regression in CI |
 | `_synthetic-{coredata,assetsym,strcat,intents,cocoapods,macro,tests}` | BSP generated-source / CocoaPods / Swift-macro / XCTest coverage — each a forced `Probe*.swift` referencing a build-time-generated / Pod / macro-expanded symbol |
 | `_synthetic-spm`, `_synthetic-workspace` | SwiftPM package products (`-F …/PackageFrameworks`); multi-project `.xcworkspace` resolution |
+| `_synthetic-destination-platforms` | The SDK one run destination binds each target of a scheme to: an iOS app Designed for iPad or Mac Catalyst under `platform=macOS`, a macOS app beside an iOS app under either destination (`tests/destination_platform_oracle.rs`) |
 | `_synthetic-spm-graph` | One workspace reaching a local package six ways — its own `FileRef` member, the member project's declared package, both of their `.package(path:)` dependencies, and two under a `PBXFileSystemSynchronizedRootGroup` — plus a package carrying a `.swiftpm/xcode` scheme container and one whose only target is an `executableTarget` (`tests/spm_graph_oracle.rs` in sweetpad-core) |
 | `_global` | Per-SDK metadata (`sdks/<sdk>.json`), xcodebuild version banner |
 | `_tuist-src` | Generated tuist examples adding a command-line tool (`mh_execute`) and a standalone dynamic library (`mh_dylib`) to the compiler-args oracle. `16_capture_compiler_args.py --slug _tuist-src` resolves `corpus/_tuist-src`, which is a symlink to `corpus/tuist-fixtures/examples/xcode/generated_command_line_tool_with_dynamic_library`; 16 does not copy `raw/`, so a new version needs the `.xcodeproj` copied in by hand |
@@ -991,6 +992,7 @@ answers to the package name too. `Manifest::scheme_names` in
 | `appletvos` / `appletvsimulator` | ✅ | fixtures/alamofire/.../schemes/Alamofire tvOS |
 | `xros` / `xrsimulator` (visionOS) | ✅ | fixtures/ice-cubes/.../schemes/IceCubesApp (visionOS-Simulator captures) |
 | Mac Catalyst variant | ✅ | fixtures/ice-cubes/.../schemes/IceCubesApp/build-settings/Debug__macOS.json |
+| The SDK a destination binds per target: `platform=macOS` builds an iOS app Designed for iPad (`iphoneos`) or for Mac Catalyst, chosen per scheme; a target that can't run on the destination builds for its own platform | ✅ | fixtures/_synthetic-destination-platforms/xcode-27.0.0/captures/*.json (`tests/destination_platform_oracle.rs`) |
 | DriverKit | ❌ | — |
 
 ### Architectures

@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::build_context::{BuildContext, ResolveQuery};
+use crate::build_context::{BuildContext, MacVariant, ResolveQuery};
 use sweetpad_lib::destination::RunDestination;
 use sweetpad_lib::xcspec::Catalog;
 use sweetpad_lib::{catalog_cache, compiler_args, project, scheme, workspace, xcode};
@@ -676,7 +676,7 @@ fn build_queries(
             queries.push(q);
         }
     }
-    queries
+    let mut queries: Vec<ResolveQuery> = queries
         .into_iter()
         .map(|mut q| {
             if let Some(p) = &opts.derived_data_path {
@@ -687,7 +687,68 @@ fn build_queries(
             }
             q
         })
-        .collect()
+        .collect();
+    if destination.is_some() {
+        bind_destination_sdks(ctx, &mut queries);
+    }
+    queries
+}
+
+/// Bind each query's SDK the way xcodebuild specializes a build's targets
+/// for its one run destination, which [`build_queries`] first binds every
+/// query to. On a macOS destination an iOS target builds for Mac Catalyst or
+/// "Designed for iPad" on `iphoneos` ([`BuildContext::mac_destination_variant`]).
+/// xcodebuild picks that destination for the whole build, from its apps, so a
+/// framework the app embeds builds for `iphoneos` too, although on its own it
+/// would take Catalyst; with no app among the queries, each target's own
+/// variant decides. That destination is an `iphoneos` one to the scheme's
+/// other targets, so a macOS app beside the iOS app builds as it would for an
+/// iOS device (full `ARCHS`, `ONLY_ACTIVE_ARCH = NO`). Any other target that
+/// can't run on the destination builds for its own platform
+/// ([`BuildContext::own_platform_sdk`]).
+fn bind_destination_sdks(ctx: &BuildContext, queries: &mut [ResolveQuery]) {
+    let variants: Vec<Option<MacVariant>> = queries
+        .iter()
+        .map(|q| {
+            if q.destination.as_ref().is_some_and(RunDestination::is_macos) {
+                ctx.mac_destination_variant(q).ok().flatten()
+            } else {
+                None
+            }
+        })
+        .collect();
+    let is_app = |target: &str| {
+        ctx.project.targets.iter().any(|t| {
+            t.name == target
+                && t.product_type.as_deref() == Some("com.apple.product-type.application")
+        })
+    };
+    let apps: Vec<MacVariant> = queries
+        .iter()
+        .zip(&variants)
+        .filter(|(q, _)| is_app(&q.target))
+        .filter_map(|(_, v)| *v)
+        .collect();
+    let designed_app = !apps.is_empty() && apps.iter().all(|v| *v == MacVariant::DesignedForIpad);
+    for (q, variant) in queries.iter_mut().zip(variants) {
+        if let Some(variant) = variant {
+            let designed = if apps.is_empty() {
+                variant == MacVariant::DesignedForIpad
+            } else {
+                designed_app
+            };
+            if designed {
+                q.sdk = "iphoneos".into();
+            }
+            continue;
+        }
+        if designed_app && let Some(destination) = &mut q.destination {
+            destination.platform = "iphoneos".into();
+        }
+        if let Ok(Some(sdk)) = ctx.own_platform_sdk(q) {
+            q.sdk = sdk;
+        }
+    }
 }
 
 #[cfg(test)]
