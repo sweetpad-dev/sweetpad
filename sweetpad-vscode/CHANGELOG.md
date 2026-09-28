@@ -2,6 +2,36 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.18] - 2026-09-28
+
+- Apply build settings from `sweetpad.build.args` to autocomplete
+- List custom schemes saved in a Swift package's `.swiftpm` folder
+- Restart the Swift language server when the DerivedData location changes
+- Fix Run launching another app when build args rename the product
+- Fix Run failing for targets without a scheme file
+- Fix scheme launch arguments and environment not matching Xcode
+- Fix simulators listed as physical devices on Xcode 27
+- Fix the debugger attaching to another app with a similar name
+- Fix device debugging for apps with a space in their name
+- Fix hot reload never connecting on sandboxed macOS apps
+- Fix iOS simulators listed under Other in the destination picker
+- Fix task destinations with arch or name running elsewhere
+- Fix `sweetpad.build.args` settings and flags being misread
+- Fix autocomplete and Run ignoring `-derivedDataPath` in `sweetpad.build.args`
+- Fix autocomplete ignoring `-configuration` in `sweetpad.build.args`
+- Fix autocomplete missing frameworks when search paths omit `$(inherited)`
+- Fix relative DerivedData paths in symlinked workspace folders
+- Fix code navigation for projects opened through a symlinked path
+- Fix code navigation with a custom Derived Data location
+- Fix `.build` folders appearing inside opened Swift packages
+- Fix the project picker offering projects from Pods and node_modules
+- Fix switching worktrees opening the project instead of its workspace
+- Fix schemes listed that Xcode doesn't offer
+- Fix scheme lookups reading other users' or other projects' scheme files
+- Fix the CLI bridge failing when TMPDIR is long
+- Fix agent commands using stale simulator state
+- Fix agent app path and bundle id lookups picking the wrong target
+
 ## [0.2.17] - 2026-09-26
 
 - Add support for Xcode 27.2's `project.xcproj` project format
