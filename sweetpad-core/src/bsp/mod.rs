@@ -553,7 +553,7 @@ impl ResolvedConfig {
             configuration: flags
                 .get("configuration")
                 .cloned()
-                .or_else(|| pull("configuration"))
+                .or_else(|| configuration_of(value))
                 .unwrap_or_else(|| "Debug".into()),
             scheme: flags.get("scheme").cloned().or_else(|| pull("scheme")),
             sdk: flags.get("sdk").cloned(),
@@ -619,20 +619,40 @@ fn config_base(value: &Value, path: &Path) -> PathBuf {
 /// without it, so a half-typed edit doesn't cost autocomplete the settings
 /// before it.
 fn command_line_of(value: &Value, base: &Path) -> (CommandLine, Option<String>) {
-    let args: Vec<String> = value
-        .get("buildArgs")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(str::to_string)
-        .collect();
+    let args = build_args(value);
     let warning = xcodebuild_args::dangling_flag(&args).map(|flag| {
         format!(
             "ignoring '{flag}' at the end of buildArgs: it has no value, and xcodebuild refuses it"
         )
     });
     (CommandLineSettings::of(&args, Some(base)).into(), warning)
+}
+
+/// A `bsp.json`'s `buildArgs`, the extension's `sweetpad.build.args`.
+fn build_args(value: &Value) -> Vec<String> {
+    value
+        .get("buildArgs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect()
+}
+
+/// The configuration the extension's builds use: a `-configuration` in
+/// `buildArgs` replaces the one the extension picks on their command line, so
+/// it wins over the file's `configuration`, and the index resolves the
+/// configuration the build compiles.
+fn configuration_of(value: &Value) -> Option<String> {
+    xcodebuild_args::last_value(&build_args(value), "-configuration")
+        .map(str::to_string)
+        .or_else(|| {
+            value
+                .get("configuration")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
 }
 
 impl Server {
@@ -830,7 +850,7 @@ impl Server {
         let Ok(value) = serde_json::from_str::<Value>(&raw) else {
             return;
         };
-        let configuration = value.get("configuration").and_then(Value::as_str);
+        let configuration = configuration_of(&value);
         let scheme = value
             .get("scheme")
             .and_then(Value::as_str)
@@ -839,7 +859,7 @@ impl Server {
         if let Some(warning) = &warning {
             self.log(warning);
         }
-        self.apply_config(configuration, scheme, command_line);
+        self.apply_config(configuration.as_deref(), scheme, command_line);
         let socket = value
             .get("socket")
             .and_then(Value::as_str)
@@ -2486,6 +2506,61 @@ mod tests {
             ),
             "{logged}"
         );
+    }
+
+    /// A `-configuration` in `buildArgs` replaces the one the extension picks
+    /// on its builds' command line, so the index resolves that configuration,
+    /// at startup and when the file changes, and the prepare build takes it.
+    #[test]
+    fn a_configuration_in_build_args_is_the_one_the_index_resolves() {
+        let project = format!(
+            "{}/fixtures/_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj",
+            env!("SWEETPAD_LIB_DIR")
+        );
+        let scratch = crate::scratch::ScratchDir::new("sweetpad-bsp-json-config").unwrap();
+        let config = scratch.join("bsp.json");
+        let write = |build_args: &[&str]| {
+            let body = serde_json::json!({
+                "workspacePath": *scratch,
+                "projectPath": project,
+                "configuration": "Debug",
+                "buildArgs": build_args,
+            });
+            std::fs::write(&config, body.to_string()).unwrap();
+        };
+        write(&["-quiet", "-configuration", "Release"]);
+        let sent = Sent::default();
+        let server = Server::build(
+            ResolvedConfig::from_file(&config, &BTreeMap::new()).unwrap(),
+            Some(config.clone()),
+            Arc::new(AtomicU8::new(LogLevel::Info as u8)),
+            CommandLine::default(),
+            sent.writer(),
+        )
+        .unwrap();
+        let resolved = |server: &Server| {
+            let opts = server.options_for("SweetpadCIMac", "macosx", "arm64");
+            let settings = crate::build_settings::resolve_build_settings(&opts)
+                .unwrap()
+                .pop()
+                .unwrap()
+                .settings;
+            (opts.configuration, settings["CONFIGURATION"].clone())
+        };
+        assert_eq!(resolved(&server), ("Release".into(), "Release".into()));
+        let (cmd, _) = server.prepare_command("SweetpadCIMac");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            args.windows(2).any(|w| w == ["-configuration", "Release"]),
+            "{args:?}"
+        );
+
+        write(&["-quiet"]);
+        server.reload_from_file(&config);
+        assert_eq!(resolved(&server), ("Debug".into(), "Debug".into()));
     }
 
     #[test]

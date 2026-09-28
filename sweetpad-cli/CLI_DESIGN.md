@@ -3685,7 +3685,10 @@ other than the one `bsp.json` does. So the extension writes that setting into
 `xcodebuild_args`). A relative `-xcconfig` is read against `workspacePath`,
 where the extension's builds run `xcodebuild`, by that folder's physical path,
 as `xcodebuild` reads it: through a symlinked folder, `../ci.xcconfig` is the
-real folder's sibling. The
+real folder's sibling. A `-configuration` in `buildArgs` replaces the
+extension's own on its builds' command line, so `serve` resolves that
+configuration instead of `bsp.json`'s `configuration`, at startup and when the
+file changes. The
 extension's builds read the setting with a copy of core's `VALUE_FLAGS`
 (`XCODEBUILD_VALUE_FLAGS`), and a spec fails when the two differ, so a build
 and the index agree on which argument is a flag's value: `-xcconfig -quiet`
