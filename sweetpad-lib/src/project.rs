@@ -2886,24 +2886,10 @@ pub fn built_in_settings(
         );
     }
 
-    // --- Synthesized search paths ------------------------------------------
-    // Xcode 16+ appends BUILT_PRODUCTS_DIR-relative entries with a trailing
-    // space, which is what gets surfaced in `-showBuildSettings`. Xcode 15.x
-    // never synthesized these — its captures report the keys only when the
-    // user authored a value (or, for LIBRARY_SEARCH_PATHS on a test bundle,
-    // via the test recipe below).
-    if !legacy_xcode15 {
-        push(
-            "HEADER_SEARCH_PATHS",
-            "$(BUILT_PRODUCTS_DIR)/include ".into(),
-        );
-        push("LIBRARY_SEARCH_PATHS", "$(BUILT_PRODUCTS_DIR) ".into());
-        push("REZ_SEARCH_PATHS", "$(BUILT_PRODUCTS_DIR) ".into());
-        push("FRAMEWORK_SEARCH_PATHS", "$(BUILT_PRODUCTS_DIR) ".into());
-    }
-    // (XCTest bundles additionally gain `$(inherited)
-    // $(TEST_LIBRARY_SEARCH_PATHS)` — but ABOVE the user layers, so it lives
-    // in [`built_in_overrides`].)
+    // (The products-dir search paths Xcode 16+ puts in front of
+    // HEADER/LIBRARY/REZ/FRAMEWORK_SEARCH_PATHS, and the XCTest bundles'
+    // `$(inherited) $(TEST_LIBRARY_SEARCH_PATHS)`, sit ABOVE the user layers,
+    // so they live in [`built_in_overrides`].)
     // `TEST_FRAMEWORK_SEARCH_PATHS` points at the platform-bundled XCTest
     // frameworks. macOS gets only the platform-level path; every other
     // platform (device OR simulator) also gets the SDK-internal
@@ -3097,6 +3083,27 @@ pub fn built_in_overrides(
             condition: None,
         });
     };
+    // Xcode 16+ puts the products dir in front of these search paths above
+    // every user layer, so a value authored without `$(inherited)` keeps it:
+    // on Xcode 27, an `-xcconfig` setting `FRAMEWORK_SEARCH_PATHS =
+    // $(SRCROOT)/Vendor` resolves to `<BUILT_PRODUCTS_DIR> <SRCROOT>/Vendor`.
+    // With nothing authored the value is the products dir and a trailing
+    // space, which is what `-showBuildSettings` surfaces. Xcode 15.x never
+    // added these: its captures report the keys only when the user authored
+    // a value (or, for LIBRARY_SEARCH_PATHS on a test bundle, via the test
+    // recipe below).
+    if !legacy_xcode15 {
+        push(
+            "HEADER_SEARCH_PATHS",
+            "$(BUILT_PRODUCTS_DIR)/include $(inherited)",
+        );
+        push("LIBRARY_SEARCH_PATHS", "$(BUILT_PRODUCTS_DIR) $(inherited)");
+        push("REZ_SEARCH_PATHS", "$(BUILT_PRODUCTS_DIR) $(inherited)");
+        push(
+            "FRAMEWORK_SEARCH_PATHS",
+            "$(BUILT_PRODUCTS_DIR) $(inherited)",
+        );
+    }
     // Xcode 15.x reported `ENABLE_PREVIEWS = YES` for previews-capable
     // products in optimized (Release) builds too; the unoptimized-only flip
     // arrived with Xcode 16.

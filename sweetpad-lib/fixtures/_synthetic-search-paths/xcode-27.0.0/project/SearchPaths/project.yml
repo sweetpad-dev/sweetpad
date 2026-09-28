@@ -1,0 +1,38 @@
+name: SearchPaths
+options:
+  bundleIdPrefix: dev.sweetpad.fixture
+  deploymentTarget:
+    macOS: "14.0"
+# Search paths authored without `$(inherited)`: xcodebuild still puts the
+# products dir in front of them, so `Tool` finds the `Kit` framework it
+# depends on. `Kit` authors none, and reports the products dir alone.
+targets:
+  Kit:
+    type: framework
+    platform: macOS
+    sources: [Sources/Kit]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.fixture.Kit
+        CODE_SIGNING_ALLOWED: "NO"
+        SWIFT_VERSION: "6.0"
+  Tool:
+    type: tool
+    platform: macOS
+    sources: [Sources/App]
+    dependencies:
+      - target: Kit
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: "NO"
+        SWIFT_VERSION: "6.0"
+        FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/Vendor"
+        HEADER_SEARCH_PATHS: "$(SRCROOT)/include"
+        LIBRARY_SEARCH_PATHS: "$(SRCROOT)/lib"
+schemes:
+  Tool:
+    build:
+      targets:
+        Kit: all
+        Tool: all
