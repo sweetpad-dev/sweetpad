@@ -23,6 +23,7 @@ pub mod derived_data;
 pub mod destination;
 pub mod discover;
 mod file_cache;
+pub mod host;
 pub mod membership;
 pub mod membership_pbxproj;
 pub mod membership_xcproj;

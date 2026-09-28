@@ -282,12 +282,15 @@ pub(crate) fn project_scope(ctx: &Context) -> Result<Scope, CliError> {
     scope(ctx, false)
 }
 
-/// `$HOME`, which every DerivedData location is found from.
+/// The account's home, which every DerivedData location is found from, as
+/// `xcodebuild` finds it ([`sweetpad_lib::host::home`]): a redirected `$HOME`
+/// doesn't move the DerivedData a build writes.
 fn home() -> Result<String, CliError> {
-    std::env::var_os("HOME")
-        .filter(|home| !home.is_empty())
+    sweetpad_lib::host::home()
         .map(|home| home.to_string_lossy().into_owned())
-        .ok_or_else(|| CliError::new("$HOME is not set; cannot locate DerivedData"))
+        .ok_or_else(|| {
+            CliError::new("no home directory for this account; cannot locate DerivedData")
+        })
 }
 
 /// What a command acts on: `--all` is the whole app-wide store — just

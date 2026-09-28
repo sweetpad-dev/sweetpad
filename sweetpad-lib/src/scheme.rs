@@ -240,18 +240,20 @@ pub fn parse_file(path: &Path) -> Result<Scheme, Error> {
     from_element(&root)
 }
 
-/// The login user whose `xcuserdata` Xcode would consult, or `None` when the
-/// process has no usable identity (then we fall back to scanning every user's
-/// directory rather than seeing no per-user schemes at all).
+/// The login user whose `xcuserdata` Xcode would consult: the account's
+/// name from the user database, as `xcodebuild` reads it, whatever `$USER`
+/// says ([`crate::host::user`]). `None` when the process has no usable
+/// identity (then we fall back to scanning every user's directory rather
+/// than seeing no per-user schemes at all).
 fn detected_user() -> Option<String> {
-    std::env::var("USER").ok().filter(|u| !u.is_empty())
+    crate::host::user()
 }
 
 /// Test-only: a username whose `xcuserdata` directory is visible through the
-/// public scheme-discovery APIs on this host — the detected `$USER` when set,
-/// any fixed name otherwise (no identity → every user dir is scanned). Tests
-/// that create per-user scheme files use this so they pass both on developer
-/// machines (where `$USER` is set and scoping applies) and in bare containers.
+/// public scheme-discovery APIs on this host — the account's name when there
+/// is one, any fixed name otherwise (no identity → every user dir is
+/// scanned). Tests that create per-user scheme files use this so they pass
+/// both on developer machines (where scoping applies) and in bare containers.
 #[cfg(test)]
 pub(crate) fn visible_user() -> String {
     detected_user().unwrap_or_else(|| "tester".into())
@@ -262,8 +264,9 @@ pub(crate) fn visible_user() -> String {
 /// then the per-user `xcuserdata/<user>.xcuserdatad/xcschemes`. Xcode and
 /// xcodebuild only consult the *current* user's directory — a committed
 /// `xcuserdata/alice.xcuserdatad` scheme is invisible to bob — so we scope to
-/// `$USER` when the identity is known, and scan every user directory (sorted,
-/// for a stable order) only as a best-effort fallback when it isn't.
+/// the account's name when the identity is known, and scan every user
+/// directory (sorted, for a stable order) only as a best-effort fallback when
+/// it isn't.
 fn scheme_dirs(container: &Path) -> Vec<PathBuf> {
     scheme_dirs_for_user(container, detected_user().as_deref())
 }

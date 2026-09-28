@@ -170,6 +170,7 @@ fn sweetpad_with(home: &Path, endpoint: &str, env: &[(&str, &str)], args: &[&str
         .args(args)
         .current_dir(home)
         .env("HOME", home)
+        .env("CFFIXED_USER_HOME", home)
         .env("XDG_STATE_HOME", home)
         .env("XDG_CONFIG_HOME", home)
         .env("XDG_CACHE_HOME", home)

@@ -375,8 +375,8 @@ fn read_xcode_pref(home: &Path) -> Option<PathBuf> {
 /// its embedded `project.xcworkspace`, a Swift package in
 /// `.swiftpm/xcode/package.xcworkspace`, and a `.xcworkspace` holds them
 /// directly. Xcode writes one directory per user, so read whichever matches
-/// `$USER` and fall back to a lone directory when the name doesn't line up (a
-/// home moved between accounts).
+/// the account's name ([`crate::host::user`]) and fall back to a lone
+/// directory when the name doesn't line up (a home moved between accounts).
 fn read_workspace_settings(container: &Path) -> WorkspaceSettings {
     let base = match container.extension().and_then(OsStr::to_str) {
         Some("xcworkspace") => container.to_path_buf(),
@@ -398,8 +398,7 @@ fn read_workspace_settings(container: &Path) -> WorkspaceSettings {
 /// The `<user>.xcuserdatad` directory to read: the current user's when it
 /// exists, else the only one present.
 fn user_data_dir(xcuserdata: &Path) -> Option<PathBuf> {
-    let mine = std::env::var_os("USER")
-        .map(|user| xcuserdata.join(format!("{}.xcuserdatad", user.to_string_lossy())));
+    let mine = crate::host::user().map(|user| xcuserdata.join(format!("{user}.xcuserdatad")));
     if let Some(mine) = mine
         && mine.is_dir()
     {

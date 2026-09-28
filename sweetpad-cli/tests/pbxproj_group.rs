@@ -21,6 +21,7 @@ fn run(args: &[&str], home: &Path) -> std::process::Output {
         .args(args)
         .current_dir(home)
         .env("HOME", home)
+        .env("CFFIXED_USER_HOME", home)
         .env("XDG_STATE_HOME", home)
         .env("XDG_CONFIG_HOME", home)
         .env("XDG_CACHE_HOME", home)

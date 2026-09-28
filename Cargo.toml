@@ -23,9 +23,13 @@ serde_json = "1"
 # Unicode NFD for the DerivedData path hash (xcode_hash); UAX #15 with a
 # de-facto crate — not worth hand-rolling the decomposition tables.
 unicode-normalization = "0.1"
+# The system calls: the account's home, name and cache directory, read the
+# way Xcode's tools read them (getpwuid_r, confstr), and the raw-input flags
+# the CLI's interactive rebuild session flips.
+libc = "0.2"
 # CLI-only: clap derives the resource-first command tree, help, completions;
 # serde+toml read/write the XDG config & state files; dialoguer is the TTY
-# picker; libc flips raw-input flags for the interactive rebuild session.
+# picker.
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 dialoguer = { version = "0.11", default-features = false, features = ["fuzzy-select"] }
@@ -35,7 +39,6 @@ toml = "0.8"
 # tree), for the one config write: `feedback off|on` keeps the rest of the
 # user's config.toml, comments included.
 toml_edit = "0.22"
-libc = "0.2"
 # `feedback submit`'s one HTTPS POST. native-tls is Security.framework on
 # macOS, which keeps this to minreq plus the Security/CoreFoundation bindings
 # and their tempfile dependency. `proxy` adds only `base64`, for a proxy's

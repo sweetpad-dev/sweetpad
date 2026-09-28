@@ -9,6 +9,7 @@ publish = false
 description = "Interface-agnostic utilities for Xcode project files (pbxproj, xcconfig, schemes) and build-settings resolution."
 
 [dependencies]
+libc.workspace = true
 serde_json.workspace = true
 unicode-normalization.workspace = true
 

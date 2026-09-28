@@ -43,7 +43,7 @@ fn sweetpad(args: &[&str], cwd: &Path, home: &Path, path: Option<&Path>) -> Outp
     cmd.args(args)
         .current_dir(cwd)
         .env("HOME", home)
-        .env("USER", USER)
+        .env("CFFIXED_USER_HOME", home)
         .env("XDG_STATE_HOME", home)
         .env("XDG_CONFIG_HOME", home)
         .env("XDG_CACHE_HOME", home)
@@ -63,8 +63,11 @@ fn sweetpad(args: &[&str], cwd: &Path, home: &Path, path: Option<&Path>) -> Outp
     cmd.output().expect("failed to run the sweetpad binary")
 }
 
-/// The account name the fake home's per-user Xcode settings are filed under.
-const USER: &str = "sweetpad-test";
+/// The account name per-user Xcode settings are filed under: the one
+/// `xcodebuild` reads them for, from the user database.
+fn user() -> String {
+    sweetpad_lib::host::user().expect("the test runs as an account with a name")
+}
 
 /// Xcode's Settings → Locations → Derived Data, set to `location` in the fake
 /// home's preferences.
@@ -83,10 +86,13 @@ fn set_app_location(home: &Path, location: &Path) {
 }
 
 /// A project's own Derived Data setting, as Xcode writes it into the
-/// project's per-user settings for [`USER`]: `style` is `AbsolutePath` or
+/// project's per-user settings for [`user`]: `style` is `AbsolutePath` or
 /// `WorkspaceRelativePath`.
 fn set_project_location(project: &Path, style: &str, location: &str) {
-    let dir = project.join(format!("project.xcworkspace/xcuserdata/{USER}.xcuserdatad"));
+    let dir = project.join(format!(
+        "project.xcworkspace/xcuserdata/{}.xcuserdatad",
+        user()
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
         dir.join("WorkspaceSettings.xcsettings"),

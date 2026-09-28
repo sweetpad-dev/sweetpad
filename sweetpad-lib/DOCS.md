@@ -164,8 +164,12 @@ another.
   path in a temp directory of its own.
 - `cargo test` builds nothing into the user's
   `~/Library/Developer/Xcode/DerivedData`. A spawned `bsp-server` that
-  warms up after `build/initialized` gets a `HOME` in `CARGO_TARGET_TMPDIR`,
-  which the DerivedData locator follows, or a `--derived-data-path`.
+  warms up after `build/initialized` gets a `CFFIXED_USER_HOME` in
+  `CARGO_TARGET_TMPDIR`, which the DerivedData locator and `xcodebuild` both
+  follow, or a `--derived-data-path`. `HOME` doesn't move DerivedData:
+  `xcodebuild` reads the account's home from the user database, and so does
+  `host::home`. A spawned `sweetpad` whose `HOME` a test redirects gets the
+  same `CFFIXED_USER_HOME`.
 - A test makes its fixtures in a directory that goes when the test ends, a
   failed one included. There is one such guard, `scratch::ScratchDir` in this
   crate, which sweetpad-core re-exports. This crate's tests and the CLI's take

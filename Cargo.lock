@@ -759,6 +759,7 @@ dependencies = [
 name = "sweetpad-lib"
 version = "0.1.10"
 dependencies = [
+ "libc",
  "serde_json",
  "unicode-normalization",
 ]

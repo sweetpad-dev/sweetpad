@@ -109,6 +109,7 @@ fn command_in(home: &Path, cwd: &Path, args: &[&str]) -> Command {
     cmd.args(args)
         .current_dir(cwd)
         .env("HOME", home)
+        .env("CFFIXED_USER_HOME", home)
         .env("XDG_STATE_HOME", home)
         .env("XDG_CONFIG_HOME", home)
         .env("XDG_CACHE_HOME", home)
@@ -1218,10 +1219,17 @@ impl RecordingProject {
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_sweetpad"))
-            .args(args)
+        self.command(args).output().unwrap()
+    }
+
+    /// `sweetpad args` in the project, with the stub first on `PATH` and
+    /// every home it reads, Xcode's included, in the scratch home.
+    fn command(&self, args: &[&str]) -> Command {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_sweetpad"));
+        cmd.args(args)
             .current_dir(&self.cwd)
             .env("HOME", &self.home)
+            .env("CFFIXED_USER_HOME", &self.home)
             .env("XDG_STATE_HOME", &self.home)
             .env("XDG_CONFIG_HOME", &self.home)
             .env("XDG_CACHE_HOME", &self.home)
@@ -1233,9 +1241,8 @@ impl RecordingProject {
                     self.cwd.join("bin").display(),
                     std::env::var("PATH").unwrap_or_default()
                 ),
-            )
-            .output()
-            .unwrap()
+            );
+        cmd
     }
 
     /// The arguments the stub xcodebuild was last run with.
@@ -1338,6 +1345,63 @@ fn settings_show_previews_a_typed_tail() {
     assert_eq!(show("PRODUCT_NAME", &["PRODUCT_NAME=Beta"]), "Beta");
     assert_eq!(show("SWEETPAD_FROM", &[]), "a");
     assert_eq!(show("SWEETPAD_FROM", &["-xcconfig", "b.xcconfig"]), "b");
+}
+
+/// `xcodebuild` finds the account's home and cache directory from the
+/// system: a redirected `HOME` doesn't move the DerivedData it builds into,
+/// a custom `TMPDIR` doesn't move its `CACHE_ROOT`, and `CFFIXED_USER_HOME`
+/// moves the home. `settings show` places them the same way, so the product
+/// sweetpad looks for is the one the build wrote.
+#[test]
+fn settings_show_finds_the_home_and_cache_dir_as_xcodebuild_does() {
+    let project = RecordingProject::new("settings-home", "");
+    let show = |key: &str, fixed_home: bool| {
+        let mut cmd = project.command(&[
+            "settings",
+            "show",
+            "--scheme",
+            "SweetpadCIMac",
+            "--configuration",
+            "Debug",
+            "--non-interactive",
+            "--key",
+            key,
+        ]);
+        cmd.env("TMPDIR", &*project.home);
+        if !fixed_home {
+            cmd.env_remove("CFFIXED_USER_HOME");
+        }
+        let out = cmd.output().unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).unwrap().trim().to_string()
+    };
+    let fake = sweetpad_lib::project::without_private_root(&project.home);
+    let fake = fake.to_str().unwrap();
+
+    let build_dir = show("BUILD_DIR", false);
+    assert!(!build_dir.starts_with(fake), "{build_dir}");
+    if std::env::var_os("CFFIXED_USER_HOME").is_none() {
+        let home = sweetpad_lib::host::home().unwrap();
+        let store = format!("{}/Library/Developer/Xcode/DerivedData/", home.display());
+        assert!(build_dir.starts_with(&store), "{build_dir}");
+    }
+    let fixed = show("BUILD_DIR", true);
+    let store = format!("{fake}/Library/Developer/Xcode/DerivedData/");
+    assert!(fixed.starts_with(&store), "{fixed}");
+    assert_eq!(show("HOME", true), fake);
+
+    let cache_root = show("CACHE_ROOT", false);
+    assert!(!cache_root.starts_with(fake), "{cache_root}");
+    let cache_dir = sweetpad_lib::host::darwin_user_cache_dir().unwrap();
+    let tools = format!(
+        "{}/com.apple.DeveloperTools/",
+        cache_dir.to_string_lossy().trim_end_matches('/')
+    );
+    assert!(cache_root.starts_with(&tools), "{cache_root}");
 }
 
 /// `clean` takes the file's arguments, which can move the products, and

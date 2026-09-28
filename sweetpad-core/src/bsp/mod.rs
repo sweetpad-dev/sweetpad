@@ -990,9 +990,13 @@ impl Server {
     /// The folder is keyed the way `xcodebuild` keys the one it writes
     /// ([`derived_data::ContainerKey`]): a root reached through a symlink, or
     /// spelled `/private/tmp/…`, shares the folder of its standardized path.
-    /// `None` without a `$HOME` or an override to find it from.
+    /// The home is the account's, as `xcodebuild` finds it, whatever `$HOME`
+    /// says ([`sweetpad_lib::host::home`]). `None` without a home or an
+    /// override to find it from.
     fn derived_data(&self) -> Option<derived_data::Locations> {
-        let home = std::env::var("HOME").unwrap_or_default();
+        let home = sweetpad_lib::host::home()
+            .map(|home| home.to_string_lossy().into_owned())
+            .unwrap_or_default();
         if home.is_empty() && self.derived_data_path.is_none() {
             return None;
         }
@@ -2254,7 +2258,7 @@ mod tests {
         assert_eq!(server.project_path, project);
         assert_eq!(server.projects, std::slice::from_ref(&project));
         assert!(!server.is_workspace());
-        if std::env::var("HOME").is_ok_and(|home| !home.is_empty()) {
+        if sweetpad_lib::host::home().is_some() {
             let store = server.initialize()["data"]["indexStorePath"]
                 .as_str()
                 .unwrap()

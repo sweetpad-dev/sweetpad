@@ -92,6 +92,7 @@ impl Fixture {
         cmd.args(args)
             .current_dir(&self.root)
             .env("HOME", &self.root)
+            .env("CFFIXED_USER_HOME", &self.root)
             .env("XDG_STATE_HOME", &self.root)
             .env("XDG_CONFIG_HOME", &self.root)
             .env("XDG_CACHE_HOME", &self.root)

@@ -2848,8 +2848,7 @@ pub fn built_in_settings(
     // version segment from the catalog's recorded Xcode when one is attached
     // (so a capture resolves against ITS Xcode, not the host's) and fall
     // back to the active install otherwise. The cache dir is host state —
-    // read from `$DARWIN_USER_CACHE_DIR`, `$TMPDIR/../C/`, or the pinned
-    // [`HostOverride::darwin_user_cache`].
+    // `confstr`'s answer, or the pinned [`HostOverride::darwin_user_cache`].
     let darwin_cache = darwin_user_cache_dir();
     let xcode_build = match (xcode_version, xcode_build_version) {
         (Some(version), Some(build)) => {
@@ -3578,12 +3577,21 @@ pub(crate) fn host_arch() -> String {
     }
 }
 
+/// The account's login name, as `xcodebuild` reports it in `USER`: from the
+/// user database, not `$USER` ([`crate::host::user`]).
 fn host_user() -> String {
-    host_override(|o| o.user.as_ref()).unwrap_or_else(|| std::env::var("USER").unwrap_or_default())
+    host_override(|o| o.user.as_ref())
+        .or_else(crate::host::user)
+        .unwrap_or_default()
 }
 
+/// The account's home, which `HOME` reports and DerivedData hangs off: from
+/// the user database or `$CFFIXED_USER_HOME`, not `$HOME`
+/// ([`crate::host::home`]).
 fn host_home() -> String {
-    host_override(|o| o.home.as_ref()).unwrap_or_else(|| std::env::var("HOME").unwrap_or_default())
+    host_override(|o| o.home.as_ref())
+        .or_else(|| crate::host::home().map(|home| home.to_string_lossy().into_owned()))
+        .unwrap_or_default()
 }
 
 #[must_use]
@@ -3940,32 +3948,19 @@ fn is_not_simulator_for(sdk_base: &str, destination: Option<&RunDestination>) ->
     }
 }
 
-/// Read `$DARWIN_USER_CACHE_DIR` (which Xcode sets from
-/// `confstr(_CS_DARWIN_USER_CACHE_DIR)`). Fall back to `$TMPDIR` with the
-/// final `T/` segment swapped for `C/`, which is how macOS lays out per-
-/// user caches. Returns a trailing-slash-terminated string so callers
-/// can concatenate sub-paths directly.
+/// The per-user cache dir `CCHROOT` / `CACHE_ROOT` hang off, as
+/// `xcodebuild` finds it: `confstr(_CS_DARWIN_USER_CACHE_DIR)`, which a
+/// custom `$TMPDIR` doesn't move ([`crate::host::darwin_user_cache_dir`]).
+/// Returns a trailing-slash-terminated string so callers can concatenate
+/// sub-paths directly.
 fn darwin_user_cache_dir() -> String {
     if let Some(pinned) = host_override(|o| o.darwin_user_cache.as_ref()) {
         return ensure_trailing_slash(&pinned);
     }
-    if let Ok(v) = std::env::var("DARWIN_USER_CACHE_DIR")
-        && !v.is_empty()
-    {
-        return ensure_trailing_slash(&v);
-    }
-    if let Ok(tmp) = std::env::var("TMPDIR")
-        && !tmp.is_empty()
-    {
-        // `$TMPDIR` is usually `/var/folders/<x>/<y>/T/`; swap the last
-        // segment to `C/` to get the cache root.
-        let trimmed = tmp.trim_end_matches('/');
-        if let Some(stripped) = trimmed.strip_suffix("/T") {
-            return format!("{stripped}/C/");
-        }
-        return ensure_trailing_slash(&tmp);
-    }
-    "/tmp/".into()
+    crate::host::darwin_user_cache_dir().map_or_else(
+        || "/tmp/".into(),
+        |dir| ensure_trailing_slash(&dir.to_string_lossy()),
+    )
 }
 
 fn ensure_trailing_slash(s: &str) -> String {

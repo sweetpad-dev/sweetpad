@@ -81,6 +81,7 @@ fn sigterm_ends_a_log_follow_started_with_sigint_ignored() {
     cmd.args(["app", "logs", "--project", proj.to_str().unwrap()])
         .current_dir(&cwd)
         .env("HOME", &home)
+        .env("CFFIXED_USER_HOME", &home)
         .env("XDG_STATE_HOME", &home)
         .env("XDG_CONFIG_HOME", &home)
         .env("PATH", &path_env)

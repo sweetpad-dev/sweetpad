@@ -27,6 +27,7 @@ fn sweetpad_with_tmpdir(args: &[&str], cwd: &Path, home: &Path, tmpdir: &Path) -
         .args(args)
         .current_dir(cwd)
         .env("HOME", home)
+        .env("CFFIXED_USER_HOME", home)
         .env("XDG_STATE_HOME", home)
         .env("XDG_CONFIG_HOME", home)
         .env("XDG_CACHE_HOME", home)

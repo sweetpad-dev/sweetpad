@@ -51,6 +51,7 @@ fn streaming_command_exits_after_the_tool_does() {
             .args(&args)
             .current_dir(&cwd)
             .env("HOME", &home)
+            .env("CFFIXED_USER_HOME", &home)
             .env("XDG_STATE_HOME", &home)
             .env("XDG_CONFIG_HOME", &home)
             .env("PATH", &path_env)

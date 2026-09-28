@@ -35,6 +35,7 @@ fn sweetpad_command(args: &[&str], cwd: &Path, home: &Path, bin: &Path) -> Comma
     cmd.args(args)
         .current_dir(cwd)
         .env("HOME", home)
+        .env("CFFIXED_USER_HOME", home)
         .env("XDG_STATE_HOME", home)
         .env("XDG_CONFIG_HOME", home)
         .env("XDG_CACHE_HOME", home)

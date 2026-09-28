@@ -29,15 +29,17 @@ fn b_swift_uri() -> String {
 /// A `bsp-server` command that keeps what a session writes in Cargo's scratch
 /// space for integration tests. The server resolves against the active Xcode,
 /// and the parsed catalog it caches would otherwise land in the user's
-/// `~/.cache/sweetpad`. Its `HOME` is there too: the DerivedData locator and
-/// the `xcodebuild` a prepare runs both follow it, so what the warm-up after
-/// `build/initialized` builds stays out of the user's DerivedData.
+/// `~/.cache/sweetpad`. Its home is there too, as `CFFIXED_USER_HOME`: the
+/// DerivedData locator and the `xcodebuild` a prepare runs both follow that,
+/// not `HOME`, so what the warm-up after `build/initialized` builds stays out
+/// of the user's DerivedData.
 fn bsp_server() -> Command {
     let home = concat!(env!("CARGO_TARGET_TMPDIR"), "/home");
     std::fs::create_dir_all(home).unwrap();
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_bsp-server"));
     cmd.env("SWEETPAD_CACHE_DIR", env!("CARGO_TARGET_TMPDIR"))
-        .env("HOME", home);
+        .env("HOME", home)
+        .env("CFFIXED_USER_HOME", home);
     cmd
 }
 
@@ -541,7 +543,10 @@ fn bsp_index_store_of_a_symlinked_root_is_the_real_paths_folder() {
         &messages,
         &through_link.display().to_string(),
         &[],
-        &[("HOME", home.as_path())],
+        &[
+            ("HOME", home.as_path()),
+            ("CFFIXED_USER_HOME", home.as_path()),
+        ],
     );
     let store = result_for(&frames, 1)
         .and_then(|init| init.pointer("/data/indexStorePath"))
@@ -591,7 +596,15 @@ fn bsp_index_store_follows_xcodes_derived_data_location() {
         json!({"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}),
         json!({"jsonrpc":"2.0","method":"build/exit"}),
     ];
-    let frames = run_session_env(&messages, &project(), &[], &[("HOME", home.as_path())]);
+    let frames = run_session_env(
+        &messages,
+        &project(),
+        &[],
+        &[
+            ("HOME", home.as_path()),
+            ("CFFIXED_USER_HOME", home.as_path()),
+        ],
+    );
     let store = result_for(&frames, 1)
         .and_then(|init| init.pointer("/data/indexStorePath"))
         .and_then(Value::as_str)

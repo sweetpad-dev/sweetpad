@@ -590,13 +590,10 @@ fn unknown_scheme_with_no_matching_target_errors() {
 }
 
 /// A username whose `xcuserdata` is visible to scheme discovery on this host:
-/// the detected `$USER` when set (discovery scopes to the current user), any
-/// fixed name otherwise (no identity → every user dir is scanned).
+/// the account's name when there is one (discovery scopes to it), any fixed
+/// name otherwise (no identity → every user dir is scanned).
 fn visible_user() -> String {
-    std::env::var("USER")
-        .ok()
-        .filter(|u| !u.is_empty())
-        .unwrap_or_else(|| "tester".into())
+    sweetpad_lib::host::user().unwrap_or_else(|| "tester".into())
 }
 
 #[test]

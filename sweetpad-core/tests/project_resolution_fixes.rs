@@ -326,9 +326,9 @@ fn scheme_xml(blueprint: &str) -> String {
 }
 
 /// The per-user scheme directory `scheme_for_target` must consult, matching
-/// the identity `crate::scheme` detects from `$USER`.
+/// the identity `crate::scheme` detects: the account's name.
 fn user_schemes_dir(container: &Path) -> PathBuf {
-    let user = std::env::var("USER").unwrap_or_else(|_| "tester".into());
+    let user = sweetpad_lib::host::user().unwrap_or_else(|| "tester".into());
     container.join(format!("xcuserdata/{user}.xcuserdatad/xcschemes"))
 }
 

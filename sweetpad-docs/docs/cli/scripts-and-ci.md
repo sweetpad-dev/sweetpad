@@ -155,6 +155,12 @@ more than one project:
 sweetpad -C ./ios build
 ```
 
+A sandbox that sets `HOME` to a scratch directory doesn't move DerivedData. `xcodebuild` reads your
+account's home from the system, and so does SweetPad, so both keep using
+`~/Library/Developer/Xcode/DerivedData`. A custom `TMPDIR` doesn't move Xcode's cache directory
+either. To give a job its own DerivedData, pass `-- -derivedDataPath <dir>`, or set
+`CFFIXED_USER_HOME`, which moves the home for both Xcode's tools and SweetPad.
+
 ## GitHub Actions
 
 `--gh-annotations` turns build and test diagnostics into workflow commands, so failures land on the
