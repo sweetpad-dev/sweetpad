@@ -474,7 +474,8 @@ impl BuildContext {
 
     /// How `query`'s target builds for a macOS run destination (`-destination
     /// platform=macOS`) when its own SDK is `iphoneos`, or `None` for any
-    /// other target. xcodebuild picks the Mac Catalyst destination for a
+    /// other target, and for one whose `SUPPORTED_PLATFORMS` lists `macosx`,
+    /// which builds natively. xcodebuild picks the Mac Catalyst destination for a
     /// target that supports Catalyst, and otherwise the "Designed for iPad"
     /// one, which builds for `iphoneos` and runs the iOS app on the Mac. On
     /// Xcode 27 an iOS app with neither `SUPPORTS_MACCATALYST` nor
@@ -502,6 +503,18 @@ impl BuildContext {
             ..query.clone()
         };
         let authored = self.authored_probe(&bundle, &ios).settings;
+        // A target that lists `macosx` among its supported platforms builds
+        // natively for a macOS destination, as xcodebuild builds it.
+        if authored
+            .get("SUPPORTED_PLATFORMS")
+            .is_some_and(|platforms| {
+                platforms
+                    .split_whitespace()
+                    .any(|p| p.eq_ignore_ascii_case("macosx"))
+            })
+        {
+            return Ok(None);
+        }
         let yes = |key: &str| authored.get(key).map(|v| v.eq_ignore_ascii_case("YES"));
         let catalyst = yes("SUPPORTS_MACCATALYST").unwrap_or_else(|| {
             let default = self.xcspec.as_ref().and_then(|catalog| {
