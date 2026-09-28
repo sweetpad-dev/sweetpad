@@ -57,6 +57,10 @@ A few things to know:
   missing, and `> SweetPad: Diagnose BSP (Doctor)` reports it too.
 - An `.xcworkspace` resolves each file against whichever member project declares its target, so a CocoaPods or
   multi-project workspace works the same as a single `.xcodeproj`.
+- A file that several targets compile, such as one an iOS app shares with its watchOS app, gets its compiler arguments
+  from the target your selected scheme builds. If the scheme doesn't settle it, the target for the selected
+  destination's platform wins. While you work on the iOS app, its `#if os(iOS)` branches stay live, and switching the
+  scheme or destination changes the branch autocomplete sees.
 - The build settings and the `-xcconfig` file in `sweetpad.build.args`, such as
   `SWIFT_ACTIVE_COMPILATION_CONDITIONS=STAGING` or `-xcconfig ci.xcconfig`, apply to autocomplete too, so the editor
   compiles each file the way your builds do. An older `sweetpad` CLI ignores them. A `-derivedDataPath` in that setting,

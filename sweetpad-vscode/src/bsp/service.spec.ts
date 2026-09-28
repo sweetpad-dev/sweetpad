@@ -5,6 +5,7 @@ import { restartSwiftLSP } from "../build/utils";
 import { onDidChangeConfiguration } from "../common/config";
 import type { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
+import type { DestinationsManager } from "../destination/manager";
 import { isSweetpadBuildServerActive } from "./commands";
 import { buildBspResolvedConfig } from "./config";
 import { BspService } from "./service";
@@ -36,6 +37,7 @@ function bspConfig(derivedDataPath: string | null): BspResolvedConfig {
     developerDir: null,
     scheme: "App",
     configuration: "Debug",
+    destinationPlatform: null,
     derivedDataPath: derivedDataPath,
     logPath: "/state/bsp.log",
     socket: "/state/bsp.sock",
@@ -45,9 +47,14 @@ function bspConfig(derivedDataPath: string | null): BspResolvedConfig {
 
 type ConfigListener = (event: { affectsConfiguration: (section: string) => boolean }) => void;
 
-/** Start a service and hand back what it listens to configuration changes with. */
-async function startService(): Promise<{ service: BspService; changeConfig: (section: string) => Promise<void> }> {
+/** Start a service and hand back what it listens to configuration and destination changes with. */
+async function startService(): Promise<{
+  service: BspService;
+  changeConfig: (section: string) => Promise<void>;
+  changeDestination: () => Promise<void>;
+}> {
   let listener: ConfigListener | undefined;
+  const destinationListeners = new Map<string, () => void>();
   (onDidChangeConfiguration as Mock).mockImplementation((l: ConfigListener) => {
     listener = l;
     return { dispose() {} };
@@ -58,6 +65,9 @@ async function startService(): Promise<{ service: BspService; changeConfig: (sec
       on: vi.fn(),
       removeAllListeners: vi.fn(),
     } as unknown as BuildManager,
+    destinationsManager: {
+      on: (event: string, l: () => void) => destinationListeners.set(event, l),
+    } as unknown as DestinationsManager,
     workspaceState: {} as WorkspaceStateService,
   });
   await service.start();
@@ -67,6 +77,10 @@ async function startService(): Promise<{ service: BspService; changeConfig: (sec
     service: service,
     changeConfig: async (section: string) => {
       listener?.({ affectsConfiguration: (s) => s === section });
+      await settle();
+    },
+    changeDestination: async () => {
+      destinationListeners.get("xcodeDestinationForBuildUpdated")?.();
       await settle();
     },
   };
@@ -109,6 +123,18 @@ describe("BspService", () => {
     await changeConfig("sweetpad.build.derivedDataPath");
     expect(writeBspConfig).toHaveBeenCalledWith(bspConfig("/w/dd"));
     expect(restartSwiftLSP).toHaveBeenCalledTimes(1);
+    service.dispose();
+  });
+
+  // A file several targets compile is read as the target for the selected destination's platform.
+  it("rewrites bsp.json when the destination for builds changes", async () => {
+    (buildBspResolvedConfig as Mock).mockResolvedValue(bspConfig("/w/dd"));
+    (readBspConfig as Mock).mockResolvedValue(bspConfig("/w/dd"));
+    const { service, changeDestination } = await startService();
+
+    await changeDestination();
+    expect(writeBspConfig).toHaveBeenCalledTimes(1);
+    expect(restartSwiftLSP).not.toHaveBeenCalled();
     service.dispose();
   });
 

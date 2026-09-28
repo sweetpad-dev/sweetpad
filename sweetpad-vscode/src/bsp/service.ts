@@ -7,6 +7,7 @@ import { getWorkspaceConfig, onDidChangeConfiguration } from "../common/config";
 import { commonLogger } from "../common/logger";
 import type { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
+import type { DestinationsManager } from "../destination/manager";
 import { BSP_LOG_LEVELS, BspBridge, type BspLogLevel } from "./bridge";
 import { getBuildServerProvider, isSweetpadBuildServerActive } from "./commands";
 import { buildBspResolvedConfig } from "./config";
@@ -35,6 +36,7 @@ export class BspService implements vscode.Disposable {
   private readonly bridge = new BspBridge();
   private readonly workspaceContext: WorkspaceContextService;
   private readonly buildManager: BuildManager;
+  private readonly destinationsManager: DestinationsManager;
   private readonly workspaceState: WorkspaceStateService;
   private subscriptions: vscode.Disposable[] = [];
   // Folders this session advertised a bsp.json for. Registration happens against whichever folder
@@ -44,16 +46,19 @@ export class BspService implements vscode.Disposable {
   constructor(options: {
     workspaceContext: WorkspaceContextService;
     buildManager: BuildManager;
+    destinationsManager: DestinationsManager;
     workspaceState: WorkspaceStateService;
   }) {
     this.workspaceContext = options.workspaceContext;
     this.buildManager = options.buildManager;
+    this.destinationsManager = options.destinationsManager;
     this.workspaceState = options.workspaceState;
   }
 
   async start(): Promise<void> {
     this.buildManager.on("defaultSchemeForBuildUpdated", () => this.saveConfig());
     this.buildManager.on("defaultConfigurationForBuildUpdated", () => this.saveConfig());
+    this.destinationsManager.on("xcodeDestinationForBuildUpdated", () => this.saveConfig());
 
     this.subscriptions.push(
       onDidChangeConfiguration((event) => {
@@ -115,6 +120,7 @@ export class BspService implements vscode.Disposable {
         workspaceContext: this.workspaceContext,
         workspacePath: workspacePath,
         buildManager: this.buildManager,
+        destinationsManager: this.destinationsManager,
       });
       if (!config) {
         return;

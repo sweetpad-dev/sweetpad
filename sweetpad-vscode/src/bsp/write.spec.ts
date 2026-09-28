@@ -14,6 +14,7 @@ describe("assembleBspConfig", () => {
       developerDir: null,
       scheme: "App",
       configuration: "Debug",
+      destinationPlatform: null,
       derivedDataPath: null,
       buildArgs: buildArgs,
     });

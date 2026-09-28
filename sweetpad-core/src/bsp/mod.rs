@@ -11,7 +11,7 @@
 
 mod control;
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs::OpenOptions;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -29,7 +29,7 @@ use crate::framing::{read_message, write_message};
 use crate::scratch::{ScratchDir, TmpdirLeftovers};
 use crate::xcodebuild_args;
 use control::{LogLevel, TelemetryServer};
-use sweetpad_lib::{compiler_args, derived_data, project};
+use sweetpad_lib::{compiler_args, derived_data, project, scheme};
 
 /// Write a `buildServer.json` so `sourcekit-lsp` discovers and launches this
 /// server. Its `argv` is the current executable followed by
@@ -261,7 +261,8 @@ struct Server {
     /// resolution iterate these, so each file in a multi-project workspace
     /// resolves against whichever member declares its target.
     projects: Vec<PathBuf>,
-    /// Live-updatable config (configuration + scheme), swapped on `bsp/configChanged`.
+    /// Live-updatable config (configuration, scheme, destination platform),
+    /// swapped when `bsp.json` changes.
     live: Mutex<LiveConfig>,
     /// `--sdk` / `--arch` overrides; `None` means infer the platform per target.
     sdk: Option<String>,
@@ -420,13 +421,18 @@ struct PrepareRecord {
 /// file, a source error) often isn't visible in the pbxproj at all.
 const PREPARE_RETRY_AFTER: Duration = Duration::from_secs(60);
 
-/// The portion of config that can change while the server runs — pushed live by
-/// the extension as `bsp/configChanged`. Everything else (project/xcode/derived
-/// data) is fixed at startup; toolchain/DD changes warrant a restart instead.
+/// The portion of config that can change while the server runs — re-read from
+/// `bsp.json` when the extension rewrites it. Everything else (project/xcode/
+/// derived data) is fixed at startup; toolchain/DD changes warrant a restart
+/// instead.
 #[derive(Clone, PartialEq)]
 struct LiveConfig {
     configuration: String,
     scheme: Option<String>,
+    /// The platform of the destination the extension builds for
+    /// (`iphonesimulator`, `watchos`, …), from `bsp.json`'s
+    /// `destinationPlatform`.
+    destination_platform: Option<String>,
     /// The settings in `bsp.json`'s `buildArgs`.
     command_line: CommandLine,
 }
@@ -437,6 +443,7 @@ struct ResolvedConfig {
     project_path: PathBuf,
     configuration: String,
     scheme: Option<String>,
+    destination_platform: Option<String>,
     sdk: Option<String>,
     arch: Option<String>,
     xcode: Option<PathBuf>,
@@ -507,6 +514,7 @@ impl ResolvedConfig {
                 .cloned()
                 .unwrap_or_else(|| "Debug".into()),
             scheme: flags.get("scheme").cloned(),
+            destination_platform: None,
             sdk: flags.get("sdk").cloned(),
             arch: flags.get("arch").cloned(),
             xcode: flags.get("xcode").map(PathBuf::from),
@@ -556,6 +564,7 @@ impl ResolvedConfig {
                 .or_else(|| configuration_of(value))
                 .unwrap_or_else(|| "Debug".into()),
             scheme: flags.get("scheme").cloned().or_else(|| pull("scheme")),
+            destination_platform: pull("destinationPlatform"),
             sdk: flags.get("sdk").cloned(),
             arch: flags.get("arch").cloned(),
             xcode: flags
@@ -743,6 +752,7 @@ impl Server {
             live: Mutex::new(LiveConfig {
                 configuration: config.configuration,
                 scheme: config.scheme,
+                destination_platform: config.destination_platform,
                 command_line: config.command_line,
             }),
             sdk: config.sdk,
@@ -812,6 +822,7 @@ impl Server {
         &self,
         configuration: Option<&str>,
         scheme: Option<String>,
+        destination_platform: Option<String>,
         command_line: CommandLine,
     ) {
         let next = {
@@ -822,6 +833,7 @@ impl Server {
                 configuration: configuration
                     .map_or_else(|| live.configuration.clone(), str::to_string),
                 scheme,
+                destination_platform,
                 command_line,
             };
             if updated == *live {
@@ -831,14 +843,15 @@ impl Server {
             updated
         };
         self.log(&format!(
-            "config changed: configuration={} scheme={:?} command_line={:?}",
-            next.configuration, next.scheme, next.command_line
+            "config changed: configuration={} scheme={:?} destination_platform={:?} command_line={:?}",
+            next.configuration, next.scheme, next.destination_platform, next.command_line
         ));
         self.notify_targets_changed();
     }
 
     /// Re-read `bsp.json` after a change: apply the volatile selection
-    /// (configuration, scheme and command-line settings) live via
+    /// (configuration, scheme, destination platform and command-line
+    /// settings) live via
     /// [`Self::apply_config`], and bind the
     /// telemetry socket if one has just appeared. Immutable fields (project/
     /// xcode/derived data) are deliberately not refreshed — they're fixed at
@@ -851,15 +864,17 @@ impl Server {
             return;
         };
         let configuration = configuration_of(&value);
-        let scheme = value
-            .get("scheme")
-            .and_then(Value::as_str)
-            .map(str::to_string);
+        let pull = |key: &str| value.get(key).and_then(Value::as_str).map(str::to_string);
         let (command_line, warning) = command_line_of(&value, &config_base(&value, path));
         if let Some(warning) = &warning {
             self.log(warning);
         }
-        self.apply_config(configuration.as_deref(), scheme, command_line);
+        self.apply_config(
+            configuration.as_deref(),
+            pull("scheme"),
+            pull("destinationPlatform"),
+            command_line,
+        );
         let socket = value
             .get("socket")
             .and_then(Value::as_str)
@@ -1603,11 +1618,15 @@ impl Server {
 
     fn sources(&self, params: Option<&Value>) -> Value {
         let requested = self.requested_targets(params);
+        let listing = self.listed_sources();
         let items: Vec<Value> = requested
             .iter()
             .map(|target| {
-                let sources: Vec<Value> = self
-                    .source_files(target)
+                let files = listing
+                    .iter()
+                    .find(|(t, _)| t == target)
+                    .map_or_else(|| self.source_files(target), |(_, files)| files.clone());
+                let sources: Vec<Value> = files
                     .iter()
                     .map(|p| json!({ "uri": file_uri(p), "kind": 1, "generated": false }))
                     .collect();
@@ -1628,10 +1647,10 @@ impl Server {
         // Re-read the target list (not the startup snapshot) so files in a
         // target added after `buildTarget/didChange` resolve to an owner.
         let owning: Vec<Value> = self
-            .current_targets()
+            .listed_sources()
             .iter()
-            .filter(|t| sources_contain(&self.source_files(t), &path, &standardized))
-            .map(|t| target_id(t))
+            .filter(|(_, files)| sources_contain(files, &path, &standardized))
+            .map(|(t, _)| target_id(t))
             .collect();
         json!({ "targets": owning })
     }
@@ -1656,8 +1675,8 @@ impl Server {
             return self.header_options(&path);
         }
 
-        // The owning target: the request's `target`, else the first whose source
-        // list contains the file.
+        // The owning target: the request's `target`, else the first that lists
+        // the file.
         let standardized = project::standardize(&path);
         let target = params
             .get("target")
@@ -1665,9 +1684,10 @@ impl Server {
             .and_then(Value::as_str)
             .map(target_name_from_uri)
             .or_else(|| {
-                self.current_targets()
+                self.listed_sources()
                     .into_iter()
-                    .find(|t| sources_contain(&self.source_files(t), &path, &standardized))
+                    .find(|(_, files)| sources_contain(files, &path, &standardized))
+                    .map(|(t, _)| t)
             });
 
         let Some(target) = target else {
@@ -1789,6 +1809,93 @@ impl Server {
             )
     }
 
+    /// Every current target with its source files, except that a file several
+    /// targets compile is listed only under the ones [`OwnerRanking`] prefers. sourcekit-lsp reads a file through one of the targets listing
+    /// it, the first by target URI, so without this a file shared by an iOS
+    /// and a watchOS app reads as whichever name sorts first, and the
+    /// `#if os(…)` branch of the app being built goes dead. The arguments for
+    /// each target's other files still name every file it compiles.
+    fn listed_sources(&self) -> Vec<(String, Vec<PathBuf>)> {
+        let mut listing: Vec<(String, Vec<PathBuf>)> = self
+            .current_targets()
+            .into_iter()
+            .map(|target| {
+                let files = self.source_files(&target);
+                (target, files)
+            })
+            .collect();
+        let mut owners: BTreeMap<&Path, Vec<&str>> = BTreeMap::new();
+        for (target, files) in &listing {
+            for file in files {
+                let entry = owners.entry(file).or_default();
+                if !entry.contains(&target.as_str()) {
+                    entry.push(target);
+                }
+            }
+        }
+        let mut ranking = OwnerRanking::new(self);
+        let mut unlisted: BTreeSet<(String, PathBuf)> = BTreeSet::new();
+        for (file, targets) in owners.into_iter().filter(|(_, t)| t.len() > 1) {
+            let keep = ranking.preferred(&targets);
+            for target in targets.into_iter().filter(|t| !keep.iter().any(|k| k == t)) {
+                unlisted.insert((target.to_string(), file.to_path_buf()));
+            }
+        }
+        ranking.log_decisions();
+        if unlisted.is_empty() {
+            return listing;
+        }
+        for (target, files) in &mut listing {
+            files.retain(|f| !unlisted.contains(&(target.clone(), f.clone())));
+        }
+        listing
+    }
+
+    /// The targets the scheme `name` builds: its build entries, then the
+    /// targets those depend on. A scheme with no file is one Xcode
+    /// autocreates, which builds the target it is named after.
+    fn scheme_targets(&self, name: &str) -> (Vec<String>, Vec<String>) {
+        let entries: Vec<String> = match scheme::locate(&self.project_path, name) {
+            Some(path) => scheme::parse_file(&path)
+                .map(|s| {
+                    s.build_entries
+                        .into_iter()
+                        .map(|e| e.buildable.blueprint_name)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            None => vec![name.to_string()],
+        };
+        let mut built = entries.clone();
+        for target in &entries {
+            let dependencies =
+                project::transitive_dependencies(&self.project_for_target(target), target)
+                    .unwrap_or_default();
+            for dependency in dependencies {
+                if !built.contains(&dependency) {
+                    built.push(dependency);
+                }
+            }
+        }
+        (entries, built)
+    }
+
+    /// The platforms `target` builds for, each named by the SDK the editor
+    /// reads it with ([`platform_family`]): its `SDKROOT` and its
+    /// `SUPPORTED_PLATFORMS`.
+    fn target_platforms(&self, target: &str) -> Vec<&'static str> {
+        let (sdkroot, supported) = self.authored_platform(target);
+        let mut out = Vec::new();
+        for platform in std::iter::once(sdkroot.as_str()).chain(supported.split_whitespace()) {
+            if let Some(family) = platform_family(platform)
+                && !out.contains(&family)
+            {
+                out.push(family);
+            }
+        }
+        out
+    }
+
     fn source_files(&self, target: &str) -> Vec<PathBuf> {
         project::target_source_files(&self.project_for_target(target), target).unwrap_or_default()
     }
@@ -1828,14 +1935,28 @@ impl Server {
     /// and macOS builds match the host: arm64 on Apple Silicon, x86_64 on
     /// Intel). `--sdk`/`--arch` flags override, each independently.
     fn editor_platform(&self, target: &str) -> (String, String) {
-        let arch = self.arch.clone().unwrap_or_else(|| host_arch().to_string());
+        let arch = self.editor_arch();
         if let Some(sdk) = self.sdk.as_deref() {
             return (sdk.to_string(), arch);
         }
-        // Read the target's *authored* SDKROOT (e.g. `iphoneos`): a real `--sdk`
-        // replaces SDKROOT with that SDK's path, but a sentinel the catalog
-        // doesn't know leaves it untouched. Map the platform to its simulator.
-        let probe = self.options_for(target, "auto", &arch);
+        let (sdkroot, supported) = self.authored_platform(target);
+        let sdk = editor_sdk_for(&sdkroot, &supported);
+        self.log(&format!(
+            "platform {target}: SDKROOT={sdkroot:?} platforms={supported:?} -> sdk={sdk} arch={arch}"
+        ));
+        (sdk.to_string(), arch)
+    }
+
+    fn editor_arch(&self) -> String {
+        self.arch.clone().unwrap_or_else(|| host_arch().to_string())
+    }
+
+    /// `target`'s *authored* `SDKROOT` (e.g. `iphoneos`) and
+    /// `SUPPORTED_PLATFORMS`, lowercased. A real `--sdk` replaces SDKROOT with
+    /// that SDK's path, but a sentinel the catalog doesn't know leaves it
+    /// untouched.
+    fn authored_platform(&self, target: &str) -> (String, String) {
+        let probe = self.options_for(target, "auto", &self.editor_arch());
         let settings = build_settings::resolve_build_settings(&probe)
             .ok()
             .and_then(|mut t| {
@@ -1851,13 +1972,7 @@ impl Server {
                 .unwrap_or_default()
                 .to_lowercase()
         };
-        let sdkroot = read("SDKROOT");
-        let supported = read("SUPPORTED_PLATFORMS");
-        let sdk = editor_sdk_for(&sdkroot, &supported);
-        self.log(&format!(
-            "platform {target}: SDKROOT={sdkroot:?} platforms={supported:?} -> sdk={sdk} arch={arch}"
-        ));
-        (sdk.to_string(), arch)
+        (read("SDKROOT"), read("SUPPORTED_PLATFORMS"))
     }
 
     fn options_for(&self, target: &str, sdk: &str, arch: &str) -> BuildSettingsOptions {
@@ -2165,15 +2280,113 @@ fn editor_sdk_for(sdkroot: &str, supported_platforms: &str) -> &'static str {
     }
 }
 
+/// The SDK the editor reads `platform` (an SDK or platform name) with, as
+/// [`editor_sdk_for`] picks it, which names a device platform by its
+/// simulator. `None` for a value that names no platform.
+fn platform_family(platform: &str) -> Option<&'static str> {
+    let platform = platform.trim();
+    if platform.is_empty() || platform.eq_ignore_ascii_case("auto") || platform.contains("$(") {
+        return None;
+    }
+    Some(editor_sdk_for(platform, ""))
+}
+
+/// Picks which of a shared file's targets list it: the ones the selected
+/// scheme builds, its own entries before the targets they depend on, then of
+/// those left the ones that build for the selected destination's platform.
+/// A rule that matches none of them leaves the set as it was, so with nothing
+/// selected every target keeps the file. The scheme of an iOS app that embeds
+/// its watchOS app builds both, and settles on the iOS app as its own entry.
+struct OwnerRanking<'a> {
+    server: &'a Server,
+    scheme: Option<String>,
+    destination: Option<&'static str>,
+    /// [`Server::scheme_targets`], read on first use.
+    scheme_targets: Option<(Vec<String>, Vec<String>)>,
+    /// [`Server::target_platforms`] per target, read on first use.
+    platforms: BTreeMap<String, Vec<&'static str>>,
+    /// Each set of owners decided, with the targets kept and the number of
+    /// files it decided for.
+    decisions: BTreeMap<Vec<String>, (Vec<String>, usize)>,
+}
+
+impl<'a> OwnerRanking<'a> {
+    fn new(server: &'a Server) -> Self {
+        let (scheme, destination) = server
+            .live
+            .lock()
+            .map(|l| (l.scheme.clone(), l.destination_platform.clone()))
+            .unwrap_or_default();
+        Self {
+            server,
+            scheme,
+            destination: destination.as_deref().and_then(platform_family),
+            scheme_targets: None,
+            platforms: BTreeMap::new(),
+            decisions: BTreeMap::new(),
+        }
+    }
+
+    fn preferred(&mut self, owners: &[&str]) -> Vec<String> {
+        let key: Vec<String> = owners.iter().map(|t| (*t).to_string()).collect();
+        if let Some((keep, files)) = self.decisions.get_mut(&key) {
+            *files += 1;
+            return keep.clone();
+        }
+        let mut keep = key.clone();
+        if let Some(scheme) = &self.scheme {
+            let (entries, built) = self
+                .scheme_targets
+                .get_or_insert_with(|| self.server.scheme_targets(scheme));
+            narrow(&mut keep, |t| entries.iter().any(|e| e == t));
+            narrow(&mut keep, |t| built.iter().any(|b| b == t));
+        }
+        if keep.len() > 1
+            && let Some(destination) = self.destination
+        {
+            let (server, platforms) = (self.server, &mut self.platforms);
+            narrow(&mut keep, |t| {
+                platforms
+                    .entry(t.to_string())
+                    .or_insert_with(|| server.target_platforms(t))
+                    .contains(&destination)
+            });
+        }
+        self.decisions.insert(key, (keep.clone(), 1));
+        keep
+    }
+
+    /// Log each set of owners a rule narrowed, once per [`Server::listed_sources`].
+    fn log_decisions(&self) {
+        for (owners, (keep, files)) in &self.decisions {
+            if keep.len() < owners.len() {
+                self.server.log(&format!(
+                    "shared sources: {files} file(s) of {owners:?} listed under {keep:?} \
+                     (scheme={:?} destination={:?})",
+                    self.scheme, self.destination
+                ));
+            }
+        }
+    }
+}
+
+/// Keep the `targets` that `rule` accepts, unless it accepts none of them.
+fn narrow(targets: &mut Vec<String>, mut rule: impl FnMut(&str) -> bool) {
+    let kept: Vec<String> = targets.iter().filter(|t| rule(t)).cloned().collect();
+    if !kept.is_empty() {
+        *targets = kept;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         CommandLine, LogLevel, ResolvedConfig, Server, Value, derived_data, editor_sdk_for,
-        parse_flags, path_from_uri, write_config,
+        file_uri, parse_flags, path_from_uri, target_name_from_uri, write_config,
     };
     use std::collections::BTreeMap;
     use std::io::{self, Write};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::atomic::AtomicU8;
     use std::sync::{Arc, Mutex};
 
@@ -2506,6 +2719,140 @@ mod tests {
             ),
             "{logged}"
         );
+    }
+
+    /// A server over the shared-sources fixture, `bsp.json` written with
+    /// `scheme` and `destination`, and the `bsp.json` to rewrite it through.
+    fn shared_sources_server(
+        scratch: &Path,
+        scheme: Option<&str>,
+        destination: Option<&str>,
+    ) -> (Server, Sent, PathBuf) {
+        let config = scratch.join("bsp.json");
+        write_shared_sources_config(&config, scheme, destination);
+        let sent = Sent::default();
+        let server = Server::build(
+            ResolvedConfig::from_file(&config, &BTreeMap::new()).unwrap(),
+            Some(config.clone()),
+            Arc::new(AtomicU8::new(LogLevel::Info as u8)),
+            CommandLine::default(),
+            sent.writer(),
+        )
+        .unwrap();
+        (server, sent, config)
+    }
+
+    fn write_shared_sources_config(config: &Path, scheme: Option<&str>, destination: Option<&str>) {
+        let project = format!(
+            "{}/fixtures/_synthetic-shared-sources/project/SharedSources.xcodeproj",
+            env!("SWEETPAD_LIB_DIR")
+        );
+        let body = serde_json::json!({
+            "workspacePath": config.parent().unwrap(),
+            "projectPath": project,
+            "scheme": scheme,
+            "destinationPlatform": destination,
+        });
+        std::fs::write(config, body.to_string()).unwrap();
+    }
+
+    /// The targets `buildTarget/sources` lists a file ending in `file` under,
+    /// sorted.
+    fn listed_under(server: &Server, file: &str) -> Vec<String> {
+        let reply = server.sources(None);
+        let mut targets: Vec<String> = reply["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|item| {
+                item["sources"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|s| s["uri"].as_str().unwrap().ends_with(file))
+            })
+            .map(|item| target_name_from_uri(item["target"]["uri"].as_str().unwrap()))
+            .collect();
+        targets.sort();
+        targets
+    }
+
+    /// sourcekit-lsp reads a file through the first target by URI that lists
+    /// it, so a file an iOS and a watchOS app share is listed only under the
+    /// one being built: the selected scheme's, then the selected
+    /// destination's. A rule that picks neither leaves both.
+    #[test]
+    fn a_shared_file_is_listed_under_the_target_being_built() {
+        let scratch = crate::scratch::ScratchDir::new("sweetpad-bsp-shared").unwrap();
+        let cases: [(Option<&str>, Option<&str>, &[&str]); 7] = [
+            (None, None, &["WatchApp", "iOSApp"]),
+            // Its own entry, over the watchOS app it embeds and so also builds.
+            (Some("iOSApp"), None, &["iOSApp"]),
+            // A scheme Xcode autocreates builds the target it is named after.
+            (Some("WatchApp"), None, &["WatchApp"]),
+            (Some("iOSApp"), Some("watchsimulator"), &["iOSApp"]),
+            (None, Some("watchsimulator"), &["WatchApp"]),
+            // A device destination picks the target its simulator would.
+            (None, Some("iphoneos"), &["iOSApp"]),
+            (Some("Elsewhere"), Some("watchos"), &["WatchApp"]),
+        ];
+        for (scheme, destination, expected) in cases {
+            let (server, _, _) = shared_sources_server(&scratch, scheme, destination);
+            assert_eq!(
+                listed_under(&server, "/Shared/Shared.swift"),
+                expected,
+                "scheme={scheme:?} destination={destination:?}"
+            );
+            // A file only one target compiles stays listed under it.
+            assert_eq!(
+                listed_under(&server, "/Watch/WatchMain.swift"),
+                ["WatchApp"]
+            );
+            assert_eq!(listed_under(&server, "/Phone/PhoneApp.swift"), ["iOSApp"]);
+        }
+    }
+
+    /// A destination picked while the server runs moves the shared file,
+    /// tells the client to pull the targets again, and answers the requests
+    /// that name no target from the target now listing it.
+    #[test]
+    fn a_new_destination_moves_a_shared_file_to_its_target() {
+        let scratch = crate::scratch::ScratchDir::new("sweetpad-bsp-shared-live").unwrap();
+        let (server, sent, config) = shared_sources_server(&scratch, None, Some("iphonesimulator"));
+        assert_eq!(listed_under(&server, "/Shared/Shared.swift"), ["iOSApp"]);
+
+        write_shared_sources_config(&config, None, Some("watchsimulator"));
+        server.reload_from_file(&config);
+        assert!(
+            sent.text().contains(r#""buildTarget/didChange""#),
+            "{}",
+            sent.text()
+        );
+        assert_eq!(listed_under(&server, "/Shared/Shared.swift"), ["WatchApp"]);
+
+        let shared = format!(
+            "{}/fixtures/_synthetic-shared-sources/project/Shared/Shared.swift",
+            env!("SWEETPAD_LIB_DIR")
+        );
+        let document =
+            serde_json::json!({ "textDocument": { "uri": file_uri(Path::new(&shared)) } });
+        let owners = server.inverse_sources(Some(&document));
+        assert_eq!(
+            owners["targets"],
+            serde_json::json!([{ "uri": "sweetpad://target/WatchApp" }])
+        );
+        let options = server.source_kit_options(Some(&document));
+        let args: Vec<&str> = options["compilerArguments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        let module = args
+            .iter()
+            .position(|a| *a == "-module-name")
+            .map(|i| args[i + 1]);
+        assert_eq!(module, Some("WatchApp"), "{args:?}");
     }
 
     /// A `-configuration` in `buildArgs` replaces the one the extension picks

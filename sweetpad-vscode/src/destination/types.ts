@@ -250,3 +250,27 @@ export type SelectedDestination = {
   type: DestinationType;
   name: string;
 };
+
+const DESTINATION_TYPE_PLATFORM: Record<Exclude<DestinationType, "generic">, DestinationPlatform> = {
+  iOSSimulator: "iphonesimulator",
+  watchOSSimulator: "watchsimulator",
+  tvOSSimulator: "appletvsimulator",
+  visionOSSimulator: "xrsimulator",
+  macOS: "macosx",
+  iOSDevice: "iphoneos",
+  watchOSDevice: "watchos",
+  tvOSDevice: "appletvos",
+  visionOSDevice: "xros",
+};
+
+/**
+ * The platform a selected destination builds for. The selection keeps only an id and a type, so
+ * this reads the platform off the type, and off the id for a generic destination, whose type
+ * covers every platform. `undefined` for a generic id no destination has.
+ */
+export function selectedDestinationPlatform(destination: SelectedDestination): DestinationPlatform | undefined {
+  if (destination.type === "generic") {
+    return GENERIC_DESTINATIONS.find((generic) => generic.id === destination.id)?.platform;
+  }
+  return DESTINATION_TYPE_PLATFORM[destination.type];
+}

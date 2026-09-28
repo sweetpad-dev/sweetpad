@@ -1,0 +1,38 @@
+name: SharedSources
+options:
+  bundleIdPrefix: dev.sweetpad.fixture
+  deploymentTarget:
+    iOS: "17.0"
+    watchOS: "10.0"
+targets:
+  # Shared/Shared.swift compiles into both apps, and the iOS app embeds the
+  # watchOS one, so its scheme builds both. The watchOS app's URI sorts first
+  # (uppercase before lowercase), which is the target sourcekit-lsp reads a
+  # shared file through when both list it.
+  iOSApp:
+    type: application
+    platform: iOS
+    sources: [Phone, Shared]
+    dependencies:
+      - target: WatchApp
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        SWIFT_VERSION: "6.0"
+        CODE_SIGNING_ALLOWED: "NO"
+  WatchApp:
+    type: application
+    platform: watchOS
+    sources: [Watch, Shared]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_WKApplication: "YES"
+        SWIFT_VERSION: "6.0"
+        CODE_SIGNING_ALLOWED: "NO"
+# Only the iOS app has a scheme file; the watchOS app's is one Xcode autocreates.
+schemes:
+  iOSApp:
+    build:
+      targets:
+        iOSApp: all

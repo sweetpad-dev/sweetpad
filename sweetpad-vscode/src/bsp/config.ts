@@ -4,6 +4,8 @@ import { getDeveloperDir } from "../common/cli/scripts";
 import { getWorkspaceConfig } from "../common/config";
 import type { WorkspaceContextService } from "../common/workspace-context";
 import type { WorkspaceStateService } from "../common/workspace-state";
+import type { DestinationsManager } from "../destination/manager";
+import { selectedDestinationPlatform } from "../destination/types";
 import { type BspResolvedConfig, assembleBspConfig } from "./write";
 
 export type { BspResolvedConfig } from "./write";
@@ -18,6 +20,7 @@ export async function buildBspResolvedConfig(deps: {
   workspaceContext: WorkspaceContextService;
   workspacePath: string;
   buildManager: BuildManager;
+  destinationsManager: DestinationsManager;
 }): Promise<BspResolvedConfig | null> {
   const xcworkspace = activateCurrentXcodeWorkspacePath({
     workspaceState: deps.workspaceState,
@@ -26,12 +29,14 @@ export async function buildBspResolvedConfig(deps: {
   if (!xcworkspace) {
     return null;
   }
+  const destination = deps.destinationsManager.getSelectedXcodeDestinationForBuild();
   return assembleBspConfig({
     workspacePath: deps.workspacePath,
     xcworkspace: xcworkspace,
     developerDir: (await getDeveloperDir({ workspaceRoot: deps.workspacePath })) ?? null,
     scheme: deps.buildManager.getDefaultSchemeForBuild() ?? null,
     configuration: deps.buildManager.getDefaultConfigurationForBuild() ?? "Debug",
+    destinationPlatform: (destination && selectedDestinationPlatform(destination)) ?? null,
     derivedDataPath: prepareDerivedDataPath({ workspaceRoot: deps.workspacePath }) ?? null,
     buildArgs: getWorkspaceConfig("build.args") ?? [],
   });

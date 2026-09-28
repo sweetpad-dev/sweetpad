@@ -809,8 +809,9 @@ async function seedBspConfig(options: {
     if (await hasBspConfig(workspaceRoot)) {
       return;
     }
-    // A null scheme resolves to the project's default until BspService, which
-    // sees a buildServer.json of ours only after this call, rewrites it.
+    // A null scheme resolves to the project's default, and a null destination
+    // platform leaves shared files to the scheme, until BspService, which sees
+    // a buildServer.json of ours only after this call, rewrites it.
     await writeBspConfig(
       assembleBspConfig({
         workspacePath: workspaceRoot,
@@ -818,6 +819,7 @@ async function seedBspConfig(options: {
         developerDir: (await getDeveloperDir({ workspaceRoot: workspaceRoot })) ?? null,
         scheme: options.scheme ?? null,
         configuration: options.configuration ?? "Debug",
+        destinationPlatform: null,
         derivedDataPath: prepareDerivedDataPath({ workspaceRoot: workspaceRoot }) ?? null,
         buildArgs: getWorkspaceConfig("build.args") ?? [],
       }),

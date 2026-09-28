@@ -23,6 +23,12 @@ export type BspResolvedConfig = {
   scheme: string | null;
   configuration: string;
   /**
+   * The platform of the destination builds go to (`iphonesimulator`, `watchos`, …), or null when
+   * none is selected. A file that several targets compile is read as the target the selected scheme
+   * builds, then as the one for this platform.
+   */
+  destinationPlatform: string | null;
+  /**
    * The DerivedData the extension's builds write (`prepareDerivedDataPath`), which follows a
    * `-derivedDataPath` in `buildArgs`. The server reads it once at startup.
    */
@@ -49,6 +55,7 @@ export function assembleBspConfig(parts: {
   developerDir: string | null;
   scheme: string | null;
   configuration: string;
+  destinationPlatform: string | null;
   derivedDataPath: string | null;
   buildArgs: string[];
 }): BspResolvedConfig {
@@ -58,6 +65,7 @@ export function assembleBspConfig(parts: {
     developerDir: parts.developerDir,
     scheme: parts.scheme,
     configuration: parts.configuration,
+    destinationPlatform: parts.destinationPlatform,
     derivedDataPath: parts.derivedDataPath,
     logPath: resolveBspLogPath(parts.workspacePath),
     socket: getBspSocketPath(parts.workspacePath),

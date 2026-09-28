@@ -243,6 +243,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const bspService = new BspService({
     workspaceContext: workspaceContext,
     buildManager: buildManager,
+    destinationsManager: destinationsManager,
     workspaceState: workspaceState,
   });
 

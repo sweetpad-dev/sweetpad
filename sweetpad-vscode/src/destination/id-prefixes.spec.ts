@@ -21,9 +21,11 @@ import {
   ALL_DESTINATION_TYPES,
   DESTINATION_ID_PREFIX,
   type Destination,
+  GENERIC_DESTINATIONS,
   GenericDestination,
   macOSDestination,
   normalizeDestinationId,
+  selectedDestinationPlatform,
 } from "./types";
 
 const UDID = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE";
@@ -95,6 +97,21 @@ describe("DESTINATION_ID_PREFIX", () => {
       expect(destination.id.startsWith(DESTINATION_ID_PREFIX[destination.type])).toBe(true);
     });
   }
+});
+
+// A selection stores only an id and a type, so the platform is read back off them through a
+// hand-written table. Pin it to the platform each class reports.
+describe("selectedDestinationPlatform", () => {
+  for (const destination of [...DESTINATIONS, ...GENERIC_DESTINATIONS]) {
+    it(`reads ${destination.label}'s platform back from its selection`, () => {
+      const selected = { id: destination.id, type: destination.type, name: destination.label };
+      expect(selectedDestinationPlatform(selected)).toBe(destination.platform);
+    });
+  }
+
+  it("has no platform for a generic id no destination has", () => {
+    expect(selectedDestinationPlatform({ id: "generic-plan9", type: "generic", name: "Plan 9" })).toBeUndefined();
+  });
 });
 
 describe("normalizeDestinationId", () => {
