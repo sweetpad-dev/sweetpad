@@ -1880,20 +1880,10 @@ impl Server {
         (entries, built)
     }
 
-    /// The platforms `target` builds for, each named by the SDK the editor
-    /// reads it with ([`platform_family`]): its `SDKROOT` and its
-    /// `SUPPORTED_PLATFORMS`.
+    /// The platforms `target` builds for ([`platform_families`]).
     fn target_platforms(&self, target: &str) -> Vec<&'static str> {
         let (sdkroot, supported) = self.authored_platform(target);
-        let mut out = Vec::new();
-        for platform in std::iter::once(sdkroot.as_str()).chain(supported.split_whitespace()) {
-            if let Some(family) = platform_family(platform)
-                && !out.contains(&family)
-            {
-                out.push(family);
-            }
-        }
-        out
+        platform_families(&sdkroot, &supported)
     }
 
     fn source_files(&self, target: &str) -> Vec<PathBuf> {
@@ -1928,21 +1918,32 @@ impl Server {
         Some(args)
     }
 
-    /// The SDK + arch sourcekit-lsp should analyze `target` with. We infer the
-    /// platform from the target's `SUPPORTED_PLATFORMS` and pick the **simulator**
-    /// for device platforms (editor-friendly — no device/signing, and the usual
-    /// dev build), defaulting to macOS. Arch defaults to the host's (simulator
-    /// and macOS builds match the host: arm64 on Apple Silicon, x86_64 on
-    /// Intel). `--sdk`/`--arch` flags override, each independently.
+    /// The SDK + arch sourcekit-lsp should analyze `target` with: the
+    /// selected destination's platform when the target builds for it, as a
+    /// target listing `macosx` builds natively for My Mac; otherwise the
+    /// platform its `SDKROOT` or `SUPPORTED_PLATFORMS` names
+    /// ([`editor_sdk_for`]). Either way a device platform reads as its
+    /// **simulator** (editor-friendly — no device/signing, and the usual dev
+    /// build). Arch defaults to the host's (simulator and macOS builds match
+    /// the host: arm64 on Apple Silicon, x86_64 on Intel). `--sdk`/`--arch`
+    /// flags override, each independently.
     fn editor_platform(&self, target: &str) -> (String, String) {
         let arch = self.editor_arch();
         if let Some(sdk) = self.sdk.as_deref() {
             return (sdk.to_string(), arch);
         }
         let (sdkroot, supported) = self.authored_platform(target);
-        let sdk = editor_sdk_for(&sdkroot, &supported);
+        let destination = self
+            .live
+            .lock()
+            .ok()
+            .and_then(|l| l.destination_platform.as_deref().and_then(platform_family));
+        let sdk = destination
+            .filter(|d| platform_families(&sdkroot, &supported).contains(d))
+            .unwrap_or_else(|| editor_sdk_for(&sdkroot, &supported));
         self.log(&format!(
-            "platform {target}: SDKROOT={sdkroot:?} platforms={supported:?} -> sdk={sdk} arch={arch}"
+            "platform {target}: SDKROOT={sdkroot:?} platforms={supported:?} \
+             destination={destination:?} -> sdk={sdk} arch={arch}"
         ));
         (sdk.to_string(), arch)
     }
@@ -2289,6 +2290,20 @@ fn platform_family(platform: &str) -> Option<&'static str> {
         return None;
     }
     Some(editor_sdk_for(platform, ""))
+}
+
+/// The platforms a target with `sdkroot` and `supported_platforms` builds
+/// for, each named by the SDK the editor reads it with ([`platform_family`]).
+fn platform_families(sdkroot: &str, supported_platforms: &str) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    for platform in std::iter::once(sdkroot).chain(supported_platforms.split_whitespace()) {
+        if let Some(family) = platform_family(platform)
+            && !out.contains(&family)
+        {
+            out.push(family);
+        }
+    }
+    out
 }
 
 /// Picks which of a shared file's targets list it: the ones the selected
@@ -2853,6 +2868,80 @@ mod tests {
             .position(|a| *a == "-module-name")
             .map(|i| args[i + 1]);
         assert_eq!(module, Some("WatchApp"), "{args:?}");
+    }
+
+    /// A target that builds for several platforms reads as the selected
+    /// destination's platform when it builds for it, as a target listing
+    /// `macosx` builds natively for My Mac, and follows the destination as it
+    /// changes. With a destination it doesn't build for, or none, it reads as
+    /// the platform it authors, and `--sdk` wins over both.
+    #[test]
+    fn a_multiplatform_target_reads_as_the_selected_destination() {
+        let project = format!(
+            "{}/fixtures/_synthetic-multiplatform/project/MultiPlatformApp.xcodeproj",
+            env!("SWEETPAD_LIB_DIR")
+        );
+        let scratch = crate::scratch::ScratchDir::new("sweetpad-bsp-destination").unwrap();
+        let config = scratch.join("bsp.json");
+        let write = |destination: Option<&str>| {
+            let body = serde_json::json!({
+                "workspacePath": *scratch,
+                "projectPath": project,
+                "destinationPlatform": destination,
+            });
+            std::fs::write(&config, body.to_string()).unwrap();
+        };
+        let server_for = |destination: Option<&str>, sdk: Option<&str>| {
+            write(destination);
+            let flags: BTreeMap<String, String> = sdk
+                .map(|s| ("sdk".to_string(), s.to_string()))
+                .into_iter()
+                .collect();
+            Server::build(
+                ResolvedConfig::from_file(&config, &flags).unwrap(),
+                Some(config.clone()),
+                Arc::new(AtomicU8::new(LogLevel::Info as u8)),
+                CommandLine::default(),
+                Sent::default().writer(),
+            )
+            .unwrap()
+        };
+        for (destination, expected) in [
+            (None, "iphonesimulator"),
+            (Some("macosx"), "macosx"),
+            (Some("iphoneos"), "iphonesimulator"),
+            (Some("watchsimulator"), "iphonesimulator"),
+        ] {
+            let (sdk, _) = server_for(destination, None).editor_platform("MultiPlatformApp");
+            assert_eq!(sdk, expected, "destination={destination:?}");
+        }
+        let (sdk, _) =
+            server_for(Some("macosx"), Some("iphonesimulator")).editor_platform("MultiPlatformApp");
+        assert_eq!(sdk, "iphonesimulator");
+
+        let server = server_for(Some("iphonesimulator"), None);
+        write(Some("macosx"));
+        server.reload_from_file(&config);
+        let probe = format!(
+            "{}/fixtures/_synthetic-multiplatform/project/Sources/Probe.swift",
+            env!("SWEETPAD_LIB_DIR")
+        );
+        let args = server
+            .compiler_arguments("MultiPlatformApp", Path::new(&probe))
+            .unwrap();
+        let triple = args
+            .iter()
+            .position(|a| a == "-target")
+            .map(|i| &args[i + 1]);
+        assert!(
+            triple.is_some_and(|t| t.contains("-apple-macos")),
+            "{args:?}"
+        );
+
+        // An iOS-only target runs on a Mac as Designed for iPad, an iOS build.
+        let (server, _, _) = shared_sources_server(&scratch, None, Some("macosx"));
+        assert_eq!(server.editor_platform("iOSApp").0, "iphonesimulator");
+        assert_eq!(server.editor_platform("WatchApp").0, "watchsimulator");
     }
 
     /// A `-configuration` in `buildArgs` replaces the one the extension picks

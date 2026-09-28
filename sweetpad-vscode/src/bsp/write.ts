@@ -24,8 +24,9 @@ export type BspResolvedConfig = {
   configuration: string;
   /**
    * The platform of the destination builds go to (`iphonesimulator`, `watchos`, …), or null when
-   * none is selected. A file that several targets compile is read as the target the selected scheme
-   * builds, then as the one for this platform.
+   * none is selected. A target that builds for this platform is analyzed for it, and a file that
+   * several targets compile is read as the target the selected scheme builds, then as the one for
+   * this platform.
    */
   destinationPlatform: string | null;
   /**

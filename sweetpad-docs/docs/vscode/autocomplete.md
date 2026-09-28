@@ -61,6 +61,9 @@ A few things to know:
   from the target your selected scheme builds. If the scheme doesn't settle it, the target for the selected
   destination's platform wins. While you work on the iOS app, its `#if os(iOS)` branches stay live, and switching the
   scheme or destination changes the branch autocomplete sees.
+- SweetPad analyzes a target that builds for more than one platform, such as an iOS and macOS app, for the selected
+  destination's platform. Pick My Mac and its `#if os(macOS)` code gets autocomplete. For a destination the target
+  doesn't build for, it falls back to the first of iOS, tvOS, watchOS, visionOS and macOS that the target supports.
 - The build settings and the `-xcconfig` file in `sweetpad.build.args`, such as
   `SWIFT_ACTIVE_COMPILATION_CONDITIONS=STAGING` or `-xcconfig ci.xcconfig`, apply to autocomplete too, so the editor
   compiles each file the way your builds do. An older `sweetpad` CLI ignores them. A `-derivedDataPath` in that setting,
