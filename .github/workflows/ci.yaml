@@ -31,7 +31,10 @@ jobs:
       - name: Build extension bundle
         working-directory: sweetpad-vscode
         # Builds the universal .node addon into out/ so it exists for signing;
-        # the packaging step below reuses out/ without rebuilding.
+        # the packaging step below reuses out/ without rebuilding. The bundle
+        # embeds the Sentry DSN, which is public, so it's a repository variable.
+        env:
+          SENTRY_DSN: ${{ vars.SENTRY_DSN }}
         run: npm run vscode:prepublish
 
       - name: Import Developer ID certificate
