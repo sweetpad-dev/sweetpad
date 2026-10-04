@@ -1,7 +1,9 @@
 import type * as React from "react";
+import { useEffect, useRef, useState } from "react";
 import Layout from "@theme/Layout";
 import styles from "./index.module.css";
 import Link from "@docusaurus/Link";
+import useBaseUrl from "@docusaurus/useBaseUrl";
 
 const toneClass: Record<string, string> = {
 	ok: styles.tOk,
@@ -61,6 +63,62 @@ function HeroBanner() {
 				/>
 			</div>
 		</div>
+	);
+}
+
+/**
+ * One real `sweetpad run` session, an edit to the app, and the rebuild, looping
+ * on the section's own background. It plays muted on its own, except for readers
+ * who prefer reduced motion: they get the poster frame and the controls instead.
+ */
+function DemoVideo() {
+	const video = useRef<HTMLVideoElement>(null);
+	const [reducedMotion, setReducedMotion] = useState(false);
+	const webm = useBaseUrl("/videos/sweetpad-demo.webm");
+	const mp4 = useBaseUrl("/videos/sweetpad-demo.mp4");
+	const poster = useBaseUrl("/videos/sweetpad-demo-poster.jpg");
+
+	useEffect(() => {
+		if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+			setReducedMotion(true);
+			return;
+		}
+		const element = video.current;
+		if (!element) {
+			return;
+		}
+		// React hydration leaves the muted property unset, and browsers only autoplay muted video.
+		element.muted = true;
+		// Browsers refuse to start video in a background tab, so start it whenever the page is shown.
+		const play = () => {
+			if (document.visibilityState === "visible" && element.paused) {
+				element.play().catch(() => {});
+			}
+		};
+		play();
+		document.addEventListener("visibilitychange", play);
+		return () => document.removeEventListener("visibilitychange", play);
+	}, []);
+
+	return (
+		<section className={styles.demo} data-theme="dark">
+			<div className={styles.demoInner}>
+				<video
+					ref={video}
+					className={styles.demoVideo}
+					muted
+					loop
+					playsInline
+					preload="metadata"
+					controls={reducedMotion}
+					poster={poster}
+					aria-label="sweetpad run builds an app and launches it in the iOS Simulator, then rebuilds and relaunches it after a code change"
+				>
+					<source src={webm} type="video/webm" />
+					<source src={mp4} type="video/mp4" />
+				</video>
+			</div>
+		</section>
 	);
 }
 
@@ -410,6 +468,7 @@ export default function Home(): React.JSX.Element {
 		>
 			<main>
 				<HeroBanner />
+				<DemoVideo />
 				<StatsBar />
 				<CliFeatures />
 				<ProofBand />

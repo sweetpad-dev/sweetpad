@@ -409,6 +409,33 @@
 
 /* Social-proof strip. A slim step down from the hero, so the numbers read as a
    footnote to the pitch rather than a section of their own. */
+.demo {
+    background-color: #22272e;
+    padding: 2.5rem 2rem 0.5rem;
+}
+
+.demoInner {
+    max-width: 1100px;
+    margin: 0 auto;
+    /* The video's background is this section's color; fading its edges hides
+       any shift the decoder makes to it. */
+    mask-image: linear-gradient(to bottom, transparent 0, #000 4%, #000 96%, transparent 100%);
+}
+
+.demoVideo {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    mask-image: linear-gradient(to right, transparent 0, #000 4%, #000 96%, transparent 100%);
+}
+
+@media (max-width: 600px) {
+    .demo {
+        padding: 1.5rem 0.25rem 0.25rem;
+    }
+}
+
 .stats {
     background-color: #22272e;
     padding: 1.75rem 2rem;
