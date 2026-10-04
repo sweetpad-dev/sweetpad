@@ -270,9 +270,16 @@ fn editor_args(
     let query = ResolveQuery::new(target, config, platform, "arm64");
     let resolved = ctx.resolve(&query).ok()?;
     let has_pkg = project::target_has_package_products(xcodeproj, target).unwrap_or(false);
+    let inputs: Vec<String> = project::target_source_files(xcodeproj, target)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p| p.extension().is_some_and(|e| e == "swift"))
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
     Some(compiler_args::swift_arguments(
         &resolved.settings,
         "arm64",
+        &inputs,
         swift_opts,
         XCODE_VERSION,
         has_pkg,

@@ -435,6 +435,7 @@ pub fn resolve_file_arguments(
                 arguments: compiler_args::swift_arguments(
                     settings,
                     &query.arch,
+                    &swift_inputs,
                     swift_opts,
                     xcode_version,
                     has_package_products,

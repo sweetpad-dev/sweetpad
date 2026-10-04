@@ -514,6 +514,7 @@ fn compiler_args_oracle_coverage() {
                 let ours = compiler_args::swift_arguments(
                     settings,
                     &oracle.arch,
+                    &sw.input_files,
                     swift_opts,
                     &version,
                     has_pkg,

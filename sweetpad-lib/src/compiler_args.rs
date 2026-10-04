@@ -122,6 +122,7 @@ pub fn target_arguments(
         arguments: swift_arguments(
             settings,
             arch,
+            &swift_inputs,
             swift_options,
             xcode_version,
             has_package_products,
@@ -186,6 +187,8 @@ fn link_tool(settings: &Settings, product_type: Option<&str>) -> &'static str {
 /// (`options`) through that data and hand-coding the computed/build-system flags
 /// it doesn't (the target triple, search paths, driver defaults, …). Pass `&[]`
 /// for `options` to fall back to the hand-coded heuristic for every option.
+/// `inputs` are the `.swift` files the invocation compiles, which decide
+/// `-parse-as-library` ([`emit_parse_as_library`]).
 ///
 /// Order is not significant — the oracle comparator scores argv as a multiset —
 /// so flags are grouped by concern for readability.
@@ -193,6 +196,7 @@ fn link_tool(settings: &Settings, product_type: Option<&str>) -> &'static str {
 pub fn swift_arguments(
     settings: &Settings,
     arch: &str,
+    inputs: &[String],
     options: &[CompilerOption],
     xcode_version: &str,
     has_package_products: bool,
@@ -297,6 +301,7 @@ pub fn swift_arguments(
     }
     emit_unit_test_search_paths(&mut a, settings);
     emit_swift_system_search_paths(&mut a, settings);
+    emit_parse_as_library(&mut a, settings, inputs);
 
     // Swift macros a package vends are out-of-process executable plugins. A
     // plugin *search path* doesn't discover executables, so the frontend
@@ -372,6 +377,22 @@ fn emit_unit_test_search_paths(a: &mut ArgBuilder, settings: &Settings) {
     if let Some(platform) = settings.get("PLATFORM_DIR") {
         a.pair("-F", &format!("{platform}/Developer/Library/Frameworks"));
         a.pair("-I", &format!("{platform}/Developer/usr/lib"));
+    }
+}
+
+/// `-parse-as-library` where Swift Build passes it (`SwiftCompilerSpec`): under
+/// `SWIFT_LIBRARIES_ONLY` (the xcspec's encoding), and for a compile of a
+/// single file not named `main.swift` unless `SWIFT_DISABLE_PARSE_AS_LIBRARY`
+/// is set. Without it a lone file compiles as the module's `main.swift`, so an
+/// app whose only file declares `@main` reports top-level code.
+fn emit_parse_as_library(a: &mut ArgBuilder, settings: &Settings, inputs: &[String]) {
+    let yes = |key: &str| is_yes(settings.get(key).map_or("", String::as_str));
+    let lone_file = matches!(
+        inputs,
+        [only] if Path::new(only).file_name().is_none_or(|name| name != "main.swift")
+    );
+    if yes("SWIFT_LIBRARIES_ONLY") || (lone_file && !yes("SWIFT_DISABLE_PARSE_AS_LIBRARY")) {
+        a.flag("-parse-as-library");
     }
 }
 
@@ -1625,7 +1646,7 @@ mod tests {
         s.insert("SWIFT_VERSION".into(), "5.0".into());
         s.insert("SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(), "DEBUG".into());
         // No spec options: exercises the hand-coded fallback path.
-        let args = swift_arguments(&s, "arm64", &[], "26.5.0", false, &[]);
+        let args = swift_arguments(&s, "arm64", &[], &[], "26.5.0", false, &[]);
         let joined = args.join(" ");
         assert!(joined.contains("-module-name Alamofire"));
         assert!(joined.contains("-Onone"));
@@ -1671,7 +1692,7 @@ mod tests {
             "SWIFT_ACTIVE_COMPILATION_CONDITIONS".into(),
             "DEBUG COCOAPODS".into(),
         );
-        let args = swift_arguments(&s, "arm64", &[opt_level, conds], "26.5.0", false, &[]);
+        let args = swift_arguments(&s, "arm64", &[], &[opt_level, conds], "26.5.0", false, &[]);
         // The enum's special-cased `-Owholemodule` expands; conditions become -D.
         assert!(
             args.windows(2)
@@ -1764,7 +1785,7 @@ mod tests {
         // `-Xfrontend -load-plugin-executable -Xfrontend <plugin>#<module>` form.
         let s = Settings::new();
         let plugins = [PathBuf::from("/dd/Build/Products/Debug/MyMacros")];
-        let args = swift_arguments(&s, "arm64", &[], "26.5.0", false, &plugins);
+        let args = swift_arguments(&s, "arm64", &[], &[], "26.5.0", false, &plugins);
         let joined = args.join(" ");
         assert!(
             args.iter().any(|a| a == "-load-plugin-executable"),
@@ -1785,7 +1806,7 @@ mod tests {
             "BUILT_PRODUCTS_DIR".into(),
             "/dd/Build/Products/Debug".into(),
         );
-        let args = swift_arguments(&s, "arm64", &[], "26.5.0", true, &[]);
+        let args = swift_arguments(&s, "arm64", &[], &[], "26.5.0", true, &[]);
         assert!(
             args.windows(2)
                 .any(|w| w[0] == "-F" && w[1] == "/dd/Build/Products/Debug/PackageFrameworks"),
@@ -1822,7 +1843,7 @@ mod tests {
              -fmodule-map-file=\"/dd/Build/Products/Debug-iphoneos/Pod A/Pod_A.modulemap\""
                 .into(),
         );
-        let args = swift_arguments(&s, "arm64", &[], "26.5.0", false, &[]);
+        let args = swift_arguments(&s, "arm64", &[], &[], "26.5.0", false, &[]);
         assert!(
             args.contains(
                 &"-fmodule-map-file=/dd/Build/Products/Debug-iphoneos/Pod A/Pod_A.modulemap"
@@ -2076,7 +2097,7 @@ mod tests {
             "SYSTEM_HEADER_SEARCH_PATHS".into(),
             format!(" {include}  {include}"),
         );
-        let args = swift_arguments(&s, "arm64", &[], "27.0.0", false, &[]);
+        let args = swift_arguments(&s, "arm64", &[], &[], "27.0.0", false, &[]);
         let found = pairs(&args);
         let count = |flag: &str, value: &str| {
             found
@@ -2099,11 +2120,44 @@ mod tests {
             "SYSTEM_FRAMEWORK_SEARCH_PATHS_USE_FSYSTEM".into(),
             "YES".into(),
         );
-        let args = swift_arguments(&s, "arm64", &[], "27.0.0", false, &[]);
+        let args = swift_arguments(&s, "arm64", &[], &[], "27.0.0", false, &[]);
         assert!(
             pairs(&args).contains(&("-Fsystem".to_string(), "/Vendor/Frameworks".to_string())),
             "{args:?}"
         );
+    }
+
+    /// Swift Build parses a lone file as a library unless it is `main.swift`
+    /// or `SWIFT_DISABLE_PARSE_AS_LIBRARY` says not to, and parses every file
+    /// as one under `SWIFT_LIBRARIES_ONLY`. A module of several files needs
+    /// no flag: only its `main.swift` holds top-level code.
+    #[test]
+    fn parse_as_library_follows_swift_build() {
+        let inputs =
+            |names: &[&str]| -> Vec<String> { names.iter().map(|n| format!("/src/{n}")).collect() };
+        let count = |settings: &[(&str, &str)], names: &[&str]| {
+            let mut s = Settings::new();
+            for (k, v) in settings {
+                s.insert((*k).to_string(), (*v).to_string());
+            }
+            swift_arguments(&s, "arm64", &inputs(names), &[], "27.0.0", false, &[])
+                .iter()
+                .filter(|a| *a == "-parse-as-library")
+                .count()
+        };
+        assert_eq!(count(&[], &["App.swift"]), 1);
+        assert_eq!(count(&[], &["main.swift"]), 0);
+        assert_eq!(count(&[], &["App.swift", "Model.swift"]), 0);
+        assert_eq!(count(&[], &[]), 0);
+        assert_eq!(
+            count(&[("SWIFT_DISABLE_PARSE_AS_LIBRARY", "YES")], &["App.swift"]),
+            0
+        );
+        assert_eq!(
+            count(&[("SWIFT_LIBRARIES_ONLY", "YES")], &["A.swift", "B.swift"]),
+            1
+        );
+        assert_eq!(count(&[("SWIFT_LIBRARIES_ONLY", "YES")], &["App.swift"]), 1);
     }
 
     /// clang searches each system framework path with `-iframework`, except
