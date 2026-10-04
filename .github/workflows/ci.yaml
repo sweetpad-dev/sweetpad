@@ -191,3 +191,6 @@ jobs:
           tag_name: ${{ github.ref_name }}
           body_path: ${{ runner.temp }}/notes.md
           files: "*.vsix"
+          # The repo page's Releases box shows whichever release is "Latest";
+          # keep that the CLI, which is what the page is about.
+          make_latest: false

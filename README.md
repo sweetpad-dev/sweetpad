@@ -81,18 +81,11 @@ sweetpad build -- SWIFT_ACTIVE_COMPILATION_CONDITIONS="DEBUG STAGING"
 The tool documents itself offline too: `sweetpad --help`, `sweetpad <command> --help`, and
 `sweetpad help <topic>` for config, environment, exit-codes, destinations, hot-reload, and feedback.
 
-## Prefer to work in VS Code?
+## VS Code extension
 
-The same builds, runs, and tests in the VS Code sidebar, plus breakpoints via CodeLLDB, a native
-Testing panel, format-on-save, and autocomplete. It works in [Cursor](https://www.cursor.com/) too,
-and has over 61,000 installs on the Marketplace.
-
-[![Install from the Marketplace](https://img.shields.io/badge/VS%20Code-install%20extension-007ACC?logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=sweetpad.sweetpad)
-
-**You do not need both.** The CLI needs no editor, and the extension builds, runs, debugs, and tests
-on its own. They meet in exactly one place: the extension's default autocomplete runs the build server
-that ships inside the CLI binary, so that one feature asks for the CLI as well.
-[Which one do I need?](https://sweetpad.hyzyla.dev/docs)
+There is also a [VS Code extension](https://marketplace.visualstudio.com/items?itemName=sweetpad.sweetpad)
+that builds, runs, and tests from the editor sidebar, and it works in Cursor as well. The CLI doesn't
+need it.
 
 ## License
 
