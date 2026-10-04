@@ -64,6 +64,8 @@ A few things to know:
 - SweetPad analyzes a target that builds for more than one platform, such as an iOS and macOS app, for the selected
   destination's platform. Pick My Mac and its `#if os(macOS)` code gets autocomplete. For a destination the target
   doesn't build for, it falls back to the first of iOS, tvOS, watchOS, visionOS and macOS that the target supports.
+  With My Mac selected, a Mac Catalyst target is analyzed as Catalyst, following how your selected scheme builds it,
+  so its `#if targetEnvironment(macCatalyst)` code gets autocomplete too.
 - The build settings and the `-xcconfig` file in `sweetpad.build.args`, such as
   `SWIFT_ACTIVE_COMPILATION_CONDITIONS=STAGING` or `-xcconfig ci.xcconfig`, apply to autocomplete too, so the editor
   compiles each file the way your builds do. An older `sweetpad` CLI ignores them. A `-derivedDataPath` in that setting,

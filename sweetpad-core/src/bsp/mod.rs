@@ -305,6 +305,27 @@ struct Server {
     /// the debug log — and a target that never prepares is a target whose ObjC
     /// files never resolve their imports.
     last_prepare_failure: Mutex<Option<String>>,
+    /// Which targets build as Mac Catalyst for a Mac destination
+    /// ([`Self::builds_as_catalyst`]), against the [`Self::prepare_stamps`]
+    /// they were read at.
+    catalyst: Mutex<CatalystTargets>,
+}
+
+/// [`Server::builds_as_catalyst`]'s answers, and the project and config
+/// stamps they hold for.
+#[derive(Default)]
+struct CatalystTargets {
+    stamps: Vec<Option<(u64, SystemTime)>>,
+    targets: BTreeMap<String, bool>,
+}
+
+/// The platform the editor analyzes a target for ([`Server::editor_platform`]).
+struct EditorPlatform {
+    sdk: String,
+    arch: String,
+    /// Built as Mac Catalyst: iOS code on the macOS SDK, which a Mac run
+    /// destination resolves and an `-sdk macosx` alone does not.
+    catalyst: bool,
 }
 
 const TARGET_SCHEME: &str = "sweetpad://target/";
@@ -770,6 +791,7 @@ impl Server {
             prepare_queue: PrepareQueue::default(),
             prepared: Mutex::new(BTreeMap::new()),
             last_prepare_failure: Mutex::new(None),
+            catalyst: Mutex::new(CatalystTargets::default()),
         };
         server.bind_telemetry(config.socket.as_deref());
         server.log(&format!(
@@ -1391,7 +1413,7 @@ impl Server {
     fn prepare_command(&self, target: &str) -> (Command, String) {
         let owning = self.project_for_target(target);
         let scheme = project::scheme_for_target(&owning, target);
-        let (sdk, arch) = self.editor_platform(target);
+        let EditorPlatform { sdk, arch, .. } = self.editor_platform(target);
         let developer = self.developer_dir();
         let mut cmd = Command::new(developer.as_ref().map_or_else(
             || PathBuf::from("xcodebuild"),
@@ -1720,8 +1742,7 @@ impl Server {
             ));
             return Value::Null;
         };
-        let (sdk, arch) = self.editor_platform(&target);
-        let opts = self.options_for(&target, &sdk, &arch);
+        let opts = self.editor_options(&target, &self.editor_platform(&target));
         let inv = match build_settings::resolve_file_arguments(&opts, &companion) {
             Ok(inv) => inv,
             Err(e) => {
@@ -1880,12 +1901,6 @@ impl Server {
         (entries, built)
     }
 
-    /// The platforms `target` builds for ([`platform_families`]).
-    fn target_platforms(&self, target: &str) -> Vec<&'static str> {
-        let (sdkroot, supported) = self.authored_platform(target);
-        platform_families(&sdkroot, &supported)
-    }
-
     fn source_files(&self, target: &str) -> Vec<PathBuf> {
         project::target_source_files(&self.project_for_target(target), target).unwrap_or_default()
     }
@@ -1895,8 +1910,7 @@ impl Server {
     /// file the whole module), reduced to an editor invocation (no build actions
     /// / explicit-module plumbing), with the inputs appended.
     fn compiler_arguments(&self, target: &str, file: &Path) -> Option<Vec<String>> {
-        let (sdk, arch) = self.editor_platform(target);
-        let opts = self.options_for(target, &sdk, &arch);
+        let opts = self.editor_options(target, &self.editor_platform(target));
         let inv = match build_settings::resolve_file_arguments(&opts, file) {
             Ok(inv) => inv,
             Err(e) => {
@@ -1920,32 +1934,120 @@ impl Server {
 
     /// The SDK + arch sourcekit-lsp should analyze `target` with: the
     /// selected destination's platform when the target builds for it, as a
-    /// target listing `macosx` builds natively for My Mac; otherwise the
-    /// platform its `SDKROOT` or `SUPPORTED_PLATFORMS` names
-    /// ([`editor_sdk_for`]). Either way a device platform reads as its
-    /// **simulator** (editor-friendly — no device/signing, and the usual dev
-    /// build). Arch defaults to the host's (simulator and macOS builds match
-    /// the host: arm64 on Apple Silicon, x86_64 on Intel). `--sdk`/`--arch`
-    /// flags override, each independently.
-    fn editor_platform(&self, target: &str) -> (String, String) {
+    /// target listing `macosx` builds natively for My Mac and a Catalyst one
+    /// builds as Catalyst; otherwise the platform its `SDKROOT` or
+    /// `SUPPORTED_PLATFORMS` names ([`editor_sdk_for`]). Either way a device
+    /// platform reads as its **simulator** (editor-friendly — no
+    /// device/signing, and the usual dev build). Arch defaults to the host's
+    /// (simulator and macOS builds match the host: arm64 on Apple Silicon,
+    /// x86_64 on Intel). `--sdk`/`--arch` flags override, each independently.
+    fn editor_platform(&self, target: &str) -> EditorPlatform {
         let arch = self.editor_arch();
         if let Some(sdk) = self.sdk.as_deref() {
-            return (sdk.to_string(), arch);
+            return EditorPlatform {
+                sdk: sdk.to_string(),
+                arch,
+                catalyst: false,
+            };
         }
         let (sdkroot, supported) = self.authored_platform(target);
-        let destination = self
-            .live
-            .lock()
-            .ok()
-            .and_then(|l| l.destination_platform.as_deref().and_then(platform_family));
-        let sdk = destination
-            .filter(|d| platform_families(&sdkroot, &supported).contains(d))
+        let destination = self.destination_family();
+        let native = destination.filter(|d| platform_families(&sdkroot, &supported).contains(d));
+        let catalyst =
+            native.is_none() && destination == Some("macosx") && self.builds_as_catalyst(target);
+        let sdk = native
+            .or(catalyst.then_some("macosx"))
             .unwrap_or_else(|| editor_sdk_for(&sdkroot, &supported));
         self.log(&format!(
             "platform {target}: SDKROOT={sdkroot:?} platforms={supported:?} \
-             destination={destination:?} -> sdk={sdk} arch={arch}"
+             destination={destination:?} -> sdk={sdk} catalyst={catalyst} arch={arch}"
         ));
-        (sdk.to_string(), arch)
+        EditorPlatform {
+            sdk: sdk.to_string(),
+            arch,
+            catalyst,
+        }
+    }
+
+    /// The options that resolve `target` for the editor on `platform`. A
+    /// Catalyst target resolves through a Mac run destination.
+    fn editor_options(&self, target: &str, platform: &EditorPlatform) -> BuildSettingsOptions {
+        let mut opts = self.options_for(target, &platform.sdk, &platform.arch);
+        if platform.catalyst {
+            opts.destination = mac_destination(&platform.arch);
+        }
+        opts
+    }
+
+    /// The selected destination's platform, named by the SDK the editor reads
+    /// it with ([`platform_family`]).
+    fn destination_family(&self) -> Option<&'static str> {
+        self.live
+            .lock()
+            .ok()
+            .and_then(|l| l.destination_platform.as_deref().and_then(platform_family))
+    }
+
+    /// Whether `target` builds for the destination platform `destination`
+    /// ([`platform_family`]): natively, or on a Mac as Mac Catalyst.
+    fn builds_for(&self, target: &str, destination: &str) -> bool {
+        let (sdkroot, supported) = self.authored_platform(target);
+        platform_families(&sdkroot, &supported).contains(&destination)
+            || (destination == "macosx" && self.builds_as_catalyst(target))
+    }
+
+    /// Whether `target` builds as Mac Catalyst for a Mac destination, the
+    /// way `xcodebuild -destination platform=macOS` builds it: through the
+    /// selected scheme when it builds the target, since that build takes one
+    /// variant from its apps, and a framework a "Designed for iPad" app
+    /// embeds builds for `iphoneos` although on its own it would take
+    /// Catalyst; otherwise the target alone. Read once per project and
+    /// `bsp.json` stamps.
+    fn builds_as_catalyst(&self, target: &str) -> bool {
+        let stamps = self.prepare_stamps();
+        if let Ok(cache) = self.catalyst.lock()
+            && cache.stamps == stamps
+            && let Some(catalyst) = cache.targets.get(target)
+        {
+            return *catalyst;
+        }
+        let arch = self.editor_arch();
+        let resolve = |scheme: Option<String>| {
+            let mut opts = self.options_for(target, "macosx", &arch);
+            if scheme.is_some() {
+                opts.target = None;
+                opts.scheme = scheme;
+            }
+            opts.destination = mac_destination(&arch);
+            opts.keys = Some(vec!["IS_MACCATALYST".to_string()]);
+            build_settings::resolve_build_settings(&opts)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|t| {
+                    (
+                        t.target,
+                        t.settings.get("IS_MACCATALYST").is_some_and(|v| v == "YES"),
+                    )
+                })
+                .collect::<BTreeMap<String, bool>>()
+        };
+        let scheme = self.live.lock().ok().and_then(|l| l.scheme.clone());
+        let mut found = scheme.map(|s| resolve(Some(s))).unwrap_or_default();
+        if !found.contains_key(target) {
+            found.extend(resolve(None));
+        }
+        let catalyst = found.get(target).copied().unwrap_or(false);
+        if let Ok(mut cache) = self.catalyst.lock() {
+            if cache.stamps != stamps {
+                *cache = CatalystTargets {
+                    stamps,
+                    targets: BTreeMap::new(),
+                };
+            }
+            cache.targets.extend(found);
+            cache.targets.entry(target.to_string()).or_insert(catalyst);
+        }
+        catalyst
     }
 
     fn editor_arch(&self) -> String {
@@ -2292,6 +2394,11 @@ fn platform_family(platform: &str) -> Option<&'static str> {
     Some(editor_sdk_for(platform, ""))
 }
 
+/// The run destination for this Mac, as a build for My Mac names it.
+fn mac_destination(arch: &str) -> Option<sweetpad_lib::destination::RunDestination> {
+    sweetpad_lib::destination::parse_destination_arg(&format!("platform=macOS,arch={arch}"))
+}
+
 /// The platforms a target with `sdkroot` and `supported_platforms` builds
 /// for, each named by the SDK the editor reads it with ([`platform_family`]).
 fn platform_families(sdkroot: &str, supported_platforms: &str) -> Vec<&'static str> {
@@ -2318,8 +2425,8 @@ struct OwnerRanking<'a> {
     destination: Option<&'static str>,
     /// [`Server::scheme_targets`], read on first use.
     scheme_targets: Option<(Vec<String>, Vec<String>)>,
-    /// [`Server::target_platforms`] per target, read on first use.
-    platforms: BTreeMap<String, Vec<&'static str>>,
+    /// [`Server::builds_for`] the destination per target, read on first use.
+    builds: BTreeMap<String, bool>,
     /// Each set of owners decided, with the targets kept and the number of
     /// files it decided for.
     decisions: BTreeMap<Vec<String>, (Vec<String>, usize)>,
@@ -2337,7 +2444,7 @@ impl<'a> OwnerRanking<'a> {
             scheme,
             destination: destination.as_deref().and_then(platform_family),
             scheme_targets: None,
-            platforms: BTreeMap::new(),
+            builds: BTreeMap::new(),
             decisions: BTreeMap::new(),
         }
     }
@@ -2359,12 +2466,11 @@ impl<'a> OwnerRanking<'a> {
         if keep.len() > 1
             && let Some(destination) = self.destination
         {
-            let (server, platforms) = (self.server, &mut self.platforms);
+            let (server, builds) = (self.server, &mut self.builds);
             narrow(&mut keep, |t| {
-                platforms
+                *builds
                     .entry(t.to_string())
-                    .or_insert_with(|| server.target_platforms(t))
-                    .contains(&destination)
+                    .or_insert_with(|| server.builds_for(t, destination))
             });
         }
         self.decisions.insert(key, (keep.clone(), 1));
@@ -2912,11 +3018,14 @@ mod tests {
             (Some("iphoneos"), "iphonesimulator"),
             (Some("watchsimulator"), "iphonesimulator"),
         ] {
-            let (sdk, _) = server_for(destination, None).editor_platform("MultiPlatformApp");
+            let sdk = server_for(destination, None)
+                .editor_platform("MultiPlatformApp")
+                .sdk;
             assert_eq!(sdk, expected, "destination={destination:?}");
         }
-        let (sdk, _) =
-            server_for(Some("macosx"), Some("iphonesimulator")).editor_platform("MultiPlatformApp");
+        let sdk = server_for(Some("macosx"), Some("iphonesimulator"))
+            .editor_platform("MultiPlatformApp")
+            .sdk;
         assert_eq!(sdk, "iphonesimulator");
 
         let server = server_for(Some("iphonesimulator"), None);
@@ -2940,8 +3049,71 @@ mod tests {
 
         // An iOS-only target runs on a Mac as Designed for iPad, an iOS build.
         let (server, _, _) = shared_sources_server(&scratch, None, Some("macosx"));
-        assert_eq!(server.editor_platform("iOSApp").0, "iphonesimulator");
-        assert_eq!(server.editor_platform("WatchApp").0, "watchsimulator");
+        assert_eq!(server.editor_platform("iOSApp").sdk, "iphonesimulator");
+        assert_eq!(server.editor_platform("WatchApp").sdk, "watchsimulator");
+    }
+
+    /// A Catalyst target reads as Catalyst for a Mac destination, iOS code on
+    /// the macOS SDK. Which targets build that way follows the selected
+    /// scheme, as the build does: a framework the "Designed for iPad" app
+    /// embeds builds for `iphoneos` with it, and as Catalyst with the
+    /// Catalyst app or on its own.
+    #[test]
+    fn a_catalyst_target_reads_as_catalyst_for_a_mac_destination() {
+        let root = format!(
+            "{}/fixtures/_synthetic-destination-platforms/xcode-27.0.0/project/DestPlatforms",
+            env!("SWEETPAD_LIB_DIR")
+        );
+        let scratch = crate::scratch::ScratchDir::new("sweetpad-bsp-catalyst").unwrap();
+        let config = scratch.join("bsp.json");
+        let server_for = |scheme: Option<&str>, destination: Option<&str>| {
+            let body = serde_json::json!({
+                "workspacePath": *scratch,
+                "projectPath": format!("{root}/DestPlatforms.xcodeproj"),
+                "scheme": scheme,
+                "destinationPlatform": destination,
+            });
+            std::fs::write(&config, body.to_string()).unwrap();
+            Server::build(
+                ResolvedConfig::from_file(&config, &BTreeMap::new()).unwrap(),
+                Some(config.clone()),
+                Arc::new(AtomicU8::new(LogLevel::Info as u8)),
+                CommandLine::default(),
+                Sent::default().writer(),
+            )
+            .unwrap()
+        };
+        let read = |server: &Server, target: &str| {
+            let platform = server.editor_platform(target);
+            (platform.sdk, platform.catalyst)
+        };
+        let catalyst = ("macosx".to_string(), true);
+        let ios = ("iphonesimulator".to_string(), false);
+
+        let server = server_for(Some("CatApp"), Some("macosx"));
+        assert_eq!(read(&server, "CatApp"), catalyst);
+        assert_eq!(read(&server, "IPadKit"), catalyst);
+        assert_eq!(read(&server, "IPadApp"), ios);
+        assert_eq!(read(&server, "MacHelper"), ("macosx".to_string(), false));
+        let source = format!("{root}/Sources/Kit/Kit.swift");
+        let args = server
+            .compiler_arguments("IPadKit", Path::new(&source))
+            .unwrap();
+        let triple = args
+            .iter()
+            .position(|a| a == "-target")
+            .map(|i| &args[i + 1]);
+        assert!(triple.is_some_and(|t| t.ends_with("-macabi")), "{args:?}");
+
+        let server = server_for(Some("IPadApp"), Some("macosx"));
+        assert_eq!(read(&server, "IPadKit"), ios);
+        assert_eq!(read(&server, "CatApp"), catalyst);
+
+        let server = server_for(None, Some("macosx"));
+        assert_eq!(read(&server, "IPadKit"), catalyst);
+
+        let server = server_for(Some("CatApp"), Some("iphonesimulator"));
+        assert_eq!(read(&server, "CatApp"), ios);
     }
 
     /// A `-configuration` in `buildArgs` replaces the one the extension picks
