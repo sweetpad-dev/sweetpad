@@ -12,6 +12,7 @@ use clap::Subcommand;
 use sweetpad_core::xcodebuild_args;
 use sweetpad_lib::destination::DestinationSpec;
 
+pub(crate) mod adapter;
 mod ax;
 mod macwin;
 mod sample;
@@ -1638,10 +1639,20 @@ impl BgBoot {
 /// Build and install onto the target, returning the launchable app. Shared by
 /// every flow; the launch step is chosen by the caller.
 fn build_and_install(plan: &RunPlan, out: &Output) -> Result<AppBundle, CliError> {
+    install_built(plan, out, || plan.build_plan().run(out).map(|_| ()))
+}
+
+/// [`build_and_install`] with the build step given, for the debug adapter,
+/// which streams the build to the editor and can cancel it.
+fn install_built(
+    plan: &RunPlan,
+    out: &Output,
+    build: impl FnOnce() -> CliResult,
+) -> Result<AppBundle, CliError> {
     // Boot the simulator while the build runs; joined at the boot step below so it's
     // ready for install without the boot serializing after the build.
     let mut boot = BgBoot::start(&plan.target);
-    plan.build_plan().run(out)?;
+    build()?;
     let app = plan.app_bundle()?;
     let app_path = app.path.display().to_string();
     match &plan.target {

@@ -722,6 +722,12 @@ pub enum Resource {
         #[command(subcommand)]
         action: commands::bsp::Action,
     },
+    /// Debug Adapter Protocol server for editors ('dap' alone serves on
+    /// stdio; editors start it, 'dap init' writes their adapter entry).
+    Dap {
+        #[command(subcommand)]
+        action: Option<commands::dap::Action>,
+    },
     /// Inspect and purge Xcode's DerivedData.
     #[command(visible_alias = "dd")]
     DerivedData {
@@ -1137,6 +1143,7 @@ pub fn run(argv: &[String]) -> ExitCode {
             ctx.targeting = target.into();
             commands::bsp::run(&mut ctx, &action)
         }
+        Resource::Dap { action } => commands::dap::run(&mut ctx, action.as_ref()),
         Resource::DerivedData { target, action } => {
             ctx.targeting = target.into();
             commands::derived_data::run(&mut ctx, &action)
@@ -1193,7 +1200,7 @@ const GROUP_EVERYDAY: HelpGroup = HelpGroup {
 const GROUP_PLUMBING: HelpGroup = HelpGroup {
     heading: "Plumbing (scripting & agents)",
     everyday: false,
-    names: &["pbxproj", "spm", "merge", "bsp", "vscode"],
+    names: &["pbxproj", "spm", "merge", "bsp", "dap", "vscode"],
 };
 
 /// Commands `main` peels off before the clap resource tree parses, so they have

@@ -494,6 +494,23 @@ ok "app run (logs follow, streamed briefly)"
 ok "app stop"
 
 # ---------------------------------------------------------------------------
+section "debug adapter (dap; §9u)"
+"$BIN" dap doctor
+ok "dap doctor"
+# One real session the way an editor drives it: launch, a breakpoint in the
+# app's init, the stop and its frame, a disconnect, and the adapter exiting.
+python3 "$ROOT/dap-session.py" "$BIN" --cwd "$APP_DIR" --scheme SweetpadCIApp \
+  --destination "$UDID" --breakpoint "$APP_DIR/Sources/App/SweetpadCIApp.swift:10"
+ok "dap launch on the simulator stops at a breakpoint"
+# Outside any project the editor files land in the working directory; the
+# .git marker stops the project walk-up there.
+mkdir -p "$GEN_DIR/dap-init/.git"
+( cd "$GEN_DIR/dap-init" && "$BIN" dap init --editor nvim >/dev/null && grep -q 'dap.adapters.sweetpad' .nvim.lua )
+ok "dap init --editor nvim"
+( cd "$GEN_DIR/dap-init" && "$BIN" dap init --editor zed >/dev/null && grep -q '"adapter": "Swift"' .zed/debug.json )
+ok "dap init --editor zed"
+
+# ---------------------------------------------------------------------------
 section "app screenshot (§9h)"
 # Simulator delegation: the app verb reaches the same simctl capture
 # `simulator screenshot` uses (the booted sim from the lifecycle section).
@@ -550,6 +567,15 @@ if command -v lldb >/dev/null 2>&1; then
     echo "  (macOS lldb debug skipped: $(tail -1 "$GEN_DIR/lldb.out"))"
   fi
   "$BIN" app stop --project "$APP" --scheme SweetpadCIMac --mac >/dev/null 2>&1 || true
+fi
+
+# The adapter's macOS route: lldb-dap launches the app itself.
+if python3 "$ROOT/dap-session.py" "$BIN" --cwd "$APP_DIR" --scheme SweetpadCIMac \
+    --destination mac --breakpoint "$APP_DIR/Sources/App/SweetpadCIApp.swift:10" \
+    > "$GEN_DIR/dap-mac.out" 2>&1; then
+  ok "dap launch on macOS stops at a breakpoint"
+else
+  echo "  (macOS dap session skipped: $(tail -1 "$GEN_DIR/dap-mac.out"))"
 fi
 
 # install/uninstall stay simulator/device-only — a macOS app is built in place.

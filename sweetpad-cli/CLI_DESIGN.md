@@ -4089,17 +4089,17 @@ credentials, a 403 and a 407, `no_proxy` sending around a lower-case
 from stdin; attachments or logs; the VS Code extension; SOCKS proxies and
 proxies reached over HTTPS, which `minreq` doesn't support.
 
-## 9u. Direction — debugging from any editor (`dap`)
+## 9u. v8 — debugging from any editor (`dap`)
 
-> Status: planned, not yet versioned. `dap` ships in a CLI release first; the
-> extension then switches to it by default. Asked for in sweetpad-dev/sweetpad#340.
+> Asked for in sweetpad-dev/sweetpad#340. `dap` ships in a CLI release first;
+> the extension then switches to it by default (the last part of this section).
 
 Debugging an app goes through one of two doors. The VS Code extension builds
 and launches through its own pre-launch task, then hands an attach config to
-CodeLLDB (`vadimcn.vscode-lldb`, a hard `extensionDependencies` entry). The CLI
-has `app debug`, an interactive or `--batch` lldb session in the terminal.
-Neither reaches Neovim, Zed, Helix or Emacs, whose debug UIs all speak the
-Debug Adapter Protocol and expect an adapter to get the process running.
+CodeLLDB (`vadimcn.vscode-lldb`). The CLI has `app debug`, an interactive or
+`--batch` lldb session in the terminal. Neither reaches Neovim, Zed, Helix or
+Emacs, whose debug UIs all speak the Debug Adapter Protocol and expect an
+adapter to get the process running.
 
 Xcode already ships the adapter half: `xcrun lldb-dap`, LLVM's DAP server
 linked against Apple's LLDB, so Swift variables and expressions behave as they
@@ -4107,57 +4107,128 @@ do in Xcode with no `lldb.library` setup. What it can't do is build a scheme or
 start an app on a simulator or device; it expects a program to launch or a pid
 to attach to. That gap is exactly the part sweetpad already owns.
 
+```
+sweetpad dap                        # serve one debug session on stdio
+sweetpad dap init --editor nvim|zed # write the editor's adapter entry
+sweetpad dap doctor                 # can this machine serve one?
+```
+
 **`sweetpad dap` is an adapter in front of `lldb-dap`.** The editor starts it
-over stdio; it starts `xcrun lldb-dap` as a child and forwards traffic both
-ways. Four messages are intercepted:
+over stdio; it starts lldb-dap as a child at the editor's `initialize` and
+forwards traffic both ways. Four requests are intercepted:
 
-- `initialize` is forwarded, and the capabilities in the reply are trimmed to
-  what the proxy honours (no `supportsRestartRequest` in v1).
-- `launch` is never forwarded as sent. Its fields resolve to a `RunPlan`; the
-  adapter builds, installs and launches suspended, then sends lldb-dap the
-  request it needs: `attach {pid}` on a simulator (the pid from `simctl launch
-  --wait-for-debugger`), a plain `launch {program, args, env}` on macOS, and on
-  a device `attachCommands` running `device select <udid>` and `device process
-  attach --pid <pid>` after `devicectl … --start-stopped`, the route the
-  extension's `debugger/provider.ts` already takes. lldb-dap's reply is relayed
-  as the answer to the editor's `launch`.
-- `attach` reaches an app that is already running, by bundle id or pid, with
-  no build.
-- `disconnect` is forwarded, then the app is terminated unless the client sent
-  `terminateDebuggee: false`, and the log stream stops.
+- `initialize` is forwarded with `pathFormat` and `adapterID` filled in when
+  the editor left them out, since Xcode's lldb-dap refuses an `initialize`
+  without `pathFormat` although the protocol makes it optional. The reply's
+  capabilities lose `supportsRestartRequest`.
+- `launch` is never forwarded as sent. Its fields resolve to the same
+  `RunPlan` `run` uses; the adapter builds, installs and starts the app, then
+  sends lldb-dap the request that reaches it, under the editor's `seq`, and
+  relabels lldb-dap's reply with the editor's command.
+- `attach` reaches an app that is already running, with no build: a `pid`
+  alone is attached to as a process on this Mac, which covers simulator apps;
+  otherwise the plan's app is located and its running process found.
+- `disconnect` is forwarded, then the app and its log stream stop, unless the
+  editor sent `terminateDebuggee: false`. An editor's `launch` that lldb-dap
+  received as an `attach` goes out with `terminateDebuggee: true`, since
+  lldb-dap detaches from what it attached to by default. Once lldb-dap
+  answers, the session ends.
 
-Everything else (breakpoints, stepping, `stackTrace`, `variables`, `evaluate`)
-passes through untouched.
+A `launch` or `attach` that names a `program` is an lldb-dap configuration
+(a Swift package's binary, say) and goes through untouched, so an editor that
+sends every Swift session through this adapter still debugs those. Everything
+else (breakpoints, stepping, `stackTrace`, `variables`, `evaluate`) passes
+through. `restart` is refused with the way to restart.
 
-**Sequence numbers are renumbered in one direction.** The proxy injects
-messages of its own (build output, app logs), so everything flowing to the
-editor carries the proxy's `seq`. Toward lldb-dap the editor's `seq` is kept,
-and the rewritten `launch` reuses the original's, so lldb-dap's `request_seq`
-already matches what the editor asked. Reverse requests from lldb-dap
-(`runInTerminal`) are renumbered toward the editor and their responses mapped
-back to lldb-dap's numbers.
+**Each destination reaches lldb-dap its own way:**
+
+| destination | started by | lldb-dap is sent |
+|---|---|---|
+| simulator | `simctl launch --console-pty --wait-for-debugger` | `attach {pid, program}` |
+| macOS, Mac Catalyst | lldb-dap itself | `launch {program, args, env}` |
+| device (iOS 17+) | `devicectl … launch --start-stopped` | `attach` with `attachCommands` |
+| Designed for iPad | `open` (LaunchServices), after configurationDone | `attach {program, waitFor}` |
+
+The simulator's console child stays up for the session: killing it with a
+catchable signal takes the app down too, so a detach ends it with SIGKILL. On
+a device the pid comes from `devicectl device info processes`, and lldb
+selects `remote-ios`, maps its copy of the app onto the device's with
+`SetPlatformFileSpec`, and attaches with `device select` and `device process
+attach --pid`, the route the extension's `debugger/provider.ts` takes, run
+through `script lldb.debugger.HandleCommand` as the extension runs them. The
+attach stops the app with a SIGSTOP that lldb-dap reports only after it has
+resumed the app, as a stop nobody asked for, so `postRunCommands` sets SIGSTOP
+to pass silently once the attach is done. A device on iOS 16 or older is
+refused before the build, since devicectl can't drive it. When this Mac has no
+copy of the device's system libraries under `iOS DeviceSupport`, lldb reads
+each one out of the device's memory as the app loads it, which over a network
+connection took more than five minutes on an iPhone 13, against 22 seconds for
+the whole session once the copy existed. The console says so up front: Xcode makes the copy the
+first time it runs an app on the device, and devicectl has no command for it. An iOS app on the Mac runs only when LaunchServices starts it, so lldb-dap
+waits for its executable by name and the adapter opens the app half a second
+after forwarding `configurationDone`, with its stdout and stderr in a file the
+adapter follows. That last route is written from the extension's waitFor
+pattern and hasn't run on hardware: building for Designed for iPad needs a
+registered Mac.
+
+Apple's lldb-dap answers `launch` and `attach` at once, attaching (or setting
+up the launch) before it replies, and only then sends `initialized`. It
+numbers every message `seq: 0`.
+
+**Sequence numbers are renumbered in one direction.** The adapter injects
+messages of its own (build output, app logs), and lldb-dap numbers nothing, so
+everything flowing to the editor carries the adapter's `seq`. Toward lldb-dap
+the editor's `seq` is kept, and the rewritten `launch` reuses the original's,
+so lldb-dap's `request_seq` already matches what the editor asked. Reverse
+requests from lldb-dap (`runInTerminal`) are renumbered toward the editor and
+the editor's replies mapped back to lldb-dap's numbers.
 
 **The launch config mirrors `run`'s flags:**
 
 ```json
 { "type": "sweetpad", "request": "launch", "scheme": "MyApp", "configuration": "Debug",
-  "destination": "iPhone 18 Pro", "args": [], "env": {}, "lldb": { "sourceMap": [] } }
+  "destination": "iPhone 18 Pro", "args": [], "env": {}, "xcodebuildArgs": [],
+  "cwd": "${workspaceFolder}", "lldb": { "sourceMap": [] } }
 ```
 
-`destination` is the `--on` specifier, so `booted` and `mac` resolve as they
-do for `run`, and `lldb` is passed to lldb-dap untouched. Missing fields fall
-back to the remembered scheme and destination. A DAP session has no terminal,
-so it never prompts: with nothing explicit and nothing remembered, `launch`
-fails with the choices listed and `sweetpad run` named as the way to pick once.
-The extension shows its own picker and passes the result.
+`destination` is the `--on` reference, so `booted`, `mac`, a name or a UDID
+resolve as they do for `run`; a value with an `=` is a raw `-destination`
+specifier, which is how Mac Catalyst (`platform=macOS,variant=Mac Catalyst`)
+and Designed for iPad (`platform=macOS,variant=Designed for iPad`) are named.
+`env` is an object or a list of `KEY=VALUE`; `xcodebuildArgs` is `run`'s `--`
+tail; `cwd` is where the project is found from; `workspace` and `project`
+name a container; `lldb` goes to lldb-dap untouched, with the adapter's own
+command lists (`initCommands`, `preRunCommands`) ahead of the editor's. A field
+of the wrong type fails the launch and names the field. Missing fields fall
+back to the configured and remembered scheme and destination. A debug session
+has no terminal, so it never prompts: with nothing explicit and nothing
+remembered, `launch` fails naming the field to set (listing the schemes for a
+scheme) and `sweetpad run` as the way to pick once. The extension shows its own
+picker and passes the result.
+
+**The adapter owns its stdio before anything can write to it.** The editor
+speaks DAP over fds 0 and 1, and the rest of the CLI writes freely: notes and
+warnings to stderr, app logs to stdout, and spawned tools inherit both. So the
+protocol moves to close-on-exec copies of fds 0 and 1, fd 0 becomes
+`/dev/null` so no child reads the editor's messages, and fds 1 and 2 become
+pipes whose lines turn into `output` events: fd 1 as `stdout` (app logs), fd 2
+as `console` (the CLI's own lines). The `Output` is rebuilt non-interactive and
+colorless, so nothing prompts, animates or colors.
 
 **Build and app output go to the debug console.** The build streams as
-`output` events in the short build-log form, compiler errors carrying `source`
-and `line` so editors link them, wrapped in `progressStart`/`progressEnd`.
-Simulator stdout and stderr arrive through the log stream `run` already
-follows; on macOS lldb launched the process and captures stdout itself, so the
-stream isn't attached twice. An editor that disconnects mid-build cancels the
-`xcodebuild` it started.
+`output` events in the short build-log form, errors and warnings carrying
+`source`, `line` and `column` so editors link them, inside a cancellable
+`progressStart`/`progressEnd` whose updates name the file compiling. A failed
+build's launch error repeats the first errors, as `build start` does when its
+stderr goes elsewhere. Simulator stdout and stderr arrive through the console
+child, and os_log through the log stream `run` follows, at `run`'s default
+level. On macOS lldb launched the process and relays its stdout itself, so only
+the log stream is added. The lines about the launch rather than the app are
+left out as `run` leaves them out: the simulator's boot noise, AppKit's note on
+the `-ApplePersistenceIgnoreState` sweetpad adds, and the lines Xcode's
+debug-dylib stub writes whenever a debugger starts the app. A `disconnect`,
+`terminate` or cancelled progress during the build interrupts the `xcodebuild`
+the adapter started, and the steps after it don't start.
 
 **Restart and hot reload wait.** v1 advertises no `restart`, and VS Code and
 nvim-dap fall back to disconnect-and-launch, which already rebuilds. A native
@@ -4165,51 +4236,51 @@ restart means a fresh lldb-dap child and replaying every breakpoint request the
 editor sent. `--hot` stays out of debug sessions until injection with a
 debugger attached is tested.
 
-**The surface follows `bsp`.** `sweetpad dap` serves on stdio; `dap init
---editor nvim|zed|helix` writes the editor's adapter entry; `dap doctor` checks
-that `xcrun lldb-dap` resolves (following `DEVELOPER_DIR` and `xcode-select`)
-and that Xcode is new enough, with an override path for anything else.
-`SWEETPAD_DAP_LOG` names a file that records the full DAP traffic, as
-`SWEETPAD_BSP_LOG` does for BSP.
+**The surface follows `bsp`.** `dap init --editor nvim` writes a marked block
+into the project's `.nvim.lua` (read with `exrc` on) that registers the
+adapter and a launch configuration for Swift, Objective-C, C and C++, and a
+rerun replaces the block. `dap init --editor zed` adds a scenario to
+`.zed/debug.json` for the Swift extension's adapter, whose binary Zed's
+settings can override (`"dap": {"Swift": {"binary": …}}`) but which it starts
+with no arguments. The binary run as `sweetpad-dap` therefore serves as `sweetpad
+dap` does, the Homebrew formula links that name, and `dap init` prints the
+settings line with it. `dap doctor` checks that `xcrun lldb-dap` resolves
+(following `DEVELOPER_DIR` and `xcode-select`), that Xcode is 16 or later, and
+that lldb-dap answers `initialize`. `SWEETPAD_LLDB_DAP` names another lldb-dap
+(a newer LLVM's, a wrapper), and `SWEETPAD_DAP_LOG` names a file that records
+the full DAP traffic both ways, as `SWEETPAD_BSP_LOG` does for BSP.
 
-**It resolves its plan the way §9n wants.** The adapter is one more client
-that needs a settled plan. It resolves through the same code `run` uses rather
-than a copy, so when the run session becomes a server the adapter becomes one
-of its clients instead of a second owner.
+**It resolves its plan the way §9n wants.** The launch half lives in
+`app::adapter`, a child of `app`, so it plans, builds, installs and follows
+logs through `run`'s own code rather than a copy. When the run session becomes
+a server the adapter becomes one of its clients instead of a second owner.
 
 **The extension switches to it by default.** Registering `sweetpad-lldb` with
 a `DebugAdapterDescriptorFactory` that returns `DebugAdapterExecutable(<cli>,
 ["dap"])` keeps users' `launch.json` unchanged and drops the pre-launch task on
 that route. Once a CLI release carries `dap`, it is the extension's default
 debugger, and CodeLLDB leaves `extensionDependencies` to become optional: the
-fallback when the CLI is missing or too old to have `dap`, or the route a
-setting picks explicitly. `codelldbAttributes` is honoured only on that route.
-With neither the CLI nor CodeLLDB installed, starting a debug session explains
-both options instead of failing silently, since debugging no longer works out of
-the box without one of them.
-
-**v1 scope** is what lets the extension switch in one step:
-
-- `launch` and `attach` on simulators (iOS, watchOS, tvOS and visionOS attach
-  alike), native macOS, Mac Catalyst and Designed for iPad on Mac.
-- Physical devices on iOS 17 and later, through the devicectl route. The CLI
-  has no ios-deploy path, so older devices stay on the extension's CodeLLDB
-  route, which it picks for them automatically.
-- App logs, linked build errors, progress, build cancellation on disconnect,
-  and `SWEETPAD_DAP_LOG`.
-- `dap doctor`, and `dap init` for nvim-dap and Zed.
-- The extension defaults to `dap` for every destination it covers.
+fallback when the CLI is missing or too old to have `dap`, the route for
+devices older than iOS 17, or the route a setting picks explicitly.
+`codelldbAttributes` is honoured only on that route. With neither the CLI nor
+CodeLLDB installed, starting a debug session explains both options instead of
+failing silently.
 
 **After v1:** native restart (rebuild, relaunch, reattach, breakpoints
 replayed), debugging tests by attaching to a suspended test runner, hot reload
-inside a debug session, and attaching to the §9n run session as one of its
+inside a debug session, device stdout (devicectl's `--console` with
+`--start-stopped`), and attaching to the §9n run session as one of its
 clients. Helix and Emacs (dape) get `dap init` once it's clear how each
 registers a custom adapter and what Helix's client supports.
 
-**Testing** uses a fake lldb-dap that replays scripted JSON (renumbering, the
-launch rewrite per destination, the build-failure path, reverse-request
-routing), plus one real session in `xcode-tests`: a breakpoint, a launch, the
-`stopped` event, a disconnect.
+**Testing.** `tests/dap_proxy.rs` runs the adapter against a fake lldb-dap
+that echoes what it receives: the renumbering, the filled-in `initialize`, the
+trimmed capabilities, an attach by pid, the reverse-request routing, the
+`program` passthrough, and launches that fail before any build. `ci/smoke.sh`
+drives one real session per destination kind it has through
+`ci/dap-session.py`, a small DAP client: a launch on the simulator and on
+macOS, a breakpoint, the `stopped` event and its frame, a disconnect, and the
+adapter exiting.
 
 ## 10. Testing
 

@@ -55,6 +55,7 @@ const sidebars: SidebarsConfig = {
     group('Setup'),
     'cli/configuration',
     'cli/autocomplete',
+    'cli/editor-debugging',
     group('Automation'),
     'cli/scripts-and-ci',
     'cli/agent-skills',

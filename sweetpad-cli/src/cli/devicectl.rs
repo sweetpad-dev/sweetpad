@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sweetpad_core::devices::devicectl as parse;
-pub use sweetpad_core::devices::devicectl::{Details, Device, find};
+pub use sweetpad_core::devices::devicectl::{AppProcess, Details, Device, find};
 
 use crate::cli::{CliError, ErrorContext, process};
 
@@ -286,9 +286,20 @@ pub fn terminate(device_id: &str, app_dir_name: &str) -> Result<(), CliError> {
 }
 
 /// Pids of running processes whose executable lives inside the named `.app`
-/// directory. `devicectl device info processes` routes through a
-/// `--json-output` temp file like [`list`].
+/// directory.
 fn app_pids(device_id: &str, app_dir_name: &str) -> Result<Vec<i64>, CliError> {
+    Ok(app_processes(device_id, app_dir_name)?
+        .into_iter()
+        .map(|p| p.pid)
+        .collect())
+}
+
+/// The running processes whose executable lives inside the named `.app`
+/// directory, each with the bundle's path on the device, which a debugger
+/// attaching from the Mac needs to match its local copy to the remote one.
+/// `devicectl device info processes` routes through a `--json-output` temp
+/// file like [`list`].
+pub fn app_processes(device_id: &str, app_dir_name: &str) -> Result<Vec<AppProcess>, CliError> {
     let tmp = temp_file("processes", "json");
     let ok = process::run(
         "xcrun",
@@ -314,6 +325,5 @@ fn app_pids(device_id: &str, app_dir_name: &str) -> Result<Vec<i64>, CliError> {
     let raw = std::fs::read_to_string(&tmp)
         .map_err(|e| CliError::new(format!("reading devicectl output: {e}")))?;
     let _ = std::fs::remove_file(&tmp);
-    let processes = parse::parse_app_processes(&raw, app_dir_name).map_err(CliError::new)?;
-    Ok(processes.into_iter().map(|p| p.pid).collect())
+    parse::parse_app_processes(&raw, app_dir_name).map_err(CliError::new)
 }

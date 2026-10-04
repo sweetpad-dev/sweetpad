@@ -10,6 +10,9 @@ class Sweetpad < Formula
 
   def install
     bin.install "sweetpad"
+    # The name editors start the debug adapter by when they can't pass it
+    # arguments ('sweetpad dap init --editor zed').
+    bin.install_symlink "sweetpad" => "sweetpad-dap"
   end
 
   test do

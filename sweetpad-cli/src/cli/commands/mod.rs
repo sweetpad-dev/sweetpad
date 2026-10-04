@@ -54,6 +54,7 @@ pub mod bsp;
 pub mod build;
 pub mod clean;
 pub mod context;
+pub mod dap;
 pub mod dependency;
 pub mod derived_data;
 pub mod destination;

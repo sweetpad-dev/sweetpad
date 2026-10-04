@@ -201,6 +201,17 @@ That's the whole setup, and it works in any editor with a language server: Neovi
 Emacs. [Editor autocomplete](./autocomplete.md) covers the details and what to do when completions go
 missing.
 
+## Debugging in your editor
+
+Your editor's debugger can build and launch the app too. `sweetpad dap` is a debug adapter that builds,
+installs, and starts the app, then hands it to Xcode's lldb-dap for breakpoints and stepping:
+
+```bash
+sweetpad dap init --editor nvim   # or --editor zed
+```
+
+[Editor debugging](./editor-debugging.md) covers the setup and the launch configuration.
+
 ## Saving your settings
 
 If you'd rather not answer the scheme and destination prompt each time, or you want your whole team

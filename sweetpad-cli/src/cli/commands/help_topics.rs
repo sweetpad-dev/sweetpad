@@ -152,7 +152,13 @@ Color:
 
 Hot reload:
 
-  SWEETPAD_HOTRELOAD_DYLIB  override the injection client dylib path (CI)",
+  SWEETPAD_HOTRELOAD_DYLIB  override the injection client dylib path (CI)
+
+Debug adapter ('sweetpad dap'):
+
+  SWEETPAD_LLDB_DAP         the lldb-dap to start in place of 'xcrun lldb-dap'
+  SWEETPAD_DAP_LOG          file that records every message between the
+                            editor and lldb-dap",
     },
     Topic {
         name: "exit-codes",

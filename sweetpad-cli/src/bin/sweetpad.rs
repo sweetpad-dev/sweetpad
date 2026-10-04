@@ -29,7 +29,15 @@ fn main() -> ExitCode {
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut process_args = std::env::args();
+    let program = process_args.next().unwrap_or_default();
+    let mut args: Vec<String> = process_args.collect();
+    // Run as `sweetpad-dap`, the binary is `sweetpad dap`: an editor whose
+    // debug adapter setting takes a binary but no arguments (Zed's Swift
+    // adapter) starts the adapter through that name.
+    if std::path::Path::new(&program).file_name() == Some(std::ffi::OsStr::new("sweetpad-dap")) {
+        args.insert(0, "dap".to_string());
+    }
     match args.first().map(String::as_str) {
         Some("vscode") => ExitCode::from(sweetpad_cli::vscode_cli::run(&args[1..])),
         _ => sweetpad_cli::cli::run(&args),

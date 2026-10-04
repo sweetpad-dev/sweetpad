@@ -251,6 +251,8 @@ Alias: `sim`. Most take an optional target (name or UDID) and default to the boo
 | `sweetpad merge run`            | Resolve conflicted project files in the current merge by hand.        |
 | `sweetpad bsp init`             | Write `buildServer.json` so SourceKit-LSP autocomplete works in any editor. |
 | `sweetpad bsp doctor`           | Check the autocomplete wiring.                                        |
+| `sweetpad dap init`             | Write Neovim's or Zed's debug adapter entry, so the editor's debugger builds and runs the app. See [Editor debugging](./editor-debugging.md). |
+| `sweetpad dap doctor`           | Check that Xcode's lldb-dap can serve a debug session.                |
 | `sweetpad hot status`           | Report whether the hot-reload port is free, and which process holds it. |
 | `sweetpad hot reset`            | End a hot-reload listener a dead `--hot` session left behind (`--force` for a non-sweetpad holder). |
 | `sweetpad completions <shell>`  | Generate completions for bash, zsh, fish, elvish, or PowerShell.      |

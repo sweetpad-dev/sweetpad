@@ -34,8 +34,9 @@ press `r` to rebuild or `q` to quit.
   SourceKit-LSP for Neovim, Zed, Helix, and Emacs.
 - [Hot reload](https://sweetpad.hyzyla.dev/docs/cli/hot-reload): `sweetpad run --hot` applies saved
   Swift changes without restarting the app.
-- [Debugging](https://sweetpad.hyzyla.dev/docs/cli/app-lifecycle): scripted lldb sessions, waiting
-  for a log line, and structured crash reports.
+- [Debugging](https://sweetpad.hyzyla.dev/docs/cli/editor-debugging): breakpoints in Neovim, Zed,
+  or VS Code through `sweetpad dap`, plus [scripted lldb sessions](https://sweetpad.hyzyla.dev/docs/cli/app-lifecycle)
+  and structured crash reports.
 - [Scripts and CI](https://sweetpad.hyzyla.dev/docs/cli/scripts-and-ci): JSON output and specific
   exit codes on every command.
 - [Agent skills](https://sweetpad.hyzyla.dev/docs/cli/agent-skills): instructions that teach coding

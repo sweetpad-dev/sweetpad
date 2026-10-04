@@ -187,6 +187,9 @@ sweetpad app debug --arg -MyFlag --env LOG_LEVEL=debug
 `--wait-for-debugger` launches suspended without attaching, for when you want to bring your own
 debugger. The app waits for `lldb -p <pid>`.
 
+To debug from your editor's own debugger instead of a terminal, see
+[Editor debugging](./editor-debugging.md).
+
 ### Driving lldb from a script
 
 `--batch` runs lldb non-interactively: it executes the commands you give it and lets the session end,

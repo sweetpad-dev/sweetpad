@@ -123,6 +123,16 @@ It checks each link in the chain and says which one broke. The usual causes are 
 missing a required field, which sourcekit-lsp skips silently, or absolute paths in it
 that went stale when the checkout moved. [Editor autocomplete](./autocomplete.md) covers both.
 
+## The editor's debugger doesn't start
+
+```bash
+sweetpad dap doctor
+```
+
+It checks that Xcode's lldb-dap resolves and answers. Set `SWEETPAD_DAP_LOG` to a file path to record
+everything the editor and the debugger send each other. [Editor debugging](./editor-debugging.md#when-it-doesnt-start)
+has more.
+
 ## A device build hangs looking for a destination
 
 A connected iPhone has to be unlocked, trusted, and in Developer Mode before xcodebuild can reach it.
