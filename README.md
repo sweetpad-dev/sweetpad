@@ -8,9 +8,6 @@ packages.
 
 [![Demo: sweetpad run builds an app and launches it in the iOS Simulator, then rebuilds it after a code change](./sweetpad-docs/static/videos/sweetpad-demo-readme.jpg)](./sweetpad-docs/static/videos/sweetpad-demo-readme.mp4)
 
-Other cuts: [square, with captions](./sweetpad-docs/static/videos/sweetpad-demo-x.mp4) ·
-[silent loop](./sweetpad-docs/static/videos/sweetpad-demo.mp4)
-
 ```bash
 brew install sweetpad-dev/tap/sweetpad
 
