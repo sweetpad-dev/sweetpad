@@ -296,6 +296,7 @@ pub fn swift_arguments(
         a.pair("-F", &p);
     }
     emit_unit_test_search_paths(&mut a, settings);
+    emit_swift_system_search_paths(&mut a, settings);
 
     // Swift macros a package vends are out-of-process executable plugins. A
     // plugin *search path* doesn't discover executables, so the frontend
@@ -371,6 +372,58 @@ fn emit_unit_test_search_paths(a: &mut ArgBuilder, settings: &Settings) {
     if let Some(platform) = settings.get("PLATFORM_DIR") {
         a.pair("-F", &format!("{platform}/Developer/Library/Frameworks"));
         a.pair("-I", &format!("{platform}/Developer/usr/lib"));
+    }
+}
+
+/// The system search paths, the way Swift Build hands them to swiftc
+/// (`SwiftCompilerSpec.searchPathArguments`). Each `SYSTEM_FRAMEWORK_SEARCH_PATHS`
+/// entry not already searched as a framework path is `-Fsystem` for Mac
+/// Catalyst's `System/iOSSupport` `Frameworks` and `SubFrameworks`, where its
+/// UIKit and SwiftUI live, or for every path under
+/// `SYSTEM_FRAMEWORK_SEARCH_PATHS_USE_FSYSTEM`, and `-F` otherwise. Each
+/// `SYSTEM_HEADER_SEARCH_PATHS` entry reaches the clang importer as
+/// `-isystem`, once (Catalyst's value repeats its iOSSupport `usr/include`).
+fn emit_swift_system_search_paths(a: &mut ArgBuilder, settings: &Settings) {
+    let all_fsystem = is_yes(
+        settings
+            .get("SYSTEM_FRAMEWORK_SEARCH_PATHS_USE_FSYSTEM")
+            .map_or("", String::as_str),
+    );
+    let mut searched: BTreeSet<String> = a
+        .out
+        .windows(2)
+        .filter(|w| matches!(w[0].as_str(), "-F" | "-Fsystem"))
+        .map(|w| w[1].clone())
+        .collect();
+    for path in ws_unquoted(
+        settings
+            .get("SYSTEM_FRAMEWORK_SEARCH_PATHS")
+            .map(String::as_str),
+    ) {
+        if !searched.insert(path.clone()) {
+            continue;
+        }
+        let ios_support = path.ends_with("System/iOSSupport/System/Library/Frameworks")
+            || path.ends_with("System/iOSSupport/System/Library/SubFrameworks");
+        a.pair(
+            if ios_support || all_fsystem {
+                "-Fsystem"
+            } else {
+                "-F"
+            },
+            &path,
+        );
+    }
+    let mut headers = BTreeSet::new();
+    for path in ws_unquoted(
+        settings
+            .get("SYSTEM_HEADER_SEARCH_PATHS")
+            .map(String::as_str),
+    ) {
+        if headers.insert(path.clone()) {
+            a.pair("-Xcc", "-isystem");
+            a.pair("-Xcc", &path);
+        }
     }
 }
 
@@ -526,8 +579,8 @@ pub fn clang_arguments(
 /// from the core build settings (not the Clang xcspec): the target's generated
 /// header maps, the products dir's generated-headers `include` subdir +
 /// `HEADER_SEARCH_PATHS` as `-I`, the target's generated-sources dirs, the
-/// products dir + `FRAMEWORK_SEARCH_PATHS` as `-F`, and the user/system header
-/// paths as `-iquote`/`-isystem`. Each `flag`/path pair is emitted once (a
+/// products dir + `FRAMEWORK_SEARCH_PATHS` as `-F`, the system framework paths
+/// as `-iframework`, and the user/system header paths as `-iquote`/`-isystem`. Each `flag`/path pair is emitted once (a
 /// setting often re-inherits the products dir), as `emit_library_paths` does
 /// for `-L`.
 fn emit_clang_search_paths(a: &mut ArgBuilder, settings: &Settings, arch: &str) {
@@ -563,7 +616,9 @@ fn emit_clang_search_paths(a: &mut ArgBuilder, settings: &Settings, arch: &str) 
         }
     }
 
-    // `-F`: the products dir, then FRAMEWORK_SEARCH_PATHS.
+    // `-F`: the products dir, then FRAMEWORK_SEARCH_PATHS; then
+    // SYSTEM_FRAMEWORK_SEARCH_PATHS as `-iframework`, less a path already
+    // searched with `-F`, as Swift Build adds a system framework path.
     if let Some(p) = products {
         paths.push(("-F", p.to_string()));
     }
@@ -571,6 +626,17 @@ fn emit_clang_search_paths(a: &mut ArgBuilder, settings: &Settings, arch: &str) 
         ws_unquoted(get("FRAMEWORK_SEARCH_PATHS"))
             .into_iter()
             .map(|p| ("-F", p)),
+    );
+    let frameworks: BTreeSet<String> = paths
+        .iter()
+        .filter(|(flag, _)| *flag == "-F")
+        .map(|(_, p)| p.clone())
+        .collect();
+    paths.extend(
+        ws_unquoted(get("SYSTEM_FRAMEWORK_SEARCH_PATHS"))
+            .into_iter()
+            .filter(|p| !frameworks.contains(p))
+            .map(|p| ("-iframework", p)),
     );
     paths.extend(
         ws_unquoted(get("USER_HEADER_SEARCH_PATHS"))
@@ -1987,5 +2053,82 @@ mod tests {
         let got = pairs(&a.into_vec());
         assert!(got.contains(&("-I".to_string(), d.to_string())));
         assert!(!got.contains(&("-I".to_string(), format!("{d}/arm64"))));
+    }
+
+    /// Mac Catalyst's UIKit and SwiftUI live under the macOS SDK's
+    /// `System/iOSSupport`, which Swift Build passes swiftc as `-Fsystem` and
+    /// `-Xcc -isystem`, once each though the setting repeats them. Any other
+    /// system framework path is a plain `-F`, and none repeats a `-F` already
+    /// there.
+    #[test]
+    fn swift_passes_system_search_paths_as_swift_build_does() {
+        let sdk = "/SDKs/MacOSX.sdk";
+        let frameworks = format!("{sdk}/System/iOSSupport/System/Library/Frameworks");
+        let subframeworks = format!("{sdk}/System/iOSSupport/System/Library/SubFrameworks");
+        let include = format!("{sdk}/System/iOSSupport/usr/include");
+        let mut s = Settings::new();
+        s.insert(
+            "SYSTEM_FRAMEWORK_SEARCH_PATHS".into(),
+            format!(" {frameworks} {subframeworks} /Vendor/Frameworks /Shared {frameworks}"),
+        );
+        s.insert("FRAMEWORK_SEARCH_PATHS".into(), "/Shared".into());
+        s.insert(
+            "SYSTEM_HEADER_SEARCH_PATHS".into(),
+            format!(" {include}  {include}"),
+        );
+        let args = swift_arguments(&s, "arm64", &[], "27.0.0", false, &[]);
+        let found = pairs(&args);
+        let count = |flag: &str, value: &str| {
+            found
+                .iter()
+                .filter(|(f, v)| f == flag && v == value)
+                .count()
+        };
+        assert_eq!(count("-Fsystem", &frameworks), 1, "{args:?}");
+        assert_eq!(count("-Fsystem", &subframeworks), 1, "{args:?}");
+        assert_eq!(count("-F", "/Vendor/Frameworks"), 1, "{args:?}");
+        assert_eq!(count("-F", "/Shared"), 1, "{args:?}");
+        assert_eq!(count("-Fsystem", "/Shared"), 0, "{args:?}");
+        let isystem = args
+            .windows(4)
+            .filter(|w| w[..] == ["-Xcc", "-isystem", "-Xcc", include.as_str()])
+            .count();
+        assert_eq!(isystem, 1, "{args:?}");
+
+        s.insert(
+            "SYSTEM_FRAMEWORK_SEARCH_PATHS_USE_FSYSTEM".into(),
+            "YES".into(),
+        );
+        let args = swift_arguments(&s, "arm64", &[], "27.0.0", false, &[]);
+        assert!(
+            pairs(&args).contains(&("-Fsystem".to_string(), "/Vendor/Frameworks".to_string())),
+            "{args:?}"
+        );
+    }
+
+    /// clang searches each system framework path with `-iframework`, except
+    /// one already searched with `-F`.
+    #[test]
+    fn clang_passes_system_frameworks_as_iframework() {
+        let mut s = Settings::new();
+        s.insert(
+            "SYSTEM_FRAMEWORK_SEARCH_PATHS".into(),
+            "/Platform/Developer/Library/Frameworks /Shared".into(),
+        );
+        s.insert("FRAMEWORK_SEARCH_PATHS".into(), "/Shared".into());
+        let file_types = BTreeSet::from(["sourcecode.c.objc".to_string()]);
+        let args = clang_arguments(&s, "arm64", &[], &file_types);
+        let found = pairs(&args);
+        assert!(
+            found.contains(&(
+                "-iframework".to_string(),
+                "/Platform/Developer/Library/Frameworks".to_string()
+            )),
+            "{args:?}"
+        );
+        assert!(
+            !found.contains(&("-iframework".to_string(), "/Shared".to_string())),
+            "{args:?}"
+        );
     }
 }
