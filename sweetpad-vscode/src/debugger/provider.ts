@@ -1,28 +1,55 @@
 import vscode from "vscode";
 
+import { CommandExecutionScope, showCommandErrorMessage } from "../common/commands";
 import type {
   LastLaunchedAppDeviceContext,
   LastLaunchedAppMacOSContext,
   LastLaunchedAppSimulatorContext,
 } from "../common/commands";
+import { ExtensionError } from "../common/errors";
+import type { ExecutionScopeService } from "../common/execution-scope";
 import { commonLogger } from "../common/logger";
+import { QuickPickCancelledError } from "../common/quick-pick";
+import { getShellEnv } from "../common/tasks/shell-env";
 import { checkUnreachable } from "../common/types";
-import type { IosDeployDebugserverContext, WorkspaceStateService } from "../common/workspace-state";
+import type { IosDeployDebugserverContext } from "../common/workspace-state";
+import { getSweetpadCliStatus } from "./cli";
+import {
+  DEBUGGING_LAUNCH_TASK_LABEL,
+  type DapSelection,
+  type DapSelectionDeps,
+  buildDapConfig,
+  findDebuggingLaunchTask,
+  needsDapSelection,
+  resolveDapSelection,
+} from "./dap-config";
+import {
+  chooseDebugRoute,
+  deviceNeedingCodelldb,
+  getDebuggerAdapterSetting,
+  isCodelldbInstalled,
+  unavailableRouteError,
+} from "./route";
 import { quoteLldbArgument, quotePythonString, waitForProcessToLaunch } from "./utils";
 
-const ATTACH_CONFIG: vscode.DebugConfiguration = {
+const LAUNCH_CONFIG: vscode.DebugConfiguration = {
   type: "sweetpad-lldb",
-  request: "attach",
-  name: "SweetPad: Build and Run (Wait for debugger)",
-  preLaunchTask: "sweetpad: debugging-launch",
+  request: "launch",
+  name: "SweetPad: Build and Run",
 };
+
+/**
+ * Set on a configuration that `sweetpad dap` serves, so the second resolve pass leaves it
+ * alone. The CLI ignores fields it doesn't read.
+ */
+const ROUTE_FIELD = "__sweetpadRoute";
 
 class InitialDebugConfigurationProvider implements vscode.DebugConfigurationProvider {
   async provideDebugConfigurations(
     folder: vscode.WorkspaceFolder | undefined,
     token?: vscode.CancellationToken | undefined,
   ): Promise<vscode.DebugConfiguration[]> {
-    return [ATTACH_CONFIG];
+    return [{ ...LAUNCH_CONFIG }];
   }
 
   async resolveDebugConfiguration(
@@ -31,35 +58,103 @@ class InitialDebugConfigurationProvider implements vscode.DebugConfigurationProv
     token?: vscode.CancellationToken | undefined,
   ): Promise<vscode.DebugConfiguration | undefined> {
     if (Object.keys(config).length === 0) {
-      return ATTACH_CONFIG;
+      return { ...LAUNCH_CONFIG };
     }
     return config;
   }
 }
 
-class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProvider {
-  private workspaceState: WorkspaceStateService;
-  private vscodeContext: vscode.ExtensionContext;
+type DynamicProviderDeps = DapSelectionDeps & {
+  execution: ExecutionScopeService;
+  vscodeContext: vscode.ExtensionContext;
+};
 
-  constructor(options: { workspaceState: WorkspaceStateService; vscodeContext: vscode.ExtensionContext }) {
-    this.workspaceState = options.workspaceState;
-    this.vscodeContext = options.vscodeContext;
+class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProvider {
+  private deps: DynamicProviderDeps;
+
+  constructor(deps: DynamicProviderDeps) {
+    this.deps = deps;
   }
 
   async provideDebugConfigurations(
     folder: vscode.WorkspaceFolder | undefined,
     token?: vscode.CancellationToken | undefined,
   ): Promise<vscode.DebugConfiguration[]> {
-    return [ATTACH_CONFIG];
+    return [{ ...LAUNCH_CONFIG }];
   }
 
+  /**
+   * Pick the debugger for the session and shape the configuration for it. This pass runs
+   * before the pre-launch task, which is what lets the `sweetpad dap` route drop the
+   * "debugging-launch" task. A failure is shown with the buttons that fix it, and the session
+   * is cancelled.
+   */
   async resolveDebugConfiguration(
     folder: vscode.WorkspaceFolder | undefined,
     config: vscode.DebugConfiguration,
     token?: vscode.CancellationToken | undefined,
   ): Promise<vscode.DebugConfiguration | undefined> {
-    if (Object.keys(config).length === 0) {
-      return ATTACH_CONFIG;
+    const initial = Object.keys(config).length === 0 ? { ...LAUNCH_CONFIG } : config;
+    try {
+      return await this.resolveRoute(folder, initial);
+    } catch (error) {
+      if (error instanceof QuickPickCancelledError) {
+        return undefined;
+      }
+      if (error instanceof ExtensionError) {
+        commonLogger.error(error.message, { errorContext: error.options?.context, error: error });
+        void showCommandErrorMessage(`SweetPad: ${error.message}`, { actions: error.options?.actions });
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  private async resolveRoute(
+    folder: vscode.WorkspaceFolder | undefined,
+    config: vscode.DebugConfiguration,
+  ): Promise<vscode.DebugConfiguration> {
+    const adapter = getDebuggerAdapterSetting();
+    const cli = adapter === "codelldb" ? undefined : await getSweetpadCliStatus();
+
+    // The task and the selection matter only when the CLI can take the session. The selection
+    // may open a picker, and the CodeLLDB route leaves picking to the "debugging-launch" task.
+    const task = cli?.kind === "ready" ? await findDebuggingLaunchTask(config.preLaunchTask) : undefined;
+    let selection: DapSelection | undefined;
+    if (cli?.kind === "ready" && needsDapSelection(config, task)) {
+      const scope = new CommandExecutionScope({ commandName: "sweetpad.debugger.resolveConfiguration" });
+      selection = await this.deps.execution.startScope(scope, () => resolveDapSelection(this.deps, config, task));
+    }
+
+    const route = chooseDebugRoute({
+      adapter: adapter,
+      cli: cli,
+      codelldbInstalled: isCodelldbInstalled(),
+      deviceNeedingCodelldb: selection?.target ? deviceNeedingCodelldb(selection.target) : undefined,
+    });
+    commonLogger.log("Resolved debug route", { adapter, route });
+
+    switch (route.kind) {
+      case "sweetpad": {
+        const resolved = buildDapConfig(config, { task: task, selection: selection, folder: folder });
+        resolved[ROUTE_FIELD] = "sweetpad";
+        return resolved;
+      }
+      case "codelldb":
+        return this.resolveCodelldbRoute(config);
+      case "unavailable":
+        throw unavailableRouteError(route.reason);
+    }
+  }
+
+  /**
+   * The CodeLLDB route keeps the configuration as written, apart from a `launch` with no
+   * pre-launch task, which gets the "debugging-launch" task so it builds and runs the app as it
+   * does on the `sweetpad dap` route.
+   */
+  private resolveCodelldbRoute(config: vscode.DebugConfiguration): vscode.DebugConfiguration {
+    if (config.request === "launch" && config.preLaunchTask === undefined) {
+      return { ...config, preLaunchTask: DEBUGGING_LAUNCH_TASK_LABEL };
     }
     return config;
   }
@@ -159,7 +254,7 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
     const appName = launchContext.appName; // Example: "MyApp.app"
 
     // We need to find the device app path and the process id
-    const process = await waitForProcessToLaunch(this.vscodeContext, {
+    const process = await waitForProcessToLaunch(this.deps.vscodeContext, {
       deviceId: deviceUDID,
       appName: appName,
       timeoutMs: 15000, // wait for 15 seconds before giving up
@@ -223,7 +318,13 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
     config: vscode.DebugConfiguration,
     token?: vscode.CancellationToken | undefined,
   ): Promise<vscode.DebugConfiguration> {
-    const launchContext = this.workspaceState.get("build.lastLaunchedApp");
+    // `sweetpad dap` builds and launches the app itself, so there is no launched app to read.
+    if (config[ROUTE_FIELD] === "sweetpad") {
+      const { [ROUTE_FIELD]: _route, ...rest } = config;
+      return rest as vscode.DebugConfiguration;
+    }
+
+    const launchContext = this.deps.workspaceState.get("build.lastLaunchedApp");
     if (!launchContext) {
       throw new Error("No last launched app found, please launch the app first using the SweetPad extension");
     }
@@ -256,10 +357,37 @@ class DynamicDebugConfigurationProvider implements vscode.DebugConfigurationProv
   }
 }
 
-export function registerDebugConfigurationProvider(options: {
-  workspaceState: WorkspaceStateService;
-  vscodeContext: vscode.ExtensionContext;
-}) {
+/**
+ * Starts `sweetpad dap` for the sessions the first resolve pass gave to the CLI. CodeLLDB
+ * sessions leave that pass as type "lldb" and never reach this factory.
+ */
+class SweetpadDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
+  async createDebugAdapterDescriptor(
+    session: vscode.DebugSession,
+    executable: vscode.DebugAdapterExecutable | undefined,
+  ): Promise<vscode.DebugAdapterDescriptor> {
+    const cli = await getSweetpadCliStatus();
+    if (cli.kind !== "ready") {
+      throw new Error("SweetPad: No SweetPad CLI with 'sweetpad dap' was found. Start the debug session again.");
+    }
+    const configuredCwd = session.configuration.cwd;
+    const cwd = session.workspaceFolder?.uri.fsPath ?? (typeof configuredCwd === "string" ? configuredCwd : undefined);
+
+    // The login shell's environment, as every tool the extension runs gets: a VS Code started
+    // from the Dock has a short PATH and no DEVELOPER_DIR from the dotfiles.
+    const env: { [key: string]: string } = {};
+    for (const [key, value] of Object.entries(await getShellEnv(cwd ?? null))) {
+      if (value !== undefined) {
+        env[key] = value;
+      }
+    }
+
+    commonLogger.log("Starting sweetpad dap", { cliPath: cli.path, cwd });
+    return new vscode.DebugAdapterExecutable(cli.path, ["dap"], { cwd: cwd, env: env });
+  }
+}
+
+export function registerDebugConfigurationProvider(options: DynamicProviderDeps) {
   const dynamicProvider = new DynamicDebugConfigurationProvider(options);
   const initialProvider = new InitialDebugConfigurationProvider();
   const disposable1 = vscode.debug.registerDebugConfigurationProvider(
@@ -272,11 +400,16 @@ export function registerDebugConfigurationProvider(options: {
     dynamicProvider,
     vscode.DebugConfigurationProviderTriggerKind.Dynamic,
   );
+  const disposable3 = vscode.debug.registerDebugAdapterDescriptorFactory(
+    "sweetpad-lldb",
+    new SweetpadDebugAdapterFactory(),
+  );
 
   return {
     dispose() {
       disposable1.dispose();
       disposable2.dispose();
+      disposable3.dispose();
       dynamicProvider.dispose();
     },
   };

@@ -52,6 +52,8 @@ type Config = {
   "buildServer.logLevel": "off" | "error" | "info" | "debug";
   "tuist.autogenerate": boolean;
   "tuist.generate.env": { [key: string]: string | null };
+  "debugger.adapter": "auto" | "sweetpad" | "codelldb";
+  "debugger.cliPath": string | null;
   "testing.configuration": string;
   "testing.baseClasses": string[];
   "cliServer.enabled": boolean;

@@ -17,7 +17,7 @@ suite("activation", () => {
     assert.equal(stat.type & vscode.FileType.Directory, vscode.FileType.Directory);
   });
 
-  test("declares CodeLLDB as a dependency and it resolved", async () => {
+  test("every extensionDependencies entry resolved", async () => {
     // Activation silently fails if an `extensionDependencies` entry is missing,
     // which would otherwise surface here as an unexplained inactive extension.
     const extension = vscode.extensions.getExtension(EXTENSION_ID);

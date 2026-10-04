@@ -354,6 +354,11 @@ export async function activate(context: vscode.ExtensionContext) {
   d(
     registerDebugConfigurationProvider({
       workspaceState: workspaceState,
+      workspaceContext: workspaceContext,
+      buildManager: buildManager,
+      destinationsManager: destinationsManager,
+      progressStatusBar: progressStatusBar,
+      execution: execution,
       vscodeContext: context,
     }),
   );

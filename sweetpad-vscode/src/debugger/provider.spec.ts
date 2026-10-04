@@ -1,14 +1,28 @@
 /**
  * Unit tests for the "sweetpad-lldb" debug configuration provider.
  *
- * The device path has two routes that must not drift into each other: devicectl (iOS 17+,
- * attach by pid) and ios-deploy's debugserver (iOS 16 and below, connect over gdb-remote).
- * These assert the exact LLDB command sequence each one emits.
+ * The first resolve pass picks the debugger: `sweetpad dap` or CodeLLDB. On the `sweetpad dap`
+ * route the configuration becomes a request the CLI reads, filled from SweetPad's selection.
+ * On the CodeLLDB route the second pass rewrites it into a CodeLLDB attach, and its device path
+ * has two routes that must not drift into each other: devicectl (iOS 17+, attach by pid) and
+ * ios-deploy's debugserver (iOS 16 and below, connect over gdb-remote). These assert the exact
+ * LLDB command sequence each one emits.
  */
 
 import type { Mock } from "vitest";
 import * as vscode from "vscode";
 
+import type { BuildManager } from "../build/manager";
+import {
+  askConfiguration,
+  askDestinationToRunOn,
+  askSchemeForBuild,
+  askXcodeWorkspacePath,
+  getWorkspaceRoot,
+} from "../build/utils";
+import { ExecutionScopeService } from "../common/execution-scope";
+import { QuickPickCancelledError } from "../common/quick-pick";
+import type { WorkspaceContextService } from "../common/workspace-context";
 import type {
   IosDeployDebugserverContext,
   LastLaunchedAppContext,
@@ -16,6 +30,10 @@ import type {
   WorkspaceStateService,
 } from "../common/workspace-state";
 import { getRunningProcessesJson } from "../common/xcode/devicectl";
+import type { DestinationsManager } from "../destination/manager";
+import type { Destination } from "../destination/types";
+import type { ProgressStatusBar } from "../system/status-bar";
+import { type SweetpadCliStatus, getSweetpadCliStatus } from "./cli";
 import { registerDebugConfigurationProvider } from "./provider";
 
 // Only the spawning entry point is replaced; the addon reads the JSON it returns.
@@ -28,13 +46,89 @@ vi.mock("../common/logger", () => ({
   commonLogger: {
     log: vi.fn(),
     debug: vi.fn(),
+    warn: vi.fn(),
     error: vi.fn(),
   },
 }));
 
+vi.mock("./cli", () => ({
+  getSweetpadCliStatus: vi.fn(),
+}));
+
+vi.mock("../common/tasks/shell-env", () => ({
+  getShellEnv: vi.fn(async () => ({ PATH: "/usr/bin:/opt/homebrew/bin", DEVELOPER_DIR: undefined })),
+}));
+
+// The pickers are what the "debugging-launch" task uses; here they stand for SweetPad's
+// current selection, and a test that expects no prompt asserts they were not called.
+vi.mock("../build/utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../build/utils")>()),
+  askXcodeWorkspacePath: vi.fn(),
+  askSchemeForBuild: vi.fn(),
+  askConfiguration: vi.fn(),
+  askDestinationToRunOn: vi.fn(),
+  getWorkspaceRoot: vi.fn(),
+}));
+
+const CLI_READY: SweetpadCliStatus = { kind: "ready", path: "/opt/homebrew/bin/sweetpad" };
+const CLI_MISSING: SweetpadCliStatus = { kind: "missing", configuredPath: undefined };
+
+const WORKSPACE_ROOT = "/Users/me/MyApp";
+const XCWORKSPACE = `${WORKSPACE_ROOT}/MyApp.xcworkspace`;
+
+const SIMULATOR = {
+  type: "iOSSimulator",
+  udid: "11111111-2222-3333-4444-555555555555",
+  name: "iPhone 17",
+} as unknown as Destination;
+
+const NEW_DEVICE = {
+  type: "iOSDevice",
+  udid: "00008110-001234567890001E",
+  name: "My iPhone",
+  osVersion: "18.1",
+  supportsDevicectl: true,
+} as unknown as Destination;
+
+const OLD_DEVICE = {
+  type: "iOSDevice",
+  udid: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+  name: "Old iPhone",
+  osVersion: "16.7",
+  supportsDevicectl: false,
+} as unknown as Destination;
+
+const MAC = { type: "macOS", name: "My Mac", arch: "arm64" } as unknown as Destination;
+
+/** Settings the provider reads, as `vscode.workspace.getConfiguration("sweetpad")` returns them. */
+function useSettings(settings: Record<string, unknown>) {
+  (vscode.workspace.getConfiguration as Mock).mockImplementation(() => ({
+    get: vi.fn((key: string) => settings[key]),
+    inspect: vi.fn(),
+  }));
+}
+
+function useCodelldb(installed: boolean) {
+  (vscode.extensions.getExtension as Mock).mockImplementation((id: string) =>
+    installed && id === "vadimcn.vscode-lldb" ? { id } : undefined,
+  );
+}
+
+/** SweetPad's selection: what the pickers answer without prompting. */
+function useSelection(selection: { scheme?: string; configuration?: string; destination?: Destination }) {
+  (askXcodeWorkspacePath as Mock).mockResolvedValue(XCWORKSPACE);
+  (getWorkspaceRoot as Mock).mockReturnValue(WORKSPACE_ROOT);
+  (askSchemeForBuild as Mock).mockResolvedValue(selection.scheme ?? "MyApp");
+  (askConfiguration as Mock).mockResolvedValue(selection.configuration ?? "Debug");
+  (askDestinationToRunOn as Mock).mockResolvedValue(selection.destination ?? SIMULATOR);
+}
+
+const FOLDER = { uri: { fsPath: WORKSPACE_ROOT }, name: "MyApp", index: 0 } as unknown as vscode.WorkspaceFolder;
+
 /**
- * The provider is only reachable through the registration helper, so grab the dynamic one
- * out of what it hands to vscode.debug and drive it the way the debug session would.
+ * The providers are only reachable through the registration helper, so grab what it hands to
+ * vscode.debug and drive them the way a debug session would: the first pass of every provider,
+ * then the second pass of the dynamic one, which is the only one that has it.
  */
 function createProvider(launchContext: LastLaunchedAppContext | undefined) {
   const workspaceState = {
@@ -44,6 +138,7 @@ function createProvider(launchContext: LastLaunchedAppContext | undefined) {
   } as unknown as WorkspaceStateService;
 
   const vscodeContext = { storageUri: { fsPath: "/tmp/sweetpad-test" } } as unknown as vscode.ExtensionContext;
+  const progressStatusBar = { updateText: vi.fn() } as unknown as ProgressStatusBar;
 
   const registered: any[] = [];
   (vscode.debug.registerDebugConfigurationProvider as unknown as Mock).mockImplementation(
@@ -52,16 +147,55 @@ function createProvider(launchContext: LastLaunchedAppContext | undefined) {
       return { dispose: vi.fn() };
     },
   );
+  let factory: any;
+  (vscode.debug.registerDebugAdapterDescriptorFactory as unknown as Mock).mockImplementation(
+    (_type: string, registeredFactory: any) => {
+      factory = registeredFactory;
+      return { dispose: vi.fn() };
+    },
+  );
 
-  registerDebugConfigurationProvider({ workspaceState, vscodeContext });
+  registerDebugConfigurationProvider({
+    workspaceState: workspaceState,
+    workspaceContext: {} as WorkspaceContextService,
+    buildManager: {} as BuildManager,
+    destinationsManager: {
+      getDestinations: vi.fn(async () => [SIMULATOR, NEW_DEVICE, OLD_DEVICE, MAC]),
+    } as unknown as DestinationsManager,
+    progressStatusBar: progressStatusBar,
+    execution: new ExecutionScopeService(),
+    vscodeContext: vscodeContext,
+  });
 
   // [initial, dynamic] — the dynamic one is what resolves against the launch context.
-  const dynamic = registered[1];
+  const [initial, dynamic] = registered;
+  const firstPass = async (config: vscode.DebugConfiguration) => {
+    const afterInitial = await initial.resolveDebugConfiguration(FOLDER, config, undefined);
+    return await dynamic.resolveDebugConfiguration(FOLDER, afterInitial, undefined);
+  };
   return {
+    workspaceState: workspaceState,
+    factory: () => factory,
     resolve: (config: vscode.DebugConfiguration = {} as vscode.DebugConfiguration) =>
       dynamic.resolveDebugConfigurationWithSubstitutedVariables(undefined, config, undefined),
+    firstPass: firstPass,
+    /** Both passes, as VS Code runs them around the pre-launch task. */
+    session: async (config: vscode.DebugConfiguration) => {
+      const resolved = await firstPass(config);
+      if (resolved === undefined) {
+        return undefined;
+      }
+      return await dynamic.resolveDebugConfigurationWithSubstitutedVariables(FOLDER, resolved, undefined);
+    },
   };
 }
+
+const ATTACH_WITH_TASK = {
+  type: "sweetpad-lldb",
+  request: "attach",
+  name: "SweetPad: Build and Run (Wait for debugger)",
+  preLaunchTask: "sweetpad: debugging-launch",
+} as vscode.DebugConfiguration;
 
 const DEVICE_CONTEXT: LastLaunchedAppDeviceContext = {
   type: "device",
@@ -84,11 +218,14 @@ const DEBUGSERVER: IosDeployDebugserverContext = {
   symbolsPath: "/Users/me/Library/Developer/Xcode/iOS DeviceSupport/iPad5,1 15.6.1 (19G82)/Symbols",
 };
 
-describe("DynamicDebugConfigurationProvider", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+beforeEach(() => {
+  vi.clearAllMocks();
+  useSettings({});
+  useCodelldb(true);
+  (vscode.tasks.fetchTasks as Mock).mockResolvedValue([]);
+});
 
+describe("DynamicDebugConfigurationProvider", () => {
   describe("device with an ios-deploy debugserver (iOS <= 16)", () => {
     const context: LastLaunchedAppDeviceContext = { ...DEVICE_CONTEXT, debugserver: DEBUGSERVER };
 
@@ -286,5 +423,391 @@ describe("DynamicDebugConfigurationProvider", () => {
 
   it("throws when nothing has been launched yet", async () => {
     await expect(createProvider(undefined).resolve()).rejects.toThrow("No last launched app found");
+  });
+});
+
+describe("route selection", () => {
+  it("serves the session through sweetpad dap when the CLI has it", async () => {
+    (getSweetpadCliStatus as Mock).mockResolvedValue(CLI_READY);
+    useSelection({});
+
+    const config = await createProvider(undefined).session({ ...ATTACH_WITH_TASK });
+
+    expect(config).toMatchObject({ type: "sweetpad-lldb", request: "launch" });
+    expect(config.preLaunchTask).toBeUndefined();
+  });
+
+  it("falls back to CodeLLDB unchanged when the CLI is missing", async () => {
+    (getSweetpadCliStatus as Mock).mockResolvedValue(CLI_MISSING);
+
+    const config = await createProvider(undefined).firstPass({ ...ATTACH_WITH_TASK });
+
+    expect(config).toEqual(ATTACH_WITH_TASK);
+    expect(askXcodeWorkspacePath).not.toHaveBeenCalled();
+  });
+
+  it("falls back to CodeLLDB when the CLI is too old for dap", async () => {
+    (getSweetpadCliStatus as Mock).mockResolvedValue({ kind: "no-dap", path: "/usr/local/bin/sweetpad" });
+
+    const config = await createProvider(undefined).firstPass({ ...ATTACH_WITH_TASK });
+
+    expect(config).toEqual(ATTACH_WITH_TASK);
+  });
+
+  it("keeps a device without devicectl on CodeLLDB, after the device is picked", async () => {
+    (getSweetpadCliStatus as Mock).mockResolvedValue(CLI_READY);
+    useSelection({ destination: OLD_DEVICE });
+
+    const config = await createProvider(undefined).firstPass({ ...ATTACH_WITH_TASK });
+
+    expect(config).toEqual(ATTACH_WITH_TASK);
+    expect(askDestinationToRunOn).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels the session and explains both options when neither is installed", async () => {
+    (getSweetpadCliStatus as Mock).mockResolvedValue(CLI_MISSING);
+    useCodelldb(false);
+
+    const config = await createProvider(undefined).firstPass({ ...ATTACH_WITH_TASK });
+
+    expect(config).toBeUndefined();
+    const [message, ...buttons] = (vscode.window.showErrorMessage as Mock).mock.calls[0];
+    expect(message).toContain("SweetPad CLI");
+    expect(message).toContain("CodeLLDB");
+    expect(buttons).toEqual(["Install SweetPad CLI", "Install CodeLLDB", "Close"]);
+  });
+
+  it("cancels the session when an old device needs CodeLLDB and it is missing", async () => {
+    (getSweetpadCliStatus as Mock).mockResolvedValue(CLI_READY);
+    useCodelldb(false);
+    useSelection({ destination: OLD_DEVICE });
+
+    const config = await createProvider(undefined).firstPass({ ...ATTACH_WITH_TASK });
+
+    expect(config).toBeUndefined();
+    expect((vscode.window.showErrorMessage as Mock).mock.calls[0][0]).toContain("Old iPhone (16.7)");
+  });
+
+  it("does not look for the CLI when the setting picks CodeLLDB", async () => {
+    useSettings({ "debugger.adapter": "codelldb" });
+
+    const config = await createProvider(undefined).firstPass({ ...ATTACH_WITH_TASK });
+
+    expect(config).toEqual(ATTACH_WITH_TASK);
+    expect(getSweetpadCliStatus).not.toHaveBeenCalled();
+  });
+
+  it("fails instead of falling back when the setting picks the CLI and it is missing", async () => {
+    useSettings({ "debugger.adapter": "sweetpad" });
+    (getSweetpadCliStatus as Mock).mockResolvedValue(CLI_MISSING);
+
+    const config = await createProvider(undefined).firstPass({ ...ATTACH_WITH_TASK });
+
+    expect(config).toBeUndefined();
+    expect((vscode.window.showErrorMessage as Mock).mock.calls[0][0]).toContain("sweetpad.debugger.adapter");
+  });
+
+  it("cancels quietly when a picker is dismissed", async () => {
+    (getSweetpadCliStatus as Mock).mockResolvedValue(CLI_READY);
+    useSelection({});
+    (askSchemeForBuild as Mock).mockRejectedValue(new QuickPickCancelledError());
+
+    const config = await createProvider(undefined).firstPass({ ...ATTACH_WITH_TASK });
+
+    expect(config).toBeUndefined();
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("sweetpad dap route", () => {
+  beforeEach(() => {
+    (getSweetpadCliStatus as Mock).mockResolvedValue(CLI_READY);
+  });
+
+  it("turns the build-and-attach config into a launch filled from SweetPad's selection", async () => {
+    useSelection({ scheme: "MyApp", configuration: "Debug", destination: SIMULATOR });
+
+    const config = await createProvider(undefined).session({ ...ATTACH_WITH_TASK });
+
+    expect(config).toEqual({
+      type: "sweetpad-lldb",
+      request: "launch",
+      name: "SweetPad: Build and Run (Wait for debugger)",
+      workspace: XCWORKSPACE,
+      cwd: WORKSPACE_ROOT,
+      scheme: "MyApp",
+      configuration: "Debug",
+      destination: "11111111-2222-3333-4444-555555555555",
+      xcodebuildArgs: ["-allowProvisioningUpdates"],
+    });
+  });
+
+  it("never reads the last launched app", async () => {
+    useSelection({});
+    const provider = createProvider(undefined);
+
+    await expect(provider.session({ ...ATTACH_WITH_TASK })).resolves.toBeDefined();
+    expect(provider.workspaceState.get).not.toHaveBeenCalledWith("build.lastLaunchedApp");
+  });
+
+  it("builds from an empty configuration, as F5 without a launch.json sends", async () => {
+    useSelection({});
+
+    const config = await createProvider(undefined).session({} as vscode.DebugConfiguration);
+
+    expect(config).toMatchObject({ type: "sweetpad-lldb", request: "launch", scheme: "MyApp" });
+  });
+
+  it("names a macOS destination as mac and a device by its UDID", async () => {
+    useSelection({ destination: MAC });
+    expect((await createProvider(undefined).session({ ...ATTACH_WITH_TASK })).destination).toBe("mac");
+
+    useSelection({ destination: NEW_DEVICE });
+    expect((await createProvider(undefined).session({ ...ATTACH_WITH_TASK })).destination).toBe(
+      "00008110-001234567890001E",
+    );
+  });
+
+  it("keeps the values written in launch.json over SweetPad's selection", async () => {
+    useSelection({});
+
+    const config = await createProvider(undefined).session({
+      ...ATTACH_WITH_TASK,
+      scheme: "Other",
+      configuration: "Release",
+      destination: "booted",
+      args: ["-launch.json"],
+      env: { FROM: "launch.json" },
+      xcodebuildArgs: ["-quiet"],
+    });
+
+    expect(config).toMatchObject({
+      scheme: "Other",
+      configuration: "Release",
+      destination: "booted",
+      args: ["-launch.json"],
+      env: { FROM: "launch.json" },
+      xcodebuildArgs: ["-quiet"],
+    });
+    expect(askSchemeForBuild).not.toHaveBeenCalled();
+    expect(askConfiguration).not.toHaveBeenCalled();
+    expect(askDestinationToRunOn).not.toHaveBeenCalled();
+  });
+
+  it("leaves the container to a cwd written in launch.json", async () => {
+    useSelection({});
+
+    const config = await createProvider(undefined).session({ ...ATTACH_WITH_TASK, cwd: "/elsewhere" });
+
+    expect(config.cwd).toBe("/elsewhere");
+    expect(config.workspace).toBeUndefined();
+    expect(config.project).toBeUndefined();
+  });
+
+  it("names a project's embedded workspace by its project", async () => {
+    useSelection({});
+    (askXcodeWorkspacePath as Mock).mockResolvedValue(`${WORKSPACE_ROOT}/MyApp.xcodeproj/project.xcworkspace`);
+
+    const config = await createProvider(undefined).session({ ...ATTACH_WITH_TASK });
+
+    expect(config.project).toBe(`${WORKSPACE_ROOT}/MyApp.xcodeproj`);
+    expect(config.workspace).toBeUndefined();
+  });
+
+  it("resolves a Swift package from its own directory", async () => {
+    useSelection({});
+    (askXcodeWorkspacePath as Mock).mockResolvedValue(`${WORKSPACE_ROOT}/Packages/Kit/Package.swift`);
+
+    const config = await createProvider(undefined).session({ ...ATTACH_WITH_TASK });
+
+    expect(config.cwd).toBe(`${WORKSPACE_ROOT}/Packages/Kit`);
+    expect(config.workspace).toBeUndefined();
+    expect(config.project).toBeUndefined();
+  });
+
+  it("passes the extension's launch and build settings", async () => {
+    useSelection({});
+    useSettings({
+      "build.launchArgs": ["-FromSettings"],
+      "build.launchEnv": { API: "staging" },
+      "build.args": ["-quiet", "-derivedDataPath", "/dd/old", "-derivedDataPath", "/dd/new"],
+      "build.allowProvisioningUpdates": false,
+    });
+
+    const config = await createProvider(undefined).session({ ...ATTACH_WITH_TASK });
+
+    expect(config.args).toEqual(["-FromSettings"]);
+    expect(config.env).toEqual({ API: "staging" });
+    expect(config.xcodebuildArgs).toEqual(["-quiet", "-derivedDataPath", "/dd/new"]);
+  });
+
+  it("drops codelldbAttributes and passes lldb through", async () => {
+    useSelection({});
+
+    const config = await createProvider(undefined).session({
+      ...ATTACH_WITH_TASK,
+      codelldbAttributes: { initCommands: ["codelldb only"] },
+      lldb: { initCommands: ["lldb-dap"], sourceMap: [["/build", "/src"]] },
+    });
+
+    expect(config.codelldbAttributes).toBeUndefined();
+    expect(config.initCommands).toBeUndefined();
+    expect(config.lldb).toEqual({ initCommands: ["lldb-dap"], sourceMap: [["/build", "/src"]] });
+  });
+
+  it("keeps an attach without the pre-launch task as an attach to the running app", async () => {
+    useSelection({});
+
+    const config = await createProvider(undefined).session({
+      type: "sweetpad-lldb",
+      request: "attach",
+      name: "Attach",
+    });
+
+    expect(config).toMatchObject({
+      request: "attach",
+      scheme: "MyApp",
+      destination: "11111111-2222-3333-4444-555555555555",
+    });
+  });
+
+  it("attaches by pid alone without asking for a scheme or destination", async () => {
+    useSelection({});
+
+    const config = await createProvider(undefined).session({
+      type: "sweetpad-lldb",
+      request: "attach",
+      name: "Attach to pid",
+      pid: 4242,
+    });
+
+    expect(config).toEqual({
+      type: "sweetpad-lldb",
+      request: "attach",
+      name: "Attach to pid",
+      pid: 4242,
+      cwd: WORKSPACE_ROOT,
+    });
+    expect(askXcodeWorkspacePath).not.toHaveBeenCalled();
+  });
+
+  it("forwards a plain lldb-dap config untouched", async () => {
+    const config = await createProvider(undefined).session({
+      type: "sweetpad-lldb",
+      request: "launch",
+      name: "Tool",
+      program: "/path/to/tool",
+      cwd: "/work",
+    });
+
+    expect(config).toEqual({
+      type: "sweetpad-lldb",
+      request: "launch",
+      name: "Tool",
+      program: "/path/to/tool",
+      cwd: "/work",
+    });
+    expect(askXcodeWorkspacePath).not.toHaveBeenCalled();
+  });
+
+  it("recognizes a tasks.json copy of the debugging-launch task and keeps its fields", async () => {
+    useSelection({});
+    (vscode.tasks.fetchTasks as Mock).mockResolvedValue([
+      { name: "debugging-launch", source: "sweetpad", definition: { type: "sweetpad", action: "debugging-launch" } },
+      {
+        name: "Debug MyApp",
+        source: "Workspace",
+        definition: {
+          type: "sweetpad",
+          action: "debugging-launch",
+          scheme: "FromTask",
+          destinationId: "00008110-001234567890001E",
+          launchArgs: ["-FromTask"],
+        },
+      },
+    ]);
+
+    const config = await createProvider(undefined).session({ ...ATTACH_WITH_TASK, preLaunchTask: "Debug MyApp" });
+
+    expect(config).toMatchObject({
+      request: "launch",
+      scheme: "FromTask",
+      destination: "00008110-001234567890001E",
+      args: ["-FromTask"],
+    });
+    expect(config.preLaunchTask).toBeUndefined();
+    expect(askSchemeForBuild).not.toHaveBeenCalled();
+    expect(askDestinationToRunOn).not.toHaveBeenCalled();
+  });
+
+  it("keeps a pre-launch task that is not the debugging-launch task", async () => {
+    useSelection({});
+
+    const config = await createProvider(undefined).session({
+      type: "sweetpad-lldb",
+      request: "launch",
+      name: "Generate, then debug",
+      preLaunchTask: "generate code",
+    });
+
+    expect(config).toMatchObject({ request: "launch", preLaunchTask: "generate code", scheme: "MyApp" });
+  });
+
+  it("starts sweetpad dap in the workspace folder with the login shell's environment", async () => {
+    const provider = createProvider(undefined);
+
+    const descriptor = await provider
+      .factory()
+      .createDebugAdapterDescriptor({ workspaceFolder: FOLDER, configuration: { cwd: "/other" } }, undefined);
+
+    expect(descriptor).toBeInstanceOf(vscode.DebugAdapterExecutable);
+    expect(descriptor.command).toBe("/opt/homebrew/bin/sweetpad");
+    expect(descriptor.args).toEqual(["dap"]);
+    expect(descriptor.options).toEqual({ cwd: WORKSPACE_ROOT, env: { PATH: "/usr/bin:/opt/homebrew/bin" } });
+  });
+});
+
+describe("CodeLLDB route", () => {
+  beforeEach(() => {
+    useSettings({ "debugger.adapter": "codelldb" });
+  });
+
+  it("gives a launch without a pre-launch task the debugging-launch task", async () => {
+    const config = await createProvider(undefined).firstPass({
+      type: "sweetpad-lldb",
+      request: "launch",
+      name: "SweetPad: Build and Run",
+    });
+
+    expect(config).toEqual({
+      type: "sweetpad-lldb",
+      request: "launch",
+      name: "SweetPad: Build and Run",
+      preLaunchTask: "sweetpad: debugging-launch",
+    });
+  });
+
+  it("leaves an attach without a pre-launch task alone", async () => {
+    const attach = { type: "sweetpad-lldb", request: "attach", name: "Attach" };
+
+    expect(await createProvider(undefined).firstPass({ ...attach })).toEqual(attach);
+  });
+
+  it("rewrites the session into a CodeLLDB attach after the pre-launch task", async () => {
+    const config = await createProvider({
+      type: "simulator",
+      appPath: "/path/to/MyApp.app",
+      bundleIdentifier: "com.example.MyApp",
+      simulatorUdid: "00000000-0000-0000-0000-000000000000",
+    }).session({ ...ATTACH_WITH_TASK, codelldbAttributes: { stopOnEntry: true } });
+
+    expect(config).toMatchObject({
+      type: "lldb",
+      request: "attach",
+      waitFor: true,
+      program: "/path/to/MyApp.app",
+      preLaunchTask: "sweetpad: debugging-launch",
+      stopOnEntry: true,
+    });
   });
 });

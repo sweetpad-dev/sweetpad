@@ -1,6 +1,7 @@
 export const window = {
   showInformationMessage: vi.fn(),
   showWarningMessage: vi.fn(),
+  showErrorMessage: vi.fn(),
   createOutputChannel: vi.fn(() => ({
     appendLine: vi.fn(),
     show: vi.fn(),
@@ -10,6 +11,15 @@ export const window = {
 
 export const commands = {
   registerCommand: vi.fn(),
+  executeCommand: vi.fn(),
+};
+
+export const extensions = {
+  getExtension: vi.fn(),
+};
+
+export const tasks = {
+  fetchTasks: vi.fn(async () => []),
 };
 
 export const workspace = {
@@ -45,11 +55,21 @@ export const workspace = {
 
 export const Uri = {
   file: vi.fn((fsPath: string) => ({ fsPath })),
+  parse: vi.fn((value: string) => ({ toString: () => value })),
 };
 
 export const debug = {
   registerDebugConfigurationProvider: vi.fn(() => ({ dispose: vi.fn() })),
+  registerDebugAdapterDescriptorFactory: vi.fn(() => ({ dispose: vi.fn() })),
 };
+
+export class DebugAdapterExecutable {
+  constructor(
+    public readonly command: string,
+    public readonly args?: string[],
+    public readonly options?: { cwd?: string; env?: { [key: string]: string } },
+  ) {}
+}
 
 export const DebugConfigurationProviderTriggerKind = {
   Initial: 1,
@@ -58,4 +78,14 @@ export const DebugConfigurationProviderTriggerKind = {
 
 // Modules under test reach for vscode both as `import * as vscode` and as a default import;
 // the real extension host module satisfies both.
-export default { window, commands, workspace, debug, DebugConfigurationProviderTriggerKind, Uri };
+export default {
+  window,
+  commands,
+  extensions,
+  tasks,
+  workspace,
+  debug,
+  DebugAdapterExecutable,
+  DebugConfigurationProviderTriggerKind,
+  Uri,
+};

@@ -4,8 +4,10 @@ sidebar_position: 4
 
 # Debugging
 
-SweetPad integrates with the [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
-extension, powered by [LLDB](https://lldb.llvm.org/), so you can debug your iOS app directly from VSCode.
+SweetPad debugs your app from VS Code through one of two debuggers. When the
+[SweetPad CLI](../cli/getting-started.md) is installed, it uses `sweetpad dap`, which drives Xcode's own lldb-dap and
+needs no setup. Otherwise it uses the [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
+extension. [Choosing the debugger](#choosing-the-debugger) explains how SweetPad picks one.
 
 ## Tutorial
 
@@ -18,22 +20,22 @@ extension, powered by [LLDB](https://lldb.llvm.org/), so you can debug your iOS 
      "configurations": [
        {
          "type": "sweetpad-lldb",
-         "request": "attach",
-         "name": "Attach to running app (SweetPad)",
-         "preLaunchTask": "sweetpad: launch"
+         "request": "launch",
+         "name": "SweetPad: Build and Run"
        }
      ]
    }
    ```
 
-   You can also generate this file by clicking **Create a launch.json file** in the _Run and Debug_ panel.
+   You can also generate this file by clicking **Create a launch.json file** in the _Run and Debug_ panel. Older
+   configurations with `"request": "attach"` and `"preLaunchTask": "sweetpad: debugging-launch"` keep working.
 
    ![Create launch.json](/images/debug-create-launch-json.png)  
    ![Select SweetPad LLDB](/images/debug-select-sweetpad-lldb.png)  
    ![Update launch.json](/images/debug-update-launch-json.png)
 
-2. **Configure the LLDB backend.** If you haven't done so already, point CodeLLDB at Xcode's bundled LLDB by adding
-   the following to your `settings.json`:
+2. **Using CodeLLDB? Configure its LLDB backend.** Skip this step when the SweetPad CLI is installed. Otherwise point
+   CodeLLDB at Xcode's bundled LLDB by adding the following to your `settings.json`:
 
    ```json title="settings.json"
    {
@@ -56,6 +58,24 @@ extension, powered by [LLDB](https://lldb.llvm.org/), so you can debug your iOS 
    and reattaches.
 
    ![Breakpoints](/images/debug-breakpoints.png)
+
+## Choosing the debugger
+
+The `sweetpad.debugger.adapter` setting decides which debugger runs a session:
+
+- `auto` (the default) uses the SweetPad CLI when it's installed and has `sweetpad dap`, and CodeLLDB otherwise.
+  Devices on iOS 16 and older always use CodeLLDB, since the CLI reaches devices through `devicectl`.
+- `sweetpad` always uses the CLI.
+- `codelldb` always uses CodeLLDB.
+
+With neither installed, starting a session says so and offers to install one. SweetPad looks for the CLI on your
+`PATH`, then in `/opt/homebrew/bin` and `/usr/local/bin`; `sweetpad.debugger.cliPath` names it explicitly.
+
+On the CLI route, the build output and app logs appear in the Debug Console, errors link to their source line, and
+stopping the session during the build cancels it. The scheme, configuration and destination are the ones selected in
+SweetPad; `scheme`, `configuration`, `destination`, `args` and `env` in `launch.json` override them. A `lldb` object is
+passed to lldb-dap as it is, for example `"lldb": { "initCommands": ["..."] }`.
+[Editor debugging](../cli/editor-debugging.md#launch-configuration) lists every field.
 
 ## Customize preLaunchTask
 
@@ -98,7 +118,7 @@ Then reference that task from `launch.json`:
 
 ## Passing CodeLLDB parameters
 
-To pass additional parameters to CodeLLDB, use the `codelldbAttributes` property in your `launch.json` file. For
+On the CodeLLDB route, to pass additional parameters to CodeLLDB, use the `codelldbAttributes` property in your `launch.json` file. For
 example, if you want to execute LLDB commands before the debugger starts, you can do it like this:
 
 ```json title=".vscode/launch.json"

@@ -31,9 +31,6 @@
     "workspaceContains:**/project.yml",
     "workspaceContains:**/Project.swift"
   ],
-  "extensionDependencies": [
-    "vadimcn.vscode-lldb"
-  ],
   "scripts": {
     "build": "npm run build:native:debug && rolldown -c rolldown.config.mjs",
     "watch": "npm run build:native:debug && rolldown -c rolldown.config.mjs --watch",
@@ -208,6 +205,15 @@
         "label": "SweetPad (LLDB)",
         "configurationSnippets": [
           {
+            "label": "SweetPad: Build and Run",
+            "description": "Build, launch and debug the app selected in SweetPad",
+            "body": {
+              "type": "sweetpad-lldb",
+              "request": "launch",
+              "name": "SweetPad: Build and Run"
+            }
+          },
+          {
             "label": "SweetPad: Build and Run (Wait for debugger)",
             "body": {
               "type": "sweetpad-lldb",
@@ -219,13 +225,65 @@
         ],
         "configurationAttributes": {
           "attach": {
-            "description": "Attach to running app",
+            "description": "Attach to a running app. With the \"sweetpad: debugging-launch\" pre-launch task, SweetPad builds and launches the app first. Fields other than codelldbAttributes apply only when the SweetPad CLI runs the session. See sweetpad.debugger.adapter.",
             "required": [],
             "type": "object",
             "properties": {
+              "scheme": {
+                "type": "string",
+                "description": "Scheme to build. Defaults to the scheme selected in SweetPad."
+              },
+              "configuration": {
+                "type": "string",
+                "description": "Build configuration. Defaults to the configuration selected in SweetPad.",
+                "examples": [
+                  "Debug",
+                  "Release"
+                ]
+              },
+              "destination": {
+                "type": "string",
+                "markdownDescription": "Where the app runs: a simulator or device name or UDID, `booted`, or `mac`. A value with `=` goes to xcodebuild as `-destination`, for example `platform=macOS,variant=Mac Catalyst`. Defaults to the destination selected in SweetPad.",
+                "examples": [
+                  "booted",
+                  "mac",
+                  "iPhone 17 Pro",
+                  "platform=macOS,variant=Mac Catalyst"
+                ]
+              },
+              "workspace": {
+                "type": "string",
+                "description": "Path to the .xcworkspace to build. Defaults to the project selected in SweetPad."
+              },
+              "project": {
+                "type": "string",
+                "description": "Path to the .xcodeproj to build. Defaults to the project selected in SweetPad."
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Directory to find the project from. Defaults to the workspace folder."
+              },
+              "pid": {
+                "type": [
+                  "number",
+                  "string"
+                ],
+                "description": "Process to attach to. Without it, the debugger attaches to the scheme's app running on the destination."
+              },
+              "lldb": {
+                "type": "object",
+                "markdownDescription": "Fields passed to lldb-dap as written, such as `initCommands` and `sourceMap`.",
+                "examples": [
+                  {
+                    "initCommands": [
+                      "command script import ~/lldb/helpers.py"
+                    ]
+                  }
+                ]
+              },
               "codelldbAttributes": {
                 "title": "CodeLLDB attributes",
-                "description": "Attributes to pass to CodeLLDB. See: https://github.com/vadimcn/codelldb/blob/v1.10.0/MANUAL.md",
+                "description": "Attributes to pass to CodeLLDB. Used only when CodeLLDB runs the session. See: https://github.com/vadimcn/codelldb/blob/v1.10.0/MANUAL.md",
                 "type": "object",
                 "examples": [
                   {
@@ -243,13 +301,85 @@
             }
           },
           "launch": {
-            "description": "Deprecated: use `attach` instead",
+            "description": "Build the app, launch it and attach the debugger. Fields other than codelldbAttributes apply only when the SweetPad CLI runs the session. See sweetpad.debugger.adapter.",
             "required": [],
             "type": "object",
             "properties": {
+              "scheme": {
+                "type": "string",
+                "description": "Scheme to build. Defaults to the scheme selected in SweetPad."
+              },
+              "configuration": {
+                "type": "string",
+                "description": "Build configuration. Defaults to the configuration selected in SweetPad.",
+                "examples": [
+                  "Debug",
+                  "Release"
+                ]
+              },
+              "destination": {
+                "type": "string",
+                "markdownDescription": "Where the app runs: a simulator or device name or UDID, `booted`, or `mac`. A value with `=` goes to xcodebuild as `-destination`, for example `platform=macOS,variant=Mac Catalyst`. Defaults to the destination selected in SweetPad.",
+                "examples": [
+                  "booted",
+                  "mac",
+                  "iPhone 17 Pro",
+                  "platform=macOS,variant=Mac Catalyst"
+                ]
+              },
+              "workspace": {
+                "type": "string",
+                "description": "Path to the .xcworkspace to build. Defaults to the project selected in SweetPad."
+              },
+              "project": {
+                "type": "string",
+                "description": "Path to the .xcodeproj to build. Defaults to the project selected in SweetPad."
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Directory to find the project from. Defaults to the workspace folder."
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "markdownDescription": "Arguments for the app. Defaults to `sweetpad.build.launchArgs`."
+              },
+              "env": {
+                "type": [
+                  "object",
+                  "array"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "items": {
+                  "type": "string"
+                },
+                "markdownDescription": "Environment variables for the app, as an object or as a list of `KEY=VALUE` strings. Defaults to `sweetpad.build.launchEnv`."
+              },
+              "xcodebuildArgs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "markdownDescription": "Extra xcodebuild arguments. Defaults to `sweetpad.build.args`, plus the DerivedData path and `-allowProvisioningUpdates` that SweetPad's own builds use."
+              },
+              "lldb": {
+                "type": "object",
+                "markdownDescription": "Fields passed to lldb-dap as written, such as `initCommands` and `sourceMap`.",
+                "examples": [
+                  {
+                    "initCommands": [
+                      "command script import ~/lldb/helpers.py"
+                    ]
+                  }
+                ]
+              },
               "codelldbAttributes": {
                 "title": "CodeLLDB attributes",
-                "description": "Attributes to pass to CodeLLDB. See: https://github.com/vadimcn/codelldb/blob/v1.10.0/MANUAL.md",
+                "description": "Attributes to pass to CodeLLDB. Used only when CodeLLDB runs the session. See: https://github.com/vadimcn/codelldb/blob/v1.10.0/MANUAL.md",
                 "type": "object",
                 "examples": [
                   {
@@ -1168,6 +1298,29 @@
             ]
           ],
           "description": "Extra class names to recognize as XCTest base classes, so test classes that inherit from a shared base show up in the Testing panel. XCTestCase is always recognized. Names are matched textually, so list every level of a longer chain."
+        },
+        "sweetpad.debugger.adapter": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "sweetpad",
+            "codelldb"
+          ],
+          "default": "auto",
+          "markdownEnumDescriptions": [
+            "Use the SweetPad CLI (`sweetpad dap`) if it is installed and new enough, and CodeLLDB otherwise. Devices on iOS 16 and older always use CodeLLDB.",
+            "Always use the SweetPad CLI (`sweetpad dap`). Install it with `brew install sweetpad-dev/tap/sweetpad`.",
+            "Always use the CodeLLDB extension (`vadimcn.vscode-lldb`)."
+          ],
+          "markdownDescription": "Which debugger runs `sweetpad-lldb` debug sessions."
+        },
+        "sweetpad.debugger.cliPath": {
+          "type": "string",
+          "default": null,
+          "markdownDescription": "Path to the `sweetpad` CLI for debugging. When unset, SweetPad looks on `PATH`, then in `/opt/homebrew/bin` and `/usr/local/bin`.",
+          "examples": [
+            "/opt/homebrew/bin/sweetpad"
+          ]
         },
         "sweetpad.system.taskExecutor": {
           "type": "string",

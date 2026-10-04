@@ -41,7 +41,8 @@ tools such as **swift-format**, **swiftlint**, **xcodebuild**, **xcrun**, **xcod
 - 🛠️ **[Tools](https://sweetpad.hyzyla.dev/docs/vscode/tools)** — manage essential iOS development tools using
   [Homebrew](https://brew.sh/)
   
-- 🪲 **[Debug](https://sweetpad.hyzyla.dev/docs/vscode/debug)** — debug iOS applications using
+- 🪲 **[Debug](https://sweetpad.hyzyla.dev/docs/vscode/debug)** — debug iOS applications with the
+  [SweetPad CLI](https://sweetpad.hyzyla.dev/docs/cli/getting-started) or
   [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
   
 - ✅ **[Tests](https://sweetpad.hyzyla.dev/docs/vscode/tests)** — run tests on simulators and devices

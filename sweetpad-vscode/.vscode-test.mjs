@@ -32,9 +32,6 @@ export default defineConfig({
   label: "e2e",
   files: "out-e2e/**/*.e2e.js",
   workspaceFolder: disposableWorkspace(),
-  // `extensionDependencies` names CodeLLDB, and VS Code refuses to activate an
-  // extension whose dependency is missing — so the test instance needs it too.
-  installExtensions: ["vadimcn.vscode-lldb"],
   mocha: {
     // `suite`/`test`, the interface the VS Code extension samples use.
     ui: "tdd",
