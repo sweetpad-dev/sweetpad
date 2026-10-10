@@ -587,7 +587,7 @@ pub fn parse_pbxproj(xcodeproj_path: &Path) -> Result<Arc<Value>, Error> {
 
 /// Pull the `objects` dict and the root project object out of a parsed
 /// pbxproj. Both shapes are stable and required by every higher-level query.
-fn project_root(value: &Value) -> Result<(&Dict, &Value), Error> {
+pub(crate) fn project_root(value: &Value) -> Result<(&Dict, &Value), Error> {
     let root = value
         .as_dict()
         .ok_or_else(|| Error::BadProject("pbxproj root is not a dict".into()))?;

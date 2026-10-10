@@ -25,6 +25,7 @@ pub mod fileref;
 pub mod folder;
 pub mod group;
 pub mod membership;
+pub mod pif;
 pub mod settings;
 
 #[derive(Debug, Subcommand)]
@@ -67,6 +68,9 @@ pub enum Action {
         #[command(subcommand)]
         action: group::Action,
     },
+    /// The project as Swift Build's project interchange format (PIF).
+    #[command(hide = true)]
+    Pif(pif::PifArgs),
 }
 
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
@@ -77,6 +81,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         Action::Membership { action } => membership::run(ctx, action),
         Action::Fileref { action } => fileref::run(ctx, action),
         Action::Group { action } => group::run(ctx, action),
+        Action::Pif(args) => pif::run(ctx, args),
     }
 }
 

@@ -66,6 +66,17 @@ fn base26_into(mut n: u64, dst: &mut [u8]) {
 // MD5 (RFC 1321)
 // =====================================================================
 
+/// The lowercase hex MD5 of `input`, the spelling Xcode's PIF GUIDs use.
+pub(crate) fn md5_hex(input: &[u8]) -> String {
+    use std::fmt::Write;
+    md5(input)
+        .iter()
+        .fold(String::with_capacity(32), |mut out, b| {
+            let _ = write!(out, "{b:02x}");
+            out
+        })
+}
+
 /// RFC 1321 MD5. Pure-Rust, no allocation beyond the working state.
 fn md5(input: &[u8]) -> [u8; 16] {
     // Per RFC 1321 — these are the initial state constants.
