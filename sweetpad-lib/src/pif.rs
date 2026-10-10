@@ -43,22 +43,22 @@ pub fn pif(container: &Path) -> Result<Vec<Json>, Error> {
     let base_dir = container
         .parent()
         .map_or_else(PathBuf::new, Path::to_path_buf);
-    let (name, workspace_path, roots) =
-        if container.extension().is_some_and(|e| e == "xcworkspace") {
-            let ws = workspace::open(&container).map_err(|e| Error::BadProject(e.to_string()))?;
-            let roots = ws
-                .project_refs
-                .iter()
-                .map(|p| (project::standardize(p), false))
-                .collect();
-            (ws.name, container.clone(), roots)
-        } else {
-            (
-                stem(&container),
-                container.join("project.xcworkspace"),
-                vec![(container.clone(), true)],
-            )
-        };
+    let (name, workspace_path, roots) = if container.extension().is_some_and(|e| e == "xcworkspace")
+    {
+        let ws = workspace::open(&container).map_err(|e| Error::BadProject(e.to_string()))?;
+        let roots = ws
+            .project_refs
+            .iter()
+            .map(|p| (project::standardize(p), false))
+            .collect();
+        (ws.name, container.clone(), roots)
+    } else {
+        (
+            stem(&container),
+            container.join("project.xcworkspace"),
+            vec![(container.clone(), true)],
+        )
+    };
     let graph = Graph::load(roots, base_dir)?;
 
     let mut projects = Vec::new();
@@ -662,7 +662,10 @@ impl<'a> Emitter<'a> {
                 .and_then(Value::as_str)
                 .unwrap_or_default();
             let mut entry = json!({ "guid": guid, "name": name });
-            if let Some(filters) = self.linking_build_file(target, dep_id).and_then(platform_filters) {
+            if let Some(filters) = self
+                .linking_build_file(target, dep_id)
+                .and_then(platform_filters)
+            {
                 entry["platformFilters"] = filters;
             }
             out.push(entry);
@@ -722,11 +725,7 @@ impl<'a> Emitter<'a> {
             (o.get("productReference").and_then(Value::as_str) == Some(product_id))
                 .then_some(id.as_str())
         })?;
-        Some(format!(
-            "{}{}",
-            remote.guid,
-            md5_hex(target_id.as_bytes())
-        ))
+        Some(format!("{}{}", remote.guid, md5_hex(target_id.as_bytes())))
     }
 
     /// The `.xcodeproj` a container proxy's `containerPortal` file reference
@@ -859,7 +858,10 @@ impl<'a> Emitter<'a> {
             out.insert("guid".into(), json!(self.guid(id)));
             let referenced = self.get(file_ref);
             if let Some(proxy) = referenced.filter(|r| isa_of(r) == "PBXReferenceProxy") {
-                out.insert("targetReference".into(), json!(self.proxied_producer(proxy)?));
+                out.insert(
+                    "targetReference".into(),
+                    json!(self.proxied_producer(proxy)?),
+                );
             } else if let Some(producer) = self.producers.get(file_ref) {
                 out.insert("targetReference".into(), json!(self.guid(producer)));
             } else {
@@ -1065,7 +1067,11 @@ impl<'a> Emitter<'a> {
         };
         let project_configs: Vec<&Dict> = self
             .configuration_list(self.project_obj)
-            .map(|l| ids_in(l, "buildConfigurations").filter_map(|id| self.get(id)).collect())
+            .map(|l| {
+                ids_in(l, "buildConfigurations")
+                    .filter_map(|id| self.get(id))
+                    .collect()
+            })
             .unwrap_or_default();
         let attribute_style = self
             .project_obj
@@ -1074,7 +1080,10 @@ impl<'a> Emitter<'a> {
             .and_then(|t| t.get(target_id))
             .and_then(|t| t.get("ProvisioningStyle"))
             .and_then(Value::as_str);
-        let target_name = target.get("name").and_then(Value::as_str).unwrap_or_default();
+        let target_name = target
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         let product_defaults = self
             .graph
             .defaults
@@ -1084,7 +1093,10 @@ impl<'a> Emitter<'a> {
         let entries: Vec<Json> = ids_in(list, "buildConfigurations")
             .filter_map(|id| self.get(id))
             .map(|config| {
-                let name = config.get("name").and_then(Value::as_str).unwrap_or_default();
+                let name = config
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 let project_config = project_configs
                     .iter()
                     .find(|c| c.get("name").and_then(Value::as_str) == Some(name));
@@ -1131,10 +1143,15 @@ impl<'a> Emitter<'a> {
         let Some(infoplist) = infoplist.filter(|p| !p.is_empty()) else {
             return fallback();
         };
-        let relative = ["$(SRCROOT)/", "$(PROJECT_DIR)/", "${SRCROOT}/", "${PROJECT_DIR}/"]
-            .iter()
-            .find_map(|prefix| infoplist.strip_prefix(prefix))
-            .unwrap_or(infoplist);
+        let relative = [
+            "$(SRCROOT)/",
+            "$(PROJECT_DIR)/",
+            "${SRCROOT}/",
+            "${PROJECT_DIR}/",
+        ]
+        .iter()
+        .find_map(|prefix| infoplist.strip_prefix(prefix))
+        .unwrap_or(infoplist);
         if relative.contains("$(") || relative.contains("${") {
             return fallback();
         }
@@ -1247,9 +1264,12 @@ fn default_phase(file_type: &str, kind: Kind) -> &'static str {
 /// itself, a folder above it, or one of a variant group's translations.
 fn is_named(node: &Node, paths: &[String]) -> bool {
     let names = |rel: &str| {
-        paths
-            .iter()
-            .any(|e| rel == e || rel.strip_prefix(e.as_str()).is_some_and(|r| r.starts_with('/')))
+        paths.iter().any(|e| {
+            rel == e
+                || rel
+                    .strip_prefix(e.as_str())
+                    .is_some_and(|r| r.starts_with('/'))
+        })
     };
     names(&exception_key(node)) || node.children.iter().any(|c| names(&c.rel))
 }
@@ -1270,9 +1290,12 @@ fn exception_key(node: &Node) -> String {
 /// Per-file settings an exception set gives a synchronized file, spelled
 /// like a build file's own.
 fn apply_synced_settings(set: &Dict, rel: &str, file: &mut Map<String, Json>) {
-    let by_path = |key: &str| set.get(key).and_then(Value::as_dict).and_then(|d| d.get(rel));
-    if let Some(flags) = by_path("additionalCompilerFlagsByRelativePath").and_then(Value::as_str)
-    {
+    let by_path = |key: &str| {
+        set.get(key)
+            .and_then(Value::as_dict)
+            .and_then(|d| d.get(rel))
+    };
+    if let Some(flags) = by_path("additionalCompilerFlagsByRelativePath").and_then(Value::as_str) {
         file.insert("additionalCompilerOptions".into(), json!(flags));
     }
     if let Some(attributes) = by_path("attributesByRelativePath") {
@@ -1348,23 +1371,20 @@ fn build_rule(rule: &Dict, guid: &str) -> Json {
     let file_type = str_of_dict(rule, "fileType");
     let compiler = str_of_dict(rule, "compilerSpec");
     let patterns = rule.get("filePatterns").and_then(Value::as_str);
-    let name = rule
-        .get("name")
-        .and_then(Value::as_str)
-        .map_or_else(
-            || {
-                let using = if compiler == "com.apple.compilers.proxy.script" {
-                    "Script"
-                } else {
-                    compiler.as_str()
-                };
-                match patterns {
-                    Some(p) => format!("Files '{p}' using {using}"),
-                    None => format!("{file_type} using {using}"),
-                }
-            },
-            str::to_string,
-        );
+    let name = rule.get("name").and_then(Value::as_str).map_or_else(
+        || {
+            let using = if compiler == "com.apple.compilers.proxy.script" {
+                "Script"
+            } else {
+                compiler.as_str()
+            };
+            match patterns {
+                Some(p) => format!("Files '{p}' using {using}"),
+                None => format!("{file_type} using {using}"),
+            }
+        },
+        str::to_string,
+    );
     let mut out = Map::new();
     out.insert("guid".into(), json!(guid));
     out.insert("name".into(), json!(name));
@@ -1663,11 +1683,7 @@ fn text_encoding_name(encoding: &str) -> Option<&'static str> {
 fn relative_path(path: &Path, base: &Path) -> String {
     let path: Vec<_> = path.components().collect();
     let base: Vec<_> = base.components().collect();
-    let common = path
-        .iter()
-        .zip(&base)
-        .take_while(|(a, b)| a == b)
-        .count();
+    let common = path.iter().zip(&base).take_while(|(a, b)| a == b).count();
     let mut parts: Vec<String> = vec!["..".to_string(); base.len() - common];
     parts.extend(
         path[common..]

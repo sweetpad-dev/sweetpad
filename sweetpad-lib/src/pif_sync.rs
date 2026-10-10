@@ -126,9 +126,13 @@ fn children(dir: &Path, rel_dir: &str, settings: &Settings, depth: usize) -> Vec
             continue;
         }
         if settings.explicit_folders.iter().any(|f| f == &rel) {
-            let file_type = extension
-                .and_then(pif_file_types::for_extension)
-                .unwrap_or(if extension.is_some() { "wrapper" } else { "folder" });
+            let file_type = extension.and_then(pif_file_types::for_extension).unwrap_or(
+                if extension.is_some() {
+                    "wrapper"
+                } else {
+                    "folder"
+                },
+            );
             leaves.push(file(&name, &rel, file_type.to_string()));
             continue;
         }
@@ -322,7 +326,10 @@ fn by_name(a: &str, b: &str) -> Ordering {
         match name.strip_prefix('.').unwrap_or(name).rsplit_once('.') {
             Some((_, ext)) => {
                 let stem_len = lower.len() - ext.len() - 1;
-                (lower[..stem_len].to_string(), lower[stem_len + 1..].to_string())
+                (
+                    lower[..stem_len].to_string(),
+                    lower[stem_len + 1..].to_string(),
+                )
             }
             None => (lower, String::new()),
         }

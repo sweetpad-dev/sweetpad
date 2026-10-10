@@ -212,12 +212,30 @@ pub fn stream_lines(
     program: &str,
     args: &[&str],
     cwd: Option<&Path>,
+    on_line: impl FnMut(&str),
+) -> Result<bool, CliError> {
+    stream_lines_with_env(program, args, cwd, &[], on_line)
+}
+
+/// [`stream_lines`] with changes to the child's environment: each `(name,
+/// Some(value))` sets a variable and each `(name, None)` removes one.
+pub fn stream_lines_with_env(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    env: &[(String, Option<String>)],
     mut on_line: impl FnMut(&str),
 ) -> Result<bool, CliError> {
     let mut cmd = Command::new(program);
     cmd.args(args);
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
+    }
+    for (name, value) in env {
+        match value {
+            Some(value) => cmd.env(name, value),
+            None => cmd.env_remove(name),
+        };
     }
     let (reader, out, err) = merged_output_pipe(program)?;
     cmd.stdout(out).stderr(err);

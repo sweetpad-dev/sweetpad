@@ -44,6 +44,7 @@ pub mod scaffold;
 pub mod signals;
 pub mod simctl;
 pub mod state;
+pub mod swbuild;
 pub mod swiftpm;
 #[cfg(test)]
 #[path = "../../../sweetpad-lib/src/testdir.rs"]

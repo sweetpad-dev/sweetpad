@@ -429,13 +429,34 @@ pub(crate) fn build_failure(
     stderr_apart: bool,
     detail: &str,
 ) -> CliError {
+    tool_failure(
+        "xcodebuild",
+        args,
+        diagnostics,
+        blocker,
+        streamed,
+        stderr_apart,
+        detail,
+    )
+}
+
+/// [`build_failure`] for a build `tool` other than xcodebuild ran.
+pub(crate) fn tool_failure(
+    tool: &str,
+    args: &[String],
+    diagnostics: Vec<serde_json::Value>,
+    blocker: Option<String>,
+    streamed: bool,
+    stderr_apart: bool,
+    detail: &str,
+) -> CliError {
     let streamed_error = blocker.is_none() && streamed_an_error(streamed, &diagnostics);
     let shown = streamed_error && !stderr_apart;
     let repeated = (streamed_error && stderr_apart).then(|| repeated_errors(&diagnostics));
     let headline = blocker.map_or_else(
         || {
             format!(
-                "xcodebuild exited with a non-zero status{}",
+                "{tool} exited with a non-zero status{}",
                 repeated.as_deref().unwrap_or(detail)
             )
         },

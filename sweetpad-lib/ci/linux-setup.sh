@@ -9,7 +9,8 @@
 #   xtool      its Darwin Swift SDK: the iOS and macOS SDKs plus an ld64.lld
 #              that links for Apple platforms, extracted from an Xcode.app
 #   swbuild    Swift Build's command-line driver, which the toolchain doesn't
-#              ship, built from swiftlang/swift-build at the toolchain's tag
+#              ship, built from swiftlang/swift-build at the toolchain's tag and
+#              linked into ~/bin
 #   Rust       rustup, for building sweetpad itself
 #
 # The SDK comes from your own Xcode (XCODE_APP, default /Applications/Xcode.app,
@@ -100,6 +101,9 @@ if [ ! -x "$SWB/.build/release/swbuild" ] || [ ! -x "$SWB/.build/release/SWBBuil
   [ -d "$SWB/.git" ] || git clone -q --depth 1 --branch "$TAG" https://github.com/swiftlang/swift-build.git "$SWB"
   (cd "$SWB" && swift build -c release --product swbuild && swift build -c release --product SWBBuildServiceBundle)
 fi
+# sweetpad looks swbuild up on PATH; it finds its service bundle through the
+# link.
+ln -sf "$SWB/.build/release/swbuild" "$HOME/bin/swbuild"
 ls "$SWB/.build/release/swbuild" "$SWB/.build/release/SWBBuildServiceBundle"
 
 section "Rust"

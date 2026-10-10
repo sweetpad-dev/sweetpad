@@ -1,5 +1,5 @@
-//! `sweetpad build …` — compile the project (via `xcodebuild`, or `swift build`
-//! for a Swift package). `build` stays purely "compile"; the run/install/launch
+//! `sweetpad build …` — compile the project (via `xcodebuild` or Swift Build,
+//! or `swift build` for a Swift package). `build` stays purely "compile"; the run/install/launch
 //! lifecycle lives under [`crate::cli::commands::app`]. `test build` is this
 //! same build over the scheme's test targets ([`for_testing`]).
 
@@ -7,6 +7,7 @@ use clap::Subcommand;
 
 use crate::cli::buildlog::{self, DiagKind};
 use crate::cli::output::Output;
+use crate::cli::swbuild::{self, Engine};
 use crate::cli::xcodebuild::BuildAction;
 use crate::cli::{
     CliError, CommandResult, Context, ErrorKind, Render, Rendered, resolve, swiftpm, xcodebuild,
@@ -36,6 +37,12 @@ pub struct StartArgs {
     /// Print the exact xcodebuild invocation that would run, then exit.
     #[arg(long, global = true)]
     pub show_command: bool,
+
+    /// The build engine: 'xcodebuild', or 'swift-build' for Apple's
+    /// open-source Swift Build. Defaults to xcodebuild on macOS and Swift
+    /// Build elsewhere.
+    #[arg(long, global = true, hide = true, value_enum, env = "SWEETPAD_ENGINE")]
+    pub engine: Option<Engine>,
 
     /// Extra arguments passed to xcodebuild verbatim (after '--'), e.g.
     /// 'sweetpad build -- -allowProvisioningUpdates KEY=VALUE'.
@@ -81,11 +88,19 @@ pub fn run(ctx: &mut Context, args: &StartArgs, action: Option<&Action>) -> Comm
         }
         Some(Action::Start) | None => {
             crate::cli::mac_as_on(&mut ctx.targeting, args.mac)?;
+            let engine = args.engine.unwrap_or_else(Engine::for_host);
             if args.watch {
-                watch(ctx, BuildAction::Build, args.clean, &args.passthrough)
+                watch(
+                    ctx,
+                    engine,
+                    BuildAction::Build,
+                    args.clean,
+                    &args.passthrough,
+                )
             } else {
                 start(
                     ctx,
+                    engine,
                     BuildAction::Build,
                     args.clean,
                     args.show_command,
@@ -134,11 +149,19 @@ pub(crate) fn for_testing(
     show_command: bool,
     passthrough: &[String],
 ) -> CommandResult {
+    let engine = Engine::for_host();
     if watch_saves {
-        return watch(ctx, BuildAction::BuildForTesting, false, passthrough);
+        return watch(
+            ctx,
+            engine,
+            BuildAction::BuildForTesting,
+            false,
+            passthrough,
+        );
     }
     start(
         ctx,
+        engine,
         BuildAction::BuildForTesting,
         false,
         show_command,
@@ -151,6 +174,7 @@ pub(crate) fn for_testing(
 /// the loop.
 fn watch(
     ctx: &mut Context,
+    engine: Engine,
     action: BuildAction,
     clean: bool,
     passthrough: &[String],
@@ -169,7 +193,7 @@ fn watch(
     // Only the first iteration honors --clean.
     let mut clean = clean;
     super::watch_swift(ctx, &root, move |ctx| {
-        let result = start(ctx, action, clean, false, passthrough);
+        let result = start(ctx, engine, action, clean, false, passthrough);
         clean = false;
         result
     })
@@ -289,6 +313,7 @@ impl Render for SpmBuildPreview {
 
 fn start(
     ctx: &mut Context,
+    engine: Engine,
     action: BuildAction,
     clean: bool,
     show_command: bool,
@@ -310,58 +335,15 @@ fn start(
     // toolchain rather than routing through xcodebuild (which would force a
     // destination on us). The dry run and `--` passthrough apply here too.
     if matches!(resolved.container, resolve::Container::SwiftPackage(_)) {
-        let configuration = resolved
-            .configuration
-            .clone()
-            .unwrap_or_else(|| "Debug".to_string());
-        if show_command {
-            let build_preview = xcodebuild::CommandPreview {
-                program: "swift",
-                args: swiftpm::build_args(&configuration, testing, passthrough),
-                cwd: swiftpm::package_dir(&resolved.container),
-            };
-            // `--clean` runs `swift package clean` first — the preview shows
-            // both steps, like archive's dual preview.
-            if clean {
-                return Ok(Rendered::data(SpmBuildPreview {
-                    commands: vec![
-                        xcodebuild::CommandPreview {
-                            program: "swift",
-                            args: vec!["package".into(), "clean".into()],
-                            cwd: swiftpm::package_dir(&resolved.container),
-                        },
-                        build_preview,
-                    ],
-                }));
-            }
-            return Ok(Rendered::data(build_preview));
-        }
-        ctx.out.note(&if testing {
-            format!("building Swift package tests ({configuration}) with swift build --build-tests")
-        } else {
-            format!("building Swift package ({configuration}) with swift build")
-        });
-        swiftpm::build(
-            &resolved.container,
-            &configuration,
-            testing,
-            clean,
-            ctx.out.is_json() || ctx.out.is_ndjson(),
-            passthrough,
-        )
-        .map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
-        return Ok(Rendered::data(BuildReport {
-            scheme: None,
-            configuration,
-            destination: None,
-            stats: None,
-            // A Swift package builds an executable or a library, never a
-            // `.app` bundle.
-            product: Ok(None),
-        }));
+        return build_package(ctx, &resolved, testing, clean, show_command, passthrough);
     }
 
-    let target = resolve::build_target(ctx, &mut resolved, !show_command)?;
+    let target = match engine {
+        Engine::Xcodebuild => resolve::build_target(ctx, &mut resolved, !show_command)?,
+        Engine::SwiftBuild => {
+            resolve::build_target_without_devices(ctx, &mut resolved, !show_command)?
+        }
+    };
 
     let plan = xcodebuild::BuildPlan {
         action,
@@ -379,6 +361,9 @@ fn start(
 
     // A dry run prints and exits before any state is persisted.
     if show_command {
+        if engine == Engine::SwiftBuild {
+            return Ok(Rendered::data(swbuild::command(&plan)?));
+        }
         let (args, cwd) = plan.command();
         return Ok(Rendered::data(xcodebuild::CommandPreview {
             program: "xcodebuild",
@@ -396,16 +381,23 @@ fn start(
     }
 
     ctx.out.note(&format!(
-        "building {}{} ({}) for {}",
+        "building {}{} ({}) for {}{}",
         target.scheme,
         if testing { "'s tests" } else { "" },
         target.configuration,
-        target.destination
+        target.destination,
+        if engine == Engine::SwiftBuild {
+            " with Swift Build"
+        } else {
+            ""
+        }
     ));
 
-    let stats = plan
-        .run(&ctx.out)
-        .map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
+    let stats = match engine {
+        Engine::Xcodebuild => plan.run(&ctx.out),
+        Engine::SwiftBuild => swbuild::run(&plan, &ctx.out),
+    }
+    .map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
     let product = product_path(ctx, &plan);
 
     Ok(Rendered::data(BuildReport {
@@ -414,6 +406,66 @@ fn start(
         destination: Some(target.destination),
         stats,
         product,
+    }))
+}
+
+/// [`start`] for a Swift package, which builds with `swift build`.
+fn build_package(
+    ctx: &Context,
+    resolved: &resolve::Resolved,
+    testing: bool,
+    clean: bool,
+    show_command: bool,
+    passthrough: &[String],
+) -> CommandResult {
+    let configuration = resolved
+        .configuration
+        .clone()
+        .unwrap_or_else(|| "Debug".to_string());
+    if show_command {
+        let build_preview = xcodebuild::CommandPreview {
+            program: "swift",
+            args: swiftpm::build_args(&configuration, testing, passthrough),
+            cwd: swiftpm::package_dir(&resolved.container),
+        };
+        // `--clean` runs `swift package clean` first — the preview shows
+        // both steps, like archive's dual preview.
+        if clean {
+            return Ok(Rendered::data(SpmBuildPreview {
+                commands: vec![
+                    xcodebuild::CommandPreview {
+                        program: "swift",
+                        args: vec!["package".into(), "clean".into()],
+                        cwd: swiftpm::package_dir(&resolved.container),
+                    },
+                    build_preview,
+                ],
+            }));
+        }
+        return Ok(Rendered::data(build_preview));
+    }
+    ctx.out.note(&if testing {
+        format!("building Swift package tests ({configuration}) with swift build --build-tests")
+    } else {
+        format!("building Swift package ({configuration}) with swift build")
+    });
+    swiftpm::build(
+        &resolved.container,
+        &configuration,
+        testing,
+        clean,
+        ctx.out.is_json() || ctx.out.is_ndjson(),
+        passthrough,
+    )
+    .map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
+    Ok(Rendered::data(BuildReport {
+        scheme: None,
+        configuration,
+        destination: None,
+        stats: None,
+        // A Swift package builds an executable or a library, never a
+        // `.app` bundle.
+        product: Ok(None),
     }))
 }
 

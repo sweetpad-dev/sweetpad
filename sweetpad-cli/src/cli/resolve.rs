@@ -975,22 +975,13 @@ pub struct BuildTarget {
     pub destination: String,
 }
 
-/// Settle a complete build target from the layered resolution, falling back to
-/// interactive pickers (scheme from the project, destination from `simctl`)
-/// when a TTY is available. An explicitly-requested scheme or configuration is
-/// validated against the project's candidates with a did-you-mean hint, so a
-/// typo dies here instead of deep inside xcodebuild; a *remembered* value that
-/// no longer exists is cleared and re-resolved instead of failing forever.
-/// `track` gates every state write on this path — the stale-value clears and
-/// the picker's usage/recents bookkeeping — so a dry run (`--show-command`)
-/// never mutates state. Recovery clears the stale field on `resolved` too, so
-/// the caller's `remember` treats the fresh pick as picker-sourced and
-/// persists it.
-pub fn build_target(
+/// Settle the scheme and configuration a build needs, the first two parts of
+/// [`build_target`].
+fn settle_scheme_and_configuration(
     ctx: &mut Context,
     resolved: &mut Resolved,
     track: bool,
-) -> Result<BuildTarget, CliError> {
+) -> Result<(String, String), CliError> {
     // Enumerating a workspace's local packages means evaluating each
     // `Package.swift`, which is far slower than reading project files. A
     // scheme already settled by flag/config/memory usually appears in the
@@ -1008,6 +999,65 @@ pub fn build_target(
     }
     let scheme = settle_scheme(ctx, resolved, &candidates, track)?;
     let configuration = settle_configuration(ctx, resolved, track)?;
+    Ok((scheme, configuration))
+}
+
+/// [`build_target`] for a build that looks up no simulator or device: Swift
+/// Build takes the destination as a platform, and off macOS there is nothing
+/// to look up. The destination is the one settled by flag, config or memory,
+/// and otherwise a generic one for the scheme's platform.
+pub fn build_target_without_devices(
+    ctx: &mut Context,
+    resolved: &mut Resolved,
+    track: bool,
+) -> Result<BuildTarget, CliError> {
+    let (scheme, configuration) = settle_scheme_and_configuration(ctx, resolved, track)?;
+    reject_on_destination_conflict(ctx)?;
+    let destination = if let Some(reference) = ctx.targeting.on.clone() {
+        if !on_is_mac(ctx, &resolved.container.key(), &reference) {
+            return Err(CliError::new(
+                "'--on' names a simulator or device, and Swift Build doesn't look those up; \
+                 pass '--destination' instead, like 'generic/platform=iOS'",
+            )
+            .kind(ErrorKind::Usage));
+        }
+        OnTarget::Mac.specifier()
+    } else if let Some(destination) = resolved.destination.clone() {
+        destination
+    } else if SupportedPlatforms::resolve(resolved.container.path(), &scheme, &configuration)
+        .as_ref()
+        .is_some_and(SupportedPlatforms::is_mac_only)
+    {
+        "platform=macOS".to_string()
+    } else {
+        ctx.out
+            .note("targeting any iOS device ('--destination' picks another platform)");
+        "generic/platform=iOS".to_string()
+    };
+    Ok(BuildTarget {
+        scheme,
+        configuration,
+        destination,
+    })
+}
+
+/// Settle a complete build target from the layered resolution, falling back to
+/// interactive pickers (scheme from the project, destination from `simctl`)
+/// when a TTY is available. An explicitly-requested scheme or configuration is
+/// validated against the project's candidates with a did-you-mean hint, so a
+/// typo dies here instead of deep inside xcodebuild; a *remembered* value that
+/// no longer exists is cleared and re-resolved instead of failing forever.
+/// `track` gates every state write on this path — the stale-value clears and
+/// the picker's usage/recents bookkeeping — so a dry run (`--show-command`)
+/// never mutates state. Recovery clears the stale field on `resolved` too, so
+/// the caller's `remember` treats the fresh pick as picker-sourced and
+/// persists it.
+pub fn build_target(
+    ctx: &mut Context,
+    resolved: &mut Resolved,
+    track: bool,
+) -> Result<BuildTarget, CliError> {
+    let (scheme, configuration) = settle_scheme_and_configuration(ctx, resolved, track)?;
 
     let key = resolved.container.key();
     // An explicit `--on` reference outranks every persisted destination layer
