@@ -15,6 +15,7 @@ use sweetpad_lib::destination::DestinationSpec;
 pub(crate) mod adapter;
 mod ax;
 mod macwin;
+mod private_logs;
 mod sample;
 
 use crate::cli::inject::recompiler::{Mode, Recompiler};
@@ -1021,6 +1022,11 @@ struct RunPlan {
     /// A detached launch records it in its captured file's header, so `app
     /// logs` leaves it out there too ([`CapturedLog`]).
     added_ignore_persistence: bool,
+    /// Whether a build of this macOS app opts its own log subsystems into the
+    /// unified log's private data before it launches ([`private_logs`]). Off
+    /// for any other target, an iOS app on the Mac, `app debug` and `app
+    /// diagnose`, and `[run] private_logs = false`.
+    private_logs: bool,
     /// Extra xcodebuild arguments (after `--`), passed through verbatim.
     passthrough: Vec<String>,
 }
@@ -1391,8 +1397,16 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
         hot_entitlements: None,
         launch: opts.launch.clone(),
         added_ignore_persistence: false,
+        private_logs: false,
         passthrough: opts.passthrough.to_vec(),
     };
+    plan.private_logs = matches!(plan.target, Target::Mac)
+        && !designed_for_ipad(&plan.destination)
+        && ctx
+            .project_file(&plan.resolved.container)
+            .run
+            .private_logs
+            .unwrap_or(true);
     // Settled on the plan, like the macOS pair below, so every launch it
     // drives carries them: a session's relaunches, a detached launch, and
     // lldb's. `swift run` has no scheme to read them from.
@@ -1666,11 +1680,46 @@ fn install_built(
             })?;
         }
         // A macOS app is built in place; there's no install step.
-        Target::Mac => {}
+        Target::Mac => opt_into_private_logs(out, plan),
         // SPM executables never reach here (run_app routes them to `swift run`).
         Target::SpmRun(_) => unreachable!("SPM run does not build/install via xcodebuild"),
     }
     Ok(app)
+}
+
+/// Opt a macOS build into recording its own logs' private values
+/// ([`private_logs`]), when the plan does. Each build that launches the app
+/// runs it, [`install_built`] and the session's [`build`]: the edit makes
+/// Xcode's next build process the Info.plist and sign the app again, which
+/// undoes it. A failure leaves the build's logs redacted, which costs a
+/// warning rather than the launch.
+fn opt_into_private_logs(out: &Output, plan: &RunPlan) {
+    if !plan.private_logs {
+        return;
+    }
+    let Ok(app) = plan.app_bundle() else {
+        return;
+    };
+    match private_logs::opt_in(&app) {
+        Ok(added) if !added.is_empty() => out.debug(&format!(
+            "re-signed {} to record private log values from {}",
+            app.bundle_id,
+            added.join(", ")
+        )),
+        Ok(_) => {}
+        Err(e) => out.warn(&format!(
+            "{}'s logs keep showing <private> values: {e}",
+            app.bundle_id
+        )),
+    }
+}
+
+/// Whether `destination` runs an iOS app on the Mac ("Designed for iPad"),
+/// which only LaunchServices can start.
+fn designed_for_ipad(destination: &str) -> bool {
+    DestinationSpec::parse(destination)
+        .variant
+        .is_some_and(|variant| variant.starts_with("Designed for"))
 }
 
 /// Record the app being launched into the project's state — for re-launch and
@@ -2286,7 +2335,7 @@ fn run_hot_session(
         });
     }
 
-    let mut logs = start_logs(ctx, plan, &filter);
+    let mut logs = start_logs(ctx, plan, &filter, Senders::App);
     // Watch the workspace; each save drives `server.inject`.
     let session = HotSession::start(Arc::clone(&server), &project_root);
 
@@ -2915,7 +2964,7 @@ impl SessionLogs {
     fn launched(&mut self, ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) {
         if !self.started {
             self.started = true;
-            self.stream = start_logs(ctx, plan, filter);
+            self.stream = start_logs(ctx, plan, filter, Senders::App);
         }
     }
 
@@ -3315,7 +3364,10 @@ fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> Bui
         &diagnostics,
     );
     match status {
-        Ok(s) if s.success() => BuildOutcome::Ok,
+        Ok(s) if s.success() => {
+            opt_into_private_logs(out, plan);
+            BuildOutcome::Ok
+        }
         // The stream above already closed on `✗ Build failed` under the errors
         // that caused it, as `BuildPlan::run`'s does, and the failure reads the
         // same as there.
@@ -3387,7 +3439,7 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
             // Stream the device's os_log (pymobiledevice3) alongside the devicectl
             // console; no live filter on the non-interactive path, so use the default.
             let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
-            let _logs = start_logs(ctx, plan, &filter);
+            let _logs = start_logs(ctx, plan, &filter, Senders::App);
             devicectl::launch_console(
                 id,
                 &app.bundle_id,
@@ -3401,7 +3453,7 @@ fn follow_once(ctx: &Context, plan: &RunPlan) -> CliResult {
             // Stream the app's os_log alongside its inherited stdout/stderr; the
             // non-interactive path has no live filter, so use the default threshold.
             let filter = Arc::new(AtomicU8::new(default_filter(&ctx.out).threshold()));
-            let _logs = start_logs(ctx, plan, &filter);
+            let _logs = start_logs(ctx, plan, &filter, Senders::App);
             // This path runs the app in the foreground and waits for it, so a
             // stopped-before-main process would just hang with no pid to
             // attach to. Refuse rather than accept and ignore.
@@ -3848,6 +3900,19 @@ enum LogSource<'a> {
     Mac,
 }
 
+/// Whose unified-log entries a stream shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Senders {
+    /// The app's own code.
+    App,
+    /// The app's own code and its NSLog calls. With a debugger attached,
+    /// NSLog writes to the unified log instead of stderr, so a debug session
+    /// takes it from the stream. A plain run leaves it out: a simulator app
+    /// writes NSLog to both, and it would show twice. A device's stream reads
+    /// the app's own images only, so it has no NSLog either way.
+    AppAndNSLog,
+}
+
 /// Spawn an os_log stream as a background child with both stdout and stderr piped,
 /// for [`render_logs`] to format and [`render_log_stderr`] to filter. See
 /// [`log_command`] for the stream's shape.
@@ -3856,8 +3921,16 @@ fn spawn_logs(
     app: &AppBundle,
     level: &str,
     marker: Option<&str>,
+    senders: Senders,
 ) -> Result<Child, CliError> {
-    let (program, args) = log_command(source, app, level, marker, &LogFilterArgs::default());
+    let (program, args) = log_command(
+        source,
+        app,
+        level,
+        marker,
+        &LogFilterArgs::default(),
+        senders,
+    );
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     process::spawn_piped_both(program, &refs, None)
 }
@@ -3888,8 +3961,9 @@ fn log_command(
     level: &str,
     marker: Option<&str>,
     filters: &LogFilterArgs,
+    senders: Senders,
 ) -> (&'static str, Vec<String>) {
-    let predicate = log_predicate(app, filters, marker);
+    let predicate = log_predicate(app, filters, marker, senders);
     let mut stream = vec![
         "stream".to_string(),
         "--level".to_string(),
@@ -3920,11 +3994,27 @@ fn log_command(
 /// `Logger(subsystem:)`, while Apple framework chatter stays out. A raw
 /// `--predicate` replaces this wholesale; `--subsystem`/`--category` narrow it.
 /// See [`log_command`] for what a `marker` clause is for.
-fn log_predicate(app: &AppBundle, filters: &LogFilterArgs, marker: Option<&str>) -> String {
+///
+/// [`Senders::AppAndNSLog`] also matches NSLog: Foundation sends it, with no
+/// subsystem. The predicate can't test for a missing subsystem (`== nil` and
+/// `== ""` both match nothing), so it tests for one without a dot, which every
+/// Apple subsystem has.
+fn log_predicate(
+    app: &AppBundle,
+    filters: &LogFilterArgs,
+    marker: Option<&str>,
+    senders: Senders,
+) -> String {
     use std::fmt::Write as _;
     let exe = predicate_escape(process_name(app));
     let mut predicate = filters.predicate.clone().unwrap_or_else(|| {
-        format!("process == \"{exe}\" AND (sender == \"{exe}\" OR sender == \"{exe}.debug.dylib\")")
+        let nslog = match senders {
+            Senders::App => "",
+            Senders::AppAndNSLog => " OR (sender == \"Foundation\" AND NOT subsystem CONTAINS \".\")",
+        };
+        format!(
+            "process == \"{exe}\" AND (sender == \"{exe}\" OR sender == \"{exe}.debug.dylib\"{nslog})"
+        )
     });
     if let Some(subsystem) = &filters.subsystem {
         let _ = write!(
@@ -3962,7 +4052,7 @@ fn log_show_command(
     last: &str,
     level: &str,
 ) -> (&'static str, Vec<String>) {
-    let predicate = log_predicate(app, filters, None);
+    let predicate = log_predicate(app, filters, None, Senders::App);
     let mut show = vec![
         "show".to_string(),
         "--style".to_string(),
@@ -4001,7 +4091,12 @@ fn log_show_command(
 /// threshold. The thread ends when the child's stdout closes — i.e. when the stream
 /// is dropped/killed, or the process exits — so it's never joined.
 #[allow(clippy::print_stdout)] // live os_log stream on a detached thread
-fn render_logs(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
+fn render_logs(
+    child: &mut Child,
+    color: bool,
+    filter: Arc<AtomicU8>,
+    mut watch: Option<private_logs::Watch>,
+) {
     let Some(stdout) = child.stdout.take() else {
         return;
     };
@@ -4009,10 +4104,15 @@ fn render_logs(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
         // Lossy line reads: one invalid-UTF-8 byte must not end the thread —
         // dropping the pipe's read end SIGPIPEs the still-writing child.
         process::read_lines_lossy(stdout, &mut |line| {
-            if let Some(rendered) = oslog::render_ndjson_line(line, color)
-                && rendered.level.as_u8() >= filter.load(Ordering::Relaxed)
-            {
+            let Some(rendered) = oslog::render_ndjson_line(line, color) else {
+                return;
+            };
+            let shown = rendered.level.as_u8() >= filter.load(Ordering::Relaxed);
+            if shown {
                 println!("{}", rendered.text);
+            }
+            if let Some(watch) = &mut watch {
+                watch.saw(&rendered, shown);
             }
         });
     });
@@ -4025,24 +4125,33 @@ fn render_logs(child: &mut Child, color: bool, filter: Arc<AtomicU8>) {
 /// boot noise ([`is_boot_noise`]) is dropped, and lines obey the live `filter` like
 /// os_log, so `4 off` silences them too. `own` names the stderr lines that are
 /// about sweetpad's launch rather than the app, which are dropped too.
-#[allow(clippy::print_stdout)] // live app stdout/stderr stream on detached threads
 fn render_console(child: &mut Child, color: bool, filter: &Arc<AtomicU8>, own: OwnLines) {
-    let pipes: [(Option<Box<dyn std::io::Read + Send>>, OwnLines); 2] = [
-        (
-            child
-                .stdout
-                .take()
-                .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
-            OwnLines::default(),
-        ),
-        (
-            child
-                .stderr
-                .take()
-                .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
-            own,
-        ),
-    ];
+    render_console_pipes(
+        child
+            .stdout
+            .take()
+            .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+        child
+            .stderr
+            .take()
+            .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+        color,
+        filter,
+        own,
+    );
+}
+
+/// [`render_console`] for an app's stdout and stderr pipes held without a
+/// [`Child`], as a process started by [`process::spawn_suspended`] is.
+#[allow(clippy::print_stdout)] // live app stdout/stderr stream on detached threads
+fn render_console_pipes(
+    stdout: Option<Box<dyn std::io::Read + Send>>,
+    stderr: Option<Box<dyn std::io::Read + Send>>,
+    color: bool,
+    filter: &Arc<AtomicU8>,
+    own: OwnLines,
+) {
+    let pipes = [(stdout, OwnLines::default()), (stderr, own)];
     for (pipe, own) in pipes {
         let Some(pipe) = pipe else {
             continue;
@@ -4203,7 +4312,12 @@ fn render_device_logs(child: &mut Child, color: bool, exe: String, filter: Arc<A
 /// is missing — logs are best-effort and the device console keeps working. The
 /// stream carries every level; `filter` decides what's shown, so the live filter
 /// can reveal debug on demand without restarting it.
-fn start_logs(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Option<LogStream> {
+fn start_logs(
+    ctx: &Context,
+    plan: &RunPlan,
+    filter: &Arc<AtomicU8>,
+    senders: Senders,
+) -> Option<LogStream> {
     let app = plan.app_bundle().ok()?;
     let (source, marker) = match &plan.target {
         Target::Simulator(udid) => (LogSource::Simulator(udid), Some(log_stream_marker())),
@@ -4211,8 +4325,11 @@ fn start_logs(ctx: &Context, plan: &RunPlan, filter: &Arc<AtomicU8>) -> Option<L
         Target::Device(_) => return start_device_logs(ctx, &app, filter),
         Target::SpmRun(_) => return None,
     };
-    let mut child = spawn_logs(&source, &app, "debug", marker.as_deref()).ok()?;
-    render_logs(&mut child, ctx.out.use_color(), Arc::clone(filter));
+    let mut child = spawn_logs(&source, &app, "debug", marker.as_deref(), senders).ok()?;
+    // Only a Mac redacts what the stream reads.
+    let watch = matches!(plan.target, Target::Mac)
+        .then(|| private_logs::Watch::new(&app, plan.private_logs, senders, ctx.out.clone()));
+    render_logs(&mut child, ctx.out.use_color(), Arc::clone(filter), watch);
     render_log_stderr(&mut child, ctx.out.use_color(), Arc::clone(filter));
     let reap_slot = crate::cli::signals::register_child(child.id());
     Some(LogStream {
@@ -4728,7 +4845,9 @@ fn debug(
         .kind(ErrorKind::Usage));
     }
     let opts = lldb_run_opts(stage_target, launch, passthrough);
-    let plan = plan(ctx, &opts)?;
+    let mut plan = plan(ctx, &opts)?;
+    // lldb copies the app's log text onto its stderr in full.
+    plan.private_logs = false;
     match &plan.target {
         // A macOS app runs on this machine, so lldb can own the launch
         // outright — no suspended-launch-then-attach dance, and breakpoints
@@ -5702,7 +5821,9 @@ fn diagnose(
     passthrough: &[String],
 ) -> CommandResult {
     let opts = lldb_run_opts(stage_target, launch, passthrough);
-    let plan = plan(ctx, &opts)?;
+    let mut plan = plan(ctx, &opts)?;
+    // lldb copies the app's log text onto its stderr in full.
+    plan.private_logs = false;
     match &plan.target {
         Target::Mac => diagnose_mac(ctx, &plan, timeout_secs),
         Target::Simulator(udid) => {
@@ -6765,13 +6886,17 @@ fn mac_container(
     }))
 }
 
-/// What `app container` reads from a macOS product's signed entitlements.
+/// What `app container` and [`private_logs`] read from a macOS product's signed
+/// entitlements.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct MacEntitlements {
     /// `com.apple.security.app-sandbox` is `<true/>`.
     sandboxed: bool,
     /// `com.apple.security.application-groups`, in declared order.
     groups: Vec<String>,
+    /// `com.apple.security.get-task-allow` is `<true/>`: a development build
+    /// a debugger may attach to.
+    debuggable: bool,
 }
 
 /// The entitlements `codesign` reports for a signed product. An unsigned
@@ -6810,6 +6935,7 @@ fn parse_entitlements(xml: &str) -> MacEntitlements {
         };
         match key.text.as_str() {
             "com.apple.security.app-sandbox" => found.sandboxed = value.name == "true",
+            "com.apple.security.get-task-allow" => found.debuggable = value.name == "true",
             "com.apple.security.application-groups" => {
                 found.groups = value
                     .children_named("string")
@@ -7265,7 +7391,7 @@ fn stream_logs(
     let stop = Arc::new(AtomicBool::new(false));
     let level = filters.level.as_deref().unwrap_or(log_level(&ctx.out));
     let marker = log_stream_marker();
-    let (program, args) = log_command(source, app, level, Some(&marker), filters);
+    let (program, args) = log_command(source, app, level, Some(&marker), filters, Senders::App);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let mut child = process::spawn_piped_forwarded(program, &refs)?;
     let stream_pid = child.id();
@@ -8116,6 +8242,7 @@ mod tests {
             "info",
             Some("tag-7"),
             &LogFilterArgs::default(),
+            Senders::App,
         );
         assert_eq!(program, "xcrun");
         assert_eq!(&args[..5], &["simctl", "spawn", "UDID-1", "log", "stream"]);
@@ -8136,6 +8263,7 @@ mod tests {
             "debug",
             None,
             &LogFilterArgs::default(),
+            Senders::App,
         );
         // The host `log` binary directly — no `simctl spawn` wrapper.
         assert_eq!(program, "log");
@@ -8145,6 +8273,31 @@ mod tests {
         assert!(predicate.contains(r#"process == "MyApp""#));
         // A direct child needs no reaping tag, so no marker clause is appended.
         assert!(!predicate.contains("CONTAINS"));
+    }
+
+    #[test]
+    fn a_debug_session_stream_also_matches_nslog() {
+        let app = test_app();
+        let predicate = |senders| {
+            let (_, args) = log_command(
+                &LogSource::Mac,
+                &app,
+                "debug",
+                None,
+                &LogFilterArgs::default(),
+                senders,
+            );
+            args.last().unwrap().clone()
+        };
+        let nslog = r#"(sender == "Foundation" AND NOT subsystem CONTAINS ".")"#;
+        assert!(!predicate(Senders::App).contains(nslog));
+        let debugged = predicate(Senders::AppAndNSLog);
+        assert_eq!(
+            debugged,
+            format!(
+                r#"process == "MyApp" AND (sender == "MyApp" OR sender == "MyApp.debug.dylib" OR {nslog})"#
+            )
+        );
     }
 
     #[test]
@@ -8678,16 +8831,20 @@ Target 0: (crash) stopped.\n"
     const GROUP_ENTITLEMENTS: &str = r#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.app-sandbox</key><true/><key>com.apple.security.application-groups</key><array><string>group.com.example.ContainerProbe.shared</string></array></dict></plist>"#;
 
     #[test]
-    fn entitlements_read_the_sandbox_and_app_groups_codesign_reports() {
+    fn entitlements_read_the_sandbox_app_groups_and_debuggability_codesign_reports() {
         assert_eq!(
             parse_entitlements(STOCK_ENTITLEMENTS),
-            MacEntitlements::default()
+            MacEntitlements {
+                debuggable: true,
+                ..MacEntitlements::default()
+            }
         );
         assert_eq!(
             parse_entitlements(SANDBOXED_ENTITLEMENTS),
             MacEntitlements {
                 sandboxed: true,
                 groups: Vec::new(),
+                debuggable: true,
             }
         );
         assert_eq!(
@@ -8695,6 +8852,7 @@ Target 0: (crash) stopped.\n"
             MacEntitlements {
                 sandboxed: true,
                 groups: vec!["group.com.example.ContainerProbe.shared".to_string()],
+                debuggable: false,
             }
         );
         // An unsigned product prints nothing, and '<false/>' grants nothing.
@@ -8739,6 +8897,7 @@ Target 0: (crash) stopped.\n"
                 "group.com.example.shared".to_string(),
                 "ABCDE12345.com.example.team".to_string(),
             ],
+            debuggable: false,
         };
         assert_eq!(
             mac_group_containers(Path::new("/Users/someone"), &entitlements),

@@ -4145,7 +4145,7 @@ through. `restart` is refused with the way to restart.
 | destination | started by | lldb-dap is sent |
 |---|---|---|
 | simulator | `simctl launch --console-pty --wait-for-debugger` | `attach {pid, program}` |
-| macOS, Mac Catalyst | lldb-dap itself | `launch {program, args, env}` |
+| macOS, Mac Catalyst | `posix_spawn` with `POSIX_SPAWN_START_SUSPENDED` | `attach {pid, program}` |
 | device (iOS 17+) | `devicectl … launch --start-stopped` | `attach` with `attachCommands` |
 | Designed for iPad | `open` (LaunchServices), after configurationDone | `attach {program, waitFor}` |
 
@@ -4222,8 +4222,8 @@ colorless, so nothing prompts, animates or colors.
 build's launch error repeats the first errors, as `build start` does when its
 stderr goes elsewhere. Simulator stdout and stderr arrive through the console
 child, and os_log through the log stream `run` follows, at `run`'s default
-level. On macOS lldb launched the process and relays its stdout itself, so only
-the log stream is added. The lines about the launch rather than the app are
+level, with NSLog added (§9v). A macOS app's stdout and stderr come through the
+pipes it was started with. The lines about the launch rather than the app are
 left out as `run` leaves them out: the simulator's boot noise, AppKit's note on
 the `-ApplePersistenceIgnoreState` sweetpad adds, and the lines Xcode's
 debug-dylib stub writes whenever a debugger starts the app. A `disconnect`,
@@ -4281,6 +4281,256 @@ drives one real session per destination kind it has through
 `ci/dap-session.py`, a small DAP client: a launch on the simulator and on
 macOS, a breakpoint, the `stopped` event and its frame, a disconnect, and the
 adapter exiting.
+
+## 9v. v8 — an app's output, once each and readable
+
+> sweetpad-dev/sweetpad#97 asked for an app's output in the editor's debug
+> console. `dap` (§9u) put it there; this section settles what reached it
+> twice, what didn't reach it, and what reached it as `<private>`.
+
+An app writes three ways. `print` and anything else on stdout or stderr reach
+the app's own pipes. `Logger` and `os_log` go to the unified log. NSLog goes to
+either: to stderr, except while a debugger is attached, when it goes to the
+unified log only. A simulator app writes it to both.
+
+**Pipes for stdio, `log stream` for the unified log, nothing else.** sweetpad
+reads stdout and stderr itself and unified-log entries through `log stream`,
+which keeps them structured: the level, subsystem and category the level keys,
+the filters and `--json` rely on. The other way to get os_log text is the
+`OS_ACTIVITY_DT_MODE` echo, which copies each entry onto stderr. Apple doesn't
+document it, it carries no level or subsystem, and LLDB sets it for every
+process it launches, so a macOS debug session that lldb-dap launched showed each
+`Logger` line twice. sweetpad never sets it, and a debug session starts the app
+itself (§9u): a macOS or Mac Catalyst app is spawned with
+`POSIX_SPAWN_START_SUSPENDED`, its stdout and stderr on pipes, and lldb-dap
+attaches to the pid. Continuing from the attach releases the suspension, so
+breakpoints are set before the first instruction, as with lldb-dap's own
+launch. `app debug` launches through lldb in the terminal.
+
+The app starts in the editor's `lldb.cwd` (`posix_spawn_file_actions_addchdir_np`)
+when it sets one. The lldb-dap fields only its launch reads (`launchCommands`,
+`runInTerminal`, `console`, `stdio`, `disableASLR`, `disableSTDIO`,
+`shellExpandArguments`, `detachOnError`) can't apply to an attach, so an editor
+that sets one gets lldb-dap's launch, with a note that each `Logger` line shows
+twice, and a stream without NSLog, which the copy on stderr already carries.
+`stopOnEntry` works on the attach and needs neither.
+
+A launched app lldb-dap never reached, its `attach` failed or unanswered,
+stops with the session even when the editor asks to detach: nothing else would
+resume it.
+
+**A debug session adds NSLog to the stream.** With a debugger attached, NSLog
+writes nothing to stderr, so the stream's predicate also takes it: sender
+`Foundation`, no subsystem. The predicate can't test for a missing subsystem
+(`== nil` and `== ""` match nothing), so it tests for one without a dot, which
+every Apple subsystem has. A plain `run` leaves the clause out, since a
+simulator app's NSLog would show twice. The entry renders as `[NSLog]`.
+
+**macOS redacts, and sweetpad's builds opt the app in.** The unified log on a
+Mac records a dynamic value, a `String` interpolated into a `Logger` message or
+NSLog's whole text, as `<private>`, and `log stream` reads what it records.
+Xcode unredacts the processes it launches through a channel only it has; the
+`log` tool has no per-process switch, and the simulator doesn't redact. The
+documented opt-in is the app's own Info.plist:
+
+```xml
+<key>OSLogPreferences</key>
+<dict>
+  <key>com.example.app</key>
+  <dict><key>DEFAULT-OPTIONS</key><dict><key>Enable-Private-Data</key><true/></dict></dict>
+</dict>
+```
+
+It's keyed by subsystem, and `DEFAULT-OPTIONS` covers every category. A
+`DEFAULT-OPTIONS` at the top level does nothing, and NSLog, which has no
+subsystem, can't be opted in: an empty key and `com.apple.Foundation` were
+both tried. So under a debugger on macOS NSLog stays `<private>`.
+
+When a command that builds the app to launch it (`run` in every form, `dap`)
+builds one that runs on the Mac, macOS or Mac Catalyst, and the build is
+debuggable (its signature carries `com.apple.security.get-task-allow`, which
+Xcode gives every build it signs to run locally and no build signed for
+distribution), sweetpad adds `Enable-Private-Data` for the app's subsystems to
+the built Info.plist and re-signs the bundle with the identity that signed it.
+Ad-hoc stays ad-hoc. A certificate is named by the SHA-1 of the leaf the
+signature carries, since a renewed development certificate leaves two with the
+same name. The identifier, entitlements, flags and hardened runtime are
+preserved, and `codesign --verify` checks the result. The Info.plist is read
+through `plutil -convert binary1` and the bplist reader, so a value JSON can't
+hold doesn't hide what it sets. A subsystem whose `Enable-Private-Data` the
+app's own Info.plist sets, on or off, is left as it is; one it configures
+otherwise gets the key. A failure at the PlistBuddy edit, which keeps the
+commands that worked when one fails, or at the re-sign restores the Info.plist,
+which the signature covers again, and the run goes on with a warning. Only the
+built product changes, never the project. An app sweetpad didn't build (`app
+launch`, `dap` attach) gets nothing, and its own `OSLogPreferences` is the way.
+An iOS app on the Mac is left out: its signature needs DER entitlements, and
+that route has never run on hardware. `app debug` and `app diagnose` leave the
+build alone: lldb's launch copies the log text onto stderr in full. `[run]
+private_logs = false` turns this off, for checking what production logs
+record.
+
+The opt-in runs in the build step, `install_built` and the session's `build`,
+rather than at each launch. Xcode tracks its outputs, so the edit makes its
+next build process the Info.plist and sign the app again, which drops the
+entries; every build then gets them anew. A build with nothing to compile still
+runs those two steps and the re-sign. Copying the app elsewhere to launch would
+keep Xcode's outputs untouched, at the cost of a second bundle whose paths
+differ from the one Xcode built.
+
+**The subsystems are learned.** Info.plist preferences name subsystems, and
+nothing in the build says which ones the app logs to. sweetpad adds the bundle
+identifier, Apple's recommended subsystem, and every subsystem the stream has
+shown from the app before, kept in `log-subsystems.toml` in the state
+directory, by bundle identifier, the way `exits.toml` keeps exits (a file of
+its own because the stream's reader thread writes it). Each write holds
+`log-subsystems.toml.lock` from the read to the rename, so two sessions
+learning at once keep each other's. Apple's own subsystems, which the debug
+stub logs to from the app's image, aren't kept. A subsystem logged for the
+first time shows `<private>` until the next build. One PlistBuddy can't name
+(whitespace, `:`, quotes, a backslash) or one past the 64 an app keeps is never
+opted in.
+
+A log with no subsystem, NSLog's or a `Logger()`'s, can't be opted in: an
+empty key covers neither, which was tried with the app's own `Logger()`.
+
+**The first `<private>` gets one note**, once each for NSLog, a log with no
+subsystem, and a subsystem, and only for a line the filter showed: for a
+subsystem the next build opts in, that it will; for one no build opts in (the
+plan's off, the app sets the key off itself, or the name can't be added), the
+Info.plist key; for a log with no subsystem, that a `Logger` with one, or
+`privacy: .public`, shows the value; for NSLog under a debugger, that `Logger`
+with `privacy: .public` does. What the running build sets is read the first
+time a note needs it, not when the stream starts.
+
+A line counts as redacted when it shows `<private>` and its `formatString`, which
+`log stream` reports, has an argument that isn't public: `{public}` is public,
+`{private}` and `{sensitive}` aren't, and unmarked, `%s`, `%@` and `%P` are
+private while a number isn't. A public string holding the text `<private>` gets
+no note. An entry without a format string falls back to the marker alone.
+
+**Devices** keep their `pymobiledevice3` stream, which this section doesn't
+change. It reads the app's own images only, so a device debug session has no
+NSLog.
+
+### Field notes: where an app's output goes
+
+What #97's investigation established, so the next question about app output
+starts here. Observed on macOS 27 with Xcode 27 in October 2026 unless marked
+otherwise; "not verified" means nobody has looked yet.
+
+| Route | stdout/stderr (`print`) | NSLog | `Logger`/`os_log` | Redacted |
+|---|---|---|---|---|
+| macOS `run` (spawned, stdio on pipes) | the pipes | stderr only, full text | unified log | yes, until opted in |
+| macOS, stderr on `/dev/null` | nowhere | unified log, `<private>` | unified log | yes |
+| macOS under lldb's launch (`app debug`, lldb-dap's launch) | lldb | unified log, plus the stderr copy | unified log, plus the stderr copy | in the stream, not in the copy |
+| macOS `dap` (suspended spawn, lldb-dap attaches) | the pipes | unified log only, `<private>` | unified log | yes, until opted in |
+| simulator `run` (`simctl launch --console-pty`) | the console | both stderr and the unified log | unified log | no |
+| simulator `dap` (`--wait-for-debugger`, attach) | the console | unified log only | unified log | no |
+| device (`devicectl` console, `pymobiledevice3` stream) | the console | not in the stream (image filter); not verified otherwise | the stream | not verified |
+| Designed for iPad (`open`, lldb-dap `waitFor`) | a file `open --stdout/--stderr` writes | not verified | host `log stream` | not verified |
+
+Mac Catalyst takes the macOS route with the same bundle layout
+(`Contents/Info.plist`); its redaction and opt-in weren't checked separately.
+
+**The stderr copy.** `OS_ACTIVITY_DT_MODE` in the environment makes libtrace
+write every unified-log entry onto stderr as
+`2026-10-10 22:37:01.812259+0200 MacTicker[7419:28811769] [tick] logger tick 2`:
+full values, no level or subsystem field. It's undocumented. LLDB sets it for
+every process it launches unless `IDE_DISABLED_OS_ACTIVITY_DT_MODE` is set.
+Attaching sets nothing, which is why the suspended spawn shows each line once.
+
+**NSLog's routing.** NSLog writes to stderr when stderr is a pipe and no
+debugger is attached; with stderr on `/dev/null`, or with a debugger attached,
+it writes to the unified log instead, and a simulator app writes to both
+without a debugger. Its entry has sender `Foundation` (`senderImagePath` ends
+in `Foundation.framework/.../Foundation`), an empty subsystem and category,
+`formatString` `%s`, and on macOS the whole text as `<private>`.
+
+**What macOS redacts.** A dynamic string or object (`%s`, `%@`) shows as
+`<private>`; numbers (`%ld`) and `%{public}` arguments show. Swift's `Logger`
+compiles an interpolated `String` to `%s` and an `Int` to `%ld`, and
+`privacy: .public` to `%{public}s`. Some Apple entries with plain `%s` showed in
+full (CFPreferences' `loaded: %s and %s`), so a constant string argument looks
+exempt. The simulator redacts nothing. Xcode's console shows full values for
+what Xcode launches, through a channel no command-line tool has, and `log` has
+no per-process switch.
+
+**Opting a subsystem in.** In the built app's Info.plist,
+`OSLogPreferences > <subsystem> > DEFAULT-OPTIONS > Enable-Private-Data = true`,
+then a re-sign, shows that subsystem's values from the next launch. Checked
+with ad-hoc and development signatures, a hardened runtime and the App Sandbox.
+These did nothing: `DEFAULT-OPTIONS` at the Info.plist's top level;
+`DEFAULT-OPTIONS` directly under `OSLogPreferences` (what PlistBuddy writes for
+`:OSLogPreferences::DEFAULT-OPTIONS`, since it collapses an empty path
+segment); an empty-string subsystem key, written with `plistlib`, for NSLog and
+for `Logger()`; `com.apple.Foundation` for NSLog. So a log with no subsystem
+can't be opted in. sweetpad opts in only builds with `get-task-allow`, by
+choice; whether the key works on a build without it wasn't tried.
+
+**`log stream`.** `--style ndjson` carries `timestamp`, `messageType`,
+`category`, `subsystem`, `senderImagePath`, `processID`, `formatString` and
+`eventMessage`; `log show` ends with a summary object. In a predicate,
+`subsystem == nil` and `subsystem == ""` match nothing, even for entries with
+no subsystem, while `NOT subsystem CONTAINS "."` matches them. `process ==
+"<name>"` matches by name, so any process of that name matches. The app's own
+code sends as its executable or, in a Debug build with the debug dylib,
+`<exe>.debug.dylib`. That build's stub logs `com.apple.Previews.StubExecutor`
+entries (category `PreviewsAgentExecutorLibrary`) at debug level from the
+app's own image at every launch, some with `<private>`. Redirected to a file,
+`log stream` buffers its output and loses it when killed; read it from a pipe.
+On a simulator, `simctl spawn <udid> log stream` reparents its `log` to
+`launchd_sim`, so ending the `simctl` child leaves it running, which is what a
+session killed in the middle of its cleanup leaves behind.
+
+**Devices.** The stream is `pymobiledevice3 syslog live --label
+--process-name <exe>`, lines like `2026-04-16 12:52:32.707
+App{App.debug.dylib+0x1a}[123] <NOTICE>: msg [sub][cat]`, kept when the image
+is the executable or its debug dylib. `pymobiledevice3` is optional, and
+without it a device run has its console only. Not verified: where NSLog goes on
+a device with and without a debugger, and whether a device redacts.
+
+**Builds and signatures.** Xcode gives `get-task-allow` to every build it signs
+to run locally, Release included, and to none signed for distribution. Editing
+a built product makes the next `xcodebuild` run `ProcessInfoPlistFile` and
+`CodeSign` again (the debug dylib, `__preview.dylib` and the app), which drops
+the edit, even with no source change. A re-sign that keeps the signature as
+Xcode made it: `codesign --force --sign <identity>
+--preserve-metadata=identifier,entitlements,flags,runtime --timestamp=none`,
+with `-` when `codesign -d --verbose=2` prints `Signature=adhoc`, and otherwise
+the SHA-1 of `cert0` from `codesign -d --extract-certificates=<prefix>`.
+Building with a development certificate from the command line failed on a
+team mismatch with `CODE_SIGN_IDENTITY="Apple Development"` and worked with
+`CODE_SIGN_IDENTITY=<sha1> DEVELOPMENT_TEAM=`. PlistBuddy saves the `-c`
+commands that worked when one fails, and exits 1. `plutil -extract … json`
+fails on a `<date>` or `<data>` value; `plutil -convert binary1` doesn't.
+
+**Starting a process suspended.** `POSIX_SPAWN_START_SUSPENDED` leaves the
+process in state `T`; SIGTERM ends it (status 15) as SIGKILL does. An lldb
+attach followed by continue releases it, and a breakpoint in the app's `init`
+hits. lldb-dap's attach honors `stopOnEntry` (a `stopped` event, reason
+`exception`, SIGSTOP); the fields only its launch reads are listed above.
+`posix_spawn_file_actions_addchdir_np` is in `<spawn.h>` since macOS 10.15 but
+not in the `libc` crate. An iOS app on the Mac starts only through
+LaunchServices, and its signature needs DER entitlements.
+
+**Reproducing.** A probe app that, every second, `print`s, calls NSLog, and
+logs with `Logger(subsystem:category:)`, with `Logger()`, and with a
+`privacy: .public` value holding the text `<private>` covers every row above.
+Capture `log stream --style ndjson --level debug --predicate 'process ==
+"<exe>"'` from a reader thread, and launch it each way the table lists: with
+stdio on pipes, on `/dev/null`, under `lldb`, and suspended then attached.
+Breakpoint paths in a test project under `/tmp` must be spelled the way lldb
+resolves them (`/tmp`, not `/private/tmp`), or the breakpoint never binds.
+
+**Testing.** Unit tests cover the predicate with and without NSLog, the NSLog
+rendering, redaction by format string, the learned-subsystem file and its cap,
+reading each subsystem's `Enable-Private-Data`, and each note. `private_logs`
+builds a real ad-hoc bundle in a scratch directory and checks that opting in
+adds the key and leaves a signature that verifies with its entitlements, that
+a second pass changes nothing, that a failed edit leaves the bundle's bytes
+and signature as they were, and that a bundle without `get-task-allow` is left
+alone.
 
 ## 10. Testing
 

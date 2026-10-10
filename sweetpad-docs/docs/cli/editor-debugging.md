@@ -33,8 +33,10 @@ Errors and warnings link to their file and line, and the editor's progress indic
 being compiled. Cancelling that progress, or stopping the session, stops the build.
 
 Once the build succeeds, the app starts suspended, the debugger attaches, and your breakpoints are set
-before any of your code runs. The app's `print` output and its `os_log` and `Logger` entries go to the
-debug console, at the `info` level `sweetpad run` uses.
+before any of your code runs. The app's `print` output, its `NSLog` calls and its `os_log` and `Logger`
+entries go to the debug console, each once, at the `info` level `sweetpad run` uses. A device's log
+stream leaves `NSLog` out. On a Mac some values show as `<private>`;
+[Private values on macOS](app-lifecycle.md#private-values-on-macos) explains when and how to see them.
 
 Stopping the session stops the app, unless the editor asks to detach. Restarting is stop and start
 again, which rebuilds.
@@ -106,6 +108,11 @@ command-line verbs resolve them.
 | `env`                    | Environment for the app, as an object or a list of `KEY=VALUE`.                          |
 | `xcodebuildArgs`         | Extra xcodebuild arguments, as `sweetpad run` takes after `--`.                          |
 | `lldb`                   | lldb-dap's own fields (`sourceMap`, `initCommands`, `preRunCommands`, ...), passed to it as they are. |
+
+On a Mac, some `lldb` fields work only when lldb-dap launches the app itself: `launchCommands`,
+`runInTerminal`, `console`, `stdio`, `disableASLR`, `disableSTDIO`, `shellExpandArguments` and
+`detachOnError`. If you set one, lldb-dap launches the app, and each `Logger` line shows twice in the
+debug console. `lldb.cwd` sets the app's working directory with or without them.
 
 A debug session has no terminal to prompt in. When no scheme or destination is set anywhere, the
 launch fails with the field to set. Running `sweetpad run` once in a terminal also works: the scheme

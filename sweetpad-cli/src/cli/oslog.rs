@@ -21,6 +21,11 @@ struct Entry {
     #[serde(rename = "messageType")]
     message_type: Option<String>,
     category: Option<String>,
+    subsystem: Option<String>,
+    #[serde(rename = "senderImagePath")]
+    sender_image_path: Option<String>,
+    #[serde(rename = "formatString")]
+    format_string: Option<String>,
     #[serde(rename = "eventMessage")]
     event_message: Option<String>,
     /// Set only on the summary `log show` closes with ([`is_query_summary`]).
@@ -34,6 +39,67 @@ impl Entry {
     fn is_summary(&self) -> bool {
         self.finished.is_some() && self.event_message.is_none()
     }
+
+    /// Whether this is an NSLog call: Foundation sends it, with no subsystem
+    /// and no category.
+    fn is_nslog(&self) -> bool {
+        let empty = |field: &Option<String>| field.as_deref().is_none_or(str::is_empty);
+        empty(&self.subsystem)
+            && empty(&self.category)
+            && self
+                .sender_image_path
+                .as_deref()
+                .and_then(|path| path.rsplit('/').next())
+                == Some("Foundation")
+    }
+}
+
+/// The marker the unified log records in place of a value logged as private.
+pub const REDACTED: &str = "<private>";
+
+/// Whether `message` holds a value the unified log redacted: it shows
+/// [`REDACTED`], and its `format`, when the entry carries one, has an argument
+/// that isn't public. A public argument whose text holds the marker is
+/// redacted nowhere.
+fn is_redacted(message: &str, format: Option<&str>) -> bool {
+    message.contains(REDACTED) && format.is_none_or(has_private_argument)
+}
+
+/// Whether an os_log format string has an argument the log may redact. An
+/// argument marked `{public}` is public, one marked `{private}` or
+/// `{sensitive}` isn't, and an unmarked one is private when it's a string, an
+/// object or data (`%s`, `%@`, `%P`) and public otherwise, as a number is.
+fn has_private_argument(format: &str) -> bool {
+    let mut rest = format;
+    while let Some(at) = rest.find('%') {
+        rest = &rest[at + 1..];
+        if let Some(after) = rest.strip_prefix('%') {
+            rest = after;
+            continue;
+        }
+        let mut privacy = "";
+        if let Some(after) = rest.strip_prefix('{')
+            && let Some(end) = after.find('}')
+        {
+            privacy = &after[..end];
+            rest = &after[end + 1..];
+        }
+        // Flags, width, precision and length come before the conversion.
+        let conversion = rest
+            .chars()
+            .find(|c| !(c.is_ascii_digit() || "-+ #'.*hlqLjzt".contains(*c)));
+        let private = if privacy.contains("public") {
+            false
+        } else if privacy.contains("private") || privacy.contains("sensitive") {
+            true
+        } else {
+            matches!(conversion, Some('s' | 'S' | '@' | 'P'))
+        };
+        if private {
+            return true;
+        }
+    }
+    false
 }
 
 /// os_log severity, ordered low→high so a live filter can compare against a
@@ -99,23 +165,44 @@ fn level_color(message_type: &str) -> u8 {
 pub struct Line {
     pub level: Level,
     pub text: String,
+    /// The entry's subsystem, for a unified-log entry that has one.
+    pub subsystem: Option<String>,
+    /// The entry is an NSLog call.
+    pub nslog: bool,
+    /// The message holds a value the unified log recorded as [`REDACTED`].
+    pub redacted: bool,
 }
 
 /// Render one ndjson line as a colored log line with its severity, or `None`
 /// for the banner `log stream` opens with ([`is_stream_banner`]) and the
 /// summary `log show` closes with ([`is_query_summary`]). Other non-JSON input
-/// is shown as a blue `system` note at `Notice` level.
+/// is shown as a blue `system` note at `Notice` level. An NSLog entry, which
+/// has no category, shows as `[NSLog]`.
 #[must_use]
 pub fn render_ndjson_line(line: &str, color: bool) -> Option<Line> {
     Some(match serde_json::from_str::<Entry>(line) {
         Ok(entry) if entry.is_summary() => return None,
-        Ok(entry) => render_fields(
-            entry.timestamp.as_deref(),
-            entry.message_type.as_deref().unwrap_or("Default"),
-            entry.category.as_deref().unwrap_or("?"),
-            entry.event_message.as_deref().unwrap_or(""),
-            color,
-        ),
+        Ok(entry) => {
+            let nslog = entry.is_nslog();
+            let message = entry.event_message.as_deref().unwrap_or("");
+            let category = if nslog {
+                "NSLog"
+            } else {
+                entry.category.as_deref().unwrap_or("?")
+            };
+            Line {
+                subsystem: entry.subsystem.clone().filter(|s| !s.is_empty()),
+                nslog,
+                redacted: is_redacted(message, entry.format_string.as_deref()),
+                ..render_fields(
+                    entry.timestamp.as_deref(),
+                    entry.message_type.as_deref().unwrap_or("Default"),
+                    category,
+                    message,
+                    color,
+                )
+            }
+        }
         Err(_) if is_stream_banner(line) => return None,
         // Non-JSON: a blue `N [system]` note carrying the raw line.
         Err(_) => render_fields(None, "Default", "system", line, color),
@@ -178,6 +265,9 @@ fn render_clocked(
             level_color(message_type),
             color,
         ),
+        subsystem: None,
+        nslog: false,
+        redacted: false,
     }
 }
 
@@ -322,6 +412,48 @@ mod tests {
             render_ndjson_line(line, true).unwrap().text,
             "\x1b[1;36m23:59:59.123 I [networking]\x1b[0m Request started"
         );
+    }
+
+    #[test]
+    fn an_nslog_entry_shows_as_nslog_and_reports_its_redaction() {
+        // NSLog: Foundation sends it, with no subsystem and no category.
+        let nslog = r#"{"timestamp":"2026-10-10 18:48:42.716000+0200","messageType":"Default","category":"","subsystem":"","senderImagePath":"/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation","formatString":"%s","eventMessage":"<private>"}"#;
+        let line = render_ndjson_line(nslog, false).unwrap();
+        assert_eq!(line.text, "18:48:42.716 N [NSLog] <private>");
+        assert!(line.nslog && line.redacted);
+        assert_eq!(line.subsystem, None);
+
+        let logger = r#"{"timestamp":"2026-10-10 18:48:42.716000+0200","messageType":"Info","category":"tick","subsystem":"com.example.app","senderImagePath":"/a/App.app/Contents/MacOS/App.debug.dylib","formatString":"user %s","eventMessage":"user <private>"}"#;
+        let line = render_ndjson_line(logger, false).unwrap();
+        assert_eq!(line.text, "18:48:42.716 I [tick] user <private>");
+        assert!(!line.nslog && line.redacted);
+        assert_eq!(line.subsystem.as_deref(), Some("com.example.app"));
+    }
+
+    #[test]
+    fn redaction_needs_an_argument_the_log_may_hide() {
+        // Format strings as `log stream` reports Logger's and os_log's.
+        for (format, message, redacted) in [
+            ("user %s", "user <private>", true),
+            ("%{private}@ loaded", "<private> loaded", true),
+            ("count %ld of %{public}s", "count 3 of <private>", false),
+            (
+                "public literal %{public}s",
+                "public literal <private> tag",
+                false,
+            ),
+            ("100%% of %{public}@", "100% of <private>", false),
+            ("%{public, mask.hash}s and %s", "<private> and x", true),
+            ("user %s", "user ada", false),
+        ] {
+            assert_eq!(
+                is_redacted(message, Some(format)),
+                redacted,
+                "{format:?} {message:?}"
+            );
+        }
+        // Without a format string the marker is all there is to go on.
+        assert!(is_redacted("user <private>", None));
     }
 
     #[test]

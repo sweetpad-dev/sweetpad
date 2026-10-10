@@ -279,6 +279,128 @@ fn merged_output_pipe(program: &str) -> Result<(std::fs::File, Stdio, Stdio), Cl
     }
 }
 
+unsafe extern "C" {
+    /// `<spawn.h>` since macOS 10.15, which the libc crate doesn't bind for
+    /// Apple targets.
+    fn posix_spawn_file_actions_addchdir_np(
+        actions: *mut libc::posix_spawn_file_actions_t,
+        path: *const libc::c_char,
+    ) -> libc::c_int;
+}
+
+/// A process started suspended by [`spawn_suspended`], and the read ends of
+/// its stdout and stderr.
+pub(crate) struct Suspended {
+    pub pid: u32,
+    pub stdout: std::io::PipeReader,
+    pub stderr: std::io::PipeReader,
+}
+
+/// Start `program` suspended before its first instruction
+/// (`POSIX_SPAWN_START_SUSPENDED`), for a debugger to attach to: continuing
+/// from the attach releases it. Its environment is this process's with `env`
+/// on top, its stdin is `/dev/null`, and every other descriptor stays behind
+/// (`POSIX_SPAWN_CLOEXEC_DEFAULT`), so it can't hold a debug adapter's
+/// protocol pipes open. It starts in `cwd`, or in this process's directory.
+pub(crate) fn spawn_suspended(
+    program: &Path,
+    args: &[String],
+    env: &[(String, String)],
+    cwd: Option<&Path>,
+) -> Result<Suspended, CliError> {
+    use std::ffi::CString;
+    use std::os::fd::AsRawFd;
+    use std::os::unix::ffi::{OsStrExt, OsStringExt};
+
+    let failed =
+        |e: std::io::Error| CliError::new(format!("failed to start '{}': {e}", program.display()));
+    let c_string = |bytes: Vec<u8>| {
+        CString::new(bytes)
+            .map_err(|_| CliError::new("an argument or environment value holds a NUL byte"))
+    };
+    let path = c_string(program.as_os_str().as_bytes().to_vec())?;
+    let dir = cwd
+        .map(|dir| c_string(dir.as_os_str().as_bytes().to_vec()))
+        .transpose()?;
+    let mut arguments = vec![path.clone()];
+    for arg in args {
+        arguments.push(c_string(arg.clone().into_bytes())?);
+    }
+    let mut vars: std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString> =
+        std::env::vars_os().collect();
+    vars.extend(env.iter().map(|(k, v)| (k.into(), v.into())));
+    let envp = vars
+        .into_iter()
+        .map(|(key, value)| {
+            let mut entry = key.into_vec();
+            entry.push(b'=');
+            entry.extend(value.into_vec());
+            c_string(entry)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let pointers = |strings: &[CString]| -> Vec<*mut libc::c_char> {
+        strings
+            .iter()
+            .map(|s| s.as_ptr().cast_mut())
+            .chain(std::iter::once(std::ptr::null_mut()))
+            .collect()
+    };
+    let (argv_ptrs, envp_ptrs) = (pointers(&arguments), pointers(&envp));
+
+    // std's pipes are close-on-exec; the dup2 actions below clear the flag on
+    // the child's copies only.
+    let (stdout, stdout_w) = std::io::pipe().map_err(failed)?;
+    let (stderr, stderr_w) = std::io::pipe().map_err(failed)?;
+    let mut pid: libc::pid_t = 0;
+    // Safety: the attribute and file-action objects are initialized before
+    // use and destroyed after; every pointer handed to posix_spawn points into
+    // a CString or Vec that outlives the call.
+    let rc = unsafe {
+        let mut attr: libc::posix_spawnattr_t = std::ptr::null_mut();
+        let mut actions: libc::posix_spawn_file_actions_t = std::ptr::null_mut();
+        libc::posix_spawnattr_init(&raw mut attr);
+        libc::posix_spawn_file_actions_init(&raw mut actions);
+        #[allow(clippy::cast_possible_truncation)] // both flags fit a c_short
+        let flags = (libc::POSIX_SPAWN_START_SUSPENDED | libc::POSIX_SPAWN_CLOEXEC_DEFAULT)
+            as libc::c_short;
+        libc::posix_spawnattr_setflags(&raw mut attr, flags);
+        if let Some(dir) = &dir {
+            posix_spawn_file_actions_addchdir_np(&raw mut actions, dir.as_ptr());
+        }
+        libc::posix_spawn_file_actions_addopen(
+            &raw mut actions,
+            0,
+            c"/dev/null".as_ptr(),
+            libc::O_RDONLY,
+            0,
+        );
+        libc::posix_spawn_file_actions_adddup2(&raw mut actions, stdout_w.as_raw_fd(), 1);
+        libc::posix_spawn_file_actions_adddup2(&raw mut actions, stderr_w.as_raw_fd(), 2);
+        let rc = libc::posix_spawn(
+            &raw mut pid,
+            path.as_ptr(),
+            &raw const actions,
+            &raw const attr,
+            argv_ptrs.as_ptr(),
+            envp_ptrs.as_ptr(),
+        );
+        libc::posix_spawn_file_actions_destroy(&raw mut actions);
+        libc::posix_spawnattr_destroy(&raw mut attr);
+        rc
+    };
+    // The child holds its own copies; keeping ours would hold the pipes open
+    // after it exits.
+    drop((stdout_w, stderr_w));
+    if rc != 0 {
+        return Err(failed(std::io::Error::from_raw_os_error(rc)));
+    }
+    Ok(Suspended {
+        pid: pid.cast_unsigned(),
+        stdout,
+        stderr,
+    })
+}
+
 /// SIGTERM a process by pid. Used to end something this tool is responsible for
 /// but does not hold a handle to: a `log stream` that a `--until` match or a
 /// deadline has finished with, or an orphaned hot-reload listener.

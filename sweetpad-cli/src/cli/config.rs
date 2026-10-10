@@ -412,6 +412,11 @@ pub struct RunDefaults {
     /// (CLI_DESIGN §9d). Default true; `false` opts the project out
     /// (`--keep-sandbox` does it per run).
     pub auto_unsandbox: Option<bool>,
+    /// Whether `app run` and `dap` opt a macOS app they build into recording
+    /// its own logs' private values (CLI_DESIGN §9v). Default true; `false`
+    /// leaves the built app as Xcode signed it, so its logs read as they do
+    /// in production.
+    pub private_logs: Option<bool>,
 }
 
 /// `[format]` — `format` defaults for this project.
@@ -735,7 +740,9 @@ fn lint_project_file(raw: &toml::Value, warnings: &mut Vec<String>) {
             "run" => {
                 if let Some(t) = value.as_table() {
                     for rkey in t.keys() {
-                        if !["hot", "hot_recompiler", "auto_unsandbox"].contains(&rkey.as_str()) {
+                        if !["hot", "hot_recompiler", "auto_unsandbox", "private_logs"]
+                            .contains(&rkey.as_str())
+                        {
                             warnings.push(format!("sweetpad.toml: unknown key '{rkey}' in [run]"));
                         }
                     }
@@ -980,6 +987,16 @@ mod tests {
         lint_project_file(&raw, &mut warnings);
         assert_eq!(warnings.len(), 1, "{warnings:?}");
         assert!(warnings[0].contains("bogus"), "{warnings:?}");
+    }
+
+    #[test]
+    fn run_private_logs_parses_and_lints_clean() {
+        let pf: ProjectFile = toml::from_str("[run]\nprivate_logs = false\n").unwrap();
+        assert_eq!(pf.run.private_logs, Some(false));
+        let raw: toml::Value = toml::from_str("[run]\nprivate_logs = false\n").unwrap();
+        let mut warnings = Vec::new();
+        lint_project_file(&raw, &mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
     }
 
     #[test]

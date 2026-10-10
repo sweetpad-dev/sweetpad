@@ -85,6 +85,52 @@ low you set the level. Debug output exists only while you're following live.
 `--predicate` is the escape hatch: a raw `log stream` predicate that replaces the process match
 entirely, for the filters the flags don't cover.
 
+### Private values on macOS
+
+On a Mac, the system log records some values in a log message as `<private>`: a string you
+interpolate into a `Logger` message, for example, or the whole text of an `NSLog` call made while a
+debugger is attached. The simulator shows them as they are.
+
+When `sweetpad run` or a debug session builds a macOS or Mac Catalyst app, SweetPad lets the app's
+own logs show these values. It adds an `OSLogPreferences` entry to the built app's Info.plist for
+each subsystem the app logs to, then re-signs the build with the identity Xcode used. Your project
+and its Info.plist don't change. SweetPad starts with the bundle identifier and learns the other
+subsystems from the logs, so a new subsystem's values show from the next build. Only builds a
+debugger can attach to are changed, which includes every build Xcode signs to run locally. A
+subsystem whose `Enable-Private-Data` your Info.plist already sets keeps your setting.
+
+Because the built app changed, Xcode processes its Info.plist and signs it again on the next build,
+and SweetPad adds the entries again after it. `sweetpad app debug` and `sweetpad app diagnose` leave
+the build alone, since lldb prints the log text in full.
+
+To keep the logs as they read in production, turn this off in `sweetpad.toml`:
+
+```toml
+[run]
+private_logs = false
+```
+
+An app SweetPad didn't build, such as one started with `sweetpad app launch`, keeps what its own
+Info.plist says. To see its values, add the entry yourself, once for each subsystem:
+
+```xml
+<key>OSLogPreferences</key>
+<dict>
+  <key>com.example.MyApp</key>
+  <dict>
+    <key>DEFAULT-OPTIONS</key>
+    <dict>
+      <key>Enable-Private-Data</key>
+      <true/>
+    </dict>
+  </dict>
+</dict>
+```
+
+`NSLog` and a `Logger()` created without a subsystem log with no subsystem, so no entry covers them.
+`NSLog` text stays `<private>` while a debugger is attached, and a `Logger()` value stays `<private>`
+every time. To see it, create the `Logger` with a subsystem, or mark the value `privacy: .public`.
+
 ### Waiting for something to happen
 
 `--until` follows the log until a line contains some text, then exits 0. This turns "start it, wait

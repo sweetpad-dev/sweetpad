@@ -58,6 +58,7 @@ Then four tables:
 | `[run]`                   | `hot`             | Default `sweetpad run` to hot reload. `--no-hot` opts out.     |
 |                           | `hot_recompiler`  | `"resolver"` or `"buildlog"`.                                  |
 |                           | `auto_unsandbox`  | Whether a hot macOS build may strip the App Sandbox. Default true. |
+|                           | `private_logs`    | Whether a macOS build's logs show [private values](app-lifecycle.md#private-values-on-macos). Default true. |
 | `[format]`                | `tool`            | `"swift-format"` or `"swiftlint"`.                             |
 | `[testing]`               | `scheme`, `configuration`, `destination`, `target` | Test-only overrides, layered over the build values. |
 | `[xcodebuild]`            | `args`            | Arguments added to every command that builds.                  |

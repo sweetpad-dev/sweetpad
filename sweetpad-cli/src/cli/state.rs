@@ -407,6 +407,97 @@ impl ExitLog {
     }
 }
 
+/// The unified-log subsystems seen from each macOS app, by bundle identifier,
+/// which a build of the app opts into recording private values (CLI_DESIGN
+/// §9v). A file of its own, like [`ExitLog`] and for the same reason: the log
+/// stream's reader records a subsystem mid-session, loading the file fresh and
+/// writing it back at once.
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct LogSubsystems {
+    pub apps: BTreeMap<String, std::collections::BTreeSet<String>>,
+}
+
+/// How many subsystems an app keeps. An app logs to a handful; the cap only
+/// keeps a runaway one from growing the file without end.
+const MAX_LOG_SUBSYSTEMS: usize = 64;
+
+/// What [`LogSubsystems::record`] did with a subsystem.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Recorded {
+    /// Added it.
+    New,
+    /// Had it already.
+    Known,
+    /// Left it out: the app has [`MAX_LOG_SUBSYSTEMS`].
+    Full,
+}
+
+impl LogSubsystems {
+    fn path() -> Option<PathBuf> {
+        state_dir().map(|d| d.join("sweetpad").join("log-subsystems.toml"))
+    }
+
+    /// The recorded subsystems. A missing, unreadable or malformed file reads
+    /// as none, and the next [`record`](LogSubsystems::record) replaces it.
+    #[must_use]
+    pub fn load() -> Self {
+        Self::path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|text| toml::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// The subsystems recorded for `bundle_id`.
+    #[must_use]
+    pub fn of(&self, bundle_id: &str) -> std::collections::BTreeSet<String> {
+        self.apps.get(bundle_id).cloned().unwrap_or_default()
+    }
+
+    /// Add `subsystem` to `bundle_id`'s, unless it is there already or the
+    /// app has [`MAX_LOG_SUBSYSTEMS`].
+    fn insert(&mut self, bundle_id: &str, subsystem: &str) -> Recorded {
+        let known = self.apps.entry(bundle_id.to_string()).or_default();
+        if known.contains(subsystem) {
+            Recorded::Known
+        } else if known.len() >= MAX_LOG_SUBSYSTEMS {
+            Recorded::Full
+        } else {
+            known.insert(subsystem.to_string());
+            Recorded::New
+        }
+    }
+
+    /// Add `subsystem` to `bundle_id`'s and write the file when it is new.
+    /// The file is locked from the read to the rename, so two sessions
+    /// recording at once each keep what the other added.
+    pub fn record(bundle_id: &str, subsystem: &str) -> Result<Recorded, String> {
+        let path = Self::path().ok_or("no state directory")?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        let lock_path = path.with_extension("toml.lock");
+        let lock = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&lock_path)
+            .map_err(|e| format!("{}: {e}", lock_path.display()))?;
+        lock.lock()
+            .map_err(|e| format!("{}: {e}", lock_path.display()))?;
+        let mut file = Self::load();
+        let recorded = file.insert(bundle_id, subsystem);
+        if recorded != Recorded::New {
+            return Ok(recorded);
+        }
+        let text = toml::to_string_pretty(&file).map_err(|e| e.to_string())?;
+        let tmp = path.with_extension(format!("toml.tmp.{}", std::process::id()));
+        std::fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
+        std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok(recorded)
+    }
+}
+
 /// A quarantine path that never clobbers an earlier backup: `state.toml.corrupt`,
 /// then `.corrupt.1`, `.corrupt.2`, … — the first backup may hold the only
 /// surviving copy of the remembered context.
@@ -442,6 +533,25 @@ fn state_dir() -> Option<PathBuf> {
 mod tests {
     use super::*;
     use crate::cli::testdir::TempDir;
+
+    #[test]
+    fn log_subsystems_add_each_once_up_to_the_cap() {
+        let mut file = LogSubsystems::default();
+        let app = "com.example.App";
+        assert_eq!(file.insert(app, "com.example.App.net"), Recorded::New);
+        assert_eq!(file.insert(app, "com.example.App.net"), Recorded::Known);
+        assert_eq!(
+            file.of(app).into_iter().collect::<Vec<_>>(),
+            ["com.example.App.net"]
+        );
+        for n in 1..MAX_LOG_SUBSYSTEMS {
+            assert_eq!(file.insert(app, &format!("s{n}")), Recorded::New);
+        }
+        assert_eq!(file.insert(app, "one.too.many"), Recorded::Full);
+        // A full app still knows what it has.
+        assert_eq!(file.insert(app, "s1"), Recorded::Known);
+        assert!(file.of("com.example.Other").is_empty());
+    }
 
     #[test]
     fn round_trips_via_toml() {

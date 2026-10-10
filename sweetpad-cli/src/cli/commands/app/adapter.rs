@@ -6,23 +6,24 @@
 //!
 //! Each destination reaches lldb-dap its own way. A simulator app starts
 //! under `simctl launch --wait-for-debugger` and lldb-dap attaches to its pid.
-//! A macOS or Mac Catalyst app is launched by lldb-dap itself. A physical
-//! device's app starts under `devicectl … --start-stopped` and lldb attaches
-//! through its `device` commands. An iOS app running on the Mac ("Designed for
+//! A macOS or Mac Catalyst app starts suspended and lldb-dap attaches to it,
+//! so lldb never sets the `OS_ACTIVITY_DT_MODE` it gives what it launches. A
+//! physical device's app starts under `devicectl … --start-stopped` and lldb
+//! attaches through its `device` commands. An iOS app running on the Mac ("Designed for
 //! iPad") starts through LaunchServices, so lldb-dap waits for it by name.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
-use sweetpad_lib::destination::DestinationSpec;
 
 use super::{
-    LaunchArgs, LogStream, RunOpts, RunPlan, Target, app_dir_name, default_filter, install_built,
-    launch_sim_console, macwin, plan, print_summary, process_name, signal_group, start_logs,
+    LaunchArgs, LogStream, OwnLines, RunOpts, RunPlan, Senders, Target, app_dir_name,
+    default_filter, designed_for_ipad, install_built, launch_sim_console, macwin, plan,
+    print_summary, process_name, render_console_pipes, signal_group, start_logs,
 };
 use crate::cli::inject::recompiler::Mode;
 use crate::cli::output::Output;
@@ -246,14 +247,20 @@ enum AppKind {
         udid: String,
         app_dir: String,
     },
-    /// lldb-dap launched it, or waited for it, and stops it itself.
+    /// lldb-dap launched it, waited for it, or attached to a process this
+    /// session didn't start, and stops it itself.
     Mac,
+    /// A macOS app this session started suspended, for lldb-dap to attach to.
+    /// It is this process's child.
+    MacSpawned {
+        pid: u32,
+    },
 }
 
 impl AppSession {
     /// Stop following the app, and stop the app too when `terminate`. lldb
-    /// has already been told to kill or detach from it; this makes sure a
-    /// simulator or device app that outlived the debugger goes as well.
+    /// has already been told to kill or detach from it; this makes sure an app
+    /// that outlived the debugger goes as well.
     pub(crate) fn end(mut self, terminate: bool) {
         crate::cli::signals::unregister_child(self.console_slot.take());
         if terminate {
@@ -263,6 +270,14 @@ impl AppSession {
                 }
                 AppKind::Device { udid, app_dir } => {
                     let _ = devicectl::terminate(udid, app_dir);
+                }
+                AppKind::MacSpawned { pid } => {
+                    // Safety: our own child, not yet reaped, so the pid can't
+                    // belong to anyone else; the wait reaps it.
+                    unsafe {
+                        libc::kill(pid.cast_signed(), libc::SIGKILL);
+                        libc::waitpid(pid.cast_signed(), std::ptr::null_mut(), 0);
+                    }
                 }
                 AppKind::Mac => {}
             }
@@ -379,7 +394,7 @@ pub(crate) fn prepare_launch(
     let prepared = match &plan.target {
         Target::Simulator(udid) => launch_on_simulator(ctx, &plan, config, udid, sink, cancel),
         Target::Device(udid) => launch_on_device(ctx, &plan, config, udid, sink, cancel),
-        Target::Mac if designed_for_ipad(&plan) => {
+        Target::Mac if designed_for_ipad(&plan.destination) => {
             launch_designed_for_ipad(ctx, &plan, config, sink, cancel)
         }
         Target::Mac => launch_on_mac(ctx, &plan, config, sink, cancel),
@@ -390,14 +405,6 @@ pub(crate) fn prepare_launch(
     }?;
     super::record_last_launched(ctx, &plan);
     Ok(prepared)
-}
-
-/// Whether the plan runs an iOS app on the Mac ("Designed for iPad"), which
-/// only LaunchServices can start.
-fn designed_for_ipad(plan: &RunPlan) -> bool {
-    DestinationSpec::parse(&plan.destination)
-        .variant
-        .is_some_and(|variant| variant.starts_with("Designed for"))
 }
 
 /// The live log filter a debug session streams at: info and above, as `run`
@@ -436,7 +443,7 @@ fn launch_on_simulator(
         )));
     };
     let console_slot = crate::cli::signals::register_child(console.id());
-    let logs = start_logs(ctx, plan, &filter);
+    let logs = start_logs(ctx, plan, &filter, Senders::AppAndNSLog);
     Ok(Prepared {
         command: "attach",
         arguments: lldb_arguments(
@@ -457,6 +464,25 @@ fn launch_on_simulator(
     })
 }
 
+/// lldb-dap fields only its own launch reads. Setting one hands a macOS app's
+/// launch to lldb-dap ([`lldb_launch_on_mac`]).
+const LLDB_LAUNCH_FIELDS: [&str; 8] = [
+    "launchCommands",
+    "runInTerminal",
+    "console",
+    "stdio",
+    "disableASLR",
+    "disableSTDIO",
+    "shellExpandArguments",
+    "detachOnError",
+];
+
+/// A macOS or Mac Catalyst app starts suspended before its first instruction,
+/// with its stdout and stderr on pipes the session reads, and lldb-dap attaches
+/// to it; continuing from the attach releases it. lldb-dap's own launch would
+/// set `OS_ACTIVITY_DT_MODE`, which copies every unified-log entry onto
+/// stderr, where the log stream already shows it. The app starts in the
+/// editor's `lldb.cwd`, as lldb-dap's launch would start it.
 fn launch_on_mac(
     ctx: &Context,
     plan: &RunPlan,
@@ -466,15 +492,68 @@ fn launch_on_mac(
 ) -> Result<Prepared, CliError> {
     let app = build_and_install(ctx, plan, sink, cancel)?;
     cancel.check()?;
+    if let Some(field) = LLDB_LAUNCH_FIELDS
+        .iter()
+        .find(|field| config.lldb.contains_key(**field))
+    {
+        ctx.out.note(&format!(
+            "'lldb.{field}' makes lldb-dap launch the app itself, so each Logger line shows twice"
+        ));
+        return lldb_launch_on_mac(ctx, plan, config, &app);
+    }
+    sink.step("Launching");
+    let env = plan.launch.env_pairs("")?;
+    let cwd = config
+        .lldb
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(Path::new);
+    let started = process::spawn_suspended(&app.executable, &plan.launch.args, &env, cwd)?;
+    let pid = started.pid;
+    let slot = crate::cli::signals::register_child(pid);
+    let filter = log_filter(&ctx.out);
+    render_console_pipes(
+        Some(Box::new(started.stdout)),
+        Some(Box::new(started.stderr)),
+        ctx.out.use_color(),
+        &filter,
+        OwnLines::of(plan),
+    );
+    let logs = start_logs(ctx, plan, &filter, Senders::AppAndNSLog);
+    Ok(Prepared {
+        command: "attach",
+        arguments: lldb_arguments(
+            config,
+            json!({ "pid": pid, "program": app.executable }),
+            &Map::new(),
+        ),
+        app: AppSession {
+            kind: AppKind::MacSpawned { pid },
+            console: None,
+            console_slot: slot,
+            logs,
+        },
+        start: None,
+    })
+}
+
+/// lldb-dap launches a macOS app itself, for an editor that sets one of the
+/// fields only that launch reads ([`LLDB_LAUNCH_FIELDS`]). lldb-dap relays the
+/// app's stdout and stderr, where `OS_ACTIVITY_DT_MODE` copies the app's
+/// unified-log entries, NSLog's among them, so the stream leaves NSLog out.
+fn lldb_launch_on_mac(
+    ctx: &Context,
+    plan: &RunPlan,
+    config: &LaunchConfig,
+    app: &AppBundle,
+) -> Result<Prepared, CliError> {
     let env: Vec<String> = plan
         .launch
         .env_pairs("")?
         .into_iter()
         .map(|(key, value)| format!("{key}={value}"))
         .collect();
-    // lldb-dap owns this process and relays its stdout, so only os_log is
-    // streamed here.
-    let logs = start_logs(ctx, plan, &log_filter(&ctx.out));
+    let logs = start_logs(ctx, plan, &log_filter(&ctx.out), Senders::App);
     Ok(Prepared {
         command: "launch",
         arguments: lldb_arguments(
@@ -520,7 +599,7 @@ fn launch_designed_for_ipad(
     ));
     std::fs::write(&output, b"")
         .map_err(|e| CliError::new(format!("creating {}: {e}", output.display())))?;
-    let logs = start_logs(ctx, plan, &log_filter(&ctx.out));
+    let logs = start_logs(ctx, plan, &log_filter(&ctx.out), Senders::AppAndNSLog);
     let mut open: Vec<String> = vec![
         "-n".into(),
         "--stdout".into(),
@@ -620,7 +699,7 @@ fn launch_on_device(
             app.bundle_id
         ))
     })?;
-    let logs = start_logs(ctx, plan, &log_filter(&ctx.out));
+    let logs = start_logs(ctx, plan, &log_filter(&ctx.out), Senders::AppAndNSLog);
     Ok(Prepared {
         command: "attach",
         arguments: device_attach(config, udid, &app, &process),
@@ -842,7 +921,7 @@ pub(crate) fn prepare_attach(
             ));
         }
     };
-    let logs = start_logs(ctx, &plan, &filter);
+    let logs = start_logs(ctx, &plan, &filter, Senders::AppAndNSLog);
     Ok(Prepared {
         command: "attach",
         arguments,

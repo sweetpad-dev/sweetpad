@@ -414,6 +414,10 @@ struct Debuggee {
     /// The editor launched it, rather than attaching to it: a launched app
     /// stops with the session unless the editor says otherwise.
     launched: bool,
+    /// lldb-dap answered the request with success. A launched app it never
+    /// reached waits for a debugger, so it stops with the session whatever
+    /// the editor says.
+    reached: bool,
     app: Option<AppSession>,
 }
 
@@ -589,6 +593,7 @@ impl Session<'_> {
             editor_command: command.to_string(),
             forwarded: command,
             launched,
+            reached: false,
             app: None,
         });
         self.forward(message);
@@ -624,6 +629,7 @@ impl Session<'_> {
             editor_command: request["command"].as_str().unwrap_or_default().to_string(),
             forwarded: prepared.command,
             launched,
+            reached: false,
             app: Some(prepared.app),
         });
         self.forward(&forwarded);
@@ -692,11 +698,12 @@ impl Session<'_> {
                         body.remove("supportsRestartRequest");
                     }
                 }
-                if let Some(debuggee) = &self.debuggee
+                if let Some(debuggee) = &mut self.debuggee
                     && message["request_seq"] == debuggee.request_seq
                     && command == debuggee.forwarded
                 {
                     message["command"] = json!(debuggee.editor_command);
+                    debuggee.reached = message["success"] == true;
                 }
                 let disconnected = command == "disconnect" && self.disconnecting.is_some();
                 self.editor.send(message);
@@ -749,8 +756,10 @@ impl Session<'_> {
     }
 
     fn end_app(&mut self, terminate: bool) {
-        if let Some(app) = self.debuggee.as_mut().and_then(|d| d.app.take()) {
-            app.end(terminate);
+        if let Some(debuggee) = &mut self.debuggee
+            && let Some(app) = debuggee.app.take()
+        {
+            app.end(terminate || (debuggee.launched && !debuggee.reached));
         }
     }
 

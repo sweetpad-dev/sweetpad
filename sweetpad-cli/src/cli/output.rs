@@ -16,6 +16,7 @@ use crate::cli::{CliError, GlobalArgs};
 
 /// Resolved output mode shared across commands.
 #[allow(clippy::struct_excessive_bools)] // independent output toggles, not a state machine
+#[derive(Clone)]
 pub struct Output {
     json: bool,
     ndjson: bool,

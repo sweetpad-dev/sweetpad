@@ -569,7 +569,7 @@ if command -v lldb >/dev/null 2>&1; then
   "$BIN" app stop --project "$APP" --scheme SweetpadCIMac --mac >/dev/null 2>&1 || true
 fi
 
-# The adapter's macOS route: lldb-dap launches the app itself.
+# The adapter's macOS route: the app starts suspended and lldb-dap attaches.
 if python3 "$ROOT/dap-session.py" "$BIN" --cwd "$APP_DIR" --scheme SweetpadCIMac \
     --destination mac --breakpoint "$APP_DIR/Sources/App/SweetpadCIApp.swift:10" \
     > "$GEN_DIR/dap-mac.out" 2>&1; then
