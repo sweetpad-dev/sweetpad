@@ -37,7 +37,9 @@ The `v*` tag triggers `.github/workflows/ci.yaml`, which builds the VSIX (Develo
 
 The `sweetpad` CLI is distributed through the Homebrew tap
 [`sweetpad-dev/homebrew-tap`](https://github.com/sweetpad-dev/homebrew-tap)
-(`brew install sweetpad-dev/tap/sweetpad`). It is **not** bundled in the extension.
+(`brew install sweetpad-dev/tap/sweetpad`). mise installs it straight from the GitHub release
+(`mise use -g 'github:sweetpad-dev/sweetpad[version_prefix=cli-v]'`). It is **not** bundled in the
+extension.
 
 ### Steps
 
@@ -55,13 +57,16 @@ git push origin cli-vX.Y.Z
 3. The push triggers `.github/workflows/cli-release.yaml`, which:
    - builds the universal CLI (including the bundled injection client),
    - Developer ID-signs + notarizes it,
-   - publishes `sweetpad-cli-X.Y.Z-macos-universal.tar.gz` to a GitHub release `cli-vX.Y.Z`, and
+   - packs it with a `sweetpad-dap` symlink into `sweetpad-cli-X.Y.Z-macos-universal.tar.gz`,
+   - attests the build provenance of the binary and the tarball (mise checks it on install),
+   - publishes the tarball to a GitHub release `cli-vX.Y.Z`, and
    - regenerates `Formula/sweetpad.rb` in the tap (from `.github/homebrew/sweetpad.rb.tmpl`) and pushes it via the `HOMEBREW_TAP_DEPLOY_KEY` deploy key.
 
 4. Verify:
    - the release has the tarball: https://github.com/sweetpad-dev/sweetpad/releases
    - the tap has the bumped formula: https://github.com/sweetpad-dev/homebrew-tap/blob/main/Formula/sweetpad.rb
    - `brew update && brew install sweetpad-dev/tap/sweetpad && sweetpad --version`
+   - the attestation verifies: `gh attestation verify sweetpad-cli-X.Y.Z-macos-universal.tar.gz -R sweetpad-dev/sweetpad`
 
 ### Dry run
 

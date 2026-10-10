@@ -68,8 +68,8 @@ point it at SweetPad:
 ```
 
 Zed starts the adapter without arguments, and `sweetpad-dap` is the name under which SweetPad serves a
-debug session without any. Homebrew installs it next to `sweetpad`; for a build from source, create it
-with `ln -s sweetpad sweetpad-dap` in the same directory. `dap init` prints the line with the right path.
+debug session without any. Homebrew and mise install it next to `sweetpad`. For a build from source,
+create it with `ln -s sweetpad sweetpad-dap` in the same directory. `dap init` prints the line with the right path.
 
 With that setting, Zed sends every Swift debug session to SweetPad. A configuration that names a
 `program` (a Swift package's executable, say) goes to lldb-dap unchanged, so those keep working.

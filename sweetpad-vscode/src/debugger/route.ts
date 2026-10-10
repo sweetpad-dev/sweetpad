@@ -12,7 +12,7 @@ export const CODELLDB_EXTENSION_ID = "vadimcn.vscode-lldb";
 
 const SWEETPAD_CLI_TOOL_ID = "sweetpad-cli";
 const INSTALL_CLI_COMMAND = "brew install sweetpad-dev/tap/sweetpad";
-const UPGRADE_CLI_COMMAND = "brew upgrade sweetpad-dev/tap/sweetpad";
+const UPGRADE_CLI_COMMAND = "sweetpad self-update";
 
 export function getDebuggerAdapterSetting(): DebuggerAdapter {
   const value = getWorkspaceConfig("debugger.adapter");

@@ -14,8 +14,8 @@ Xcode. Both work with Xcode workspaces and projects, Tuist, XcodeGen, and Swift 
 
 ## SweetPad CLI
 
-A single native binary named `sweetpad`, or "xcodebuild for humans". You install it with Homebrew and run
-it from any terminal:
+A single native binary named `sweetpad`, or "xcodebuild for humans". You install it with Homebrew or
+[mise](./cli/overview.md#with-mise) and run it from any terminal:
 
 ```bash
 brew install sweetpad-dev/tap/sweetpad

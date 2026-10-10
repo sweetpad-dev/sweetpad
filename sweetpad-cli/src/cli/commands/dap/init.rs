@@ -187,7 +187,7 @@ fn init_zed(root: &Path, output: Option<&Path>, exe: &Path) -> Result<DapInit, C
     )];
     if !adapter.exists() {
         notes.push(format!(
-            "{} doesn't exist yet: create it with 'ln -s {} {}' (Homebrew installs it)",
+            "{} doesn't exist yet: create it with 'ln -s {} {}' (Homebrew and mise install it)",
             adapter.display(),
             exe.display(),
             adapter.display()

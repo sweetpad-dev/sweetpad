@@ -143,7 +143,7 @@ describe("unavailableRouteError", () => {
   it("offers an update when the CLI is too old", () => {
     const error = unavailableRouteError({ why: "nothing-installed", cli: NO_DAP });
     expect(error.message).toContain("/usr/local/bin/sweetpad");
-    expect(error.message).toContain("brew upgrade sweetpad-dev/tap/sweetpad");
+    expect(error.message).toContain("sweetpad self-update");
     expect(labels(error)).toEqual(["Update SweetPad CLI", "Install CodeLLDB"]);
   });
 

@@ -18,8 +18,9 @@ exists.
 
 **Pushing the tag is the publish step, and it is public and effectively
 irreversible.** `.github/workflows/cli-release.yaml` builds a universal binary,
-signs it with the Developer ID, notarizes it with Apple, publishes a GitHub
-release, and pushes a formula bump to `sweetpad-dev/homebrew-tap`, which reaches
+signs it with the Developer ID, notarizes it with Apple, attests its build
+provenance, publishes a GitHub release (which mise installs from directly), and
+pushes a formula bump to `sweetpad-dev/homebrew-tap`, which reaches
 everyone on `brew upgrade`. A bad release is superseded by the next version
 rather than retracted. The CLI ships through the tap on its own cadence; it is
 not bundled into the extension's VSIX.

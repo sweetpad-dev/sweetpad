@@ -196,7 +196,7 @@ async function cliVersionCheck(): Promise<DoctorCheck> {
     ok: version !== undefined && isVersionAtLeast(version, MINIMUM_SWEETPAD_CLI_VERSION),
     label: "sweetpad CLI version",
     detail: version ?? "could not be read",
-    hint: `The extension needs ${MINIMUM_SWEETPAD_CLI_VERSION} or newer — upgrade with 'brew upgrade sweetpad-dev/tap/sweetpad'.`,
+    hint: `The extension needs ${MINIMUM_SWEETPAD_CLI_VERSION} or newer — upgrade with 'sweetpad self-update'.`,
   };
 }
 

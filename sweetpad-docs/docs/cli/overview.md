@@ -34,6 +34,33 @@ brew upgrade sweetpad
 
 You'll need Xcode installed too, since SweetPad uses Xcode's own tools to do the actual building.
 
+### With mise
+
+[mise](https://mise.jdx.dev/) installs SweetPad straight from its GitHub releases:
+
+```bash
+mise use -g 'github:sweetpad-dev/sweetpad[version_prefix=cli-v]'
+```
+
+Keep the `version_prefix` part. The same repository publishes the VS Code extension's releases, and
+the prefix tells mise to look only at the CLI's.
+
+Update it with:
+
+```bash
+mise upgrade github:sweetpad-dev/sweetpad
+```
+
+To pin a version for a whole project, CI included, put it in the project's `mise.toml` instead:
+
+```toml
+[tools]
+"github:sweetpad-dev/sweetpad" = { version = "0.1.12", version_prefix = "cli-v" }
+```
+
+`sweetpad self-update` handles both. For a Homebrew install it runs `brew upgrade`, and for a mise
+install it prints the `mise upgrade` command to run.
+
 ## How commands are shaped
 
 Most commands read as a thing followed by an action, for example `sweetpad simulator list` or

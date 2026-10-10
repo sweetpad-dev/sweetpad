@@ -28,17 +28,26 @@ is in [Get started with the CLI](./getting-started.md).
 
 ## Install
 
-The `sweetpad` CLI is distributed via Homebrew:
+Install the `sweetpad` CLI with Homebrew:
 
 ```bash
 brew install sweetpad-dev/tap/sweetpad
 ```
 
-Verify it, and upgrade later with `brew upgrade sweetpad`:
+Or with [mise](https://mise.jdx.dev/):
+
+```bash
+mise use -g 'github:sweetpad-dev/sweetpad[version_prefix=cli-v]'
+```
+
+Verify it:
 
 ```bash
 sweetpad --version
 ```
+
+To upgrade later, run `brew upgrade sweetpad`, or `mise upgrade github:sweetpad-dev/sweetpad` for a
+mise install.
 
 ## When you'd use the RPC server
 

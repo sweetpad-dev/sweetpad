@@ -759,7 +759,8 @@ pub enum Resource {
         #[command(flatten)]
         target: BuildTargetArgs,
     },
-    /// Update sweetpad (Homebrew installs run 'brew upgrade sweetpad').
+    /// Update sweetpad (runs 'brew upgrade sweetpad' for Homebrew, prints the
+    /// 'mise upgrade' command for mise).
     SelfUpdate,
     /// Send the maintainer a problem report about sweetpad, after the user
     /// approves it, or turn that off ('sweetpad help feedback' explains it).

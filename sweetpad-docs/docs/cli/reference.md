@@ -256,7 +256,7 @@ Alias: `sim`. Most take an optional target (name or UDID) and default to the boo
 | `sweetpad hot status`           | Report whether the hot-reload port is free, and which process holds it. |
 | `sweetpad hot reset`            | End a hot-reload listener a dead `--hot` session left behind (`--force` for a non-sweetpad holder). |
 | `sweetpad completions <shell>`  | Generate completions for bash, zsh, fish, elvish, or PowerShell.      |
-| `sweetpad self-update`          | Update sweetpad (Homebrew installs run brew upgrade instead).         |
+| `sweetpad self-update`          | Update sweetpad. Runs brew upgrade for a Homebrew install, and prints the mise upgrade command for a mise one. |
 | `sweetpad feedback submit`      | Send the maintainer a problem report an agent wrote, once you approve it. `--dry-run` prints the exact payload and a digest; `--approve <digest>` sends it. See [Feedback reports](./feedback.md). |
 | `sweetpad feedback off`         | Turn feedback reports off (`on` turns them back on, `status` says which is in effect). |
 | `sweetpad help [topic]`         | Built-in guides: `config`, `environment`, `exit-codes`, `destinations`, `hot-reload`, `feedback`. |

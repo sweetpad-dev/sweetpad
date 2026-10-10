@@ -8,6 +8,9 @@ on:
 
 permissions:
   contents: write
+  # Signing and storing the build provenance attestation.
+  id-token: write
+  attestations: write
 
 name: Release CLI
 jobs:
@@ -107,11 +110,27 @@ jobs:
           rm -f "$KEY_PATH"
 
       - name: Package tarball
+        # 'sweetpad-dap' is the name editors start the debug adapter by. Shipping
+        # it as a symlink in the tarball gives it to installers that unpack the
+        # archive as is (mise); the formula makes its own.
         run: |
           set -euo pipefail
-          tar -C dist -czf "$TARBALL" sweetpad
+          ln -sf sweetpad dist/sweetpad-dap
+          tar -C dist -czf "$TARBALL" sweetpad sweetpad-dap
           echo "SHA256=$(shasum -a 256 "$TARBALL" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          tar -tvzf "$TARBALL"
           shasum -a 256 "$TARBALL"
+
+      - name: Attest build provenance
+        # mise verifies this attestation when it installs from the release;
+        # 'gh attestation verify' checks it by hand. Dry runs publish nothing to
+        # attest.
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/sweetpad
+            ${{ env.TARBALL }}
 
       - name: Upload tarball artifact
         uses: actions/upload-artifact@v7
@@ -132,6 +151,10 @@ jobs:
             echo '## Install'
             echo
             echo '    brew install sweetpad-dev/tap/sweetpad'
+            echo
+            echo 'Or with [mise](https://mise.jdx.dev/):'
+            echo
+            echo "    mise use -g 'github:sweetpad-dev/sweetpad[version_prefix=cli-v]'"
             echo
             echo '## Changes'
             echo

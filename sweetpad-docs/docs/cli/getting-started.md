@@ -17,6 +17,12 @@ Install with [Homebrew](https://brew.sh/):
 brew install sweetpad-dev/tap/sweetpad
 ```
 
+Or with [mise](https://mise.jdx.dev/):
+
+```bash
+mise use -g 'github:sweetpad-dev/sweetpad[version_prefix=cli-v]'
+```
+
 Check that it worked:
 
 ```bash
