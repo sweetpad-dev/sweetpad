@@ -1,0 +1,34 @@
+# OTHER_CFLAGS, OTHER_CPLUSPLUSFLAGS and WARNING_CFLAGS: settings the Clang
+# xcspec declares without a command-line encoding, which the build system
+# appends itself. ObjCFlags compiles one ObjC file (OTHER_CFLAGS), CxxFlags
+# one C++ file (OTHER_CPLUSPLUSFLAGS, which builds on OTHER_CFLAGS). Each
+# source has an #error that fires unless its flags reached the compile.
+# Regenerate with `xcodegen generate`.
+name: OtherFlags
+options:
+  bundleIdPrefix: dev.sweetpad.fixture
+settings:
+  base:
+    MACOSX_DEPLOYMENT_TARGET: "12.0"
+    # The quoted item is one argument with a space in it, the way Xcode's
+    # build settings editor writes it.
+    OTHER_CFLAGS: ["-DSWEETPAD_OTHER_C=1", "\"-DSWEETPAD_SPACED=a b\"", "-fno-strict-aliasing"]
+    WARNING_CFLAGS: ["-Wno-unused-parameter", "-Wextra-semi"]
+targets:
+  ObjCFlags:
+    type: library.static
+    platform: macOS
+    sources: [ObjC]
+  CxxFlags:
+    type: library.static
+    platform: macOS
+    sources: [Cxx]
+    settings:
+      base:
+        OTHER_CPLUSPLUSFLAGS: ["$(OTHER_CFLAGS)", "-DSWEETPAD_OTHER_CXX=1"]
+schemes:
+  OtherFlags:
+    build:
+      targets:
+        ObjCFlags: all
+        CxxFlags: all

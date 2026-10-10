@@ -591,9 +591,44 @@ pub fn clang_arguments(
             a.extend(toks);
         }
     }
+    emit_custom_cflags(&mut a, settings, file_types);
     // The compile action every per-file clang runs (compile, don't link).
     a.flag("-c");
     a.into_vec()
+}
+
+/// Emit the free-form flag settings the build system appends after the xcspec
+/// options, in Swift Build's `ClangCompilerSpec.standardFlags` order. The
+/// Clang xcspec declares `OTHER_CFLAGS`, `OTHER_CPLUSPLUSFLAGS` and
+/// `WARNING_CFLAGS` with no command-line encoding, so the option loop never
+/// reaches them. Coming last, a user flag overrides the spec's
+/// (`-fno-strict-aliasing` after `-fstrict-aliasing`), and its `-I` paths are
+/// searched after `HEADER_SEARCH_PATHS`.
+///
+/// A C++ or ObjC++ compile takes `OTHER_CPLUSPLUSFLAGS` (which defaults to
+/// `$(OTHER_CFLAGS)`), anything else `OTHER_CFLAGS`. A mixed set of languages
+/// takes `OTHER_CFLAGS`, as Swift Build does for a file whose dialect it can't
+/// name.
+fn emit_custom_cflags(a: &mut ArgBuilder, settings: &Settings, file_types: &BTreeSet<String>) {
+    let plus_plus = !file_types.is_empty()
+        && file_types
+            .iter()
+            .all(|ft| matches!(ft.as_str(), "sourcecode.cpp.cpp" | "sourcecode.cpp.objcpp"));
+    let other = if plus_plus {
+        "OTHER_CPLUSPLUSFLAGS"
+    } else {
+        "OTHER_CFLAGS"
+    };
+    for key in [
+        "PER_ARCH_CFLAGS",
+        "WARNING_CFLAGS",
+        "OPTIMIZATION_CFLAGS",
+        "GLOBAL_CFLAGS",
+        other,
+        "PER_VARIANT_CFLAGS",
+    ] {
+        a.extend(ws_unquoted(settings.get(key).map(String::as_str)));
+    }
 }
 
 /// Emit the clang header/framework search paths. The build system adds these
@@ -2184,5 +2219,68 @@ mod tests {
             !found.contains(&("-iframework".to_string(), "/Shared".to_string())),
             "{args:?}"
         );
+    }
+
+    /// An ObjC compile takes `OTHER_CFLAGS` and a C++ one
+    /// `OTHER_CPLUSPLUSFLAGS`, both after `WARNING_CFLAGS` and the spec's own
+    /// flags, so a user flag overrides the spec's.
+    #[test]
+    fn clang_appends_custom_flags_by_language() {
+        use crate::xcspec::CliArgs;
+        let strict_aliasing = CompilerOption {
+            name: "GCC_STRICT_ALIASING".into(),
+            is_list: false,
+            values: Vec::new(),
+            flag: None,
+            prefix_flag: None,
+            args: Some(CliArgs::ByValue {
+                map: BTreeMap::from([("YES".into(), vec!["-fstrict-aliasing".into()])]),
+                otherwise: Some(vec![]),
+            }),
+            file_types: vec![],
+            architectures: vec![],
+            condition: None,
+        };
+        let mut s = Settings::new();
+        s.insert("GCC_STRICT_ALIASING".into(), "YES".into());
+        s.insert("WARNING_CFLAGS".into(), "-Wextra-semi".into());
+        s.insert(
+            "OTHER_CFLAGS".into(),
+            "-DOTHER_C=1 \"-DSPACED=a b\" -fno-strict-aliasing".into(),
+        );
+        s.insert(
+            "OTHER_CPLUSPLUSFLAGS".into(),
+            "-DOTHER_C=1 -DOTHER_CXX=1".into(),
+        );
+        let opts = std::slice::from_ref(&strict_aliasing);
+        let args_for = |file_types: &[&str]| {
+            let langs = file_types.iter().map(|ft| (*ft).to_string()).collect();
+            clang_arguments(&s, "arm64", opts, &langs)
+        };
+        // The last `n` arguments before the trailing `-c`.
+        let tail = |args: &[String], n: usize| args[args.len() - 1 - n..args.len() - 1].to_vec();
+
+        assert_eq!(
+            tail(&args_for(&["sourcecode.c.objc"]), 5),
+            [
+                "-fstrict-aliasing",
+                "-Wextra-semi",
+                "-DOTHER_C=1",
+                "-DSPACED=a b",
+                "-fno-strict-aliasing"
+            ],
+        );
+        assert_eq!(
+            tail(&args_for(&["sourcecode.cpp.objcpp"]), 3),
+            ["-Wextra-semi", "-DOTHER_C=1", "-DOTHER_CXX=1"]
+        );
+
+        // A target mixing C and C++ sources takes the C flags.
+        let args = args_for(&["sourcecode.c.c", "sourcecode.cpp.cpp"]);
+        assert!(
+            args.contains(&"-fno-strict-aliasing".to_string()),
+            "{args:?}"
+        );
+        assert!(!args.contains(&"-DOTHER_CXX=1".to_string()), "{args:?}");
     }
 }

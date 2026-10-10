@@ -357,10 +357,14 @@ def fold_clang_common(ta: TargetArgs) -> None:
 
 
 def arch_of(by_target: dict[str, TargetArgs]) -> str:
-    """Pull the build arch out of a swiftc `-target <arch>-apple-…` triple."""
-    for ta in by_target.values():
-        if ta.swift:
-            args = ta.swift["arguments"]
+    """Pull the build arch out of a `-target <arch>-apple-…` triple: a swiftc
+    one, else a clang one for a project with no Swift."""
+    for tool in ("swift", "clang"):
+        for ta in by_target.values():
+            argv = getattr(ta, tool)
+            if not argv:
+                continue
+            args = argv["arguments"] if tool == "swift" else argv["commonArguments"]
             if "-target" in args:
                 triple = args[args.index("-target") + 1]
                 return triple.split("-", 1)[0]

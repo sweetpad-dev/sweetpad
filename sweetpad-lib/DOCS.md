@@ -262,6 +262,7 @@ Hand-built fixtures cover paths no real corpus project exercises:
 | `_synthetic-spm`, `_synthetic-workspace` | SwiftPM package products (`-F …/PackageFrameworks`); multi-project `.xcworkspace` resolution |
 | `_synthetic-destination-platforms` | The SDK one run destination binds each target of a scheme to: an iOS app Designed for iPad or Mac Catalyst under `platform=macOS`, a macOS app beside an iOS app under either destination (`tests/destination_platform_oracle.rs`) |
 | `_synthetic-search-paths` | `FRAMEWORK_SEARCH_PATHS`, `HEADER_SEARCH_PATHS` and `LIBRARY_SEARCH_PATHS` authored without `$(inherited)` keep the products dir in front, and the Swift arguments keep its `-F` (`tests/search_paths_oracle.rs`) |
+| `_synthetic-other-flags` | `OTHER_CFLAGS` on an ObjC target, `OTHER_CPLUSPLUSFLAGS` built on it for a C++ target, `WARNING_CFLAGS` on both, including a quoted argument with a space. Each source has an `#error` that fires unless its flags reached the compile. To recapture, copy `raw/` (a `project.yml` for `xcodegen`) to `corpus/_synthetic-other-flags` and run `16_capture_compiler_args.py --slug _synthetic-other-flags --scheme OtherFlags --dest-slug macOS` |
 | `_synthetic-spm-graph` | One workspace reaching a local package six ways — its own `FileRef` member, the member project's declared package, both of their `.package(path:)` dependencies, and two under a `PBXFileSystemSynchronizedRootGroup` — plus a package carrying a `.swiftpm/xcode` scheme container and one whose only target is an `executableTarget` (`tests/spm_graph_oracle.rs` in sweetpad-core) |
 | `_global` | Per-SDK metadata (`sdks/<sdk>.json`), xcodebuild version banner |
 | `_tuist-src` | Generated tuist examples adding a command-line tool (`mh_execute`) and a standalone dynamic library (`mh_dylib`) to the compiler-args oracle. `16_capture_compiler_args.py --slug _tuist-src` resolves `corpus/_tuist-src`, which is a symlink to `corpus/tuist-fixtures/examples/xcode/generated_command_line_tool_with_dynamic_library`; 16 does not copy `raw/`, so a new version needs the `.xcodeproj` copied in by hand |
@@ -571,7 +572,9 @@ resolved triple + settings, no platform-specific gating).
   against resolved settings so gated options don't leak (e.g.
   `-fsanitize=integer` only when the parent sanitizer is on — and the
   `_synthetic-rich` fixture proves the gate also *passes* when it should).
-  95–98% structural.
+  The free-form `WARNING_CFLAGS` and `OTHER_CFLAGS` (`OTHER_CPLUSPLUSFLAGS`
+  for C++) have no xcspec encoding, so they're appended after the spec's
+  flags in Swift Build's `standardFlags` order. 95–98% structural.
 - **link**: executable/bundle/dylib shapes, modern driver defaults
   (`-Xlinker -reproducible`/`-dead_strip`, Debug
   `-no_deduplicate`/`-rdynamic`, `-fobjc-link-runtime`, coverage), Swift
