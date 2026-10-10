@@ -1323,6 +1323,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(target_os = "macos"), ignore = "reads the macOS version")]
     fn this_macs_versions_read() {
         let host = Host::detect();
         assert!(host.macos_version.is_some(), "{host:?}");
