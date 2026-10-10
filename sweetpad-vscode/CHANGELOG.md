@@ -2,12 +2,14 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
-## [0.2.19]
+## [0.2.19] - 2026-10-10
 
 - Debug through `sweetpad dap` when the SweetPad CLI is installed ([#340](https://github.com/sweetpad-dev/sweetpad/issues/340), thanks [@amgdev9](https://github.com/amgdev9))
+- Show app output live in the Debug Console ([#97](https://github.com/sweetpad-dev/sweetpad/issues/97), thanks [@FelixLisczyk](https://github.com/FelixLisczyk))
 - Add `sweetpad.debugger.adapter` to choose the CLI or CodeLLDB
 - Add a "SweetPad: Build and Run" launch configuration
 - Make CodeLLDB optional
+- Fix autocomplete for `#if os(...)` code on the selected destination ([#153](https://github.com/sweetpad-dev/sweetpad/issues/153), thanks [@zhuscat](https://github.com/zhuscat))
 
 ## [0.2.18] - 2026-09-28
 
