@@ -1,0 +1,163 @@
+[
+ {
+  "contents": {
+   "guid": "a53f4cee63e4f783b0d8dded8760cfba",
+   "name": "Scratch",
+   "path": "$(CORPUS)/_synthetic-staticlib/Scratch.xcodeproj/project.xcworkspace",
+   "projects": [
+    "PROJECT@v11_mod=cd822e265a1bd08d48e21cb2f6e9bfa7_hash=d7d04309efbd4d65de7af808746e2098plugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1"
+   ]
+  },
+  "signature": "WORKSPACE@v11_hash=(null)_subobjects=0854bb20f538f4db24e38b52dffdecf8",
+  "type": "workspace"
+ },
+ {
+  "contents": {
+   "appPreferencesBuildSettings": {},
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ALWAYS_SEARCH_USER_PATHS": "NO",
+      "MACOSX_DEPLOYMENT_TARGET": "12.0",
+      "ONLY_ACTIVE_ARCH": "YES",
+      "SDKROOT": "macosx",
+      "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
+      "SWIFT_VERSION": "5.0"
+     },
+     "guid": "d7d04309efbd4d65de7af808746e2098db2d9a12d9e7f836df6b5859bfbaad28",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ALWAYS_SEARCH_USER_PATHS": "NO",
+      "MACOSX_DEPLOYMENT_TARGET": "12.0",
+      "ONLY_ACTIVE_ARCH": "YES",
+      "SDKROOT": "macosx",
+      "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
+      "SWIFT_VERSION": "5.0"
+     },
+     "guid": "d7d04309efbd4d65de7af808746e20986b4c52b42d1b6c2da0feac7f6f4486d9",
+     "name": "Release"
+    }
+   ],
+   "classPrefix": "",
+   "defaultConfigurationName": "Release",
+   "developmentRegion": "en",
+   "groupTree": {
+    "children": [
+     {
+      "fileType": "sourcecode.swift",
+      "guid": "d7d04309efbd4d65de7af808746e20989d6b0f55c584bffeb2925288a0178ba8",
+      "path": "main.swift",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "sourcecode.swift",
+      "guid": "d7d04309efbd4d65de7af808746e2098db2665e8d2b15a252632ee35b7157571",
+      "path": "helper.swift",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "sourcecode.cpp.objcpp",
+      "guid": "d7d04309efbd4d65de7af808746e2098bca26fcc534c53c05b5a18a5e1990dd9",
+      "path": "util.mm",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "guid": "d7d04309efbd4d65de7af808746e209851f60c960fa3f90d7494de1d0b052bca",
+      "name": "Products",
+      "path": "",
+      "sourceTree": "<group>",
+      "type": "group"
+     }
+    ],
+    "guid": "d7d04309efbd4d65de7af808746e2098a107a1885918d76b9a36d898f2d9a1ab",
+    "name": "Scratch",
+    "path": "",
+    "sourceTree": "<group>",
+    "type": "group"
+   },
+   "guid": "d7d04309efbd4d65de7af808746e2098",
+   "knownRegions": [
+    "en",
+    "Base"
+   ],
+   "path": "$(CORPUS)/_synthetic-staticlib/Scratch.xcodeproj",
+   "projectDirectory": "$(CORPUS)/_synthetic-staticlib",
+   "targets": [
+    "TARGET@v11_hash=7c316703777784894a3dfa0a285954de"
+   ]
+  },
+  "signature": "PROJECT@v11_mod=cd822e265a1bd08d48e21cb2f6e9bfa7_hash=d7d04309efbd4d65de7af808746e2098plugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1",
+  "type": "project"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "PRODUCT_NAME": "$(TARGET_NAME)"
+     },
+     "guid": "d7d04309efbd4d65de7af808746e20985b39abce52b9ea18ff8259ccb482af85",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "PRODUCT_NAME": "$(TARGET_NAME)"
+     },
+     "guid": "d7d04309efbd4d65de7af808746e2098be39c5eadee2baf6b8860e2781c9486d",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "d7d04309efbd4d65de7af808746e20989d6b0f55c584bffeb2925288a0178ba8",
+       "guid": "d7d04309efbd4d65de7af808746e20984edfaf09e48803bed7125a64805dafa5"
+      },
+      {
+       "fileReference": "d7d04309efbd4d65de7af808746e2098db2665e8d2b15a252632ee35b7157571",
+       "guid": "d7d04309efbd4d65de7af808746e2098dc849376eac0a5f4ec16a4bce67c5385"
+      },
+      {
+       "fileReference": "d7d04309efbd4d65de7af808746e2098bca26fcc534c53c05b5a18a5e1990dd9",
+       "guid": "d7d04309efbd4d65de7af808746e20987359e55541b0d314c73ed0fc8146919e"
+      }
+     ],
+     "guid": "d7d04309efbd4d65de7af808746e20984597a0cf8e1b2dffe92b9d73c416c0f7",
+     "type": "com.apple.buildphase.sources"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [],
+   "guid": "d7d04309efbd4d65de7af808746e2098039f16077da9bdebb91a6265be95aa45",
+   "name": "Scratch",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Swift",
+   "productReference": {
+    "guid": "d7d04309efbd4d65de7af808746e2098508ea5d1873337ff181be9450b5dc469",
+    "name": "libScratch.a",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.library.static",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "",
+     "configurationName": "Debug",
+     "provisioningStyle": 1
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "",
+     "configurationName": "Release",
+     "provisioningStyle": 1
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=7c316703777784894a3dfa0a285954de",
+  "type": "target"
+ }
+]

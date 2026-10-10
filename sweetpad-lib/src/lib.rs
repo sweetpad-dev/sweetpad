@@ -32,6 +32,8 @@ pub mod pbxproj_merge;
 mod pbxproj_refs;
 pub mod pbxproj_writer;
 pub mod pif;
+mod pif_file_types;
+mod pif_sync;
 pub mod project;
 mod project_xcproj;
 pub mod resolver;

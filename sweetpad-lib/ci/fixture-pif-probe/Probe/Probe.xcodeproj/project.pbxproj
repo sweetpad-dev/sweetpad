@@ -1,0 +1,1603 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+		002D5E27FCE5C0434946F86A = {
+			buildActionMask = 2147483647;
+			files = (
+				BA568A2B893619BBFFAD7F22,
+			);
+			isa = PBXRezBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		00639C71BA1DBDE84DB84B3E = {
+			fileType = archive.ar;
+			isa = PBXReferenceProxy;
+			path = libSecondLib.a;
+			remoteRef = 435E729DD9D349C9218F0AAF;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		009C39BA2707C0B0118D22B1 = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_fw;
+			};
+			isa = XCBuildConfiguration;
+			name = Release;
+		};
+		036A948D8A924C97B1D9B6AC = {
+			buildActionMask = 2147483647;
+			files = (
+				C27A24F6D5D65448B9406FB0,
+			);
+			isa = PBXSourcesBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		04194CDC4EFD13994AC1B9DB = {
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 16;
+			files = (
+			);
+			isa = PBXCopyFilesBuildPhase;
+			name = "Copy spec 16 #9";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0537473ABCD593B776DBE2E1 = {
+			fileRef = E33CC831B2ADEDFDC63B5DDC;
+			isa = PBXBuildFile;
+			settings = {
+				ATTRIBUTES = (
+					Private,
+				);
+			};
+		};
+		082BB71B01D569F00CF3AFC9 = {
+			explicitFileType = archive.ar;
+			includeInIndex = 0;
+			isa = PBXFileReference;
+			path = libProbeStatic.a;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		087530BA9BAC53CC2D689BF3 = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.xcconfig;
+			path = Debug.xcconfig;
+			sourceTree = "<group>";
+		};
+		0906F74BEA498BA8EBC364B5 = {
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_test;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ProbeApp.app/ProbeApp";
+			};
+			isa = XCBuildConfiguration;
+			name = Profile;
+		};
+		092F7AA3BC29C2DB3631BE9C = {
+			fileEncoding = 4;
+			isa = PBXFileReference;
+			lastKnownFileType = text.plist.strings;
+			name = de;
+			path = de.lproj/Localizable.strings;
+			sourceTree = "<group>";
+		};
+		0A1446F021057A4A49EDC420 = {
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			isa = PBXShellScriptBuildPhase;
+			name = "Script installhdrs";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = true;
+		};
+		0DAEA3916B994F7A9DF98412 = {
+			fileRef = 48C19ABAD83E3F3B0E25DF74;
+			isa = PBXBuildFile;
+			settings = {
+				COMPILER_FLAGS = "-std=c++20";
+			};
+		};
+		0DE8500958308DCB63997F11 = {
+			containerPortal = 46F86FAA6BBF9AC94A7E4595;
+			isa = PBXContainerItemProxy;
+			proxyType = 1;
+			remoteGlobalIDString = 778130C49534A4D32801D13D;
+			remoteInfo = ProbeApp;
+		};
+		0F3204AE86D081AA66A91A6B = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = Public.h;
+			sourceTree = "<group>";
+		};
+		0FE7DA991A7D33354F1DBE0D = {
+			fileRef = 469F68EBCDA89FAF7F27CA35;
+			isa = PBXBuildFile;
+		};
+		103B547DC8424EE14C863B9C = {
+			fileRef = 3A1CCCE5F21673A584944731;
+			isa = PBXBuildFile;
+			settings = {
+				ATTRIBUTES = (
+					CodeSignOnCopy,
+				);
+			};
+		};
+		1240F11EF8431C62B2C9BB11 = {
+			compilerSpec = com.apple.compilers.llvm.clang.1_0;
+			fileType = sourcecode.c.c;
+			isEditable = 1;
+			isa = PBXBuildRule;
+			name = "C via clang";
+			outputFiles = (
+			);
+		};
+		1284ED18A0233D6A83838E67 = {
+			isa = PBXTargetDependency;
+			target = 66F9DE1B385CD7BC208B3A51;
+			targetProxy = 8647FAABE09DAE49B904D71C;
+		};
+		12B96381BE2E5695B9082809 = {
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+			);
+			isa = PBXCopyFilesBuildPhase;
+			name = "Copy spec 13 #7";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		138004E15A235CFBA892850F = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = ProbeTests.swift;
+			sourceTree = "<group>";
+		};
+		1380B5ABB5C97922EA6CC016 = {
+			fileRef = C38FF43E52A717D109C92B2C;
+			isa = PBXBuildFile;
+		};
+		16E0708DCC4C53A86D8001F3 = {
+			isa = PBXTargetDependency;
+			platformFilters = (
+				ios,
+				maccatalyst,
+			);
+			target = FDEF801E55D6DA2070708370;
+			targetProxy = B9D75CF54C419B82D7E78CD8;
+		};
+		1DA3A4731F9E0520C9D6F2AB = {
+			fileEncoding = 10;
+			isa = PBXFileReference;
+			lastKnownFileType = text;
+			path = utf16.txt;
+			sourceTree = "<group>";
+		};
+		1DCB85D7E8A3EF84100D3B07 = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.plist.strings;
+			name = en;
+			path = en.lproj/Localizable.strings;
+			sourceTree = "<group>";
+		};
+		1E18E74FEE07F48AED351B18 = {
+			containerPortal = 46F86FAA6BBF9AC94A7E4595;
+			isa = PBXContainerItemProxy;
+			proxyType = 1;
+			remoteGlobalIDString = A5BC47C3D24525A046ABE56F;
+			remoteInfo = ProbeLegacy;
+		};
+		23D4D8A1A691152DF04FD401 = {
+			explicitFileType = wrapper.framework;
+			includeInIndex = 0;
+			isa = PBXFileReference;
+			path = ProbeKit.framework;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		26F582C9B5FF5B6A2E639301 = {
+			buildConfigurations = (
+				ADA074B18234325A49660BDE,
+				B337FE5D69155F9066A705C9,
+				C6657FE324C66E6B3C37A040,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+			isa = XCConfigurationList;
+		};
+		27C2F5CD118605258B779913 = {
+			buildConfigurationList = 72BFB1022E46D255380109E4;
+			buildPhases = (
+				036A948D8A924C97B1D9B6AC,
+				CD6460F15EEE09E593BFBCEF,
+				F7B39E6D5BE7162FB6F97AF4,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				583A8880CB84FBD3B6971E44,
+			);
+			isa = PBXNativeTarget;
+			name = ProbeTests;
+			productName = ProbeTests;
+			productReference = 8476B7C36E2F64534C74EBA9;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		2B133E203D7CD8F9B4719632 = {
+			fileRef = C38FF43E52A717D109C92B2C;
+			isa = PBXBuildFile;
+		};
+		2C7D62E3CDBB607A65BCAAF8 = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_fw;
+			};
+			isa = XCBuildConfiguration;
+			name = Debug;
+		};
+		2F52D03767113A52992845D4 = {
+			buildActionMask = 2147483647;
+			dstPath = Res/Sub;
+			dstSubfolderSpec = 7;
+			files = (
+				DFDAC858169478C36793E52A,
+			);
+			isa = PBXCopyFilesBuildPhase;
+			name = "Copy spec 7 #3";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2F8A06331F8593BCEA65BDAC = {
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 6;
+			files = (
+				103B547DC8424EE14C863B9C,
+			);
+			isa = PBXCopyFilesBuildPhase;
+			name = "Copy spec 6 #2";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2F8A4980BC1F366E262DC74B = {
+			buildConfigurations = (
+				ABC07A81FFC45A3AACF1594F,
+				A706EBBC9FA42A6EB26629E0,
+				A04D3334766DDD560663FDDC,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+			isa = XCConfigurationList;
+		};
+		326A49D20AD12022FED2BDEE = {
+			isa = PBXTargetDependency;
+			target = A5BC47C3D24525A046ABE56F;
+			targetProxy = 1E18E74FEE07F48AED351B18;
+		};
+		327B998A6133F597BC750A69 = {
+			buildConfigurations = (
+				873E24B1FF853EE53E434D4C,
+				B55B5768D892B08EA681BE30,
+				641972827612948BCB8FB648,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+			isa = XCConfigurationList;
+		};
+		334473A8C9C4AC2BEFAED4B8 = {
+			compilerSpec = com.apple.compilers.proxy.script;
+			fileType = text.json;
+			isEditable = 1;
+			isa = PBXBuildRule;
+			outputFiles = (
+				"$(DERIVED_FILE_DIR)/$(INPUT_FILE_BASE).txt",
+			);
+			script = "touch \"$SCRIPT_OUTPUT_FILE_0\"\n";
+		};
+		3475B886CD46D35558936F2F = {
+			buildConfigurations = (
+				6751B7E5F2BCBBF3553794E9,
+				82BD2D0D09C94E4864A93208,
+				FE120DF06C0A0219E19D9932,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+			isa = XCConfigurationList;
+		};
+		351325A660B25474456AF5C9 = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = LocalPkg;
+		};
+		37D45FA98EEABA7E2AAF178F = {
+			buildActionMask = 2147483647;
+			dstPath = /usr/local/probe;
+			dstSubfolderSpec = 0;
+			files = (
+				7A18A2E42668DBD7F2E86644,
+			);
+			isa = PBXCopyFilesBuildPhase;
+			name = "Copy spec 0 #0";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		387DB440F3EAF11D70EBD95D = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_agg;
+			};
+			isa = XCBuildConfiguration;
+			name = Release;
+		};
+		388E0E871DFC3F0325C1FD0A = {
+			children = (
+				3E565BD0AA0604C8240B54F0,
+			);
+			isa = PBXGroup;
+			path = Nested/Deep;
+			sourceTree = "<group>";
+		};
+		3A1CCCE5F21673A584944731 = {
+			explicitFileType = "compiled.mach-o.executable";
+			includeInIndex = 0;
+			isa = PBXFileReference;
+			path = probetool;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		3B9716D01E3885F1E9A79001 = {
+			children = (
+				138004E15A235CFBA892850F,
+			);
+			isa = PBXGroup;
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		3C3AA045D7021152DD5D92DD = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_lib;
+			};
+			isa = XCBuildConfiguration;
+			name = Profile;
+		};
+		3DE42DD8B0909573DEFE9EED = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_fw;
+			};
+			isa = XCBuildConfiguration;
+			name = Profile;
+		};
+		3E22ADB96939D67B35BF987D = {
+			buildActionMask = 2147483647;
+			files = (
+				1380B5ABB5C97922EA6CC016,
+				EB2499A08010AD1D5949C334,
+				DCC603500495D5C3E100DF04,
+				F3ACDDC6893B746789F13DCB,
+				C3144C45B54CC3E4E7C9E521,
+			);
+			isa = PBXSourcesBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3E565BD0AA0604C8240B54F0 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			name = RenamedThing.swift;
+			path = thing.swift;
+			sourceTree = "<group>";
+		};
+		435E729DD9D349C9218F0AAF = {
+			containerPortal = 6F7B70BAB96475F22E7394FD;
+			isa = PBXContainerItemProxy;
+			proxyType = 2;
+			remoteGlobalIDString = 97AD9CC5C88EDF156FDD95D6;
+			remoteInfo = SecondLib;
+		};
+		4494A86B923A8CA068174B85 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = util.h;
+			sourceTree = "<group>";
+		};
+		469F68EBCDA89FAF7F27CA35 = {
+			children = (
+				ED54306399B2941A50D828CB,
+			);
+			isa = PBXVariantGroup;
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		46F86FAA6BBF9AC94A7E4595 = {
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				CLASSPREFIX = PRB;
+				LastUpgradeCheck = 1600;
+				ORGANIZATIONNAME = "Probe Org";
+				TargetAttributes = {
+					27C2F5CD118605258B779913 = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = 778130C49534A4D32801D13D;
+					};
+					74980A36B41BFF338FAE1CAD = {
+						DevelopmentTeam = FWTEAM1234;
+						LastSwiftMigration = 1600;
+					};
+					778130C49534A4D32801D13D = {
+						CreatedOnToolsVersion = 16.0;
+						DevelopmentTeam = ABCDE12345;
+						ProvisioningStyle = Manual;
+						SystemCapabilities = {
+							com.apple.Push = {
+								enabled = 1;
+							};
+						};
+					};
+				};
+			};
+			buildConfigurationList = 2F8A4980BC1F366E262DC74B;
+			developmentRegion = de;
+			hasScannedForEncodings = 0;
+			isa = PBXProject;
+			knownRegions = (
+				de,
+				en,
+				Base,
+				fr,
+			);
+			mainGroup = 4C217B7E49CE4218A745107D;
+			packageReferences = (
+				351325A660B25474456AF5C9,
+			);
+			productRefGroup = FB46F58F8184F1806BF249F6;
+			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = D86DDC53621ED0332D7395CE;
+					ProjectRef = 6F7B70BAB96475F22E7394FD;
+				},
+			);
+			projectRoot = "";
+			targets = (
+				778130C49534A4D32801D13D,
+				74980A36B41BFF338FAE1CAD,
+				FDEF801E55D6DA2070708370,
+				27C2F5CD118605258B779913,
+				6BA8447FD24E4B7681060712,
+				66F9DE1B385CD7BC208B3A51,
+				A5BC47C3D24525A046ABE56F,
+			);
+		};
+		47709DDB21915FD57C488640 = {
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
+			dstSubfolderSpec = 16;
+			files = (
+			);
+			isa = PBXCopyFilesBuildPhase;
+			name = "Copy spec 16 #10";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		48C19ABAD83E3F3B0E25DF74 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.cpp.cpp;
+			path = cpp.cpp;
+			sourceTree = "<group>";
+		};
+		4C217B7E49CE4218A745107D = {
+			children = (
+				E59B6EB76C2459E1888CA873,
+				972EC1B30EDABE8FACBC4E75,
+				A1D83ADECDBE57AE9E5ED298,
+				CCDE8DCE4722D5DB59EDA6CE,
+				A38EB83B9D8F09366A04081B,
+				64EE2DC973924B5334AAFB66,
+				6A4B933B034AD6522AB3B61E,
+				AD00464859305D79F3E3680E,
+				3B9716D01E3885F1E9A79001,
+				63AD9D34F3503826E5F649AE,
+				EAE2550A61FD4C56614A5BC2,
+				FB46F58F8184F1806BF249F6,
+				6F7B70BAB96475F22E7394FD,
+			);
+			indentWidth = 4;
+			isa = PBXGroup;
+			sourceTree = "<group>";
+			tabWidth = 4;
+			usesTabs = 0;
+		};
+		4C7C453DEE22220997632718 = {
+			fileEncoding = 30;
+			isa = PBXFileReference;
+			lastKnownFileType = text;
+			path = macroman.txt;
+			sourceTree = "<group>";
+		};
+		56BF34866551117C9398AAAF = {
+			buildActionMask = 2147483647;
+			files = (
+				826F141FDABEE4280FCFA275,
+			);
+			isa = PBXFrameworksBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		574F73ED705F197A59431155 = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_lib;
+			};
+			isa = XCBuildConfiguration;
+			name = Debug;
+		};
+		583A8880CB84FBD3B6971E44 = {
+			isa = PBXTargetDependency;
+			target = 778130C49534A4D32801D13D;
+			targetProxy = 0DE8500958308DCB63997F11;
+		};
+		58BE2FCF8E5526704ADAB21E = {
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Library/LoginItems";
+			dstSubfolderSpec = 16;
+			files = (
+			);
+			isa = PBXCopyFilesBuildPhase;
+			name = "Copy spec 16 #11";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		59AAC27D48EAF6691559F740 = {
+			buildActionMask = 2147483647;
+			files = (
+			);
+			isa = PBXShellScriptBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "echo minimal";
+		};
+		5D171669BF9EDBBCA95555CC = {
+			buildActionMask = 2147483647;
+			files = (
+				7E2578E9E31542F374F5C827,
+				0FE7DA991A7D33354F1DBE0D,
+				C58E903E5580797C1043F1CF,
+				BC3AD7F72A78455F70B9A067,
+			);
+			isa = PBXResourcesBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5F2480A80462FB958BD33736 = {
+			containerPortal = 6F7B70BAB96475F22E7394FD;
+			isa = PBXContainerItemProxy;
+			proxyType = 1;
+			remoteGlobalIDString = C8331B44146005D2B2588131;
+			remoteInfo = SecondLib;
+		};
+		6084DFFB756969D0D85EE642 = {
+			buildActionMask = 2147483647;
+			files = (
+				882A55E7EAD63B1E3E6FAF7F,
+				DBBED1FE5BBA24405E5A4CE4,
+				7561876131F93B95AFFB4795,
+				B2A45AEC81C7C57AB49A9B92,
+				8DCBCA9922BF68110668FF61,
+				EF6AACBF3C730DDC5415110F,
+			);
+			isa = PBXFrameworksBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		63AD9D34F3503826E5F649AE = {
+			exceptions = (
+				DBA7D381269FDCD75C35C004,
+				EBA339814C2A3DF3B5DBF286,
+				E8FCE237C3D2C297D1CD6D9D,
+			);
+			explicitFileTypes = {
+				custom.dat = text.json;
+			};
+			explicitFolders = (
+				Explicit.bundle,
+			);
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Synced;
+			sourceTree = "<group>";
+		};
+		641972827612948BCB8FB648 = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_tool;
+				SDKROOT = macosx;
+			};
+			isa = XCBuildConfiguration;
+			name = Profile;
+		};
+		64EE2DC973924B5334AAFB66 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = /usr/include/stdio.h;
+			sourceTree = "<absolute>";
+		};
+		66F9DE1B385CD7BC208B3A51 = {
+			buildConfigurationList = 918C529629A710C94B614583;
+			buildPhases = (
+				A7129C06471DEBD122EE8830,
+			);
+			dependencies = (
+			);
+			isa = PBXAggregateTarget;
+			name = ProbeAggregate;
+			productName = ProbeAggregate;
+		};
+		6751B7E5F2BCBBF3553794E9 = {
+			baseConfigurationReference = D0D4336736768F2ACC4A52E6;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = ZZZZZZZZZZ;
+				INFOPLIST_FILE = Synced/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_app;
+			};
+			isa = XCBuildConfiguration;
+			name = Debug;
+		};
+		68C4C852D372BE2DAE2B866C = {
+			fileRef = 23D4D8A1A691152DF04FD401;
+			isa = PBXBuildFile;
+			settings = {
+				ATTRIBUTES = (
+					CodeSignOnCopy,
+					RemoveHeadersOnCopy,
+				);
+			};
+		};
+		6A4B933B034AD6522AB3B61E = {
+			isa = PBXFileReference;
+			lastKnownFileType = folder;
+			path = Assets;
+			sourceTree = "<group>";
+		};
+		6BA8447FD24E4B7681060712 = {
+			buildConfigurationList = 327B998A6133F597BC750A69;
+			buildPhases = (
+				834AEE1DF3A413DB3C4AFEE1,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			isa = PBXNativeTarget;
+			name = probetool;
+			productName = probetool;
+			productReference = 3A1CCCE5F21673A584944731;
+			productType = "com.apple.product-type.tool";
+		};
+		6BE65DB27B642915B18FD576 = {
+			isa = PBXFileReference;
+			lastKnownFileType = wrapper.framework;
+			name = XCTest.framework;
+			path = Platforms/MacOSX.platform/Developer/Library/Frameworks/XCTest.framework;
+			sourceTree = DEVELOPER_DIR;
+		};
+		6F7B70BAB96475F22E7394FD = {
+			isa = PBXFileReference;
+			lastKnownFileType = "wrapper.pb-project";
+			name = Second.xcodeproj;
+			path = ../Second/Second.xcodeproj;
+			sourceTree = "<group>";
+		};
+		70E4FCE658D83A44EFB8D24A = {
+			fileRef = 6BE65DB27B642915B18FD576;
+			isa = PBXBuildFile;
+		};
+		72BFB1022E46D255380109E4 = {
+			buildConfigurations = (
+				C84BC973B831DC962CEE47DB,
+				D8423EFE2EAEBE480373ADFE,
+				0906F74BEA498BA8EBC364B5,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+			isa = XCConfigurationList;
+		};
+		74980A36B41BFF338FAE1CAD = {
+			buildConfigurationList = BB1F3F3B66C1686E4FE9E3C5;
+			buildPhases = (
+				9C7DA80266E9B0DA74C114B4,
+				B4322A1E0E81C338EEA82322,
+				56BF34866551117C9398AAAF,
+				C308CEFA1E86125765FCF2F7,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				63AD9D34F3503826E5F649AE,
+			);
+			isa = PBXNativeTarget;
+			name = ProbeKit;
+			packageProductDependencies = (
+				7714999086BFDF880AAD945F,
+			);
+			productName = ProbeKit;
+			productReference = 23D4D8A1A691152DF04FD401;
+			productType = "com.apple.product-type.framework";
+		};
+		7561876131F93B95AFFB4795 = {
+			fileRef = 23D4D8A1A691152DF04FD401;
+			isa = PBXBuildFile;
+		};
+		7714999086BFDF880AAD945F = {
+			isa = XCSwiftPackageProductDependency;
+			package = 351325A660B25474456AF5C9;
+			productName = LocalPkgLib;
+		};
+		778130C49534A4D32801D13D = {
+			buildConfigurationList = 3475B886CD46D35558936F2F;
+			buildPhases = (
+				59AAC27D48EAF6691559F740,
+				3E22ADB96939D67B35BF987D,
+				6084DFFB756969D0D85EE642,
+				5D171669BF9EDBBCA95555CC,
+				37D45FA98EEABA7E2AAF178F,
+				CC73C6DEC865304DD4E5199D,
+				2F8A06331F8593BCEA65BDAC,
+				2F52D03767113A52992845D4,
+				F0F96857DC5EE2604084C395,
+				8FE679DFB54A177BD06EF0AF,
+				EC0F9ADA53F3553B2AADBAC3,
+				12B96381BE2E5695B9082809,
+				BD5DAD5D3438211C2BD3DC9F,
+				04194CDC4EFD13994AC1B9DB,
+				47709DDB21915FD57C488640,
+				58BE2FCF8E5526704ADAB21E,
+				8C7BA3652D2ED7BB06548C0B,
+				A5B36981F764FE399227E1BC,
+				0A1446F021057A4A49EDC420,
+				002D5E27FCE5C0434946F86A,
+			);
+			buildRules = (
+				1240F11EF8431C62B2C9BB11,
+				8EDC276E7F825184AEFF2C48,
+				334473A8C9C4AC2BEFAED4B8,
+			);
+			dependencies = (
+				DCA23309746FE2040BA2E2A2,
+				16E0708DCC4C53A86D8001F3,
+				1284ED18A0233D6A83838E67,
+				7D4DC76CCC9F1117504F66AB,
+				326A49D20AD12022FED2BDEE,
+				BBA56A638738A6907F36F543,
+			);
+			fileSystemSynchronizedGroups = (
+				63AD9D34F3503826E5F649AE,
+			);
+			isa = PBXNativeTarget;
+			name = ProbeApp;
+			packageProductDependencies = (
+				C483F6CE851C9ECD9FB835FF,
+			);
+			productName = ProbeApp;
+			productReference = 8DB90CFEBD2C1C06E9EA54A6;
+			productType = "com.apple.product-type.application";
+		};
+		7A18A2E42668DBD7F2E86644 = {
+			fileRef = 64EE2DC973924B5334AAFB66;
+			isa = PBXBuildFile;
+		};
+		7D4DC76CCC9F1117504F66AB = {
+			isa = PBXTargetDependency;
+			name = CustomDepName;
+			target = 6BA8447FD24E4B7681060712;
+			targetProxy = BD1E252095471C820A5DFE84;
+		};
+		7E2578E9E31542F374F5C827 = {
+			fileRef = E8FA83BF5015DB299AA3576C;
+			isa = PBXBuildFile;
+		};
+		826F141FDABEE4280FCFA275 = {
+			isa = PBXBuildFile;
+			platformFilters = (
+				ios,
+			);
+			productRef = 7714999086BFDF880AAD945F;
+		};
+		82BD2D0D09C94E4864A93208 = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = ZZZZZZZZZZ;
+				INFOPLIST_FILE = Synced/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_app;
+			};
+			isa = XCBuildConfiguration;
+			name = Release;
+		};
+		834AEE1DF3A413DB3C4AFEE1 = {
+			buildActionMask = 2147483647;
+			files = (
+				2B133E203D7CD8F9B4719632,
+			);
+			isa = PBXSourcesBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8416693CB17EDEF453EE546E = {
+			fileRef = CE7991750962C453B164E97D;
+			isa = PBXBuildFile;
+		};
+		8476B7C36E2F64534C74EBA9 = {
+			explicitFileType = wrapper.cfbundle;
+			includeInIndex = 0;
+			isa = PBXFileReference;
+			path = ProbeTests.xctest;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		8647FAABE09DAE49B904D71C = {
+			containerPortal = 46F86FAA6BBF9AC94A7E4595;
+			isa = PBXContainerItemProxy;
+			proxyType = 1;
+			remoteGlobalIDString = 66F9DE1B385CD7BC208B3A51;
+			remoteInfo = ProbeAggregate;
+		};
+		873E24B1FF853EE53E434D4C = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_tool;
+				SDKROOT = macosx;
+			};
+			isa = XCBuildConfiguration;
+			name = Debug;
+		};
+		882A55E7EAD63B1E3E6FAF7F = {
+			fileRef = 94DB3931CB91FB616D6E6B9A;
+			isa = PBXBuildFile;
+			settings = {
+				ATTRIBUTES = (
+					Weak,
+				);
+			};
+		};
+		8C7BA3652D2ED7BB06548C0B = {
+			buildActionMask = 2147483647;
+			dstPath = SyncCopied;
+			dstSubfolderSpec = 7;
+			files = (
+			);
+			isa = PBXCopyFilesBuildPhase;
+			name = "Sync copy target";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8DB90CFEBD2C1C06E9EA54A6 = {
+			explicitFileType = wrapper.application;
+			includeInIndex = 0;
+			isa = PBXFileReference;
+			path = ProbeApp.app;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		8DCBCA9922BF68110668FF61 = {
+			fileRef = 00639C71BA1DBDE84DB84B3E;
+			isa = PBXBuildFile;
+		};
+		8EDC276E7F825184AEFF2C48 = {
+			compilerSpec = com.apple.compilers.proxy.script;
+			dependencyFile = "$(DERIVED_FILE_DIR)/rule.d";
+			filePatterns = "*.probe *.prb";
+			fileType = pattern.proxy;
+			inputFileListPaths = (
+				"$(SRCROOT)/rule-in.xcfilelist",
+			);
+			inputFiles = (
+				"$(SRCROOT)/tool.sh",
+			);
+			isEditable = 1;
+			isa = PBXBuildRule;
+			outputFileListPaths = (
+			);
+			outputFiles = (
+				"$(DERIVED_FILE_DIR)/$(INPUT_FILE_BASE).swift",
+				"$(DERIVED_FILE_DIR)/$(INPUT_FILE_BASE).h",
+			);
+			outputFilesCompilerFlags = (
+				"-DGEN=1",
+				"",
+			);
+			runOncePerArchitecture = 0;
+			script = "cp \"$INPUT_FILE_PATH\" \"$SCRIPT_OUTPUT_FILE_0\"\n";
+		};
+		8F2EEC673619A79F2607A59B = {
+			isa = PBXFileReference;
+			lastKnownFileType = wrapper.xcdatamodel;
+			path = "Model 2.xcdatamodel";
+			sourceTree = "<group>";
+		};
+		8FE679DFB54A177BD06EF0AF = {
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 11;
+			files = (
+			);
+			isa = PBXCopyFilesBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		918C529629A710C94B614583 = {
+			buildConfigurations = (
+				F87B499CBD0C78D720421EF1,
+				387DB440F3EAF11D70EBD95D,
+				B151EFE6211B2E4C63DCC5DD,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+			isa = XCConfigurationList;
+		};
+		94DB3931CB91FB616D6E6B9A = {
+			isa = PBXFileReference;
+			lastKnownFileType = wrapper.framework;
+			name = Foundation.framework;
+			path = System/Library/Frameworks/Foundation.framework;
+			sourceTree = SDKROOT;
+		};
+		972EC1B30EDABE8FACBC4E75 = {
+			children = (
+				E8FA83BF5015DB299AA3576C,
+				469F68EBCDA89FAF7F27CA35,
+			);
+			isa = PBXGroup;
+			name = "Res Group";
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		9AAF297A6E0B1BBFD42368A6 = {
+			isa = PBXFileReference;
+			path = Makefile;
+			sourceTree = "<group>";
+		};
+		9C7DA80266E9B0DA74C114B4 = {
+			buildActionMask = 2147483647;
+			files = (
+				ABCFC7067932E4D36A1F86E8,
+				0537473ABCD593B776DBE2E1,
+				8416693CB17EDEF453EE546E,
+			);
+			isa = PBXHeadersBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A04D3334766DDD560663FDDC = {
+			buildSettings = {
+			};
+			isa = XCBuildConfiguration;
+			name = Profile;
+		};
+		A1D83ADECDBE57AE9E5ED298 = {
+			children = (
+				D61BDBF2AB55867D8871ECEC,
+				8F2EEC673619A79F2607A59B,
+			);
+			currentVersion = D61BDBF2AB55867D8871ECEC;
+			isa = XCVersionGroup;
+			path = Model.xcdatamodeld;
+			sourceTree = "<group>";
+			versionGroupType = wrapper.xcdatamodel;
+		};
+		A38EB83B9D8F09366A04081B = {
+			children = (
+				1DA3A4731F9E0520C9D6F2AB,
+				A6626A64088280A750AB11A6,
+				4C7C453DEE22220997632718,
+				C736AB164DC4AB473718C74D,
+			);
+			indentWidth = 2;
+			isa = PBXGroup;
+			path = Text;
+			sourceTree = "<group>";
+			usesTabs = 0;
+		};
+		A4E9F2B0EC60C2C2D5A9F88B = {
+			fileRef = E3D818AA71102005019ED4DC;
+			isa = PBXBuildFile;
+		};
+		A506FA730CFBF764446C76E5 = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_lib;
+			};
+			isa = XCBuildConfiguration;
+			name = Release;
+		};
+		A5B36981F764FE399227E1BC = {
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			dependencyFile = "$(DERIVED_FILE_DIR)/deps.d";
+			files = (
+			);
+			inputFileListPaths = (
+				"$(SRCROOT)/in.xcfilelist",
+			);
+			inputPaths = (
+				"$(SRCROOT)/in.txt",
+			);
+			isa = PBXShellScriptBuildPhase;
+			name = "Script Full";
+			outputFileListPaths = (
+				"$(SRCROOT)/out.xcfilelist",
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/out.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+			shellPath = /bin/zsh;
+			shellScript = "echo \"full\"\nexit 0\n";
+			showEnvVarsInLog = 0;
+		};
+		A5BC47C3D24525A046ABE56F = {
+			buildArgumentsString = "$(ACTION) -j8 \"quoted arg\"";
+			buildConfigurationList = 26F582C9B5FF5B6A2E639301;
+			buildPhases = (
+			);
+			buildToolPath = /usr/bin/make;
+			buildWorkingDirectory = "$(SRCROOT)/Text";
+			dependencies = (
+			);
+			isa = PBXLegacyTarget;
+			name = ProbeLegacy;
+			passBuildSettingsInEnvironment = 1;
+			productName = ProbeLegacy;
+		};
+		A6626A64088280A750AB11A6 = {
+			fileEncoding = 5;
+			isa = PBXFileReference;
+			lastKnownFileType = text;
+			path = latin1.txt;
+			sourceTree = "<group>";
+		};
+		A706EBBC9FA42A6EB26629E0 = {
+			buildSettings = {
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			isa = XCBuildConfiguration;
+			name = Release;
+		};
+		A7129C06471DEBD122EE8830 = {
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			isa = PBXShellScriptBuildPhase;
+			name = "Agg Script";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "echo agg";
+		};
+		AABFCC5E5C3C74BE3B1E9635 = {
+			containerPortal = 46F86FAA6BBF9AC94A7E4595;
+			isa = PBXContainerItemProxy;
+			proxyType = 1;
+			remoteGlobalIDString = 74980A36B41BFF338FAE1CAD;
+			remoteInfo = ProbeKit;
+		};
+		ABC07A81FFC45A3AACF1594F = {
+			baseConfigurationReference = 087530BA9BAC53CC2D689BF3;
+			buildSettings = {
+				EMPTY_SETTING = "";
+				"GCC_PREPROCESSOR_DEFINITIONS[config=Debug]" = "DEBUG=1";
+				INFOPLIST_KEY_CFBundleDisplayName = Probe;
+				MULTI = "a b  c";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				"OTHER_LDFLAGS[sdk=iphoneos*][arch=arm64]" = (
+					"$(inherited)",
+					"-framework",
+					UIKit,
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				QUOTED = "a \"quoted\" value";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_VERSION = 5.0;
+				UNICODE = "café";
+			};
+			isa = XCBuildConfiguration;
+			name = Debug;
+		};
+		ABCFC7067932E4D36A1F86E8 = {
+			fileRef = 0F3204AE86D081AA66A91A6B;
+			isa = PBXBuildFile;
+			settings = {
+				ATTRIBUTES = (
+					Public,
+				);
+			};
+		};
+		AD00464859305D79F3E3680E = {
+			isa = PBXFileReference;
+			lastKnownFileType = text;
+			name = PlainViaSourceRoot;
+			path = Text/plain.txt;
+			sourceTree = SOURCE_ROOT;
+		};
+		ADA074B18234325A49660BDE = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_legacy;
+			};
+			isa = XCBuildConfiguration;
+			name = Debug;
+		};
+		B151EFE6211B2E4C63DCC5DD = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_agg;
+			};
+			isa = XCBuildConfiguration;
+			name = Profile;
+		};
+		B2A45AEC81C7C57AB49A9B92 = {
+			fileRef = FE5BF0611A984C0A86C95016;
+			isa = PBXBuildFile;
+		};
+		B337FE5D69155F9066A705C9 = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_legacy;
+			};
+			isa = XCBuildConfiguration;
+			name = Release;
+		};
+		B4322A1E0E81C338EEA82322 = {
+			buildActionMask = 2147483647;
+			files = (
+				A4E9F2B0EC60C2C2D5A9F88B,
+			);
+			isa = PBXSourcesBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B55B5768D892B08EA681BE30 = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_tool;
+				SDKROOT = macosx;
+			};
+			isa = XCBuildConfiguration;
+			name = Release;
+		};
+		B9D75CF54C419B82D7E78CD8 = {
+			containerPortal = 46F86FAA6BBF9AC94A7E4595;
+			isa = PBXContainerItemProxy;
+			proxyType = 1;
+			remoteGlobalIDString = FDEF801E55D6DA2070708370;
+			remoteInfo = ProbeStatic;
+		};
+		BA568A2B893619BBFFAD7F22 = {
+			fileRef = C990762CCD757A573AE76318;
+			isa = PBXBuildFile;
+		};
+		BB1F3F3B66C1686E4FE9E3C5 = {
+			buildConfigurations = (
+				2C7D62E3CDBB607A65BCAAF8,
+				009C39BA2707C0B0118D22B1,
+				3DE42DD8B0909573DEFE9EED,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+			isa = XCConfigurationList;
+		};
+		BBA56A638738A6907F36F543 = {
+			isa = PBXTargetDependency;
+			name = SecondLib;
+			targetProxy = 5F2480A80462FB958BD33736;
+		};
+		BC3AD7F72A78455F70B9A067 = {
+			fileRef = AD00464859305D79F3E3680E;
+			isa = PBXBuildFile;
+		};
+		BD1E252095471C820A5DFE84 = {
+			containerPortal = 46F86FAA6BBF9AC94A7E4595;
+			isa = PBXContainerItemProxy;
+			proxyType = 1;
+			remoteGlobalIDString = 6BA8447FD24E4B7681060712;
+			remoteInfo = probetool;
+		};
+		BD5DAD5D3438211C2BD3DC9F = {
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 15;
+			files = (
+			);
+			isa = PBXCopyFilesBuildPhase;
+			name = "Copy spec 15 #8";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C27A24F6D5D65448B9406FB0 = {
+			fileRef = 138004E15A235CFBA892850F;
+			isa = PBXBuildFile;
+		};
+		C308CEFA1E86125765FCF2F7 = {
+			buildActionMask = 2147483647;
+			files = (
+			);
+			isa = PBXResourcesBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3144C45B54CC3E4E7C9E521 = {
+			fileRef = A1D83ADECDBE57AE9E5ED298;
+			isa = PBXBuildFile;
+		};
+		C38FF43E52A717D109C92B2C = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = main.swift;
+			sourceTree = "<group>";
+		};
+		C483F6CE851C9ECD9FB835FF = {
+			isa = XCSwiftPackageProductDependency;
+			package = 351325A660B25474456AF5C9;
+			productName = LocalPkgLib;
+		};
+		C58E903E5580797C1043F1CF = {
+			fileRef = 6A4B933B034AD6522AB3B61E;
+			isa = PBXBuildFile;
+		};
+		C5E56CF949C422D8CD612BCA = {
+			buildConfigurations = (
+				574F73ED705F197A59431155,
+				A506FA730CFBF764446C76E5,
+				3C3AA045D7021152DD5D92DD,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+			isa = XCConfigurationList;
+		};
+		C6657FE324C66E6B3C37A040 = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_legacy;
+			};
+			isa = XCBuildConfiguration;
+			name = Profile;
+		};
+		C736AB164DC4AB473718C74D = {
+			explicitFileType = text.script.sh;
+			includeInIndex = 0;
+			indentWidth = 8;
+			isa = PBXFileReference;
+			lineEnding = 0;
+			path = plain.txt;
+			sourceTree = "<group>";
+			tabWidth = 8;
+			usesTabs = 1;
+			wrapsLines = 1;
+			xcLanguageSpecificationIdentifier = xcode.lang.sh;
+		};
+		C84BC973B831DC962CEE47DB = {
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_test;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ProbeApp.app/ProbeApp";
+			};
+			isa = XCBuildConfiguration;
+			name = Debug;
+		};
+		C990762CCD757A573AE76318 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.rez;
+			path = Lib.r;
+			sourceTree = "<group>";
+		};
+		CC73C6DEC865304DD4E5199D = {
+			buildActionMask = 2147483647;
+			dstPath = wrapper/sub;
+			dstSubfolderSpec = 1;
+			files = (
+			);
+			isa = PBXCopyFilesBuildPhase;
+			name = "Copy spec 1 #1";
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+		CCDE8DCE4722D5DB59EDA6CE = {
+			children = (
+				D0D4336736768F2ACC4A52E6,
+				087530BA9BAC53CC2D689BF3,
+			);
+			isa = PBXGroup;
+			path = Config;
+			sourceTree = "<group>";
+		};
+		CD6460F15EEE09E593BFBCEF = {
+			buildActionMask = 2147483647;
+			files = (
+				70E4FCE658D83A44EFB8D24A,
+			);
+			isa = PBXFrameworksBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE7991750962C453B164E97D = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = Project.h;
+			sourceTree = "<group>";
+		};
+		D0D4336736768F2ACC4A52E6 = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.xcconfig;
+			path = Base.xcconfig;
+			sourceTree = "<group>";
+		};
+		D61BDBF2AB55867D8871ECEC = {
+			isa = PBXFileReference;
+			lastKnownFileType = wrapper.xcdatamodel;
+			path = Model.xcdatamodel;
+			sourceTree = "<group>";
+		};
+		D792286221ADD22EBABBA882 = {
+			buildActionMask = 2147483647;
+			files = (
+			);
+			isa = PBXFrameworksBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D8423EFE2EAEBE480373ADFE = {
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_test;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ProbeApp.app/ProbeApp";
+			};
+			isa = XCBuildConfiguration;
+			name = Release;
+		};
+		D848F4E837AB13DE051EC1CD = {
+			buildActionMask = 2147483647;
+			files = (
+				0DAEA3916B994F7A9DF98412,
+			);
+			isa = PBXSourcesBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D86DDC53621ED0332D7395CE = {
+			children = (
+				00639C71BA1DBDE84DB84B3E,
+			);
+			isa = PBXGroup;
+			name = Products;
+			sourceTree = "<group>";
+		};
+		DBA7D381269FDCD75C35C004 = {
+			additionalCompilerFlagsByRelativePath = {
+				flags.m = "-DSYNCFLAG -w";
+			};
+			attributesByRelativePath = {
+				Sub/c.swift = (
+					no_codegen,
+				);
+			};
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				b_excluded.swift,
+				Info.plist,
+				pub.h,
+				priv.h,
+				proj.h,
+			);
+			platformFiltersByRelativePath = {
+				Sub/Deeper/d.swift = (
+					ios,
+					maccatalyst,
+				);
+			};
+			target = 778130C49534A4D32801D13D;
+		};
+		DBBED1FE5BBA24405E5A4CE4 = {
+			fileRef = 082BB71B01D569F00CF3AFC9;
+			isa = PBXBuildFile;
+		};
+		DCA23309746FE2040BA2E2A2 = {
+			isa = PBXTargetDependency;
+			platformFilter = ios;
+			target = 74980A36B41BFF338FAE1CAD;
+			targetProxy = AABFCC5E5C3C74BE3B1E9635;
+		};
+		DCC603500495D5C3E100DF04 = {
+			fileRef = 3E565BD0AA0604C8240B54F0;
+			isa = PBXBuildFile;
+			platformFilter = ios;
+		};
+		DFDAC858169478C36793E52A = {
+			fileRef = C736AB164DC4AB473718C74D;
+			isa = PBXBuildFile;
+		};
+		E33CC831B2ADEDFDC63B5DDC = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = Private.h;
+			sourceTree = "<group>";
+		};
+		E3D818AA71102005019ED4DC = {
+			fileEncoding = 4;
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.objc;
+			path = util.m;
+			sourceTree = "<group>";
+		};
+		E59B6EB76C2459E1888CA873 = {
+			children = (
+				C38FF43E52A717D109C92B2C,
+				E3D818AA71102005019ED4DC,
+				4494A86B923A8CA068174B85,
+				48C19ABAD83E3F3B0E25DF74,
+				0F3204AE86D081AA66A91A6B,
+				E33CC831B2ADEDFDC63B5DDC,
+				CE7991750962C453B164E97D,
+				C990762CCD757A573AE76318,
+				388E0E871DFC3F0325C1FD0A,
+			);
+			isa = PBXGroup;
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		E8FA83BF5015DB299AA3576C = {
+			children = (
+				1DCB85D7E8A3EF84100D3B07,
+				092F7AA3BC29C2DB3631BE9C,
+			);
+			isa = PBXVariantGroup;
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		E8FCE237C3D2C297D1CD6D9D = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				pub.h,
+				priv.h,
+				proj.h,
+				a.swift,
+			);
+			privateHeaders = (
+				priv.h,
+			);
+			publicHeaders = (
+				pub.h,
+			);
+			target = 74980A36B41BFF338FAE1CAD;
+		};
+		EAE2550A61FD4C56614A5BC2 = {
+			children = (
+				94DB3931CB91FB616D6E6B9A,
+				6BE65DB27B642915B18FD576,
+				FE5BF0611A984C0A86C95016,
+			);
+			isa = PBXGroup;
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		EB2499A08010AD1D5949C334 = {
+			fileRef = E3D818AA71102005019ED4DC;
+			isa = PBXBuildFile;
+			settings = {
+				COMPILER_FLAGS = "-DFOO=1 -w \"-DSPACE=a b\"";
+			};
+		};
+		EBA339814C2A3DF3B5DBF286 = {
+			attributesByRelativePath = {
+				copied.txt = (
+					CodeSignOnCopy,
+				);
+			};
+			buildPhase = 8C7BA3652D2ED7BB06548C0B;
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			membershipExceptions = (
+				copied.txt,
+			);
+		};
+		EC0F9ADA53F3553B2AADBAC3 = {
+			buildActionMask = 2147483647;
+			dstSubfolderSpec = 12;
+			files = (
+			);
+			isa = PBXCopyFilesBuildPhase;
+			name = "Copy spec 12 #6";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ED54306399B2941A50D828CB = {
+			isa = PBXFileReference;
+			lastKnownFileType = file.storyboard;
+			name = Base;
+			path = Base.lproj/Main.storyboard;
+			sourceTree = "<group>";
+		};
+		EF6AACBF3C730DDC5415110F = {
+			isa = PBXBuildFile;
+			productRef = C483F6CE851C9ECD9FB835FF;
+		};
+		F0F96857DC5EE2604084C395 = {
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				68C4C852D372BE2DAE2B866C,
+			);
+			isa = PBXCopyFilesBuildPhase;
+			name = "Copy spec 10 #4";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F3ACDDC6893B746789F13DCB = {
+			fileRef = 48C19ABAD83E3F3B0E25DF74;
+			isa = PBXBuildFile;
+			platformFilters = (
+				macos,
+				maccatalyst,
+				tvos,
+				watchos,
+				xros,
+				driverkit,
+			);
+		};
+		F7B39E6D5BE7162FB6F97AF4 = {
+			buildActionMask = 2147483647;
+			files = (
+			);
+			isa = PBXResourcesBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F87B499CBD0C78D720421EF1 = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_agg;
+			};
+			isa = XCBuildConfiguration;
+			name = Debug;
+		};
+		FB46F58F8184F1806BF249F6 = {
+			children = (
+				8DB90CFEBD2C1C06E9EA54A6,
+				23D4D8A1A691152DF04FD401,
+				082BB71B01D569F00CF3AFC9,
+				8476B7C36E2F64534C74EBA9,
+				3A1CCCE5F21673A584944731,
+				9AAF297A6E0B1BBFD42368A6,
+			);
+			isa = PBXGroup;
+			name = Products;
+			sourceTree = "<group>";
+		};
+		FDEF801E55D6DA2070708370 = {
+			buildConfigurationList = C5E56CF949C422D8CD612BCA;
+			buildPhases = (
+				D848F4E837AB13DE051EC1CD,
+				D792286221ADD22EBABBA882,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			isa = PBXNativeTarget;
+			name = ProbeStatic;
+			productName = ProbeStatic;
+			productReference = 082BB71B01D569F00CF3AFC9;
+			productType = "com.apple.product-type.library.static";
+		};
+		FE120DF06C0A0219E19D9932 = {
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = ZZZZZZZZZZ;
+				INFOPLIST_FILE = Synced/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.probe.t_app;
+			};
+			isa = XCBuildConfiguration;
+			name = Profile;
+		};
+		FE5BF0611A984C0A86C95016 = {
+			isa = PBXFileReference;
+			lastKnownFileType = archive.ar;
+			path = libExternal.a;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+	};
+	rootObject = 46F86FAA6BBF9AC94A7E4595;
+}

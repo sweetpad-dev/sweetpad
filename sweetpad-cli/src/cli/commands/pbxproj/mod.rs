@@ -68,7 +68,7 @@ pub enum Action {
         #[command(subcommand)]
         action: group::Action,
     },
-    /// The project as Swift Build's project interchange format (PIF).
+    /// The workspace or project as Swift Build's project interchange format (PIF).
     #[command(hide = true)]
     Pif(pif::PifArgs),
 }

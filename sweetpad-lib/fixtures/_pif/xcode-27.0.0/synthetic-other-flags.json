@@ -1,0 +1,339 @@
+[
+ {
+  "contents": {
+   "guid": "3025e1f5d53b9de853e78edfbd606869",
+   "name": "OtherFlags",
+   "path": "$(CORPUS)/_synthetic-other-flags/OtherFlags.xcodeproj/project.xcworkspace",
+   "projects": [
+    "PROJECT@v11_mod=8803b22ea84d81661362576d8e142a24_hash=341af33fbc65bbe36b16be1ce802ad5cplugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1"
+   ]
+  },
+  "signature": "WORKSPACE@v11_hash=08e9cef61f839059a08d9a6e0dfb9d62_subobjects=242b9928ffa9a7625020230f68715c5e",
+  "type": "workspace"
+ },
+ {
+  "contents": {
+   "appPreferencesBuildSettings": {},
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ALWAYS_SEARCH_USER_PATHS": "NO",
+      "CLANG_ANALYZER_NONNULL": "YES",
+      "CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION": "YES_AGGRESSIVE",
+      "CLANG_CXX_LANGUAGE_STANDARD": "gnu++14",
+      "CLANG_CXX_LIBRARY": "libc++",
+      "CLANG_ENABLE_MODULES": "YES",
+      "CLANG_ENABLE_OBJC_ARC": "YES",
+      "CLANG_ENABLE_OBJC_WEAK": "YES",
+      "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+      "CLANG_WARN_BOOL_CONVERSION": "YES",
+      "CLANG_WARN_COMMA": "YES",
+      "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+      "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+      "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+      "CLANG_WARN_DOCUMENTATION_COMMENTS": "YES",
+      "CLANG_WARN_EMPTY_BODY": "YES",
+      "CLANG_WARN_ENUM_CONVERSION": "YES",
+      "CLANG_WARN_INFINITE_RECURSION": "YES",
+      "CLANG_WARN_INT_CONVERSION": "YES",
+      "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+      "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+      "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+      "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+      "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+      "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+      "CLANG_WARN_UNGUARDED_AVAILABILITY": "YES_AGGRESSIVE",
+      "CLANG_WARN_UNREACHABLE_CODE": "YES",
+      "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+      "COPY_PHASE_STRIP": "NO",
+      "DEBUG_INFORMATION_FORMAT": "dwarf",
+      "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+      "ENABLE_TESTABILITY": "YES",
+      "GCC_C_LANGUAGE_STANDARD": "gnu11",
+      "GCC_DYNAMIC_NO_PIC": "NO",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "GCC_OPTIMIZATION_LEVEL": "0",
+      "GCC_PREPROCESSOR_DEFINITIONS": "$(inherited) DEBUG=1",
+      "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+      "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+      "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+      "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+      "GCC_WARN_UNUSED_FUNCTION": "YES",
+      "GCC_WARN_UNUSED_VARIABLE": "YES",
+      "MACOSX_DEPLOYMENT_TARGET": "12.0",
+      "MTL_ENABLE_DEBUG_INFO": "INCLUDE_SOURCE",
+      "MTL_FAST_MATH": "YES",
+      "ONLY_ACTIVE_ARCH": "YES",
+      "OTHER_CFLAGS": "-DSWEETPAD_OTHER_C=1 \"-DSWEETPAD_SPACED=a b\" -fno-strict-aliasing",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "SDKROOT": "macosx",
+      "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "DEBUG",
+      "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
+      "SWIFT_VERSION": "5.0",
+      "WARNING_CFLAGS": "-Wno-unused-parameter -Wextra-semi"
+     },
+     "guid": "341af33fbc65bbe36b16be1ce802ad5ce6d907e03910cf0afff8d84d7f2e6015",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ALWAYS_SEARCH_USER_PATHS": "NO",
+      "CLANG_ANALYZER_NONNULL": "YES",
+      "CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION": "YES_AGGRESSIVE",
+      "CLANG_CXX_LANGUAGE_STANDARD": "gnu++14",
+      "CLANG_CXX_LIBRARY": "libc++",
+      "CLANG_ENABLE_MODULES": "YES",
+      "CLANG_ENABLE_OBJC_ARC": "YES",
+      "CLANG_ENABLE_OBJC_WEAK": "YES",
+      "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+      "CLANG_WARN_BOOL_CONVERSION": "YES",
+      "CLANG_WARN_COMMA": "YES",
+      "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+      "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+      "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+      "CLANG_WARN_DOCUMENTATION_COMMENTS": "YES",
+      "CLANG_WARN_EMPTY_BODY": "YES",
+      "CLANG_WARN_ENUM_CONVERSION": "YES",
+      "CLANG_WARN_INFINITE_RECURSION": "YES",
+      "CLANG_WARN_INT_CONVERSION": "YES",
+      "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+      "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+      "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+      "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+      "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+      "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+      "CLANG_WARN_UNGUARDED_AVAILABILITY": "YES_AGGRESSIVE",
+      "CLANG_WARN_UNREACHABLE_CODE": "YES",
+      "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+      "COPY_PHASE_STRIP": "NO",
+      "DEBUG_INFORMATION_FORMAT": "dwarf-with-dsym",
+      "ENABLE_NS_ASSERTIONS": "NO",
+      "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+      "GCC_C_LANGUAGE_STANDARD": "gnu11",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+      "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+      "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+      "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+      "GCC_WARN_UNUSED_FUNCTION": "YES",
+      "GCC_WARN_UNUSED_VARIABLE": "YES",
+      "MACOSX_DEPLOYMENT_TARGET": "12.0",
+      "MTL_ENABLE_DEBUG_INFO": "NO",
+      "MTL_FAST_MATH": "YES",
+      "OTHER_CFLAGS": "-DSWEETPAD_OTHER_C=1 \"-DSWEETPAD_SPACED=a b\" -fno-strict-aliasing",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "SDKROOT": "macosx",
+      "SWIFT_COMPILATION_MODE": "wholemodule",
+      "SWIFT_OPTIMIZATION_LEVEL": "-O",
+      "SWIFT_VERSION": "5.0",
+      "WARNING_CFLAGS": "-Wno-unused-parameter -Wextra-semi"
+     },
+     "guid": "341af33fbc65bbe36b16be1ce802ad5ccd9872758e59663e768508a4e5ccfaca",
+     "name": "Release"
+    }
+   ],
+   "classPrefix": "",
+   "defaultConfigurationName": "Debug",
+   "developmentRegion": "en",
+   "groupTree": {
+    "children": [
+     {
+      "children": [
+       {
+        "fileType": "sourcecode.cpp.cpp",
+        "guid": "341af33fbc65bbe36b16be1ce802ad5c689fe4899c128ee477a3d57f21ea7c25",
+        "path": "CxxFlags.cpp",
+        "sourceTree": "<group>",
+        "type": "file"
+       }
+      ],
+      "guid": "341af33fbc65bbe36b16be1ce802ad5c34cb87a073e721319e35535003200a21",
+      "name": "Cxx",
+      "path": "Cxx",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "children": [
+       {
+        "fileType": "sourcecode.c.objc",
+        "guid": "341af33fbc65bbe36b16be1ce802ad5c0b36ffdcfbbf18030141aeeb7d9c257b",
+        "path": "ObjCFlags.m",
+        "sourceTree": "<group>",
+        "type": "file"
+       }
+      ],
+      "guid": "341af33fbc65bbe36b16be1ce802ad5c0551acb5a448d61bd7b810baabdd1fc5",
+      "name": "ObjC",
+      "path": "ObjC",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "guid": "341af33fbc65bbe36b16be1ce802ad5cc7df0708ff82d6b6248358142141e6ad",
+      "name": "Products",
+      "path": "",
+      "sourceTree": "<group>",
+      "type": "group"
+     }
+    ],
+    "guid": "341af33fbc65bbe36b16be1ce802ad5ca9d2001f08a3c9f186cf1786cd60fcf0",
+    "name": "OtherFlags",
+    "path": "",
+    "sourceTree": "<group>",
+    "type": "group"
+   },
+   "guid": "341af33fbc65bbe36b16be1ce802ad5c",
+   "knownRegions": [
+    "Base",
+    "en"
+   ],
+   "path": "$(CORPUS)/_synthetic-other-flags/OtherFlags.xcodeproj",
+   "projectDirectory": "$(CORPUS)/_synthetic-other-flags",
+   "targets": [
+    "TARGET@v11_hash=bb7bdadc5516cdfbb076a9d94e887520",
+    "TARGET@v11_hash=24eaf46544feea6d0795a569ecae37ae"
+   ]
+  },
+  "signature": "PROJECT@v11_mod=8803b22ea84d81661362576d8e142a24_hash=341af33fbc65bbe36b16be1ce802ad5cplugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1",
+  "type": "project"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "COMBINE_HIDPI_IMAGES": "YES",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/../Frameworks",
+      "PRODUCT_BUNDLE_IDENTIFIER": "dev.sweetpad.fixture.ObjCFlags",
+      "SDKROOT": "macosx",
+      "SKIP_INSTALL": "YES"
+     },
+     "guid": "341af33fbc65bbe36b16be1ce802ad5cb4873ad48b231c0f6794ca8ebbac3c5e",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "COMBINE_HIDPI_IMAGES": "YES",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/../Frameworks",
+      "PRODUCT_BUNDLE_IDENTIFIER": "dev.sweetpad.fixture.ObjCFlags",
+      "SDKROOT": "macosx",
+      "SKIP_INSTALL": "YES"
+     },
+     "guid": "341af33fbc65bbe36b16be1ce802ad5c204857298ceca1724ecf011ddbbe4e47",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "341af33fbc65bbe36b16be1ce802ad5c0b36ffdcfbbf18030141aeeb7d9c257b",
+       "guid": "341af33fbc65bbe36b16be1ce802ad5cb4e4e5e8d4e99d649344b637903a75f9"
+      }
+     ],
+     "guid": "341af33fbc65bbe36b16be1ce802ad5cb03cc0f3ce3c615243dc2901d8002d85",
+     "type": "com.apple.buildphase.sources"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [],
+   "guid": "341af33fbc65bbe36b16be1ce802ad5ceb502b8a7f5d8ae6381872cbe5108c38",
+   "name": "ObjCFlags",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Objective-C",
+   "productReference": {
+    "guid": "341af33fbc65bbe36b16be1ce802ad5cf6da690b5e197b791c17d577ad5fc1d3",
+    "name": "libObjCFlags.a",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.library.static",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "",
+     "configurationName": "Debug",
+     "provisioningStyle": 1
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "",
+     "configurationName": "Release",
+     "provisioningStyle": 1
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=bb7bdadc5516cdfbb076a9d94e887520",
+  "type": "target"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "COMBINE_HIDPI_IMAGES": "YES",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/../Frameworks",
+      "OTHER_CPLUSPLUSFLAGS": "$(OTHER_CFLAGS) -DSWEETPAD_OTHER_CXX=1",
+      "PRODUCT_BUNDLE_IDENTIFIER": "dev.sweetpad.fixture.CxxFlags",
+      "SDKROOT": "macosx",
+      "SKIP_INSTALL": "YES"
+     },
+     "guid": "341af33fbc65bbe36b16be1ce802ad5c0016c960b541da4255f8f8772ba3d515",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "COMBINE_HIDPI_IMAGES": "YES",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/../Frameworks",
+      "OTHER_CPLUSPLUSFLAGS": "$(OTHER_CFLAGS) -DSWEETPAD_OTHER_CXX=1",
+      "PRODUCT_BUNDLE_IDENTIFIER": "dev.sweetpad.fixture.CxxFlags",
+      "SDKROOT": "macosx",
+      "SKIP_INSTALL": "YES"
+     },
+     "guid": "341af33fbc65bbe36b16be1ce802ad5c1a067f0592e4d855e120797681c901d9",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "341af33fbc65bbe36b16be1ce802ad5c689fe4899c128ee477a3d57f21ea7c25",
+       "guid": "341af33fbc65bbe36b16be1ce802ad5c7cf7a3f2f880225c55573415b7f1b9bb"
+      }
+     ],
+     "guid": "341af33fbc65bbe36b16be1ce802ad5c173b8133d2c4e5b59ed5b37490f1ff74",
+     "type": "com.apple.buildphase.sources"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [],
+   "guid": "341af33fbc65bbe36b16be1ce802ad5c89b0d6450dde471f0d2f5d9d0e6554a9",
+   "name": "CxxFlags",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.C-Plus-Plus",
+   "productReference": {
+    "guid": "341af33fbc65bbe36b16be1ce802ad5cbb9ed7332910ae65180305872a7fefaf",
+    "name": "libCxxFlags.a",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.library.static",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "",
+     "configurationName": "Debug",
+     "provisioningStyle": 1
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "",
+     "configurationName": "Release",
+     "provisioningStyle": 1
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=24eaf46544feea6d0795a569ecae37ae",
+  "type": "target"
+ }
+]

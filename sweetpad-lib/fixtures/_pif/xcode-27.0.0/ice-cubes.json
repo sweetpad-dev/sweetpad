@@ -1,0 +1,2837 @@
+[
+ {
+  "contents": {
+   "guid": "ad38f8f2b0a2f291d9036e6576038777",
+   "name": "IceCubesApp",
+   "path": "$(CORPUS)/ice-cubes/IceCubesApp.xcodeproj/project.xcworkspace",
+   "projects": [
+    "PROJECT@v11_mod=15b1b4813c87eab266550b5f8f171572_hash=0bec147ec38eb387bcc21016dc53d315plugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1"
+   ]
+  },
+  "signature": "WORKSPACE@v11_hash=05301e12ba785e00f353a4be9f30e910_subobjects=1072bdfbdd207fc67c0bcef4bfc958e6",
+  "type": "workspace"
+ },
+ {
+  "contents": {
+   "appPreferencesBuildSettings": {},
+   "buildConfigurations": [
+    {
+     "baseConfigurationFileReference": "0bec147ec38eb387bcc21016dc53d31521274c0ea806861f22a054b85411ff47",
+     "buildSettings": {
+      "ALWAYS_SEARCH_USER_PATHS": "NO",
+      "ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS": "YES",
+      "CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED": "YES",
+      "CLANG_ANALYZER_NONNULL": "YES",
+      "CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION": "YES_AGGRESSIVE",
+      "CLANG_CXX_LANGUAGE_STANDARD": "gnu++20",
+      "CLANG_ENABLE_MODULES": "YES",
+      "CLANG_ENABLE_OBJC_ARC": "YES",
+      "CLANG_ENABLE_OBJC_WEAK": "YES",
+      "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+      "CLANG_WARN_BOOL_CONVERSION": "YES",
+      "CLANG_WARN_COMMA": "YES",
+      "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+      "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+      "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+      "CLANG_WARN_DOCUMENTATION_COMMENTS": "YES",
+      "CLANG_WARN_EMPTY_BODY": "YES",
+      "CLANG_WARN_ENUM_CONVERSION": "YES",
+      "CLANG_WARN_INFINITE_RECURSION": "YES",
+      "CLANG_WARN_INT_CONVERSION": "YES",
+      "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+      "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+      "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+      "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+      "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+      "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+      "CLANG_WARN_UNGUARDED_AVAILABILITY": "YES_AGGRESSIVE",
+      "CLANG_WARN_UNREACHABLE_CODE": "YES",
+      "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+      "COPY_PHASE_STRIP": "NO",
+      "DEAD_CODE_STRIPPING": "YES",
+      "DEBUG_INFORMATION_FORMAT": "dwarf",
+      "DEVELOPMENT_TEAM": "Z6P74P6T99",
+      "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+      "ENABLE_TESTABILITY": "YES",
+      "ENABLE_USER_SCRIPT_SANDBOXING": "YES",
+      "GCC_C_LANGUAGE_STANDARD": "gnu11",
+      "GCC_DYNAMIC_NO_PIC": "NO",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "GCC_OPTIMIZATION_LEVEL": "0",
+      "GCC_PREPROCESSOR_DEFINITIONS": "DEBUG=1 $(inherited)",
+      "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+      "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+      "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+      "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+      "GCC_WARN_UNUSED_FUNCTION": "YES",
+      "GCC_WARN_UNUSED_VARIABLE": "YES",
+      "LOCALIZATION_PREFERS_STRING_CATALOGS": "YES",
+      "MTL_ENABLE_DEBUG_INFO": "INCLUDE_SOURCE",
+      "MTL_FAST_MATH": "YES",
+      "ONLY_ACTIVE_ARCH": "YES",
+      "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "DEBUG",
+      "SWIFT_EMIT_LOC_STRINGS": "YES",
+      "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
+      "SWIFT_STRICT_CONCURRENCY": "complete",
+      "SWIFT_VERSION": ""
+     },
+     "guid": "0bec147ec38eb387bcc21016dc53d315320cda0f32f6122678b1db85cfdb634c",
+     "name": "Debug"
+    },
+    {
+     "baseConfigurationFileReference": "0bec147ec38eb387bcc21016dc53d3150f204159cb6fbdf6a8eceec3581fedc1",
+     "buildSettings": {
+      "ALWAYS_SEARCH_USER_PATHS": "NO",
+      "ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS": "YES",
+      "CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED": "YES",
+      "CLANG_ANALYZER_NONNULL": "YES",
+      "CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION": "YES_AGGRESSIVE",
+      "CLANG_CXX_LANGUAGE_STANDARD": "gnu++20",
+      "CLANG_ENABLE_MODULES": "YES",
+      "CLANG_ENABLE_OBJC_ARC": "YES",
+      "CLANG_ENABLE_OBJC_WEAK": "YES",
+      "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+      "CLANG_WARN_BOOL_CONVERSION": "YES",
+      "CLANG_WARN_COMMA": "YES",
+      "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+      "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+      "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+      "CLANG_WARN_DOCUMENTATION_COMMENTS": "YES",
+      "CLANG_WARN_EMPTY_BODY": "YES",
+      "CLANG_WARN_ENUM_CONVERSION": "YES",
+      "CLANG_WARN_INFINITE_RECURSION": "YES",
+      "CLANG_WARN_INT_CONVERSION": "YES",
+      "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+      "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+      "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+      "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+      "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+      "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+      "CLANG_WARN_UNGUARDED_AVAILABILITY": "YES_AGGRESSIVE",
+      "CLANG_WARN_UNREACHABLE_CODE": "YES",
+      "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+      "COPY_PHASE_STRIP": "NO",
+      "DEAD_CODE_STRIPPING": "YES",
+      "DEBUG_INFORMATION_FORMAT": "dwarf-with-dsym",
+      "DEVELOPMENT_TEAM": "Z6P74P6T99",
+      "ENABLE_NS_ASSERTIONS": "NO",
+      "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+      "ENABLE_USER_SCRIPT_SANDBOXING": "YES",
+      "GCC_C_LANGUAGE_STANDARD": "gnu11",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+      "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+      "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+      "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+      "GCC_WARN_UNUSED_FUNCTION": "YES",
+      "GCC_WARN_UNUSED_VARIABLE": "YES",
+      "LOCALIZATION_PREFERS_STRING_CATALOGS": "YES",
+      "MTL_ENABLE_DEBUG_INFO": "NO",
+      "MTL_FAST_MATH": "YES",
+      "SWIFT_COMPILATION_MODE": "wholemodule",
+      "SWIFT_EMIT_LOC_STRINGS": "YES",
+      "SWIFT_OPTIMIZATION_LEVEL": "-O",
+      "SWIFT_STRICT_CONCURRENCY": "complete",
+      "SWIFT_VERSION": ""
+     },
+     "guid": "0bec147ec38eb387bcc21016dc53d3153b2624c7d3bd00383d6eaf61ee5bc257",
+     "name": "Release"
+    }
+   ],
+   "classPrefix": "",
+   "defaultConfigurationName": "Release",
+   "developmentRegion": "en",
+   "groupTree": {
+    "children": [
+     {
+      "children": [
+       {
+        "fileType": "folder.iconcomposer.icon",
+        "guid": "OWIqCYkz7O+LHEe/JUiViZT38vGhJ3rJ61RpvzOeylI=",
+        "path": "AppIconAlternate1.icon",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "folder.iconcomposer.icon",
+        "guid": "9pIdPxK3WtVzuZyMccqjPJ9mBEslw1Ht6NbhlA0A5a8=",
+        "path": "AppIconAlternate2.icon",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "folder.iconcomposer.icon",
+        "guid": "AWOBLmWdnKYBZlkHPuOR5NvZCf1fx3kwFn3/Q0YTbg0=",
+        "path": "AppIconAlternate46.icon",
+        "sourceTree": "<group>",
+        "type": "file"
+       }
+      ],
+      "guid": "0bec147ec38eb387bcc21016dc53d315a5888e70353021c514fb651088a7c342",
+      "name": "AlternateIcons",
+      "path": "AlternateIcons",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "fileType": "folder.iconcomposer.icon",
+      "guid": "0bec147ec38eb387bcc21016dc53d315993ba64b34aa61f2fab761d944d7fa41",
+      "path": "AppIcon.icon",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "text.xcconfig",
+      "guid": "0bec147ec38eb387bcc21016dc53d31521274c0ea806861f22a054b85411ff47",
+      "path": "IceCubesApp.xcconfig",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "text.xcconfig",
+      "guid": "0bec147ec38eb387bcc21016dc53d3150f204159cb6fbdf6a8eceec3581fedc1",
+      "path": "IceCubesApp-release.xcconfig",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "children": [
+       {
+        "children": [
+         {
+          "children": [
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "gEhg8Lnzk3j9bTRUW8QqKS1uwkw8UXibnFVrBTDP2Mk=",
+            "path": "AppView.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "BIXXHwhfnMsJ9awEpvwtvghLcIlK4e5wiWvB6Nq3U8U=",
+            "path": "IceCubesApp.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "SpIZ2mSzu7vMXGfBM2NR+Edu2j+5hT9fElNd8druabM=",
+            "path": "IceCubesApp+Menu.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "h9906P82YuV0+ECMuEfqb6tGDa9TUhVDoYm/LTo3zWg=",
+            "path": "IceCubesApp+Scene.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "Y/iX2BcSJgOS2BucyOlaVoiSDtct7wLcZG5773hrA1U=",
+          "name": "Main",
+          "path": "Main",
+          "sourceTree": "<group>",
+          "type": "group"
+         },
+         {
+          "children": [
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "pM9fSMnlVsXig6xcvmcZt6F8QYNDgHgxQxihKGpJtPo=",
+            "path": "ReportView.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "/kH+30mdGBVffr8Xnby3I7SRQm/bHnTuFWfjWbr9y/0=",
+          "name": "Report",
+          "path": "Report",
+          "sourceTree": "<group>",
+          "type": "group"
+         },
+         {
+          "children": [
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "SvJnref7h+deiWmjOIEIsqwTDYVjmBFYq+KlWxH+LgY=",
+            "path": "AppRegistry.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "Ns2+bOAIwR5UWt1y9JQ9QJNLwkjybGyoryhMZJthD3o=",
+            "path": "SafariRouter.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "4g33r7fqk1zaVFwtaSr9aQjHjM0zF01fr7ow51ttDhk=",
+          "name": "Router",
+          "path": "Router",
+          "sourceTree": "<group>",
+          "type": "group"
+         },
+         {
+          "children": [
+           {
+            "children": [
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "Y6MOv7QUfXQ4pX0CXeC7iQ9J7/l9+QFKO1gIu+OcWks=",
+              "path": "AboutView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "5XzF/GllhWyH6BeyidpA8R/zVies44f82BbU9BfUb4w=",
+              "path": "AccountSettingView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "MHmiaXCdnYIvdUTLkD5igvIwnQUdARq56aK17y63CsA=",
+              "path": "AddAccountsView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "GITjD8mXmfy51taxf7AStFfu8XGH4fX+T3X603I7hDA=",
+              "path": "ContentSettingsView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "zo4ZEnQOP+W4B6QFzsTWpaxRr3bl+bW+8hM5qymjKZc=",
+              "path": "DisplaySettingsView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "DKGg3cFiP2xHk/GGKP5J241N+X05wrqyLlIxFd2UDrc=",
+              "path": "HapticSettingsView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "si6kv08cNBJ9HIa13V5YCLgdr39EmD5eeZHUCDxGY0I=",
+              "path": "IconSelectorView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "0HKGQNGdVzTjWTWKQZQ4+eTxAe4l+xReJwjs0L9AyVY=",
+              "path": "InstanceInfoView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "USlRyLBoUkBcsicaDwgmcsOl5AwnjFi2oOBpgPPYDGo=",
+              "path": "PushNotificationsView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "Kd/V4PJk1/pcvcWjoYfBuqopoXkOnq9TnU8vPWGcwyw=",
+              "path": "RecenTagsSettingView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "cJ5JFudxqvEQXWlrYUFAMacfxkSIciVz/MlVb/mesw4=",
+              "path": "RemoteTimelinesSettingView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "tgQsfew2Cz7vk+y6F9V7QiWyMrLvEQb07E5Lp+26Bp0=",
+              "path": "SettingsTab.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "/HDjnrX3TktG+8WqvJOCOVKWn9y9jI+AG/xAOZwHh6M=",
+              "path": "SupportAppView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "BaYm/PGVbp48ha6yhJYzhjXEaMeqULlNCeU8uyrUN70=",
+              "path": "SwipeActionsSettingsView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "zh8V3l6D2eKnyQB2E0Q9HmVw5Op0SSCNqqYUEkHeDr4=",
+              "path": "TabbarEntriesSettingsView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "JIEsnafqepjCnARLs9OQkoNyz0zweav/jIPe2zf/PEM=",
+              "path": "TagsGroupSettingView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "VpZmNNHgI71BwH7jrCZ5hyTGZKyjiK1SGT53vhukX4M=",
+              "path": "TranslationSettingsView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "M+Fv2qQwW1j9C+Pei4Xyxg+1FY4YwLPUje4se8lEF9s=",
+              "path": "WishlistView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             }
+            ],
+            "guid": "CZyJx6yuFw8K/dTx88Fp5NHbNVhnvR+eBsLXdHTyG4M=",
+            "name": "Settings",
+            "path": "Settings",
+            "sourceTree": "<group>",
+            "type": "group"
+           },
+           {
+            "children": [
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "zFUXuL1MAo7zgCHRrkb8ZrDcO5xp7UFxmXoUvu22OGM=",
+              "path": "EditTagGroupView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             }
+            ],
+            "guid": "/mOQ8FWOtp80fnQkq+joHyRezKNP81VreC4hwnIMbTU=",
+            "name": "TagGroup",
+            "path": "TagGroup",
+            "sourceTree": "<group>",
+            "type": "group"
+           },
+           {
+            "children": [
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "uGWmQ3HAHPWXmenmGGD2FSmAZDEl3/PQ5qSaoL2U5jM=",
+              "path": "AddRemoteTimelineView.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "29yHORy0iBV9Dr/ShlQEO8iy3y70Ik+PUhBQFe5IRCo=",
+              "path": "TimelineTab.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             }
+            ],
+            "guid": "VBy8APld6gWTqV+AwMZMho6OjFyLv8ZH0i4PD0/pL7I=",
+            "name": "Timeline",
+            "path": "Timeline",
+            "sourceTree": "<group>",
+            "type": "group"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "GAFpHMZJAkZjFpBhqpXyI7la6RfgwYBv7IT8Sk8StCk=",
+            "path": "ExploreTab.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "+d0Z22Xl9KcSqx2odYmkNCmj4sbYEC0tNxw/4ODSiQk=",
+            "path": "MessagesTab.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "zzTXTUdwRTWh10+FO83izNEejdKsZ/o0mtwqQGtyr7s=",
+            "path": "NavigationSheet.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "mbjvExfF8bCRcfuQtLzrbL+qaJ/qFDlECsVK/bl41VI=",
+            "path": "NavigationTab.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "5glR+hs2APXI+hXiW/5FJoif45Hiwll+7mQBkoLT9JU=",
+            "path": "NotificationTab.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "onBqSwLNvhPl/1pfVvpLkOISiff7zaVFbkMNMysS7qo=",
+            "path": "ProfileTab.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "syavZxVBlJ3xv7ZqgWJ2eUHm6FCjq9JfxXATn3TsSJM=",
+            "path": "Tabs.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "rEOu1pZpicSyPP2avTgqwoVu+KYPK+skVM+zZzKqnow=",
+            "path": "ToolbarTab.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "fZyT9ngoaLGiM+AjbZK8UwvN0yQ6w7dqLFIfrJTC5Co=",
+          "name": "Tabs",
+          "path": "Tabs",
+          "sourceTree": "<group>",
+          "type": "group"
+         },
+         {
+          "fileType": "text.plist.entitlements",
+          "guid": "9rCNNF/gUmzDB2GFdmR+v+LPr8iWv8c3qE3gRcFoY+k=",
+          "path": "IceCubesApp.entitlements",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "text.plist.entitlements",
+          "guid": "q/HRZWYyXBAhPYrqvsdYzb/x++EvyyNmh/QnVWLeptM=",
+          "path": "IceCubesApp-release.entitlements",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "AqhrPaht7J7yAzez3Y55qfdSDnITP/PMny/D6tkahNQ=",
+        "name": "App",
+        "path": "App",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileType": "file",
+          "guid": "903ASMk22K2gNeckSHGfWcxAXobevw/pFCgw7YUBYt8=",
+          "path": "Atkinson-Hyperlegible-Regular-102.ttf",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "audio.wav",
+          "guid": "VhqOM1fON3w9Id1ra9jVsBuST+QwQijVY2LrIW+SIE8=",
+          "path": "bookmark.wav",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "audio.wav",
+          "guid": "gRJOFDSfs9455LqCnDK/JTSmiWVROD4ILSIZRArfx2Y=",
+          "path": "boost.wav",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "audio.wav",
+          "guid": "bm9bpPyl+pszOleg0BSd+uL19kbVW0XAUpRDWv1X/Z8=",
+          "path": "favorite.wav",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "file",
+          "guid": "WkVCh7RfmGY/y3tUsB/CAGQ35nXKjgV6BQg0YoPFs/Y=",
+          "path": "glass.caf",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "audio.wav",
+          "guid": "grsFeG0OtfMM369mlMmTPIt/mXvWaCJG1l2MXd7GTes=",
+          "path": "glass.wav",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "file",
+          "guid": "SKexSI/g8R7g+QxG94zlJ1Bzwnv5bPkkdmN5RB3e5F8=",
+          "path": "OpenDyslexic-Regular.otf",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "audio.wav",
+          "guid": "cWIckYXHVd8Tr1RNAl8LP1lI3mppv/a1masvnMtk4Y4=",
+          "path": "pull.wav",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "audio.wav",
+          "guid": "HBc0BYIFsbMvfBUCZcf+dms2DmgmBuXeZbrwx7C8k1k=",
+          "path": "refresh.wav",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "audio.wav",
+          "guid": "pt0iGfQ236GANFyDHcmVfHzHOdXCSgEEgBAX6D3nuFA=",
+          "path": "share.wav",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "audio.wav",
+          "guid": "8ovKHrp/be1cqU2UDkZp0i031D0LIBaemh+QQstQhc4=",
+          "path": "tabSelection.wav",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "audio.wav",
+          "guid": "S8ZgUcuTtlSSJujTvHS1cf8S1DPqXSfDldKqXlCsmPc=",
+          "path": "tootSent.wav",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "cl2wJwFavpmBK9cBMVFeZarNoB3fmynBm/I0RpVl8O4=",
+        "name": "Embeds",
+        "path": "Embeds",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "children": [
+           {
+            "fileType": "text.json.xcstrings",
+            "guid": "9XIBxpaAbfpffkdxIIvxhlpXj9pMHiTk9CIDh5IenOI=",
+            "path": "Localizable.xcstrings",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "kok6SIqfKSpR0zJz7+lYjUPjwKJkAKYcCeqUTwRv2dw=",
+          "name": "Localization",
+          "path": "Localization",
+          "sourceTree": "<group>",
+          "type": "group"
+         },
+         {
+          "fileType": "folder.assetcatalog",
+          "guid": "wa1MtJJm+ehlZDob3l6eW/y5afnQ/Q+Sa/BMkeTx+Q0=",
+          "path": "Preview Assets.xcassets",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "c8aZfrkd6/Fr0PNB+mvbe7jLA9DwX214jH4QwdUhKx8=",
+        "name": "Resources",
+        "path": "Resources",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "fileType": "folder.assetcatalog",
+        "guid": "66obOli2uRdTgMsyp9XtYkteDQ+keAjNwTXevnCOdUk=",
+        "path": "Assets.xcassets",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "text.plist.xml",
+        "guid": "EqrT4gGyftUMS9r/Q88F8wqA0dUhE+juDy4Gl0WdcZo=",
+        "path": "Info.plist",
+        "sourceTree": "<group>",
+        "type": "file"
+       }
+      ],
+      "guid": "0bec147ec38eb387bcc21016dc53d3159c0a5007d2f8fc269f0fbfe832cd262a",
+      "name": "IceCubesApp",
+      "path": "IceCubesApp",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "children": [
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "qkKwo7/dSs9Oa67bEVIbimtimhMA094gsr0q3SVfb2g=",
+        "path": "AppAccountEntity.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "i4+jNGGB0NZNz7qh+qL2zZ2F+2k/a8OJ7paZa7ODjlo=",
+        "path": "AppIntentService.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "m7QmQ+/8FeTDnp2cmKNZ3wTZ4j22bMXlQuyobeDplfg=",
+        "path": "AppShortcuts.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "UoTa/3fLm2F1GPiIvoM76S6hwIMDLMw/jB6rzJloFDc=",
+        "path": "InlinePostImageIntent.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "ijd0FzqzF4zh6fS+tWDf/TUu+iXGsNqzRsZ8++7OPwU=",
+        "path": "InlinePostIntent.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "F7Ngsd5Tnr5ssa1UN5jbwkN/Lo/GbGastaswh8c+mqQ=",
+        "path": "ListEntity.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "Am1nyctL/sXRvhBKqb7q6NxZi00PzgC8TPrEs1loAzo=",
+        "path": "PostImageIntent.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "M13IvSY3WdsMLr4Yja9jMgaSvXcVBFzQ+NeOT8wJvrg=",
+        "path": "PostIntent.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "nm0stsWWnYd4v2rAoiwGcZmsC6VN9NR4u587gJ+q6fw=",
+        "path": "TabIntent.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "kAtFwsSf5VJ54/+N19anf4rFUT39Yz8suk5abh7n0b0=",
+        "path": "TimelineFilterEntity.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       }
+      ],
+      "guid": "0bec147ec38eb387bcc21016dc53d315ffafdd8999f741d879e0c87adb178161",
+      "name": "IceCubesAppIntents",
+      "path": "IceCubesAppIntents",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "children": [
+       {
+        "fileType": "sourcecode.javascript",
+        "guid": "BknTLGwp+a5wqBQbG7SYvNArspAblWFAHJ0okuJafFI=",
+        "path": "Action.js",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "FhKql5BW7R7DGKZv2Qe9srg2fiPAiXOdQO01oeoL3I0=",
+        "path": "ActionRequestHandler.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "folder.assetcatalog",
+        "guid": "Y1Y9gAirBvB9RW7VVebIMMDflwggKIXYXh9YlzTLSlo=",
+        "path": "Assets.xcassets",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "text.plist.entitlements",
+        "guid": "FFuwlQ0g30DaXbQzPCA19iyOqpxctwkLuIlplFI/oMc=",
+        "path": "IceCubesActionExtension.entitlements",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "text.plist.xml",
+        "guid": "nmhE2rHu9mpn4YPgaK+jyiaSOxCs+jINy1201NEW5Q8=",
+        "path": "Info.plist",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "children": [
+         {
+          "fileType": "text.plist.strings",
+          "guid": "r/rVWJV+zh+WkRK58LpHbhcbCb5v9yhVU0E943yQgx8=",
+          "path": "en.lproj/InfoPlist.strings",
+          "regionVariantName": "en",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "text.plist.strings",
+          "guid": "UNXGdCOac4RnHXNQ0tc0HBGfn9LxmPPSBsTkwSrfSRU=",
+          "path": "be.lproj/InfoPlist.strings",
+          "regionVariantName": "be",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "text.plist.strings",
+          "guid": "b94e5J8vYVWm9VeD2nX607lCkTVmIu3yhpxEMk96Ef0=",
+          "path": "ca.lproj/InfoPlist.strings",
+          "regionVariantName": "ca",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "text.plist.strings",
+          "guid": "tl0FjKm54WJ25lLhItFzLFMPF0Vs7WKw1Mlvo7UU/7w=",
+          "path": "en-GB.lproj/InfoPlist.strings",
+          "regionVariantName": "en-GB",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "text.plist.strings",
+          "guid": "8mkGred0m7Z8NLxhhfHuy/WwBsi3UZ6e2LCgvqtqm1I=",
+          "path": "es.lproj/InfoPlist.strings",
+          "regionVariantName": "es",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "text.plist.strings",
+          "guid": "xduFIKJF6Xc68tjKwYOhNZxELwx8YJOa9ZwjU0PwDPY=",
+          "path": "eu.lproj/InfoPlist.strings",
+          "regionVariantName": "eu",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "text.plist.strings",
+          "guid": "HkHC4TLWrrgCOCMCW9igtk6nvdvSJdOsJetznqoB+KA=",
+          "path": "ko.lproj/InfoPlist.strings",
+          "regionVariantName": "ko",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "text.plist.strings",
+          "guid": "rCNYKb499be8vZlCZSu4wLNcBP4G+i/9rvUKFPQbCpU=",
+          "path": "nb.lproj/InfoPlist.strings",
+          "regionVariantName": "nb",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "text.plist.strings",
+          "guid": "wV+kHk2nhzHyfh2l7aVm6WGiHxFr8rLCJGu1+YGCTuI=",
+          "path": "pl.lproj/InfoPlist.strings",
+          "regionVariantName": "pl",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "text.plist.strings",
+          "guid": "BdIsS2SY68PfF+CBQFLWqKiOVpfxKo/eHYh6HUpJgow=",
+          "path": "uk.lproj/InfoPlist.strings",
+          "regionVariantName": "uk",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "text.plist.strings",
+          "guid": "mi8fmcxLYzrP/yE2/Cx6bSPhGvQ4YVFK3J3V5iNXjf0=",
+          "path": "zh-Hans.lproj/InfoPlist.strings",
+          "regionVariantName": "zh-Hans",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "text.plist.strings",
+          "guid": "1WKaJIkEqwBNNCBKGUT1KCMftD3/9VQhaMLR2vvrYuE=",
+          "path": "zh-Hant.lproj/InfoPlist.strings",
+          "regionVariantName": "zh-Hant",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "i9q29OpfyP8gejbrfz9dA0kJBY4MZjeqt3mY9v5zHvU=",
+        "name": "InfoPlist.strings",
+        "path": "",
+        "sourceTree": "<group>",
+        "type": "variantGroup"
+       }
+      ],
+      "guid": "0bec147ec38eb387bcc21016dc53d31559f37f255749aed4970701119bd4fa88",
+      "name": "IceCubesActionExtension",
+      "path": "IceCubesActionExtension",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "children": [
+       {
+        "fileType": "text.plist.entitlements",
+        "guid": "U+R97Hy+Ah+1zzGO4jy8tYPFLaVf2U3haWse52BqVAg=",
+        "path": "IceCubesNotifications.entitlements",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "text.plist.xml",
+        "guid": "AzPorEQGTtO/nH18DwsGwl4k6gEv6pYncPDeAt8NqJk=",
+        "path": "Info.plist",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "A4CCM8cpSNaKYUnnl3Cw1Ztwe9fP0fsIsmxSUF501WQ=",
+        "path": "NotificationService.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "n5CEZ5y+tY0N2QloS02qM1+KsBR2zbfy2dNUm4DpxrE=",
+        "path": "NotificationServiceSupport.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       }
+      ],
+      "guid": "0bec147ec38eb387bcc21016dc53d3152df84152706a259cfbf0a1f61fe263f4",
+      "name": "IceCubesNotifications",
+      "path": "IceCubesNotifications",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "children": [
+       {
+        "fileType": "text.plist.entitlements",
+        "guid": "EIYPbJ4QCCtBIwoP0X/7Xx9x2xhf6JAZUKPmdHxlW/M=",
+        "path": "IceCubesShareExtension.entitlements",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "text.plist.xml",
+        "guid": "9Zmj3qnO0biNxYeYpxIrApSw3JLGL70ptZCPrWnYPDA=",
+        "path": "Info.plist",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "Fw0nu5wgmP+HrQ22jFbsKiL4bGXEYPQwsd9L3cJZj+k=",
+        "path": "ShareViewController.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       }
+      ],
+      "guid": "0bec147ec38eb387bcc21016dc53d3159415ec46043115e31f0489d97022f139",
+      "name": "IceCubesShareExtension",
+      "path": "IceCubesShareExtension",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "children": [
+       {
+        "children": [
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "Ef5+AynN+n/bEm0I/l8Uo36bD/G182ZH6aC2S9vYW6U=",
+          "path": "AccountWidget.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "1fepU22v0GJxvqeW4ABmsdiyBkQQnA4hryfWQRVVY0k=",
+          "path": "AccountWidgetConfiguration.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "xhdxWiox4+Zz3H5JYVNwzkJQ/iXscWn8pQbxJyryXNE=",
+          "path": "AccountWidgetView.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "PP0UpNA9PajY0Ti/+O5zAGBlSVH3NCrZAU/CJbBj7/Q=",
+        "name": "AccountWidget",
+        "path": "AccountWidget",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "GwLEdx6hHLoTTQCS5c4szVXeSkphm3zyrtE4T5+EgQ8=",
+          "path": "HashtagPostsWidget.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "rFcKzucQ6iigd84Q8mF2G7TPQHU22e1pMb8ik2xO2B8=",
+          "path": "HashtagPostsWidgetConfiguration.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "5yP43OhpoaCTXlfnTjE3wWLd9uY/RK/p05boRINBR3s=",
+        "name": "HashtagPostsWidget",
+        "path": "HashtagPostsWidget",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "6be0kna77bbvOr807D2aUpihRdPQoN5HmgRTGJtaWM0=",
+          "path": "LatestPostsWidget.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "KhFMqQ0fcvBfltNE7SNKuQHi6Xoatn8TrjFkOju6M/Y=",
+          "path": "LatestPostsWidgetConfiguration.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "WjSL7vbXCqJGiIFTafldjb9/be645PV+lTic/hsTl+w=",
+        "name": "LatestPostsWidget",
+        "path": "LatestPostsWidget",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "oXm3w/6mUtdLNgJFShYZxPzTvC7cJ/mHsT+j8gIhvl8=",
+          "path": "ListsWidget.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "FJEeexCHtOSLXJ7GGSzVASUAuWerinLTtY/6i6E3CWw=",
+          "path": "ListsWidgetConfiguration.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "xAfY2lzgpZxN8GBKlMRXpY/Kj4SRt4hLtsB8qI+mk9A=",
+        "name": "ListsWidget",
+        "path": "ListsWidget",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "+hgQ6tbjf6XJluIq8Y+E2tQchiIaOWgcLl3zemw9etQ=",
+          "path": "MentionWidget.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "qPPSms6OfMe+JXriOWf8aCjFgIJtdr7cm2NCYrL60bY=",
+          "path": "MentionWidgetConfiguration.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "OOq1hW9EmhF4J3uNeNokguhslitJyxjb1EQXhNxV120=",
+        "name": "MentionWidget",
+        "path": "MentionWidget",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "NZcwXsP6WMPIogmykYHzqfC+cEVsoSVkWg5m+eeJA6g=",
+          "path": "PostsWidgetView.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "ML20/pIVd+z10JkhP0OlJIDEPxTIGWo38UhnMXxxTKA=",
+          "path": "SharedUtils.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "tU2qR4OR7A/LYADgbFCQqpymYJe9AAoV/kodMSMsRR8=",
+        "name": "Shared",
+        "path": "Shared",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "fileType": "folder.assetcatalog",
+        "guid": "+f18GXRnqb+f4O2UJvi8m01vD9NJs3w/BUeKNep1aQA=",
+        "path": "Assets.xcassets",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "NSO8H/ReAtEhysXCvV7EjVEvwn3TdoKUAwrCqQ+QYDs=",
+        "path": "IceCubesAppWidgetsExtensionBundle.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "text.plist.entitlements",
+        "guid": "/yhs7Ab5VpgcP8Cp9Fj8bCPhwKRRvYJZLpioUUjqW+o=",
+        "path": "IceCubesAppWidgetsExtensionExtension.entitlements",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "text.plist.xml",
+        "guid": "yNGwEMXi+F/8BTm4a/x7go2mxT3auXbgRNpUzT4oJ14=",
+        "path": "Info.plist",
+        "sourceTree": "<group>",
+        "type": "file"
+       }
+      ],
+      "guid": "0bec147ec38eb387bcc21016dc53d315b0f9d493a8a23155a223b36a2b89a4c8",
+      "name": "IceCubesAppWidgetsExtension",
+      "path": "IceCubesAppWidgetsExtension",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "guid": "0bec147ec38eb387bcc21016dc53d315a9223274929d7e58e291d9e7276e5618",
+      "name": "Products",
+      "path": "",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "children": [
+       {
+        "fileType": "wrapper.framework",
+        "guid": "0bec147ec38eb387bcc21016dc53d315b00ac020917707c9ad6211babf5dd6f5",
+        "path": "System/Library/Frameworks/StoreKit.framework",
+        "sourceTree": "SDKROOT",
+        "type": "file"
+       },
+       {
+        "fileType": "wrapper.framework",
+        "guid": "0bec147ec38eb387bcc21016dc53d3152ea077d4369e7b065a26752912872540",
+        "path": "System/Library/Frameworks/QuickLookUI.framework",
+        "sourceTree": "SDKROOT",
+        "type": "file"
+       },
+       {
+        "fileType": "wrapper.framework",
+        "guid": "0bec147ec38eb387bcc21016dc53d3150e3ff29da5bfe7b4b2ba6edafd878881",
+        "path": "Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS16.2.sdk/System/Library/Frameworks/QuickLook.framework",
+        "sourceTree": "DEVELOPER_DIR",
+        "type": "file"
+       },
+       {
+        "fileType": "wrapper.framework",
+        "guid": "0bec147ec38eb387bcc21016dc53d315428ac499ab7ae676c262632b103dcdde",
+        "path": "Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS16.2.sdk/System/Library/Frameworks/AVKit.framework",
+        "sourceTree": "DEVELOPER_DIR",
+        "type": "file"
+       },
+       {
+        "fileType": "wrapper.framework",
+        "guid": "0bec147ec38eb387bcc21016dc53d3154621a2852ac636cb6b2ff7fb531d352c",
+        "path": "System/Library/Frameworks/UniformTypeIdentifiers.framework",
+        "sourceTree": "SDKROOT",
+        "type": "file"
+       },
+       {
+        "fileType": "wrapper.framework",
+        "guid": "0bec147ec38eb387bcc21016dc53d315b1a45e4e7fa4407c4a5810d588df3e85",
+        "path": "System/Library/Frameworks/WidgetKit.framework",
+        "sourceTree": "SDKROOT",
+        "type": "file"
+       },
+       {
+        "fileType": "wrapper.framework",
+        "guid": "0bec147ec38eb387bcc21016dc53d3152b3046021edac6defc51fb58e345d56f",
+        "path": "System/Library/Frameworks/SwiftUI.framework",
+        "sourceTree": "SDKROOT",
+        "type": "file"
+       }
+      ],
+      "guid": "0bec147ec38eb387bcc21016dc53d315b77c9710a2f011120a9d03890d5d5ced",
+      "name": "Frameworks",
+      "path": "",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "fileType": "wrapper",
+      "guid": "0bec147ec38eb387bcc21016dc53d3153db27d002b3aac4333b339d160d39e2f",
+      "path": "Packages/AppAccount",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "wrapper",
+      "guid": "0bec147ec38eb387bcc21016dc53d315f5ed6066c1df3b28ef3c5d27839d6f1b",
+      "path": "Packages/Account",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "wrapper",
+      "guid": "0bec147ec38eb387bcc21016dc53d315ff8db7dbe0c419efbc82a2e9f98428e8",
+      "path": "Packages/Conversations",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "wrapper",
+      "guid": "0bec147ec38eb387bcc21016dc53d31567154f4c9e57e150280b81c0a20cd8bb",
+      "path": "Packages/DesignSystem",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "wrapper",
+      "guid": "0bec147ec38eb387bcc21016dc53d315819e501c861ac0fbdd40559eddf87dad",
+      "path": "Packages/Explore",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "wrapper",
+      "guid": "0bec147ec38eb387bcc21016dc53d315c1a2522ac086957f1fa78647b0e29a31",
+      "path": "Packages/Env",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "wrapper",
+      "guid": "0bec147ec38eb387bcc21016dc53d3159529afd10243ead4290cb13b0b0cf625",
+      "path": "Packages/Models",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "wrapper",
+      "guid": "0bec147ec38eb387bcc21016dc53d31527bde52c2b780c5c2f0919ab903a2798",
+      "path": "Packages/StatusKit",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "wrapper",
+      "guid": "0bec147ec38eb387bcc21016dc53d315aedbf93158a5758db31b209c9da38352",
+      "path": "Packages/MediaUI",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "wrapper",
+      "guid": "0bec147ec38eb387bcc21016dc53d31537b44c6e6d8a84942362bd52ba7f54dc",
+      "path": "Packages/NetworkClient",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "wrapper",
+      "guid": "0bec147ec38eb387bcc21016dc53d3156460ffa7b13065e530bf4e6aff909836",
+      "path": "Packages/Lists",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "wrapper",
+      "guid": "0bec147ec38eb387bcc21016dc53d315fc0d26ed4d6c34e1595bbcafba9dfabd",
+      "path": "Packages/Notifications",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "fileType": "wrapper",
+      "guid": "0bec147ec38eb387bcc21016dc53d315b0b9440668b97046c6df37d966380a37",
+      "path": "Packages/Timeline",
+      "sourceTree": "<group>",
+      "type": "file"
+     }
+    ],
+    "guid": "0bec147ec38eb387bcc21016dc53d3152258838d779beca21d11716568435b52",
+    "name": "IceCubesApp",
+    "path": "",
+    "sourceTree": "<group>",
+    "type": "group"
+   },
+   "guid": "0bec147ec38eb387bcc21016dc53d315",
+   "knownRegions": [
+    "en",
+    "de",
+    "nl",
+    "es",
+    "zh-Hans",
+    "it",
+    "ja",
+    "tr",
+    "fr",
+    "pt-BR",
+    "nb",
+    "pl",
+    "ca",
+    "en-GB",
+    "ko",
+    "eu",
+    "be",
+    "uk",
+    "zh-Hant",
+    "Base"
+   ],
+   "path": "$(CORPUS)/ice-cubes/IceCubesApp.xcodeproj",
+   "projectDirectory": "$(CORPUS)/ice-cubes",
+   "targets": [
+    "TARGET@v11_hash=d8235f9ea4b1c25ce0df012493139fd5",
+    "TARGET@v11_hash=3b99e0cc028aab359a326e5f7fc8eed1",
+    "TARGET@v11_hash=4b83bdce92ac91433cce8d211c64a973",
+    "TARGET@v11_hash=dae5f7b2b314cf0caf5e6100281ed761",
+    "TARGET@v11_hash=d8f257e8911aea63697951164fa3587d"
+   ]
+  },
+  "signature": "PROJECT@v11_mod=15b1b4813c87eab266550b5f8f171572_hash=0bec147ec38eb387bcc21016dc53d315plugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1",
+  "type": "project"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+      "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
+      "ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS": "YES",
+      "ASSETCATALOG_COMPILER_STANDALONE_ICON_BEHAVIOR": "all",
+      "CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED": "NO",
+      "CODE_SIGN_ENTITLEMENTS": "IceCubesApp/App/IceCubesApp.entitlements",
+      "CODE_SIGN_IDENTITY": "-",
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Development",
+      "CODE_SIGN_IDENTITY[sdk=macosx*]": "Apple Development",
+      "CODE_SIGN_IDENTITY[sdk=xros*]": "Apple Development",
+      "CODE_SIGN_STYLE": "Automatic",
+      "CURRENT_PROJECT_VERSION": "3066",
+      "DEAD_CODE_STRIPPING": "YES",
+      "DEVELOPMENT_ASSET_PATHS": "\"IceCubesApp/Resources\"",
+      "DEVELOPMENT_TEAM": "$(DEVELOPMENT_TEAM)",
+      "ENABLE_HARDENED_RUNTIME": "YES",
+      "ENABLE_PREVIEWS": "YES",
+      "GENERATE_INFOPLIST_FILE": "YES",
+      "INFOPLIST_FILE": "IceCubesApp/Info.plist",
+      "INFOPLIST_KEY_CFBundleDisplayName": "Ice Cubes",
+      "INFOPLIST_KEY_LSApplicationCategoryType": "public.app-category.social-networking",
+      "INFOPLIST_KEY_NSCameraUsageDescription": "Upload photos & videos to attach to your Mastodon posts.",
+      "INFOPLIST_KEY_NSHumanReadableCopyright": "© 2024 Thomas Ricouard",
+      "INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription": "Ice Cubes would like to save the selected photo in your photo library.",
+      "INFOPLIST_KEY_NSPhotoLibraryUsageDescription": "Upload photos & videos to Mastodon",
+      "INFOPLIST_KEY_UIApplicationSceneManifest_Generation": "YES",
+      "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]": "YES",
+      "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]": "YES",
+      "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]": "YES",
+      "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]": "YES",
+      "INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]": "YES",
+      "INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]": "YES",
+      "INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]": "UIStatusBarStyleDefault",
+      "INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]": "UIStatusBarStyleDefault",
+      "INFOPLIST_KEY_UISupportedInterfaceOrientations": "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait",
+      "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad": "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown",
+      "IPHONEOS_DEPLOYMENT_TARGET": "18.5",
+      "LD_RUNPATH_SEARCH_PATHS": "@executable_path/Frameworks",
+      "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": "@executable_path/../Frameworks",
+      "MACOSX_DEPLOYMENT_TARGET": "13.0",
+      "MARKETING_VERSION": "2.1.3",
+      "PRODUCT_BUNDLE_IDENTIFIER": "$(BUNDLE_ID_PREFIX).IceCubesApp",
+      "PRODUCT_NAME": "Ice Cubes",
+      "SDKROOT": "auto",
+      "STRING_CATALOG_GENERATE_SYMBOLS": "YES",
+      "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator xros xrsimulator",
+      "SUPPORTS_MACCATALYST": "YES",
+      "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+      "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+      "SWIFT_EMIT_LOC_STRINGS": "YES",
+      "SWIFT_STRICT_CONCURRENCY": "complete",
+      "SWIFT_UPCOMING_FEATURE_CONCISE_MAGIC_FILE": "YES",
+      "SWIFT_UPCOMING_FEATURE_DEPRECATE_APPLICATION_MAIN": "YES",
+      "SWIFT_UPCOMING_FEATURE_DISABLE_OUTWARD_ACTOR_ISOLATION": "YES",
+      "SWIFT_UPCOMING_FEATURE_FORWARD_TRAILING_CLOSURES": "YES",
+      "SWIFT_UPCOMING_FEATURE_GLOBAL_CONCURRENCY": "YES",
+      "SWIFT_UPCOMING_FEATURE_IMPLICIT_OPEN_EXISTENTIALS": "YES",
+      "SWIFT_UPCOMING_FEATURE_IMPORT_OBJC_FORWARD_DECLS": "YES",
+      "SWIFT_UPCOMING_FEATURE_INFER_SENDABLE_FROM_CAPTURES": "YES",
+      "SWIFT_UPCOMING_FEATURE_ISOLATED_DEFAULT_VALUES": "YES",
+      "SWIFT_UPCOMING_FEATURE_REGION_BASED_ISOLATION": "YES",
+      "SWIFT_VERSION": "6.0",
+      "TARGETED_DEVICE_FAMILY": "1,2,7",
+      "_EXPERIMENTAL_SWIFT_EXPLICIT_MODULES": "NO"
+     },
+     "guid": "0bec147ec38eb387bcc21016dc53d3159409720b031db105b02481dbaff79597",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+      "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
+      "ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS": "YES",
+      "ASSETCATALOG_COMPILER_STANDALONE_ICON_BEHAVIOR": "all",
+      "CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED": "NO",
+      "CODE_SIGN_ENTITLEMENTS": "IceCubesApp/App/IceCubesApp-release.entitlements",
+      "CODE_SIGN_IDENTITY": "-",
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Development",
+      "CODE_SIGN_IDENTITY[sdk=macosx*]": "Apple Development",
+      "CODE_SIGN_IDENTITY[sdk=xros*]": "Apple Development",
+      "CODE_SIGN_STYLE": "Automatic",
+      "CURRENT_PROJECT_VERSION": "3066",
+      "DEAD_CODE_STRIPPING": "YES",
+      "DEVELOPMENT_ASSET_PATHS": "\"IceCubesApp/Resources\"",
+      "DEVELOPMENT_TEAM": "$(DEVELOPMENT_TEAM)",
+      "ENABLE_HARDENED_RUNTIME": "YES",
+      "ENABLE_PREVIEWS": "YES",
+      "GENERATE_INFOPLIST_FILE": "YES",
+      "INFOPLIST_FILE": "IceCubesApp/Info.plist",
+      "INFOPLIST_KEY_CFBundleDisplayName": "Ice Cubes",
+      "INFOPLIST_KEY_LSApplicationCategoryType": "public.app-category.social-networking",
+      "INFOPLIST_KEY_NSCameraUsageDescription": "Upload photos & videos to attach to your Mastodon posts.",
+      "INFOPLIST_KEY_NSHumanReadableCopyright": "© 2024 Thomas Ricouard",
+      "INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription": "Ice Cubes would like to save the selected photo in your photo library.",
+      "INFOPLIST_KEY_NSPhotoLibraryUsageDescription": "Upload photos & videos to Mastodon",
+      "INFOPLIST_KEY_UIApplicationSceneManifest_Generation": "YES",
+      "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]": "YES",
+      "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]": "YES",
+      "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]": "YES",
+      "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]": "YES",
+      "INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]": "YES",
+      "INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]": "YES",
+      "INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]": "UIStatusBarStyleDefault",
+      "INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]": "UIStatusBarStyleDefault",
+      "INFOPLIST_KEY_UISupportedInterfaceOrientations": "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait",
+      "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad": "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown",
+      "IPHONEOS_DEPLOYMENT_TARGET": "18.5",
+      "LD_RUNPATH_SEARCH_PATHS": "@executable_path/Frameworks",
+      "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": "@executable_path/../Frameworks",
+      "MACOSX_DEPLOYMENT_TARGET": "13.0",
+      "MARKETING_VERSION": "2.1.3",
+      "PRODUCT_BUNDLE_IDENTIFIER": "$(BUNDLE_ID_PREFIX).IceCubesApp",
+      "PRODUCT_NAME": "Ice Cubes",
+      "SDKROOT": "auto",
+      "STRING_CATALOG_GENERATE_SYMBOLS": "YES",
+      "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator xros xrsimulator",
+      "SUPPORTS_MACCATALYST": "YES",
+      "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+      "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+      "SWIFT_EMIT_LOC_STRINGS": "YES",
+      "SWIFT_STRICT_CONCURRENCY": "complete",
+      "SWIFT_UPCOMING_FEATURE_CONCISE_MAGIC_FILE": "YES",
+      "SWIFT_UPCOMING_FEATURE_DEPRECATE_APPLICATION_MAIN": "YES",
+      "SWIFT_UPCOMING_FEATURE_DISABLE_OUTWARD_ACTOR_ISOLATION": "YES",
+      "SWIFT_UPCOMING_FEATURE_FORWARD_TRAILING_CLOSURES": "YES",
+      "SWIFT_UPCOMING_FEATURE_GLOBAL_CONCURRENCY": "YES",
+      "SWIFT_UPCOMING_FEATURE_IMPLICIT_OPEN_EXISTENTIALS": "YES",
+      "SWIFT_UPCOMING_FEATURE_IMPORT_OBJC_FORWARD_DECLS": "YES",
+      "SWIFT_UPCOMING_FEATURE_INFER_SENDABLE_FROM_CAPTURES": "YES",
+      "SWIFT_UPCOMING_FEATURE_ISOLATED_DEFAULT_VALUES": "YES",
+      "SWIFT_UPCOMING_FEATURE_REGION_BASED_ISOLATION": "YES",
+      "SWIFT_VERSION": "6.0",
+      "TARGETED_DEVICE_FAMILY": "1,2,7",
+      "_EXPERIMENTAL_SWIFT_EXPLICIT_MODULES": "NO"
+     },
+     "guid": "0bec147ec38eb387bcc21016dc53d315d6c8deb88bd33561d0cd7193b131282d",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "gEhg8Lnzk3j9bTRUW8QqKS1uwkw8UXibnFVrBTDP2Mk=",
+       "guid": "/wUDzthNyP6T1Rp9FCUxUM43+x79xRRreGRR5JFwWS8="
+      },
+      {
+       "fileReference": "BIXXHwhfnMsJ9awEpvwtvghLcIlK4e5wiWvB6Nq3U8U=",
+       "guid": "vM3OZBEuZfWHrUq4fopxzvR1ZL6VCu29DBe2FIc47xo="
+      },
+      {
+       "fileReference": "SpIZ2mSzu7vMXGfBM2NR+Edu2j+5hT9fElNd8druabM=",
+       "guid": "1Mq0ZbZ2+xttRdRIMxyBMAyf1qapPaBREfEvwXCqhYE="
+      },
+      {
+       "fileReference": "h9906P82YuV0+ECMuEfqb6tGDa9TUhVDoYm/LTo3zWg=",
+       "guid": "xRzlx1qk5DZJMNS+vDcxRxBQN8XbXENu7NztcpJrFUE="
+      },
+      {
+       "fileReference": "pM9fSMnlVsXig6xcvmcZt6F8QYNDgHgxQxihKGpJtPo=",
+       "guid": "aXq2qOI068JHAd02VNnjOIHfnAjxOPz1E53LYbswnIY="
+      },
+      {
+       "fileReference": "SvJnref7h+deiWmjOIEIsqwTDYVjmBFYq+KlWxH+LgY=",
+       "guid": "ItvJI0HhNerwhOglVNOqUvm/DId7EpXRbK1d04payjU="
+      },
+      {
+       "fileReference": "Ns2+bOAIwR5UWt1y9JQ9QJNLwkjybGyoryhMZJthD3o=",
+       "guid": "wJGKMglACwRrlh/wuS/2bzTJp86CPZaQd2hlkAXj+5w="
+      },
+      {
+       "fileReference": "Y6MOv7QUfXQ4pX0CXeC7iQ9J7/l9+QFKO1gIu+OcWks=",
+       "guid": "GiWzm36bgFtjLSDFlxH7TcMm+WT50qYtT0xl6nuTYDM="
+      },
+      {
+       "fileReference": "5XzF/GllhWyH6BeyidpA8R/zVies44f82BbU9BfUb4w=",
+       "guid": "FLP7bUTBNnC5W7B98Fwf/ZX6BSf27TSjM5s3qCShRLk="
+      },
+      {
+       "fileReference": "MHmiaXCdnYIvdUTLkD5igvIwnQUdARq56aK17y63CsA=",
+       "guid": "yIUBWFgEygKuvezR8T03S8FMdeZSY9v36WyWViciHzM="
+      },
+      {
+       "fileReference": "GITjD8mXmfy51taxf7AStFfu8XGH4fX+T3X603I7hDA=",
+       "guid": "ycYLCrnxWgzlZ3GB+I2kbj+BCaYYNJwDR05hYk+scws="
+      },
+      {
+       "fileReference": "zo4ZEnQOP+W4B6QFzsTWpaxRr3bl+bW+8hM5qymjKZc=",
+       "guid": "I8XIF/GgCjMYMbg/c5uWYIt7aFNxhBxF6XMWKrvsHao="
+      },
+      {
+       "fileReference": "DKGg3cFiP2xHk/GGKP5J241N+X05wrqyLlIxFd2UDrc=",
+       "guid": "AdkjkT1O+7nAWjx2uzpLiwXThmo5cKv64tq1cXidOxg="
+      },
+      {
+       "fileReference": "si6kv08cNBJ9HIa13V5YCLgdr39EmD5eeZHUCDxGY0I=",
+       "guid": "RnIcUb23dmKAevbG1AgOeSabduDaaBixkwDJeH4BIE0="
+      },
+      {
+       "fileReference": "0HKGQNGdVzTjWTWKQZQ4+eTxAe4l+xReJwjs0L9AyVY=",
+       "guid": "2StEKJEbg7fY3eGB78BJ9eKbJGrbmDrdvBTLHHxUc7E="
+      },
+      {
+       "fileReference": "USlRyLBoUkBcsicaDwgmcsOl5AwnjFi2oOBpgPPYDGo=",
+       "guid": "x8AqQ5BQi8kQCrPYI+Hgwuie+vYkRKBu7DhcbqvcVlg="
+      },
+      {
+       "fileReference": "Kd/V4PJk1/pcvcWjoYfBuqopoXkOnq9TnU8vPWGcwyw=",
+       "guid": "HHfzMApcVETgriCRtMOAoasoq2zycGorborM5rSLTAc="
+      },
+      {
+       "fileReference": "cJ5JFudxqvEQXWlrYUFAMacfxkSIciVz/MlVb/mesw4=",
+       "guid": "0n4Q34FnBrtBPBdR7f3PHHSeDb53lGamoZbfF0EzpYI="
+      },
+      {
+       "fileReference": "tgQsfew2Cz7vk+y6F9V7QiWyMrLvEQb07E5Lp+26Bp0=",
+       "guid": "VMv/m8khoEAxsogddQbcyrWCeclg0Ljd8dzTYapeVlA="
+      },
+      {
+       "fileReference": "qkKwo7/dSs9Oa67bEVIbimtimhMA094gsr0q3SVfb2g=",
+       "guid": "4Ul3K4XcZibg5yKT1R5mM4lGSVxDNsxFek9Tsfq7eME="
+      },
+      {
+       "fileReference": "i4+jNGGB0NZNz7qh+qL2zZ2F+2k/a8OJ7paZa7ODjlo=",
+       "guid": "t0R3RuPF0sP+eEu0Y7mnG5eQSqbrUs2PklN+JRzGoTE="
+      },
+      {
+       "fileReference": "m7QmQ+/8FeTDnp2cmKNZ3wTZ4j22bMXlQuyobeDplfg=",
+       "guid": "GZu/pDqwSTgm9MocBP3pD5ontyHaztrsKZAtYP4Q+tE="
+      },
+      {
+       "fileReference": "UoTa/3fLm2F1GPiIvoM76S6hwIMDLMw/jB6rzJloFDc=",
+       "guid": "ddXKXQJDmNuRw+YLQ5X7kATak7ylXFJgs9wrcHFot54="
+      },
+      {
+       "fileReference": "ijd0FzqzF4zh6fS+tWDf/TUu+iXGsNqzRsZ8++7OPwU=",
+       "guid": "mGpl5yaVrgNOGhbIRli6LgMZ4SP9n89HWEyvniRSlPs="
+      },
+      {
+       "fileReference": "Am1nyctL/sXRvhBKqb7q6NxZi00PzgC8TPrEs1loAzo=",
+       "guid": "h09emj15uZFnVWs4yQhNyBImVlbVxIB9i2E8NF7gzjI="
+      },
+      {
+       "fileReference": "M13IvSY3WdsMLr4Yja9jMgaSvXcVBFzQ+NeOT8wJvrg=",
+       "guid": "4xNb7357wmTb+y0oXGcIIC+o8PBgnGoD8C708F+H73o="
+      },
+      {
+       "fileReference": "nm0stsWWnYd4v2rAoiwGcZmsC6VN9NR4u587gJ+q6fw=",
+       "guid": "eYKFq0/B9ds2j/Mq8rOtBpU92R5ZqotuDFW0DkACLjM="
+      },
+      {
+       "fileReference": "kAtFwsSf5VJ54/+N19anf4rFUT39Yz8suk5abh7n0b0=",
+       "guid": "oFjc1+x3L97EBhI8oVu8aYmynQKOGlWPIyqIS2qaitg="
+      },
+      {
+       "fileReference": "/HDjnrX3TktG+8WqvJOCOVKWn9y9jI+AG/xAOZwHh6M=",
+       "guid": "7vM0XK+Ol49j3SG8sIqKwH+i+SHR9Pgp2iayc9wgT2k="
+      },
+      {
+       "fileReference": "BaYm/PGVbp48ha6yhJYzhjXEaMeqULlNCeU8uyrUN70=",
+       "guid": "XFjcQ1GJrxorMz8EcHE0QbRQnMDvEkKMD/SjSz2oGG0="
+      },
+      {
+       "fileReference": "zh8V3l6D2eKnyQB2E0Q9HmVw5Op0SSCNqqYUEkHeDr4=",
+       "guid": "ARcf83Y5rQN0RisiZCaTe1JCl0XT5PhOpLqE2Zn9Z74="
+      },
+      {
+       "fileReference": "JIEsnafqepjCnARLs9OQkoNyz0zweav/jIPe2zf/PEM=",
+       "guid": "Jr9l7oy60dwzJCFeAQUpn9eLQ/66VkINbhuqWR0NxAk="
+      },
+      {
+       "fileReference": "VpZmNNHgI71BwH7jrCZ5hyTGZKyjiK1SGT53vhukX4M=",
+       "guid": "fhi1AjY9bD5VJNU3L1uTqr/UbfIM1dqIMVrPAPS5SLI="
+      },
+      {
+       "fileReference": "M+Fv2qQwW1j9C+Pei4Xyxg+1FY4YwLPUje4se8lEF9s=",
+       "guid": "qBXfXYR1wRkyNjn7zZ1TSDXCO0MdPaVeV78K3GU6bug="
+      },
+      {
+       "fileReference": "zFUXuL1MAo7zgCHRrkb8ZrDcO5xp7UFxmXoUvu22OGM=",
+       "guid": "71+8IToDoyFlcgIqNcVycHdJYc4RFRgVHaZv1/+lfWA="
+      },
+      {
+       "fileReference": "uGWmQ3HAHPWXmenmGGD2FSmAZDEl3/PQ5qSaoL2U5jM=",
+       "guid": "qQfvLHcH26G/ocf6cGCsheQ/e8ttFlgg+Pu3WUIURJM="
+      },
+      {
+       "fileReference": "29yHORy0iBV9Dr/ShlQEO8iy3y70Ik+PUhBQFe5IRCo=",
+       "guid": "+R8tY090S6bebhL55IAaq1CeXvH2CTpD7PgmYkbamEA="
+      },
+      {
+       "fileReference": "GAFpHMZJAkZjFpBhqpXyI7la6RfgwYBv7IT8Sk8StCk=",
+       "guid": "3jKZIN3QiSZhx/zwTBCzMl+gXL9TptpuYi1Yo3OMBh0="
+      },
+      {
+       "fileReference": "+d0Z22Xl9KcSqx2odYmkNCmj4sbYEC0tNxw/4ODSiQk=",
+       "guid": "idkH2g6f+RyaV7Tzp7AiHkQ3enJJFyYDppxBEfntw6w="
+      },
+      {
+       "fileReference": "zzTXTUdwRTWh10+FO83izNEejdKsZ/o0mtwqQGtyr7s=",
+       "guid": "HtniNrjtfSx8/8GN+wL0mL+SaDkuIn94d17o71hicj0="
+      },
+      {
+       "fileReference": "mbjvExfF8bCRcfuQtLzrbL+qaJ/qFDlECsVK/bl41VI=",
+       "guid": "2Lda+q9/1PeExYYw3zqB1MVnTYbxaOErrreYf/1yt3k="
+      },
+      {
+       "fileReference": "5glR+hs2APXI+hXiW/5FJoif45Hiwll+7mQBkoLT9JU=",
+       "guid": "JZdGYPqpcV9XKMrKZDxLBKOwzQnnFB+FfaoScIFUk3M="
+      },
+      {
+       "fileReference": "onBqSwLNvhPl/1pfVvpLkOISiff7zaVFbkMNMysS7qo=",
+       "guid": "EU4HpAwrsG95u+gCxVm3Puvx254hUpBP9UedG533H48="
+      },
+      {
+       "fileReference": "syavZxVBlJ3xv7ZqgWJ2eUHm6FCjq9JfxXATn3TsSJM=",
+       "guid": "Qu83YSQrU48qz0g63J+J9h4sLhGw9XZHbQrnDQ/uXTo="
+      },
+      {
+       "fileReference": "rEOu1pZpicSyPP2avTgqwoVu+KYPK+skVM+zZzKqnow=",
+       "guid": "A2tg216/qwR77wAa3MuSO29zvNSoaleSSxWDuxQy36c="
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d3151a0df95ea56dd04bea3f6a9d8171faad",
+     "type": "com.apple.buildphase.sources"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "0bec147ec38eb387bcc21016dc53d3150e3ff29da5bfe7b4b2ba6edafd878881",
+       "guid": "0bec147ec38eb387bcc21016dc53d3157b55a2039978ca604824ebd5f8ce43dc"
+      },
+      {
+       "fileReference": "0bec147ec38eb387bcc21016dc53d315428ac499ab7ae676c262632b103dcdde",
+       "guid": "0bec147ec38eb387bcc21016dc53d3150f72a6154f849ae19d916240bd09b5eb"
+      },
+      {
+       "fileReference": "0bec147ec38eb387bcc21016dc53d315b00ac020917707c9ad6211babf5dd6f5",
+       "guid": "0bec147ec38eb387bcc21016dc53d315e99e36d1d840493e366c071543635cd4"
+      },
+      {
+       "guid": "72eb1047ad43ca06c664d3c49ae61f6f",
+       "targetReference": "PACKAGE-PRODUCT:explore_Explore.Explore"
+      },
+      {
+       "guid": "1ee724ace51435ffe5674fc4a2821699",
+       "targetReference": "PACKAGE-PRODUCT:keychain-swift_KeychainSwift.KeychainSwift"
+      },
+      {
+       "guid": "70e37c2e280a60b8b93589cc5984ce96",
+       "targetReference": "PACKAGE-PRODUCT:conversations_Conversations.Conversations"
+      },
+      {
+       "guid": "147758142687a556391369a56df4791b",
+       "targetReference": "PACKAGE-PRODUCT:appaccount_AppAccount.AppAccount"
+      },
+      {
+       "guid": "dce121aef2dc7c09c9251657d2d15073",
+       "targetReference": "PACKAGE-PRODUCT:account_Account.Account"
+      },
+      {
+       "guid": "414073de2539be53ce52590fe637696d",
+       "targetReference": "PACKAGE-PRODUCT:networkclient_NetworkClient.NetworkClient"
+      },
+      {
+       "guid": "964d838c714838eaaa4f2e0645e34b23",
+       "targetReference": "PACKAGE-PRODUCT:lists_Lists.Lists"
+      },
+      {
+       "guid": "e7c7f6011abb572d9b0ae5e36e73d716",
+       "targetReference": "PACKAGE-PRODUCT:models_Models.Models"
+      },
+      {
+       "guid": "25eb1524e1f3e6866481a674947de38d",
+       "targetReference": "PACKAGE-PRODUCT:env_Env.Env"
+      },
+      {
+       "guid": "647a129a123cccf6602a76e90bb9ed23",
+       "targetReference": "PACKAGE-PRODUCT:sfsafesymbols_SFSafeSymbols.SFSafeSymbols"
+      },
+      {
+       "guid": "fb625d6153d92b935125e2994df35ead",
+       "targetReference": "PACKAGE-PRODUCT:wishkit-ios_WishKit.WishKit"
+      },
+      {
+       "guid": "9e381ea8a06e9ec7e872b8b88f558b8d",
+       "targetReference": "PACKAGE-PRODUCT:purchases-ios-spm_RevenueCat.RevenueCat"
+      },
+      {
+       "guid": "5084fb9d8162a2516db7a1e0cc2cc0a3",
+       "targetReference": "PACKAGE-PRODUCT:timeline_Timeline.Timeline"
+      },
+      {
+       "guid": "c00f690a2ccd29d954cad1e29a45342f",
+       "targetReference": "PACKAGE-PRODUCT:notifications_Notifications.Notifications"
+      },
+      {
+       "guid": "7c68637b4e7457eae4b11bc62abf9409",
+       "targetReference": "PACKAGE-PRODUCT:statuskit_StatusKit.StatusKit"
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d3152240598b74372ff05a0471bf770c5d16",
+     "type": "com.apple.buildphase.frameworks"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "0bec147ec38eb387bcc21016dc53d315993ba64b34aa61f2fab761d944d7fa41",
+       "guid": "0bec147ec38eb387bcc21016dc53d3159da5c244bb548e63970db6dd7e989d05"
+      },
+      {
+       "fileReference": "903ASMk22K2gNeckSHGfWcxAXobevw/pFCgw7YUBYt8=",
+       "guid": "A1zdKTaX2zayADIwlHIboDCXp8AeInMRGoFtPnxSv4Y="
+      },
+      {
+       "fileReference": "VhqOM1fON3w9Id1ra9jVsBuST+QwQijVY2LrIW+SIE8=",
+       "guid": "KhNXpiZsnFvTNcRHF1DDgcs8p+kEo75RhzXqPoT3hmc="
+      },
+      {
+       "fileReference": "gRJOFDSfs9455LqCnDK/JTSmiWVROD4ILSIZRArfx2Y=",
+       "guid": "unh3MXidZXxGDVXwhfi28mUl+IICsQ2Mg1ifm5icixg="
+      },
+      {
+       "fileReference": "bm9bpPyl+pszOleg0BSd+uL19kbVW0XAUpRDWv1X/Z8=",
+       "guid": "yoiI1JrxdI17FwHP38vBWNC44WbwJNtghkCSjwSBEGk="
+      },
+      {
+       "fileReference": "WkVCh7RfmGY/y3tUsB/CAGQ35nXKjgV6BQg0YoPFs/Y=",
+       "guid": "MYB0rDq/UmBr1FEvyDtUqUWm09615jFd7J3p3Hmtu2I="
+      },
+      {
+       "fileReference": "grsFeG0OtfMM369mlMmTPIt/mXvWaCJG1l2MXd7GTes=",
+       "guid": "4yzAoP0W/GiEyS8whdPZcrD3aJcoMylFfRwYHPa8Mz8="
+      },
+      {
+       "fileReference": "SKexSI/g8R7g+QxG94zlJ1Bzwnv5bPkkdmN5RB3e5F8=",
+       "guid": "LQGguEMxzFVPt/NhjIelz1GEe8a0SDrBrp1AA6OzPPo="
+      },
+      {
+       "fileReference": "cWIckYXHVd8Tr1RNAl8LP1lI3mppv/a1masvnMtk4Y4=",
+       "guid": "Z9ilQGhiOcvmNlRBx2lH7LhYcETZRgNBpRcbLenzadQ="
+      },
+      {
+       "fileReference": "HBc0BYIFsbMvfBUCZcf+dms2DmgmBuXeZbrwx7C8k1k=",
+       "guid": "0TZvnDw/xzjJPAmtbslYtI9b36KfLzB50UJv2uwnZSw="
+      },
+      {
+       "fileReference": "pt0iGfQ236GANFyDHcmVfHzHOdXCSgEEgBAX6D3nuFA=",
+       "guid": "GJWKLbRofdm0ZaC9phqbBtG152mLTX8Tz9uBcYLRXoI="
+      },
+      {
+       "fileReference": "8ovKHrp/be1cqU2UDkZp0i031D0LIBaemh+QQstQhc4=",
+       "guid": "yCh8kEU9k/EwMBVxRMly96Gf51wefh2/a+V6zhLUW7U="
+      },
+      {
+       "fileReference": "S8ZgUcuTtlSSJujTvHS1cf8S1DPqXSfDldKqXlCsmPc=",
+       "guid": "CTEFmbYGzSHZ8RX+i6UWtbrNCTZxh84kb5N5I18B8PA="
+      },
+      {
+       "fileReference": "9XIBxpaAbfpffkdxIIvxhlpXj9pMHiTk9CIDh5IenOI=",
+       "guid": "Ywog3//HkLOBZX2LW6vz7pLsrMrWVtudHtmZb++QJcA="
+      },
+      {
+       "fileReference": "wa1MtJJm+ehlZDob3l6eW/y5afnQ/Q+Sa/BMkeTx+Q0=",
+       "guid": "dBmfuLgSR2jbDbIpbArhfEVkTxieeAAqMrdFYSrMeUs="
+      },
+      {
+       "fileReference": "66obOli2uRdTgMsyp9XtYkteDQ+keAjNwTXevnCOdUk=",
+       "guid": "ogeatCM0UcHKFtKimuRZTaL0DDKIIYPorRNvixQYWcU="
+      },
+      {
+       "fileReference": "OWIqCYkz7O+LHEe/JUiViZT38vGhJ3rJ61RpvzOeylI=",
+       "guid": "5JBzoZyz3u6tG6hO3GU0uhJWUDTjq7rSKLhOkugkRDQ="
+      },
+      {
+       "fileReference": "9pIdPxK3WtVzuZyMccqjPJ9mBEslw1Ht6NbhlA0A5a8=",
+       "guid": "cIhURyEQ9/6UDviqtv0g/hoMX7OTbiRw6NRUUBHdmgg="
+      },
+      {
+       "fileReference": "AWOBLmWdnKYBZlkHPuOR5NvZCf1fx3kwFn3/Q0YTbg0=",
+       "guid": "m5AdwNY2KUA+1AblHA9tMI73mMhiFytb+J2OdGxKZZY="
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d315d6184fdbfd98b9304754962d38633ebd",
+     "type": "com.apple.buildphase.resources"
+    },
+    {
+     "buildFiles": [
+      {
+       "guid": "0bec147ec38eb387bcc21016dc53d315252cf6c6bbea837dbf096b5f1a5604a6",
+       "platformFilters": [
+        {
+         "platform": "ios"
+        },
+        {
+         "environment": "maccatalyst",
+         "platform": "ios"
+        }
+       ],
+       "removeHeadersOnCopy": "true",
+       "targetReference": "0bec147ec38eb387bcc21016dc53d31546d39d7b7e3abac14821224981d9ebb9"
+      },
+      {
+       "guid": "0bec147ec38eb387bcc21016dc53d315b1b88ba5b67b2c0f2308d0b358b6b353",
+       "removeHeadersOnCopy": "true",
+       "targetReference": "0bec147ec38eb387bcc21016dc53d315d4de989ab0da2ff45ab09dc52d760a9d"
+      },
+      {
+       "guid": "0bec147ec38eb387bcc21016dc53d315479164bb63cd0f7636d88700307c8f71",
+       "platformFilters": [
+        {
+         "platform": "ios"
+        },
+        {
+         "environment": "maccatalyst",
+         "platform": "ios"
+        }
+       ],
+       "removeHeadersOnCopy": "true",
+       "targetReference": "0bec147ec38eb387bcc21016dc53d3155647e59a2ac6371e24b023996c04fc8d"
+      },
+      {
+       "guid": "0bec147ec38eb387bcc21016dc53d315469c69905b435e2a8864bcb9df492985",
+       "platformFilters": [
+        {
+         "platform": "ios"
+        },
+        {
+         "environment": "maccatalyst",
+         "platform": "ios"
+        }
+       ],
+       "removeHeadersOnCopy": "true",
+       "targetReference": "0bec147ec38eb387bcc21016dc53d315b7a6ae3e2499e64c17fea1436b880185"
+      }
+     ],
+     "destinationSubfolder": "$(PLUGINS_FOLDER_PATH)",
+     "destinationSubpath": "",
+     "guid": "0bec147ec38eb387bcc21016dc53d31599184ade84d103d6860b88f7087a12b5",
+     "type": "com.apple.buildphase.copy-files"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [
+    {
+     "guid": "0bec147ec38eb387bcc21016dc53d315d4de989ab0da2ff45ab09dc52d760a9d",
+     "name": "IceCubesNotifications"
+    },
+    {
+     "guid": "0bec147ec38eb387bcc21016dc53d3155647e59a2ac6371e24b023996c04fc8d",
+     "name": "IceCubesShareExtension",
+     "platformFilters": [
+      {
+       "platform": "ios"
+      },
+      {
+       "environment": "maccatalyst",
+       "platform": "ios"
+      }
+     ]
+    },
+    {
+     "guid": "0bec147ec38eb387bcc21016dc53d31546d39d7b7e3abac14821224981d9ebb9",
+     "name": "IceCubesActionExtension",
+     "platformFilters": [
+      {
+       "platform": "ios"
+      },
+      {
+       "environment": "maccatalyst",
+       "platform": "ios"
+      }
+     ]
+    },
+    {
+     "guid": "0bec147ec38eb387bcc21016dc53d315b7a6ae3e2499e64c17fea1436b880185",
+     "name": "IceCubesAppWidgetsExtensionExtension",
+     "platformFilters": [
+      {
+       "platform": "ios"
+      },
+      {
+       "environment": "maccatalyst",
+       "platform": "ios"
+      }
+     ]
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:explore_Explore.Explore",
+     "name": "Explore"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:keychain-swift_KeychainSwift.KeychainSwift",
+     "name": "KeychainSwift"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:conversations_Conversations.Conversations",
+     "name": "Conversations"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:appaccount_AppAccount.AppAccount",
+     "name": "AppAccount"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:account_Account.Account",
+     "name": "Account"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:networkclient_NetworkClient.NetworkClient",
+     "name": "NetworkClient"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:lists_Lists.Lists",
+     "name": "Lists"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:models_Models.Models",
+     "name": "Models"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:env_Env.Env",
+     "name": "Env"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:sfsafesymbols_SFSafeSymbols.SFSafeSymbols",
+     "name": "SFSafeSymbols"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:wishkit-ios_WishKit.WishKit",
+     "name": "WishKit"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:purchases-ios-spm_RevenueCat.RevenueCat",
+     "name": "RevenueCat"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:timeline_Timeline.Timeline",
+     "name": "Timeline"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:notifications_Notifications.Notifications",
+     "name": "Notifications"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:statuskit_StatusKit.StatusKit",
+     "name": "StatusKit"
+    }
+   ],
+   "guid": "0bec147ec38eb387bcc21016dc53d31520f2831476d51dd692424858a087469e",
+   "name": "IceCubesApp",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Swift",
+   "productReference": {
+    "guid": "0bec147ec38eb387bcc21016dc53d31547799df60ec6ec5a89dbd72fba0b5e23",
+    "name": "Ice Cubes.app",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.application",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Debug",
+     "provisioningStyle": 0
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Release",
+     "provisioningStyle": 0
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=d8235f9ea4b1c25ce0df012493139fd5",
+  "type": "target"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "ActionIcon",
+      "CODE_SIGN_ENTITLEMENTS": "IceCubesActionExtension/IceCubesActionExtension.entitlements",
+      "CODE_SIGN_IDENTITY": "-",
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Development",
+      "CODE_SIGN_IDENTITY[sdk=macosx*]": "Apple Development",
+      "CODE_SIGN_STYLE": "Automatic",
+      "CURRENT_PROJECT_VERSION": "3066",
+      "DEVELOPMENT_TEAM": "$(DEVELOPMENT_TEAM)",
+      "GENERATE_INFOPLIST_FILE": "YES",
+      "INFOPLIST_FILE": "IceCubesActionExtension/Info.plist",
+      "INFOPLIST_KEY_CFBundleDisplayName": "Open in Ice Cube",
+      "INFOPLIST_KEY_NSHumanReadableCopyright": "",
+      "IPHONEOS_DEPLOYMENT_TARGET": "18.5",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks",
+      "MARKETING_VERSION": "2.1.3",
+      "PRODUCT_BUNDLE_IDENTIFIER": "$(BUNDLE_ID_PREFIX).IceCubesApp.IceCubesActionExtension",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "SDKROOT": "iphoneos",
+      "SKIP_INSTALL": "YES",
+      "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
+      "SUPPORTS_MACCATALYST": "YES",
+      "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+      "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+      "SWIFT_EMIT_LOC_STRINGS": "YES",
+      "SWIFT_VERSION": "6.0",
+      "TARGETED_DEVICE_FAMILY": "1,2"
+     },
+     "guid": "0bec147ec38eb387bcc21016dc53d315108a49016e4a41f472d58c57f94e27e8",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "ActionIcon",
+      "CODE_SIGN_ENTITLEMENTS": "IceCubesActionExtension/IceCubesActionExtension.entitlements",
+      "CODE_SIGN_IDENTITY": "-",
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Development",
+      "CODE_SIGN_IDENTITY[sdk=macosx*]": "Apple Development",
+      "CODE_SIGN_STYLE": "Automatic",
+      "CURRENT_PROJECT_VERSION": "3066",
+      "DEVELOPMENT_TEAM": "$(DEVELOPMENT_TEAM)",
+      "GENERATE_INFOPLIST_FILE": "YES",
+      "INFOPLIST_FILE": "IceCubesActionExtension/Info.plist",
+      "INFOPLIST_KEY_CFBundleDisplayName": "Open in Ice Cube",
+      "INFOPLIST_KEY_NSHumanReadableCopyright": "",
+      "IPHONEOS_DEPLOYMENT_TARGET": "18.5",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks",
+      "MARKETING_VERSION": "2.1.3",
+      "PRODUCT_BUNDLE_IDENTIFIER": "$(BUNDLE_ID_PREFIX).IceCubesApp.IceCubesActionExtension",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "SDKROOT": "iphoneos",
+      "SKIP_INSTALL": "YES",
+      "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
+      "SUPPORTS_MACCATALYST": "YES",
+      "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+      "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+      "SWIFT_EMIT_LOC_STRINGS": "YES",
+      "SWIFT_VERSION": "6.0",
+      "TARGETED_DEVICE_FAMILY": "1,2",
+      "VALIDATE_PRODUCT": "YES"
+     },
+     "guid": "0bec147ec38eb387bcc21016dc53d315d5efa009397756fa72c44342f38f2e76",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "FhKql5BW7R7DGKZv2Qe9srg2fiPAiXOdQO01oeoL3I0=",
+       "guid": "Om/wREhrrefqWMlqbSr/yHV2OiN6NfUeCzHMnTgFOqc="
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d31598092be016be9c972f2a7a72aad75fd0",
+     "type": "com.apple.buildphase.sources"
+    },
+    {
+     "buildFiles": [
+      {
+       "guid": "91116616bf6c177ef341c7f7fc878e43",
+       "targetReference": "PACKAGE-PRODUCT:networkclient_NetworkClient.NetworkClient"
+      },
+      {
+       "guid": "e8c520ea86ea244656d4403f5a37f655",
+       "targetReference": "PACKAGE-PRODUCT:models_Models.Models"
+      },
+      {
+       "fileReference": "0bec147ec38eb387bcc21016dc53d3154621a2852ac636cb6b2ff7fb531d352c",
+       "guid": "0bec147ec38eb387bcc21016dc53d3157d931c2148903c6c75019af7d33805cd"
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d3152ad519ee6231aa6eb957e40e772dc716",
+     "type": "com.apple.buildphase.frameworks"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "BknTLGwp+a5wqBQbG7SYvNArspAblWFAHJ0okuJafFI=",
+       "guid": "UoMaXHQdHs4wF2J/fzT2VtthZXsSrnZNrz+IFprs4FQ="
+      },
+      {
+       "fileReference": "Y1Y9gAirBvB9RW7VVebIMMDflwggKIXYXh9YlzTLSlo=",
+       "guid": "kJLrNpEhSy9jF4wTmGoT0xyzyAjPjAmuG4bpaYzStcE="
+      },
+      {
+       "fileReference": "i9q29OpfyP8gejbrfz9dA0kJBY4MZjeqt3mY9v5zHvU=",
+       "guid": "f5Uyz+opiIrhuko1jiH6xisjObJ3ufnlXUCKRdseDfg="
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d3153687408c1b0aa9edb8dfc2d2a18b1618",
+     "type": "com.apple.buildphase.resources"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [
+    {
+     "guid": "PACKAGE-PRODUCT:networkclient_NetworkClient.NetworkClient",
+     "name": "NetworkClient"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:models_Models.Models",
+     "name": "Models"
+    }
+   ],
+   "guid": "0bec147ec38eb387bcc21016dc53d31546d39d7b7e3abac14821224981d9ebb9",
+   "name": "IceCubesActionExtension",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.JavaScript",
+   "productReference": {
+    "guid": "0bec147ec38eb387bcc21016dc53d315ce9da5ef8f7d6e46156ef841ba104a71",
+    "name": "IceCubesActionExtension.appex",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.app-extension",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Debug",
+     "provisioningStyle": 0
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Release",
+     "provisioningStyle": 0
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=3b99e0cc028aab359a326e5f7fc8eed1",
+  "type": "target"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "CODE_SIGN_ENTITLEMENTS": "IceCubesNotifications/IceCubesNotifications.entitlements",
+      "CODE_SIGN_IDENTITY": "-",
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Development",
+      "CODE_SIGN_IDENTITY[sdk=macosx*]": "Apple Development",
+      "CODE_SIGN_IDENTITY[sdk=xros*]": "Apple Development",
+      "CODE_SIGN_STYLE": "Automatic",
+      "CURRENT_PROJECT_VERSION": "3066",
+      "DEVELOPMENT_TEAM": "$(DEVELOPMENT_TEAM)",
+      "GENERATE_INFOPLIST_FILE": "YES",
+      "INFOPLIST_FILE": "IceCubesNotifications/Info.plist",
+      "INFOPLIST_KEY_CFBundleDisplayName": "IceCubesNotifications",
+      "INFOPLIST_KEY_NSHumanReadableCopyright": "",
+      "IPHONEOS_DEPLOYMENT_TARGET": "18.5",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks",
+      "MARKETING_VERSION": "2.1.3",
+      "PRODUCT_BUNDLE_IDENTIFIER": "$(BUNDLE_ID_PREFIX).IceCubesApp.IceCubesNotifications",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "SDKROOT": "iphoneos",
+      "SKIP_INSTALL": "YES",
+      "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator xros xrsimulator",
+      "SUPPORTS_MACCATALYST": "YES",
+      "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+      "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+      "SWIFT_EMIT_LOC_STRINGS": "YES",
+      "SWIFT_VERSION": "6.0",
+      "TARGETED_DEVICE_FAMILY": "1,2,7"
+     },
+     "guid": "0bec147ec38eb387bcc21016dc53d315094ec38aa15b5d42c0948dfad9b42837",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "CODE_SIGN_ENTITLEMENTS": "IceCubesNotifications/IceCubesNotifications.entitlements",
+      "CODE_SIGN_IDENTITY": "-",
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Development",
+      "CODE_SIGN_IDENTITY[sdk=macosx*]": "Apple Development",
+      "CODE_SIGN_IDENTITY[sdk=xros*]": "Apple Development",
+      "CODE_SIGN_STYLE": "Automatic",
+      "CURRENT_PROJECT_VERSION": "3066",
+      "DEVELOPMENT_TEAM": "$(DEVELOPMENT_TEAM)",
+      "GENERATE_INFOPLIST_FILE": "YES",
+      "INFOPLIST_FILE": "IceCubesNotifications/Info.plist",
+      "INFOPLIST_KEY_CFBundleDisplayName": "IceCubesNotifications",
+      "INFOPLIST_KEY_NSHumanReadableCopyright": "",
+      "IPHONEOS_DEPLOYMENT_TARGET": "18.5",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks",
+      "MARKETING_VERSION": "2.1.3",
+      "PRODUCT_BUNDLE_IDENTIFIER": "$(BUNDLE_ID_PREFIX).IceCubesApp.IceCubesNotifications",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "SDKROOT": "iphoneos",
+      "SKIP_INSTALL": "YES",
+      "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator xros xrsimulator",
+      "SUPPORTS_MACCATALYST": "YES",
+      "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+      "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+      "SWIFT_EMIT_LOC_STRINGS": "YES",
+      "SWIFT_VERSION": "6.0",
+      "TARGETED_DEVICE_FAMILY": "1,2,7",
+      "VALIDATE_PRODUCT": "YES"
+     },
+     "guid": "0bec147ec38eb387bcc21016dc53d315b5d22827f19958b2b7940b3cd1ca837c",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "A4CCM8cpSNaKYUnnl3Cw1Ztwe9fP0fsIsmxSUF501WQ=",
+       "guid": "3yujPsuVRZ0xPacZp8rCB0+X0l2X6DLhPrBPPxqfvEY="
+      },
+      {
+       "fileReference": "n5CEZ5y+tY0N2QloS02qM1+KsBR2zbfy2dNUm4DpxrE=",
+       "guid": "heGLRu6NrKq1lDWd+u+I7LOjH/Vifjg+Hm0k0+bCuJA="
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d3153ae521d9e6d478721424e7449104055f",
+     "type": "com.apple.buildphase.sources"
+    },
+    {
+     "buildFiles": [
+      {
+       "guid": "b80d31522466f413a07de1aab9145ec1",
+       "targetReference": "PACKAGE-PRODUCT:notifications_Notifications.Notifications"
+      },
+      {
+       "guid": "23469066afa0ee3cb9e05f5691fd55c0",
+       "targetReference": "PACKAGE-PRODUCT:appaccount_AppAccount.AppAccount"
+      },
+      {
+       "guid": "d31d004d2ab79573113e641d0a145c97",
+       "targetReference": "PACKAGE-PRODUCT:designsystem_DesignSystem.DesignSystem"
+      },
+      {
+       "guid": "5beb020d1d143c0bf8755dae2c646de1",
+       "targetReference": "PACKAGE-PRODUCT:models_Models.Models"
+      },
+      {
+       "guid": "42d4e6ab0330f8d8bcb56c0c671c60aa",
+       "targetReference": "PACKAGE-PRODUCT:account_Account.Account"
+      },
+      {
+       "guid": "9a2150d302f85b78a4a574b6422bc418",
+       "targetReference": "PACKAGE-PRODUCT:statuskit_StatusKit.StatusKit"
+      },
+      {
+       "guid": "8d2b90063723f63b22aaa1df14353ad7",
+       "targetReference": "PACKAGE-PRODUCT:keychain-swift_KeychainSwift.KeychainSwift"
+      },
+      {
+       "guid": "f170278ea8fa4bb9b1c40ae2c6e78b49",
+       "targetReference": "PACKAGE-PRODUCT:env_Env.Env"
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d3154cdebc599a9d1846a6e96b9892ca450c",
+     "type": "com.apple.buildphase.frameworks"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "WkVCh7RfmGY/y3tUsB/CAGQ35nXKjgV6BQg0YoPFs/Y=",
+       "guid": "GUIMtfrpmiPVi73AGWfq5kflJqb/eFyEkG4t06Bl8/4="
+      },
+      {
+       "fileReference": "grsFeG0OtfMM369mlMmTPIt/mXvWaCJG1l2MXd7GTes=",
+       "guid": "Z4n6CwumnZec0a54RANq5aQSYDsgOxIV0XaYwJRsv28="
+      },
+      {
+       "fileReference": "9XIBxpaAbfpffkdxIIvxhlpXj9pMHiTk9CIDh5IenOI=",
+       "guid": "Z1OnkhwZNeMlVCz8E+iregx/rtadU+ZxTYrcz20v9SY="
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d315595bdb6d823147c54dc1e240d4df9f86",
+     "type": "com.apple.buildphase.resources"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [
+    {
+     "guid": "PACKAGE-PRODUCT:notifications_Notifications.Notifications",
+     "name": "Notifications"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:appaccount_AppAccount.AppAccount",
+     "name": "AppAccount"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:designsystem_DesignSystem.DesignSystem",
+     "name": "DesignSystem"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:models_Models.Models",
+     "name": "Models"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:account_Account.Account",
+     "name": "Account"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:statuskit_StatusKit.StatusKit",
+     "name": "StatusKit"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:keychain-swift_KeychainSwift.KeychainSwift",
+     "name": "KeychainSwift"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:env_Env.Env",
+     "name": "Env"
+    }
+   ],
+   "guid": "0bec147ec38eb387bcc21016dc53d315d4de989ab0da2ff45ab09dc52d760a9d",
+   "name": "IceCubesNotifications",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Swift",
+   "productReference": {
+    "guid": "0bec147ec38eb387bcc21016dc53d315ea3c49651dc5080dc344e993384fc53a",
+    "name": "IceCubesNotifications.appex",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.app-extension",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Debug",
+     "provisioningStyle": 0
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Release",
+     "provisioningStyle": 0
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=4b83bdce92ac91433cce8d211c64a973",
+  "type": "target"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "CODE_SIGN_ENTITLEMENTS": "IceCubesShareExtension/IceCubesShareExtension.entitlements",
+      "CODE_SIGN_IDENTITY": "-",
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Development",
+      "CODE_SIGN_IDENTITY[sdk=macosx*]": "Apple Development",
+      "CODE_SIGN_STYLE": "Automatic",
+      "CURRENT_PROJECT_VERSION": "3066",
+      "DEVELOPMENT_TEAM": "$(DEVELOPMENT_TEAM)",
+      "GENERATE_INFOPLIST_FILE": "YES",
+      "INFOPLIST_FILE": "IceCubesShareExtension/Info.plist",
+      "INFOPLIST_KEY_CFBundleDisplayName": "Ice Cubes",
+      "INFOPLIST_KEY_NSHumanReadableCopyright": "",
+      "IPHONEOS_DEPLOYMENT_TARGET": "18.5",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks",
+      "MARKETING_VERSION": "2.1.3",
+      "PRODUCT_BUNDLE_IDENTIFIER": "$(BUNDLE_ID_PREFIX).IceCubesApp.IceCubesShareExtension",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "SDKROOT": "iphoneos",
+      "SKIP_INSTALL": "YES",
+      "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
+      "SUPPORTS_MACCATALYST": "YES",
+      "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+      "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+      "SWIFT_EMIT_LOC_STRINGS": "YES",
+      "SWIFT_VERSION": "6.0",
+      "TARGETED_DEVICE_FAMILY": "1,2"
+     },
+     "guid": "0bec147ec38eb387bcc21016dc53d31565631bcde5ac6c99826288fd270a701d",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "CODE_SIGN_ENTITLEMENTS": "IceCubesShareExtension/IceCubesShareExtension.entitlements",
+      "CODE_SIGN_IDENTITY": "-",
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Development",
+      "CODE_SIGN_IDENTITY[sdk=macosx*]": "Apple Development",
+      "CODE_SIGN_STYLE": "Automatic",
+      "CURRENT_PROJECT_VERSION": "3066",
+      "DEVELOPMENT_TEAM": "$(DEVELOPMENT_TEAM)",
+      "GENERATE_INFOPLIST_FILE": "YES",
+      "INFOPLIST_FILE": "IceCubesShareExtension/Info.plist",
+      "INFOPLIST_KEY_CFBundleDisplayName": "Ice Cubes",
+      "INFOPLIST_KEY_NSHumanReadableCopyright": "",
+      "IPHONEOS_DEPLOYMENT_TARGET": "18.5",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks",
+      "MARKETING_VERSION": "2.1.3",
+      "PRODUCT_BUNDLE_IDENTIFIER": "$(BUNDLE_ID_PREFIX).IceCubesApp.IceCubesShareExtension",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "SDKROOT": "iphoneos",
+      "SKIP_INSTALL": "YES",
+      "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
+      "SUPPORTS_MACCATALYST": "YES",
+      "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+      "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+      "SWIFT_EMIT_LOC_STRINGS": "YES",
+      "SWIFT_VERSION": "6.0",
+      "TARGETED_DEVICE_FAMILY": "1,2",
+      "VALIDATE_PRODUCT": "YES"
+     },
+     "guid": "0bec147ec38eb387bcc21016dc53d315e483315c1c1e293fffdb9310c6ea10b0",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "Fw0nu5wgmP+HrQ22jFbsKiL4bGXEYPQwsd9L3cJZj+k=",
+       "guid": "YlwkmgRsTqbz8TiUwnAHmfr0bAU2JCDTbYKOWvQFcww="
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d3155bf079ca5c6ccd84dee18f2ecdec87bb",
+     "type": "com.apple.buildphase.sources"
+    },
+    {
+     "buildFiles": [
+      {
+       "guid": "9239bc78f342178f229c7d0445fdc919",
+       "targetReference": "PACKAGE-PRODUCT:env_Env.Env"
+      },
+      {
+       "guid": "54a87b10df371ae9e14888f27e0c808e",
+       "targetReference": "PACKAGE-PRODUCT:models_Models.Models"
+      },
+      {
+       "guid": "526364810bcb5451eb5da628a4827419",
+       "targetReference": "PACKAGE-PRODUCT:designsystem_DesignSystem.DesignSystem"
+      },
+      {
+       "guid": "c060d560775547e6fc5ad423794e0376",
+       "targetReference": "PACKAGE-PRODUCT:account_Account.Account"
+      },
+      {
+       "guid": "21a35f5dd35b62f971939e284e2fe249",
+       "targetReference": "PACKAGE-PRODUCT:appaccount_AppAccount.AppAccount"
+      },
+      {
+       "guid": "474eb64d45fa589bc8886444b52a05ea",
+       "targetReference": "PACKAGE-PRODUCT:statuskit_StatusKit.StatusKit"
+      },
+      {
+       "guid": "02662a3024ab9b8dcff65fa2e55bc677",
+       "targetReference": "PACKAGE-PRODUCT:keychain-swift_KeychainSwift.KeychainSwift"
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d315dddbfb9bbb088b1f24c545db1ec9efc5",
+     "type": "com.apple.buildphase.frameworks"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "9XIBxpaAbfpffkdxIIvxhlpXj9pMHiTk9CIDh5IenOI=",
+       "guid": "Fc3oXrCR7QemM0SjYZtOC/VodaQgeFLYEpf6q3CJvxQ="
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d315339deb2d2cbc6dde27860cf5d30fcc07",
+     "type": "com.apple.buildphase.resources"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [
+    {
+     "guid": "PACKAGE-PRODUCT:env_Env.Env",
+     "name": "Env"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:models_Models.Models",
+     "name": "Models"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:designsystem_DesignSystem.DesignSystem",
+     "name": "DesignSystem"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:account_Account.Account",
+     "name": "Account"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:appaccount_AppAccount.AppAccount",
+     "name": "AppAccount"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:statuskit_StatusKit.StatusKit",
+     "name": "StatusKit"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:keychain-swift_KeychainSwift.KeychainSwift",
+     "name": "KeychainSwift"
+    }
+   ],
+   "guid": "0bec147ec38eb387bcc21016dc53d3155647e59a2ac6371e24b023996c04fc8d",
+   "name": "IceCubesShareExtension",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Swift",
+   "productReference": {
+    "guid": "0bec147ec38eb387bcc21016dc53d31512828fdbca4321f92f0d9b0241b7eb97",
+    "name": "IceCubesShareExtension.appex",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.app-extension",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Debug",
+     "provisioningStyle": 0
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Release",
+     "provisioningStyle": 0
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=dae5f7b2b314cf0caf5e6100281ed761",
+  "type": "target"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
+      "ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME": "WidgetBackground",
+      "CODE_SIGN_ENTITLEMENTS": "IceCubesAppWidgetsExtension/IceCubesAppWidgetsExtensionExtension.entitlements",
+      "CODE_SIGN_IDENTITY": "-",
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Development",
+      "CODE_SIGN_IDENTITY[sdk=macosx*]": "Apple Development",
+      "CODE_SIGN_STYLE": "Automatic",
+      "CURRENT_PROJECT_VERSION": "3066",
+      "DEVELOPMENT_TEAM": "$(DEVELOPMENT_TEAM)",
+      "GCC_C_LANGUAGE_STANDARD": "gnu17",
+      "GENERATE_INFOPLIST_FILE": "YES",
+      "INFOPLIST_FILE": "IceCubesAppWidgetsExtension/Info.plist",
+      "INFOPLIST_KEY_CFBundleDisplayName": "IceCubesAppWidgetsExtension",
+      "INFOPLIST_KEY_NSHumanReadableCopyright": "",
+      "IPHONEOS_DEPLOYMENT_TARGET": "18.5",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks",
+      "MARKETING_VERSION": "2.1.3",
+      "PRODUCT_BUNDLE_IDENTIFIER": "$(BUNDLE_ID_PREFIX).IceCubesApp.IceCubesAppWidgetsExtension",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "SDKROOT": "iphoneos",
+      "SKIP_INSTALL": "YES",
+      "SUPPORTS_MACCATALYST": "YES",
+      "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "DEBUG $(inherited)",
+      "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+      "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+      "SWIFT_EMIT_LOC_STRINGS": "YES",
+      "SWIFT_VERSION": "6.0",
+      "TARGETED_DEVICE_FAMILY": "1,2"
+     },
+     "guid": "0bec147ec38eb387bcc21016dc53d315543cacc1e3d2fc353d4a37c81e4726bc",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
+      "ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME": "WidgetBackground",
+      "CODE_SIGN_ENTITLEMENTS": "IceCubesAppWidgetsExtension/IceCubesAppWidgetsExtensionExtension.entitlements",
+      "CODE_SIGN_IDENTITY": "-",
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Development",
+      "CODE_SIGN_IDENTITY[sdk=macosx*]": "Apple Development",
+      "CODE_SIGN_STYLE": "Automatic",
+      "CURRENT_PROJECT_VERSION": "3066",
+      "DEVELOPMENT_TEAM": "$(DEVELOPMENT_TEAM)",
+      "GCC_C_LANGUAGE_STANDARD": "gnu17",
+      "GENERATE_INFOPLIST_FILE": "YES",
+      "INFOPLIST_FILE": "IceCubesAppWidgetsExtension/Info.plist",
+      "INFOPLIST_KEY_CFBundleDisplayName": "IceCubesAppWidgetsExtension",
+      "INFOPLIST_KEY_NSHumanReadableCopyright": "",
+      "IPHONEOS_DEPLOYMENT_TARGET": "18.5",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks",
+      "MARKETING_VERSION": "2.1.3",
+      "PRODUCT_BUNDLE_IDENTIFIER": "$(BUNDLE_ID_PREFIX).IceCubesApp.IceCubesAppWidgetsExtension",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "SDKROOT": "iphoneos",
+      "SKIP_INSTALL": "YES",
+      "SUPPORTS_MACCATALYST": "YES",
+      "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+      "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+      "SWIFT_EMIT_LOC_STRINGS": "YES",
+      "SWIFT_VERSION": "6.0",
+      "TARGETED_DEVICE_FAMILY": "1,2",
+      "VALIDATE_PRODUCT": "YES"
+     },
+     "guid": "0bec147ec38eb387bcc21016dc53d3159944ea8787376a93beb99efe2fcb0709",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "Ef5+AynN+n/bEm0I/l8Uo36bD/G182ZH6aC2S9vYW6U=",
+       "guid": "m7ilORNyq01BAeX6w9RLa1N8jPtbM0R6gD7dm1yuEc8="
+      },
+      {
+       "fileReference": "1fepU22v0GJxvqeW4ABmsdiyBkQQnA4hryfWQRVVY0k=",
+       "guid": "2ZEK8dzjDzSg7QVHXsAfobhyR+tFSAmTqVNaz1Qe+RE="
+      },
+      {
+       "fileReference": "xhdxWiox4+Zz3H5JYVNwzkJQ/iXscWn8pQbxJyryXNE=",
+       "guid": "LDr1A+CpBBnEmO56dawBopX0VZh4y3mkFKI5cGr+UrQ="
+      },
+      {
+       "fileReference": "GwLEdx6hHLoTTQCS5c4szVXeSkphm3zyrtE4T5+EgQ8=",
+       "guid": "PEHZ7bIkG4ZgMJJzfbLHSjtMOHNW1uYx8PTl4BGK9AM="
+      },
+      {
+       "fileReference": "rFcKzucQ6iigd84Q8mF2G7TPQHU22e1pMb8ik2xO2B8=",
+       "guid": "KKVxxd1yLe0FCyqLFWxyXaXhzBUK1sULh5JQC4YaHRE="
+      },
+      {
+       "fileReference": "6be0kna77bbvOr807D2aUpihRdPQoN5HmgRTGJtaWM0=",
+       "guid": "W0eZiie41zQdUoPeAvWJCWiNJLjX9WAv/9mWWrRrrEU="
+      },
+      {
+       "fileReference": "KhFMqQ0fcvBfltNE7SNKuQHi6Xoatn8TrjFkOju6M/Y=",
+       "guid": "d3Pz32LMKrfLFAIn8QoPvC8xqFek498XHlDhMuUsqJg="
+      },
+      {
+       "fileReference": "oXm3w/6mUtdLNgJFShYZxPzTvC7cJ/mHsT+j8gIhvl8=",
+       "guid": "uxOlsPDpWzK1QLEEnK74zunCWPeLs7Plaj9Cx9zYULY="
+      },
+      {
+       "fileReference": "FJEeexCHtOSLXJ7GGSzVASUAuWerinLTtY/6i6E3CWw=",
+       "guid": "lS3HRH+1eeWY0sERciFmheG9dBXQjlG9PimC4qTGvmw="
+      },
+      {
+       "fileReference": "+hgQ6tbjf6XJluIq8Y+E2tQchiIaOWgcLl3zemw9etQ=",
+       "guid": "1WthFQJGSTplixkMezt9NeT1+sP05FBBoQ8+bibegpQ="
+      },
+      {
+       "fileReference": "qPPSms6OfMe+JXriOWf8aCjFgIJtdr7cm2NCYrL60bY=",
+       "guid": "0h+5PVKTQ0DhbW0Ut90UjzdvvXk/EzTXU6ffRIl1hso="
+      },
+      {
+       "fileReference": "NZcwXsP6WMPIogmykYHzqfC+cEVsoSVkWg5m+eeJA6g=",
+       "guid": "Bay4JN5dJLx/EE9sIG5jVWtL6e+koP8nD11SiRoSetU="
+      },
+      {
+       "fileReference": "ML20/pIVd+z10JkhP0OlJIDEPxTIGWo38UhnMXxxTKA=",
+       "guid": "wzr4haIOosNEL7yXOkK9Lj4oPTcL9mjy7yroXKIrej8="
+      },
+      {
+       "fileReference": "NSO8H/ReAtEhysXCvV7EjVEvwn3TdoKUAwrCqQ+QYDs=",
+       "guid": "C4JQg0hUv6XV8lLtsJ5tfVGQlliwAcmqRfLQZuUyvEQ="
+      },
+      {
+       "fileReference": "qkKwo7/dSs9Oa67bEVIbimtimhMA094gsr0q3SVfb2g=",
+       "guid": "rV+R8XNiEwGsNHvGnBVB6M1AX70TYsvIZ4BPYcyQCVc="
+      },
+      {
+       "fileReference": "F7Ngsd5Tnr5ssa1UN5jbwkN/Lo/GbGastaswh8c+mqQ=",
+       "guid": "vs7vX32Ox87wt1GpLM2/4A2eiOiIoX4AOtPcJzp8ynk="
+      },
+      {
+       "fileReference": "kAtFwsSf5VJ54/+N19anf4rFUT39Yz8suk5abh7n0b0=",
+       "guid": "9QowWcm3L83IkoKP0fbv94WLGALUXlGC8103NsL+txk="
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d315ede4923af43df33e1078b23f0d2dec26",
+     "type": "com.apple.buildphase.sources"
+    },
+    {
+     "buildFiles": [
+      {
+       "guid": "7d0dc754ef1115af36b9cf87ea8d899b",
+       "targetReference": "PACKAGE-PRODUCT:models_Models.Models"
+      },
+      {
+       "guid": "86ad29d36d1faeeb4df1b2c83b4131f6",
+       "targetReference": "PACKAGE-PRODUCT:networkclient_NetworkClient.NetworkClient"
+      },
+      {
+       "guid": "e094d77f1925899198164db75054a34b",
+       "targetReference": "PACKAGE-PRODUCT:appaccount_AppAccount.AppAccount"
+      },
+      {
+       "guid": "d8e09b62eed7f933f4676ff9fadd7bfb",
+       "targetReference": "PACKAGE-PRODUCT:account_Account.Account"
+      },
+      {
+       "guid": "c8aa5e0714146b11877a169dcfca0e10",
+       "targetReference": "PACKAGE-PRODUCT:env_Env.Env"
+      },
+      {
+       "fileReference": "0bec147ec38eb387bcc21016dc53d3152b3046021edac6defc51fb58e345d56f",
+       "guid": "0bec147ec38eb387bcc21016dc53d315b7d7e02fd6e3f4e66770b16e14605c01"
+      },
+      {
+       "fileReference": "0bec147ec38eb387bcc21016dc53d315b1a45e4e7fa4407c4a5810d588df3e85",
+       "guid": "0bec147ec38eb387bcc21016dc53d31593b57964c5b10906e301d907c86ac7db"
+      },
+      {
+       "guid": "64ff8c88998b130a314c9c952f5165e9",
+       "targetReference": "PACKAGE-PRODUCT:timeline_Timeline.Timeline"
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d3150b9b2017022003f7a966b80a5802b18f",
+     "type": "com.apple.buildphase.frameworks"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "+f18GXRnqb+f4O2UJvi8m01vD9NJs3w/BUeKNep1aQA=",
+       "guid": "v/iMAcGXNXijN2aGM04apVv5VEvOjVo4zLJNJ/kCreg="
+      }
+     ],
+     "guid": "0bec147ec38eb387bcc21016dc53d3159b7cdd1fd22a3e0d4dcf10e4d7f28d6b",
+     "type": "com.apple.buildphase.resources"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [
+    {
+     "guid": "PACKAGE-PRODUCT:models_Models.Models",
+     "name": "Models"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:networkclient_NetworkClient.NetworkClient",
+     "name": "NetworkClient"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:appaccount_AppAccount.AppAccount",
+     "name": "AppAccount"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:account_Account.Account",
+     "name": "Account"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:env_Env.Env",
+     "name": "Env"
+    },
+    {
+     "guid": "PACKAGE-PRODUCT:timeline_Timeline.Timeline",
+     "name": "Timeline"
+    }
+   ],
+   "guid": "0bec147ec38eb387bcc21016dc53d315b7a6ae3e2499e64c17fea1436b880185",
+   "name": "IceCubesAppWidgetsExtensionExtension",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Swift",
+   "productReference": {
+    "guid": "0bec147ec38eb387bcc21016dc53d315ce4427d2443196eaf451300836ec777d",
+    "name": "IceCubesAppWidgetsExtensionExtension.appex",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.app-extension",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Debug",
+     "provisioningStyle": 0
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Release",
+     "provisioningStyle": 0
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=d8f257e8911aea63697951164fa3587d",
+  "type": "target"
+ }
+]

@@ -1,6 +1,7 @@
-//! `sweetpad pbxproj pif` — the project as Swift Build's project interchange
-//! format, the input the open-source build engine takes in place of an
-//! `.xcodeproj`. The counterpart of `xcodebuild -dumpPIF`, which needs Xcode.
+//! `sweetpad pbxproj pif` — the workspace or project as Swift Build's project
+//! interchange format, the input the open-source build engine takes in place
+//! of an `.xcworkspace` or `.xcodeproj`. The counterpart of
+//! `xcodebuild -dumpPIF`, which needs Xcode.
 
 use std::fs;
 use std::path::PathBuf;
@@ -8,7 +9,7 @@ use std::path::PathBuf;
 use clap::Args;
 
 use crate::cli::output::Output;
-use crate::cli::pbxedit::Editable;
+use crate::cli::resolve::{self, Container};
 use crate::cli::{CliError, CommandResult, ContainerArgs, Context, Render, Rendered};
 
 /// Flags for `pbxproj pif`.
@@ -44,14 +45,16 @@ impl Render for PifResult {
 }
 
 pub fn run(ctx: &mut Context, args: &PifArgs) -> CommandResult {
-    let (xcodeproj, document) = super::open_document(ctx, &args.container, None)?;
-    let Editable::Pbxproj(root) = &document else {
-        return Err(CliError::new(
-            "only a project.pbxproj can be converted to PIF; this project uses the project.xcproj format",
-        ));
+    ctx.targeting = args.container.clone().into();
+    let path = match resolve::container(ctx)? {
+        Container::Workspace(path) | Container::Project(path) => path,
+        Container::SwiftPackage(_) => {
+            return Err(CliError::new(
+                "a Swift package has no Xcode project to convert to PIF",
+            ));
+        }
     };
-    let objects = sweetpad_lib::pif::project_pif(root, &xcodeproj)
-        .map_err(|e| CliError::new(e.to_string()))?;
+    let objects = sweetpad_lib::pif::pif(&path).map_err(|e| CliError::new(e.to_string()))?;
     let pif = serde_json::Value::Array(objects);
     let written = match &args.file {
         Some(path) => {
