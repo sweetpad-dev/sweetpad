@@ -6,7 +6,13 @@ A command-line tool that builds, runs, debugs, and tests apps for iOS, macOS, et
 Xcode. It works with Xcode projects and workspaces, Tuist, XcodeGen, and Swift
 packages.
 
-[![Demo: sweetpad run builds an app and launches it in the iOS Simulator, then rebuilds it after a code change](./sweetpad-docs/static/videos/sweetpad-demo-readme.jpg)](./sweetpad-docs/static/videos/sweetpad-demo-readme.mp4)
+
+
+
+
+
+
+[![Demo: sweetpad run builds an app and launches it in the iOS Simulator, then rebuilds it after a code change](./sweetpad-docs/static/videos/sweetpad-demo-readme.jpg)](https://github.com/user-attachments/assets/e9913ef6-a018-4bac-a627-1b1c11968d61)
 
 ```bash
 brew install sweetpad-dev/tap/sweetpad
