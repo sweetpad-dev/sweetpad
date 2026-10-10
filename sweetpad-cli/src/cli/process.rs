@@ -279,6 +279,7 @@ fn merged_output_pipe(program: &str) -> Result<(std::fs::File, Stdio, Stdio), Cl
     }
 }
 
+#[cfg(target_os = "macos")]
 unsafe extern "C" {
     /// `<spawn.h>` since macOS 10.15, which the libc crate doesn't bind for
     /// Apple targets.
@@ -302,6 +303,7 @@ pub(crate) struct Suspended {
 /// on top, its stdin is `/dev/null`, and every other descriptor stays behind
 /// (`POSIX_SPAWN_CLOEXEC_DEFAULT`), so it can't hold a debug adapter's
 /// protocol pipes open. It starts in `cwd`, or in this process's directory.
+#[cfg(target_os = "macos")]
 pub(crate) fn spawn_suspended(
     program: &Path,
     args: &[String],
@@ -399,6 +401,20 @@ pub(crate) fn spawn_suspended(
         stdout,
         stderr,
     })
+}
+
+/// Starting a process suspended relies on Apple's `POSIX_SPAWN_START_SUSPENDED`.
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn spawn_suspended(
+    program: &Path,
+    _args: &[String],
+    _env: &[(String, String)],
+    _cwd: Option<&Path>,
+) -> Result<Suspended, CliError> {
+    Err(CliError::new(format!(
+        "cannot start '{}' suspended for the debugger: that needs macOS",
+        program.display()
+    )))
 }
 
 /// SIGTERM a process by pid. Used to end something this tool is responsible for

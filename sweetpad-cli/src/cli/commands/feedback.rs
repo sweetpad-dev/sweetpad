@@ -439,6 +439,7 @@ impl Host {
 }
 
 /// A string-valued sysctl, such as `kern.osproductversion`.
+#[cfg(target_os = "macos")]
 fn sysctl_string(name: &str) -> Option<String> {
     let name = std::ffi::CString::new(name).ok()?;
     let mut len: libc::size_t = 0;
@@ -473,6 +474,12 @@ fn sysctl_string(name: &str) -> Option<String> {
     let text = String::from_utf8(buf).ok()?;
     let text = text.trim_end_matches('\0').trim();
     (!text.is_empty()).then(|| text.to_string())
+}
+
+/// The macOS sysctls the report reads have no counterpart elsewhere.
+#[cfg(not(target_os = "macos"))]
+fn sysctl_string(_name: &str) -> Option<String> {
+    None
 }
 
 /// Where a report goes: Sentry's envelope endpoint for [`SENTRY_DSN`], or the
@@ -605,6 +612,7 @@ impl Payload {
 
 /// SHA-256 from CommonCrypto, which is part of libSystem, so every macOS
 /// process already has it.
+#[cfg(target_os = "macos")]
 fn sha256(data: &[u8]) -> [u8; 32] {
     unsafe extern "C" {
         fn CC_SHA256(data: *const std::ffi::c_void, len: u32, md: *mut u8) -> *mut u8;
@@ -614,6 +622,21 @@ fn sha256(data: &[u8]) -> [u8; 32] {
     // Safety: `data` is `len` readable bytes and `digest` the 32 bytes
     // CC_SHA256 writes.
     unsafe { CC_SHA256(data.as_ptr().cast(), len, digest.as_mut_ptr()) };
+    digest
+}
+
+/// SHA-256 from OpenSSL's libcrypto, which the TLS stack already links off
+/// macOS.
+#[cfg(not(target_os = "macos"))]
+fn sha256(data: &[u8]) -> [u8; 32] {
+    #[link(name = "crypto")]
+    unsafe extern "C" {
+        fn SHA256(data: *const u8, len: usize, md: *mut u8) -> *mut u8;
+    }
+    let mut digest = [0u8; 32];
+    // Safety: `data` is `data.len()` readable bytes and `digest` the 32 bytes
+    // SHA256 writes.
+    unsafe { SHA256(data.as_ptr(), data.len(), digest.as_mut_ptr()) };
     digest
 }
 
