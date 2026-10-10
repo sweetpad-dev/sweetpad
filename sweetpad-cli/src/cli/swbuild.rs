@@ -504,8 +504,9 @@ impl DarwinSdk {
 /// object on the next. Task starts become task events, diagnostics become
 /// diagnostics, and the build's end becomes its banner. A task that fails
 /// without an error of its own (a run script, say) becomes an error that
-/// carries the task's output, which would otherwise go unseen. Text lines are
-/// swbuild's own errors, written before or after the build.
+/// carries the task's output, which would otherwise go unseen, and so do the
+/// warnings a successful link leaves in its output. Text lines are swbuild's
+/// own errors, written before or after the build.
 #[derive(Debug, Default)]
 pub struct MessageParser {
     /// What each started task is, by task ID.
@@ -527,6 +528,8 @@ struct Task {
     /// A task of the Swift driver's plan. It fails along with the compile
     /// it stands for, whose errors already say why.
     swift: bool,
+    /// A link, whose output can hold warnings no diagnostic carries.
+    link: bool,
 }
 
 impl MessageParser {
@@ -550,12 +553,13 @@ impl MessageParser {
                 let description = text("executionDescription").to_string();
                 let event = task_event(text("ruleInfo"), &description);
                 if let Some(id) = int("id") {
-                    let swift = text("ruleInfo").starts_with("Swift");
+                    let rule_info = text("ruleInfo");
                     self.tasks.insert(
                         id,
                         Task {
                             description: description.clone(),
-                            swift,
+                            swift: rule_info.starts_with("Swift"),
+                            link: rule_info.starts_with("Ld "),
                         },
                     );
                 }
@@ -573,19 +577,23 @@ impl MessageParser {
             "taskComplete" => {
                 let id = int("id");
                 let task = id.and_then(|id| self.tasks.get(&id));
-                if text("result") != "failed"
-                    || id.is_some_and(|id| self.diagnosed.contains(&id))
+                let output = id
+                    .and_then(|id| self.output.remove(&id))
+                    .unwrap_or_default();
+                if text("result") != "failed" {
+                    return if task.is_some_and(|t| t.link) {
+                        linker_warnings(&output)
+                    } else {
+                        Vec::new()
+                    };
+                }
+                if id.is_some_and(|id| self.diagnosed.contains(&id))
                     || (self.errors && task.is_some_and(|t| t.swift))
                 {
                     return Vec::new();
                 }
-                let description = task
-                    .map_or("A build task", |t| t.description.as_str())
-                    .to_string();
-                let output = id
-                    .and_then(|id| self.output.remove(&id))
-                    .unwrap_or_default();
-                failed_task(&description, &output)
+                let description = task.map_or("A build task", |t| t.description.as_str());
+                failed_task(description, &output)
             }
             kind @ ("error" | "warning" | "note" | "remark") => {
                 if kind == "error" {
@@ -734,10 +742,60 @@ fn diagnostic(m: &Value) -> Parsed {
     }
 }
 
+/// The warnings a successful link printed, once each, at the project.
+///
+/// Swift Build turns the linker's `ld:` and `clang:` lines into diagnostics
+/// of its own but leaves lld's (`ld64.lld: warning: …`) in the task's output,
+/// where it puts the project and target in front of each:
+/// `/p/App.xcodeproj: App: ld64.lld: warning: …`.
+fn linker_warnings(output: &str) -> Vec<Parsed> {
+    let mut seen = HashSet::new();
+    output
+        .lines()
+        .filter_map(|line| {
+            let (head, message) = line.split_once(": warning: ")?;
+            let tool = head.rsplit(": ").next().unwrap_or(head);
+            if matches!(tool, "ld" | "clang") || lld_platform_notice(message) {
+                return None;
+            }
+            let project = head
+                .split_once(": ")
+                .map(|(project, _)| project)
+                .filter(|project| project.ends_with(".xcodeproj"));
+            seen.insert((project, message)).then(|| Parsed {
+                raw: match project {
+                    Some(project) => format!("{project}: warning: {message}"),
+                    None => format!("warning: {message}"),
+                },
+                event: Event::Diagnostic {
+                    kind: DiagKind::Warning,
+                    location: project.map(str::to_string),
+                    message: message.to_string(),
+                },
+            })
+        })
+        .collect()
+}
+
+/// lld's notice that it "does not support linking for platform iOS", which
+/// it repeats for every input of every link for an Apple platform. It's about
+/// the Darwin SDK's linker rather than the project, and the products it links
+/// run, so it's left out.
+fn lld_platform_notice(message: &str) -> bool {
+    message.starts_with("This version of lld does not support linking for platform ")
+}
+
 /// A failed task that reported no error: an error naming it, and its output
 /// on the lines under it.
 fn failed_task(description: &str, output: &str) -> Vec<Parsed> {
-    let lines: Vec<&str> = output.lines().filter(|l| !l.trim().is_empty()).collect();
+    let lines: Vec<&str> = output
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter(|l| {
+            l.split_once(": warning: ")
+                .is_none_or(|(_, message)| !lld_platform_notice(message))
+        })
+        .collect();
     let message = if lines.is_empty() {
         format!("{description} failed")
     } else {
@@ -882,6 +940,68 @@ mod tests {
                 "ld64.lld: error: undefined symbol: _foo".into()
             )),
             "{found:?}"
+        );
+    }
+
+    #[test]
+    fn a_successful_links_lld_warnings_show_once_each() {
+        let notice = "This version of lld does not support linking for platform iOS. Proceed at your own risk.";
+        let warning = "/p/App.xcodeproj: App: ld64.lld: warning: /dd/libz.tbd: unknown platform";
+        let output = format!(
+            "/p/App.xcodeproj: App: ld64.lld: warning: {notice}\n{warning}\n{warning}\n\
+             /p/App.xcodeproj: App: ld: warning: reported by Swift Build\n"
+        );
+        let found = events(&[
+            r#"{"kind":"taskStarted","id":10,"ruleInfo":"Ld /dd/App.app/App normal","executionDescription":"Link App (arm64)"}"#,
+            &json!({"kind": "taskOutput", "taskID": 10, "data": output}).to_string(),
+            r#"{"kind":"taskComplete","id":10,"result":"success"}"#,
+        ]);
+        assert_eq!(
+            found,
+            vec![
+                Event::Link {
+                    target: "App".into()
+                },
+                Event::Diagnostic {
+                    kind: DiagKind::Warning,
+                    location: Some("/p/App.xcodeproj".into()),
+                    message: "/dd/libz.tbd: unknown platform".into(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn only_a_links_output_is_read_for_warnings() {
+        let found = events(&[
+            r#"{"kind":"taskStarted","id":7,"ruleInfo":"SwiftCompile normal arm64 /p/A.swift","executionDescription":"Compile A.swift (arm64)"}"#,
+            r#"{"kind":"taskOutput","taskID":7,"data":"/p/A.swift:1:5: warning: unused\n"}"#,
+            r#"{"kind":"taskComplete","id":7,"result":"success"}"#,
+        ]);
+        assert_eq!(
+            found,
+            vec![Event::Compile {
+                name: "A.swift".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn a_failed_links_output_leaves_out_the_lld_platform_notice() {
+        let found = events(&[
+            r#"{"kind":"taskStarted","id":10,"ruleInfo":"Ld /dd/App.app/App normal","executionDescription":"Link App (arm64)"}"#,
+            r#"{"kind":"taskOutput","taskID":10,"data":"ld64.lld: warning: This version of lld does not support linking for platform iOS. Proceed at your own risk.\nld64.lld: error: undefined symbol: _foo\n"}"#,
+            r#"{"kind":"taskComplete","id":10,"result":"failed"}"#,
+        ]);
+        let other: Vec<&Event> = found
+            .iter()
+            .filter(|e| matches!(e, Event::Other(_)))
+            .collect();
+        assert_eq!(
+            other,
+            vec![&Event::Other(
+                "ld64.lld: error: undefined symbol: _foo".into()
+            )]
         );
     }
 
