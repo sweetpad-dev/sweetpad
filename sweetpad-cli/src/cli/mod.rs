@@ -25,6 +25,7 @@ use std::process::ExitCode;
 use clap::{CommandFactory, Parser, Subcommand};
 use sweetpad_core::xcodebuild_args;
 
+pub mod actool;
 pub mod buildlog;
 pub mod config;
 pub mod devicectl;

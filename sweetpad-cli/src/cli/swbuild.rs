@@ -148,6 +148,9 @@ struct Invocation {
     parameters_file: PathBuf,
     parameters: Value,
     locations: Locations,
+    /// Where the link that runs this binary as `actool` goes, on a host
+    /// without Xcode's.
+    actool: Option<PathBuf>,
 }
 
 impl Invocation {
@@ -194,9 +197,16 @@ impl Invocation {
         let parameters_file = inputs.join("build-parameters.json");
 
         let host = DarwinSdk::for_host()?;
+        let actool = host.as_ref().map(|_| inputs.join("bin/actool"));
         let mut overrides = BTreeMap::new();
         if let Some(host) = &host {
             overrides.extend(host.overrides(&sdk, &destination.arch));
+        }
+        if let Some(actool) = &actool {
+            overrides.insert(
+                "ASSETCATALOG_EXEC".to_string(),
+                actool.display().to_string(),
+            );
         }
         overrides.extend(settings.overrides.iter().cloned());
         let parameters = parameters(
@@ -234,10 +244,12 @@ impl Invocation {
             parameters_file,
             parameters,
             locations,
+            actool,
         })
     }
 
-    /// Write the workspace's PIF and the build parameters.
+    /// Write the workspace's PIF and the build parameters, and link this
+    /// binary in as `actool` where Swift Build needs one.
     fn write_inputs(&self) -> Result<(), CliError> {
         let pif = sweetpad_lib::pif::pif(&self.container).map_err(|e| {
             CliError::new(format!(
@@ -256,8 +268,33 @@ impl Invocation {
                 .map_err(|e| CliError::new(format!("couldn't write {}: {e}", path.display())))
         };
         write(&self.pif, &Value::Array(pif))?;
-        write(&self.parameters_file, &self.parameters)
+        write(&self.parameters_file, &self.parameters)?;
+        if let Some(actool) = &self.actool {
+            link_actool(actool)?;
+        }
+        Ok(())
     }
+}
+
+/// Link this binary in at `path`, which run under the name `actool` stands
+/// in for Xcode's asset catalog compiler (see [`super::actool`]).
+fn link_actool(path: &Path) -> Result<(), CliError> {
+    let fail = |e: std::io::Error| {
+        CliError::new(format!(
+            "couldn't link the asset catalog compiler at {}: {e}",
+            path.display()
+        ))
+    };
+    let exe = std::env::current_exe().map_err(fail)?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(fail)?;
+    }
+    let _ = std::fs::remove_file(path);
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&exe, path).map_err(fail)?;
+    #[cfg(not(unix))]
+    std::fs::copy(&exe, path).map_err(fail)?;
+    Ok(())
 }
 
 /// The `swbuild` to run: `SWEETPAD_SWBUILD`, else the one on `PATH`. The

@@ -1,0 +1,808 @@
+{
+ "about": "Asset catalog for the actool stand-in's golden test. regen.py builds it and runs Xcode's actool on it.",
+ "namespaces": [
+  "Icons",
+  "Nested",
+  "Nested/Deep",
+  "my icons",
+  "dark-mode",
+  "EmptyNS"
+ ],
+ "assets": [
+  {
+   "kind": "color",
+   "path": "BrandRed"
+  },
+  {
+   "kind": "color",
+   "path": "brand-blue"
+  },
+  {
+   "kind": "color",
+   "path": "brand_green"
+  },
+  {
+   "kind": "color",
+   "path": "Brand Yellow"
+  },
+  {
+   "kind": "color",
+   "path": "1stColor"
+  },
+  {
+   "kind": "color",
+   "path": "URLColor"
+  },
+  {
+   "kind": "color",
+   "path": "myURLColor"
+  },
+  {
+   "kind": "color",
+   "path": "default"
+  },
+  {
+   "kind": "color",
+   "path": "Color.Dark"
+  },
+  {
+   "kind": "color",
+   "path": "Ünïcode"
+  },
+  {
+   "kind": "color",
+   "path": "accent"
+  },
+  {
+   "kind": "color",
+   "path": "AccentColor"
+  },
+  {
+   "kind": "color",
+   "path": "brandRed2"
+  },
+  {
+   "kind": "color",
+   "path": "ALLCAPS"
+  },
+  {
+   "kind": "color",
+   "path": "a"
+  },
+  {
+   "kind": "color",
+   "path": "Color"
+  },
+  {
+   "kind": "color",
+   "path": "darkColor"
+  },
+  {
+   "kind": "color",
+   "path": "self"
+  },
+  {
+   "kind": "color",
+   "path": "Type"
+  },
+  {
+   "kind": "color",
+   "path": "class"
+  },
+  {
+   "kind": "color",
+   "path": "true"
+  },
+  {
+   "kind": "color",
+   "path": "nil"
+  },
+  {
+   "kind": "color",
+   "path": "_private"
+  },
+  {
+   "kind": "color",
+   "path": "x1y2"
+  },
+  {
+   "kind": "color",
+   "path": "HTML5Color"
+  },
+  {
+   "kind": "color",
+   "path": "iOSColor"
+  },
+  {
+   "kind": "color",
+   "path": "red-500"
+  },
+  {
+   "kind": "color",
+   "path": "Gray 100"
+  },
+  {
+   "kind": "color",
+   "path": "ColorColor"
+  },
+  {
+   "kind": "color",
+   "path": "ABCdef"
+  },
+  {
+   "kind": "color",
+   "path": "A_B"
+  },
+  {
+   "kind": "color",
+   "path": "foo__bar"
+  },
+  {
+   "kind": "color",
+   "path": "foo--bar"
+  },
+  {
+   "kind": "color",
+   "path": "UPPER_snake"
+  },
+  {
+   "kind": "color",
+   "path": "camel-Case"
+  },
+  {
+   "kind": "color",
+   "path": "with.dots.many"
+  },
+  {
+   "kind": "color",
+   "path": "9"
+  },
+  {
+   "kind": "color",
+   "path": "init"
+  },
+  {
+   "kind": "color",
+   "path": "description"
+  },
+  {
+   "kind": "color",
+   "path": "hash"
+  },
+  {
+   "kind": "color",
+   "path": "new"
+  },
+  {
+   "kind": "color",
+   "path": "alloc"
+  },
+  {
+   "kind": "color",
+   "path": "copy"
+  },
+  {
+   "kind": "color",
+   "path": "superclass"
+  },
+  {
+   "kind": "color",
+   "path": "Protocol"
+  },
+  {
+   "kind": "color",
+   "path": "plus+sign"
+  },
+  {
+   "kind": "color",
+   "path": "amp&ersand"
+  },
+  {
+   "kind": "color",
+   "path": "paren(s)"
+  },
+  {
+   "kind": "color",
+   "path": "emoji🎉"
+  },
+  {
+   "kind": "color",
+   "path": "apostrophe's"
+  },
+  {
+   "kind": "color",
+   "path": "comma,name"
+  },
+  {
+   "kind": "color",
+   "path": "#hash"
+  },
+  {
+   "kind": "color",
+   "path": "tint"
+  },
+  {
+   "kind": "color",
+   "path": "label2"
+  },
+  {
+   "kind": "color",
+   "path": "alternateSelectedControl"
+  },
+  {
+   "kind": "color",
+   "path": "alternateSelectedControlText"
+  },
+  {
+   "kind": "color",
+   "path": "black"
+  },
+  {
+   "kind": "color",
+   "path": "blue"
+  },
+  {
+   "kind": "color",
+   "path": "brown"
+  },
+  {
+   "kind": "color",
+   "path": "clear"
+  },
+  {
+   "kind": "color",
+   "path": "control"
+  },
+  {
+   "kind": "color",
+   "path": "controlAccent"
+  },
+  {
+   "kind": "color",
+   "path": "controlBackground"
+  },
+  {
+   "kind": "color",
+   "path": "controlDarkShadow"
+  },
+  {
+   "kind": "color",
+   "path": "controlHighlight"
+  },
+  {
+   "kind": "color",
+   "path": "controlLightHighlight"
+  },
+  {
+   "kind": "color",
+   "path": "controlShadow"
+  },
+  {
+   "kind": "color",
+   "path": "controlText"
+  },
+  {
+   "kind": "color",
+   "path": "cyan"
+  },
+  {
+   "kind": "color",
+   "path": "darkGray"
+  },
+  {
+   "kind": "color",
+   "path": "darkText"
+  },
+  {
+   "kind": "color",
+   "path": "defaultValue"
+  },
+  {
+   "kind": "color",
+   "path": "disabledControlText"
+  },
+  {
+   "kind": "color",
+   "path": "findHighlight"
+  },
+  {
+   "kind": "color",
+   "path": "gray"
+  },
+  {
+   "kind": "color",
+   "path": "green"
+  },
+  {
+   "kind": "color",
+   "path": "grid"
+  },
+  {
+   "kind": "color",
+   "path": "groupTableViewBackground"
+  },
+  {
+   "kind": "color",
+   "path": "header"
+  },
+  {
+   "kind": "color",
+   "path": "headerText"
+  },
+  {
+   "kind": "color",
+   "path": "highlight"
+  },
+  {
+   "kind": "color",
+   "path": "indigo"
+  },
+  {
+   "kind": "color",
+   "path": "keyboardFocusIndicator"
+  },
+  {
+   "kind": "color",
+   "path": "knob"
+  },
+  {
+   "kind": "color",
+   "path": "label"
+  },
+  {
+   "kind": "color",
+   "path": "lightGray"
+  },
+  {
+   "kind": "color",
+   "path": "lightText"
+  },
+  {
+   "kind": "color",
+   "path": "link"
+  },
+  {
+   "kind": "color",
+   "path": "magenta"
+  },
+  {
+   "kind": "color",
+   "path": "mint"
+  },
+  {
+   "kind": "color",
+   "path": "opaqueSeparator"
+  },
+  {
+   "kind": "color",
+   "path": "orange"
+  },
+  {
+   "kind": "color",
+   "path": "pink"
+  },
+  {
+   "kind": "color",
+   "path": "placeholderText"
+  },
+  {
+   "kind": "color",
+   "path": "primary"
+  },
+  {
+   "kind": "color",
+   "path": "purple"
+  },
+  {
+   "kind": "color",
+   "path": "quaternaryLabel"
+  },
+  {
+   "kind": "color",
+   "path": "quaternarySystemFill"
+  },
+  {
+   "kind": "color",
+   "path": "quinaryLabel"
+  },
+  {
+   "kind": "color",
+   "path": "quinarySystemFill"
+  },
+  {
+   "kind": "color",
+   "path": "red"
+  },
+  {
+   "kind": "color",
+   "path": "scrollBar"
+  },
+  {
+   "kind": "color",
+   "path": "scrollViewTexturedBackground"
+  },
+  {
+   "kind": "color",
+   "path": "scrubberTexturedBackground"
+  },
+  {
+   "kind": "color",
+   "path": "secondary"
+  },
+  {
+   "kind": "color",
+   "path": "secondaryLabel"
+  },
+  {
+   "kind": "color",
+   "path": "secondarySelectedControl"
+  },
+  {
+   "kind": "color",
+   "path": "secondarySystemBackground"
+  },
+  {
+   "kind": "color",
+   "path": "secondarySystemFill"
+  },
+  {
+   "kind": "color",
+   "path": "secondarySystemGroupedBackground"
+  },
+  {
+   "kind": "color",
+   "path": "selectedContentBackground"
+  },
+  {
+   "kind": "color",
+   "path": "selectedControl"
+  },
+  {
+   "kind": "color",
+   "path": "selectedControlText"
+  },
+  {
+   "kind": "color",
+   "path": "selectedKnob"
+  },
+  {
+   "kind": "color",
+   "path": "selectedMenuItem"
+  },
+  {
+   "kind": "color",
+   "path": "selectedMenuItemText"
+  },
+  {
+   "kind": "color",
+   "path": "selectedText"
+  },
+  {
+   "kind": "color",
+   "path": "selectedTextBackground"
+  },
+  {
+   "kind": "color",
+   "path": "separator"
+  },
+  {
+   "kind": "color",
+   "path": "shadow"
+  },
+  {
+   "kind": "color",
+   "path": "systemBackground"
+  },
+  {
+   "kind": "color",
+   "path": "systemBlue"
+  },
+  {
+   "kind": "color",
+   "path": "systemBrown"
+  },
+  {
+   "kind": "color",
+   "path": "systemCyan"
+  },
+  {
+   "kind": "color",
+   "path": "systemFill"
+  },
+  {
+   "kind": "color",
+   "path": "systemGray"
+  },
+  {
+   "kind": "color",
+   "path": "systemGray2"
+  },
+  {
+   "kind": "color",
+   "path": "systemGray3"
+  },
+  {
+   "kind": "color",
+   "path": "systemGray4"
+  },
+  {
+   "kind": "color",
+   "path": "systemGray5"
+  },
+  {
+   "kind": "color",
+   "path": "systemGray6"
+  },
+  {
+   "kind": "color",
+   "path": "systemGreen"
+  },
+  {
+   "kind": "color",
+   "path": "systemGroupedBackground"
+  },
+  {
+   "kind": "color",
+   "path": "systemIndigo"
+  },
+  {
+   "kind": "color",
+   "path": "systemMint"
+  },
+  {
+   "kind": "color",
+   "path": "systemOrange"
+  },
+  {
+   "kind": "color",
+   "path": "systemPink"
+  },
+  {
+   "kind": "color",
+   "path": "systemPurple"
+  },
+  {
+   "kind": "color",
+   "path": "systemRed"
+  },
+  {
+   "kind": "color",
+   "path": "systemTeal"
+  },
+  {
+   "kind": "color",
+   "path": "systemYellow"
+  },
+  {
+   "kind": "color",
+   "path": "teal"
+  },
+  {
+   "kind": "color",
+   "path": "tertiaryLabel"
+  },
+  {
+   "kind": "color",
+   "path": "tertiarySystemBackground"
+  },
+  {
+   "kind": "color",
+   "path": "tertiarySystemFill"
+  },
+  {
+   "kind": "color",
+   "path": "tertiarySystemGroupedBackground"
+  },
+  {
+   "kind": "color",
+   "path": "text"
+  },
+  {
+   "kind": "color",
+   "path": "textBackground"
+  },
+  {
+   "kind": "color",
+   "path": "textInsertionPoint"
+  },
+  {
+   "kind": "color",
+   "path": "underPageBackground"
+  },
+  {
+   "kind": "color",
+   "path": "unemphasizedSelectedContentBackground"
+  },
+  {
+   "kind": "color",
+   "path": "unemphasizedSelectedText"
+  },
+  {
+   "kind": "color",
+   "path": "unemphasizedSelectedTextBackground"
+  },
+  {
+   "kind": "color",
+   "path": "viewFlipsideBackground"
+  },
+  {
+   "kind": "color",
+   "path": "white"
+  },
+  {
+   "kind": "color",
+   "path": "windowBackground"
+  },
+  {
+   "kind": "color",
+   "path": "windowFrame"
+  },
+  {
+   "kind": "color",
+   "path": "windowFrameText"
+  },
+  {
+   "kind": "color",
+   "path": "yellow"
+  },
+  {
+   "kind": "color",
+   "path": "zero"
+  },
+  {
+   "kind": "color",
+   "path": "Misc/Gray"
+  },
+  {
+   "kind": "color",
+   "path": "Icons/Tint"
+  },
+  {
+   "kind": "color",
+   "path": "dark-mode/Bg"
+  },
+  {
+   "kind": "color",
+   "path": "NoValue",
+   "empty": true
+  },
+  {
+   "kind": "color",
+   "path": "PhoneOnly",
+   "idioms": [
+    "iphone"
+   ]
+  },
+  {
+   "kind": "color",
+   "path": "BothIdioms",
+   "idioms": [
+    "iphone",
+    "ipad"
+   ]
+  },
+  {
+   "kind": "color",
+   "path": "UniPhone",
+   "idioms": [
+    "universal",
+    "iphone"
+   ]
+  },
+  {
+   "kind": "color",
+   "path": "MacOnly",
+   "idioms": [
+    "mac"
+   ]
+  },
+  {
+   "kind": "image",
+   "path": "Logo"
+  },
+  {
+   "kind": "image",
+   "path": "logo-dark"
+  },
+  {
+   "kind": "image",
+   "path": "photo"
+  },
+  {
+   "kind": "image",
+   "path": "Image Name"
+  },
+  {
+   "kind": "image",
+   "path": "system"
+  },
+  {
+   "kind": "image",
+   "path": "init"
+  },
+  {
+   "kind": "image",
+   "path": "LogoImage"
+  },
+  {
+   "kind": "image",
+   "path": "Image"
+  },
+  {
+   "kind": "image",
+   "path": "self"
+  },
+  {
+   "kind": "image",
+   "path": "Image2"
+  },
+  {
+   "kind": "image",
+   "path": "BigImageView"
+  },
+  {
+   "kind": "image",
+   "path": "1stImage"
+  },
+  {
+   "kind": "image",
+   "path": "actions"
+  },
+  {
+   "kind": "image",
+   "path": "add"
+  },
+  {
+   "kind": "image",
+   "path": "branch"
+  },
+  {
+   "kind": "image",
+   "path": "checkmark"
+  },
+  {
+   "kind": "image",
+   "path": "highlightedBranch"
+  },
+  {
+   "kind": "image",
+   "path": "remove"
+  },
+  {
+   "kind": "image",
+   "path": "strokedCheckmark"
+  },
+  {
+   "kind": "image",
+   "path": "Icons/Star"
+  },
+  {
+   "kind": "image",
+   "path": "Nested/Deep/Leaf"
+  },
+  {
+   "kind": "image",
+   "path": "my icons/Home"
+  },
+  {
+   "kind": "image",
+   "path": "Empty",
+   "empty": true
+  },
+  {
+   "kind": "image",
+   "path": "PadOnly",
+   "idioms": [
+    "ipad"
+   ]
+  },
+  {
+   "kind": "data",
+   "path": "Blob"
+  },
+  {
+   "kind": "appicon",
+   "path": "AppIcon"
+  }
+ ]
+}

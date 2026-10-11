@@ -1,0 +1,1141 @@
+{
+ "images": [
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageName1StImage",
+   "swiftSymbol": "_1St",
+   "relativePath": "./1stImage.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameBigImageView",
+   "swiftSymbol": "bigImageView",
+   "relativePath": "./BigImageView.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameHome",
+   "swiftSymbol": "home",
+   "relativePath": "./my icons/Home.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameImage",
+   "swiftSymbol": "image",
+   "relativePath": "./Image.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameImageName",
+   "swiftSymbol": "imageName",
+   "relativePath": "./Image Name.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameImage2",
+   "swiftSymbol": "image2",
+   "relativePath": "./Image2.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameLeaf",
+   "swiftSymbol": "leaf",
+   "relativePath": "./Nested/Deep/Leaf.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameLogo",
+   "swiftSymbol": "logo",
+   "relativePath": "./Logo.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameLogoImage",
+   "swiftSymbol": "logo",
+   "relativePath": "./LogoImage.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNamePadOnly",
+   "swiftSymbol": "padOnly",
+   "relativePath": "./PadOnly.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameStar",
+   "swiftSymbol": "star",
+   "relativePath": "./Icons/Star.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameActions",
+   "swiftSymbol": "actions",
+   "relativePath": "./actions.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameAdd",
+   "swiftSymbol": "add",
+   "relativePath": "./add.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameBranch",
+   "swiftSymbol": "branch",
+   "relativePath": "./branch.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameCheckmark",
+   "swiftSymbol": "checkmark",
+   "relativePath": "./checkmark.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameHighlightedBranch",
+   "swiftSymbol": "highlightedBranch",
+   "relativePath": "./highlightedBranch.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameInit",
+   "swiftSymbol": "`init`",
+   "relativePath": "./init.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameLogoDark",
+   "swiftSymbol": "logoDark",
+   "relativePath": "./logo-dark.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNamePhoto",
+   "swiftSymbol": "photo",
+   "relativePath": "./photo.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameRemove",
+   "swiftSymbol": "remove",
+   "relativePath": "./remove.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameSelf",
+   "swiftSymbol": "`self`",
+   "relativePath": "./self.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameStrokedCheckmark",
+   "swiftSymbol": "strokedCheckmark",
+   "relativePath": "./strokedCheckmark.imageset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACImageNameSystem",
+   "swiftSymbol": "system",
+   "relativePath": "./system.imageset"
+  }
+ ],
+ "symbols": [],
+ "colors": [
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameHash",
+   "swiftSymbol": "hash",
+   "relativePath": "./#hash.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorName1StColor",
+   "swiftSymbol": "_1St",
+   "relativePath": "./1stColor.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorName9",
+   "swiftSymbol": "_9",
+   "relativePath": "./9.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameABCdef",
+   "swiftSymbol": "abCdef",
+   "relativePath": "./ABCdef.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameALLCAPS",
+   "swiftSymbol": "ALLCAPS",
+   "relativePath": "./ALLCAPS.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorName_A_B",
+   "swiftSymbol": "A_B",
+   "relativePath": "./A_B.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameAccentColor",
+   "swiftSymbol": "accent",
+   "relativePath": "./AccentColor.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameBg",
+   "swiftSymbol": "bg",
+   "relativePath": "./dark-mode/Bg.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameBothIdioms",
+   "swiftSymbol": "bothIdioms",
+   "relativePath": "./BothIdioms.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameBrandYellow",
+   "swiftSymbol": "brandYellow",
+   "relativePath": "./Brand Yellow.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameBrandRed",
+   "swiftSymbol": "brandRed",
+   "relativePath": "./BrandRed.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameColor",
+   "swiftSymbol": "color",
+   "relativePath": "./Color.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameColorDark",
+   "swiftSymbol": "colorDark",
+   "relativePath": "./Color.Dark.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameColorColor",
+   "swiftSymbol": "color",
+   "relativePath": "./ColorColor.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameGray",
+   "swiftSymbol": "gray",
+   "relativePath": "./Misc/Gray.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameGray100",
+   "swiftSymbol": "gray100",
+   "relativePath": "./Gray 100.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameHTML5Color",
+   "swiftSymbol": "HTML_5",
+   "relativePath": "./HTML5Color.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNamePhoneOnly",
+   "swiftSymbol": "phoneOnly",
+   "relativePath": "./PhoneOnly.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameProtocol",
+   "swiftSymbol": "`protocol`",
+   "relativePath": "./Protocol.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameTint",
+   "swiftSymbol": "tint",
+   "relativePath": "./Icons/Tint.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameType",
+   "swiftSymbol": "type",
+   "relativePath": "./Type.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameUPPERSnake",
+   "swiftSymbol": "upperSnake",
+   "relativePath": "./UPPER_snake.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameURLColor",
+   "swiftSymbol": "URL",
+   "relativePath": "./URLColor.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameUniPhone",
+   "swiftSymbol": "uniPhone",
+   "relativePath": "./UniPhone.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNamencode",
+   "swiftSymbol": "ünïcode",
+   "relativePath": "./Ünïcode.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNamePrivate",
+   "swiftSymbol": "`private`",
+   "relativePath": "./_private.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameA",
+   "swiftSymbol": "a",
+   "relativePath": "./a.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameAccent",
+   "swiftSymbol": "accent",
+   "relativePath": "./accent.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameAlloc",
+   "swiftSymbol": "alloc",
+   "relativePath": "./alloc.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameAlternateSelectedControl",
+   "swiftSymbol": "alternateSelectedControl",
+   "relativePath": "./alternateSelectedControl.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameAlternateSelectedControlText",
+   "swiftSymbol": "alternateSelectedControlText",
+   "relativePath": "./alternateSelectedControlText.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameAmpErsand",
+   "swiftSymbol": "ampErsand",
+   "relativePath": "./amp&ersand.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameApostropheS",
+   "swiftSymbol": "apostropheS",
+   "relativePath": "./apostrophe's.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameBlack",
+   "swiftSymbol": "black",
+   "relativePath": "./black.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameBlue",
+   "swiftSymbol": "blue",
+   "relativePath": "./blue.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameBrandBlue",
+   "swiftSymbol": "brandBlue",
+   "relativePath": "./brand-blue.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameBrandRed2",
+   "swiftSymbol": "brandRed2",
+   "relativePath": "./brandRed2.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameBrandGreen",
+   "swiftSymbol": "brandGreen",
+   "relativePath": "./brand_green.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameBrown",
+   "swiftSymbol": "brown",
+   "relativePath": "./brown.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameCamelCase",
+   "swiftSymbol": "camelCase",
+   "relativePath": "./camel-Case.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameClass",
+   "swiftSymbol": "`class`",
+   "relativePath": "./class.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameClear",
+   "swiftSymbol": "clear",
+   "relativePath": "./clear.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameCommaName",
+   "swiftSymbol": "commaName",
+   "relativePath": "./comma,name.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameControl",
+   "swiftSymbol": "control",
+   "relativePath": "./control.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameControlAccent",
+   "swiftSymbol": "controlAccent",
+   "relativePath": "./controlAccent.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameControlBackground",
+   "swiftSymbol": "controlBackground",
+   "relativePath": "./controlBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameControlDarkShadow",
+   "swiftSymbol": "controlDarkShadow",
+   "relativePath": "./controlDarkShadow.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameControlHighlight",
+   "swiftSymbol": "controlHighlight",
+   "relativePath": "./controlHighlight.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameControlLightHighlight",
+   "swiftSymbol": "controlLightHighlight",
+   "relativePath": "./controlLightHighlight.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameControlShadow",
+   "swiftSymbol": "controlShadow",
+   "relativePath": "./controlShadow.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameControlText",
+   "swiftSymbol": "controlText",
+   "relativePath": "./controlText.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameCopy",
+   "swiftSymbol": "copy",
+   "relativePath": "./copy.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameCyan",
+   "swiftSymbol": "cyan",
+   "relativePath": "./cyan.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameDarkColor",
+   "swiftSymbol": "dark",
+   "relativePath": "./darkColor.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameDarkGray",
+   "swiftSymbol": "darkGray",
+   "relativePath": "./darkGray.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameDarkText",
+   "swiftSymbol": "darkText",
+   "relativePath": "./darkText.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameDefault",
+   "swiftSymbol": "`default`",
+   "relativePath": "./default.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameDefaultValue",
+   "swiftSymbol": "defaultValue",
+   "relativePath": "./defaultValue.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameDescription",
+   "swiftSymbol": "description",
+   "relativePath": "./description.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameDisabledControlText",
+   "swiftSymbol": "disabledControlText",
+   "relativePath": "./disabledControlText.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameEmoji",
+   "swiftSymbol": "emoji",
+   "relativePath": "./emoji🎉.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameFindHighlight",
+   "swiftSymbol": "findHighlight",
+   "relativePath": "./findHighlight.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameFooBar",
+   "swiftSymbol": "fooBar",
+   "relativePath": "./foo--bar.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameFooBar",
+   "swiftSymbol": "fooBar",
+   "relativePath": "./foo__bar.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameGray",
+   "swiftSymbol": "gray",
+   "relativePath": "./gray.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameGreen",
+   "swiftSymbol": "green",
+   "relativePath": "./green.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameGrid",
+   "swiftSymbol": "grid",
+   "relativePath": "./grid.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameGroupTableViewBackground",
+   "swiftSymbol": "groupTableViewBackground",
+   "relativePath": "./groupTableViewBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameHash",
+   "swiftSymbol": "hash",
+   "relativePath": "./hash.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameHeader",
+   "swiftSymbol": "header",
+   "relativePath": "./header.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameHeaderText",
+   "swiftSymbol": "headerText",
+   "relativePath": "./headerText.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameHighlight",
+   "swiftSymbol": "highlight",
+   "relativePath": "./highlight.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameIOSColor",
+   "swiftSymbol": "iOS",
+   "relativePath": "./iOSColor.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameIndigo",
+   "swiftSymbol": "indigo",
+   "relativePath": "./indigo.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameInit",
+   "swiftSymbol": "`init`",
+   "relativePath": "./init.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameKeyboardFocusIndicator",
+   "swiftSymbol": "keyboardFocusIndicator",
+   "relativePath": "./keyboardFocusIndicator.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameKnob",
+   "swiftSymbol": "knob",
+   "relativePath": "./knob.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameLabel",
+   "swiftSymbol": "label",
+   "relativePath": "./label.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameLabel2",
+   "swiftSymbol": "label2",
+   "relativePath": "./label2.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameLightGray",
+   "swiftSymbol": "lightGray",
+   "relativePath": "./lightGray.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameLightText",
+   "swiftSymbol": "lightText",
+   "relativePath": "./lightText.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameLink",
+   "swiftSymbol": "link",
+   "relativePath": "./link.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameMagenta",
+   "swiftSymbol": "magenta",
+   "relativePath": "./magenta.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameMint",
+   "swiftSymbol": "mint",
+   "relativePath": "./mint.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameMyURLColor",
+   "swiftSymbol": "myURL",
+   "relativePath": "./myURLColor.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameNew",
+   "swiftSymbol": "new",
+   "relativePath": "./new.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameNil",
+   "swiftSymbol": "`nil`",
+   "relativePath": "./nil.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameOpaqueSeparator",
+   "swiftSymbol": "opaqueSeparator",
+   "relativePath": "./opaqueSeparator.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameOrange",
+   "swiftSymbol": "orange",
+   "relativePath": "./orange.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameParenS",
+   "swiftSymbol": "parenS",
+   "relativePath": "./paren(s).colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNamePink",
+   "swiftSymbol": "pink",
+   "relativePath": "./pink.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNamePlaceholderText",
+   "swiftSymbol": "placeholderText",
+   "relativePath": "./placeholderText.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNamePlusSign",
+   "swiftSymbol": "plusSign",
+   "relativePath": "./plus+sign.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNamePrimary",
+   "swiftSymbol": "primary",
+   "relativePath": "./primary.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNamePurple",
+   "swiftSymbol": "purple",
+   "relativePath": "./purple.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameQuaternaryLabel",
+   "swiftSymbol": "quaternaryLabel",
+   "relativePath": "./quaternaryLabel.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameQuaternarySystemFill",
+   "swiftSymbol": "quaternarySystemFill",
+   "relativePath": "./quaternarySystemFill.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameQuinaryLabel",
+   "swiftSymbol": "quinaryLabel",
+   "relativePath": "./quinaryLabel.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameQuinarySystemFill",
+   "swiftSymbol": "quinarySystemFill",
+   "relativePath": "./quinarySystemFill.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameRed",
+   "swiftSymbol": "red",
+   "relativePath": "./red.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameRed500",
+   "swiftSymbol": "red500",
+   "relativePath": "./red-500.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameScrollBar",
+   "swiftSymbol": "scrollBar",
+   "relativePath": "./scrollBar.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameScrollViewTexturedBackground",
+   "swiftSymbol": "scrollViewTexturedBackground",
+   "relativePath": "./scrollViewTexturedBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameScrubberTexturedBackground",
+   "swiftSymbol": "scrubberTexturedBackground",
+   "relativePath": "./scrubberTexturedBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSecondary",
+   "swiftSymbol": "secondary",
+   "relativePath": "./secondary.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSecondaryLabel",
+   "swiftSymbol": "secondaryLabel",
+   "relativePath": "./secondaryLabel.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSecondarySelectedControl",
+   "swiftSymbol": "secondarySelectedControl",
+   "relativePath": "./secondarySelectedControl.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSecondarySystemBackground",
+   "swiftSymbol": "secondarySystemBackground",
+   "relativePath": "./secondarySystemBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSecondarySystemFill",
+   "swiftSymbol": "secondarySystemFill",
+   "relativePath": "./secondarySystemFill.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSecondarySystemGroupedBackground",
+   "swiftSymbol": "secondarySystemGroupedBackground",
+   "relativePath": "./secondarySystemGroupedBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSelectedContentBackground",
+   "swiftSymbol": "selectedContentBackground",
+   "relativePath": "./selectedContentBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSelectedControl",
+   "swiftSymbol": "selectedControl",
+   "relativePath": "./selectedControl.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSelectedControlText",
+   "swiftSymbol": "selectedControlText",
+   "relativePath": "./selectedControlText.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSelectedKnob",
+   "swiftSymbol": "selectedKnob",
+   "relativePath": "./selectedKnob.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSelectedMenuItem",
+   "swiftSymbol": "selectedMenuItem",
+   "relativePath": "./selectedMenuItem.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSelectedMenuItemText",
+   "swiftSymbol": "selectedMenuItemText",
+   "relativePath": "./selectedMenuItemText.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSelectedText",
+   "swiftSymbol": "selectedText",
+   "relativePath": "./selectedText.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSelectedTextBackground",
+   "swiftSymbol": "selectedTextBackground",
+   "relativePath": "./selectedTextBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSelf",
+   "swiftSymbol": "`self`",
+   "relativePath": "./self.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSeparator",
+   "swiftSymbol": "separator",
+   "relativePath": "./separator.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameShadow",
+   "swiftSymbol": "shadow",
+   "relativePath": "./shadow.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSuperclass",
+   "swiftSymbol": "superclass",
+   "relativePath": "./superclass.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemBackground",
+   "swiftSymbol": "systemBackground",
+   "relativePath": "./systemBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemBlue",
+   "swiftSymbol": "systemBlue",
+   "relativePath": "./systemBlue.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemBrown",
+   "swiftSymbol": "systemBrown",
+   "relativePath": "./systemBrown.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemCyan",
+   "swiftSymbol": "systemCyan",
+   "relativePath": "./systemCyan.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemFill",
+   "swiftSymbol": "systemFill",
+   "relativePath": "./systemFill.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemGray",
+   "swiftSymbol": "systemGray",
+   "relativePath": "./systemGray.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemGray2",
+   "swiftSymbol": "systemGray2",
+   "relativePath": "./systemGray2.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemGray3",
+   "swiftSymbol": "systemGray3",
+   "relativePath": "./systemGray3.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemGray4",
+   "swiftSymbol": "systemGray4",
+   "relativePath": "./systemGray4.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemGray5",
+   "swiftSymbol": "systemGray5",
+   "relativePath": "./systemGray5.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemGray6",
+   "swiftSymbol": "systemGray6",
+   "relativePath": "./systemGray6.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemGreen",
+   "swiftSymbol": "systemGreen",
+   "relativePath": "./systemGreen.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemGroupedBackground",
+   "swiftSymbol": "systemGroupedBackground",
+   "relativePath": "./systemGroupedBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemIndigo",
+   "swiftSymbol": "systemIndigo",
+   "relativePath": "./systemIndigo.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemMint",
+   "swiftSymbol": "systemMint",
+   "relativePath": "./systemMint.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemOrange",
+   "swiftSymbol": "systemOrange",
+   "relativePath": "./systemOrange.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemPink",
+   "swiftSymbol": "systemPink",
+   "relativePath": "./systemPink.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemPurple",
+   "swiftSymbol": "systemPurple",
+   "relativePath": "./systemPurple.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemRed",
+   "swiftSymbol": "systemRed",
+   "relativePath": "./systemRed.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemTeal",
+   "swiftSymbol": "systemTeal",
+   "relativePath": "./systemTeal.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameSystemYellow",
+   "swiftSymbol": "systemYellow",
+   "relativePath": "./systemYellow.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameTeal",
+   "swiftSymbol": "teal",
+   "relativePath": "./teal.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameTertiaryLabel",
+   "swiftSymbol": "tertiaryLabel",
+   "relativePath": "./tertiaryLabel.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameTertiarySystemBackground",
+   "swiftSymbol": "tertiarySystemBackground",
+   "relativePath": "./tertiarySystemBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameTertiarySystemFill",
+   "swiftSymbol": "tertiarySystemFill",
+   "relativePath": "./tertiarySystemFill.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameTertiarySystemGroupedBackground",
+   "swiftSymbol": "tertiarySystemGroupedBackground",
+   "relativePath": "./tertiarySystemGroupedBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameText",
+   "swiftSymbol": "text",
+   "relativePath": "./text.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameTextBackground",
+   "swiftSymbol": "textBackground",
+   "relativePath": "./textBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameTextInsertionPoint",
+   "swiftSymbol": "textInsertionPoint",
+   "relativePath": "./textInsertionPoint.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameTint",
+   "swiftSymbol": "tint",
+   "relativePath": "./tint.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameTrue",
+   "swiftSymbol": "`true`",
+   "relativePath": "./true.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameUnderPageBackground",
+   "swiftSymbol": "underPageBackground",
+   "relativePath": "./underPageBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameUnemphasizedSelectedContentBackground",
+   "swiftSymbol": "unemphasizedSelectedContentBackground",
+   "relativePath": "./unemphasizedSelectedContentBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameUnemphasizedSelectedText",
+   "swiftSymbol": "unemphasizedSelectedText",
+   "relativePath": "./unemphasizedSelectedText.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameUnemphasizedSelectedTextBackground",
+   "swiftSymbol": "unemphasizedSelectedTextBackground",
+   "relativePath": "./unemphasizedSelectedTextBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameViewFlipsideBackground",
+   "swiftSymbol": "viewFlipsideBackground",
+   "relativePath": "./viewFlipsideBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameWhite",
+   "swiftSymbol": "white",
+   "relativePath": "./white.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameWindowBackground",
+   "swiftSymbol": "windowBackground",
+   "relativePath": "./windowBackground.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameWindowFrame",
+   "swiftSymbol": "windowFrame",
+   "relativePath": "./windowFrame.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameWindowFrameText",
+   "swiftSymbol": "windowFrameText",
+   "relativePath": "./windowFrameText.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameWithDotsMany",
+   "swiftSymbol": "withDotsMany",
+   "relativePath": "./with.dots.many.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameX1Y2",
+   "swiftSymbol": "x1Y2",
+   "relativePath": "./x1y2.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameYellow",
+   "swiftSymbol": "yellow",
+   "relativePath": "./yellow.colorset"
+  },
+  {
+   "catalogPath": "$(CATALOG)",
+   "objcSymbol": "ACColorNameZero",
+   "swiftSymbol": "zero",
+   "relativePath": "./zero.colorset"
+  }
+ ]
+}

@@ -35,8 +35,14 @@ fn main() -> ExitCode {
     // Run as `sweetpad-dap`, the binary is `sweetpad dap`: an editor whose
     // debug adapter setting takes a binary but no arguments (Zed's Swift
     // adapter) starts the adapter through that name.
-    if std::path::Path::new(&program).file_name() == Some(std::ffi::OsStr::new("sweetpad-dap")) {
+    let name = std::path::Path::new(&program).file_name();
+    if name == Some(std::ffi::OsStr::new("sweetpad-dap")) {
         args.insert(0, "dap".to_string());
+    }
+    // Run as `actool`, the binary stands in for Xcode's asset catalog compiler,
+    // which the Swift Build engine points Swift Build at on Linux.
+    if name == Some(std::ffi::OsStr::new("actool")) {
+        return sweetpad_cli::cli::actool::main(&args);
     }
     match args.first().map(String::as_str) {
         Some("vscode") => ExitCode::from(sweetpad_cli::vscode_cli::run(&args[1..])),
