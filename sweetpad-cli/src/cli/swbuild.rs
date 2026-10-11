@@ -156,7 +156,22 @@ struct Invocation {
     /// The folder of links that run this binary as the Xcode tools it stands
     /// in for, on a host without Xcode's.
     tools: Option<PathBuf>,
+    /// Where the toolset with the compiler flags a host without Xcode needs
+    /// goes (see [`TOOLSET`]).
+    toolset: Option<PathBuf>,
 }
+
+/// The Swift compiler flags a build needs where there is no Xcode, as a
+/// toolset, which Swift Build adds after the project's own flags. Xcode's
+/// compiler loads cross-import overlays, like the one `StoreView` is in
+/// (`_StoreKit_SwiftUI`), by default; the open-source one only when asked.
+const TOOLSET: &str = r#"{
+  "schemaVersion": "1.0",
+  "swiftCompiler": {
+    "extraCLIOptions": ["-Xfrontend", "-enable-cross-import-overlays"]
+  }
+}
+"#;
 
 impl Invocation {
     fn of(plan: &BuildPlan<'_>) -> Result<Self, CliError> {
@@ -204,9 +219,10 @@ impl Invocation {
 
         let host = DarwinSdk::for_host()?;
         let tools = host.as_ref().map(|_| inputs.join("bin"));
+        let toolset = host.as_ref().map(|_| inputs.join("toolset.json"));
         let mut overrides = BTreeMap::new();
-        if let Some(host) = &host {
-            overrides.extend(host.overrides(&sdk, &destination.arch));
+        if let (Some(host), Some(toolset)) = (&host, &toolset) {
+            overrides.extend(host.overrides(&sdk, &destination.arch, toolset));
         }
         if let Some(tools) = &tools {
             overrides.insert(
@@ -255,6 +271,7 @@ impl Invocation {
             parameters,
             locations,
             tools,
+            toolset,
         })
     }
 
@@ -288,6 +305,9 @@ impl Invocation {
         write(&self.parameters_file, &self.parameters)?;
         if let Some(tools) = &self.tools {
             link_tools(tools)?;
+        }
+        if let Some(toolset) = &self.toolset {
+            write_changed(toolset, TOOLSET.as_bytes())?;
         }
         Ok(())
     }
@@ -590,7 +610,8 @@ impl DarwinSdk {
     /// - `CODE_SIGNING_ALLOWED=NO`: the app is signed after the build, by a
     ///   tool that runs here.
     /// - `SWIFT_SDK_TOOLSETS`: the bundle's linker, which links for Apple
-    ///   platforms where the toolchain's own refuses to.
+    ///   platforms where the toolchain's own refuses to, and `toolset`, with
+    ///   the compiler flags Xcode's compiler doesn't need (see [`TOOLSET`]).
     /// - `LM_SKIP_METADATA_EXTRACTION`: App Intents metadata takes an
     ///   Xcode-only tool.
     /// - `DONT_RUN_SWIFT_STDLIB_TOOL`: its Mach-O reader runs only on macOS,
@@ -603,7 +624,7 @@ impl DarwinSdk {
     /// - `STRINGS_FILE_INPUT_ENCODING`: Swift Build detects a `.strings`
     ///   file's encoding only on macOS, so a file that doesn't name one, like
     ///   a compiled String Catalog's, is read as UTF-8.
-    fn overrides(&self, sdk: &str, arch: &str) -> Vec<(String, String)> {
+    fn overrides(&self, sdk: &str, arch: &str, toolset: &Path) -> Vec<(String, String)> {
         let swift_libraries = self
             .bundle
             .join("Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME)");
@@ -618,7 +639,11 @@ impl DarwinSdk {
             ("CODE_SIGNING_ALLOWED", "NO".to_string()),
             (
                 "SWIFT_SDK_TOOLSETS",
-                self.bundle.join("toolset-swb.json").display().to_string(),
+                format!(
+                    "{} {}",
+                    self.bundle.join("toolset-swb.json").display(),
+                    toolset.display()
+                ),
             ),
             ("LM_SKIP_METADATA_EXTRACTION", "YES".to_string()),
             ("GENERATE_INTERMEDIATE_TEXT_BASED_STUBS", "NO".to_string()),
