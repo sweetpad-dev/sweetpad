@@ -381,26 +381,68 @@ fn image_catalog(dir: &Path) -> PathBuf {
     catalog
 }
 
+/// The names of the assets in a compiled `Assets.car`.
+fn car_names(path: &Path) -> Vec<String> {
+    let data = std::fs::read(path).unwrap();
+    let (facets, _) = super::car::tests::Store::read(&data).tree("FACETKEYS");
+    facets
+        .iter()
+        .map(|(name, _)| String::from_utf8(name.to_vec()).unwrap())
+        .collect()
+}
+
 #[test]
-fn images_go_in_as_the_loose_files_uikit_looks_up() {
+fn colors_and_images_go_in_assets_car() {
     let dir = TempDir::new("sweetpad-actool-images");
     let catalog = image_catalog(&dir);
+    let brand = catalog.join("Brand.colorset");
+    std::fs::create_dir_all(&brand).unwrap();
+    write_json(
+        &brand.join("Contents.json"),
+        &json!({"colors": [
+            {"color": {"color-space": "srgb", "components": {"red": "0.9", "green": "0x33", "blue": "102", "alpha": "1.000"}}, "idiom": "universal"},
+            {"appearances": [{"appearance": "luminosity", "value": "dark"}], "color": {"color-space": "display-p3", "components": {"red": "0.1", "green": "0.2", "blue": "0.3", "alpha": "1"}}, "idiom": "universal"},
+        ]}),
+    );
     let out = dir.join("out");
     let args = compile_args(&catalog, &out, &dir);
     compile::compile(&args).unwrap();
-    let mut files: Vec<String> = Vec::new();
-    for entry in walk(&out) {
-        files.push(entry.strip_prefix(&out).unwrap().display().to_string());
-    }
+    let mut files: Vec<String> = walk(&out)
+        .iter()
+        .map(|f| f.strip_prefix(&out).unwrap().display().to_string())
+        .collect();
     files.sort();
+    assert_eq!(files, ["Assets.car"]);
+    // The PDF glyph stays out; the star keeps its namespace.
     assert_eq!(
-        files,
-        [
-            "Icons/Star.png",
-            "Logo@2x.png",
-            "Logo@2x~ipad.png",
-            "Logo@3x.png"
-        ]
+        car_names(&out.join("Assets.car")),
+        ["Brand", "Icons/Star", "Logo"]
+    );
+    let data = std::fs::read(out.join("Assets.car")).unwrap();
+    let (renditions, _) = super::car::tests::Store::read(&data).tree("RENDITIONS");
+    // Logo: 2x, 3x, iPad 2x and dark 2x; Brand: any and dark; Star: 1x.
+    assert_eq!(renditions.len(), 7);
+}
+
+#[test]
+fn a_components_spelling_decides_how_it_reads() {
+    let srgb = |components: Value| {
+        compile::color(&json!({"color-space": "srgb", "components": components}))
+    };
+    let (space, values) =
+        srgb(json!({"red": "0.1", "green": "0x80", "blue": "255", "alpha": "1"})).unwrap();
+    assert_eq!(space, super::car::ColorSpace::Srgb);
+    assert_eq!(values, [f64::from(0.1f32), 128.0 / 255.0, 1.0, 1.0]);
+    let gray = compile::color(
+        &json!({"color-space": "extended-gray", "components": {"white": "1.5", "alpha": "0.5"}}),
+    );
+    assert_eq!(
+        gray,
+        Some((super::car::ColorSpace::ExtendedGray, vec![1.5, 0.5]))
+    );
+    assert_eq!(
+        compile::color(&json!({"platform": "ios", "reference": "systemBlueColor"})),
+        None
     );
 }
 
@@ -424,25 +466,28 @@ fn a_second_compile_takes_out_what_the_catalog_dropped() {
     let out = dir.join("out");
     let args = compile_args(&catalog, &out, &dir);
     compile::compile(&args).unwrap();
-    assert!(out.join("Icons/Star.png").is_file());
     std::fs::remove_dir_all(catalog.join("Icons")).unwrap();
     compile::compile(&args).unwrap();
-    assert!(!out.join("Icons/Star.png").exists());
-    assert!(out.join("Logo@2x.png").is_file());
+    assert_eq!(car_names(&out.join("Assets.car")), ["Logo"]);
+    std::fs::remove_dir_all(catalog.join("Logo.imageset")).unwrap();
+    compile::compile(&args).unwrap();
+    assert!(!out.join("Assets.car").exists());
 }
 
 #[test]
 fn the_warning_says_what_the_app_goes_without() {
     use compile::Report;
     let text = |report: Report| report.warning();
-    let prefix = "Linux builds don't compile asset catalogs yet, so ";
+    let prefix = "Linux builds don't compile everything in an asset catalog yet, so ";
     assert_eq!(text(Report::default()), None);
     assert_eq!(
         text(Report {
-            colors: 1,
+            images: 1,
             ..Report::default()
         }),
-        Some(format!("{prefix}1 color is missing from the app."))
+        Some(format!(
+            "{prefix}1 image that isn't a PNG is missing from the app."
+        ))
     );
     assert_eq!(
         text(Report {
@@ -453,44 +498,33 @@ fn the_warning_says_what_the_app_goes_without() {
     );
     assert_eq!(
         text(Report {
-            loose_images: 1,
-            ..Report::default()
-        }),
-        Some(format!(
-            "{prefix}its 1 image loads in UIKit but not in SwiftUI's Image."
-        ))
-    );
-    assert_eq!(
-        text(Report {
             icon_missing: true,
             colors: 1,
-            vector_images: 1,
-            loose_images: 3,
+            images: 3,
             ..Report::default()
         }),
         Some(format!(
-            "{prefix}the app icon, 1 color and 1 vector image are missing from the app, \
-             and its 3 images load in UIKit but not in SwiftUI's Image."
+            "{prefix}the app icon, 1 color and 3 images that aren't PNGs are missing from the app."
         ))
     );
 }
 
 #[test]
-fn the_image_catalog_reports_loose_and_vector_images() {
+fn the_image_catalog_reports_its_vector_image() {
     let dir = TempDir::new("sweetpad-actool-report");
     let catalog = image_catalog(&dir);
     let out = dir.join("out");
     let args = compile_args(&catalog, &out, &dir);
     compile::compile(&args).unwrap();
     let read = Catalog::read(&catalog);
-    let loose: std::collections::HashSet<&Path> = read
+    let compiled: std::collections::HashSet<&Path> = read
         .assets()
         .into_iter()
         .map(|(_, a)| a)
         .filter(|a| a.name != "Glyph" && a.kind == super::catalog::Kind::Image)
         .map(|a| a.dir.as_path())
         .collect();
-    let report = compile::Report::of(&read, Some("AppIcon"), false, &loose, &args);
-    assert_eq!(report.loose_images, 2);
-    assert_eq!(report.vector_images, 1);
+    let report = compile::Report::of(&read, Some("AppIcon"), false, &compiled, &args);
+    assert_eq!(report.images, 1);
+    assert_eq!(report.colors, 0);
 }

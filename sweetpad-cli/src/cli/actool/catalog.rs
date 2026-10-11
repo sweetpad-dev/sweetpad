@@ -39,6 +39,10 @@ pub struct Asset {
     pub idioms: Vec<String>,
     /// The files of an image or app icon set, one per entry.
     pub entries: Vec<Entry>,
+    /// A color set's colors, one per entry.
+    pub colors: Vec<ColorEntry>,
+    /// How an image set's images are drawn: `template-rendering-intent`.
+    pub rendering: Option<String>,
     /// Whether actool would compile anything for it: a color with a value,
     /// an image with a file.
     pub has_content: bool,
@@ -57,6 +61,21 @@ pub struct Entry {
     pub platform: Option<String>,
     /// A variant for dark mode, a tint or high contrast.
     pub appearance: bool,
+    /// Its appearances, as `(appearance, value)`: `("luminosity", "dark")`.
+    pub appearances: Vec<(String, String)>,
+    /// Whether it varies by something else the stand-in doesn't compile:
+    /// a display gamut, locale, size class, memory or graphics class.
+    pub other_traits: bool,
+}
+
+/// One entry of a color set's `Contents.json`.
+#[derive(Debug, Clone, Default)]
+pub struct ColorEntry {
+    pub idiom: String,
+    pub appearances: Vec<(String, String)>,
+    pub other_traits: bool,
+    /// The `color` object: its color space and components.
+    pub color: Option<Value>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,6 +99,8 @@ impl Catalog {
                     relative_path: ".".into(),
                     idioms: Vec::new(),
                     entries: Vec::new(),
+                    colors: Vec::new(),
+                    rendering: None,
                     has_content: true,
                 })],
                 ..Folder::default()
@@ -213,10 +234,24 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
             })
             .collect()
     };
+    let mut color_entries = Vec::new();
     let (kind, idioms, entries, has_content) = match extension {
         "colorset" => {
             let colors = entries("colors");
             let has = colors.iter().any(|e| e.get("color").is_some());
+            color_entries = colors
+                .iter()
+                .map(|e| ColorEntry {
+                    idiom: e
+                        .get("idiom")
+                        .and_then(Value::as_str)
+                        .unwrap_or("universal")
+                        .to_string(),
+                    appearances: appearances(e),
+                    other_traits: other_traits(e),
+                    color: e.get("color").cloned(),
+                })
+                .collect();
             (Kind::Color, idioms(&colors), Vec::new(), has)
         }
         "imageset" | "symbolset" | "appiconset" => {
@@ -237,6 +272,10 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
         "icon" => (Kind::AppIcon, Vec::new(), Vec::new(), true),
         _ => (Kind::Other, Vec::new(), Vec::new(), true),
     };
+    let rendering = contents
+        .as_ref()
+        .and_then(|c| c.pointer("/properties/template-rendering-intent")?.as_str())
+        .map(str::to_string);
     Asset {
         name: stem(path),
         kind,
@@ -244,8 +283,45 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
         relative_path,
         idioms,
         entries,
+        colors: color_entries,
+        rendering,
         has_content,
     }
+}
+
+/// An entry's appearances, as `(appearance, value)` pairs.
+fn appearances(entry: &Value) -> Vec<(String, String)> {
+    entry
+        .get("appearances")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|a| {
+            Some((
+                a.get("appearance")?.as_str()?.to_string(),
+                a.get("value")?.as_str()?.to_string(),
+            ))
+        })
+        .collect()
+}
+
+/// Whether an entry varies by a trait other than idiom, scale and
+/// appearance.
+fn other_traits(entry: &Value) -> bool {
+    entry
+        .get("display-gamut")
+        .and_then(Value::as_str)
+        .is_some_and(|g| g != "sRGB")
+        || [
+            "locale",
+            "width-class",
+            "height-class",
+            "memory",
+            "graphics-feature-set",
+            "subtype",
+        ]
+        .iter()
+        .any(|k| entry.get(*k).is_some())
 }
 
 /// An image or app icon set's entries, as the stand-in uses them.
@@ -260,6 +336,8 @@ fn files(entries: &[Value]) -> Vec<Entry> {
             size: text(e, "size"),
             platform: text(e, "platform"),
             appearance: e.get("appearances").is_some(),
+            appearances: appearances(e),
+            other_traits: other_traits(e),
         })
         .collect()
 }

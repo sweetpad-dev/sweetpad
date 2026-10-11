@@ -811,6 +811,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "dialoguer",
+ "flate2",
  "libc",
  "minreq",
  "png",

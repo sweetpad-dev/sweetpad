@@ -26,6 +26,9 @@ unicode-normalization = "0.1"
 # PNG, read and written for the app icons and images the Linux build's actool
 # stand-in puts in the bundle; a standard format with a de-facto crate.
 png = "0.18"
+# Gzip, for the image pixels in the actool stand-in's Assets.car; png already
+# depends on it.
+flate2 = "1"
 # The system calls: the account's home, name and cache directory, read the
 # way Xcode's tools read them (getpwuid_r, confstr), and the raw-input flags
 # the CLI's interactive rebuild session flips.
