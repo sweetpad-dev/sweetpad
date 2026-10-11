@@ -43,6 +43,12 @@ pub struct Asset {
     pub colors: Vec<ColorEntry>,
     /// How an image set's images are drawn: `template-rendering-intent`.
     pub rendering: Option<String>,
+    /// Whether an image set keeps its PDFs and SVGs, for drawing them at
+    /// other sizes, besides the bitmaps drawn from them:
+    /// `preserves-vector-representation`.
+    pub preserves_vector: bool,
+    /// A symbol set rather than an image set.
+    pub symbol: bool,
     /// Whether actool would compile anything for it: a color with a value,
     /// an image with a file.
     pub has_content: bool,
@@ -101,6 +107,8 @@ impl Catalog {
                     entries: Vec::new(),
                     colors: Vec::new(),
                     rendering: None,
+                    preserves_vector: false,
+                    symbol: false,
                     has_content: true,
                 })],
                 ..Folder::default()
@@ -276,6 +284,13 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
         .as_ref()
         .and_then(|c| c.pointer("/properties/template-rendering-intent")?.as_str())
         .map(str::to_string);
+    let preserves_vector = contents
+        .as_ref()
+        .and_then(|c| {
+            c.pointer("/properties/preserves-vector-representation")?
+                .as_bool()
+        })
+        .unwrap_or(false);
     Asset {
         name: stem(path),
         kind,
@@ -285,6 +300,8 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
         entries,
         colors: color_entries,
         rendering,
+        preserves_vector,
+        symbol: extension == "symbolset",
         has_content,
     }
 }

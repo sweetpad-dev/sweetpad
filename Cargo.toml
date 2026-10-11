@@ -29,6 +29,14 @@ png = "0.18"
 # Gzip, for the image pixels in the actool stand-in's Assets.car; png already
 # depends on it.
 flate2 = "1"
+# The actool stand-in draws a catalog's vector images the way Xcode does,
+# into bitmaps: PDFs with hayro, SVGs and symbol templates with resvg (and
+# the usvg and roxmltree it re-exports, and svgtypes, which usvg parses
+# with). Both are pure Rust; PDF and SVG are standard formats too large to
+# hand-roll.
+hayro = { version = "0.8", default-features = false }
+resvg = { version = "0.48", default-features = false }
+svgtypes = "0.16"
 # The system calls: the account's home, name and cache directory, read the
 # way Xcode's tools read them (getpwuid_r, confstr), and the raw-input flags
 # the CLI's interactive rebuild session flips.

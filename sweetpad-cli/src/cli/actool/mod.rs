@@ -8,10 +8,11 @@
 //! - the catalogs' asset tags, which it leaves empty;
 //! - the asset symbols (`GeneratedAssetSymbols.swift` and the rest), written
 //!   the way actool writes them, so code that uses `Color(.brand)` compiles;
-//! - a compiled catalog: an `Assets.car` with the colors and PNG images (see
-//!   [`car`]), an iOS app icon as loose PNGs, the partial Info.plist and
-//!   dependency file Swift Build links in, and a warning naming what the
-//!   app goes without, like vector images (see [`compile`]).
+//! - a compiled catalog: an `Assets.car` with the colors, the PNG, PDF and
+//!   SVG images and the symbols (see [`car`]), an iOS app icon as loose
+//!   PNGs, the partial Info.plist and dependency file Swift Build links in,
+//!   and a warning naming what the app goes without, like JPEG images (see
+//!   [`compile`]).
 //!
 //! A catalog with nothing to compile, like the one Xcode's app template
 //! starts with, comes out the same as from actool.
@@ -23,8 +24,10 @@
 mod car;
 mod catalog;
 mod compile;
+mod glyph;
 mod raster;
 mod symbols;
+mod vector;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;

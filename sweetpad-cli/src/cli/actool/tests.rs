@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 
 use super::catalog::Catalog;
 use super::symbols::{self, Frameworks, Options};
+use super::vector::tests::pdf;
 use super::*;
 use crate::cli::testdir::TempDir;
 
@@ -342,7 +343,8 @@ fn an_icon_of_the_exact_size_goes_in_as_it_is() {
 }
 
 /// A catalog with a logo at two scales and an iPad variant, a dark variant,
-/// a namespaced star and a PDF glyph.
+/// a namespaced star, a PDF glyph, and a JPEG photo, which the stand-in
+/// can't read.
 fn image_catalog(dir: &Path) -> PathBuf {
     let catalog = template_catalog(dir);
     let logo = catalog.join("Logo.imageset");
@@ -373,10 +375,21 @@ fn image_catalog(dir: &Path) -> PathBuf {
     );
     let glyph = catalog.join("Glyph.imageset");
     std::fs::create_dir_all(&glyph).unwrap();
-    std::fs::write(glyph.join("glyph.pdf"), b"%PDF-1.4").unwrap();
+    std::fs::write(
+        glyph.join("glyph.pdf"),
+        pdf([0.0, 0.0, 14.0, 16.0], None, 0),
+    )
+    .unwrap();
     write_json(
         &glyph.join("Contents.json"),
         &json!({"images": [{"filename": "glyph.pdf", "idiom": "universal"}], "properties": {"preserves-vector-representation": true}}),
+    );
+    let photo = catalog.join("Photo.imageset");
+    std::fs::create_dir_all(&photo).unwrap();
+    std::fs::write(photo.join("photo.jpg"), [0xff, 0xd8, 0xff]).unwrap();
+    write_json(
+        &photo.join("Contents.json"),
+        &json!({"images": [{"filename": "photo.jpg", "idiom": "universal"}]}),
     );
     catalog
 }
@@ -413,15 +426,16 @@ fn colors_and_images_go_in_assets_car() {
         .collect();
     files.sort();
     assert_eq!(files, ["Assets.car"]);
-    // The PDF glyph stays out; the star keeps its namespace.
+    // The photo stays out; the star keeps its namespace.
     assert_eq!(
         car_names(&out.join("Assets.car")),
-        ["Brand", "Icons/Star", "Logo"]
+        ["Brand", "Glyph", "Icons/Star", "Logo"]
     );
     let data = std::fs::read(out.join("Assets.car")).unwrap();
     let (renditions, _) = super::car::tests::Store::read(&data).tree("RENDITIONS");
-    // Logo: 2x, 3x, iPad 2x and dark 2x; Brand: any and dark; Star: 1x.
-    assert_eq!(renditions.len(), 7);
+    // Logo: 2x, 3x, iPad 2x and dark 2x; Brand: any and dark; Star: 1x;
+    // Glyph: 1x, 2x, 3x and its PDF.
+    assert_eq!(renditions.len(), 11);
 }
 
 #[test]
@@ -467,6 +481,7 @@ fn a_second_compile_takes_out_what_the_catalog_dropped() {
     let args = compile_args(&catalog, &out, &dir);
     compile::compile(&args).unwrap();
     std::fs::remove_dir_all(catalog.join("Icons")).unwrap();
+    std::fs::remove_dir_all(catalog.join("Glyph.imageset")).unwrap();
     compile::compile(&args).unwrap();
     assert_eq!(car_names(&out.join("Assets.car")), ["Logo"]);
     std::fs::remove_dir_all(catalog.join("Logo.imageset")).unwrap();
@@ -486,7 +501,7 @@ fn the_warning_says_what_the_app_goes_without() {
             ..Report::default()
         }),
         Some(format!(
-            "{prefix}1 image that isn't a PNG is missing from the app."
+            "{prefix}1 image that isn't a PNG, PDF or SVG is missing from the app."
         ))
     );
     assert_eq!(
@@ -504,13 +519,13 @@ fn the_warning_says_what_the_app_goes_without() {
             ..Report::default()
         }),
         Some(format!(
-            "{prefix}the app icon, 1 color and 3 images that aren't PNGs are missing from the app."
+            "{prefix}the app icon, 1 color and 3 images that aren't PNGs, PDFs or SVGs are missing from the app."
         ))
     );
 }
 
 #[test]
-fn the_image_catalog_reports_its_vector_image() {
+fn the_image_catalog_reports_its_photo() {
     let dir = TempDir::new("sweetpad-actool-report");
     let catalog = image_catalog(&dir);
     let out = dir.join("out");
@@ -521,10 +536,185 @@ fn the_image_catalog_reports_its_vector_image() {
         .assets()
         .into_iter()
         .map(|(_, a)| a)
-        .filter(|a| a.name != "Glyph" && a.kind == super::catalog::Kind::Image)
+        .filter(|a| a.name != "Photo" && a.kind == super::catalog::Kind::Image)
         .map(|a| a.dir.as_path())
         .collect();
     let report = compile::Report::of(&read, Some("AppIcon"), false, &compiled, &args);
     assert_eq!(report.images, 1);
     assert_eq!(report.colors, 0);
+}
+
+/// A rendition's key attributes by id, its layout and its size.
+type Rendition = (std::collections::BTreeMap<u32, u16>, u16, (u32, u32));
+
+/// Each rendition in a compiled `Assets.car`.
+fn renditions(path: &Path) -> Vec<Rendition> {
+    let data = std::fs::read(path).unwrap();
+    let store = super::car::tests::Store::read(&data);
+    let format = store.variable("KEYFORMAT");
+    let le = |data: &[u8], at: usize| u32::from_le_bytes(data[at..at + 4].try_into().unwrap());
+    let attributes: Vec<u32> = (0..le(format, 8) as usize)
+        .map(|i| le(format, 12 + 4 * i))
+        .collect();
+    let (renditions, _) = store.tree("RENDITIONS");
+    renditions
+        .iter()
+        .map(|(key, value)| {
+            let values = key.chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]]));
+            let key = attributes.iter().copied().zip(values).collect();
+            let layout = u16::from_le_bytes([value[36], value[37]]);
+            (key, layout, (le(value, 12), le(value, 16)))
+        })
+        .collect()
+}
+
+/// The arguments for compiling `catalog` into `out` for `platform`.
+fn platform_args(catalog: &Path, out: &Path, platform: &str) -> Args {
+    let command_line: Vec<String> = [
+        catalog.display().to_string(),
+        "--compile".into(),
+        out.display().to_string(),
+        "--platform".into(),
+        platform.into(),
+    ]
+    .into();
+    Args::parse(&command_line)
+}
+
+#[test]
+fn vector_images_are_drawn_at_each_scale_the_platform_has() {
+    let dir = TempDir::new("sweetpad-actool-vectors");
+    let catalog = template_catalog(&dir);
+    let set = |name: &str, files: &[(&str, Vec<u8>)], images: Value| {
+        let folder = catalog.join(format!("{name}.imageset"));
+        std::fs::create_dir_all(&folder).unwrap();
+        for (file, bytes) in files {
+            std::fs::write(folder.join(file), bytes).unwrap();
+        }
+        write_json(&folder.join("Contents.json"), &json!({ "images": images }));
+    };
+    let dark = json!([{"appearance": "luminosity", "value": "dark"}]);
+    set(
+        "Plain",
+        &[
+            ("plain.pdf", pdf([0.0, 0.0, 10.0, 6.0], None, 0)),
+            ("dark.pdf", pdf([0.0, 0.0, 10.0, 6.0], None, 0)),
+        ],
+        json!([
+            {"filename": "plain.pdf", "idiom": "universal"},
+            {"appearances": dark, "filename": "dark.pdf", "idiom": "universal"},
+        ]),
+    );
+    set(
+        "Scaled",
+        &[
+            ("star.pdf", pdf([0.0, 0.0, 13.0, 13.0], None, 0)),
+            ("star@2x.pdf", pdf([0.0, 0.0, 26.0, 26.0], None, 0)),
+        ],
+        json!([
+            {"filename": "star.pdf", "idiom": "universal", "scale": "1x"},
+            {"filename": "star@2x.pdf", "idiom": "universal", "scale": "2x"},
+            {"idiom": "universal", "scale": "3x"},
+        ]),
+    );
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="20.5" height="8"><rect width="20" height="8"/></svg>"#;
+    set(
+        "Drawing",
+        &[("drawing.svg", svg.to_vec())],
+        json!([{"filename": "drawing.svg", "idiom": "universal"}]),
+    );
+    let out = dir.join("ios");
+    compile::compile(&platform_args(&catalog, &out, "iphonesimulator")).unwrap();
+    let ids: Vec<String> = car_names(&out.join("Assets.car"));
+    assert_eq!(ids, ["Drawing", "Plain", "Scaled"]);
+    // What Xcode 27's actool wrote: a bitmap per scale, the 3x star from
+    // the 2x file, and each set's file for no scale, as its sets don't
+    // preserve vector data.
+    // Identifier, appearance, scale, layout and size.
+    let mut summary: Vec<_> = renditions(&out.join("Assets.car"))
+        .into_iter()
+        .map(|(key, layout, size)| (key[&17], key[&7], key[&12], layout, size))
+        .collect();
+    summary.sort_unstable();
+    let (drawing, plain, star) = (1, 2, 3);
+    assert_eq!(
+        summary,
+        [
+            (drawing, 0, 0, 9, (0, 0)),
+            (drawing, 0, 1, 12, (21, 8)),
+            (drawing, 0, 2, 12, (41, 16)),
+            (drawing, 0, 3, 12, (62, 24)),
+            (plain, 0, 0, 9, (0, 0)),
+            (plain, 0, 1, 12, (10, 6)),
+            (plain, 0, 2, 12, (20, 12)),
+            (plain, 0, 3, 12, (30, 18)),
+            (plain, 1, 0, 9, (0, 0)),
+            (plain, 1, 1, 12, (10, 6)),
+            (plain, 1, 2, 12, (20, 12)),
+            (plain, 1, 3, 12, (30, 18)),
+            (star, 0, 0, 9, (0, 0)),
+            (star, 0, 1, 12, (13, 13)),
+            (star, 0, 2, 12, (26, 26)),
+            (star, 0, 3, 12, (39, 39)),
+        ]
+    );
+    // A Mac has no 3x screens.
+    let out = dir.join("mac");
+    compile::compile(&platform_args(&catalog, &out, "macosx")).unwrap();
+    let scales: std::collections::BTreeSet<u16> = renditions(&out.join("Assets.car"))
+        .iter()
+        .map(|(key, ..)| key[&12])
+        .collect();
+    assert_eq!(scales, [0, 1, 2].into());
+}
+
+#[test]
+fn a_symbol_set_goes_in_as_the_masters_its_template_draws() {
+    let dir = TempDir::new("sweetpad-actool-symbol");
+    let catalog = template_catalog(&dir);
+    let folder = catalog.join("Mark.symbolset");
+    std::fs::create_dir_all(&folder).unwrap();
+    let template = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/actool/symbols/legacy.svg");
+    std::fs::copy(template, folder.join("legacy.svg")).unwrap();
+    write_json(
+        &folder.join("Contents.json"),
+        &json!({"symbols": [{"filename": "legacy.svg", "idiom": "universal"}]}),
+    );
+    let out = dir.join("out");
+    compile::compile(&platform_args(&catalog, &out, "iphonesimulator")).unwrap();
+    assert_eq!(car_names(&out.join("Assets.car")), ["Mark"]);
+    // Regular at each size, as glyphs at 2019's deployment target.
+    let glyphs: Vec<(u16, u16, u16, u16, u16)> = renditions(&out.join("Assets.car"))
+        .into_iter()
+        .map(|(key, layout, _)| (key[&2], key[&26], key[&27], key[&25], layout))
+        .collect();
+    assert_eq!(
+        glyphs,
+        [
+            (59, 4, 1, 5, 1017),
+            (59, 4, 2, 5, 1017),
+            (59, 4, 3, 5, 1017)
+        ]
+    );
+}
+
+#[test]
+fn a_set_that_preserves_vector_data_says_so_on_its_bitmaps() {
+    let dir = TempDir::new("sweetpad-actool-preserved");
+    let catalog = template_catalog(&dir);
+    let folder = catalog.join("Logo.imageset");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("logo.png"), png_of(2, [9, 9, 9, 255])).unwrap();
+    write_json(
+        &folder.join("Contents.json"),
+        &json!({"images": [{"filename": "logo.png", "idiom": "universal", "scale": "1x"}], "properties": {"preserves-vector-representation": true}}),
+    );
+    let out = dir.join("out");
+    compile::compile(&platform_args(&catalog, &out, "iphonesimulator")).unwrap();
+    let data = std::fs::read(out.join("Assets.car")).unwrap();
+    let (renditions, _) = super::car::tests::Store::read(&data).tree("RENDITIONS");
+    let flags = u32::from_le_bytes(renditions[0].1[8..12].try_into().unwrap());
+    // Bit 8 as Xcode sets it, whatever the set's files are, and the
+    // automatic rendering, 0x10.
+    assert_eq!(flags, 0x110);
 }

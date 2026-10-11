@@ -1,18 +1,23 @@
 //! actool's `--compile`: what Swift Build links into the product for a
-//! target's catalogs. The colors and PNG images go in an `Assets.car` (see
-//! [`super::car`]), and an iOS app icon goes in as the loose PNGs the home
-//! screen reads. A warning names what's still missing: vector and other
-//! non-PNG images, colors that name a system color, and assets of other
-//! kinds.
+//! target's catalogs. The colors, images and symbols go in an `Assets.car`
+//! (see [`super::car`]), with each PDF and SVG drawn at the platform's
+//! scales (see [`super::vector`]) and each symbol template read into its
+//! masters (see [`super::glyph`]). An iOS app icon goes in as the loose PNGs
+//! the home screen reads. A warning names what's still missing: images in
+//! other formats, colors for traits the stand-in doesn't compile, and assets
+//! of other kinds.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value, json};
 
-use super::car::{Appearance, Car, ColorSpace, Family, Part, Rendering, Variant};
+use super::car::{
+    Appearance, Bitmap, Car, ColorSpace, Family, Glyph, Part, Rendering, Source, Variant,
+};
 use super::catalog::{Asset, Catalog, Kind};
-use super::{Args, catalogs, raster, target_devices, write};
+use super::vector::{Drawing, Format};
+use super::{Args, catalogs, glyph, raster, target_devices, write};
 use crate::cli::xml_plist;
 
 pub(super) fn compile(args: &Args) -> Result<(), String> {
@@ -187,8 +192,8 @@ fn platform_name(platform: &str) -> &'static str {
     }
 }
 
-/// Add a catalog's colors and PNG images to `car`, and the folders of the
-/// assets that went in to `compiled`. An asset whose name is in already,
+/// Add a catalog's colors, images and symbols to `car`, and the folders of
+/// the assets that went in to `compiled`. An asset whose name is in already,
 /// from another catalog, stays out.
 fn add_assets<'a>(
     catalog: &'a Catalog,
@@ -209,6 +214,7 @@ fn add_assets<'a>(
             .collect();
         let added = match asset.kind {
             Kind::Color => add_color(car, &name, asset, devices, platform),
+            Kind::Image if asset.symbol => add_symbol(car, &name, asset, devices, platform),
             Kind::Image => add_image(car, &name, asset, devices, platform),
             Kind::AppIcon | Kind::Other => false,
         };
@@ -269,41 +275,199 @@ fn add_image(car: &mut Car, name: &str, asset: &Asset, devices: &[String], platf
         Some("original") => Rendering::Original,
         _ => Rendering::Automatic,
     };
-    let images: Vec<(Variant, &str, raster::Rgba)> = ordered(&asset.entries, |e| &e.idiom)
-        .into_iter()
-        .filter_map(|e| {
-            let filename = e.filename.as_deref()?;
-            let png = Path::new(filename)
-                .extension()
-                .is_some_and(|x| x.eq_ignore_ascii_case("png"));
-            if !png {
-                return None;
-            }
-            let scale = match e.scale.as_deref() {
-                Some("2x") => 2,
-                Some("3x") => 3,
-                _ => 1,
+    let mut images = Vec::new();
+    let mut vectors = Vec::new();
+    let mut drawings = Vec::new();
+    for entry in ordered(&asset.entries, |e| &e.idiom) {
+        let Some(filename) = entry.filename.as_deref() else {
+            continue;
+        };
+        let scale = match entry.scale.as_deref() {
+            Some("1x") => Some(1),
+            Some("2x") => Some(2),
+            Some("3x") => Some(3),
+            _ => None,
+        };
+        let Some(variant) = variant(
+            &entry.idiom,
+            &entry.appearances,
+            entry.other_traits,
+            scale.unwrap_or(1),
+            devices,
+            platform,
+        ) else {
+            continue;
+        };
+        let Ok(bytes) = std::fs::read(asset.dir.join(filename)) else {
+            continue;
+        };
+        if let Some(format) = Format::of(filename) {
+            let Ok(drawing) = Drawing::parse(format, bytes.clone()) else {
+                continue;
             };
-            let variant = variant(
-                &e.idiom,
-                &e.appearances,
-                e.other_traits,
+            vectors.push((variant, filename, format, bytes));
+            drawings.push(Drawn {
+                variant,
                 scale,
-                devices,
-                platform,
-            )?;
-            let bytes = std::fs::read(asset.dir.join(filename)).ok()?;
-            Some((variant, filename, raster::decode(&bytes).ok()?))
-        })
-        .collect();
+                filename,
+                drawing,
+            });
+        } else if Path::new(filename)
+            .extension()
+            .is_some_and(|x| x.eq_ignore_ascii_case("png"))
+            && let Ok(image) = raster::decode(&bytes)
+        {
+            let source = Source {
+                vector: false,
+                preserved: asset.preserves_vector,
+            };
+            images.push((variant, filename, Bitmap::from_rgba(&image), source));
+        }
+    }
+    let source = Source {
+        vector: true,
+        preserved: asset.preserves_vector,
+    };
+    for (variant, filename, bitmap) in draw(&drawings, scales(platform)) {
+        images.push((variant, filename, bitmap, source));
+    }
     if images.is_empty() {
         return false;
     }
     let Some(identifier) = car.facet(name, Part::Image) else {
         return false;
     };
-    for (variant, filename, image) in images {
-        car.image(filename, identifier, variant, &image, rendering);
+    for (variant, filename, image, source) in images {
+        car.image(filename, identifier, variant, &image, rendering, source);
+    }
+    // A set that preserves vector data keeps each file, for the scale it's
+    // for; any other keeps one per variant, for no scale.
+    let mut kept: Vec<Variant> = Vec::new();
+    for (variant, filename, format, bytes) in vectors {
+        if !asset.preserves_vector {
+            let any_scale = Variant {
+                scale: 0,
+                ..variant
+            };
+            if kept.contains(&any_scale) {
+                continue;
+            }
+            kept.push(any_scale);
+        }
+        car.vector(
+            filename,
+            identifier,
+            variant,
+            format,
+            &bytes,
+            asset.preserves_vector,
+        );
+    }
+    true
+}
+
+/// A set's PDF or SVG, parsed.
+struct Drawn<'a> {
+    variant: Variant,
+    /// The scale the set gives it, or none for one drawn at every scale.
+    scale: Option<u16>,
+    filename: &'a str,
+    drawing: Drawing,
+}
+
+/// The bitmaps actool draws from a set's PDFs and SVGs, one per scale the
+/// platform has. A file for no scale is drawn at each. A file for one scale
+/// is as many pixels as it has points at that scale, and each scale with no
+/// file of its own is drawn from the file nearest it, the larger on a tie.
+fn draw<'a>(drawings: &[Drawn<'a>], scales: &[u16]) -> Vec<(Variant, &'a str, Bitmap)> {
+    let mut plan: Vec<(&Drawn, u16)> = Vec::new();
+    let mut by_variant: Vec<Vec<&Drawn>> = Vec::new();
+    for drawn in drawings {
+        if drawn.scale.is_none() {
+            plan.extend(scales.iter().map(|s| (drawn, *s)));
+            continue;
+        }
+        let same = |d: &&Drawn| {
+            d.variant.idiom == drawn.variant.idiom
+                && d.variant.appearance == drawn.variant.appearance
+        };
+        match by_variant
+            .iter_mut()
+            .find(|group| group.first().is_some_and(same))
+        {
+            Some(group) => group.push(drawn),
+            None => by_variant.push(vec![drawn]),
+        }
+    }
+    for group in &by_variant {
+        for &target in scales {
+            let nearest = group.iter().min_by_key(|d| {
+                let own = d.scale.unwrap_or(1);
+                (own.abs_diff(target), std::cmp::Reverse(own))
+            });
+            if let Some(drawn) = nearest {
+                plan.push((drawn, target));
+            }
+        }
+    }
+    plan.into_iter()
+        .filter_map(|(drawn, target)| {
+            let factor = f32::from(target) / f32::from(drawn.scale.unwrap_or(1));
+            let bitmap = drawn.drawing.render(factor).ok()?;
+            let variant = Variant {
+                scale: target,
+                ..drawn.variant
+            };
+            Some((variant, drawn.filename, bitmap))
+        })
+        .collect()
+}
+
+/// The scales a platform's screens have, which actool draws a vector image
+/// at.
+fn scales(platform: &str) -> &'static [u16] {
+    match platform {
+        "iphoneos" | "iphonesimulator" => &[1, 2, 3],
+        "macosx" | "appletvos" | "appletvsimulator" => &[1, 2],
+        _ => &[2],
+    }
+}
+
+/// A symbol set: each master its template draws, for each variant it has.
+fn add_symbol(
+    car: &mut Car,
+    name: &str,
+    asset: &Asset,
+    devices: &[String],
+    platform: &str,
+) -> bool {
+    let sizing = glyph::Sizing::of(platform);
+    let symbols: Vec<(Variant, &str, Vec<Glyph>)> = ordered(&asset.entries, |e| &e.idiom)
+        .into_iter()
+        .filter_map(|e| {
+            let filename = e.filename.as_deref()?;
+            let variant = variant(
+                &e.idiom,
+                &e.appearances,
+                e.other_traits,
+                1,
+                devices,
+                platform,
+            )?;
+            let bytes = std::fs::read(asset.dir.join(filename)).ok()?;
+            Some((variant, filename, glyph::masters(&bytes, sizing).ok()?))
+        })
+        .collect();
+    if symbols.is_empty() {
+        return false;
+    }
+    let Some(identifier) = car.symbol(name) else {
+        return false;
+    };
+    for (variant, filename, glyphs) in symbols {
+        for glyph in &glyphs {
+            car.glyph(filename, identifier, variant, glyph);
+        }
     }
     true
 }
@@ -423,7 +587,8 @@ pub(super) struct Report {
     /// Colors that name a system color, or are only for traits the stand-in
     /// doesn't compile.
     pub colors: usize,
-    /// Images with no PNG to compile: PDFs, SVGs, symbols, JPEGs.
+    /// Images and symbols with no file the stand-in could read: JPEGs and
+    /// other formats, or a PDF, SVG or symbol template it couldn't parse.
     pub images: usize,
     pub other: usize,
 }
@@ -475,8 +640,8 @@ impl Report {
             counted(self.colors, "color", "colors"),
             counted(
                 self.images,
-                "image that isn't a PNG",
-                "images that aren't PNGs",
+                "image that isn't a PNG, PDF or SVG",
+                "images that aren't PNGs, PDFs or SVGs",
             ),
             counted(self.other, "other asset", "other assets"),
         ]
