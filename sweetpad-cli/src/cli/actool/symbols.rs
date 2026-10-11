@@ -415,24 +415,12 @@ fn escaped(identifier: &str) -> String {
     }
 }
 
-/// A sort key that orders accented Latin letters right after their base
-/// letter, as Foundation's string comparison does by decomposing them.
-fn decomposed(name: &str) -> Vec<u32> {
-    // The base letter of each of U+00C0 to U+00FF, or a space for the ones
-    // that don't decompose.
-    const BASES: &str = "AAAAAA CEEEEIIII NOOOOO OUUUUY  aaaaaa ceeeeiiii nooooo ouuuuy y";
-    let mut key = Vec::new();
-    for c in name.chars() {
-        let base = (c as u32)
-            .checked_sub(0xC0)
-            .and_then(|i| BASES.chars().nth(i as usize))
-            .filter(|b| *b != ' ');
-        match base {
-            Some(base) => key.extend([base as u32, 0x300]),
-            None => key.push(c as u32),
-        }
-    }
-    key
+/// A sort key that orders a name the way Foundation compares strings: by
+/// their decomposed characters, so an accented letter sorts right after its
+/// base letter.
+fn decomposed(name: &str) -> Vec<char> {
+    use unicode_normalization::UnicodeNormalization;
+    name.nfd().collect()
 }
 
 /// The type an extension extends, and how it reads in a conflict warning.

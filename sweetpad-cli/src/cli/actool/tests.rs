@@ -195,37 +195,7 @@ fn template_catalog(dir: &Path) -> PathBuf {
     catalog
 }
 
-#[test]
-fn the_template_catalog_has_nothing_missing() {
-    let dir = TempDir::new("sweetpad-actool-template");
-    let catalog = Catalog::read(&template_catalog(&dir));
-    assert_eq!(missing(&catalog), None);
-    let generated = symbols::generate(&[catalog], &options(true, Frameworks::default()));
-    assert!(
-        !generated.swift.contains("static let"),
-        "{}",
-        generated.swift
-    );
-    assert!(!generated.objc.contains("ACBundleID"), "{}", generated.objc);
-}
-
-#[test]
-fn a_catalog_with_assets_names_what_the_app_goes_without() {
-    let dir = TempDir::new("sweetpad-actool-missing");
-    let catalog = probe_catalog(&dir);
-    let (text, plural) = missing(&catalog).unwrap();
-    assert_eq!(
-        text,
-        "the app icon, 167 colors, 23 images and 1 other asset"
-    );
-    assert!(plural);
-}
-
-#[test]
-fn a_compile_writes_what_swift_build_links() {
-    let dir = TempDir::new("sweetpad-actool-compile");
-    let catalog = template_catalog(&dir);
-    let out = dir.join("out");
+fn compile_args(catalog: &Path, out: &Path, dir: &Path) -> Args {
     let command_line: Vec<String> = [
         catalog.display().to_string(),
         "--compile".into(),
@@ -243,12 +213,66 @@ fn a_compile_writes_what_swift_build_links() {
         "--compress-pngs".into(),
         "--enable-on-demand-resources".into(),
         "YES".into(),
+        "--target-device".into(),
+        "iphone".into(),
+        "--target-device".into(),
+        "ipad".into(),
+        "--platform".into(),
+        "iphonesimulator".into(),
     ]
     .into();
-    let args = Args::parse(&command_line);
+    Args::parse(&command_line)
+}
+
+fn png_of(width: u32, rgba: [u8; 4]) -> Vec<u8> {
+    raster::encode(&raster::Rgba {
+        width,
+        height: width,
+        pixels: rgba.repeat((width * width) as usize),
+    })
+    .unwrap()
+}
+
+fn pixel_size(path: &Path) -> (u32, u32) {
+    let image = raster::decode(&std::fs::read(path).unwrap()).unwrap();
+    (image.width, image.height)
+}
+
+#[test]
+fn the_template_catalog_has_nothing_missing() {
+    let dir = TempDir::new("sweetpad-actool-template");
+    let catalog = template_catalog(&dir);
+    let args = compile_args(&catalog, &dir.join("out"), &dir);
+    let report = compile::Report::of(
+        &Catalog::read(&catalog),
+        Some("AppIcon"),
+        false,
+        &std::collections::HashSet::new(),
+        &args,
+    );
+    assert_eq!(report, compile::Report::default());
+    assert_eq!(report.warning(), None);
+    let generated = symbols::generate(
+        &[Catalog::read(&catalog)],
+        &options(true, Frameworks::default()),
+    );
+    assert!(
+        !generated.swift.contains("static let"),
+        "{}",
+        generated.swift
+    );
+    assert!(!generated.objc.contains("ACBundleID"), "{}", generated.objc);
+}
+
+#[test]
+fn a_compile_writes_what_swift_build_links() {
+    let dir = TempDir::new("sweetpad-actool-compile");
+    let catalog = template_catalog(&dir);
+    let out = dir.join("out");
+    let args = compile_args(&catalog, &out, &dir);
     assert_eq!(args.inputs, vec![catalog.clone()]);
     assert_eq!(args.value("--enable-on-demand-resources"), Some("YES"));
-    compile(&args).unwrap();
+    compile::compile(&args).unwrap();
     assert!(out.is_dir());
     let partial = std::fs::read_to_string(dir.join("partial.plist")).unwrap();
     assert!(partial.contains("<dict/>"), "{partial}");
@@ -256,4 +280,217 @@ fn a_compile_writes_what_swift_build_links() {
     assert_eq!(deps[0], 0x00);
     let input = [&[0x10][..], catalog.display().to_string().as_bytes(), &[0]].concat();
     assert!(deps.windows(input.len()).any(|w| w == input));
+}
+
+#[test]
+fn the_app_icon_goes_in_at_both_ios_sizes() {
+    let dir = TempDir::new("sweetpad-actool-icon");
+    let catalog = template_catalog(&dir);
+    let set = catalog.join("AppIcon.appiconset");
+    std::fs::write(set.join("icon.png"), png_of(1024, [240, 120, 30, 255])).unwrap();
+    write_json(
+        &set.join("Contents.json"),
+        &json!({"images": [
+            {"filename": "icon.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"},
+            {"appearances": [{"appearance": "luminosity", "value": "dark"}], "idiom": "universal", "platform": "ios", "size": "1024x1024"},
+        ]}),
+    );
+    let out = dir.join("out");
+    compile::compile(&compile_args(&catalog, &out, &dir)).unwrap();
+    assert_eq!(pixel_size(&out.join("AppIcon60x60@2x.png")), (120, 120));
+    assert_eq!(
+        pixel_size(&out.join("AppIcon76x76@2x~ipad.png")),
+        (152, 152)
+    );
+    let partial = std::fs::read_to_string(dir.join("partial.plist")).unwrap();
+    for key in [
+        "CFBundleIcons",
+        "CFBundleIcons~ipad",
+        "CFBundleIconName",
+        "AppIcon60x60",
+        "AppIcon76x76",
+    ] {
+        assert!(partial.contains(key), "{key} in {partial}");
+    }
+}
+
+#[test]
+fn an_icon_of_the_exact_size_goes_in_as_it_is() {
+    let dir = TempDir::new("sweetpad-actool-icon-sizes");
+    let catalog = template_catalog(&dir);
+    let set = catalog.join("AppIcon.appiconset");
+    let (iphone, ipad) = (png_of(120, [1, 2, 3, 255]), png_of(152, [4, 5, 6, 255]));
+    std::fs::write(set.join("60.png"), &iphone).unwrap();
+    std::fs::write(set.join("76.png"), &ipad).unwrap();
+    write_json(
+        &set.join("Contents.json"),
+        &json!({"images": [
+            {"filename": "60.png", "idiom": "iphone", "scale": "2x", "size": "60x60"},
+            {"filename": "76.png", "idiom": "ipad", "scale": "2x", "size": "76x76"},
+        ]}),
+    );
+    let out = dir.join("out");
+    compile::compile(&compile_args(&catalog, &out, &dir)).unwrap();
+    assert_eq!(
+        std::fs::read(out.join("AppIcon60x60@2x.png")).unwrap(),
+        iphone
+    );
+    assert_eq!(
+        std::fs::read(out.join("AppIcon76x76@2x~ipad.png")).unwrap(),
+        ipad
+    );
+}
+
+/// A catalog with a logo at two scales and an iPad variant, a dark variant,
+/// a namespaced star and a PDF glyph.
+fn image_catalog(dir: &Path) -> PathBuf {
+    let catalog = template_catalog(dir);
+    let logo = catalog.join("Logo.imageset");
+    std::fs::create_dir_all(&logo).unwrap();
+    for name in ["2x.png", "3x.png", "pad.png", "dark.png"] {
+        std::fs::write(logo.join(name), png_of(2, [9, 9, 9, 255])).unwrap();
+    }
+    write_json(
+        &logo.join("Contents.json"),
+        &json!({"images": [
+            {"idiom": "universal", "scale": "1x"},
+            {"filename": "2x.png", "idiom": "universal", "scale": "2x"},
+            {"filename": "3x.png", "idiom": "universal", "scale": "3x"},
+            {"filename": "pad.png", "idiom": "ipad", "scale": "2x"},
+            {"appearances": [{"appearance": "luminosity", "value": "dark"}], "filename": "dark.png", "idiom": "universal", "scale": "2x"},
+        ]}),
+    );
+    write_json(
+        &catalog.join("Icons/Contents.json"),
+        &json!({"properties": {"provides-namespace": true}}),
+    );
+    let star = catalog.join("Icons/Star.imageset");
+    std::fs::create_dir_all(&star).unwrap();
+    std::fs::write(star.join("star.PNG"), png_of(2, [7, 7, 7, 255])).unwrap();
+    write_json(
+        &star.join("Contents.json"),
+        &json!({"images": [{"filename": "star.PNG", "idiom": "universal", "scale": "1x"}]}),
+    );
+    let glyph = catalog.join("Glyph.imageset");
+    std::fs::create_dir_all(&glyph).unwrap();
+    std::fs::write(glyph.join("glyph.pdf"), b"%PDF-1.4").unwrap();
+    write_json(
+        &glyph.join("Contents.json"),
+        &json!({"images": [{"filename": "glyph.pdf", "idiom": "universal"}], "properties": {"preserves-vector-representation": true}}),
+    );
+    catalog
+}
+
+#[test]
+fn images_go_in_as_the_loose_files_uikit_looks_up() {
+    let dir = TempDir::new("sweetpad-actool-images");
+    let catalog = image_catalog(&dir);
+    let out = dir.join("out");
+    let args = compile_args(&catalog, &out, &dir);
+    compile::compile(&args).unwrap();
+    let mut files: Vec<String> = Vec::new();
+    for entry in walk(&out) {
+        files.push(entry.strip_prefix(&out).unwrap().display().to_string());
+    }
+    files.sort();
+    assert_eq!(
+        files,
+        [
+            "Icons/Star.png",
+            "Logo@2x.png",
+            "Logo@2x~ipad.png",
+            "Logo@3x.png"
+        ]
+    );
+}
+
+fn walk(dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(dir).unwrap().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            out.extend(walk(&path));
+        } else {
+            out.push(path);
+        }
+    }
+    out
+}
+
+#[test]
+fn a_second_compile_takes_out_what_the_catalog_dropped() {
+    let dir = TempDir::new("sweetpad-actool-recompile");
+    let catalog = image_catalog(&dir);
+    let out = dir.join("out");
+    let args = compile_args(&catalog, &out, &dir);
+    compile::compile(&args).unwrap();
+    assert!(out.join("Icons/Star.png").is_file());
+    std::fs::remove_dir_all(catalog.join("Icons")).unwrap();
+    compile::compile(&args).unwrap();
+    assert!(!out.join("Icons/Star.png").exists());
+    assert!(out.join("Logo@2x.png").is_file());
+}
+
+#[test]
+fn the_warning_says_what_the_app_goes_without() {
+    use compile::Report;
+    let text = |report: Report| report.warning();
+    let prefix = "Linux builds don't compile asset catalogs yet, so ";
+    assert_eq!(text(Report::default()), None);
+    assert_eq!(
+        text(Report {
+            colors: 1,
+            ..Report::default()
+        }),
+        Some(format!("{prefix}1 color is missing from the app."))
+    );
+    assert_eq!(
+        text(Report {
+            colors: 2,
+            ..Report::default()
+        }),
+        Some(format!("{prefix}2 colors are missing from the app."))
+    );
+    assert_eq!(
+        text(Report {
+            loose_images: 1,
+            ..Report::default()
+        }),
+        Some(format!(
+            "{prefix}its 1 image loads in UIKit but not in SwiftUI's Image."
+        ))
+    );
+    assert_eq!(
+        text(Report {
+            icon_missing: true,
+            colors: 1,
+            vector_images: 1,
+            loose_images: 3,
+            ..Report::default()
+        }),
+        Some(format!(
+            "{prefix}the app icon, 1 color and 1 vector image are missing from the app, \
+             and its 3 images load in UIKit but not in SwiftUI's Image."
+        ))
+    );
+}
+
+#[test]
+fn the_image_catalog_reports_loose_and_vector_images() {
+    let dir = TempDir::new("sweetpad-actool-report");
+    let catalog = image_catalog(&dir);
+    let out = dir.join("out");
+    let args = compile_args(&catalog, &out, &dir);
+    compile::compile(&args).unwrap();
+    let read = Catalog::read(&catalog);
+    let loose: std::collections::HashSet<&Path> = read
+        .assets()
+        .into_iter()
+        .map(|(_, a)| a)
+        .filter(|a| a.name != "Glyph" && a.kind == super::catalog::Kind::Image)
+        .map(|a| a.dir.as_path())
+        .collect();
+    let report = compile::Report::of(&read, Some("AppIcon"), false, &loose, &args);
+    assert_eq!(report.loose_images, 2);
+    assert_eq!(report.vector_images, 1);
 }

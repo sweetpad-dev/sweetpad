@@ -9,8 +9,9 @@
 //! - the asset symbols (`GeneratedAssetSymbols.swift` and the rest), written
 //!   the way actool writes them, so code that uses `Color(.brand)` compiles;
 //! - a compiled catalog: no `Assets.car`, since its format is Apple's own,
-//!   but the partial Info.plist and dependency file Swift Build links in,
-//!   and a warning naming what the app goes without.
+//!   but the app icon and images as loose PNGs, the partial Info.plist and
+//!   dependency file Swift Build links in, and a warning naming what the
+//!   app goes without (see [`compile`]).
 //!
 //! A catalog with nothing to compile, like the one Xcode's app template
 //! starts with, comes out the same as from actool.
@@ -20,13 +21,15 @@
 #![allow(clippy::print_stdout)]
 
 mod catalog;
+mod compile;
+mod raster;
 mod symbols;
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use catalog::{Catalog, Kind};
+use catalog::Catalog;
 use symbols::{Frameworks, Options};
 
 /// The flags that take no value.
@@ -110,7 +113,7 @@ pub fn main(command_line: &[String]) -> ExitCode {
     {
         generate_symbols(&args)
     } else if args.has("--compile") {
-        compile(&args)
+        compile::compile(&args)
     } else {
         Err("nothing to do: expected --compile, --version or a --generate option".to_string())
     };
@@ -169,7 +172,7 @@ fn generate_symbols(args: &Args) -> Result<(), String> {
     for (flag, contents) in [
         ("--generate-swift-asset-symbols", symbols.swift),
         ("--generate-objc-asset-symbols", symbols.objc),
-        ("--generate-asset-symbol-index", index_plist(&symbols.index)),
+        ("--generate-asset-symbol-index", xml_plist(&symbols.index)),
     ] {
         if let Some(path) = args.value(flag) {
             write(Path::new(path), contents.as_bytes())?;
@@ -202,87 +205,9 @@ fn target_devices(args: &Args) -> Vec<String> {
     defaults.iter().map(ToString::to_string).collect()
 }
 
-/// A compile: everything Swift Build links into the product except the
-/// `Assets.car`, and a warning for each catalog that had something to put
-/// in one.
-fn compile(args: &Args) -> Result<(), String> {
-    let output = args
-        .value("--compile")
-        .ok_or("--compile needs a directory")?;
-    std::fs::create_dir_all(output).map_err(|e| format!("couldn't create {output}: {e}"))?;
-    if let Some(path) = args.value("--output-partial-info-plist") {
-        write(Path::new(path), plist("<dict/>").as_bytes())?;
-    }
-    if let Some(path) = args.value("--export-dependency-info") {
-        write(Path::new(path), &dependency_info(&args.inputs))?;
-    }
-    let warnings: Vec<String> = catalogs(args)
-        .iter()
-        .filter_map(|catalog| {
-            let (missing, plural) = missing(catalog)?;
-            Some(format!(
-                "{}: warning: Linux builds don't compile asset catalogs yet, so {missing} {} missing from the app.",
-                catalog.path.display(),
-                if plural { "are" } else { "is" },
-            ))
-        })
-        .collect();
-    if !warnings.is_empty() {
-        println!("/* com.apple.actool.document.warnings */");
-        for warning in warnings {
-            println!("{warning}");
-        }
-    }
-    println!("/* com.apple.actool.compilation-results */");
-    println!();
-    Ok(())
-}
-
-/// What a catalog would have compiled, in words (`the app icon, 2 colors and
-/// 1 image`) and whether that's more than one thing, or nothing when actool
-/// would have compiled nothing either.
-fn missing(catalog: &Catalog) -> Option<(String, bool)> {
-    let compiled = catalog.compiled();
-    let count = |kind: Kind| compiled.iter().filter(|a| a.kind == kind).count();
-    let counted = |n: usize, one: &str, many: &str| match n {
-        0 => None,
-        1 => Some((format!("1 {one}"), 1)),
-        n => Some((format!("{n} {many}"), n)),
-    };
-    let parts: Vec<(String, usize)> = [
-        (count(Kind::AppIcon) > 0).then(|| ("the app icon".to_string(), 1)),
-        counted(count(Kind::Color), "color", "colors"),
-        counted(count(Kind::Image), "image", "images"),
-        counted(count(Kind::Other), "other asset", "other assets"),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-    let plural = parts.len() > 1 || parts.first().is_some_and(|(_, n)| *n > 1);
-    let words: Vec<&str> = parts.iter().map(|(text, _)| text.as_str()).collect();
-    let text = match words.as_slice() {
-        [] => return None,
-        [one] => one.to_string(),
-        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
-    };
-    Some((text, plural))
-}
-
-/// ld64's dependency-info format, which Swift Build reads to know what the
-/// compile depended on: a version record, then one record per input.
-fn dependency_info(inputs: &[PathBuf]) -> Vec<u8> {
-    let mut out = vec![0x00];
-    out.extend_from_slice(b"sweetpad-actool\0");
-    for input in inputs {
-        out.push(0x10);
-        out.extend_from_slice(input.display().to_string().as_bytes());
-        out.push(0);
-    }
-    out
-}
-
-/// The symbol index as the XML property list actool writes.
-fn index_plist(index: &serde_json::Value) -> String {
+/// A JSON value as an XML property list, the way actool writes its index
+/// and partial Info.plist.
+fn xml_plist(value: &serde_json::Value) -> String {
     fn escape(s: &str) -> String {
         s.replace('&', "&amp;")
             .replace('<', "&lt;")
@@ -291,6 +216,9 @@ fn index_plist(index: &serde_json::Value) -> String {
     fn render(value: &serde_json::Value, indent: usize, out: &mut String) {
         let pad = "\t".repeat(indent);
         match value {
+            serde_json::Value::Object(map) if map.is_empty() => {
+                let _ = writeln!(out, "{pad}<dict/>");
+            }
             serde_json::Value::Object(map) => {
                 let _ = writeln!(out, "{pad}<dict>");
                 let mut keys: Vec<&String> = map.keys().collect();
@@ -320,7 +248,7 @@ fn index_plist(index: &serde_json::Value) -> String {
         }
     }
     let mut body = String::new();
-    render(index, 0, &mut body);
+    render(value, 0, &mut body);
     plist(body.trim_end())
 }
 

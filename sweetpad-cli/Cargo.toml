@@ -25,6 +25,8 @@ toml.workspace = true
 toml_edit.workspace = true
 libc.workspace = true
 minreq.workspace = true
+png.workspace = true
+unicode-normalization.workspace = true
 
 [lints]
 workspace = true

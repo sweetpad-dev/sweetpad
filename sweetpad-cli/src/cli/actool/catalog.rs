@@ -31,13 +31,32 @@ pub enum Node {
 pub struct Asset {
     pub name: String,
     pub kind: Kind,
+    /// The asset's folder.
+    pub dir: PathBuf,
     /// The asset's folder, relative to the catalog: `./Icons/Star.imageset`.
     pub relative_path: String,
     /// The idiom of each entry in its `Contents.json`.
     pub idioms: Vec<String>,
+    /// The files of an image or app icon set, one per entry.
+    pub entries: Vec<Entry>,
     /// Whether actool would compile anything for it: a color with a value,
     /// an image with a file.
     pub has_content: bool,
+}
+
+/// One entry of an image or app icon set's `Contents.json`.
+#[derive(Debug, Clone, Default)]
+pub struct Entry {
+    pub filename: Option<String>,
+    pub idiom: String,
+    /// `1x`, `2x` or `3x`, or none for a single-scale image.
+    pub scale: Option<String>,
+    /// An app icon's size in points, like `60x60`.
+    pub size: Option<String>,
+    /// The platform a universal app icon is for, like `ios`.
+    pub platform: Option<String>,
+    /// A variant for dark mode, a tint or high contrast.
+    pub appearance: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,8 +76,10 @@ impl Catalog {
                 children: vec![Node::Asset(Asset {
                     name: stem(path),
                     kind: Kind::AppIcon,
+                    dir: path.to_path_buf(),
                     relative_path: ".".into(),
                     idioms: Vec::new(),
+                    entries: Vec::new(),
                     has_content: true,
                 })],
                 ..Folder::default()
@@ -192,37 +213,55 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
             })
             .collect()
     };
-    let (kind, idioms, has_content) = match extension {
+    let (kind, idioms, entries, has_content) = match extension {
         "colorset" => {
             let colors = entries("colors");
             let has = colors.iter().any(|e| e.get("color").is_some());
-            (Kind::Color, idioms(&colors), has)
+            (Kind::Color, idioms(&colors), Vec::new(), has)
         }
-        "imageset" | "symbolset" => {
-            let key = if extension == "imageset" {
-                "images"
-            } else {
+        "imageset" | "symbolset" | "appiconset" => {
+            let key = if extension == "symbolset" {
                 "symbols"
+            } else {
+                "images"
             };
             let images = entries(key);
             let has = images.iter().any(|e| e.get("filename").is_some());
-            (Kind::Image, idioms(&images), has)
+            let kind = if extension == "appiconset" {
+                Kind::AppIcon
+            } else {
+                Kind::Image
+            };
+            (kind, idioms(&images), files(&images), has)
         }
-        "appiconset" => {
-            let images = entries("images");
-            let has = images.iter().any(|e| e.get("filename").is_some());
-            (Kind::AppIcon, idioms(&images), has)
-        }
-        "icon" => (Kind::AppIcon, Vec::new(), true),
-        _ => (Kind::Other, Vec::new(), true),
+        "icon" => (Kind::AppIcon, Vec::new(), Vec::new(), true),
+        _ => (Kind::Other, Vec::new(), Vec::new(), true),
     };
     Asset {
         name: stem(path),
         kind,
+        dir: path.to_path_buf(),
         relative_path,
         idioms,
+        entries,
         has_content,
     }
+}
+
+/// An image or app icon set's entries, as the stand-in uses them.
+fn files(entries: &[Value]) -> Vec<Entry> {
+    let text = |e: &Value, key: &str| e.get(key).and_then(Value::as_str).map(str::to_string);
+    entries
+        .iter()
+        .map(|e| Entry {
+            filename: text(e, "filename"),
+            idiom: text(e, "idiom").unwrap_or_else(|| "universal".to_string()),
+            scale: text(e, "scale"),
+            size: text(e, "size"),
+            platform: text(e, "platform"),
+            appearance: e.get("appearances").is_some(),
+        })
+        .collect()
 }
 
 fn stem(path: &Path) -> String {
