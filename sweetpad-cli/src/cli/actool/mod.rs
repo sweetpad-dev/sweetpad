@@ -25,12 +25,13 @@ mod compile;
 mod raster;
 mod symbols;
 
-use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use catalog::Catalog;
 use symbols::{Frameworks, Options};
+
+use super::xml_plist;
 
 /// The flags that take no value.
 const SWITCHES: &[&str] = &[
@@ -102,7 +103,7 @@ pub fn main(command_line: &[String]) -> ExitCode {
     } else if args.has("--print-asset-tag-combinations") {
         print!(
             "{}",
-            plist(
+            xml_plist::document(
                 "<dict>\n\t<key>com.apple.actool.asset-tag-combinations</key>\n\t<array/>\n</dict>"
             )
         );
@@ -129,18 +130,10 @@ pub fn main(command_line: &[String]) -> ExitCode {
 /// Xcode 27's actool version, so Swift Build plans the same command lines
 /// it would for Xcode's.
 fn version() -> String {
-    plist(
+    xml_plist::document(
         "<dict>\n\t<key>com.apple.actool.version</key>\n\t<dict>\n\
          \t\t<key>bundle-version</key>\n\t\t<string>25098</string>\n\
          \t\t<key>short-bundle-version</key>\n\t\t<string>27.0</string>\n\t</dict>\n</dict>",
-    )
-}
-
-fn plist(body: &str) -> String {
-    format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
-         <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
-         <plist version=\"1.0\">\n{body}\n</plist>\n"
     )
 }
 
@@ -172,7 +165,10 @@ fn generate_symbols(args: &Args) -> Result<(), String> {
     for (flag, contents) in [
         ("--generate-swift-asset-symbols", symbols.swift),
         ("--generate-objc-asset-symbols", symbols.objc),
-        ("--generate-asset-symbol-index", xml_plist(&symbols.index)),
+        (
+            "--generate-asset-symbol-index",
+            xml_plist::of(&symbols.index),
+        ),
     ] {
         if let Some(path) = args.value(flag) {
             write(Path::new(path), contents.as_bytes())?;
@@ -203,53 +199,6 @@ fn target_devices(args: &Args) -> Vec<String> {
         _ => &["iphone", "ipad"],
     };
     defaults.iter().map(ToString::to_string).collect()
-}
-
-/// A JSON value as an XML property list, the way actool writes its index
-/// and partial Info.plist.
-fn xml_plist(value: &serde_json::Value) -> String {
-    fn escape(s: &str) -> String {
-        s.replace('&', "&amp;")
-            .replace('<', "&lt;")
-            .replace('>', "&gt;")
-    }
-    fn render(value: &serde_json::Value, indent: usize, out: &mut String) {
-        let pad = "\t".repeat(indent);
-        match value {
-            serde_json::Value::Object(map) if map.is_empty() => {
-                let _ = writeln!(out, "{pad}<dict/>");
-            }
-            serde_json::Value::Object(map) => {
-                let _ = writeln!(out, "{pad}<dict>");
-                let mut keys: Vec<&String> = map.keys().collect();
-                keys.sort();
-                for key in keys {
-                    let _ = writeln!(out, "{pad}\t<key>{}</key>", escape(key));
-                    render(&map[key], indent + 1, out);
-                }
-                let _ = writeln!(out, "{pad}</dict>");
-            }
-            serde_json::Value::Array(items) if items.is_empty() => {
-                let _ = writeln!(out, "{pad}<array/>");
-            }
-            serde_json::Value::Array(items) => {
-                let _ = writeln!(out, "{pad}<array>");
-                for item in items {
-                    render(item, indent + 1, out);
-                }
-                let _ = writeln!(out, "{pad}</array>");
-            }
-            other => {
-                let text = other
-                    .as_str()
-                    .map_or_else(|| other.to_string(), str::to_string);
-                let _ = writeln!(out, "{pad}<string>{}</string>", escape(&text));
-            }
-        }
-    }
-    let mut body = String::new();
-    render(value, 0, &mut body);
-    plist(body.trim_end())
 }
 
 fn write(path: &Path, contents: &[u8]) -> Result<(), String> {

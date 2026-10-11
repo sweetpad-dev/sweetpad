@@ -44,6 +44,11 @@ fn main() -> ExitCode {
     if name == Some(std::ffi::OsStr::new("actool")) {
         return sweetpad_cli::cli::actool::main(&args);
     }
+    // Run as `xcstringstool`, it stands in for Xcode's String Catalog
+    // compiler, which Swift Build looks up on the `PATH` the engine gives it.
+    if name == Some(std::ffi::OsStr::new("xcstringstool")) {
+        return sweetpad_cli::cli::xcstringstool::main(&args);
+    }
     match args.first().map(String::as_str) {
         Some("vscode") => ExitCode::from(sweetpad_cli::vscode_cli::run(&args[1..])),
         _ => sweetpad_cli::cli::run(&args),

@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 use serde_json::{Map, Value, json};
 
 use super::catalog::{Asset, Catalog, Kind};
-use super::{Args, catalogs, raster, target_devices, write, xml_plist};
+use super::{Args, catalogs, raster, target_devices, write};
+use crate::cli::xml_plist;
 
 /// The image formats UIKit loads from a loose file.
 const RASTER: &[&str] = &["png", "jpg", "jpeg", "heic", "gif", "tif", "tiff", "bmp"];
@@ -55,7 +56,10 @@ pub(super) fn compile(args: &Args) -> Result<(), String> {
     }
 
     if let Some(path) = args.value("--output-partial-info-plist") {
-        write(Path::new(path), xml_plist(&Value::Object(info)).as_bytes())?;
+        write(
+            Path::new(path),
+            xml_plist::of(&Value::Object(info)).as_bytes(),
+        )?;
     }
     if let Some(path) = &dependencies {
         write(path, &dependency_info(&args.inputs, &written))?;

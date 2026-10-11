@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key></key>
+	<string></string>
+	<key>  spaced key  </key>
+	<string>  spaced key  </string>
+	<key>50% off</key>
+	<string>Half price</string>
+	<key>Commented</key>
+	<string>Commented</string>
+	<key>Device</key>
+	<string>Select</string>
+	<key>Device then plural %lld</key>
+	<string>%lld things</string>
+	<key>Device uk</key>
+	<string>Device uk</string>
+	<key>Do not translate</key>
+	<string>Do not translate</string>
+	<key>Do not translate but has uk</key>
+	<string>Do not translate but has uk</string>
+	<key>Empty value</key>
+	<string></string>
+	<key>Escapes &amp; &lt;tags&gt; "quotes" 'apostrophes'</key>
+	<string>Line one
+Line two	tab &amp; &lt;b&gt; "q" 'a' \ back 😀 %@ %1$@ %%CR</string>
+	<key>Every device</key>
+	<string>Other</string>
+	<key>Extracted with no localizations</key>
+	<string>Extracted with no localizations</string>
+	<key>Manual device</key>
+	<string>o</string>
+	<key>Manual device plural %lld</key>
+	<string>%lld o</string>
+	<key>Manual key</key>
+	<string>Manual value</string>
+	<key>Manual with no value</key>
+	<string>Manual with no value</string>
+	<key>Needs review</key>
+	<string>Needs review</string>
+	<key>New state</key>
+	<string>New state</string>
+	<key>Only English</key>
+	<string>Only English value</string>
+	<key>Only Ukrainian</key>
+	<string>Only Ukrainian</string>
+	<key>Plain</key>
+	<string>Plain English</string>
+	<key>Regional</key>
+	<string>Regional</string>
+	<key>Sort Z</key>
+	<string>Z</string>
+	<key>Sort z</key>
+	<string>z</string>
+	<key>Sort é</key>
+	<string>é</string>
+	<key>Sort 😀</key>
+	<string>emoji</string>
+	<key>Sort </key>
+	<string>private use</string>
+	<key>Sort ｚ</key>
+	<string>fullwidth</string>
+	<key>Stale</key>
+	<string>Stale</string>
+	<key>Sub in device %lld</key>
+	<string>%lld elsewhere</string>
+</dict>
+</plist>

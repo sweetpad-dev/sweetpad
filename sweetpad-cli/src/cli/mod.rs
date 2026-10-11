@@ -51,6 +51,8 @@ pub mod swiftpm;
 #[path = "../../../sweetpad-lib/src/testdir.rs"]
 pub(crate) mod testdir;
 pub mod xcodebuild;
+pub mod xcstringstool;
+pub mod xml_plist;
 
 pub mod commands;
 

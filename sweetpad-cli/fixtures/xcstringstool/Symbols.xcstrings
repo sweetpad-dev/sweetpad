@@ -1,0 +1,1009 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "  spaces  around  ": {
+      "extractionState": "manual"
+    },
+    "!!!": {
+      "extractionState": "manual"
+    },
+    "123": {
+      "extractionState": "manual"
+    },
+    "1st place": {
+      "extractionState": "manual"
+    },
+    "2x": {
+      "extractionState": "manual"
+    },
+    "50% off": {
+      "extractionState": "manual"
+    },
+    "A1": {
+      "extractionState": "manual"
+    },
+    "ABC def": {
+      "extractionState": "manual"
+    },
+    "ALLCAPS": {
+      "extractionState": "manual"
+    },
+    "Any": {
+      "extractionState": "manual"
+    },
+    "Class": {
+      "extractionState": "manual"
+    },
+    "Extracted, so no symbol": {},
+    "HTTPServerURL": {
+      "extractionState": "manual"
+    },
+    "ID": {
+      "extractionState": "manual"
+    },
+    "Mixed CASE words": {
+      "extractionState": "manual"
+    },
+    "Protocol": {
+      "extractionState": "manual"
+    },
+    "Self": {
+      "extractionState": "manual"
+    },
+    "Settings Title": {
+      "extractionState": "manual"
+    },
+    "Stale, so no symbol": {
+      "extractionState": "stale"
+    },
+    "Straße": {
+      "extractionState": "manual"
+    },
+    "Type": {
+      "extractionState": "manual"
+    },
+    "UPPER_CASE_KEY": {
+      "extractionState": "manual"
+    },
+    "XMLParser": {
+      "extractionState": "manual"
+    },
+    "_": {
+      "extractionState": "manual"
+    },
+    "__double": {
+      "extractionState": "manual"
+    },
+    "_leading": {
+      "extractionState": "manual"
+    },
+    "a": {
+      "extractionState": "manual"
+    },
+    "a%@b": {
+      "extractionState": "manual"
+    },
+    "a-B-c": {
+      "extractionState": "manual"
+    },
+    "a.b": {
+      "extractionState": "manual"
+    },
+    "a1b2": {
+      "extractionState": "manual"
+    },
+    "abc DEF": {
+      "extractionState": "manual"
+    },
+    "abc1def": {
+      "extractionState": "manual"
+    },
+    "account.name.on-my-device": {
+      "extractionState": "manual"
+    },
+    "actor": {
+      "extractionState": "manual"
+    },
+    "any": {
+      "extractionState": "manual"
+    },
+    "argument in substitution %lld %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%#@followers@"
+          },
+          "substitutions": {
+            "followers": {
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%2$@ follower"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%2$@ followers"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "as": {
+      "extractionState": "manual"
+    },
+    "associatedtype": {
+      "extractionState": "manual"
+    },
+    "associativity": {
+      "extractionState": "manual"
+    },
+    "async": {
+      "extractionState": "manual"
+    },
+    "await": {
+      "extractionState": "manual"
+    },
+    "borrowing": {
+      "extractionState": "manual"
+    },
+    "break": {
+      "extractionState": "manual"
+    },
+    "café-crème": {
+      "extractionState": "manual"
+    },
+    "camelCaseKey": {
+      "extractionState": "manual"
+    },
+    "case": {
+      "extractionState": "manual"
+    },
+    "catch": {
+      "extractionState": "manual"
+    },
+    "class": {
+      "extractionState": "manual"
+    },
+    "commented": {
+      "comment": "Shown on the settings screen",
+      "extractionState": "manual"
+    },
+    "conflict %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ hier"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld here"
+          }
+        }
+      }
+    },
+    "consume": {
+      "extractionState": "manual"
+    },
+    "consuming": {
+      "extractionState": "manual"
+    },
+    "continue": {
+      "extractionState": "manual"
+    },
+    "convenience": {
+      "extractionState": "manual"
+    },
+    "copy": {
+      "extractionState": "manual"
+    },
+    "de only %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ und %lld"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "none"
+          }
+        }
+      }
+    },
+    "de substitution %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%#@count@"
+          },
+          "substitutions": {
+            "count": {
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "hat favorisiert"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "haben favorisiert"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "starred"
+          }
+        }
+      }
+    },
+    "default": {
+      "extractionState": "manual"
+    },
+    "defer": {
+      "extractionState": "manual"
+    },
+    "deinit": {
+      "extractionState": "manual"
+    },
+    "device key": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "device": {
+              "iphone": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Tap %@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Click %@"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "didSet": {
+      "extractionState": "manual"
+    },
+    "discard": {
+      "extractionState": "manual"
+    },
+    "do": {
+      "extractionState": "manual"
+    },
+    "don't stop": {
+      "extractionState": "manual"
+    },
+    "dot.Separated.KEY": {
+      "extractionState": "manual"
+    },
+    "duplicate key": {
+      "extractionState": "manual"
+    },
+    "duplicate-key": {
+      "extractionState": "manual"
+    },
+    "dynamic": {
+      "extractionState": "manual"
+    },
+    "each": {
+      "extractionState": "manual"
+    },
+    "else": {
+      "extractionState": "manual"
+    },
+    "emoji 😀 key": {
+      "extractionState": "manual"
+    },
+    "enum": {
+      "extractionState": "manual"
+    },
+    "extension": {
+      "extractionState": "manual"
+    },
+    "fallthrough": {
+      "extractionState": "manual"
+    },
+    "false": {
+      "extractionState": "manual"
+    },
+    "fileprivate": {
+      "extractionState": "manual"
+    },
+    "files %@ %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ has %lld file"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ has %lld files"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "final": {
+      "extractionState": "manual"
+    },
+    "for": {
+      "extractionState": "manual"
+    },
+    "func": {
+      "extractionState": "manual"
+    },
+    "get": {
+      "extractionState": "manual"
+    },
+    "getHTTP": {
+      "extractionState": "manual"
+    },
+    "greeting %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hello, %@!"
+          }
+        }
+      }
+    },
+    "guard": {
+      "extractionState": "manual"
+    },
+    "hello!world": {
+      "extractionState": "manual"
+    },
+    "iOS17Feature": {
+      "extractionState": "manual"
+    },
+    "if": {
+      "extractionState": "manual"
+    },
+    "import": {
+      "extractionState": "manual"
+    },
+    "in": {
+      "extractionState": "manual"
+    },
+    "indirect": {
+      "extractionState": "manual"
+    },
+    "infix": {
+      "extractionState": "manual"
+    },
+    "init": {
+      "extractionState": "manual"
+    },
+    "inout": {
+      "extractionState": "manual"
+    },
+    "internal": {
+      "extractionState": "manual"
+    },
+    "is": {
+      "extractionState": "manual"
+    },
+    "isolated": {
+      "extractionState": "manual"
+    },
+    "item count": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld item"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld items"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "key %@ differs from value": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Value has %lld and %@"
+          }
+        }
+      }
+    },
+    "key-with--double": {
+      "extractionState": "manual"
+    },
+    "label vs plain": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%#@n@"
+          },
+          "substitutions": {
+            "n": {
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg x"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg y"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld"
+          }
+        }
+      }
+    },
+    "lazy": {
+      "extractionState": "manual"
+    },
+    "left": {
+      "extractionState": "manual"
+    },
+    "let": {
+      "extractionState": "manual"
+    },
+    "macro": {
+      "extractionState": "manual"
+    },
+    "multi line comment": {
+      "comment": "Line one\nLine two */ end",
+      "extractionState": "manual"
+    },
+    "mutating": {
+      "extractionState": "manual"
+    },
+    "my_HTTP_thing": {
+      "extractionState": "manual"
+    },
+    "naïve café": {
+      "extractionState": "manual"
+    },
+    "new\nline key": {
+      "extractionState": "manual"
+    },
+    "nil": {
+      "extractionState": "manual"
+    },
+    "none": {
+      "extractionState": "manual"
+    },
+    "nonisolated": {
+      "extractionState": "manual"
+    },
+    "nonmutating": {
+      "extractionState": "manual"
+    },
+    "open": {
+      "extractionState": "manual"
+    },
+    "operator": {
+      "extractionState": "manual"
+    },
+    "optional": {
+      "extractionState": "manual"
+    },
+    "override": {
+      "extractionState": "manual"
+    },
+    "over’apostrophe": {
+      "extractionState": "manual"
+    },
+    "package": {
+      "extractionState": "manual"
+    },
+    "percent 100%%": {
+      "extractionState": "manual"
+    },
+    "plain value %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "plain"
+          }
+        }
+      }
+    },
+    "plural one extra": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld in %@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "positional %2$@ %1$lld": {
+      "extractionState": "manual"
+    },
+    "postfix": {
+      "extractionState": "manual"
+    },
+    "precedence": {
+      "extractionState": "manual"
+    },
+    "precedencegroup": {
+      "extractionState": "manual"
+    },
+    "prefix": {
+      "extractionState": "manual"
+    },
+    "private": {
+      "extractionState": "manual"
+    },
+    "privateuse": {
+      "extractionState": "manual"
+    },
+    "protocol": {
+      "extractionState": "manual"
+    },
+    "public": {
+      "extractionState": "manual"
+    },
+    "quote \" and \\ backslash": {
+      "extractionState": "manual"
+    },
+    "repeat": {
+      "extractionState": "manual"
+    },
+    "repeated %1$@ %1$@": {
+      "extractionState": "manual"
+    },
+    "required": {
+      "extractionState": "manual"
+    },
+    "rethrows": {
+      "extractionState": "manual"
+    },
+    "return": {
+      "extractionState": "manual"
+    },
+    "right": {
+      "extractionState": "manual"
+    },
+    "self": {
+      "extractionState": "manual"
+    },
+    "sending": {
+      "extractionState": "manual"
+    },
+    "set": {
+      "extractionState": "manual"
+    },
+    "simple": {
+      "extractionState": "manual"
+    },
+    "snake labels %lld %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%#@count_posts@ from %#@count_people@"
+          },
+          "substitutions": {
+            "count_people": {
+              "argNum": 2,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg"
+                    }
+                  }
+                }
+              }
+            },
+            "count_posts": {
+              "argNum": 1,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "some": {
+      "extractionState": "manual"
+    },
+    "static": {
+      "extractionState": "manual"
+    },
+    "struct": {
+      "extractionState": "manual"
+    },
+    "sub without argnum": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Got %#@n@"
+          },
+          "substitutions": {
+            "n": {
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg x"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg xs"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "subscript": {
+      "extractionState": "manual"
+    },
+    "super": {
+      "extractionState": "manual"
+    },
+    "switch": {
+      "extractionState": "manual"
+    },
+    "tab\tsep": {
+      "extractionState": "manual"
+    },
+    "throw": {
+      "extractionState": "manual"
+    },
+    "throws": {
+      "extractionState": "manual"
+    },
+    "trailing.dot.": {
+      "extractionState": "manual"
+    },
+    "trailing_": {
+      "extractionState": "manual"
+    },
+    "true": {
+      "extractionState": "manual"
+    },
+    "try": {
+      "extractionState": "manual"
+    },
+    "two subs": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%#@a@ / %#@b@"
+          },
+          "substitutions": {
+            "a": {
+              "argNum": 1,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg a"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg as"
+                    }
+                  }
+                }
+              }
+            },
+            "b": {
+              "argNum": 2,
+              "formatSpecifier": "@",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg b"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg bs"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "type0 %d": {
+      "extractionState": "manual"
+    },
+    "type1 %i": {
+      "extractionState": "manual"
+    },
+    "type10 %g": {
+      "extractionState": "manual"
+    },
+    "type11 %x": {
+      "extractionState": "manual"
+    },
+    "type12 %o": {
+      "extractionState": "manual"
+    },
+    "type13 %@": {
+      "extractionState": "manual"
+    },
+    "type14 %hd": {
+      "extractionState": "manual"
+    },
+    "type15 %zd": {
+      "extractionState": "manual"
+    },
+    "type16 %.2f": {
+      "extractionState": "manual"
+    },
+    "type17 %5d": {
+      "extractionState": "manual"
+    },
+    "type18 %-3ld": {
+      "extractionState": "manual"
+    },
+    "type19 %c": {
+      "extractionState": "manual"
+    },
+    "type2 %u": {
+      "extractionState": "manual"
+    },
+    "type20 %s": {
+      "extractionState": "manual"
+    },
+    "type21 %p": {
+      "extractionState": "manual"
+    },
+    "type22 %qd": {
+      "extractionState": "manual"
+    },
+    "type23 %Lf": {
+      "extractionState": "manual"
+    },
+    "type24 %%": {
+      "extractionState": "manual"
+    },
+    "type3 %ld": {
+      "extractionState": "manual"
+    },
+    "type4 %lu": {
+      "extractionState": "manual"
+    },
+    "type5 %lld": {
+      "extractionState": "manual"
+    },
+    "type6 %llu": {
+      "extractionState": "manual"
+    },
+    "type7 %f": {
+      "extractionState": "manual"
+    },
+    "type8 %lf": {
+      "extractionState": "manual"
+    },
+    "type9 %e": {
+      "extractionState": "manual"
+    },
+    "typealias": {
+      "extractionState": "manual"
+    },
+    "uk only value %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Привіт %@"
+          }
+        }
+      }
+    },
+    "unowned": {
+      "extractionState": "manual"
+    },
+    "userID": {
+      "extractionState": "manual"
+    },
+    "var": {
+      "extractionState": "manual"
+    },
+    "version2Beta": {
+      "extractionState": "manual"
+    },
+    "weak": {
+      "extractionState": "manual"
+    },
+    "welcome": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Welcome, %@! You have %lld messages"
+          }
+        }
+      }
+    },
+    "where": {
+      "extractionState": "manual"
+    },
+    "while": {
+      "extractionState": "manual"
+    },
+    "willSet": {
+      "extractionState": "manual"
+    },
+    "with value and comment": {
+      "comment": "A note",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Value text"
+          }
+        }
+      }
+    },
+    "with_underscore_key": {
+      "extractionState": "manual"
+    },
+    "x2": {
+      "extractionState": "manual"
+    },
+    "x³": {
+      "extractionState": "manual"
+    },
+    "½ half": {
+      "extractionState": "manual"
+    },
+    "ÉCOLE NORMALE": {
+      "extractionState": "manual"
+    },
+    "Ünïcode Wörds": {
+      "extractionState": "manual"
+    },
+    "über": {
+      "extractionState": "manual"
+    },
+    "Привіт": {
+      "extractionState": "manual"
+    },
+    "€ price": {
+      "extractionState": "manual"
+    }
+  },
+  "version": "1.0"
+}

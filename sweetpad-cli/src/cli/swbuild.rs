@@ -153,9 +153,9 @@ struct Invocation {
     parameters_file: PathBuf,
     parameters: Value,
     locations: Locations,
-    /// Where the link that runs this binary as `actool` goes, on a host
-    /// without Xcode's.
-    actool: Option<PathBuf>,
+    /// The folder of links that run this binary as the Xcode tools it stands
+    /// in for, on a host without Xcode's.
+    tools: Option<PathBuf>,
 }
 
 impl Invocation {
@@ -203,15 +203,15 @@ impl Invocation {
         let parameters_file = inputs.join("build-parameters.json");
 
         let host = DarwinSdk::for_host()?;
-        let actool = host.as_ref().map(|_| inputs.join("bin/actool"));
+        let tools = host.as_ref().map(|_| inputs.join("bin"));
         let mut overrides = BTreeMap::new();
         if let Some(host) = &host {
             overrides.extend(host.overrides(&sdk, &destination.arch));
         }
-        if let Some(actool) = &actool {
+        if let Some(tools) = &tools {
             overrides.insert(
                 "ASSETCATALOG_EXEC".to_string(),
-                actool.display().to_string(),
+                tools.join("actool").display().to_string(),
             );
         }
         overrides.extend(settings.overrides.iter().cloned());
@@ -244,20 +244,23 @@ impl Invocation {
             program: swbuild_program()?,
             args,
             cwd: xcodebuild::working_dir(plan.container),
-            env: host.map(|h| h.env()).unwrap_or_default(),
+            env: host
+                .zip(tools.as_deref())
+                .map(|(h, tools)| h.env(tools))
+                .unwrap_or_default(),
             container,
             pif,
             packages,
             parameters_file,
             parameters,
             locations,
-            actool,
+            tools,
         })
     }
 
     /// Write the workspace's PIF, with its Swift packages, and the build
-    /// parameters, and link this binary in as `actool` where Swift Build
-    /// needs one.
+    /// parameters, and link this binary in as the Xcode tools Swift Build
+    /// needs where there is no Xcode.
     fn write_inputs(&self, out: &Output) -> Result<(), CliError> {
         let translate = |e: sweetpad_lib::project::Error| {
             CliError::new(format!(
@@ -283,8 +286,8 @@ impl Invocation {
         };
         write(&self.pif, &Value::Array(pif))?;
         write(&self.parameters_file, &self.parameters)?;
-        if let Some(actool) = &self.actool {
-            link_actool(actool)?;
+        if let Some(tools) = &self.tools {
+            link_tools(tools)?;
         }
         Ok(())
     }
@@ -393,24 +396,26 @@ fn write_changed(path: &Path, contents: &[u8]) -> Result<(), CliError> {
         .map_err(|e| CliError::new(format!("couldn't write {}: {e}", path.display())))
 }
 
-/// Link this binary in at `path`, which run under the name `actool` stands
-/// in for Xcode's asset catalog compiler (see [`super::actool`]).
-fn link_actool(path: &Path) -> Result<(), CliError> {
+/// Link this binary into `dir` under the names of the Xcode tools it stands
+/// in for: `actool`, the asset catalog compiler (see [`super::actool`]), and
+/// `xcstringstool`, the String Catalog compiler (see [`super::xcstringstool`]).
+fn link_tools(dir: &Path) -> Result<(), CliError> {
     let fail = |e: std::io::Error| {
         CliError::new(format!(
-            "couldn't link the asset catalog compiler at {}: {e}",
-            path.display()
+            "couldn't link the stand-ins for Xcode's tools into {}: {e}",
+            dir.display()
         ))
     };
     let exe = std::env::current_exe().map_err(fail)?;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(fail)?;
+    std::fs::create_dir_all(dir).map_err(fail)?;
+    for tool in ["actool", "xcstringstool"] {
+        let path = dir.join(tool);
+        let _ = std::fs::remove_file(&path);
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&exe, &path).map_err(fail)?;
+        #[cfg(not(unix))]
+        std::fs::copy(&exe, &path).map_err(fail)?;
     }
-    let _ = std::fs::remove_file(path);
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(&exe, path).map_err(fail)?;
-    #[cfg(not(unix))]
-    std::fs::copy(&exe, path).map_err(fail)?;
     Ok(())
 }
 
@@ -595,6 +600,9 @@ impl DarwinSdk {
     ///   bundle, and the toolchain here has none.
     /// - `GENERATE_INTERMEDIATE_TEXT_BASED_STUBS`: a framework's stub comes
     ///   from `tapi`, which is Xcode's; it only sharpens incremental relinks.
+    /// - `STRINGS_FILE_INPUT_ENCODING`: Swift Build detects a `.strings`
+    ///   file's encoding only on macOS, so a file that doesn't name one, like
+    ///   a compiled String Catalog's, is read as UTF-8.
     fn overrides(&self, sdk: &str, arch: &str) -> Vec<(String, String)> {
         let swift_libraries = self
             .bundle
@@ -615,6 +623,10 @@ impl DarwinSdk {
             ("LM_SKIP_METADATA_EXTRACTION", "YES".to_string()),
             ("GENERATE_INTERMEDIATE_TEXT_BASED_STUBS", "NO".to_string()),
             ("DONT_RUN_SWIFT_STDLIB_TOOL", "YES".to_string()),
+            (
+                "STRINGS_FILE_INPUT_ENCODING",
+                "$(InputFileTextEncoding:default=utf-8)".to_string(),
+            ),
         ]
         .into_iter()
         .map(|(k, v)| (k.to_string(), v))
@@ -622,10 +634,11 @@ impl DarwinSdk {
     }
 
     /// Swift Build takes the platforms from `XCODE_EXTRA_PLATFORM_FOLDERS`,
-    /// with no Xcode to find them in, and looks tools like `dsymutil` up on
-    /// `PATH`, so the bundle's go first.
-    fn env(&self) -> Vec<(String, Option<String>)> {
-        let mut path = vec![self.bundle.join("toolset/bin")];
+    /// with no Xcode to find them in, and looks tools like `dsymutil` and
+    /// `xcstringstool` up on `PATH`, so the stand-ins in `tools` go first,
+    /// then the bundle's.
+    fn env(&self, tools: &Path) -> Vec<(String, Option<String>)> {
+        let mut path = vec![tools.to_path_buf(), self.bundle.join("toolset/bin")];
         path.extend(
             std::env::var_os("PATH")
                 .iter()

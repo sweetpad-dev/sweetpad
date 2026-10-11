@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Manual device plural %lld</key>
+	<string>Manual device plural %lld</string>
+	<key>Manual plural %lld</key>
+	<string>Manual plural %lld</string>
+	<key>Manual substitution %lld</key>
+	<string>Manual substitution %lld</string>
+	<key>Regional</key>
+	<string>简体</string>
+</dict>
+</plist>
