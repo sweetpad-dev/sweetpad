@@ -3,8 +3,9 @@
 //!
 //! Swift Build takes no project files. It reads the project interchange
 //! format (PIF) Xcode translates a workspace into, so a build writes the
-//! workspace's PIF ([`sweetpad_lib::pif::pif`]) and its build parameters
-//! beside the build's intermediates, then runs `swbuild build` on them.
+//! workspace's PIF ([`sweetpad_lib::pif::pif`]), with the Swift packages it
+//! uses as SwiftPM emits them, and its build parameters beside the build's
+//! intermediates, then runs `swbuild build` on them.
 //! swbuild reports the build as a stream of JSON messages, which
 //! [`MessageParser`] turns into the [`buildlog`] events every output mode
 //! already renders. Products land where `xcodebuild` would put them, so the
@@ -16,6 +17,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::time::Instant;
 
 use serde_json::{Value, json};
@@ -24,6 +26,7 @@ use sweetpad_lib::scheme::BuildFor;
 
 use crate::cli::buildlog::{self, BuildProgress, DiagKind, Event, Parsed, ResultKind};
 use crate::cli::output::Output;
+use crate::cli::progress::Spinner;
 use crate::cli::resolve::Container;
 use crate::cli::xcodebuild::{self, BuildAction, BuildPlan, CommandPreview};
 use crate::cli::{CliError, ErrorKind, process};
@@ -68,7 +71,7 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
         let _ = std::fs::remove_dir_all(&invocation.locations.products);
         let _ = std::fs::remove_dir_all(&invocation.locations.intermediates);
     }
-    invocation.write_inputs()?;
+    invocation.write_inputs(out)?;
     let start = Instant::now();
     let program = invocation.program.to_string_lossy().into_owned();
     let args: Vec<&str> = invocation.args.iter().map(String::as_str).collect();
@@ -145,6 +148,8 @@ struct Invocation {
     env: Vec<(String, Option<String>)>,
     container: PathBuf,
     pif: PathBuf,
+    /// Where the root manifest for the workspace's Swift packages goes.
+    packages: PathBuf,
     parameters_file: PathBuf,
     parameters: Value,
     locations: Locations,
@@ -194,6 +199,7 @@ impl Invocation {
         );
         let inputs = locations.intermediates.join("SweetPad");
         let pif = inputs.join("workspace.pif.json");
+        let packages = inputs.join("SweetPadPackages");
         let parameters_file = inputs.join("build-parameters.json");
 
         let host = DarwinSdk::for_host()?;
@@ -241,6 +247,7 @@ impl Invocation {
             env: host.map(|h| h.env()).unwrap_or_default(),
             container,
             pif,
+            packages,
             parameters_file,
             parameters,
             locations,
@@ -248,15 +255,22 @@ impl Invocation {
         })
     }
 
-    /// Write the workspace's PIF and the build parameters, and link this
-    /// binary in as `actool` where Swift Build needs one.
-    fn write_inputs(&self) -> Result<(), CliError> {
-        let pif = sweetpad_lib::pif::pif(&self.container).map_err(|e| {
+    /// Write the workspace's PIF, with its Swift packages, and the build
+    /// parameters, and link this binary in as `actool` where Swift Build
+    /// needs one.
+    fn write_inputs(&self, out: &Output) -> Result<(), CliError> {
+        let translate = |e: sweetpad_lib::project::Error| {
             CliError::new(format!(
                 "couldn't translate {} for Swift Build: {e}",
                 self.container.display()
             ))
-        })?;
+        };
+        let mut pif = sweetpad_lib::pif::pif(&self.container).map_err(translate)?;
+        let packages = sweetpad_lib::pif::packages(&self.container).map_err(translate)?;
+        if !packages.is_empty() {
+            let dumped = self.package_pif(&packages, out)?;
+            sweetpad_lib::pif::add_packages(&mut pif, dumped, &self.packages);
+        }
         let write = |path: &Path, value: &Value| -> Result<(), CliError> {
             if let Some(dir) = path.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| {
@@ -274,6 +288,109 @@ impl Invocation {
         }
         Ok(())
     }
+
+    /// The PIF SwiftPM emits for the workspace's packages. Their root
+    /// manifest goes beside the PIF with the workspace's `Package.resolved`,
+    /// so the versions it pins are the ones built, and the checkouts go in
+    /// `SourcePackages`, where Xcode keeps them.
+    fn package_pif(
+        &self,
+        packages: &[sweetpad_lib::pif::Package],
+        out: &Output,
+    ) -> Result<Vec<Value>, CliError> {
+        write_changed(
+            &self.packages.join("Package.swift"),
+            sweetpad_lib::pif::manifest(packages).as_bytes(),
+        )?;
+        if let Ok(resolved) = std::fs::read(resolved_file(&self.container)) {
+            write_changed(&self.packages.join("Package.resolved"), &resolved)?;
+        }
+        let scratch = self.locations.folder.join("SourcePackages");
+        let args = [
+            "package".as_ref(),
+            "--package-path".as_ref(),
+            self.packages.as_os_str(),
+            "--scratch-path".as_ref(),
+            scratch.as_os_str(),
+            "dump-pif".as_ref(),
+        ];
+        let spinner = Spinner::start_timed(
+            "Resolving packages",
+            out.is_interactive() && !out.is_quiet(),
+            out.use_color_stderr(),
+        );
+        // A git prompt for credentials would wait unseen behind the spinner.
+        let output = Command::new("swift")
+            .args(args)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|e| process::spawn_error("swift", &e));
+        drop(spinner);
+        let output = output?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let errors = swiftpm_errors(&stderr);
+            let reason = if errors.is_empty() {
+                format!("'swift package dump-pif' exited with {}", output.status)
+            } else {
+                errors.join("\n")
+            };
+            return Err(CliError::new(format!(
+                "couldn't resolve the package dependencies: {reason}"
+            )));
+        }
+        serde_json::from_slice(&output.stdout).map_err(|e| {
+            CliError::new(format!(
+                "couldn't read the PIF SwiftPM printed for the package dependencies: {e}"
+            ))
+        })
+    }
+}
+
+/// SwiftPM's errors in what it printed, each with the indented lines under
+/// it, like git's own reason for a failed clone.
+fn swiftpm_errors(stderr: &str) -> Vec<&str> {
+    let mut errors = Vec::new();
+    let mut under_error = false;
+    for line in stderr.lines() {
+        if let Some(message) = line.strip_prefix("error: ") {
+            errors.push(message);
+            under_error = true;
+        } else if line.contains(": error: ") {
+            errors.push(line);
+            under_error = true;
+        } else if under_error && line.starts_with(char::is_whitespace) {
+            errors.push(line);
+        } else {
+            under_error = false;
+        }
+    }
+    errors
+}
+
+/// The `Package.resolved` Xcode pins a workspace's packages in.
+fn resolved_file(container: &Path) -> PathBuf {
+    let workspace = if container.extension().is_some_and(|e| e == "xcworkspace") {
+        container.to_path_buf()
+    } else {
+        container.join("project.xcworkspace")
+    };
+    workspace.join("xcshareddata/swiftpm/Package.resolved")
+}
+
+/// Write `contents` to `path` unless it holds them already, which keeps the
+/// file's time, and with it SwiftPM's cache of the manifest it evaluated.
+fn write_changed(path: &Path, contents: &[u8]) -> Result<(), CliError> {
+    if std::fs::read(path).is_ok_and(|old| old == contents) {
+        return Ok(());
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| CliError::new(format!("couldn't create {}: {e}", dir.display())))?;
+    }
+    std::fs::write(path, contents)
+        .map_err(|e| CliError::new(format!("couldn't write {}: {e}", path.display())))
 }
 
 /// Link this binary in at `path`, which run under the name `actool` stands
@@ -346,7 +463,8 @@ fn refuse_xcodebuild_flags(passthrough: &[String]) -> Result<(), CliError> {
 
 /// The targets a scheme builds for `build_for`, by name, the way Swift Build
 /// looks them up. A scheme with no file stands for the target of its name.
-/// Entries from Swift packages are left out: the PIF has no package projects.
+/// Entries from Swift packages are left out, since the targets that use a
+/// package build it as a dependency.
 fn scheme_targets(
     container: &Path,
     scheme: &str,
@@ -1051,6 +1169,24 @@ mod tests {
                 location: None,
                 message: "Could not find target named 'App'".into(),
             }]
+        );
+    }
+
+    #[test]
+    fn swiftpm_errors_keep_the_lines_under_them() {
+        let stderr = "Fetching https://example.com/a.git\n\
+                      warning: 'a': skipping cache due to an error: Failed to clone:\n    \
+                      fatal: no cache\n\
+                      error: Failed to clone repository https://example.com/a.git:\n    \
+                      fatal: repository not found\n\
+                      /work/Kit/Package.swift:4:9: error: cannot find 'x' in scope\n";
+        assert_eq!(
+            swiftpm_errors(stderr),
+            [
+                "Failed to clone repository https://example.com/a.git:",
+                "    fatal: repository not found",
+                "/work/Kit/Package.swift:4:9: error: cannot find 'x' in scope",
+            ]
         );
     }
 

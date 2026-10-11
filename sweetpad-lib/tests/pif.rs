@@ -5,7 +5,8 @@
 //! compared as they are: the emitter derives them the way Xcode does. The
 //! comparison leaves out what doesn't come from the project:
 //!
-//! - SwiftPM package projects, which Xcode's embedded SwiftPM generates.
+//! - SwiftPM package projects, which come from SwiftPM itself (its
+//!   `dump-pif`), not from the emitter.
 //! - Signatures, Xcode's cache keys, compared as the object each one names.
 //! - The order of build files inside a phase, which has no build meaning and
 //!   where Xcode's placement of a synchronized folder's files is unresolved.
@@ -291,4 +292,64 @@ fn corpus_matches_xcodebuild_dumps() {
         eprintln!("no corpus checkout; the corpus PIF cases were skipped");
     }
     assert_within(&cases);
+}
+
+/// The root manifest's dependencies for a project: the package folders it
+/// shows and the packages it declares, as Xcode lists them when it resolves.
+#[test]
+fn corpus_package_dependencies_match_xcode() {
+    let corpus = lib_dir().join("corpus");
+    let tuist = "tuist-fixtures/examples/xcode/xcode_project_with_packages_and_tests";
+    let ice_cubes: Vec<String> = [
+        "AppAccount",
+        "Account",
+        "Conversations",
+        "DesignSystem",
+        "Explore",
+        "Env",
+        "Models",
+        "StatusKit",
+        "MediaUI",
+        "NetworkClient",
+        "Lists",
+        "Notifications",
+        "Timeline",
+    ]
+    .iter()
+    .map(|p| format!(".package(path: \"$(CORPUS)/ice-cubes/Packages/{p}\")"))
+    .chain(
+        [
+            ".package(url: \"https://github.com/evgenyneu/keychain-swift\", branch: \"master\")",
+            ".package(url: \"https://github.com/SFSafeSymbols/SFSafeSymbols\", from: \"4.1.1\")",
+            ".package(url: \"https://github.com/wishkit/wishkit-ios.git\", from: \"4.1.1\")",
+            ".package(url: \"https://github.com/RevenueCat/purchases-ios-spm\", from: \"5.28.0\")",
+        ]
+        .map(String::from),
+    )
+    .collect();
+    let cases = [
+        (
+            format!("{tuist}/App.xcodeproj"),
+            ["LibraryA", "LibraryB"]
+                .map(|p| format!(".package(path: \"$(CORPUS)/{tuist}/App/{p}\")"))
+                .to_vec(),
+        ),
+        ("ice-cubes/IceCubesApp.xcodeproj".to_string(), ice_cubes),
+    ];
+    let root = standardize(&corpus).to_string_lossy().into_owned();
+    for (container, expected) in cases {
+        let path = corpus.join(&container);
+        if !path.exists() {
+            eprintln!("no {container}; skipped");
+            continue;
+        }
+        let packages = sweetpad_lib::pif::packages(&path).unwrap();
+        let manifest = sweetpad_lib::pif::manifest(&packages).replace(&root, "$(CORPUS)");
+        let dependencies: Vec<&str> = manifest
+            .lines()
+            .filter_map(|l| l.trim().strip_suffix(','))
+            .filter(|l| l.starts_with(".package("))
+            .collect();
+        assert_eq!(dependencies, expected, "{container}");
+    }
 }

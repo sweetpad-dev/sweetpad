@@ -629,6 +629,7 @@ pub fn spawn_group_inherit(
 pub(crate) fn spawn_error(program: &str, e: &std::io::Error) -> CliError {
     if e.kind() == std::io::ErrorKind::NotFound {
         let hint = match program {
+            "swift" if !cfg!(target_os = "macos") => " (install a Swift toolchain from swift.org)",
             "xcrun" | "xcodebuild" | "xcode-select" | "swift" | "simctl" => {
                 " (Xcode command-line tools are required)"
             }

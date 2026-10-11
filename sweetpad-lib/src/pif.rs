@@ -10,10 +10,9 @@
 //! follow what it prints, and Swift Build's `PIFLoader` decides which keys are
 //! required.
 //!
-//! SwiftPM packages are the one part left out. Xcode resolves the package
-//! graph and has its embedded SwiftPM emit each package as a project of its
-//! own; the projects here refer to their products by the GUIDs SwiftPM gives
-//! them.
+//! SwiftPM packages come from SwiftPM itself ([`packages`]): Xcode has its
+//! embedded SwiftPM emit each package as a project of its own, and the
+//! projects here refer to their products by the GUIDs SwiftPM gives them.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -31,6 +30,9 @@ use crate::workspace;
 use crate::xcode_hash::{md5_hex, sha256_base64};
 use crate::xcspec;
 
+mod packages;
+pub use packages::{Package, add_packages, manifest, packages};
+
 /// The PIF `xcodebuild -dumpPIF` prints for a `.xcworkspace` or an
 /// `.xcodeproj`: a workspace object, then each project followed by its
 /// targets.
@@ -39,28 +41,12 @@ use crate::xcspec;
 /// through project references, in path order. A bare project stands in a
 /// workspace of its own, `X.xcodeproj/project.xcworkspace`.
 pub fn pif(container: &Path) -> Result<Vec<Json>, Error> {
-    let container = project::standardize(container);
-    let base_dir = container
-        .parent()
-        .map_or_else(PathBuf::new, Path::to_path_buf);
-    let (name, workspace_path, roots) = if container.extension().is_some_and(|e| e == "xcworkspace")
-    {
-        let ws = workspace::open(&container).map_err(|e| Error::BadProject(e.to_string()))?;
-        let roots = ws
-            .project_refs
-            .iter()
-            .map(|p| (project::standardize(p), false))
-            .collect();
-        (ws.name, container.clone(), roots)
-    } else {
-        (
-            stem(&container),
-            container.join("project.xcworkspace"),
-            vec![(container.clone(), true)],
-        )
-    };
-    let graph = Graph::load(roots, base_dir)?;
-
+    let Opened {
+        name,
+        path: workspace_path,
+        graph,
+        ..
+    } = Opened::of(container)?;
     let mut projects = Vec::new();
     for file in &graph.projects {
         projects.push(Emitter::new(&graph, file)?.emit()?);
@@ -80,6 +66,47 @@ pub fn pif(container: &Path) -> Result<Vec<Json>, Error> {
         out.extend(targets);
     }
     Ok(out)
+}
+
+/// The workspace a container stands for.
+struct Opened {
+    name: String,
+    path: PathBuf,
+    graph: Graph,
+    /// The package folders the workspace itself holds.
+    package_refs: Vec<PathBuf>,
+}
+
+impl Opened {
+    /// A `.xcworkspace`, or a bare project standing in a workspace of its own,
+    /// `X.xcodeproj/project.xcworkspace`.
+    fn of(container: &Path) -> Result<Self, Error> {
+        let container = project::standardize(container);
+        let base_dir = container
+            .parent()
+            .map_or_else(PathBuf::new, Path::to_path_buf);
+        if container.extension().is_some_and(|e| e == "xcworkspace") {
+            let ws = workspace::open(&container).map_err(|e| Error::BadProject(e.to_string()))?;
+            let roots = ws
+                .project_refs
+                .iter()
+                .map(|p| (project::standardize(p), false))
+                .collect();
+            Ok(Self {
+                name: ws.name,
+                path: container.clone(),
+                graph: Graph::load(roots, base_dir)?,
+                package_refs: ws.package_refs,
+            })
+        } else {
+            Ok(Self {
+                name: stem(&container),
+                path: container.join("project.xcworkspace"),
+                graph: Graph::load(vec![(container.clone(), true)], base_dir)?,
+                package_refs: Vec::new(),
+            })
+        }
+    }
 }
 
 /// One `.xcodeproj` of the workspace.

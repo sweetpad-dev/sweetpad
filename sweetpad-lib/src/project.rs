@@ -282,7 +282,7 @@ impl Project {
 /// `xcodebuild` synthesizes no schemes from their manifests. A path with no
 /// `Package.swift` is dropped rather than reported, so a reference left behind
 /// by a moved package cannot invent a scheme.
-fn local_package_refs(
+pub(crate) fn local_package_refs(
     value: &Value,
     objects: &Dict,
     project_obj: &Value,
