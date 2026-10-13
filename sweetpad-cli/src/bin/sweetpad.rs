@@ -49,8 +49,9 @@ fn main() -> ExitCode {
     if name == Some(std::ffi::OsStr::new("xcstringstool")) {
         return sweetpad_cli::cli::xcstringstool::main(&args);
     }
-    // Run as `lipo`, `strip`, `copypng` or `ditto`, it stands in
-    // for the Darwin tool of that name, found on the same `PATH`.
+    // Run as `lipo`, `strip`, `copypng`, `ditto` or
+    // `embeddedBinaryValidationUtility`, it stands in for the Darwin tool of
+    // that name, found on the same `PATH`.
     if let Some(code) = name
         .and_then(std::ffi::OsStr::to_str)
         .and_then(|tool| sweetpad_cli::cli::darwin_tools::main(tool, &args))

@@ -161,6 +161,12 @@ struct Invocation {
     toolset: Option<PathBuf>,
 }
 
+/// Settings Xcode's own Swift Build resolves differently from the open-source
+/// one, with no xcspec to say so. `SKIP_COPYING_TEST_FRAMEWORKS`: Xcode 27
+/// leaves XCTest and Swift Testing out of a test host app, since the test
+/// runner brings them in.
+const XCODE_DEFAULTS: &[(&str, &str)] = &[("SKIP_COPYING_TEST_FRAMEWORKS", "YES")];
+
 /// The Swift compiler flags a build needs where there is no Xcode, as a
 /// toolset, which Swift Build adds after the project's own flags. Xcode's
 /// compiler loads cross-import overlays, like the one `StoreView` is in
@@ -220,7 +226,10 @@ impl Invocation {
         let host = DarwinSdk::for_host()?;
         let tools = host.as_ref().map(|_| inputs.join("bin"));
         let toolset = host.as_ref().map(|_| inputs.join("toolset.json"));
-        let mut overrides = BTreeMap::new();
+        let mut overrides: BTreeMap<String, String> = XCODE_DEFAULTS
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect();
         if let (Some(host), Some(toolset)) = (&host, &toolset) {
             overrides.extend(host.overrides(&sdk, &destination.arch, toolset));
         }
@@ -492,30 +501,77 @@ fn refuse_xcodebuild_flags(passthrough: &[String]) -> Result<(), CliError> {
 
 /// The targets a scheme builds for `build_for`, by name, the way Swift Build
 /// looks them up. A scheme with no file stands for the target of its name.
-/// Entries from Swift packages are left out, since the targets that use a
-/// package build it as a dependency.
+/// Building for testing adds what the test action runs, as `xcodebuild
+/// build-for-testing` does: the default test plan's enabled targets, or
+/// without plans the testables that aren't skipped. Entries from Swift
+/// packages are left out, since the targets that use a package build it as a
+/// dependency.
 fn scheme_targets(
     container: &Path,
     scheme: &str,
     build_for: BuildFor,
 ) -> Result<Vec<String>, CliError> {
-    let Some(parsed) = sweetpad_core::app_locator::find_scheme(container, scheme) else {
+    let Some(file) = sweetpad_lib::scheme::locate(container, scheme) else {
         return Ok(vec![scheme.to_string()]);
     };
+    let Ok(parsed) = sweetpad_lib::scheme::parse_file(&file) else {
+        return Ok(vec![scheme.to_string()]);
+    };
+    let in_project = |container: &str| container.trim_end_matches('/').ends_with(".xcodeproj");
     let mut targets: Vec<String> = Vec::new();
+    let mut add = |name: &str| {
+        if !targets.iter().any(|t| t == name) {
+            targets.push(name.to_string());
+        }
+    };
     for entry in parsed
         .build_entries
         .iter()
         .filter(|e| e.builds_for(build_for))
+        .filter(|e| in_project(&e.buildable.container))
     {
-        let name = &entry.buildable.blueprint_name;
-        let in_project = entry
-            .buildable
-            .container
-            .trim_end_matches('/')
-            .ends_with(".xcodeproj");
-        if in_project && !targets.contains(name) {
-            targets.push(name.clone());
+        add(&entry.buildable.blueprint_name);
+    }
+    if build_for == BuildFor::Testing
+        && let Some(test) = &parsed.test_action
+    {
+        let plan = test
+            .test_plans
+            .iter()
+            .find(|p| p.default)
+            .or(test.test_plans.first());
+        if let Some(plan) = plan {
+            // `container:` paths are relative to the folder the scheme's
+            // project or workspace is in.
+            let base = file
+                .ancestors()
+                .find(|a| {
+                    a.extension()
+                        .is_some_and(|e| e == "xcodeproj" || e == "xcworkspace")
+                })
+                .and_then(Path::parent)
+                .unwrap_or(Path::new("."));
+            let path = base.join(&plan.path);
+            let plan_targets = sweetpad_lib::scheme::test_plan_targets(&path).ok_or_else(|| {
+                CliError::new(format!(
+                    "couldn't read test plan {} of scheme '{scheme}'",
+                    path.display()
+                ))
+            })?;
+            for target in plan_targets
+                .iter()
+                .filter(|t| t.enabled && in_project(&t.container))
+            {
+                add(&target.name);
+            }
+        } else {
+            for testable in test
+                .testables
+                .iter()
+                .filter(|t| !t.skipped && in_project(&t.buildable.container))
+            {
+                add(&testable.buildable.blueprint_name);
+            }
         }
     }
     if targets.is_empty() {
@@ -710,7 +766,8 @@ pub struct MessageParser {
     tasks: HashMap<i64, Task>,
     /// Each task's output so far, by task ID.
     output: HashMap<i64, String>,
-    /// Tasks that reported an error in a file, which explains their failure.
+    /// Tasks that reported an error of their own, which explains their
+    /// failure.
     diagnosed: HashSet<i64>,
     /// Whether any task has reported an error.
     errors: bool,
@@ -796,12 +853,13 @@ impl MessageParser {
                 if kind == "error" {
                     self.errors = true;
                     // `Linker command failed …` points at the project and says
-                    // nothing of why; only an error in a file explains a task.
-                    let in_file = m
+                    // nothing of why; any other error a task reports, in a file
+                    // or not, explains its failure.
+                    let at_project = m
                         .pointer("/location/path")
                         .and_then(Value::as_str)
-                        .is_some_and(|p| !p.trim_end_matches('/').ends_with(".xcodeproj"));
-                    if in_file
+                        .is_some_and(|p| p.trim_end_matches('/').ends_with(".xcodeproj"));
+                    if !at_project
                         && let Some(id) =
                             m.pointer("/locationContext/taskID").and_then(Value::as_i64)
                     {
@@ -1125,6 +1183,24 @@ mod tests {
     }
 
     #[test]
+    fn a_tools_own_error_explains_its_task_without_a_file() {
+        let found = events(&[
+            r#"{"kind":"taskStarted","id":12,"ruleInfo":"ValidateEmbeddedBinary /dd/App.app/PlugIns/W.appex","executionDescription":"Validate W.appex"}"#,
+            r#"{"kind":"taskOutput","taskID":12,"data":"error: Embedded binary's bundle identifier is not prefixed\n"}"#,
+            r#"{"kind":"error","message":"Embedded binary's bundle identifier is not prefixed","location":{"locationType":"unknown"},"locationContext":{"locationType":"task","targetID":0,"taskID":12}}"#,
+            r#"{"kind":"taskComplete","id":12,"result":"failed"}"#,
+        ]);
+        assert_eq!(
+            found[1..],
+            [Event::Diagnostic {
+                kind: DiagKind::Error,
+                location: None,
+                message: "Embedded binary's bundle identifier is not prefixed".into(),
+            }]
+        );
+    }
+
+    #[test]
     fn an_error_on_the_project_still_shows_the_tool_output() {
         let found = events(&[
             r#"{"kind":"taskStarted","id":10,"ruleInfo":"Ld /dd/App.framework/App normal","executionDescription":"Link App (arm64)"}"#,
@@ -1249,6 +1325,69 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("'-allowProvisioningUpdates' is an xcodebuild flag")
+        );
+    }
+
+    #[test]
+    fn building_for_testing_adds_the_test_plans_targets() {
+        let dir = crate::cli::testdir::TempDir::new("sweetpad-swbuild-test-plan");
+        let project = dir.join("App.xcodeproj");
+        let schemes = project.join("xcshareddata/xcschemes");
+        std::fs::create_dir_all(&schemes).unwrap();
+        let buildable = |name: &str, container: &str| {
+            format!(
+                r#"<BuildableReference BlueprintIdentifier="{name}" BuildableName="{name}" BlueprintName="{name}" ReferencedContainer="container:{container}"/>"#
+            )
+        };
+        let scheme = |test_action: &str| {
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<Scheme version="1.7">
+   <BuildAction><BuildActionEntries>
+      <BuildActionEntry buildForTesting="YES" buildForRunning="YES">{}</BuildActionEntry>
+   </BuildActionEntries></BuildAction>
+   <TestAction buildConfiguration="Debug">{test_action}</TestAction>
+</Scheme>"#,
+                buildable("App", "App.xcodeproj")
+            )
+        };
+        let testables = format!(
+            r#"<Testables>
+                 <TestableReference skipped="NO">{}</TestableReference>
+                 <TestableReference skipped="YES">{}</TestableReference>
+                 <TestableReference skipped="NO">{}</TestableReference>
+               </Testables>"#,
+            buildable("AppTests", "App.xcodeproj"),
+            buildable("SkippedTests", "App.xcodeproj"),
+            buildable("KitTests", "Packages/Kit"),
+        );
+        std::fs::write(schemes.join("App.xcscheme"), scheme(&testables)).unwrap();
+        assert_eq!(
+            scheme_targets(&project, "App", BuildFor::Testing).unwrap(),
+            ["App", "AppTests"]
+        );
+        assert_eq!(
+            scheme_targets(&project, "App", BuildFor::Running).unwrap(),
+            ["App"]
+        );
+
+        let plans = r#"<TestPlans><TestPlanReference reference="container:All.xctestplan" default="YES"/></TestPlans>"#;
+        std::fs::write(
+            schemes.join("App.xcscheme"),
+            scheme(&format!("{plans}{testables}")),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("All.xctestplan"),
+            r#"{"testTargets": [
+                {"target": {"containerPath": "container:App.xcodeproj", "identifier": "1", "name": "UITests"}},
+                {"enabled": false, "target": {"containerPath": "container:App.xcodeproj", "identifier": "2", "name": "SlowTests"}}
+            ]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            scheme_targets(&project, "App", BuildFor::Testing).unwrap(),
+            ["App", "UITests"]
         );
     }
 

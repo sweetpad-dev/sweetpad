@@ -444,7 +444,8 @@ pub fn workspace_path(folder: &Path) -> Option<PathBuf> {
 
 /// Every string-valued top-level key of the plist at `path`, XML or binary.
 /// An unreadable or malformed file has none.
-pub(crate) fn plist_strings(path: &Path) -> Vec<(String, String)> {
+#[must_use]
+pub fn plist_strings(path: &Path) -> Vec<(String, String)> {
     let Ok(bytes) = std::fs::read(path) else {
         return Vec::new();
     };

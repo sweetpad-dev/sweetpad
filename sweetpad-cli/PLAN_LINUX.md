@@ -223,8 +223,16 @@ overrides into variations.
 - [x] Release configuration: dSYM, strip on install, a static library, a
       loose PNG; `corpus/_tools-app` (local) runs the same in the simulator
 - [ ] iOS device builds
-- [ ] App extensions, widgets and App Clips
-- [ ] Test targets (build the bundles)
+- [x] App extensions and widgets: an `embeddedBinaryValidationUtility`
+      stand-in makes Xcode's checks (bundle ID prefix, matching versions);
+      a widget built here registers in the simulator
+- [ ] App Clips
+- [x] Test targets: `test build` adds the default test plan's targets, or
+      the scheme's testables, as `build-for-testing` does, and leaves the
+      testing frameworks out of the host app like Xcode 27. The bundle passes
+      under `xcodebuild test-without-building` with Xcode's `.xctestrun`
+- [ ] An `.xctestrun` written by the build, so tests built here run on a Mac
+      without a second build *(optional)*
 - [ ] macOS apps, with a runtime check of the macOS `Assets.car`
 - [ ] watchOS, tvOS and visionOS apps *(optional)*
 - [ ] Mac Catalyst *(optional)*
@@ -255,7 +263,7 @@ Running in the simulator stays on a Mac.
 - Local checker apps live in the gitignored `sweetpad-lib/corpus/`:
   `_car-app` (47 asset lookups), `_strings-app`, `_alamofire-spm`,
   `_alamofire-consumer`, `_tools-app` (XcodeGen: static libraries, a loose
-  PNG). Each prints its results to stderr for a diff
+  PNG, a widget, a unit test bundle). Each prints its results to stderr for a diff
   against Xcode's build.
 - `sweetpad-lib/corpus/_car-tools/` (gitignored) keeps the scripts used to
   decode `Assets.car`: `cardump.py` dumps one, `surgery.py` edits and

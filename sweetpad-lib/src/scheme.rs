@@ -196,11 +196,63 @@ pub struct EnvironmentVariable {
 pub struct TestAction {
     pub configuration: String,
     pub testables: Vec<TestableRef>,
+    pub test_plans: Vec<TestPlanRef>,
     /// `codeCoverageEnabled="YES"` — gathering coverage for this scheme's
     /// test action forces `CLANG_COVERAGE_MAPPING=YES` on every buildable
     /// xcodebuild resolves for the scheme (validated against the Kingfisher
     /// scheme, which sets it; its 12 build-settings captures all report YES).
     pub code_coverage_enabled: bool,
+}
+
+/// A test plan the test action runs (`<TestPlanReference>`).
+#[derive(Debug, Clone)]
+pub struct TestPlanRef {
+    /// The plan's path, relative to the folder the project or workspace is
+    /// in (`container:App.xctestplan` in the scheme).
+    pub path: String,
+    /// The plan `xcodebuild test` runs when no `-testPlan` names one.
+    pub default: bool,
+}
+
+/// A test target a test plan runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestPlanTarget {
+    pub name: String,
+    /// The project it's in, relative to the plan's container
+    /// (`container:App.xcodeproj`).
+    pub container: String,
+    /// `"enabled": false` keeps a target in the plan without running it.
+    pub enabled: bool,
+}
+
+/// The test targets of the test plan at `path` (an `.xctestplan`, JSON), or
+/// `None` when it can't be read.
+#[must_use]
+pub fn test_plan_targets(path: &Path) -> Option<Vec<TestPlanTarget>> {
+    let plan: serde_json::Value = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
+    Some(
+        plan.get("testTargets")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| {
+                let target = entry.get("target")?;
+                Some(TestPlanTarget {
+                    name: target.get("name")?.as_str()?.to_string(),
+                    container: target
+                        .get("containerPath")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .trim_start_matches("container:")
+                        .to_string(),
+                    enabled: entry
+                        .get("enabled")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(true),
+                })
+            })
+            .collect(),
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -661,9 +713,26 @@ fn parse_test_action(action: &Element) -> TestAction {
                 .collect()
         })
         .unwrap_or_default();
+    let test_plans = action
+        .child("TestPlans")
+        .map(|t| {
+            t.children_named("TestPlanReference")
+                .filter_map(|r| {
+                    Some(TestPlanRef {
+                        path: r
+                            .attr("reference")?
+                            .trim_start_matches("container:")
+                            .to_string(),
+                        default: r.attr("default").is_some_and(parse_yes),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     TestAction {
         configuration,
         testables,
+        test_plans,
         code_coverage_enabled: action.attr("codeCoverageEnabled").is_some_and(parse_yes),
     }
 }
@@ -1029,6 +1098,52 @@ mod tests {
 </Scheme>"#
         );
         from_element(&xcscheme::parse(&xml).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn test_plans_and_their_targets() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Scheme version="1.7">
+   <TestAction buildConfiguration="Debug">
+      <TestPlans>
+         <TestPlanReference reference="container:Plans/All.xctestplan" default="YES"/>
+         <TestPlanReference reference="container:Smoke.xctestplan"/>
+      </TestPlans>
+   </TestAction>
+</Scheme>"#;
+        let scheme = from_element(&xcscheme::parse(xml).unwrap()).unwrap();
+        let plans = scheme.test_action.unwrap().test_plans;
+        assert_eq!(plans.len(), 2);
+        assert_eq!(plans[0].path, "Plans/All.xctestplan");
+        assert!(plans[0].default);
+        assert!(!plans[1].default);
+
+        let dir = crate::testdir::TempDir::new("sweetpad-test-plan");
+        let plan = dir.join("All.xctestplan");
+        std::fs::write(
+            &plan,
+            r#"{"testTargets": [
+                {"target": {"containerPath": "container:App.xcodeproj", "identifier": "1", "name": "AppTests"}},
+                {"enabled": false, "target": {"containerPath": "container:App.xcodeproj", "identifier": "2", "name": "SlowTests"}}
+            ], "version": 1}"#,
+        )
+        .unwrap();
+        let targets = test_plan_targets(&plan).unwrap();
+        assert_eq!(
+            targets,
+            [
+                TestPlanTarget {
+                    name: "AppTests".into(),
+                    container: "App.xcodeproj".into(),
+                    enabled: true
+                },
+                TestPlanTarget {
+                    name: "SlowTests".into(),
+                    container: "App.xcodeproj".into(),
+                    enabled: false
+                },
+            ]
+        );
     }
 
     fn arg(argument: &str, enabled: bool) -> String {

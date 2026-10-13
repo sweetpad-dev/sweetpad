@@ -9,7 +9,9 @@
 //!   [`lipo`]);
 //! - `strip`, for install builds (see [`strip`]);
 //! - `ditto`, which run scripts copy with, like the one XcodeGen gives a
-//!   static library with Swift sources (see [`ditto`]).
+//!   static library with Swift sources (see [`ditto`]);
+//! - `embeddedBinaryValidationUtility`, which checks each app extension an
+//!   app embeds (see [`embedded_binary`]).
 
 // What these print is the tools' output, which Swift Build and scripts
 // parse, so it doesn't go through `Output`.
@@ -17,6 +19,7 @@
 
 mod copypng;
 mod ditto;
+mod embedded_binary;
 mod lipo;
 mod strip;
 
@@ -24,7 +27,13 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 /// The tools this module stands in for, by the name they run under.
-pub const TOOLS: &[&str] = &["copypng", "ditto", "lipo", "strip"];
+pub const TOOLS: &[&str] = &[
+    "copypng",
+    "ditto",
+    "embeddedBinaryValidationUtility",
+    "lipo",
+    "strip",
+];
 
 /// Run as `tool`, or `None` when this module doesn't stand in for it.
 #[must_use]
@@ -32,6 +41,7 @@ pub fn main(tool: &str, args: &[String]) -> Option<ExitCode> {
     let result = match tool {
         "copypng" => copypng::main(args),
         "ditto" => ditto::main(args),
+        "embeddedBinaryValidationUtility" => return Some(embedded_binary::main(args)),
         "lipo" => lipo::main(args),
         "strip" => strip::main(args),
         _ => return None,
