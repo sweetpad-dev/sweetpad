@@ -9,8 +9,8 @@
 #   xtool      its Darwin Swift SDK: the iOS and macOS SDKs plus an ld64.lld
 #              that links for Apple platforms, extracted from an Xcode.app
 #   swbuild    Swift Build's command-line driver, which the toolchain doesn't
-#              ship, built from swiftlang/swift-build at the toolchain's tag and
-#              linked into ~/bin
+#              ship, built from swiftlang/swift-build at the toolchain's tag,
+#              with swift-build-linux.patch, and linked into ~/bin
 #   Rust       rustup, for building sweetpad itself
 #
 # The SDK comes from your own Xcode (XCODE_APP, default /Applications/Xcode.app,
@@ -109,8 +109,17 @@ swift sdk list
 
 section "swbuild ($TAG)"
 SWB="$HOME/src/swift-build"
+[ -d "$SWB/.git" ] || git clone -q --depth 1 --branch "$TAG" https://github.com/swiftlang/swift-build.git "$SWB"
+# swift-build-linux.patch: a macOS app's build registers it with Launch
+# Services through /System/…/lsregister, and Swift Build fails the build when
+# that can't start, where it only notes a run that fails. The patch notes
+# both.
+PATCH="$(cd "$(dirname "$0")" && pwd)/swift-build-linux.patch"
+if ! git -C "$SWB" apply --reverse --check "$PATCH" 2>/dev/null; then
+  git -C "$SWB" apply "$PATCH"
+  rm -f "$SWB/.build/release/swbuild"
+fi
 if [ ! -x "$SWB/.build/release/swbuild" ] || [ ! -x "$SWB/.build/release/SWBBuildServiceBundle" ]; then
-  [ -d "$SWB/.git" ] || git clone -q --depth 1 --branch "$TAG" https://github.com/swiftlang/swift-build.git "$SWB"
   (cd "$SWB" && swift build -c release --product swbuild && swift build -c release --product SWBBuildServiceBundle)
 fi
 # sweetpad looks swbuild up on PATH; it finds its service bundle through the

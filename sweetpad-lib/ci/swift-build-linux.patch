@@ -1,0 +1,24 @@
+diff --git a/Sources/SWBTaskExecution/TaskActions/LSRegisterURLTaskAction.swift b/Sources/SWBTaskExecution/TaskActions/LSRegisterURLTaskAction.swift
+index 3acf74a..f3da327 100644
+--- a/Sources/SWBTaskExecution/TaskActions/LSRegisterURLTaskAction.swift
++++ b/Sources/SWBTaskExecution/TaskActions/LSRegisterURLTaskAction.swift
+@@ -42,12 +42,15 @@ public final class LSRegisterURLTaskAction: TaskAction {
+         do {
+             try await spawn(commandLine: lsregisterCommandLine, environment: task.environment.bindingsDictionary, workingDirectory: task.workingDirectory, dynamicExecutionDelegate: dynamicExecutionDelegate, clientDelegate: clientDelegate, processDelegate: processDelegate)
+         } catch {
+-            outputDelegate.error(error.localizedDescription)
+-            return .failed
++            // There is no lsregister to run off macOS.
++            outputDelegate.note("LaunchServices registration failed and was skipped: \(error.localizedDescription)")
++            outputDelegate.updateResult(.exit(exitStatus: .exit(0), metrics: nil))
++            return .succeeded
+         }
+         if let error = processDelegate.executionError {
+-            outputDelegate.error(error)
+-            return .failed
++            outputDelegate.note("LaunchServices registration failed and was skipped: \(error)")
++            outputDelegate.updateResult(.exit(exitStatus: .exit(0), metrics: nil))
++            return .succeeded
+         }
+ 
+         // We don't ever fail if `lsregister` fails, instead we just emit a note.

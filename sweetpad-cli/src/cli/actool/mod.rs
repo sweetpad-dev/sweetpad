@@ -10,7 +10,8 @@
 //!   the way actool writes them, so code that uses `Color(.brand)` compiles;
 //! - a compiled catalog: an `Assets.car` with the colors, the PNG, PDF and
 //!   SVG images and the symbols (see [`car`]), an iOS app icon as loose
-//!   PNGs, the partial Info.plist and dependency file Swift Build links in,
+//!   PNGs and a macOS one as an `.icns` file (see [`icns`]), the partial
+//!   Info.plist and dependency file Swift Build links in,
 //!   and a warning naming what the app goes without, like JPEG images (see
 //!   [`compile`]).
 //!
@@ -25,6 +26,7 @@ mod car;
 mod catalog;
 mod compile;
 mod glyph;
+mod icns;
 mod raster;
 mod symbols;
 mod vector;

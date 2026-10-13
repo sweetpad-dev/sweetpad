@@ -3,7 +3,8 @@
 //! (see [`super::car`]), with each PDF and SVG drawn at the platform's
 //! scales (see [`super::vector`]) and each symbol template read into its
 //! masters (see [`super::glyph`]). An iOS app icon goes in as the loose PNGs
-//! the home screen reads. A warning names what's still missing: images in
+//! the home screen reads, and a macOS one as an `.icns` file (see
+//! [`super::icns`]). A warning names what's still missing: images in
 //! other formats, colors for traits the stand-in doesn't compile, and assets
 //! of other kinds.
 
@@ -17,7 +18,7 @@ use super::car::{
 };
 use super::catalog::{Asset, Catalog, Kind};
 use super::vector::{Drawing, Format};
-use super::{Args, catalogs, glyph, raster, target_devices, write};
+use super::{Args, catalogs, glyph, icns, raster, target_devices, write};
 use crate::cli::xml_plist;
 
 pub(super) fn compile(args: &Args) -> Result<(), String> {
@@ -36,22 +37,30 @@ pub(super) fn compile(args: &Args) -> Result<(), String> {
     let mut written = Vec::new();
     let mut info = Map::new();
 
-    let ios = matches!(
-        args.value("--platform"),
-        Some("iphoneos" | "iphonesimulator")
-    );
-    let icon_name = args.value("--app-icon");
-    let icon_written = match (icon_name, ios) {
-        (Some(name), true) => app_icon(&catalogs, name).is_some_and(|set| {
-            let ok = write_ios_icon(set, name, &output, &mut written);
-            if ok {
-                info.extend(ios_icon_info(name, &devices));
-            }
-            ok
-        }),
-        _ => false,
-    };
     let platform = args.value("--platform").unwrap_or_default();
+    let icon_name = args.value("--app-icon");
+    let icon_written = icon_name.is_some_and(|name| {
+        let Some(set) = app_icon(&catalogs, name) else {
+            return false;
+        };
+        match platform {
+            "iphoneos" | "iphonesimulator" => {
+                let ok = write_ios_icon(set, name, &output, &mut written);
+                if ok {
+                    info.extend(ios_icon_info(name, &devices));
+                }
+                ok
+            }
+            "macosx" => {
+                let ok = write_mac_icon(set, name, &output, &mut written);
+                if ok {
+                    info.insert("CFBundleIconFile".into(), json!(name));
+                }
+                ok
+            }
+            _ => false,
+        }
+    });
     let mut car = Car::new(
         if platform == "macosx" {
             Family::Mac
@@ -154,6 +163,66 @@ fn write_ios_icon(set: &Asset, name: &str, output: &Path, written: &mut Vec<Path
         }
         written.push(path);
     }
+    true
+}
+
+/// The `.icns` file of a macOS app icon, `<name>.icns`, with every size
+/// iconutil stores: each the set's `mac` image of that size, as it is, or
+/// else its largest image scaled down. False when the set has no image, or
+/// one can't be read.
+fn write_mac_icon(set: &Asset, name: &str, output: &Path, written: &mut Vec<PathBuf>) -> bool {
+    let usable = |e: &&super::catalog::Entry| e.filename.is_some() && !e.appearance;
+    let read = |entry: &super::catalog::Entry| {
+        let bytes = std::fs::read(set.dir.join(entry.filename.as_ref()?)).ok()?;
+        let rgba = raster::decode(&bytes).ok()?;
+        Some((bytes, rgba))
+    };
+    let mac_entry = |points: u32, scale: u32| {
+        set.entries.iter().filter(usable).find(|e| {
+            e.idiom == "mac"
+                && e.size.as_deref() == Some(&format!("{points}x{points}"))
+                && e.scale.as_deref() == Some(&format!("{scale}x"))
+        })
+    };
+    // The single-size form: one 1024-pixel image for every size.
+    let largest = mac_entry(512, 2).or_else(|| {
+        set.entries.iter().filter(usable).find(|e| {
+            e.idiom == "universal"
+                && e.size.as_deref() == Some("1024x1024")
+                && e.platform.as_deref().is_none_or(|p| p == "macos")
+        })
+    });
+    let largest = largest.and_then(read);
+    let mut images = Vec::new();
+    for &(points, scale, _, _) in icns::SLOTS {
+        let side = points * scale;
+        let exact = mac_entry(points, scale)
+            .and_then(read)
+            .filter(|(_, rgba)| rgba.width == side && rgba.height == side);
+        let (png, rgba) = if let Some(found) = exact {
+            found
+        } else {
+            let Some((_, source)) = &largest else {
+                return false;
+            };
+            let rgba = raster::resize(source, side, side);
+            let Ok(png) = raster::encode(&rgba) else {
+                return false;
+            };
+            (png, rgba)
+        };
+        images.push(icns::Image {
+            points,
+            scale,
+            rgba,
+            png,
+        });
+    }
+    let path = output.join(format!("{name}.icns"));
+    if write(&path, &icns::icns(&images)).is_err() {
+        return false;
+    }
+    written.push(path);
     true
 }
 

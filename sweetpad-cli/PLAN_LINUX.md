@@ -206,7 +206,7 @@ overrides into variations.
       lookups match Xcode's build; 89 of 93 corpus catalogs list the same
 - [ ] JPEG and HEIC images
 - [ ] iOS app icon inside `Assets.car` (App Store builds need it)
-- [ ] macOS app icons (`.icns`)
+- [x] macOS app icons: an `.icns` with every size, as iconutil writes it
 - [ ] Alternate app icons *(optional)*
 - [ ] Icon Composer `.icon` files *(optional)*
 - [ ] Data sets (`NSDataAsset`)
@@ -233,7 +233,10 @@ overrides into variations.
       under `xcodebuild test-without-building` with Xcode's `.xctestrun`
 - [ ] An `.xctestrun` written by the build, so tests built here run on a Mac
       without a second build *(optional)*
-- [ ] macOS apps, with a runtime check of the macOS `Assets.car`
+- [x] macOS apps: `corpus/_mac-app` (local) matches Xcode's build in 29 of
+      31 asset lookups; the two left are the icon inside `Assets.car`. Swift
+      Build needs `swift-build-linux.patch` (`linux-setup.sh` applies it)
+      to skip registering the app with Launch Services; upstream it
 - [ ] watchOS, tvOS and visionOS apps *(optional)*
 - [ ] Mac Catalyst *(optional)*
 
