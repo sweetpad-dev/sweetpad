@@ -240,7 +240,9 @@ overrides into variations.
       checker apps; Ice Cubes compiles and fails only where Xcode 27 does too
 - [x] Release configuration: dSYM, strip on install, a static library, a
       loose PNG; `corpus/_tools-app` (local) runs the same in the simulator
-- [ ] iOS device builds
+- [x] iOS device builds: `corpus/_tools-app` (local) for
+      `generic/platform=iOS` matches Xcode's unsigned build, widget
+      included; signing is under Past building
 - [x] App extensions and widgets: an `embeddedBinaryValidationUtility`
       stand-in makes Xcode's checks (bundle ID prefix, matching versions);
       a widget built here registers in the simulator
