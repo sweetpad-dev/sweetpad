@@ -863,3 +863,36 @@ fn a_jpeg_goes_in_the_car_as_it_is() {
         .collect();
     assert_eq!(photos, [(2, 12)]);
 }
+
+#[test]
+fn a_data_set_goes_in_the_car_with_its_type() {
+    let dir = TempDir::new("sweetpad-actool-data");
+    let catalog = template_catalog(&dir);
+    let set = catalog.join("Config.dataset");
+    std::fs::create_dir_all(&set).unwrap();
+    std::fs::write(set.join("config.json"), b"{}").unwrap();
+    std::fs::write(set.join("pad.foo"), b"pad").unwrap();
+    write_json(
+        &set.join("Contents.json"),
+        &json!({"data": [
+            {"filename": "config.json", "idiom": "universal"},
+            {"filename": "pad.foo", "idiom": "ipad", "universal-type-identifier": "dev.sweetpad.pad"},
+        ]}),
+    );
+    let out = dir.join("out");
+    compile::compile(&compile_args(&catalog, &out, &dir)).unwrap();
+    let car = std::fs::read(out.join("Assets.car")).unwrap();
+    let has = |bytes: &[u8]| car.windows(bytes.len()).any(|w| w == bytes);
+    assert!(has(b"DWAR\0\0\0\0\x02\0\0\0{}"));
+    assert!(has(b"DWAR\0\0\0\0\x03\0\0\0pad"));
+    assert!(has(b"\x0c\0\0\0\0\0\0\0public.json\0"));
+    assert!(has(b"dev.sweetpad.pad\0"));
+    // Idiom 15 is the iPad's 2 for the second file.
+    let idioms: Vec<u16> = renditions(&out.join("Assets.car"))
+        .into_iter()
+        .filter(|(_, layout, _)| *layout == 1000)
+        .map(|(key, _, _)| key[&15])
+        .collect();
+    assert_eq!(idioms, [0, 2]);
+    assert_eq!(car_names(&out.join("Assets.car")), ["Config"]);
+}

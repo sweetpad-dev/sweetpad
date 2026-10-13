@@ -18,6 +18,7 @@ use super::car::{
 };
 use super::catalog::{Asset, Catalog, Kind};
 use super::photo::Photo;
+use super::uti;
 use super::vector::{Drawing, Format};
 use super::{Args, catalogs, glyph, icns, raster, target_devices, write};
 use crate::cli::xml_plist;
@@ -512,6 +513,7 @@ fn add_assets<'a>(
             Kind::Color => add_color(car, &name, asset, devices, platform),
             Kind::Image if asset.symbol => add_symbol(car, &name, asset, devices, platform),
             Kind::Image => add_image(car, &name, asset, devices, platform),
+            Kind::Data => add_data(car, &name, asset, devices, platform),
             Kind::AppIcon | Kind::Other => false,
         };
         if added {
@@ -664,6 +666,39 @@ fn add_image(car: &mut Car, name: &str, asset: &Asset, devices: &[String], platf
             &bytes,
             asset.preserves_vector,
         );
+    }
+    true
+}
+
+/// A data set's files, each for its idiom, typed as its entry says or as
+/// its extension makes it.
+fn add_data(car: &mut Car, name: &str, asset: &Asset, devices: &[String], platform: &str) -> bool {
+    let mut files = Vec::new();
+    for entry in ordered(&asset.entries, |e| &e.idiom) {
+        let Some(filename) = entry.filename.as_deref() else {
+            continue;
+        };
+        let Some(variant) = variant(&entry.idiom, &[], entry.other_traits, 1, devices, platform)
+        else {
+            continue;
+        };
+        let Ok(bytes) = std::fs::read(asset.dir.join(filename)) else {
+            continue;
+        };
+        let type_identifier = entry
+            .type_identifier
+            .clone()
+            .unwrap_or_else(|| uti::of(filename));
+        files.push((variant, type_identifier, bytes));
+    }
+    if files.is_empty() {
+        return false;
+    }
+    let Some(identifier) = car.facet(name, Part::Image) else {
+        return false;
+    };
+    for (variant, type_identifier, bytes) in files {
+        car.data(identifier, variant, &type_identifier, &bytes);
     }
     true
 }
@@ -916,7 +951,8 @@ impl Report {
                 Kind::Color if !done => report.colors += 1,
                 Kind::Image if !done => report.images += 1,
                 // actool leaves out the icon sets no option names.
-                Kind::AppIcon | Kind::Color | Kind::Image => {}
+                Kind::Data if !done => report.other += 1,
+                Kind::AppIcon | Kind::Color | Kind::Image | Kind::Data => {}
                 Kind::Other => report.other += 1,
             }
         }

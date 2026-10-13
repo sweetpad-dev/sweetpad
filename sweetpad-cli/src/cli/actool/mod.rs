@@ -9,7 +9,8 @@
 //! - the asset symbols (`GeneratedAssetSymbols.swift` and the rest), written
 //!   the way actool writes them, so code that uses `Color(.brand)` compiles;
 //! - a compiled catalog: an `Assets.car` with the colors, the PNG, JPEG,
-//!   HEIF, PDF and SVG images, the symbols and the app icons (see [`car`]),
+//!   HEIF, PDF and SVG images, the symbols, the app icons and the data
+//!   sets (see [`car`]),
 //!   the iOS app icon again as loose PNGs and a macOS one as an `.icns`
 //!   file (see [`icns`]), the partial Info.plist and dependency file Swift
 //!   Build links in, and a warning naming what the app goes without, like
@@ -30,6 +31,7 @@ mod icns;
 mod photo;
 mod raster;
 mod symbols;
+mod uti;
 mod vector;
 
 use std::path::{Path, PathBuf};

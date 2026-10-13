@@ -218,7 +218,10 @@ overrides into variations.
 - [x] macOS app icons: `CFBundleIconName` for the icon in the car, and an
       `.icns` with the four sizes Xcode's actool stores beside it
 - [ ] Icon Composer `.icon` files *(optional)*
-- [ ] Data sets (`NSDataAsset`)
+- [x] Data sets (`NSDataAsset`), each file as it is with its type: the one
+      its entry names, else its extension's, or the `dyn.` type macOS makes
+      up for an extension it doesn't know. `_car-app`'s four data lookups
+      match Xcode's build
 - [ ] Fallback values for system colors (black today; UIKit resolves the
       name anyway) *(optional)*
 - [ ] Sticker packs, AR resources, texture sets, sprite atlases, watch
@@ -275,7 +278,7 @@ Running in the simulator stays on a Mac.
 - Swift Build reuses an unchanged catalog's `Assets.car` even after the
   stand-in changes; clear the app's DerivedData before checking a new one.
 - Local checker apps live in the gitignored `sweetpad-lib/corpus/`:
-  `_car-app` (53 asset lookups), `_strings-app`, `_alamofire-spm`,
+  `_car-app` (57 asset lookups), `_strings-app`, `_alamofire-spm`,
   `_alamofire-consumer`, `_tools-app` (XcodeGen: static libraries, a loose
   PNG, a widget, a unit test bundle), `_mac-app` (XcodeGen: a macOS app's
   asset lookups and icon). Each prints its results to stderr for a diff

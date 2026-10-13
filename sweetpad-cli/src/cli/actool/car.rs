@@ -521,6 +521,37 @@ impl Car {
         self.add(key, header.rendition(&info, &raw_data(data)));
     }
 
+    /// A data set's file, as it is, with its type identifier.
+    pub fn data(&mut self, identifier: u16, variant: Variant, type_identifier: &str, data: &[u8]) {
+        // The type's length, with the NUL that ends it, and a reserved
+        // word before it.
+        let mut uti = type_identifier.as_bytes().to_vec();
+        uti.push(0);
+        let info = [
+            info(1004, &[&0u32.to_le_bytes(), &1f32.to_le_bytes()]),
+            info(
+                1005,
+                &[&count(uti.len()).to_le_bytes(), &0u32.to_le_bytes(), &uti],
+            ),
+            info(1006, &[&1u32.to_le_bytes()]),
+        ];
+        let header = Header {
+            name: "CoreStructuredImage",
+            layout: 1000,
+            flags: 0,
+            width: 0,
+            height: 0,
+            scale: u32::from(variant.scale) * 100,
+            pixel_format: u32::from_be_bytes(*b"DATA"),
+            color_space: 0,
+        };
+        let key = Key {
+            part: Part::Image as u16,
+            ..key(identifier, variant)
+        };
+        self.add(key, header.rendition(&info, &raw_data(data)));
+    }
+
     /// One size of the app icon `identifier`, from the file `name`: `index`
     /// is the size's in [`Car::multisized`]'s list, and `subtype` the device
     /// class it's for, or 0.

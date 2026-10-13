@@ -72,6 +72,8 @@ pub struct Entry {
     /// Whether it varies by something else the stand-in doesn't compile:
     /// a display gamut, locale, size class, memory or graphics class.
     pub other_traits: bool,
+    /// A data set file's type: `universal-type-identifier`.
+    pub type_identifier: Option<String>,
 }
 
 /// One entry of a color set's `Contents.json`.
@@ -89,7 +91,9 @@ pub enum Kind {
     Color,
     Image,
     AppIcon,
-    /// Any other set (data, sticker, texture, …), which has no symbol.
+    /// A data set, for `NSDataAsset`.
+    Data,
+    /// Any other set (sticker, texture, …), which has no symbol.
     Other,
 }
 
@@ -277,6 +281,11 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
             };
             (kind, idioms(&images), files(&images), has)
         }
+        "dataset" => {
+            let data = entries("data");
+            let has = data.iter().any(|e| e.get("filename").is_some());
+            (Kind::Data, idioms(&data), files(&data), has)
+        }
         "icon" => (Kind::AppIcon, Vec::new(), Vec::new(), true),
         _ => (Kind::Other, Vec::new(), Vec::new(), true),
     };
@@ -341,7 +350,7 @@ fn other_traits(entry: &Value) -> bool {
         .any(|k| entry.get(*k).is_some())
 }
 
-/// An image or app icon set's entries, as the stand-in uses them.
+/// An image, app icon or data set's entries, as the stand-in uses them.
 fn files(entries: &[Value]) -> Vec<Entry> {
     let text = |e: &Value, key: &str| e.get(key).and_then(Value::as_str).map(str::to_string);
     entries
@@ -355,6 +364,7 @@ fn files(entries: &[Value]) -> Vec<Entry> {
             appearance: e.get("appearances").is_some(),
             appearances: appearances(e),
             other_traits: other_traits(e),
+            type_identifier: text(e, "universal-type-identifier"),
         })
         .collect()
 }
