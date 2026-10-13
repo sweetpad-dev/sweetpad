@@ -1,0 +1,3 @@
+$(DIR)/Bad.xcdatamodel:A.b: error: A.b must have a destination entity [2]
+$(DIR)/Bad.xcdatamodel:A.b: warning: A.b should have an inverse [2]
+$(DIR)/Bad.xcdatamodel:A.c: warning: A.c should have an inverse [2]

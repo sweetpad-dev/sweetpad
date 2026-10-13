@@ -267,7 +267,8 @@ pub(crate) fn sha256_base64(input: &[u8]) -> String {
 }
 
 /// FIPS 180-4 SHA-256.
-fn sha256(input: &[u8]) -> [u8; 32] {
+#[must_use]
+pub fn sha256(input: &[u8]) -> [u8; 32] {
     const K: [u32; 64] = [
         0x428a_2f98,
         0x7137_4491,
@@ -396,7 +397,8 @@ fn sha256(input: &[u8]) -> [u8; 32] {
 }
 
 /// Standard base64 (RFC 4648 alphabet) with `=` padding.
-fn base64(bytes: &[u8]) -> String {
+#[must_use]
+pub fn base64(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {

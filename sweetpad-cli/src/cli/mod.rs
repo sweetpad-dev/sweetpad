@@ -33,6 +33,7 @@ pub mod devicectl;
 pub mod exits;
 pub mod inject;
 pub mod merge;
+pub mod momc;
 pub mod oslog;
 pub mod output;
 pub mod pbxedit;

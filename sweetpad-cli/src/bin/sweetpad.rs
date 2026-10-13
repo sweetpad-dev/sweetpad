@@ -49,6 +49,11 @@ fn main() -> ExitCode {
     if name == Some(std::ffi::OsStr::new("xcstringstool")) {
         return sweetpad_cli::cli::xcstringstool::main(&args);
     }
+    // Run as `momc`, it stands in for Xcode's Core Data model compiler,
+    // which Swift Build also looks up on that `PATH`.
+    if name == Some(std::ffi::OsStr::new("momc")) {
+        return sweetpad_cli::cli::momc::main(&args);
+    }
     // Run as `lipo`, `strip`, `copypng`, `ditto` or
     // `embeddedBinaryValidationUtility`, it stands in for the Darwin tool of
     // that name, found on the same `PATH`.

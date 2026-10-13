@@ -118,8 +118,14 @@ Swift Build names these in its xcspecs. The Swift toolchain has `llvm-ar`,
 
 - [ ] `ibtool`: XIBs and storyboards to `.nib`/`.storyboardc`. The biggest
       item; see the ibtool section below
-- [ ] `momc`: `.xcdatamodeld` to `.momd`, plus the generated Swift classes
-      the app compiles against
+- [x] `momc`: `.xcdatamodel` to `.mom` and `.xcdatamodeld` to `.momd` with
+      `VersionInfo.plist`, plus the generated Swift or Objective-C classes.
+      Golden tests against Xcode's in `fixtures/momc` (`regen.py`). Fetch
+      request templates, fetched properties, derived and composite
+      attributes and partial index predicates need an `NSPredicate` parser,
+      and stop the build with an error naming them; so do date and decimal
+      minimums and maximums. The CloudKit checks and the `.omo` file (only an
+      optimization) are left out
 - [ ] `intentbuilderc`: `.intentdefinition` to generated intent classes and
       strings
 - [ ] `appintentsmetadataprocessor`: `Metadata.appintents` from the
@@ -290,8 +296,16 @@ Running in the simulator stays on a Mac.
   `_alamofire-consumer`, `_alamofire-dynamic` (the dynamic product,
   embedded), `_tools-app` (XcodeGen: static libraries, a loose
   PNG, a widget, a unit test bundle), `_mac-app` (XcodeGen: a macOS app's
-  asset lookups and icon). Each prints its results to stderr for a diff
-  against Xcode's build.
+  asset lookups and icon), `_data-app` (XcodeGen: a Core Data model with
+  inheritance, a fetch index and generated classes, and an App Intent;
+  `linux-build.sh` builds it in the VM). Each prints its results to stderr
+  for a diff against Xcode's build.
+- `sweetpad-lib/corpus/_momc-tools/` (gitignored): `keyed.py` dumps a keyed
+  archive as it's laid out, `canon.py` dumps it independent of object
+  order (to diff a `.mom` with Xcode's), and `hashes.py` computes version
+  hashes from a model's XML. To see what Core Data hashes, run a small
+  Swift tool that prints `NSEntityDescription.versionHash` under lldb with
+  breakpoints on `CC_SHA256_Update` that dump each buffer.
 - `sweetpad-lib/corpus/_car-tools/` (gitignored) keeps the scripts used to
   decode `Assets.car`: `cardump.py` dumps one, `surgery.py` edits and
   rebuilds one, `listing.py` and `corpus_compare2.py` compare `assetutil`

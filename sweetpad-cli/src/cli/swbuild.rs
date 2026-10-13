@@ -452,7 +452,7 @@ fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
     };
     let exe = std::env::current_exe().map_err(fail)?;
     std::fs::create_dir_all(dir).map_err(fail)?;
-    let tools = ["actool", "xcstringstool"]
+    let tools = ["actool", "momc", "xcstringstool"]
         .iter()
         .chain(super::darwin_tools::TOOLS)
         .map(|tool| (*tool, exe.as_path()))
