@@ -27,9 +27,51 @@ Items marked *(optional)* can wait until a project needs them.
 - [x] SwiftPM packages through `swift package dump-pif`, merged into the PIF
       (`42978410`)
 - [x] Cross-import overlays, through a toolset flag (`4e2a25c7`)
+- [ ] Apple's macro plugins (see the section below)
 - [ ] SwiftPM: dynamic library products as frameworks, not dylibs
 - [ ] SwiftPM: per-test-target products *(optional)*
 - [ ] SwiftPM: package schemes *(optional)*
+
+## Apple's macros
+
+Xcode expands the SDK's macros through plugins that are macOS dylibs
+(`iPhoneOS.platform/Developer/usr/lib/swift/host/plugins`). Each macro in
+the SDK's `.swiftinterface` files names its plugin and type in
+`#externalMacro(module:type:)`, which gives the full list. In the Xcode 27
+iOS SDK:
+
+| Plugin | Macros | On Linux |
+|---|---|---|
+| ObservationMacros, FoundationMacros, SwiftMacros | `@Observable`, `#Predicate`, `#Expression`, `#bundle`, `@TaskLocal`, `@DebugDescription`, `_SwiftifyImport` | Swift toolchain |
+| FoundationModelsMacros | `@Generable`, `@Guide` | xtool |
+| PreviewsMacros | `#Preview` | xtool for SwiftUI views; not UIKit views or view controllers (`KitViewMacro`, `PreviewCommonGroup`) |
+| SwiftUIMacros | `@Entry`, `@Animatable`, `@State` (a macro in the 27 SDK) | xtool, except the helper types `EntryTypeCheckMacro`, `EntryTypeCheckClassMacro`, `SendableEntryDefaultMacro`, `UnsafeEntryDefaultMacro`, `StateTypeMacro` |
+| SwiftDataMacros | `@Model`, `@Query`, `@ModelActor`, `@Attribute`, `@Relationship`, `@Transient`, `#Unique`, `#Index` | missing |
+| AppIntentsMacros | the schema macros (`@AppIntent(schema:)` and the rest), `@ComputedProperty`, `@DeferredProperty`, `@UnionValue` | missing |
+| TipKitMacros, StateReportingMacros | `#Rule`, `@Parameter`; `@ReportableMetadata` | missing |
+
+xtool's server is `darwin.artifactbundle/OpenAppleMacrosServer`; the `.so`
+files beside the plugins are empty placeholders. In the corpus, 5 files use
+`@Model` and 13 use `@Query` (Ice Cubes probably hits this once RevenueCat
+builds; not confirmed yet); none use the App Intents schema macros, TipKit
+or StateReporting. Plain App Intents (the `@Parameter` property wrapper)
+need no macros.
+
+The oracle is Xcode's compiler printing each expansion
+(`-Xfrontend -dump-macro-expansions`): reimplement the macro with
+swift-syntax and diff the expanded Swift text.
+
+- [ ] Confirm with a real swbuild build that `@Model` fails, and how
+- [ ] Decide where our plugins live (beside xtool's server, or our own) and
+      how swbuild points the compiler at them
+- [ ] SwiftDataMacros: `@Model` (schema metadata, backing data, accessors
+      per property) and `@Query` first, then `@ModelActor` and the attribute
+      macros (1–2 weeks)
+- [ ] Check whether xtool's gaps are reachable: `#Preview` of a UIKit view
+      or view controller, the `@Entry` and `@State` helper types; fix
+      upstream in xtool if so
+- [ ] AppIntentsMacros, the schema macros *(optional)*
+- [ ] TipKitMacros, StateReportingMacros *(optional)*
 
 ## Merging the branch
 
@@ -66,10 +108,8 @@ Swift Build names these in its xcspecs. The Swift toolchain has `llvm-ar`,
 
 ## Apple compilers for data files
 
-- [ ] `ibtool`: XIBs and storyboards to `.nib`/`.storyboardc` (UIKit and
-      AppKit keyed archives). Start with `LaunchScreen.storyboard` (Xcode's
-      UIKit template has one) and simple views, measured against the corpus.
-      The biggest item
+- [ ] `ibtool`: XIBs and storyboards to `.nib`/`.storyboardc`. The biggest
+      item; see the ibtool section below
 - [ ] `momc`: `.xcdatamodeld` to `.momd`, plus the generated Swift classes
       the app compiles against
 - [ ] `intentbuilderc`: `.intentdefinition` to generated intent classes and
@@ -91,6 +131,60 @@ Swift Build names these in its xcspecs. The Swift toolchain has `llvm-ar`,
 - [ ] macOS-only legacy tools (`osacompile`, `Rez`, `ResMerger`, `mig`,
       `iig`, `dtrace`, `exutil`, `lsregister`): skip or fail clearly
       *(optional)*
+
+## ibtool
+
+The corpus has 63 IB files: 32 iOS, 26 macOS (almost all NetNewsWire), 4
+watchKit, 1 tvOS; 34 are storyboards, using 121 XML element kinds. iOS nibs
+are NIBArchive files; macOS nibs are NSKeyedArchiver plists of AppKit
+classes, a separate project.
+
+There's no open-source ibtool. References:
+[WinObjC's `xib2nib`](https://github.com/microsoft/WinObjC/tree/develop/tools/vsimporter/xib2nib)
+(MIT, archived, iOS 9–10 era XML, about 55 UIKit class converters and a
+NIBArchive writer, never checked against Apple's UIKit), the
+[`nibarchive`](https://docs.rs/nibarchive) crate (reads and writes
+NIBArchive; doesn't understand trailing bytes some newer files have), and
+the nibsqueeze and
+[Mother's Ruin](https://www.mothersruin.com/software/Archaeology/reverse/uinib.html)
+format notes.
+
+Build it against ibtool as the oracle, the way `Assets.car` was built:
+golden outputs from `ibtool --compile` with Xcode's flags (a `regen.py`),
+compared structurally (decode both into a graph of class and key → value,
+match objects by position in the graph rather than archive order). Tiny
+XIBs that change one attribute at a time show the key and encoding each
+attribute produces. A checker app dumps the loaded view tree (classes,
+frames after layout, constraints, text, colors, images, outlets, actions)
+for a diff against Xcode's build.
+
+Coverage, measured on the corpus and on a few thousand public XIBs and
+storyboards (the oracle compiles them in a batch on a Mac):
+- input: the share of (element, attribute) pairs we translate, weighted
+  by how often each appears; the most frequent missing pair goes next
+- output: the share of (class, key) pairs in ibtool's output we emit with
+  the same value
+- files that match structurally, and files that compile with no
+  unsupported-element error (an unknown element is an error, never a
+  wrong nib)
+- runtime checks that match
+
+Beyond translating elements, ibtool also splits storyboards into a nib per
+scene plus an `Info.plist` of scenes and segues, follows storyboard
+references, writes variants per idiom and deployment target, resolves named
+colors and images against the asset catalogs (with fallback values), encodes
+fonts, overlays base localization `.strings`, and turns trait and size class
+overrides into variations.
+
+- [ ] NIBArchive writer, decoder and structural diff harness (2–3 days)
+- [ ] `LaunchScreen.storyboard`: UIView, UILabel, UIImageView, constraints,
+      safe area; unblocks Xcode's UIKit template (2–3 days)
+- [ ] All 32 iOS corpus files matching structurally and passing runtime
+      checks, seeded from `xib2nib`'s mappings (2–4 weeks)
+- [ ] Public XIB set and the coverage report; stop around 95% of weighted
+      input pairs *(optional)*
+- [ ] AppKit nibs, NSKeyedArchiver (NetNewsWire's 26 files) *(optional)*
+- [ ] watchKit and tvOS IB files *(optional)*
 
 ## String Catalogs
 
