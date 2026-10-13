@@ -239,9 +239,11 @@ overrides into variations.
 
 ## Past building
 
-- [ ] Info.plist keys: real `DTXcode`, `DTXcodeBuild`, `DTPlatformBuild` and
-      `BuildMachineOSBuild` from the user's Xcode.app (App Store validation
-      reads them)
+- [x] Info.plist keys: `DTXcode`, `DTXcodeBuild` and `DTPlatformBuild` from
+      the `version.plist` files `linux-setup.sh` copies into the SDK bundle
+      (xtool leaves them out); the same as Xcode's build
+- [ ] `BuildMachineOSBuild`: left out, since no macOS built the app. Find
+      out whether App Store validation needs it
 - [ ] Signing with rcodesign (the apple-codesign crate) or xtool's signer:
       certificates, profiles, entitlements
 - [ ] Device install through pymobiledevice3 or xtool's installer

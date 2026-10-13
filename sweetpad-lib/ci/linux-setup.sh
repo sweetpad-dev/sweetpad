@@ -93,6 +93,18 @@ if [ ! -f "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle/toolset-swb.json" ]; 
   # Xcode.app is copied whole and then hard-linked.
   xtool sdk install --slim "$XCODE_APP"
 fi
+# xtool leaves out the version files, which an app's Info.plist takes
+# DTXcode, DTXcodeBuild and DTPlatformBuild from. Xcode's own goes beside the
+# bundle's Developer folder, where Xcode.app keeps it, for sweetpad to read;
+# each platform's goes in the platform, where Swift Build reads it.
+BUNDLE="$HOME/.swiftpm/swift-sdks/darwin.artifactbundle"
+if [ ! -f "$BUNDLE/version.plist" ] && [ -f "$XCODE_APP/Contents/version.plist" ]; then
+  cp "$XCODE_APP/Contents/version.plist" "$BUNDLE/version.plist"
+  for platform in "$BUNDLE"/Developer/Platforms/*.platform; do
+    source="$XCODE_APP/Contents/Developer/Platforms/$(basename "$platform")/version.plist"
+    [ -f "$source" ] && cp "$source" "$platform/version.plist"
+  done
+fi
 swift sdk list
 
 section "swbuild ($TAG)"

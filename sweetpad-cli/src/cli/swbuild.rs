@@ -684,10 +684,23 @@ impl DarwinSdk {
     /// - `STRINGS_FILE_INPUT_ENCODING`: Swift Build detects a `.strings`
     ///   file's encoding only on macOS, so a file that doesn't name one, like
     ///   a compiled String Catalog's, is read as UTF-8.
+    /// - The Xcode version (see [`xcode_version_settings`]) and, for a
+    ///   platform without its `version.plist`, its build as the SDK's, which
+    ///   go into the app's Info.plist as `DTXcode`, `DTXcodeBuild` and
+    ///   `DTPlatformBuild`.
     fn overrides(&self, sdk: &str, arch: &str, toolset: &Path) -> Vec<(String, String)> {
         let swift_libraries = self
             .bundle
             .join("Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME)");
+        let mut versions = xcode_version_settings(&sweetpad_lib::derived_data::plist_strings(
+            &self.bundle.join("version.plist"),
+        ));
+        if !self.platform_has_version(sdk) {
+            versions.push((
+                "PLATFORM_PRODUCT_BUILD_VERSION",
+                "$(SDK_PRODUCT_BUILD_VERSION)".to_string(),
+            ));
+        }
         [
             ("SDKROOT", sdk.to_string()),
             (
@@ -714,8 +727,25 @@ impl DarwinSdk {
             ),
         ]
         .into_iter()
+        .chain(versions)
         .map(|(k, v)| (k.to_string(), v))
         .collect()
+    }
+
+    /// Whether the bundle has the `version.plist` of the platform `sdk` is
+    /// for, which Swift Build reads the platform's build from.
+    fn platform_has_version(&self, sdk: &str) -> bool {
+        let platform = sdk.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
+        std::fs::read_dir(self.bundle.join("Developer/Platforms"))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .find(|path| {
+                path.file_stem()
+                    .is_some_and(|stem| stem.to_string_lossy().eq_ignore_ascii_case(platform))
+            })
+            .is_some_and(|path| path.join("version.plist").is_file())
     }
 
     /// Swift Build takes the platforms from `XCODE_EXTRA_PLATFORM_FOLDERS`,
@@ -749,6 +779,44 @@ impl DarwinSdk {
             ("DEVELOPER_DIR".to_string(), None),
         ]
     }
+}
+
+/// The Xcode version settings Swift Build fills from Xcode.app's
+/// `version.plist`, from that file's keys, as Swift Build computes them:
+/// 26.4.1 is `XCODE_VERSION_ACTUAL` 2641. Without Xcode it reports 99.99.99,
+/// so these come from the copy of the file beside the Darwin SDK's
+/// `Developer` folder, where Xcode.app keeps it. None without one.
+fn xcode_version_settings(version_plist: &[(String, String)]) -> Vec<(&'static str, String)> {
+    let key = |name: &str| {
+        version_plist
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    };
+    let (Some(version), Some(build)) = (
+        key("CFBundleShortVersionString"),
+        key("ProductBuildVersion"),
+    ) else {
+        return Vec::new();
+    };
+    let mut parts = version.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
+    let (major, minor, patch) = (
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+    );
+    vec![
+        ("XCODE_VERSION_MAJOR", format!("{:04}", major * 100)),
+        (
+            "XCODE_VERSION_MINOR",
+            format!("{:04}", major * 100 + minor * 10),
+        ),
+        (
+            "XCODE_VERSION_ACTUAL",
+            format!("{:04}", major * 100 + minor * 10 + patch),
+        ),
+        ("XCODE_PRODUCT_BUILD_VERSION", build.to_string()),
+    ]
 }
 
 /// swbuild's output as [`buildlog`] events.
@@ -1389,6 +1457,30 @@ mod tests {
             scheme_targets(&project, "App", BuildFor::Testing).unwrap(),
             ["App", "UITests"]
         );
+    }
+
+    #[test]
+    fn xcode_version_settings_are_swift_builds() {
+        let plist = |version: &str| {
+            vec![
+                (
+                    "CFBundleShortVersionString".to_string(),
+                    version.to_string(),
+                ),
+                ("ProductBuildVersion".to_string(), "27A266a".to_string()),
+            ]
+        };
+        assert_eq!(
+            xcode_version_settings(&plist("26.4.1")),
+            [
+                ("XCODE_VERSION_MAJOR", "2600".to_string()),
+                ("XCODE_VERSION_MINOR", "2640".to_string()),
+                ("XCODE_VERSION_ACTUAL", "2641".to_string()),
+                ("XCODE_PRODUCT_BUILD_VERSION", "27A266a".to_string()),
+            ]
+        );
+        assert_eq!(xcode_version_settings(&plist("27.0"))[2].1, "2700");
+        assert!(xcode_version_settings(&[]).is_empty());
     }
 
     #[test]
