@@ -11,7 +11,9 @@
 //! - `ditto`, which run scripts copy with, like the one XcodeGen gives a
 //!   static library with Swift sources (see [`ditto`]);
 //! - `embeddedBinaryValidationUtility`, which checks each app extension an
-//!   app embeds (see [`embedded_binary`]).
+//!   app embeds (see [`embedded_binary`]);
+//! - `ld64.lld`, in front of xtool's linker, which loads whole the archives
+//!   xtool makes in place of relocatable objects (see [`ld`]).
 
 // What these print is the tools' output, which Swift Build and scripts
 // parse, so it doesn't go through `Output`.
@@ -20,6 +22,7 @@
 mod copypng;
 mod ditto;
 mod embedded_binary;
+mod ld;
 mod lipo;
 mod strip;
 
@@ -31,9 +34,14 @@ pub const TOOLS: &[&str] = &[
     "copypng",
     "ditto",
     "embeddedBinaryValidationUtility",
+    "ld64.lld",
     "lipo",
     "strip",
 ];
+
+/// The name of the link to the Darwin SDK's own linker, beside the stand-in
+/// for it, which runs it (see [`ld`]).
+pub const SDK_LINKER: &str = "sdk-ld64.lld";
 
 /// Run as `tool`, or `None` when this module doesn't stand in for it.
 #[must_use]
@@ -42,6 +50,7 @@ pub fn main(tool: &str, args: &[String]) -> Option<ExitCode> {
         "copypng" => copypng::main(args),
         "ditto" => ditto::main(args),
         "embeddedBinaryValidationUtility" => return Some(embedded_binary::main(args)),
+        "ld64.lld" => return Some(ld::main(args)),
         "lipo" => lipo::main(args),
         "strip" => strip::main(args),
         _ => return None,

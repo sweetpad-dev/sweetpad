@@ -28,7 +28,13 @@ Items marked *(optional)* can wait until a project needs them.
       (`42978410`)
 - [x] Cross-import overlays, through a toolset flag (`4e2a25c7`)
 - [ ] Apple's macro plugins (see the section below)
-- [ ] SwiftPM: dynamic library products as frameworks, not dylibs
+- [x] SwiftPM: dynamic library products as frameworks in
+      `PackageFrameworks`, as Xcode builds them
+      (`--experimental-build-dylibs-as-frameworks`). xtool's linker makes a
+      static archive for `ld -r`, so a stand-in in front of it loads those
+      whole (`-force_load`); otherwise a framework made from a package
+      target alone links none of its code. `corpus/_alamofire-dynamic`
+      (local) embeds `AlamofireDynamic.framework` and passes its checks
 - [ ] SwiftPM: per-test-target products *(optional)*
 - [ ] SwiftPM: package schemes *(optional)*
 
@@ -279,7 +285,8 @@ Running in the simulator stays on a Mac.
   stand-in changes; clear the app's DerivedData before checking a new one.
 - Local checker apps live in the gitignored `sweetpad-lib/corpus/`:
   `_car-app` (57 asset lookups), `_strings-app`, `_alamofire-spm`,
-  `_alamofire-consumer`, `_tools-app` (XcodeGen: static libraries, a loose
+  `_alamofire-consumer`, `_alamofire-dynamic` (the dynamic product,
+  embedded), `_tools-app` (XcodeGen: static libraries, a loose
   PNG, a widget, a unit test bundle), `_mac-app` (XcodeGen: a macOS app's
   asset lookups and icon). Each prints its results to stderr for a diff
   against Xcode's build.
@@ -288,7 +295,9 @@ Running in the simulator stays on a Mac.
   rebuilds one, `listing.py` and `corpus_compare2.py` compare `assetutil`
   listings with Xcode's, `glyphs.py` compares symbol records, and
   `icons.py <case>` compiles app icon sets of each shape with Xcode's actool,
-  or with `OURS=<path to an actool symlink>` the stand-in. Their paths
+  or with `OURS=<path to an actool symlink>` the stand-in. `carcheck.sh`
+  and `afcheck.sh` install an app in the booted simulator and print its
+  check lines; the Alamofire apps want `afserver.py` running. Their paths
   point at a deleted scratch folder; adjust them before use.
 - Golden fixtures to regenerate after an Xcode update:
   `sweetpad-cli/fixtures/actool` and `fixtures/xcstringstool` (each has a

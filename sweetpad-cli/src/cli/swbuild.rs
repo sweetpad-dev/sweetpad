@@ -156,8 +156,9 @@ struct Invocation {
     /// The folder of links that run this binary as the Xcode tools it stands
     /// in for, on a host without Xcode's.
     tools: Option<PathBuf>,
-    /// Where the toolset with the compiler flags a host without Xcode needs
-    /// goes (see [`TOOLSET`]).
+    /// The Darwin SDK's linker, which the linker stand-in runs.
+    linker: Option<PathBuf>,
+    /// Where the toolset a host without Xcode needs goes (see [`toolset`]).
     toolset: Option<PathBuf>,
 }
 
@@ -167,17 +168,24 @@ struct Invocation {
 /// runner brings them in.
 const XCODE_DEFAULTS: &[(&str, &str)] = &[("SKIP_COPYING_TEST_FRAMEWORKS", "YES")];
 
-/// The Swift compiler flags a build needs where there is no Xcode, as a
-/// toolset, which Swift Build adds after the project's own flags. Xcode's
-/// compiler loads cross-import overlays, like the one `StoreView` is in
-/// (`_StoreKit_SwiftUI`), by default; the open-source one only when asked.
-const TOOLSET: &str = r#"{
-  "schemaVersion": "1.0",
-  "swiftCompiler": {
-    "extraCLIOptions": ["-Xfrontend", "-enable-cross-import-overlays"]
-  }
+/// What a build needs where there is no Xcode on top of the Darwin SDK's
+/// toolset, as a toolset, which Swift Build applies after that one and the
+/// project's own flags:
+/// - the compiler flag for cross-import overlays, like the one `StoreView`
+///   is in (`_StoreKit_SwiftUI`), which Xcode's compiler loads by default
+///   and the open-source one only when asked;
+/// - the stand-in in `tools` for the SDK's linker (see
+///   [`super::darwin_tools`]).
+fn toolset(tools: &Path) -> String {
+    let toolset = serde_json::json!({
+        "schemaVersion": "1.0",
+        "swiftCompiler": {
+            "extraCLIOptions": ["-Xfrontend", "-enable-cross-import-overlays"]
+        },
+        "linker": { "path": tools.join("ld64.lld") },
+    });
+    format!("{toolset:#}\n")
 }
-"#;
 
 impl Invocation {
     fn of(plan: &BuildPlan<'_>) -> Result<Self, CliError> {
@@ -269,6 +277,7 @@ impl Invocation {
             program: swbuild_program()?,
             args,
             cwd: xcodebuild::working_dir(plan.container),
+            linker: host.as_ref().map(|h| h.bundle.join("toolset/bin/ld64.lld")),
             env: host
                 .zip(tools.as_deref())
                 .map(|(h, tools)| h.env(tools))
@@ -313,10 +322,10 @@ impl Invocation {
         write(&self.pif, &Value::Array(pif))?;
         write(&self.parameters_file, &self.parameters)?;
         if let Some(tools) = &self.tools {
-            link_tools(tools)?;
+            link_tools(tools, self.linker.as_deref())?;
         }
-        if let Some(toolset) = &self.toolset {
-            write_changed(toolset, TOOLSET.as_bytes())?;
+        if let (Some(path), Some(tools)) = (&self.toolset, &self.tools) {
+            write_changed(path, toolset(tools).as_bytes())?;
         }
         Ok(())
     }
@@ -338,12 +347,16 @@ impl Invocation {
             write_changed(&self.packages.join("Package.resolved"), &resolved)?;
         }
         let scratch = self.locations.folder.join("SourcePackages");
+        // Xcode builds a dynamic library product as a framework in
+        // `PackageFrameworks`, which an app embeds; SwiftPM's own builds
+        // make a dylib unless asked otherwise.
         let args = [
             "package".as_ref(),
             "--package-path".as_ref(),
             self.packages.as_os_str(),
             "--scratch-path".as_ref(),
             scratch.as_os_str(),
+            "--experimental-build-dylibs-as-frameworks".as_ref(),
             "dump-pif".as_ref(),
         ];
         let spinner = Spinner::start_timed(
@@ -428,8 +441,9 @@ fn write_changed(path: &Path, contents: &[u8]) -> Result<(), CliError> {
 /// Link this binary into `dir` under the names of the Xcode tools it stands
 /// in for: `actool`, the asset catalog compiler (see [`super::actool`]),
 /// `xcstringstool`, the String Catalog compiler (see [`super::xcstringstool`]),
-/// and the small Darwin tools like `lipo` (see [`super::darwin_tools`]).
-fn link_tools(dir: &Path) -> Result<(), CliError> {
+/// and the small Darwin tools like `lipo` (see [`super::darwin_tools`]), with
+/// the Darwin SDK's `linker` beside them for the linker stand-in to run.
+fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
     let fail = |e: std::io::Error| {
         CliError::new(format!(
             "couldn't link the stand-ins for Xcode's tools into {}: {e}",
@@ -440,14 +454,16 @@ fn link_tools(dir: &Path) -> Result<(), CliError> {
     std::fs::create_dir_all(dir).map_err(fail)?;
     let tools = ["actool", "xcstringstool"]
         .iter()
-        .chain(super::darwin_tools::TOOLS);
-    for tool in tools {
-        let path = dir.join(tool);
+        .chain(super::darwin_tools::TOOLS)
+        .map(|tool| (*tool, exe.as_path()))
+        .chain(linker.map(|l| (super::darwin_tools::SDK_LINKER, l)));
+    for (name, target) in tools {
+        let path = dir.join(name);
         let _ = std::fs::remove_file(&path);
         #[cfg(unix)]
-        std::os::unix::fs::symlink(&exe, &path).map_err(fail)?;
+        std::os::unix::fs::symlink(target, &path).map_err(fail)?;
         #[cfg(not(unix))]
-        std::fs::copy(&exe, &path).map_err(fail)?;
+        std::fs::copy(target, &path).map_err(fail)?;
     }
     Ok(())
 }
@@ -671,7 +687,7 @@ impl DarwinSdk {
     ///   tool that runs here.
     /// - `SWIFT_SDK_TOOLSETS`: the bundle's linker, which links for Apple
     ///   platforms where the toolchain's own refuses to, and `toolset`, with
-    ///   the compiler flags Xcode's compiler doesn't need (see [`TOOLSET`]).
+    ///   what a build here needs on top (see [`toolset`]).
     /// - `LM_SKIP_METADATA_EXTRACTION`: App Intents metadata takes an
     ///   Xcode-only tool.
     /// - `DONT_RUN_SWIFT_STDLIB_TOOL`: its Mach-O reader runs only on macOS,
