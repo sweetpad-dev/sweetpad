@@ -204,7 +204,11 @@ overrides into variations.
 - [x] PDF (hayro) and SVG (resvg) images drawn at the platform's scales, and
       custom symbols on every platform (`31a3fd2e`). 44 of 47 checker
       lookups match Xcode's build; 89 of 93 corpus catalogs list the same
-- [ ] JPEG and HEIC images
+- [x] JPEG and HEIF images, kept in the car as they are, with their size
+      and EXIF orientation. `_car-app`'s six photo lookups match Xcode's
+      build. Xcode also decodes a HEIF image into a bitmap for systems
+      before iOS 11; that needs an HEVC decoder, and no app built with
+      Xcode 27 runs there
 - [x] App icons inside `Assets.car`, each size numbered as Xcode numbers
       them, with a list of sizes per idiom. Single-size, every-size, dark
       and tinted, and alternate sets (`--alternate-app-icon`,
@@ -271,7 +275,7 @@ Running in the simulator stays on a Mac.
 - Swift Build reuses an unchanged catalog's `Assets.car` even after the
   stand-in changes; clear the app's DerivedData before checking a new one.
 - Local checker apps live in the gitignored `sweetpad-lib/corpus/`:
-  `_car-app` (47 asset lookups), `_strings-app`, `_alamofire-spm`,
+  `_car-app` (53 asset lookups), `_strings-app`, `_alamofire-spm`,
   `_alamofire-consumer`, `_tools-app` (XcodeGen: static libraries, a loose
   PNG, a widget, a unit test bundle), `_mac-app` (XcodeGen: a macOS app's
   asset lookups and icon). Each prints its results to stderr for a diff

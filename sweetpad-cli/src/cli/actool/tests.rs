@@ -342,7 +342,7 @@ fn an_icon_of_the_exact_size_goes_in_as_it_is() {
 }
 
 /// A catalog with a logo at two scales and an iPad variant, a dark variant,
-/// a namespaced star, a PDF glyph, and a JPEG photo, which the stand-in
+/// a namespaced star, a PDF glyph, and a GIF photo, which the stand-in
 /// can't read.
 fn image_catalog(dir: &Path) -> PathBuf {
     let catalog = template_catalog(dir);
@@ -385,10 +385,10 @@ fn image_catalog(dir: &Path) -> PathBuf {
     );
     let photo = catalog.join("Photo.imageset");
     std::fs::create_dir_all(&photo).unwrap();
-    std::fs::write(photo.join("photo.jpg"), [0xff, 0xd8, 0xff]).unwrap();
+    std::fs::write(photo.join("photo.gif"), b"GIF89a").unwrap();
     write_json(
         &photo.join("Contents.json"),
-        &json!({"images": [{"filename": "photo.jpg", "idiom": "universal"}]}),
+        &json!({"images": [{"filename": "photo.gif", "idiom": "universal"}]}),
     );
     catalog
 }
@@ -500,7 +500,7 @@ fn the_warning_says_what_the_app_goes_without() {
             ..Report::default()
         }),
         Some(format!(
-            "{prefix}1 image that isn't a PNG, PDF or SVG is missing from the app."
+            "{prefix}1 image that isn't a PNG, JPEG, HEIF, PDF or SVG is missing from the app."
         ))
     );
     assert_eq!(
@@ -518,7 +518,7 @@ fn the_warning_says_what_the_app_goes_without() {
             ..Report::default()
         }),
         Some(format!(
-            "{prefix}the app icon, 1 color and 3 images that aren't PNGs, PDFs or SVGs are missing from the app."
+            "{prefix}the app icon, 1 color and 3 images that aren't PNGs, JPEGs, HEIFs, PDFs or SVGs are missing from the app."
         ))
     );
 }
@@ -826,4 +826,40 @@ fn a_mac_icon_goes_in_the_car_and_an_icns_file() {
         sizes.contains(&(1, 16)) && sizes.contains(&(2, 1024)),
         "{sizes:?}"
     );
+}
+
+#[test]
+fn a_jpeg_goes_in_the_car_as_it_is() {
+    let dir = TempDir::new("sweetpad-actool-jpeg");
+    let catalog = template_catalog(&dir);
+    let set = catalog.join("Photo.imageset");
+    std::fs::create_dir_all(&set).unwrap();
+    // A JPEG's start, up to its frame header: 40 by 30 pixels.
+    let jpeg = [
+        &[0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0][..],
+        &[0xff, 0xc0, 0, 11, 8, 0, 30, 0, 40, 1, 1, 0x11, 0],
+        &[0xff, 0xda, 0, 2, 0xff, 0xd9],
+    ]
+    .concat();
+    std::fs::write(set.join("photo.jpg"), &jpeg).unwrap();
+    write_json(
+        &set.join("Contents.json"),
+        &json!({"images": [{"filename": "photo.jpg", "idiom": "universal", "scale": "2x"}]}),
+    );
+    let out = dir.join("out");
+    compile::compile(&platform_args(&catalog, &out, "iphonesimulator")).unwrap();
+    let car = std::fs::read(out.join("Assets.car")).unwrap();
+    let raw = [
+        &b"DWAR\0\0\0\0"[..],
+        &u32::try_from(jpeg.len()).unwrap().to_le_bytes(),
+        &jpeg,
+    ]
+    .concat();
+    assert!(car.windows(raw.len()).any(|w| w == raw));
+    let photos: Vec<_> = renditions(&out.join("Assets.car"))
+        .into_iter()
+        .filter(|(key, _, _)| key[&2] == 181)
+        .map(|(key, layout, _)| (key[&12], layout))
+        .collect();
+    assert_eq!(photos, [(2, 12)]);
 }

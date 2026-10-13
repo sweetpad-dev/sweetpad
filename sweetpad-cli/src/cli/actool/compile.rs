@@ -17,6 +17,7 @@ use super::car::{
     Appearance, Bitmap, Car, ColorSpace, Family, Glyph, Part, Rendering, Source, Variant,
 };
 use super::catalog::{Asset, Catalog, Kind};
+use super::photo::Photo;
 use super::vector::{Drawing, Format};
 use super::{Args, catalogs, glyph, icns, raster, target_devices, write};
 use crate::cli::xml_plist;
@@ -571,6 +572,7 @@ fn add_image(car: &mut Car, name: &str, asset: &Asset, devices: &[String], platf
         _ => Rendering::Automatic,
     };
     let mut images = Vec::new();
+    let mut photos = Vec::new();
     let mut vectors = Vec::new();
     let mut drawings = Vec::new();
     for entry in ordered(&asset.entries, |e| &e.idiom) {
@@ -617,6 +619,8 @@ fn add_image(car: &mut Car, name: &str, asset: &Asset, devices: &[String], platf
                 preserved: asset.preserves_vector,
             };
             images.push((variant, filename, Bitmap::from_rgba(&image), source));
+        } else if let Some(photo) = Photo::read(&bytes) {
+            photos.push((variant, filename, photo, bytes));
         }
     }
     let source = Source {
@@ -626,7 +630,7 @@ fn add_image(car: &mut Car, name: &str, asset: &Asset, devices: &[String], platf
     for (variant, filename, bitmap) in draw(&drawings, scales(platform)) {
         images.push((variant, filename, bitmap, source));
     }
-    if images.is_empty() {
+    if images.is_empty() && photos.is_empty() {
         return false;
     }
     let Some(identifier) = car.facet(name, Part::Image) else {
@@ -634,6 +638,9 @@ fn add_image(car: &mut Car, name: &str, asset: &Asset, devices: &[String], platf
     };
     for (variant, filename, image, source) in images {
         car.image(filename, identifier, variant, &image, rendering, source);
+    }
+    for (variant, filename, photo, bytes) in photos {
+        car.photo(filename, identifier, variant, &photo, &bytes, rendering);
     }
     // A set that preserves vector data keeps each file, for the scale it's
     // for; any other keeps one per variant, for no scale.
@@ -882,7 +889,7 @@ pub(super) struct Report {
     /// Colors that name a system color, or are only for traits the stand-in
     /// doesn't compile.
     pub colors: usize,
-    /// Images and symbols with no file the stand-in could read: JPEGs and
+    /// Images and symbols with no file the stand-in could read: GIFs and
     /// other formats, or a PDF, SVG or symbol template it couldn't parse.
     pub images: usize,
     pub other: usize,
@@ -934,8 +941,8 @@ impl Report {
             counted(self.colors, "color", "colors"),
             counted(
                 self.images,
-                "image that isn't a PNG, PDF or SVG",
-                "images that aren't PNGs, PDFs or SVGs",
+                "image that isn't a PNG, JPEG, HEIF, PDF or SVG",
+                "images that aren't PNGs, JPEGs, HEIFs, PDFs or SVGs",
             ),
             counted(self.other, "other asset", "other assets"),
         ]

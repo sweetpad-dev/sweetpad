@@ -27,6 +27,7 @@
 use std::collections::BTreeSet;
 use std::io::Write as _;
 
+use super::photo::{Format as PhotoFormat, Photo};
 use super::raster::Rgba;
 use super::vector::Format;
 
@@ -99,6 +100,18 @@ pub enum Rendering {
     Original,
     Template,
     Automatic,
+}
+
+impl Rendering {
+    /// The rendition flags that say so: bit 3 for a template image, bit 4
+    /// for one the context decides.
+    fn flags(self) -> u32 {
+        match self {
+            Rendering::Original => 0,
+            Rendering::Template => 0x08,
+            Rendering::Automatic => 0x10,
+        }
+    }
 }
 
 /// Where an image's pixels came from, which its flags record.
@@ -434,11 +447,7 @@ impl Car {
         rendering: Rendering,
         source: Source,
     ) {
-        let rendering = match rendering {
-            Rendering::Original => 0,
-            Rendering::Template => 0x08,
-            Rendering::Automatic => 0x10,
-        };
+        let rendering = rendering.flags();
         // Bit 2 says the pixels were drawn from vector data, and bit 8
         // that the set keeps vector data.
         let source =
@@ -448,6 +457,68 @@ impl Car {
             ..key(identifier, variant)
         };
         self.bitmap(key, name, image, rendering | source);
+    }
+
+    /// A JPEG or HEIF image's rendition: the file `data` as it is, with its
+    /// size and orientation beside it. Xcode also decodes a HEIF image into
+    /// a bitmap for systems before iOS 11 and gives its HEIF rendition that
+    /// deployment target; with no bitmap here, the HEIF one is for every
+    /// system, as Xcode keeps it for macOS.
+    pub fn photo(
+        &mut self,
+        name: &str,
+        identifier: u16,
+        variant: Variant,
+        photo: &Photo,
+        data: &[u8],
+        rendering: Rendering,
+    ) {
+        let (w, h) = (photo.width, photo.height);
+        let zero = 0u32.to_le_bytes();
+        let info = [
+            info(
+                1001,
+                &[
+                    &1u32.to_le_bytes(),
+                    &zero,
+                    &zero,
+                    &w.to_le_bytes(),
+                    &h.to_le_bytes(),
+                ],
+            ),
+            info(
+                1003,
+                &[
+                    &1u32.to_le_bytes(),
+                    &zero,
+                    &zero,
+                    &zero,
+                    &zero,
+                    &w.to_le_bytes(),
+                    &h.to_le_bytes(),
+                ],
+            ),
+            info(1004, &[&zero, &1f32.to_le_bytes()]),
+            info(1006, &[&photo.orientation.to_le_bytes()]),
+        ];
+        let header = Header {
+            name,
+            layout: 12,
+            flags: rendering.flags(),
+            width: 0,
+            height: 0,
+            scale: u32::from(variant.scale) * 100,
+            pixel_format: u32::from_be_bytes(match photo.format {
+                PhotoFormat::Jpeg => *b"JPEG",
+                PhotoFormat::Heif => *b"HEIF",
+            }),
+            color_space: 0,
+        };
+        let key = Key {
+            part: Part::Image as u16,
+            ..key(identifier, variant)
+        };
+        self.add(key, header.rendition(&info, &raw_data(data)));
     }
 
     /// One size of the app icon `identifier`, from the file `name`: `index`
