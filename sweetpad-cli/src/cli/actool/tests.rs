@@ -243,13 +243,12 @@ fn pixel_size(path: &Path) -> (u32, u32) {
 fn the_template_catalog_has_nothing_missing() {
     let dir = TempDir::new("sweetpad-actool-template");
     let catalog = template_catalog(&dir);
-    let args = compile_args(&catalog, &dir.join("out"), &dir);
     let report = compile::Report::of(
         &Catalog::read(&catalog),
         Some("AppIcon"),
         false,
         &std::collections::HashSet::new(),
-        &args,
+        &[],
     );
     assert_eq!(report, compile::Report::default());
     assert_eq!(report.warning(), None);
@@ -539,7 +538,7 @@ fn the_image_catalog_reports_its_photo() {
         .filter(|a| a.name != "Photo" && a.kind == super::catalog::Kind::Image)
         .map(|a| a.dir.as_path())
         .collect();
-    let report = compile::Report::of(&read, Some("AppIcon"), false, &compiled, &args);
+    let report = compile::Report::of(&read, Some("AppIcon"), false, &compiled, &[]);
     assert_eq!(report.images, 1);
     assert_eq!(report.colors, 0);
 }
@@ -717,4 +716,114 @@ fn a_set_that_preserves_vector_data_says_so_on_its_bitmaps() {
     // Bit 8 as Xcode sets it, whatever the set's files are, and the
     // automatic rendering, 0x10.
     assert_eq!(flags, 0x110);
+}
+
+#[test]
+fn app_icons_go_in_the_car_numbered_by_size() {
+    let dir = TempDir::new("sweetpad-actool-car-icons");
+    let catalog = template_catalog(&dir);
+    let icon = |name: &str, images: &[(&str, &str, &str, u32)]| {
+        let set = catalog.join(format!("{name}.appiconset"));
+        let mut entries = Vec::new();
+        for (idiom, size, scale, pixels) in images {
+            let file = format!("{idiom}-{size}@{scale}.png");
+            std::fs::create_dir_all(&set).unwrap();
+            std::fs::write(set.join(&file), png_of(*pixels, [9, 9, 9, 255])).unwrap();
+            entries.push(json!({"filename": file, "idiom": idiom, "size": size, "scale": scale}));
+        }
+        write_json(&set.join("Contents.json"), &json!({ "images": entries }));
+    };
+    icon(
+        "AppIcon",
+        &[
+            ("iphone", "60x60", "3x", 180),
+            ("ipad", "83.5x83.5", "2x", 167),
+            ("ios-marketing", "1024x1024", "1x", 1024),
+        ],
+    );
+    icon("Alt", &[("iphone", "60x60", "2x", 120)]);
+    let out = dir.join("out");
+    let mut args = compile_args(&catalog, &out, &dir);
+    args.flags
+        .push(("--alternate-app-icon".into(), Some("Alt".into())));
+    compile::compile(&args).unwrap();
+
+    // Idiom 15, subtype 16, scale 12, size index 9; part 220 is an icon
+    // image and 218 the list of an idiom's sizes.
+    let mut icons: Vec<(u16, u16, u16, u16, u32)> = renditions(&out.join("Assets.car"))
+        .into_iter()
+        .filter(|(key, _, _)| key[&2] == 220)
+        .map(|(key, _, (width, _))| (key[&15], key[&16], key[&12], key[&9], width))
+        .collect();
+    icons.sort_unstable();
+    assert_eq!(
+        icons,
+        [
+            (1, 0, 2, 1, 120),
+            (1, 0, 3, 1, 180),
+            (1, 1792, 2, 3, 180),
+            (2, 0, 2, 2, 167),
+            (6, 0, 1, 4, 1024),
+        ]
+    );
+    let lists = renditions(&out.join("Assets.car"))
+        .into_iter()
+        .filter(|(key, layout, _)| key[&2] == 218 && *layout == 1010)
+        .count();
+    // AppIcon's iPhone, iPhone XR, iPad and App Store lists, and Alt's.
+    assert_eq!(lists, 5);
+    let partial = std::fs::read_to_string(dir.join("partial.plist")).unwrap();
+    for key in [
+        "CFBundlePrimaryIcon",
+        "CFBundleAlternateIcons",
+        "<key>Alt</key>",
+    ] {
+        assert_eq!(partial.matches(key).count(), 2, "{key} in {partial}");
+    }
+}
+
+#[test]
+fn a_mac_icon_goes_in_the_car_and_an_icns_file() {
+    let dir = TempDir::new("sweetpad-actool-mac-icon");
+    let catalog = template_catalog(&dir);
+    let set = catalog.join("AppIcon.appiconset");
+    std::fs::write(set.join("512.png"), png_of(1024, [9, 9, 9, 255])).unwrap();
+    std::fs::write(set.join("16.png"), png_of(16, [9, 9, 9, 255])).unwrap();
+    write_json(
+        &set.join("Contents.json"),
+        &json!({"images": [
+            {"filename": "512.png", "idiom": "mac", "scale": "2x", "size": "512x512"},
+            {"filename": "16.png", "idiom": "mac", "scale": "1x", "size": "16x16"},
+        ]}),
+    );
+    let out = dir.join("out");
+    let mut args = platform_args(&catalog, &out, "macosx");
+    args.flags.push((
+        "--output-partial-info-plist".into(),
+        Some(dir.join("partial.plist").display().to_string()),
+    ));
+    args.flags
+        .push(("--app-icon".into(), Some("AppIcon".into())));
+    compile::compile(&args).unwrap();
+    let icns = std::fs::read(out.join("AppIcon.icns")).unwrap();
+    let kinds: Vec<&[u8]> = [b"ic13", b"ic11", b"ic04", b"ic07"]
+        .iter()
+        .filter(|kind| icns.windows(4).any(|w| w == kind.as_slice()))
+        .map(|kind| kind.as_slice())
+        .collect();
+    assert_eq!(kinds.len(), 4);
+    let partial = std::fs::read_to_string(dir.join("partial.plist")).unwrap();
+    for key in ["CFBundleIconFile", "CFBundleIconName"] {
+        assert!(partial.contains(key), "{key} in {partial}");
+    }
+    let sizes: Vec<(u16, u32)> = renditions(&out.join("Assets.car"))
+        .into_iter()
+        .filter(|(key, _, _)| key[&2] == 220)
+        .map(|(key, _, (width, _))| (key[&9], width))
+        .collect();
+    assert_eq!(sizes.len(), 2);
+    assert!(
+        sizes.contains(&(1, 16)) && sizes.contains(&(2, 1024)),
+        "{sizes:?}"
+    );
 }

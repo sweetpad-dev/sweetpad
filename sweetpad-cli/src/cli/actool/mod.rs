@@ -9,11 +9,11 @@
 //! - the asset symbols (`GeneratedAssetSymbols.swift` and the rest), written
 //!   the way actool writes them, so code that uses `Color(.brand)` compiles;
 //! - a compiled catalog: an `Assets.car` with the colors, the PNG, PDF and
-//!   SVG images and the symbols (see [`car`]), an iOS app icon as loose
-//!   PNGs and a macOS one as an `.icns` file (see [`icns`]), the partial
-//!   Info.plist and dependency file Swift Build links in,
-//!   and a warning naming what the app goes without, like JPEG images (see
-//!   [`compile`]).
+//!   SVG images, the symbols and the app icons (see [`car`]), the iOS app
+//!   icon again as loose PNGs and a macOS one as an `.icns` file (see
+//!   [`icns`]), the partial Info.plist and dependency file Swift Build
+//!   links in, and a warning naming what the app goes without, like JPEG
+//!   images (see [`compile`]).
 //!
 //! A catalog with nothing to compile, like the one Xcode's app template
 //! starts with, comes out the same as from actool.

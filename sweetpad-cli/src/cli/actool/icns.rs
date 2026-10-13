@@ -1,24 +1,19 @@
-//! A macOS app icon as an `.icns` file, the way `iconutil` writes one from an
-//! `.iconset`: a big-endian `icns` header, then one entry per size, each a
-//! four-letter type, its length and its image. The 16 and 32 pixel images
-//! are `ARGB` entries, each channel run-length encoded on its own; the rest
-//! are PNGs.
+//! A macOS app icon as an `.icns` file, the way `iconutil` and actool write
+//! one: a big-endian `icns` header, then one entry per size, each a
+//! four-letter type, its length and its image. The 16 pixel image is an
+//! `ARGB` entry, each channel run-length encoded on its own; the rest are
+//! PNGs.
 
 use super::raster::Rgba;
 
-/// The entry type of each size, in points, and scale, in the order iconutil
-/// writes them, and whether it's an `ARGB` entry rather than a PNG.
+/// The entry type of each size, in points, and scale, in the order Xcode's
+/// actool writes them, and whether it's an `ARGB` entry rather than a PNG.
+/// It stores the 16 and 128 point sizes, and the car holds the rest.
 pub(super) const SLOTS: &[(u32, u32, &[u8; 4], bool)] = &[
-    (32, 2, b"ic12", false),
-    (128, 1, b"ic07", false),
     (128, 2, b"ic13", false),
-    (256, 1, b"ic08", false),
-    (16, 1, b"ic04", true),
-    (256, 2, b"ic14", false),
-    (512, 1, b"ic09", false),
-    (32, 1, b"ic05", true),
-    (512, 2, b"ic10", false),
     (16, 2, b"ic11", false),
+    (16, 1, b"ic04", true),
+    (128, 1, b"ic07", false),
 ];
 
 /// One size of the icon: its pixels, and the PNG to store for it.
@@ -143,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn entries_follow_iconutils_order_with_their_lengths() {
+    fn entries_follow_actools_order_with_their_lengths() {
         let image = |points, scale| {
             let side = points * scale;
             Image {
@@ -163,9 +158,13 @@ mod tests {
             u32::from_be_bytes(file[4..8].try_into().unwrap()) as usize,
             file.len()
         );
-        assert_eq!(&file[8..12], b"ic07");
-        assert_eq!(u32::from_be_bytes(file[12..16].try_into().unwrap()), 12);
-        assert_eq!(&file[20..24], b"ic04");
-        assert_eq!(&file[28..32], b"ARGB");
+        assert_eq!(&file[8..12], b"ic04");
+        assert_eq!(&file[16..20], b"ARGB");
+        let argb = u32::from_be_bytes(file[12..16].try_into().unwrap()) as usize;
+        assert_eq!(&file[8 + argb..12 + argb], b"ic07");
+        assert_eq!(
+            u32::from_be_bytes(file[12 + argb..16 + argb].try_into().unwrap()),
+            12
+        );
     }
 }

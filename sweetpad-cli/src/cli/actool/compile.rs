@@ -8,7 +8,7 @@
 //! other formats, colors for traits the stand-in doesn't compile, and assets
 //! of other kinds.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value, json};
@@ -21,6 +21,7 @@ use super::vector::{Drawing, Format};
 use super::{Args, catalogs, glyph, icns, raster, target_devices, write};
 use crate::cli::xml_plist;
 
+#[allow(clippy::too_many_lines)] // one linear run: icons, the car, the report, the outputs
 pub(super) fn compile(args: &Args) -> Result<(), String> {
     let output = PathBuf::from(
         args.value("--compile")
@@ -39,6 +40,7 @@ pub(super) fn compile(args: &Args) -> Result<(), String> {
 
     let platform = args.value("--platform").unwrap_or_default();
     let icon_name = args.value("--app-icon");
+    let alternates = alternate_icons(&catalogs, icon_name, args);
     let icon_written = icon_name.is_some_and(|name| {
         let Some(set) = app_icon(&catalogs, name) else {
             return false;
@@ -72,6 +74,31 @@ pub(super) fn compile(args: &Args) -> Result<(), String> {
             .unwrap_or_default(),
     );
     let mut compiled = HashSet::new();
+    let icon_in_car = icon_name.is_some_and(|name| {
+        app_icon(&catalogs, name)
+            .is_some_and(|set| add_app_icon(&mut car, name, set, &devices, platform, &mut compiled))
+    });
+    let mut alternates_in_car = Vec::new();
+    for name in &alternates {
+        if let Some(set) = app_icon(&catalogs, name)
+            && add_app_icon(&mut car, name, set, &devices, platform, &mut compiled)
+        {
+            alternates_in_car.push(*name);
+        }
+    }
+    for (key, value) in icon_names_info(
+        icon_name.filter(|_| icon_in_car),
+        &alternates_in_car,
+        &devices,
+        platform,
+    ) {
+        match (info.get_mut(&key), value) {
+            (Some(Value::Object(dict)), Value::Object(more)) => dict.extend(more),
+            (_, value) => {
+                info.insert(key, value);
+            }
+        }
+    }
     for catalog in &catalogs {
         add_assets(catalog, &mut car, &devices, platform, &mut compiled);
     }
@@ -82,7 +109,13 @@ pub(super) fn compile(args: &Args) -> Result<(), String> {
     }
     let mut warnings = Vec::new();
     for catalog in &catalogs {
-        let report = Report::of(catalog, icon_name, icon_written, &compiled, args);
+        let report = Report::of(
+            catalog,
+            icon_name,
+            icon_written && icon_in_car,
+            &compiled,
+            &alternates,
+        );
         if let Some(text) = report.warning() {
             warnings.push(format!("{}: warning: {text}", catalog.path.display()));
         }
@@ -117,6 +150,211 @@ fn app_icon<'a>(catalogs: &'a [Catalog], name: &str) -> Option<&'a Asset> {
         .iter()
         .flat_map(|c| c.assets().into_iter().map(|(_, asset)| asset))
         .find(|a| a.kind == Kind::AppIcon && a.name == name && a.has_content)
+}
+
+/// The alternate app icons the app has: those `--alternate-app-icon` names,
+/// or with `--include-all-app-icons` every icon set but the app's own.
+fn alternate_icons<'a>(
+    catalogs: &'a [Catalog],
+    primary: Option<&str>,
+    args: &'a Args,
+) -> Vec<&'a str> {
+    if !args.has("--include-all-app-icons") {
+        return args.values("--alternate-app-icon");
+    }
+    let mut names: Vec<&str> = catalogs
+        .iter()
+        .flat_map(|c| c.assets().into_iter().map(|(_, asset)| asset))
+        .filter(|a| a.kind == Kind::AppIcon && a.has_content && Some(a.name.as_str()) != primary)
+        .map(|a| a.name.as_str())
+        .collect();
+    names.dedup();
+    names
+}
+
+/// One image of an app icon set as it goes in the car: the idiom and
+/// device class it's for, its size in points, scale and appearance.
+struct IconImage<'a> {
+    idiom: u16,
+    subtype: u16,
+    points: f64,
+    scale: u16,
+    appearance: Appearance,
+    entry: &'a super::catalog::Entry,
+}
+
+/// The images of an app icon set for the platform and devices, as Xcode
+/// puts them in the car. A single-size iOS icon is one 1024-point image for
+/// each device; a set with an image for each size has its iPhone, iPad and
+/// App Store images, and its 60-point 3x one again at 2x for the iPhone XR's
+/// device class (1792). A macOS icon has its `mac` images.
+fn icon_images<'a>(set: &'a Asset, devices: &[String], platform: &str) -> Vec<IconImage<'a>> {
+    let targeted = |device: &str| devices.iter().any(|d| d == device);
+    let mut images = Vec::new();
+    for entry in &set.entries {
+        if entry.filename.is_none() || entry.other_traits {
+            continue;
+        }
+        let appearance = match entry.appearances.as_slice() {
+            [] => Appearance::Any,
+            [(kind, value)] if kind == "luminosity" && value == "dark" => Appearance::Dark,
+            [(kind, value)] if kind == "luminosity" && value == "tinted" => Appearance::Tinted,
+            _ => continue,
+        };
+        let Some(points) = entry
+            .size
+            .as_deref()
+            .and_then(|s| s.split('x').next())
+            .and_then(|w| w.parse::<f64>().ok())
+        else {
+            continue;
+        };
+        let scale = entry
+            .scale
+            .as_deref()
+            .and_then(|s| s.trim_end_matches('x').parse::<u16>().ok())
+            .unwrap_or(1);
+        let mut push = |idiom: u16, subtype: u16, points: f64, scale: u16| {
+            images.push(IconImage {
+                idiom,
+                subtype,
+                points,
+                scale,
+                appearance,
+                entry,
+            });
+        };
+        match (platform, entry.idiom.as_str()) {
+            ("iphoneos" | "iphonesimulator", "universal")
+                if entry.platform.as_deref().is_none_or(|p| p == "ios") =>
+            {
+                for (device, idiom) in [("iphone", 1), ("ipad", 2)] {
+                    if targeted(device) {
+                        push(idiom, 0, points, 1);
+                    }
+                }
+            }
+            ("iphoneos" | "iphonesimulator", "iphone") if targeted("iphone") => {
+                push(1, 0, points, scale);
+                if (points - 60.0).abs() < f64::EPSILON && scale == 3 {
+                    push(1, 1792, 90.0, 2);
+                }
+            }
+            ("iphoneos" | "iphonesimulator", "ipad") if targeted("ipad") => {
+                push(2, 0, points, scale);
+            }
+            ("iphoneos" | "iphonesimulator", "ios-marketing") => push(6, 0, points, 1),
+            ("macosx", "mac") if scale <= 2 => push(0, 0, points, scale),
+            _ => {}
+        }
+    }
+    images
+}
+
+/// Put the app icon set `set` in the car as `name`: each of its images, and
+/// for each idiom the list of sizes it has, each size numbered by its rank
+/// among the set's sizes. False when it has no image for the platform, or
+/// one can't be read.
+fn add_app_icon<'a>(
+    car: &mut Car,
+    name: &str,
+    set: &'a Asset,
+    devices: &[String],
+    platform: &str,
+    compiled: &mut HashSet<&'a Path>,
+) -> bool {
+    let images = icon_images(set, devices, platform);
+    let mut decoded = Vec::with_capacity(images.len());
+    for image in &images {
+        let Some(bitmap) = image
+            .entry
+            .filename
+            .as_ref()
+            .and_then(|f| std::fs::read(set.dir.join(f)).ok())
+            .and_then(|bytes| raster::decode(&bytes).ok())
+            .map(|rgba| Bitmap::from_rgba(&rgba))
+        else {
+            return false;
+        };
+        decoded.push(bitmap);
+    }
+    if images.is_empty() {
+        return false;
+    }
+    let Some(identifier) = car.facet(name, Part::Icon) else {
+        return false;
+    };
+    let mut sizes: Vec<f64> = images.iter().map(|i| i.points).collect();
+    sizes.sort_by(f64::total_cmp);
+    sizes.dedup();
+    let index = |points: f64| {
+        let rank = sizes.iter().position(|s| s.total_cmp(&points).is_eq());
+        u16::try_from(rank.unwrap_or(0) + 1).unwrap_or(0)
+    };
+    let mut groups: BTreeMap<(u16, u16), Vec<(u32, u16)>> = BTreeMap::new();
+    for (image, bitmap) in images.iter().zip(&decoded) {
+        let variant = Variant {
+            appearance: image.appearance,
+            scale: image.scale,
+            idiom: image.idiom,
+        };
+        let file = image.entry.filename.as_deref().unwrap_or_default();
+        car.icon(
+            file,
+            identifier,
+            variant,
+            image.subtype,
+            index(image.points),
+            bitmap,
+        );
+        // Whole points, as Xcode lists the iPad Pro's 83.5.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let size = (image.points as u32, index(image.points));
+        let list = groups.entry((image.idiom, image.subtype)).or_default();
+        if !list.contains(&size) {
+            list.push(size);
+        }
+    }
+    for ((idiom, subtype), mut list) in groups {
+        list.sort_by_key(|&(_, index)| index);
+        car.multisized(name, identifier, idiom, subtype, &list);
+    }
+    compiled.insert(set.dir.as_path());
+    true
+}
+
+/// The Info.plist keys that name the icons in the car: `CFBundleIconName`
+/// on macOS, and on iOS the alternate icons, by name, beside the primary
+/// icon's keys of each device the app targets.
+fn icon_names_info(
+    primary: Option<&str>,
+    alternates: &[&str],
+    devices: &[String],
+    platform: &str,
+) -> Map<String, Value> {
+    let mut info = Map::new();
+    if platform == "macosx" {
+        if let Some(name) = primary {
+            info.insert("CFBundleIconName".into(), json!(name));
+        }
+        return info;
+    }
+    if alternates.is_empty() {
+        return info;
+    }
+    let mut named = Map::new();
+    for name in alternates {
+        named.insert((*name).to_string(), json!({ "CFBundleIconName": name }));
+    }
+    for (key, device) in [("CFBundleIcons", "iphone"), ("CFBundleIcons~ipad", "ipad")] {
+        if devices.iter().any(|d| d == device) {
+            info.insert(
+                key.into(),
+                json!({ "CFBundleAlternateIcons": Value::Object(named.clone()) }),
+            );
+        }
+    }
+    info
 }
 
 /// The two files actool writes for an iOS app icon, whichever devices the
@@ -166,46 +404,34 @@ fn write_ios_icon(set: &Asset, name: &str, output: &Path, written: &mut Vec<Path
     true
 }
 
-/// The `.icns` file of a macOS app icon, `<name>.icns`, with every size
-/// iconutil stores: each the set's `mac` image of that size, as it is, or
-/// else its largest image scaled down. False when the set has no image, or
-/// one can't be read.
+/// The `.icns` file of a macOS app icon, `<name>.icns`, with the sizes
+/// Xcode's actool stores beside the car: each the set's `mac` image of that
+/// many pixels, as it is, or else its largest scaled down. False when the
+/// set has no `mac` image that can be read.
 fn write_mac_icon(set: &Asset, name: &str, output: &Path, written: &mut Vec<PathBuf>) -> bool {
-    let usable = |e: &&super::catalog::Entry| e.filename.is_some() && !e.appearance;
-    let read = |entry: &super::catalog::Entry| {
-        let bytes = std::fs::read(set.dir.join(entry.filename.as_ref()?)).ok()?;
-        let rgba = raster::decode(&bytes).ok()?;
-        Some((bytes, rgba))
-    };
-    let mac_entry = |points: u32, scale: u32| {
-        set.entries.iter().filter(usable).find(|e| {
-            e.idiom == "mac"
-                && e.size.as_deref() == Some(&format!("{points}x{points}"))
-                && e.scale.as_deref() == Some(&format!("{scale}x"))
+    let sources: Vec<(Vec<u8>, raster::Rgba)> = set
+        .entries
+        .iter()
+        .filter(|e| e.idiom == "mac" && !e.appearance)
+        .filter_map(|e| std::fs::read(set.dir.join(e.filename.as_ref()?)).ok())
+        .filter_map(|bytes| {
+            let rgba = raster::decode(&bytes).ok()?;
+            Some((bytes, rgba))
         })
+        .collect();
+    let Some((_, largest)) = sources.iter().max_by_key(|(_, rgba)| rgba.width) else {
+        return false;
     };
-    // The single-size form: one 1024-pixel image for every size.
-    let largest = mac_entry(512, 2).or_else(|| {
-        set.entries.iter().filter(usable).find(|e| {
-            e.idiom == "universal"
-                && e.size.as_deref() == Some("1024x1024")
-                && e.platform.as_deref().is_none_or(|p| p == "macos")
-        })
-    });
-    let largest = largest.and_then(read);
     let mut images = Vec::new();
     for &(points, scale, _, _) in icns::SLOTS {
         let side = points * scale;
-        let exact = mac_entry(points, scale)
-            .and_then(read)
-            .filter(|(_, rgba)| rgba.width == side && rgba.height == side);
-        let (png, rgba) = if let Some(found) = exact {
-            found
+        let exact = sources
+            .iter()
+            .find(|(_, rgba)| rgba.width == side && rgba.height == side);
+        let (png, rgba) = if let Some((png, rgba)) = exact {
+            (png.clone(), rgba.clone())
         } else {
-            let Some((_, source)) = &largest else {
-                return false;
-            };
-            let rgba = raster::resize(source, side, side);
+            let rgba = raster::resize(largest, side, side);
             let Ok(png) = raster::encode(&rgba) else {
                 return false;
             };
@@ -668,9 +894,8 @@ impl Report {
         icon_name: Option<&str>,
         icon_written: bool,
         compiled: &HashSet<&Path>,
-        args: &Args,
+        alternates: &[&str],
     ) -> Report {
-        let alternates = args.values("--alternate-app-icon");
         let mut report = Report::default();
         for asset in catalog.compiled() {
             let done = compiled.contains(asset.dir.as_path());
@@ -678,7 +903,7 @@ impl Report {
                 Kind::AppIcon if Some(asset.name.as_str()) == icon_name => {
                     report.icon_missing = !icon_written;
                 }
-                Kind::AppIcon if alternates.contains(&asset.name.as_str()) => {
+                Kind::AppIcon if alternates.contains(&asset.name.as_str()) && !done => {
                     report.alternate_icons += 1;
                 }
                 Kind::Color if !done => report.colors += 1,

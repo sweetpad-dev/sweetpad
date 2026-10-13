@@ -205,9 +205,14 @@ overrides into variations.
       custom symbols on every platform (`31a3fd2e`). 44 of 47 checker
       lookups match Xcode's build; 89 of 93 corpus catalogs list the same
 - [ ] JPEG and HEIC images
-- [ ] iOS app icon inside `Assets.car` (App Store builds need it)
-- [x] macOS app icons: an `.icns` with every size, as iconutil writes it
-- [ ] Alternate app icons *(optional)*
+- [x] App icons inside `Assets.car`, each size numbered as Xcode numbers
+      them, with a list of sizes per idiom. Single-size, every-size, dark
+      and tinted, and alternate sets (`--alternate-app-icon`,
+      `--include-all-app-icons`) list the same in `assetutil` as Xcode's,
+      except that Xcode packs the small sizes into atlases. The simulator
+      shows the icon from the car alone
+- [x] macOS app icons: `CFBundleIconName` for the icon in the car, and an
+      `.icns` with the four sizes Xcode's actool stores beside it
 - [ ] Icon Composer `.icon` files *(optional)*
 - [ ] Data sets (`NSDataAsset`)
 - [ ] Fallback values for system colors (black today; UIKit resolves the
@@ -233,8 +238,8 @@ overrides into variations.
       under `xcodebuild test-without-building` with Xcode's `.xctestrun`
 - [ ] An `.xctestrun` written by the build, so tests built here run on a Mac
       without a second build *(optional)*
-- [x] macOS apps: `corpus/_mac-app` (local) matches Xcode's build in 29 of
-      31 asset lookups; the two left are the icon inside `Assets.car`. Swift
+- [x] macOS apps: `corpus/_mac-app` (local) matches Xcode's build in all 31
+      asset lookups, the app icon among them. Swift
       Build needs `swift-build-linux.patch` (`linux-setup.sh` applies it)
       to skip registering the app with Launch Services; upstream it
 - [ ] watchOS, tvOS and visionOS apps *(optional)*
@@ -268,12 +273,15 @@ Running in the simulator stays on a Mac.
 - Local checker apps live in the gitignored `sweetpad-lib/corpus/`:
   `_car-app` (47 asset lookups), `_strings-app`, `_alamofire-spm`,
   `_alamofire-consumer`, `_tools-app` (XcodeGen: static libraries, a loose
-  PNG, a widget, a unit test bundle). Each prints its results to stderr for a diff
+  PNG, a widget, a unit test bundle), `_mac-app` (XcodeGen: a macOS app's
+  asset lookups and icon). Each prints its results to stderr for a diff
   against Xcode's build.
 - `sweetpad-lib/corpus/_car-tools/` (gitignored) keeps the scripts used to
   decode `Assets.car`: `cardump.py` dumps one, `surgery.py` edits and
   rebuilds one, `listing.py` and `corpus_compare2.py` compare `assetutil`
-  listings with Xcode's, `glyphs.py` compares symbol records. Their paths
+  listings with Xcode's, `glyphs.py` compares symbol records, and
+  `icons.py <case>` compiles app icon sets of each shape with Xcode's actool,
+  or with `OURS=<path to an actool symlink>` the stand-in. Their paths
   point at a deleted scratch folder; adjust them before use.
 - Golden fixtures to regenerate after an Xcode update:
   `sweetpad-cli/fixtures/actool` and `fixtures/xcstringstool` (each has a
