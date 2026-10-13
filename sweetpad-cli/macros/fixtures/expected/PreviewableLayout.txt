@@ -1,0 +1,138 @@
+=== __swiftmacro_17PreviewableLayout0028PreviewableLayoutswift_IxAFhfMX10_0_33_56EE91618871564D5FC50A6AA5118851Ll7PreviewfMf_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s17PreviewableLayout0028PreviewableLayoutswift_IxAFhfMX10_0_33_56EE91618871564D5FC50A6AA5118851Ll7PreviewfMf_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewableLayout/PreviewableLayout.swift"
+    }
+    static var line: Int {
+        11
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            struct __P_Previewable_Transform_Wrapper: SwiftUI.View {
+                @State var x = 1
+
+                @State var y = 2
+
+                var body: some SwiftUI.View {
+                    // before body
+                    B(x: $x)
+                    B(x: $y) // end
+                }
+            }
+            return __P_Previewable_Transform_Wrapper()
+        }
+    }
+}
+=== __swiftmacro_17PreviewableLayout0028PreviewableLayoutswift_IxAFhfMX21_0_33_56EE91618871564D5FC50A6AA5118851Ll7PreviewfMf0_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s17PreviewableLayout0028PreviewableLayoutswift_IxAFhfMX21_0_33_56EE91618871564D5FC50A6AA5118851Ll7PreviewfMf0_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewableLayout/PreviewableLayout.swift"
+    }
+    static var line: Int {
+        22
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            struct __P_Previewable_Transform_Wrapper: SwiftUI.View {
+                @State var t = 1
+
+                var body: some SwiftUI.View {
+                	B(x: $t)
+                }
+            }
+            return __P_Previewable_Transform_Wrapper()
+        }
+    }
+}
+=== __swiftmacro_17PreviewableLayout0028PreviewableLayoutswift_IxAFhfMX26_0_33_56EE91618871564D5FC50A6AA5118851Ll7PreviewfMf1_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s17PreviewableLayout0028PreviewableLayoutswift_IxAFhfMX26_0_33_56EE91618871564D5FC50A6AA5118851Ll7PreviewfMf1_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewableLayout/PreviewableLayout.swift"
+    }
+    static var line: Int {
+        27
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            struct __P_Previewable_Transform_Wrapper: SwiftUI.View {
+                @State var z = 1
+
+                var body: some SwiftUI.View {
+                B(x: $z)
+                }
+            }
+            return __P_Previewable_Transform_Wrapper()
+        }
+    }
+}
+=== __swiftmacro_17PreviewableLayout0028PreviewableLayoutswift_IxAFhfMX28_0_33_56EE91618871564D5FC50A6AA5118851Ll7PreviewfMf2_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s17PreviewableLayout0028PreviewableLayoutswift_IxAFhfMX28_0_33_56EE91618871564D5FC50A6AA5118851Ll7PreviewfMf2_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewableLayout/PreviewableLayout.swift"
+    }
+    static var line: Int {
+        29
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Body argument", body: {
+            struct __P_Previewable_Transform_Wrapper: SwiftUI.View {
+                @State var w = 1
+
+                var body: some SwiftUI.View {
+                    B(x: $w)
+                }
+            }
+            return __P_Previewable_Transform_Wrapper()
+        })
+    }
+}
+=== __swiftmacro_17PreviewableLayout0028PreviewableLayoutswift_IxAFhfMX33_0_33_56EE91618871564D5FC50A6AA5118851Ll7PreviewfMf3_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s17PreviewableLayout0028PreviewableLayoutswift_IxAFhfMX33_0_33_56EE91618871564D5FC50A6AA5118851Ll7PreviewfMf3_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewableLayout/PreviewableLayout.swift"
+    }
+    static var line: Int {
+        34
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            struct __P_Previewable_Transform_Wrapper: SwiftUI.View {
+                @State var deep = 1
+
+                var body: some SwiftUI.View {
+                        VStack {
+                            B(x: $deep)
+                        }
+                }
+            }
+            return __P_Previewable_Transform_Wrapper()
+        }
+    }
+}
+=== diagnostic
+PreviewableLayout.swift:42:5: error: '@Previewable' can only be used in a SwiftUI #Preview body closure (from macro 'Previewable ')

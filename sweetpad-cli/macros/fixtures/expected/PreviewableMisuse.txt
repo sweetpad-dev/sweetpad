@@ -1,0 +1,175 @@
+=== __swiftmacro_17PreviewableMisuse0028PreviewableMisuseswift_IxAFhfMX17_0_33_82F8A2D764C649D17ED390343DFEE011Ll7PreviewfMf_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s17PreviewableMisuse0028PreviewableMisuseswift_IxAFhfMX17_0_33_82F8A2D764C649D17ED390343DFEE011Ll7PreviewfMf_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewableMisuse/PreviewableMisuse.swift"
+    }
+    static var line: Int {
+        18
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            struct __P_Previewable_Transform_Wrapper: SwiftUI.View {
+                let constant = 1
+
+                var plain = 2
+
+                var body: some SwiftUI.View {
+                    B(x: .constant(constant + plain))
+                }
+            }
+            return __P_Previewable_Transform_Wrapper()
+        }
+    }
+}
+=== __swiftmacro_17PreviewableMisuse0028PreviewableMisuseswift_IxAFhfMX30_0_33_82F8A2D764C649D17ED390343DFEE011Ll7PreviewfMf1_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s17PreviewableMisuse0028PreviewableMisuseswift_IxAFhfMX30_0_33_82F8A2D764C649D17ED390343DFEE011Ll7PreviewfMf1_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewableMisuse/PreviewableMisuse.swift"
+    }
+    static var line: Int {
+        31
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            @resultBuilder struct __B_Builder<Content> {
+                static func buildBlock(_ content: Content) -> Content {
+                    content
+                }
+            }
+            func __b_buildContent<Content>(@__B_Builder<Content> build: () -> Content) -> Content {
+                build()
+            }
+            return __b_buildContent {
+                @Previewable @State var kit = 1
+                UIView()
+            }
+        }
+    }
+}
+=== __swiftmacro_17PreviewableMisuse0028PreviewableMisuseswift_IxAFhfMX35_0_33_82F8A2D764C649D17ED390343DFEE011Ll7PreviewfMf2_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s17PreviewableMisuse0028PreviewableMisuseswift_IxAFhfMX35_0_33_82F8A2D764C649D17ED390343DFEE011Ll7PreviewfMf2_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewableMisuse/PreviewableMisuse.swift"
+    }
+    static var line: Int {
+        36
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Group", arguments: [1]) { n in
+            @Previewable @State var grouped = 1
+            B(x: $grouped)
+        }
+    }
+}
+=== __swiftmacro_17PreviewableMisuse0028PreviewableMisuseswift_IxAFhfMX40_0_33_82F8A2D764C649D17ED390343DFEE011Ll7PreviewfMf3_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s17PreviewableMisuse0028PreviewableMisuseswift_IxAFhfMX40_0_33_82F8A2D764C649D17ED390343DFEE011Ll7PreviewfMf3_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewableMisuse/PreviewableMisuse.swift"
+    }
+    static var line: Int {
+        41
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            struct __P_Previewable_Transform_Wrapper: SwiftUI.View {
+                @State var only = 1
+
+                var body: some SwiftUI.View {
+
+                }
+            }
+            return __P_Previewable_Transform_Wrapper()
+        }
+    }
+}
+=== __swiftmacro_17PreviewableMisuse0028PreviewableMisuseswift_IxAFhfMX54_0_33_82F8A2D764C649D17ED390343DFEE011Ll7PreviewfMf6_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s17PreviewableMisuse0028PreviewableMisuseswift_IxAFhfMX54_0_33_82F8A2D764C649D17ED390343DFEE011Ll7PreviewfMf6_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewableMisuse/PreviewableMisuse.swift"
+    }
+    static var line: Int {
+        55
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            struct __P_Previewable_Transform_Wrapper: SwiftUI.View {
+                @State
+                private var d = 1
+
+                var body: some SwiftUI.View {
+                    B(x: $d)
+                }
+            }
+            return __P_Previewable_Transform_Wrapper()
+        }
+    }
+}
+=== __swiftmacro_17PreviewableMisuse12constant_$l00A0fMp_.swift
+
+=== __swiftmacro_17PreviewableMisuse5a_$l00A0fMp_.swift
+
+=== __swiftmacro_17PreviewableMisuse5b_$l00A0fMp_.swift
+
+=== __swiftmacro_17PreviewableMisuse6HolderV10$misplaced30_PropertyWrapperProjectedValuefMa_.swift
+{
+    get {
+        _misplaced.projectedValue
+    }
+}
+=== __swiftmacro_17PreviewableMisuse6HolderV9misplaced5StatefMa_.swift
+{
+    @storageRestrictions(initializes: _misplaced)
+    init(initialValue) {
+        _misplaced = SwiftUICore.State(initialValue: initialValue)
+    }
+    get {
+        _misplaced.wrappedValue
+    }
+    nonmutating set {
+        _misplaced.wrappedValue = newValue
+    }
+}
+=== __swiftmacro_17PreviewableMisuse6HolderV9misplaced5StatefMp_.swift
+private var _misplaced = SwiftUICore.State(initialValue: 1)
+
+@SwiftUICore._PropertyWrapperProjectedValue
+var $misplaced = SwiftUICore.State(initialValue: 1).projectedValue
+=== __swiftmacro_17PreviewableMisuse9plain_$l00A0fMp_.swift
+
+=== diagnostic
+PreviewableMisuse.swift:14:5: error: '@Previewable' can only be used in a SwiftUI #Preview body closure (from macro 'Previewable ')
+=== diagnostic
+PreviewableMisuse.swift:26:9: error: '@Previewable' items must be at root scope in the preview block (from macro 'Preview')
+=== diagnostic
+PreviewableMisuse.swift:46:18: error: property wrapper can only apply to a single variable
+=== diagnostic
+PreviewableMisuse.swift:47:10: error: cannot find '$a' in scope
+=== diagnostic
+PreviewableMisuse.swift:51:19: error: referencing initializer 'init()' on 'State' requires that 'Int' conform to 'ExpressibleByNilLiteral'
+=== diagnostic
+PreviewableMisuse.swift:58:5: error: attribute 'private' can only be used in a non-local scope

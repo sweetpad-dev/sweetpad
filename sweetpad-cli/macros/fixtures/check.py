@@ -16,14 +16,14 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PACKAGE = os.path.dirname(HERE)
 # The modules sweetpad build hands the plugin (MACRO_MODULES in swbuild.rs).
-MODULES = "FoundationMacros,SwiftDataMacros"
+MODULES = "FoundationMacros,PreviewsMacros,SwiftDataMacros"
 
 
 def expansions(fixture, plugin):
     sdk = subprocess.run(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"],
                          capture_output=True, text=True, check=True).stdout.strip()
     command = ["xcrun", "swiftc", "-typecheck", "-sdk", sdk,
-               "-target", "arm64-apple-ios18.0-simulator", "-swift-version", "6",
+               "-target", "arm64-apple-ios26.0-simulator", "-swift-version", "6",
                "-module-name", os.path.splitext(fixture)[0],
                "-Xfrontend", "-dump-macro-expansions", fixture]
     if plugin:
@@ -40,11 +40,11 @@ def expansions(fixture, plugin):
             found[line[1:]] = "\n".join(lines[i + 2:j])
             i = j + 1
             continue
-        if line.startswith(fixture + ":") and ": error: " in line:
+        if line.startswith(fixture + ":") and (": error: " in line or ": warning: " in line and "(from macro" in line):
             diagnostics.add(line)
         i += 1
     out = "".join(f"=== {name}\n{body}\n" for name, body in sorted(found.items()))
-    return out + "".join(f"=== error\n{d}\n" for d in sorted(diagnostics))
+    return out + "".join(f"=== diagnostic\n{d}\n" for d in sorted(diagnostics))
 
 
 def main():

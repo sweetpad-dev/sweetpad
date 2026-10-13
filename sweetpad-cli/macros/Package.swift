@@ -44,10 +44,20 @@ let package = Package(
             exclude: ["LICENSE.md"],
             swiftSettings: [.define("FOUNDATION_FRAMEWORK")]
         ),
+        .target(
+            name: "PreviewsMacros",
+            dependencies: [
+                .product(name: "SwiftDiagnostics", package: "swift-syntax"),
+                .product(name: "SwiftSyntax", package: "swift-syntax"),
+                .product(name: "SwiftSyntaxBuilder", package: "swift-syntax"),
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+            ]
+        ),
         .executableTarget(
             name: "sweetpad-macros",
             dependencies: [
                 "FoundationMacros",
+                "PreviewsMacros",
                 "SwiftDataMacros",
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
             ]

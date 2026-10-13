@@ -1,0 +1,301 @@
+=== __swiftmacro_15PreviewWrappers0026PreviewWrappersswift_DsAGgfMX34_0_33_F364055D40A76A7A3897316EE23DDB64Ll0A0fMf0_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s15PreviewWrappers0026PreviewWrappersswift_DsAGgfMX34_0_33_F364055D40A76A7A3897316EE23DDB64Ll0A0fMf0_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWrappers/PreviewWrappers.swift"
+    }
+    static var line: Int {
+        35
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            struct __P_Previewable_Transform_Wrapper: SwiftUI.View {
+                @State var x = 1
+
+                var body: some SwiftUI.View {
+                    VStack {
+                        V().previewLayout(.sizeThatFits)
+                    }
+                    .previewDisplayName("n")
+                }
+            }
+            return __P_Previewable_Transform_Wrapper()
+        }
+    }
+}
+=== __swiftmacro_15PreviewWrappers0026PreviewWrappersswift_DsAGgfMX42_0_33_F364055D40A76A7A3897316EE23DDB64Ll0A0fMf1_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s15PreviewWrappers0026PreviewWrappersswift_DsAGgfMX42_0_33_F364055D40A76A7A3897316EE23DDB64Ll0A0fMf1_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWrappers/PreviewWrappers.swift"
+    }
+    static var line: Int {
+        43
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+            }
+        }
+    }
+}
+=== __swiftmacro_15PreviewWrappers0026PreviewWrappersswift_DsAGgfMX45_0_33_F364055D40A76A7A3897316EE23DDB64Ll0A0fMf2_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s15PreviewWrappers0026PreviewWrappersswift_DsAGgfMX45_0_33_F364055D40A76A7A3897316EE23DDB64Ll0A0fMf2_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWrappers/PreviewWrappers.swift"
+    }
+    static var line: Int {
+        46
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                V().previewContext(WidgetPreviewContext())
+            }
+        }
+    }
+}
+=== __swiftmacro_15PreviewWrappers0026PreviewWrappersswift_DsAGgfMX49_0_33_F364055D40A76A7A3897316EE23DDB64Ll0A0fMf3_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s15PreviewWrappers0026PreviewWrappersswift_DsAGgfMX49_0_33_F364055D40A76A7A3897316EE23DDB64Ll0A0fMf3_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWrappers/PreviewWrappers.swift"
+    }
+    static var line: Int {
+        50
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Group", arguments: [1]) { n in
+            @State var inGroup = 1
+            V().previewLayout(.sizeThatFits)
+        }
+    }
+}
+=== __swiftmacro_15PreviewWrappers0026PreviewWrappersswift_DsAGgfMX54_0_33_F364055D40A76A7A3897316EE23DDB64Ll0A0fMf4_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s15PreviewWrappers0026PreviewWrappersswift_DsAGgfMX54_0_33_F364055D40A76A7A3897316EE23DDB64Ll0A0fMf4_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWrappers/PreviewWrappers.swift"
+    }
+    static var line: Int {
+        55
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                VStack {
+                    @State var nested = 1
+                    V()
+                }
+            }
+        }
+    }
+}
+=== __swiftmacro_15PreviewWrappers0026PreviewWrappersswift_DsAGgfMX9_0_33_F364055D40A76A7A3897316EE23DDB64Ll0A0fMf_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s15PreviewWrappers0026PreviewWrappersswift_DsAGgfMX9_0_33_F364055D40A76A7A3897316EE23DDB64Ll0A0fMf_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWrappers/PreviewWrappers.swift"
+    }
+    static var line: Int {
+        10
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                @State var a = 1
+                @FocusState var c: Bool
+                @StateObject var d = Model()
+                @ObservedObject var e = Model()
+                @Environment(\.colorScheme) var f
+                @EnvironmentObject var g: Model
+                @AppStorage("k") var h = 1
+                @SceneStorage("s") var i = 1
+                @Namespace var j
+                @GestureState var k = 1
+                @AccessibilityFocusState var l: Bool
+                @ScaledMetric var m = 1.0
+                @Bindable var n = Model2()
+                @Query var p: [Item]
+                @Custom var q = 1
+                let r = 1
+                V()
+            }
+        }
+    }
+}
+=== __swiftmacro_15PreviewWrappers04$s15a12Wrappers0026a72Wrappersswift_DsAGgfMX9_0_33_F364055D40A76A7A3897316EE23DDB64Ll0A0fMf_15A12RegistryfMu_V5p_$l05QueryfMa_.swift
+{
+    get {
+        _p.wrappedValue
+    }
+}
+=== __swiftmacro_15PreviewWrappers04$s15a12Wrappers0026a72Wrappersswift_DsAGgfMX9_0_33_F364055D40A76A7A3897316EE23DDB64Ll0A0fMf_15A12RegistryfMu_V5p_$l15QueryfMp_.swift
+private(set) var _p: SwiftData.Query<[Item].Element, [Item]> = .init()
+=== __swiftmacro_15PreviewWrappers4Item5ModelfMe_.swift
+extension Item: nonisolated SwiftData.PersistentModel {
+}
+
+extension Item: nonisolated Observation.Observable {
+}
+
+@available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Item's persistentModelID instead")
+@available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Item's persistentModelID instead")
+extension Item: Sendable {
+}
+=== __swiftmacro_15PreviewWrappers4Item5ModelfMm_.swift
+@Transient
+private var _$backingData: any SwiftData.BackingData<Item> = Item.createBackingData()
+
+public var persistentBackingData: any SwiftData.BackingData<Item> {
+    get {
+        return _$backingData
+    }
+    set {
+        _$backingData = newValue
+    }
+}
+
+class var schemaMetadata: [SwiftData.Schema.PropertyMetadata] {
+  return [
+
+  ]
+}
+
+init(backingData: any SwiftData.BackingData<Item>) {
+
+  self.persistentBackingData = backingData
+}
+
+@Transient private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<_M>(
+    keyPath: KeyPath<Item, _M>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<_M, _MR>(
+  keyPath: KeyPath<Item, _M>,
+  _ mutation: () throws -> _MR
+) rethrows -> _MR {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+struct _SwiftDataNoType {
+}
+=== __swiftmacro_15PreviewWrappers4ItemC13_$backingData33_F364055D40A76A7A3897316EE23DDB64LL9TransientfMp_.swift
+
+=== __swiftmacro_15PreviewWrappers4ItemC22_$observationRegistrar33_F364055D40A76A7A3897316EE23DDB64LL9TransientfMp_.swift
+
+=== __swiftmacro_15PreviewWrappers4ItemC4init5ModelfMr_.swift
+
+=== __swiftmacro_15PreviewWrappers5p_$l05QueryfMa_.swift
+{
+    get {
+        _p.wrappedValue
+    }
+}
+=== __swiftmacro_15PreviewWrappers5p_$l15QueryfMp_.swift
+private(set) var _p: SwiftData.Query<[Item].Element, [Item]> = .init()
+=== __swiftmacro_15PreviewWrappers6Model210ObservablefMe_.swift
+extension Model2: nonisolated Observation.Observable {
+}
+=== __swiftmacro_15PreviewWrappers6Model210ObservablefMm_.swift
+@ObservationIgnored private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<$s15PreviewWrappers6Model210ObservablefMm_6MemberfMu_>(
+  keyPath: KeyPath<Model2, $s15PreviewWrappers6Model210ObservablefMm_6MemberfMu_>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<$s15PreviewWrappers6Model210ObservablefMm_6MemberfMu0_, $s15PreviewWrappers6Model210ObservablefMm_14MutationResultfMu_>(
+  keyPath: KeyPath<Model2, $s15PreviewWrappers6Model210ObservablefMm_6MemberfMu0_>,
+  _ mutation: () throws -> $s15PreviewWrappers6Model210ObservablefMm_14MutationResultfMu_
+) rethrows -> $s15PreviewWrappers6Model210ObservablefMm_14MutationResultfMu_ {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+private nonisolated func shouldNotifyObservers<$s15PreviewWrappers6Model210ObservablefMm_6MemberfMu1_>(_ lhs: $s15PreviewWrappers6Model210ObservablefMm_6MemberfMu1_, _ rhs: $s15PreviewWrappers6Model210ObservablefMm_6MemberfMu1_) -> Bool {
+    true
+}
+
+private nonisolated func shouldNotifyObservers<$s15PreviewWrappers6Model210ObservablefMm_6MemberfMu2_: Equatable>(_ lhs: $s15PreviewWrappers6Model210ObservablefMm_6MemberfMu2_, _ rhs: $s15PreviewWrappers6Model210ObservablefMm_6MemberfMu2_) -> Bool {
+    lhs != rhs
+}
+
+private nonisolated func shouldNotifyObservers<$s15PreviewWrappers6Model210ObservablefMm_6MemberfMu3_: AnyObject>(_ lhs: $s15PreviewWrappers6Model210ObservablefMm_6MemberfMu3_, _ rhs: $s15PreviewWrappers6Model210ObservablefMm_6MemberfMu3_) -> Bool {
+    lhs !== rhs
+}
+
+private nonisolated func shouldNotifyObservers<$s15PreviewWrappers6Model210ObservablefMm_6MemberfMu4_: Equatable & AnyObject>(_ lhs: $s15PreviewWrappers6Model210ObservablefMm_6MemberfMu4_, _ rhs: $s15PreviewWrappers6Model210ObservablefMm_6MemberfMu4_) -> Bool {
+    lhs != rhs
+}
+=== __swiftmacro_15PreviewWrappers6Model2C22_$observationRegistrar33_F364055D40A76A7A3897316EE23DDB64LL18ObservationIgnoredfMa_.swift
+
+=== diagnostic
+PreviewWrappers.swift:11:5: warning: '@State' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
+=== diagnostic
+PreviewWrappers.swift:13:5: warning: '@StateObject' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
+=== diagnostic
+PreviewWrappers.swift:15:5: warning: '@Environment' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
+=== diagnostic
+PreviewWrappers.swift:16:5: warning: '@EnvironmentObject' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
+=== diagnostic
+PreviewWrappers.swift:17:5: warning: '@AppStorage' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
+=== diagnostic
+PreviewWrappers.swift:18:5: warning: '@SceneStorage' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
+=== diagnostic
+PreviewWrappers.swift:19:5: warning: '@Namespace' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
+=== diagnostic
+PreviewWrappers.swift:20:5: warning: '@GestureState' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
+=== diagnostic
+PreviewWrappers.swift:22:5: warning: '@ScaledMetric' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
+=== diagnostic
+PreviewWrappers.swift:24:5: warning: '@Query' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
+=== diagnostic
+PreviewWrappers.swift:38:13: warning: previewLayout is ignored in a #Preview macro. Use the `traits` argument of the macro to provide the desired layout, e.g. `.sizeThatFitsLayout. (from macro 'Preview')
+=== diagnostic
+PreviewWrappers.swift:40:6: warning: previewDisplayName is ignored in a #Preview macro. Provide the name to the macro initializer, e.g. `#Preview("preview name")` (from macro 'Preview')
+=== diagnostic
+PreviewWrappers.swift:47:9: warning: previewContext is ignored in a #Preview macro. Use the macro initializer that matches the context of the desired environment; e.g. Widgets, Live Activities (from macro 'Preview')
+=== diagnostic
+PreviewWrappers.swift:57:9: warning: '@State' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')

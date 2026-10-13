@@ -762,9 +762,9 @@ public init(modelContainer: SwiftData.ModelContainer) {
     self.modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
     self.modelContainer = modelContainer
 }
-=== error
+=== diagnostic
 Shapes.swift:24:9: error: cannot expand accessor macro on variable declared with 'let'
-=== error
+=== diagnostic
 Shapes.swift:26:16: error: static property 's' is not concurrency-safe because it is nonisolated global shared mutable state [#MutableGlobalVariable]
-=== error
+=== diagnostic
 Shapes.swift:33:5: error: 'lazy' cannot be used on a computed property

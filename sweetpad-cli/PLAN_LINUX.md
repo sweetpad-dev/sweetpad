@@ -27,8 +27,8 @@ Items marked *(optional)* can wait until a project needs them.
 - [x] SwiftPM packages through `swift package dump-pif`, merged into the PIF
       (`42978410`)
 - [x] Cross-import overlays, through a toolset flag (`4e2a25c7`)
-- [x] Apple's macro plugins: SwiftData and `#Predicate` (see the section
-      below)
+- [x] Apple's macro plugins: SwiftData, `#Predicate` and `#Preview` (see
+      the section below)
 - [x] SwiftPM: dynamic library products as frameworks in
       `PackageFrameworks`, as Xcode builds them
       (`--experimental-build-dylibs-as-frameworks`). xtool's linker makes a
@@ -52,8 +52,8 @@ iOS SDK:
 | ObservationMacros, SwiftMacros | `@Observable`, `@TaskLocal`, `@DebugDescription`, `_SwiftifyImport` | Swift toolchain |
 | FoundationMacros | `#Predicate`, `#Expression`, `#bundle` | `sweetpad-macros`; the toolchain's copy names `FoundationEssentials`, which the SDK lacks |
 | FoundationModelsMacros | `@Generable`, `@Guide` | xtool |
-| PreviewsMacros | `#Preview` | xtool for SwiftUI views; not UIKit views or view controllers (`KitViewMacro`, `PreviewCommonGroup`) |
-| SwiftUIMacros | `@Entry`, `@Animatable`, `@State` (a macro in the 27 SDK) | xtool, except the helper types `EntryTypeCheckMacro`, `EntryTypeCheckClassMacro`, `SendableEntryDefaultMacro`, `UnsafeEntryDefaultMacro`, `StateTypeMacro` |
+| PreviewsMacros | `#Preview`, `@Previewable` | `sweetpad-macros`; xtool's has SwiftUI views only, not UIKit views or view controllers (`KitViewMacro`, `PreviewCommonGroup`) |
+| SwiftUIMacros | `@Entry`, `@Animatable`, `@State` (a macro in the 27 SDK) | xtool. It lacks the helper types `EntryTypeCheckMacro`, `EntryTypeCheckClassMacro`, `SendableEntryDefaultMacro`, `UnsafeEntryDefaultMacro` and `StateTypeMacro`, which Xcode's own `@Entry` and `@State` expand into, but xtool's expansions don't use them |
 | SwiftDataMacros | `@Model`, `@Query`, `@ModelActor`, `@Attribute`, `@Relationship`, `@Transient`, `#Unique`, `#Index` | `sweetpad-macros` |
 | AppIntentsMacros | the schema macros (`@AppIntent(schema:)` and the rest), `@ComputedProperty`, `@DeferredProperty`, `@UnionValue` | missing |
 | TipKitMacros, StateReportingMacros | `#Rule`, `@Parameter`; `@ReportableMetadata` | missing |
@@ -76,7 +76,8 @@ swift-syntax and diff the expanded Swift text.
       building one executable, `sweetpad-macros`, which `linux-setup.sh`
       puts on `PATH` (`SWEETPAD_MACROS` overrides it). On a host without
       Xcode, `sweetpad build` adds `-load-plugin-executable
-      <plugin>#FoundationMacros,SwiftDataMacros` to the toolset, which the
+      <plugin>#FoundationMacros,PreviewsMacros,SwiftDataMacros` to the
+      toolset, which the
       compiler takes before the SDK's plugin server and the toolchain's own
       plugins. Without the plugin, a build fails only where one of those
       macros is used
@@ -91,10 +92,15 @@ swift-syntax and diff the expanded Swift text.
   re-records them; needs Xcode). `corpus/_swiftdata-app` (local) builds on
   Linux, and its `SDCHECK` lines in the simulator are identical to the
   Xcode build's: schema, unique constraints, indices, fetches, predicates,
-  `@Query` and `@ModelActor`
-- [ ] Check whether xtool's gaps are reachable: `#Preview` of a UIKit view
-      or view controller, the `@Entry` and `@State` helper types; fix
-      upstream in xtool if so
+  `@Query` and `@ModelActor`. `corpus/_swiftui-app` does the same for
+  `@Entry`, `@State` and `#Preview`
+- [x] xtool's gaps: `#Preview` of a UIKit view or view controller failed
+      the build, so `sweetpad-macros` takes over `PreviewsMacros` whole:
+      SwiftUI views (with `@Previewable`), argument previews, UIKit views
+      and view controllers, and widget, timeline and Live Activity previews,
+      each expansion, error and warning as Xcode's. `@Entry` and `@State`
+      build and run as with Xcode; the helper types are unreachable through
+      xtool's expansions
 - [ ] AppIntentsMacros, the schema macros *(optional)*
 - [ ] TipKitMacros, StateReportingMacros *(optional)*
 
@@ -319,11 +325,13 @@ Running in the simulator stays on a Mac.
   inheritance, a fetch index and generated classes, and an App Intent;
   `linux-build.sh` builds it in the VM), `_swiftdata-app` (XcodeGen:
   `@Model` classes with unique constraints, indices, a `@ModelActor` and
-  `@Query`; `expansions/` holds Xcode's macro expansions). Each prints its
+  `@Query`; `expansions/` holds Xcode's macro expansions), `_swiftui-app`
+  (XcodeGen: `@Entry` values of several kinds, `@State`, `@Observable`, and
+  `#Preview` of SwiftUI and UIKit views). Each prints its
   results to stderr for a diff against Xcode's build.
 - To diff one source file's macro expansions with Xcode's, typecheck it
   twice with `-Xfrontend -dump-macro-expansions`, once with
-  `-load-plugin-executable <sweetpad-macros>#FoundationMacros,SwiftDataMacros`
+  `-load-plugin-executable <sweetpad-macros>#FoundationMacros,PreviewsMacros,SwiftDataMacros`
   added, and diff the two (`macros/fixtures/check.py` does this for its
   fixtures).
 - `sweetpad-lib/corpus/_momc-tools/` (gitignored): `keyed.py` dumps a keyed

@@ -13,8 +13,8 @@
 #              with swift-build-linux.patch, and linked into ~/bin
 #   sweetpad-macros
 #              the plugin for Apple's macros that Linux has no working build
-#              of (SwiftData's, #Predicate), built from sweetpad-cli/macros
-#              into ~/bin
+#              of (SwiftData's, #Predicate, #Preview), built from
+#              sweetpad-cli/macros into ~/bin
 #   Rust       rustup, for building sweetpad itself
 #
 # The SDK comes from your own Xcode (XCODE_APP, default /Applications/Xcode.app,

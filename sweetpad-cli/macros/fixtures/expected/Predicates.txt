@@ -669,7 +669,7 @@ private var _created: _SwiftDataNoType
 @_PersistedProperty
 === __swiftmacro_10Predicates4NoteC8_created33_30B599833963B6DC370562E3B8A0EBD4LL9TransientfMp_.swift
 
-=== error
+=== diagnostic
 Predicates.swift:32:72: error: Global functions are not supported in this predicate (from macro 'Predicate')
-=== error
+=== diagnostic
 Predicates.swift:46:73: error: Member access without an explicit base is not supported in this predicate (from macro 'Predicate')

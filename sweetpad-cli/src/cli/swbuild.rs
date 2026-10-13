@@ -198,11 +198,11 @@ fn toolset(tools: &Path, macros: Option<&Path>) -> String {
 }
 
 /// Apple's macro plugins that `sweetpad-macros` stands in for. Xcode has
-/// them as macOS libraries. The Darwin SDK's plugin server has none of
-/// them, and the toolchain's own `FoundationMacros` names
-/// `FoundationEssentials` in its expansions, which the SDK's Foundation
-/// doesn't have.
-const MACRO_MODULES: &[&str] = &["FoundationMacros", "SwiftDataMacros"];
+/// them as macOS libraries. The Darwin SDK's plugin server lacks
+/// `SwiftDataMacros` and has `#Preview` only for SwiftUI views, and the
+/// toolchain's own `FoundationMacros` names `FoundationEssentials` in its
+/// expansions, which the SDK's Foundation doesn't have.
+const MACRO_MODULES: &[&str] = &["FoundationMacros", "PreviewsMacros", "SwiftDataMacros"];
 
 /// `sweetpad-macros`, built from `sweetpad-cli/macros`: `SWEETPAD_MACROS`,
 /// else the one on `PATH`. A build without it fails only where a macro of

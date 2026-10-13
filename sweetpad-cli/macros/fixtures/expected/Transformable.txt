@@ -145,11 +145,11 @@ private var _plain: _SwiftDataNoType = _SwiftDataNoType()
 
 === __swiftmacro_13Transformable4ConfC6_plain33_625C39E44BA6F30AD9E3CC4DFCB0B5A3LL9TransientfMp_.swift
 
-=== error
+=== diagnostic
 Transformable.swift:12:26: error: cannot convert value of type 'KeyPath<Root, Value>' to expected argument type '[PartialKeyPath<Conf>]'
-=== error
+=== diagnostic
 Transformable.swift:12:26: error: cannot infer key path type from context; consider explicitly specifying a root type
-=== error
+=== diagnostic
 Transformable.swift:12:43: error: cannot convert value of type 'KeyPath<Root, Value>' to expected argument type '[PartialKeyPath<Conf>]'
-=== error
+=== diagnostic
 Transformable.swift:12:43: error: cannot infer key path type from context; consider explicitly specifying a root type

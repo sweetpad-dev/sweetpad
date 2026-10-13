@@ -1,0 +1,59 @@
+=== __swiftmacro_18PreviewableMembers0029PreviewableMembersswift_tAFJhfMX17_0_33_FFB34BB89BCC4068F2BB96915D24B9A7Ll7PreviewfMf0_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s18PreviewableMembers0029PreviewableMembersswift_tAFJhfMX17_0_33_FFB34BB89BCC4068F2BB96915D24B9A7Ll7PreviewfMf0_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewableMembers/PreviewableMembers.swift"
+    }
+    static var line: Int {
+        18
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            struct __P_Previewable_Transform_Wrapper: SwiftUI.View {
+                @State var wide = [
+                      1,
+                    ]
+
+                @State var narrow = 0
+
+                var body: some SwiftUI.View {
+                    L(items: $wide)
+                }
+            }
+            return __P_Previewable_Transform_Wrapper()
+        }
+    }
+}
+=== __swiftmacro_18PreviewableMembers0029PreviewableMembersswift_tAFJhfMX9_0_33_FFB34BB89BCC4068F2BB96915D24B9A7Ll7PreviewfMf_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s18PreviewableMembers0029PreviewableMembersswift_tAFJhfMX9_0_33_FFB34BB89BCC4068F2BB96915D24B9A7Ll7PreviewfMf_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewableMembers/PreviewableMembers.swift"
+    }
+    static var line: Int {
+        10
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            struct __P_Previewable_Transform_Wrapper: SwiftUI.View {
+                @State var items = [
+                    1,
+                        2,
+                ]
+
+                var body: some SwiftUI.View {
+                    L(items: $items)
+                }
+            }
+            return __P_Previewable_Transform_Wrapper()
+        }
+    }
+}

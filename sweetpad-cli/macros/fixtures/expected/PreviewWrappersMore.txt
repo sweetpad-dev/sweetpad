@@ -1,0 +1,77 @@
+=== __swiftmacro_19PreviewWrappersMore0030PreviewWrappersMoreswift_eDAEifMX11_0_33_A8C6E413D7AD741BA7A95F7A751F4242Ll0A0fMf_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s19PreviewWrappersMore0030PreviewWrappersMoreswift_eDAEifMX11_0_33_A8C6E413D7AD741BA7A95F7A751F4242Ll0A0fMf_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWrappersMore/PreviewWrappersMore.swift"
+    }
+    static var line: Int {
+        12
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                @FetchRequest(sortDescriptors: []) var a: FetchedResults<NSManagedObject>
+                @SectionedFetchRequest(sectionIdentifier: \NSManagedObject.objectID, sortDescriptors: []) var b: SectionedFetchResults<NSManagedObjectID, NSManagedObject>
+                @FocusedObject var c: Model?
+                @FocusedValue(\.focusKey) var e: Int?
+                @UIApplicationDelegateAdaptor var f: Delegate
+                @SwiftUI.State var g = 1
+                @Environment(Obs.self) var h
+                @State
+                var i = 1
+                V()
+            }
+        }
+    }
+}
+=== __swiftmacro_19PreviewWrappersMore3Obs10ObservablefMe_.swift
+extension Obs: nonisolated Observation.Observable {
+}
+=== __swiftmacro_19PreviewWrappersMore3Obs10ObservablefMm_.swift
+@ObservationIgnored private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<$s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu_>(
+  keyPath: KeyPath<Obs, $s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu_>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<$s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu0_, $s19PreviewWrappersMore3Obs10ObservablefMm_14MutationResultfMu_>(
+  keyPath: KeyPath<Obs, $s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu0_>,
+  _ mutation: () throws -> $s19PreviewWrappersMore3Obs10ObservablefMm_14MutationResultfMu_
+) rethrows -> $s19PreviewWrappersMore3Obs10ObservablefMm_14MutationResultfMu_ {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+private nonisolated func shouldNotifyObservers<$s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu1_>(_ lhs: $s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu1_, _ rhs: $s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu1_) -> Bool {
+    true
+}
+
+private nonisolated func shouldNotifyObservers<$s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu2_: Equatable>(_ lhs: $s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu2_, _ rhs: $s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu2_) -> Bool {
+    lhs != rhs
+}
+
+private nonisolated func shouldNotifyObservers<$s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu3_: AnyObject>(_ lhs: $s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu3_, _ rhs: $s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu3_) -> Bool {
+    lhs !== rhs
+}
+
+private nonisolated func shouldNotifyObservers<$s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu4_: Equatable & AnyObject>(_ lhs: $s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu4_, _ rhs: $s19PreviewWrappersMore3Obs10ObservablefMm_6MemberfMu4_) -> Bool {
+    lhs != rhs
+}
+=== __swiftmacro_19PreviewWrappersMore3ObsC22_$observationRegistrar33_A8C6E413D7AD741BA7A95F7A751F4242LL18ObservationIgnoredfMa_.swift
+
+=== diagnostic
+PreviewWrappersMore.swift:13:5: warning: '@FetchRequest' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
+=== diagnostic
+PreviewWrappersMore.swift:18:5: warning: '@State' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
+=== diagnostic
+PreviewWrappersMore.swift:19:5: warning: '@Environment' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
+=== diagnostic
+PreviewWrappersMore.swift:20:5: warning: '@State' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
