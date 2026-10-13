@@ -1,0 +1,155 @@
+=== __swiftmacro_13Transformable4Conf5ModelfMe_.swift
+extension Conf: nonisolated SwiftData.PersistentModel {
+}
+
+extension Conf: nonisolated Observation.Observable {
+}
+
+@available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Conf's persistentModelID instead")
+@available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Conf's persistentModelID instead")
+extension Conf: Sendable {
+}
+=== __swiftmacro_13Transformable4Conf5ModelfMm_.swift
+@Transient
+private var _$backingData: any SwiftData.BackingData<Conf> = Conf.createBackingData()
+
+public var persistentBackingData: any SwiftData.BackingData<Conf> {
+    get {
+        return _$backingData
+    }
+    set {
+        _$backingData = newValue
+    }
+}
+
+class var schemaMetadata: [SwiftData.Schema.PropertyMetadata] {
+  let storedProperties = [
+    SwiftData.Schema.PropertyMetadata(name: "color", keypath: \Conf.color, defaultValue: UIColor.red, metadata: SwiftData.Schema.Attribute(.transformable(by: UIColorValueTransformer.self))),
+    SwiftData.Schema.PropertyMetadata(name: "other", keypath: \Conf.other, defaultValue: nil, metadata: SwiftData.Schema.Attribute(.transformable(by: "NSSecureUnarchiveFromData"))),
+    SwiftData.Schema.PropertyMetadata(name: "plain", keypath: \Conf.plain, defaultValue: 0, metadata: nil)
+  ]
+  var otherProperties = [SwiftData.Schema.PropertyMetadata]()
+  if #available(macOS 15, iOS 18, tvOS 18, watchOS 11, visionOS 2, *) {
+    otherProperties.append(
+      SwiftData.Schema.PropertyMetadata(name: "SwiftData.Schema.Index", keypath: \SwiftData.Schema.encodingVersion, defaultValue: nil, metadata: SwiftData.Schema.Index<Conf>(.binary(\.plain), .rtree(\.plain))))
+  }
+
+  return storedProperties + otherProperties
+}
+
+init(backingData: any SwiftData.BackingData<Conf>) {
+  _color = _SwiftDataNoType()
+  _other = _SwiftDataNoType()
+  _plain = _SwiftDataNoType()
+  self.persistentBackingData = backingData
+}
+
+@Transient private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<_M>(
+    keyPath: KeyPath<Conf, _M>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<_M, _MR>(
+  keyPath: KeyPath<Conf, _M>,
+  _ mutation: () throws -> _MR
+) rethrows -> _MR {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+struct _SwiftDataNoType {
+}
+=== __swiftmacro_13Transformable4ConfC13_$backingData33_625C39E44BA6F30AD9E3CC4DFCB0B5A3LL9TransientfMp_.swift
+
+=== __swiftmacro_13Transformable4ConfC1_5ModelfMr2_.swift
+
+=== __swiftmacro_13Transformable4ConfC22_$observationRegistrar33_625C39E44BA6F30AD9E3CC4DFCB0B5A3LL9TransientfMp_.swift
+
+=== __swiftmacro_13Transformable4ConfC4init5ModelfMr3_.swift
+
+=== __swiftmacro_13Transformable4ConfC5color01_A17PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _color)
+    init(initialValue) {
+        _$backingData.setTransformableValue(forKey: \.color, to: initialValue)
+        _color = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.color)
+        return self.getTransformableValue(forKey: \.color)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.color) {
+            self.setTransformableValue(forKey: \.color, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_13Transformable4ConfC5color01_A17PersistedPropertyfMp_.swift
+@Transient
+private var _color: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_13Transformable4ConfC5color5ModelfMr_.swift
+@_TransformablePersistedProperty
+=== __swiftmacro_13Transformable4ConfC5color9AttributefMp_.swift
+
+=== __swiftmacro_13Transformable4ConfC5other01_A17PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _other)
+    init(initialValue) {
+        _$backingData.setTransformableValue(forKey: \.other, to: initialValue)
+        _other = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.other)
+        return self.getTransformableValue(forKey: \.other)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.other) {
+            self.setTransformableValue(forKey: \.other, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_13Transformable4ConfC5other01_A17PersistedPropertyfMp_.swift
+@Transient
+private var _other: _SwiftDataNoType? = _SwiftDataNoType()
+=== __swiftmacro_13Transformable4ConfC5other5ModelfMr0_.swift
+@_TransformablePersistedProperty
+=== __swiftmacro_13Transformable4ConfC5other9AttributefMp_.swift
+
+=== __swiftmacro_13Transformable4ConfC5plain18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _plain)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.plain, to: initialValue)
+        _plain = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.plain)
+        return self.getValue(forKey: \.plain)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.plain) {
+            self.setValue(forKey: \.plain, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_13Transformable4ConfC5plain18_PersistedPropertyfMp_.swift
+@Transient
+private var _plain: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_13Transformable4ConfC5plain5ModelfMr1_.swift
+@_PersistedProperty
+=== __swiftmacro_13Transformable4ConfC6_color33_625C39E44BA6F30AD9E3CC4DFCB0B5A3LL9TransientfMp_.swift
+
+=== __swiftmacro_13Transformable4ConfC6_other33_625C39E44BA6F30AD9E3CC4DFCB0B5A3LL9TransientfMp_.swift
+
+=== __swiftmacro_13Transformable4ConfC6_plain33_625C39E44BA6F30AD9E3CC4DFCB0B5A3LL9TransientfMp_.swift
+
+=== error
+Transformable.swift:12:26: error: cannot convert value of type 'KeyPath<Root, Value>' to expected argument type '[PartialKeyPath<Conf>]'
+=== error
+Transformable.swift:12:26: error: cannot infer key path type from context; consider explicitly specifying a root type
+=== error
+Transformable.swift:12:43: error: cannot convert value of type 'KeyPath<Root, Value>' to expected argument type '[PartialKeyPath<Conf>]'
+=== error
+Transformable.swift:12:43: error: cannot infer key path type from context; consider explicitly specifying a root type

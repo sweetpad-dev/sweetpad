@@ -27,7 +27,8 @@ Items marked *(optional)* can wait until a project needs them.
 - [x] SwiftPM packages through `swift package dump-pif`, merged into the PIF
       (`42978410`)
 - [x] Cross-import overlays, through a toolset flag (`4e2a25c7`)
-- [ ] Apple's macro plugins (see the section below)
+- [x] Apple's macro plugins: SwiftData and `#Predicate` (see the section
+      below)
 - [x] SwiftPM: dynamic library products as frameworks in
       `PackageFrameworks`, as Xcode builds them
       (`--experimental-build-dylibs-as-frameworks`). xtool's linker makes a
@@ -48,11 +49,12 @@ iOS SDK:
 
 | Plugin | Macros | On Linux |
 |---|---|---|
-| ObservationMacros, FoundationMacros, SwiftMacros | `@Observable`, `#Predicate`, `#Expression`, `#bundle`, `@TaskLocal`, `@DebugDescription`, `_SwiftifyImport` | Swift toolchain |
+| ObservationMacros, SwiftMacros | `@Observable`, `@TaskLocal`, `@DebugDescription`, `_SwiftifyImport` | Swift toolchain |
+| FoundationMacros | `#Predicate`, `#Expression`, `#bundle` | `sweetpad-macros`; the toolchain's copy names `FoundationEssentials`, which the SDK lacks |
 | FoundationModelsMacros | `@Generable`, `@Guide` | xtool |
 | PreviewsMacros | `#Preview` | xtool for SwiftUI views; not UIKit views or view controllers (`KitViewMacro`, `PreviewCommonGroup`) |
 | SwiftUIMacros | `@Entry`, `@Animatable`, `@State` (a macro in the 27 SDK) | xtool, except the helper types `EntryTypeCheckMacro`, `EntryTypeCheckClassMacro`, `SendableEntryDefaultMacro`, `UnsafeEntryDefaultMacro`, `StateTypeMacro` |
-| SwiftDataMacros | `@Model`, `@Query`, `@ModelActor`, `@Attribute`, `@Relationship`, `@Transient`, `#Unique`, `#Index` | missing |
+| SwiftDataMacros | `@Model`, `@Query`, `@ModelActor`, `@Attribute`, `@Relationship`, `@Transient`, `#Unique`, `#Index` | `sweetpad-macros` |
 | AppIntentsMacros | the schema macros (`@AppIntent(schema:)` and the rest), `@ComputedProperty`, `@DeferredProperty`, `@UnionValue` | missing |
 | TipKitMacros, StateReportingMacros | `#Rule`, `@Parameter`; `@ReportableMetadata` | missing |
 
@@ -67,12 +69,29 @@ The oracle is Xcode's compiler printing each expansion
 (`-Xfrontend -dump-macro-expansions`): reimplement the macro with
 swift-syntax and diff the expanded Swift text.
 
-- [ ] Confirm with a real swbuild build that `@Model` fails, and how
-- [ ] Decide where our plugins live (beside xtool's server, or our own) and
-      how swbuild points the compiler at them
-- [ ] SwiftDataMacros: `@Model` (schema metadata, backing data, accessors
-      per property) and `@Query` first, then `@ModelActor` and the attribute
-      macros (1–2 weeks)
+- [x] Confirm with a real swbuild build that `@Model` fails, and how: the
+      compiler can't find `SwiftDataMacros` in xtool's plugin server and
+      names the module in the error
+- [x] Where our plugins live: `sweetpad-cli/macros` is a SwiftPM package
+      building one executable, `sweetpad-macros`, which `linux-setup.sh`
+      puts on `PATH` (`SWEETPAD_MACROS` overrides it). On a host without
+      Xcode, `sweetpad build` adds `-load-plugin-executable
+      <plugin>#FoundationMacros,SwiftDataMacros` to the toolset, which the
+      compiler takes before the SDK's plugin server and the toolchain's own
+      plugins. Without the plugin, a build fails only where one of those
+      macros is used
+- [x] SwiftDataMacros: `@Model`, `@Query`, `@ModelActor` and the attribute
+      macros, reimplemented with swift-syntax. Each expansion matches
+      Xcode's byte for byte
+- [x] FoundationMacros: swift-foundation's own source (swift-6.4.0-RELEASE,
+      Apache 2.0), built with `FOUNDATION_FRAMEWORK` so its expansions name
+      `Foundation`
+- `macros/fixtures/check.py` compares the plugin's expansions of the
+  fixtures against Xcode's, recorded in `fixtures/expected` (`--record`
+  re-records them; needs Xcode). `corpus/_swiftdata-app` (local) builds on
+  Linux, and its `SDCHECK` lines in the simulator are identical to the
+  Xcode build's: schema, unique constraints, indices, fetches, predicates,
+  `@Query` and `@ModelActor`
 - [ ] Check whether xtool's gaps are reachable: `#Preview` of a UIKit view
       or view controller, the `@Entry` and `@State` helper types; fix
       upstream in xtool if so
@@ -298,8 +317,15 @@ Running in the simulator stays on a Mac.
   PNG, a widget, a unit test bundle), `_mac-app` (XcodeGen: a macOS app's
   asset lookups and icon), `_data-app` (XcodeGen: a Core Data model with
   inheritance, a fetch index and generated classes, and an App Intent;
-  `linux-build.sh` builds it in the VM). Each prints its results to stderr
-  for a diff against Xcode's build.
+  `linux-build.sh` builds it in the VM), `_swiftdata-app` (XcodeGen:
+  `@Model` classes with unique constraints, indices, a `@ModelActor` and
+  `@Query`; `expansions/` holds Xcode's macro expansions). Each prints its
+  results to stderr for a diff against Xcode's build.
+- To diff one source file's macro expansions with Xcode's, typecheck it
+  twice with `-Xfrontend -dump-macro-expansions`, once with
+  `-load-plugin-executable <sweetpad-macros>#FoundationMacros,SwiftDataMacros`
+  added, and diff the two (`macros/fixtures/check.py` does this for its
+  fixtures).
 - `sweetpad-lib/corpus/_momc-tools/` (gitignored): `keyed.py` dumps a keyed
   archive as it's laid out, `canon.py` dumps it independent of object
   order (to diff a `.mom` with Xcode's), and `hashes.py` computes version
@@ -316,6 +342,7 @@ Running in the simulator stays on a Mac.
   check lines; the Alamofire apps want `afserver.py` running. Their paths
   point at a deleted scratch folder; adjust them before use.
 - Golden fixtures to regenerate after an Xcode update:
-  `sweetpad-cli/fixtures/actool` and `fixtures/xcstringstool` (each has a
-  `regen.py`), and the symbol templates' expected values in
+  `sweetpad-cli/fixtures/actool`, `fixtures/xcstringstool` and
+  `fixtures/momc` (each has a `regen.py`), `macros/fixtures`
+  (`check.py --record`), and the symbol templates' expected values in
   `src/cli/actool/glyph.rs`.

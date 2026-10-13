@@ -1,0 +1,770 @@
+=== __swiftmacro_6Shapes0017Shapesswift_yEEFcfMX21_4_33_C01776A4525D5700C9CAB18498B5F7E5Ll6UniquefMf_.swift
+
+=== __swiftmacro_6Shapes1VV1a5QueryfMa_.swift
+{
+    get {
+        _a.wrappedValue
+    }
+}
+=== __swiftmacro_6Shapes1VV1a5QueryfMp_.swift
+private(set) var _a: SwiftData.Query<[Pub].Element, [Pub]> = .init(FetchDescriptor<Pub>())
+=== __swiftmacro_6Shapes1VV1b5QueryfMa_.swift
+{
+    get {
+        _b.wrappedValue
+    }
+}
+=== __swiftmacro_6Shapes1VV1b5QueryfMp_.swift
+private(set) var _b: SwiftData.Query<[Pub].Element, [Pub]> = .init(sort: [SortDescriptor(\Pub.name)], animation: .default)
+=== __swiftmacro_6Shapes1VV1c33_C01776A4525D5700C9CAB18498B5F7E5LL5QueryfMa_.swift
+{
+    get {
+        _c.wrappedValue
+    }
+}
+=== __swiftmacro_6Shapes1VV1c33_C01776A4525D5700C9CAB18498B5F7E5LL5QueryfMp_.swift
+private(set) var _c: SwiftData.Query<[Pub].Element, [Pub]> = .init(sort: \Pub.name, order: .reverse)
+=== __swiftmacro_6Shapes3Pub5ModelfMe_.swift
+extension Pub: nonisolated SwiftData.PersistentModel {
+}
+
+extension Pub: nonisolated Observation.Observable {
+}
+
+@available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Pub's persistentModelID instead")
+@available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Pub's persistentModelID instead")
+extension Pub: Sendable {
+}
+=== __swiftmacro_6Shapes3Pub5ModelfMm_.swift
+@Transient
+private var _$backingData: any SwiftData.BackingData<Pub> = Pub.createBackingData()
+
+public var persistentBackingData: any SwiftData.BackingData<Pub> {
+    get {
+        return _$backingData
+    }
+    set {
+        _$backingData = newValue
+    }
+}
+
+public class var schemaMetadata: [SwiftData.Schema.PropertyMetadata] {
+  return [
+    SwiftData.Schema.PropertyMetadata(name: "name", keypath: \Pub.name, defaultValue: nil, metadata: nil)
+  ]
+}
+
+public init(backingData: any SwiftData.BackingData<Pub>) {
+  _name = _SwiftDataNoType()
+  self.persistentBackingData = backingData
+}
+
+@Transient private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<_M>(
+    keyPath: KeyPath<Pub, _M>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<_M, _MR>(
+  keyPath: KeyPath<Pub, _M>,
+  _ mutation: () throws -> _MR
+) rethrows -> _MR {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+struct _SwiftDataNoType {
+}
+=== __swiftmacro_6Shapes3PubC13_$backingData33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes3PubC22_$observationRegistrar33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes3PubC4init5ModelfMr0_.swift
+
+=== __swiftmacro_6Shapes3PubC4name18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _name)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.name, to: initialValue)
+        _name = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.name)
+        return self.getValue(forKey: \.name)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.name) {
+            self.setValue(forKey: \.name, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Shapes3PubC4name18_PersistedPropertyfMp_.swift
+@Transient
+private var _name: _SwiftDataNoType
+=== __swiftmacro_6Shapes3PubC4name5ModelfMr_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes3PubC5_name33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes3Sub5ModelfMe_.swift
+
+=== __swiftmacro_6Shapes3Sub5ModelfMm_.swift
+@Transient
+private var _$backingData: any SwiftData.BackingData<Sub> = Sub.createBackingData()
+
+override class var schemaMetadata: [SwiftData.Schema.PropertyMetadata] {
+  return [
+    SwiftData.Schema.PropertyMetadata(name: "b", keypath: \Sub.b, defaultValue: 0, metadata: nil)
+  ]
+}
+
+required init(backingData: any SwiftData.BackingData<Root>) {
+  _b = _SwiftDataNoType()
+  _$backingData = backingData._generateCurrentClassBackingData()
+  super.init(backingData: backingData._superClassBackingData(of: Sub.self))
+}
+
+@Transient private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<_M>(
+    keyPath: KeyPath<Sub, _M>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<_M, _MR>(
+  keyPath: KeyPath<Sub, _M>,
+  _ mutation: () throws -> _MR
+) rethrows -> _MR {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+struct _SwiftDataNoType {
+}
+=== __swiftmacro_6Shapes3SubC13_$backingData33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes3SubC1b18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _b)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.b, to: initialValue)
+        _b = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.b)
+        return self.getValue(forKey: \.b)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.b) {
+            self.setValue(forKey: \.b, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Shapes3SubC1b18_PersistedPropertyfMp_.swift
+@Transient
+private var _b: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Shapes3SubC1b5ModelfMr_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes3SubC22_$observationRegistrar33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes3SubC2_b33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes3SubC4init5ModelfMr0_.swift
+
+=== __swiftmacro_6Shapes4Base5ModelfMe_.swift
+@available(iOS 26, *)
+extension Base: nonisolated SwiftData.PersistentModel {
+}
+
+@available(iOS 26, *)
+extension Base: nonisolated Observation.Observable {
+}
+
+@available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Base's persistentModelID instead")
+@available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Base's persistentModelID instead")
+extension Base: Sendable {
+}
+=== __swiftmacro_6Shapes4Base5ModelfMm_.swift
+@Transient
+private var _$backingData: any SwiftData.BackingData<Base> = Base.createBackingData()
+
+public var persistentBackingData: any SwiftData.BackingData<Base> {
+    get {
+        return _$backingData
+    }
+    set {
+        _$backingData = newValue
+    }
+}
+
+class var schemaMetadata: [SwiftData.Schema.PropertyMetadata] {
+  return [
+    SwiftData.Schema.PropertyMetadata(name: "a", keypath: \Base.a, defaultValue: 0, metadata: nil)
+  ]
+}
+
+required init(backingData: any SwiftData.BackingData<Base>) {
+  _a = _SwiftDataNoType()
+  self.persistentBackingData = backingData
+}
+
+@Transient private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<_M>(
+    keyPath: KeyPath<Base, _M>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<_M, _MR>(
+  keyPath: KeyPath<Base, _M>,
+  _ mutation: () throws -> _MR
+) rethrows -> _MR {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+struct _SwiftDataNoType {
+}
+=== __swiftmacro_6Shapes4BaseC13_$backingData33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes4BaseC1a18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _a)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.a, to: initialValue)
+        _a = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.a)
+        return self.getValue(forKey: \.a)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.a) {
+            self.setValue(forKey: \.a, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Shapes4BaseC1a18_PersistedPropertyfMp_.swift
+@Transient
+private var _a: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Shapes4BaseC1a5ModelfMr_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes4BaseC22_$observationRegistrar33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes4BaseC2_a33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes4BaseC4init5ModelfMr0_.swift
+
+=== __swiftmacro_6Shapes5Empty5ModelfMe_.swift
+extension Empty: nonisolated SwiftData.PersistentModel {
+}
+
+extension Empty: nonisolated Observation.Observable {
+}
+
+@available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Empty's persistentModelID instead")
+@available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Empty's persistentModelID instead")
+extension Empty: Sendable {
+}
+=== __swiftmacro_6Shapes5Empty5ModelfMm_.swift
+@Transient
+private var _$backingData: any SwiftData.BackingData<Empty> = Empty.createBackingData()
+
+public var persistentBackingData: any SwiftData.BackingData<Empty> {
+    get {
+        return _$backingData
+    }
+    set {
+        _$backingData = newValue
+    }
+}
+
+class var schemaMetadata: [SwiftData.Schema.PropertyMetadata] {
+  return [
+
+  ]
+}
+
+init(backingData: any SwiftData.BackingData<Empty>) {
+
+  self.persistentBackingData = backingData
+}
+
+@Transient private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<_M>(
+    keyPath: KeyPath<Empty, _M>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<_M, _MR>(
+  keyPath: KeyPath<Empty, _M>,
+  _ mutation: () throws -> _MR
+) rethrows -> _MR {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+struct _SwiftDataNoType {
+}
+=== __swiftmacro_6Shapes5EmptyC13_$backingData33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5EmptyC22_$observationRegistrar33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5EmptyC4init5ModelfMr_.swift
+
+=== __swiftmacro_6Shapes5Mixed5ModelfMe_.swift
+extension Mixed: nonisolated SwiftData.PersistentModel {
+}
+
+extension Mixed: nonisolated Observation.Observable {
+}
+
+@available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Mixed's persistentModelID instead")
+@available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Mixed's persistentModelID instead")
+extension Mixed: Sendable {
+}
+=== __swiftmacro_6Shapes5Mixed5ModelfMm_.swift
+@Transient
+private var _$backingData: any SwiftData.BackingData<Mixed> = Mixed.createBackingData()
+
+public var persistentBackingData: any SwiftData.BackingData<Mixed> {
+    get {
+        return _$backingData
+    }
+    set {
+        _$backingData = newValue
+    }
+}
+
+class var schemaMetadata: [SwiftData.Schema.PropertyMetadata] {
+  let storedProperties = [
+    SwiftData.Schema.PropertyMetadata(name: "x", keypath: \Mixed.x, defaultValue: 5, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "y", keypath: \Mixed.y, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "z", keypath: \Mixed.z, defaultValue: "s", metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "plain", keypath: \Mixed.plain, defaultValue: "", metadata: SwiftData.Schema.Attribute ()),
+    SwiftData.Schema.PropertyMetadata(name: "both", keypath: \Mixed.both, defaultValue: "", metadata: SwiftData.Schema.Attribute(.unique, originalName: "o")),
+    SwiftData.Schema.PropertyMetadata(name: "others", keypath: \Mixed.others, defaultValue: [], metadata: SwiftData.Schema.Relationship ()),
+    SwiftData.Schema.PropertyMetadata(name: "dict", keypath: \Mixed.dict, defaultValue: [:], metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "opt", keypath: \Mixed.opt, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "maybe", keypath: \Mixed.maybe, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "lz", keypath: \Mixed.lz, defaultValue: 3, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "observed", keypath: \Mixed.observed, defaultValue: 0, metadata: nil)
+  ]
+  var otherProperties = [SwiftData.Schema.PropertyMetadata]()
+
+  if #available(macOS 15, iOS 18, tvOS 18, watchOS 11, visionOS 2, *) {
+    otherProperties.append(
+      SwiftData.Schema.PropertyMetadata(name: "SwiftData.Schema.Unique", keypath: \SwiftData.Schema.encodingVersion, defaultValue: nil, metadata: SwiftData.Schema.Unique<Mixed>([\.z])))
+  }
+  return storedProperties + otherProperties
+}
+
+init(backingData: any SwiftData.BackingData<Mixed>) {
+  _x = _SwiftDataNoType()
+  _y = _SwiftDataNoType()
+  _z = _SwiftDataNoType()
+  _plain = _SwiftDataNoType()
+  _both = _SwiftDataNoType()
+  _others = _SwiftDataNoType()
+  _dict = _SwiftDataNoType()
+  _opt = _SwiftDataNoType()
+  _maybe = _SwiftDataNoType()
+  _lz = _SwiftDataNoType()
+  _observed = _SwiftDataNoType()
+  self.persistentBackingData = backingData
+}
+
+@Transient private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<_M>(
+    keyPath: KeyPath<Mixed, _M>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<_M, _MR>(
+  keyPath: KeyPath<Mixed, _M>,
+  _ mutation: () throws -> _MR
+) rethrows -> _MR {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+struct _SwiftDataNoType {
+}
+=== __swiftmacro_6Shapes5MixedC13_$backingData33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC1_5ModelfMr_.swift
+
+=== __swiftmacro_6Shapes5MixedC1s5ModelfMr3_.swift
+
+=== __swiftmacro_6Shapes5MixedC1x18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _x)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.x, to: initialValue)
+        _x = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.x)
+        return self.getValue(forKey: \.x)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.x) {
+            self.setValue(forKey: \.x, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Shapes5MixedC1x18_PersistedPropertyfMp_.swift
+@Transient
+private var _x: _SwiftDataNoType? = _SwiftDataNoType()
+=== __swiftmacro_6Shapes5MixedC1x5ModelfMr0_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes5MixedC1y18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _y)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.y, to: initialValue)
+        _y = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.y)
+        return self.getValue(forKey: \.y)
+    }
+}
+=== __swiftmacro_6Shapes5MixedC1y18_PersistedPropertyfMp_.swift
+@Transient
+private var _y: _SwiftDataNoType
+=== __swiftmacro_6Shapes5MixedC1y5ModelfMr1_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes5MixedC1z18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _z)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.z, to: initialValue)
+        _z = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.z)
+        return self.getValue(forKey: \.z)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.z) {
+            self.setValue(forKey: \.z, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Shapes5MixedC1z18_PersistedPropertyfMp_.swift
+@Transient
+private var _z: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Shapes5MixedC1z5ModelfMr2_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes5MixedC22_$observationRegistrar33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC2_x33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC2_y33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC2_z33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC2lz18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _lz)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.lz, to: initialValue)
+        _lz = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.lz)
+        return self.getValue(forKey: \.lz)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.lz) {
+            self.setValue(forKey: \.lz, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Shapes5MixedC2lz18_PersistedPropertyfMp_.swift
+@Transient
+private var _lz: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Shapes5MixedC2lz5ModelfMr10_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes5MixedC3_lz33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC3opt18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _opt)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.opt, to: initialValue)
+        _opt = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.opt)
+        return self.getValue(forKey: \.opt)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.opt) {
+            self.setValue(forKey: \.opt, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Shapes5MixedC3opt18_PersistedPropertyfMp_.swift
+@Transient
+private var _opt: _SwiftDataNoType
+=== __swiftmacro_6Shapes5MixedC3opt5ModelfMr8_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes5MixedC4_opt33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC4both18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _both)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.both, to: initialValue)
+        _both = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.both)
+        return self.getValue(forKey: \.both)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.both) {
+            self.setValue(forKey: \.both, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Shapes5MixedC4both18_PersistedPropertyfMp_.swift
+@Transient
+private var _both: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Shapes5MixedC4both5ModelfMr5_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes5MixedC4both9AttributefMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC4dict18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _dict)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.dict, to: initialValue)
+        _dict = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.dict)
+        return self.getValue(forKey: \.dict)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.dict) {
+            self.setValue(forKey: \.dict, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Shapes5MixedC4dict18_PersistedPropertyfMp_.swift
+@Transient
+private var _dict: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Shapes5MixedC4dict5ModelfMr7_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes5MixedC4init5ModelfMr12_.swift
+
+=== __swiftmacro_6Shapes5MixedC5_both33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC5_dict33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC5maybe18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _maybe)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.maybe, to: initialValue)
+        _maybe = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.maybe)
+        return self.getValue(forKey: \.maybe)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.maybe) {
+            self.setValue(forKey: \.maybe, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Shapes5MixedC5maybe18_PersistedPropertyfMp_.swift
+@Transient
+private var _maybe: _SwiftDataNoType! = _SwiftDataNoType()
+=== __swiftmacro_6Shapes5MixedC5maybe5ModelfMr9_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes5MixedC5plain18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _plain)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.plain, to: initialValue)
+        _plain = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.plain)
+        return self.getValue(forKey: \.plain)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.plain) {
+            self.setValue(forKey: \.plain, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Shapes5MixedC5plain18_PersistedPropertyfMp_.swift
+@Transient
+private var _plain: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Shapes5MixedC5plain5ModelfMr4_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes5MixedC5plain9AttributefMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC6_maybe33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC6_plain33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC6others12RelationshipfMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC6others18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _others)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.others, to: initialValue)
+        _others = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.others)
+        return self.getValue(forKey: \.others)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.others) {
+            self.setValue(forKey: \.others, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Shapes5MixedC6others18_PersistedPropertyfMp_.swift
+@Transient
+private var _others: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Shapes5MixedC6others5ModelfMr6_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes5MixedC7_others33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5MixedC8observed18_PersistedPropertyfMa_.swift
+@storageRestrictions(accesses: _$backingData, initializes: _observed)
+init(initialValue) {
+    _$backingData.setValue(forKey: \.observed, to: initialValue)
+    _observed = _SwiftDataNoType()
+}
+
+get {
+    _$observationRegistrar.access(self, keyPath: \.observed)
+    return self.getValue(forKey: \.observed)
+}
+
+set {
+    _$observationRegistrar.withMutation(of: self, keyPath: \.observed) {
+        self.setValue(forKey: \.observed, to: newValue)
+    }
+}
+=== __swiftmacro_6Shapes5MixedC8observed18_PersistedPropertyfMp_.swift
+@Transient
+private var _observed: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Shapes5MixedC8observed5ModelfMr11_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes5MixedC9_observed33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5OuterO5Inner5ModelfMe_.swift
+extension Outer.Inner: nonisolated SwiftData.PersistentModel {
+}
+
+extension Outer.Inner: nonisolated Observation.Observable {
+}
+
+@available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Outer.Inner's persistentModelID instead")
+@available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Outer.Inner's persistentModelID instead")
+extension Outer.Inner: Sendable {
+}
+=== __swiftmacro_6Shapes5OuterO5Inner5ModelfMm_.swift
+@Transient
+private var _$backingData: any SwiftData.BackingData<Inner> = Inner.createBackingData()
+
+public var persistentBackingData: any SwiftData.BackingData<Inner> {
+    get {
+        return _$backingData
+    }
+    set {
+        _$backingData = newValue
+    }
+}
+
+class var schemaMetadata: [SwiftData.Schema.PropertyMetadata] {
+  return [
+    SwiftData.Schema.PropertyMetadata(name: "v", keypath: \Inner.v, defaultValue: 1, metadata: nil)
+  ]
+}
+
+init(backingData: any SwiftData.BackingData<Inner>) {
+  _v = _SwiftDataNoType()
+  self.persistentBackingData = backingData
+}
+
+@Transient private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<_M>(
+    keyPath: KeyPath<Inner, _M>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<_M, _MR>(
+  keyPath: KeyPath<Inner, _M>,
+  _ mutation: () throws -> _MR
+) rethrows -> _MR {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+struct _SwiftDataNoType {
+}
+=== __swiftmacro_6Shapes5OuterO5InnerC13_$backingData33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5OuterO5InnerC1v18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _v)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.v, to: initialValue)
+        _v = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.v)
+        return self.getValue(forKey: \.v)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.v) {
+            self.setValue(forKey: \.v, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Shapes5OuterO5InnerC1v18_PersistedPropertyfMp_.swift
+@Transient
+private var _v: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Shapes5OuterO5InnerC1v5ModelfMr_.swift
+@_PersistedProperty
+=== __swiftmacro_6Shapes5OuterO5InnerC22_$observationRegistrar33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5OuterO5InnerC2_v33_C01776A4525D5700C9CAB18498B5F7E5LL9TransientfMp_.swift
+
+=== __swiftmacro_6Shapes5OuterO5InnerC4init5ModelfMr0_.swift
+
+=== __swiftmacro_6Shapes8PubActor05ModelC0fMe_.swift
+extension PubActor: SwiftData.ModelActor {
+}
+=== __swiftmacro_6Shapes8PubActor05ModelC0fMm_.swift
+public nonisolated let modelExecutor: any SwiftData.ModelExecutor
+
+public nonisolated let modelContainer: SwiftData.ModelContainer
+
+public init(modelContainer: SwiftData.ModelContainer) {
+    let modelContext = ModelContext(modelContainer)
+    self.modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
+    self.modelContainer = modelContainer
+}
+=== error
+Shapes.swift:24:9: error: cannot expand accessor macro on variable declared with 'let'
+=== error
+Shapes.swift:26:16: error: static property 's' is not concurrency-safe because it is nonisolated global shared mutable state [#MutableGlobalVariable]
+=== error
+Shapes.swift:33:5: error: 'lazy' cannot be used on a computed property

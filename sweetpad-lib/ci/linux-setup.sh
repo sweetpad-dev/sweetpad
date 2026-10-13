@@ -11,6 +11,10 @@
 #   swbuild    Swift Build's command-line driver, which the toolchain doesn't
 #              ship, built from swiftlang/swift-build at the toolchain's tag,
 #              with swift-build-linux.patch, and linked into ~/bin
+#   sweetpad-macros
+#              the plugin for Apple's macros that Linux has no working build
+#              of (SwiftData's, #Predicate), built from sweetpad-cli/macros
+#              into ~/bin
 #   Rust       rustup, for building sweetpad itself
 #
 # The SDK comes from your own Xcode (XCODE_APP, default /Applications/Xcode.app,
@@ -126,6 +130,14 @@ fi
 # link.
 ln -sf "$SWB/.build/release/swbuild" "$HOME/bin/swbuild"
 ls "$SWB/.build/release/swbuild" "$SWB/.build/release/SWBBuildServiceBundle"
+
+section "sweetpad-macros"
+# Built outside the checkout, which the Mac shares, so the two builds keep
+# apart.
+MACROS="$(cd "$(dirname "$0")/../../sweetpad-cli/macros" && pwd)"
+swift build -c release --package-path "$MACROS" --scratch-path "$HOME/src/sweetpad-macros" --product sweetpad-macros
+ln -sf "$HOME/src/sweetpad-macros/release/sweetpad-macros" "$HOME/bin/sweetpad-macros"
+ls "$HOME/bin/sweetpad-macros"
 
 section "Rust"
 if [ ! -x "$HOME/.cargo/bin/cargo" ]; then

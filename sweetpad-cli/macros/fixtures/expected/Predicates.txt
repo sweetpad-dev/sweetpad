@@ -1,0 +1,675 @@
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX22_12_9PredicatefMf_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_Comparison(
+        lhs: PredicateExpressions.Foundation::build_KeyPath(
+            root: PredicateExpressions.Foundation::build_Arg($0),
+            keyPath: \.count
+        ),
+        rhs: PredicateExpressions.Foundation::build_Arg(limit),
+        op: .greaterThan
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX23_12_9PredicatefMf0_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_Disjunction(
+        lhs: PredicateExpressions.Foundation::build_Conjunction(
+            lhs: PredicateExpressions.Foundation::build_Comparison(
+                lhs: PredicateExpressions.Foundation::build_KeyPath(
+                    root: PredicateExpressions.Foundation::build_Arg($0),
+                    keyPath: \.count
+                ),
+                rhs: PredicateExpressions.Foundation::build_Arg(1),
+                op: .greaterThanOrEqual
+            ),
+            rhs: PredicateExpressions.Foundation::build_Comparison(
+                lhs: PredicateExpressions.Foundation::build_KeyPath(
+                    root: PredicateExpressions.Foundation::build_Arg($0),
+                    keyPath: \.count
+                ),
+                rhs: PredicateExpressions.Foundation::build_Arg(10),
+                op: .lessThanOrEqual
+            )
+        ),
+        rhs: PredicateExpressions.Foundation::build_Negation(
+            PredicateExpressions.Foundation::build_Comparison(
+                lhs: PredicateExpressions.Foundation::build_KeyPath(
+                    root: PredicateExpressions.Foundation::build_Arg($0),
+                    keyPath: \.score
+                ),
+                rhs: PredicateExpressions.Foundation::build_Arg(0.5),
+                op: .lessThan
+            )
+        )
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX24_12_9PredicatefMf1_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_Equal(
+        lhs: PredicateExpressions.Foundation::build_NilCoalesce(
+            lhs: PredicateExpressions.Foundation::build_KeyPath(
+                root: PredicateExpressions.Foundation::build_Arg($0),
+                keyPath: \.body
+            ),
+            rhs: PredicateExpressions.Foundation::build_Arg("")
+        ),
+        rhs: PredicateExpressions.Foundation::build_Arg(word)
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX25_12_9PredicatefMf2_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_Equal(
+        lhs: PredicateExpressions.Foundation::build_flatMap(
+            PredicateExpressions.Foundation::build_KeyPath(
+                root: PredicateExpressions.Foundation::build_Arg($0),
+                keyPath: \.body
+            )
+        ) {
+            PredicateExpressions.Foundation::build_contains(
+                PredicateExpressions.Foundation::build_Arg($0),
+                PredicateExpressions.Foundation::build_Arg(word)
+            )
+        },
+        rhs: PredicateExpressions.Foundation::build_Arg(true)
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX26_12_9PredicatefMf3_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_localizedStandardContains(
+        PredicateExpressions.Foundation::build_KeyPath(
+            root: PredicateExpressions.Foundation::build_Arg($0),
+            keyPath: \.title
+        ),
+        PredicateExpressions.Foundation::build_Arg(word)
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX27_12_9PredicatefMf4_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_contains(
+        PredicateExpressions.Foundation::build_KeyPath(
+            root: PredicateExpressions.Foundation::build_Arg($0),
+            keyPath: \.tags
+        )
+    ) {
+        PredicateExpressions.Foundation::build_Equal(
+            lhs: PredicateExpressions.Foundation::build_KeyPath(
+                root: PredicateExpressions.Foundation::build_Arg($0),
+                keyPath: \.name
+            ),
+            rhs: PredicateExpressions.Foundation::build_Arg(word)
+        )
+    }
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX28_12_9PredicatefMf5_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_contains(
+        PredicateExpressions.Foundation::build_KeyPath(
+            root: PredicateExpressions.Foundation::build_Arg($0),
+            keyPath: \.flags
+        ),
+        PredicateExpressions.Foundation::build_Arg(word)
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX29_12_9PredicatefMf6_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_allSatisfy(
+        PredicateExpressions.Foundation::build_KeyPath(
+            root: PredicateExpressions.Foundation::build_Arg($0),
+            keyPath: \.tags
+        )
+    ) {
+        PredicateExpressions.Foundation::build_Negation(
+            PredicateExpressions.Foundation::build_KeyPath(
+                root: PredicateExpressions.Foundation::build_KeyPath(
+                    root: PredicateExpressions.Foundation::build_Arg($0),
+                    keyPath: \.name
+                ),
+                keyPath: \.isEmpty
+            )
+        )
+    }
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX32_12_9PredicatefMf8_.swift
+Foundation.Predicate<Note>({ note in
+    PredicateExpressions.Foundation::build_NilCoalesce(
+        lhs: PredicateExpressions.Foundation::build_flatMap(
+            PredicateExpressions.Foundation::build_KeyPath(
+                root: PredicateExpressions.Foundation::build_Arg(note),
+                keyPath: \.body
+            )
+        ) { body in
+            PredicateExpressions.Foundation::build_Comparison(
+                lhs: PredicateExpressions.Foundation::build_KeyPath(
+                    root: PredicateExpressions.Foundation::build_Arg(body),
+                    keyPath: \.count
+                ),
+                rhs: PredicateExpressions.Foundation::build_Arg(3),
+                op: .greaterThan
+            )
+        },
+        rhs: PredicateExpressions.Foundation::build_Arg(
+            false
+        )
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX39_12_9PredicatefMf9_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_Conditional(
+        PredicateExpressions.Foundation::build_Equal(
+            lhs: PredicateExpressions.Foundation::build_Remainder(
+                lhs: PredicateExpressions.Foundation::build_KeyPath(
+                    root: PredicateExpressions.Foundation::build_Arg($0),
+                    keyPath: \.count
+                ),
+                rhs: PredicateExpressions.Foundation::build_Arg(2)
+            ),
+            rhs: PredicateExpressions.Foundation::build_Arg(0)
+        ),
+        PredicateExpressions.Foundation::build_Comparison(
+            lhs: PredicateExpressions.Foundation::build_KeyPath(
+                root: PredicateExpressions.Foundation::build_Arg($0),
+                keyPath: \.score
+            ),
+            rhs: PredicateExpressions.Foundation::build_Arg(1),
+            op: .greaterThan
+        ),
+        PredicateExpressions.Foundation::build_Comparison(
+            lhs: PredicateExpressions.Foundation::build_UnaryMinus(
+                PredicateExpressions.Foundation::build_KeyPath(
+                    root: PredicateExpressions.Foundation::build_Arg($0),
+                    keyPath: \.score
+                )
+            ),
+            rhs: PredicateExpressions.Foundation::build_Arg(1),
+            op: .greaterThan
+        )
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX40_12_9PredicatefMf10_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_Conjunction(
+        lhs: PredicateExpressions.Foundation::build_contains(
+            PredicateExpressions.Foundation::build_ClosedRange(
+                lower: PredicateExpressions.Foundation::build_Arg(1),
+                upper: PredicateExpressions.Foundation::build_Arg(5)
+            ),
+            PredicateExpressions.Foundation::build_KeyPath(
+                root: PredicateExpressions.Foundation::build_Arg($0),
+                keyPath: \.count
+            )
+        ),
+        rhs: PredicateExpressions.Foundation::build_contains(
+            PredicateExpressions.Foundation::build_Range(
+                lower: PredicateExpressions.Foundation::build_Arg(0),
+                upper: PredicateExpressions.Foundation::build_Arg(3)
+            ),
+            PredicateExpressions.Foundation::build_KeyPath(
+                root: PredicateExpressions.Foundation::build_Arg($0),
+                keyPath: \.count
+            )
+        )
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX41_12_9PredicatefMf11_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_Conjunction(
+        lhs: PredicateExpressions.Foundation::build_NotEqual(
+            lhs: PredicateExpressions.Foundation::build_KeyPath(
+                root: PredicateExpressions.Foundation::build_Arg($0),
+                keyPath: \.body
+            ),
+            rhs: PredicateExpressions.Foundation::build_NilLiteral()
+        ),
+        rhs: PredicateExpressions.Foundation::build_NotEqual(
+            lhs: PredicateExpressions.Foundation::build_ForcedUnwrap(
+                PredicateExpressions.Foundation::build_KeyPath(
+                    root: PredicateExpressions.Foundation::build_Arg($0),
+                    keyPath: \.body
+                )
+            ),
+            rhs: PredicateExpressions.Foundation::build_Arg("")
+        )
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX42_12_9PredicatefMf12_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_Conjunction(
+        lhs: PredicateExpressions.Foundation::build_Equal(
+            lhs: PredicateExpressions.Foundation::build_KeyPath(
+                root: PredicateExpressions.Foundation::build_KeyPath(
+                    root: PredicateExpressions.Foundation::build_Arg($0),
+                    keyPath: \.flags
+                ),
+                keyPath: \.first
+            ),
+            rhs: PredicateExpressions.Foundation::build_Arg(word)
+        ),
+        rhs: PredicateExpressions.Foundation::build_Equal(
+            lhs: PredicateExpressions.Foundation::build_subscript(
+                PredicateExpressions.Foundation::build_KeyPath(
+                    root: PredicateExpressions.Foundation::build_Arg($0),
+                    keyPath: \.flags
+                ),
+                PredicateExpressions.Foundation::build_Arg(0)
+            ),
+            rhs: PredicateExpressions.Foundation::build_Arg(word)
+        )
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX43_12_9PredicatefMf13_.swift
+Foundation.Predicate<Base>({
+    PredicateExpressions.Foundation::build_Conjunction(
+        lhs: PredicateExpressions.Foundation::build_Equal(
+            lhs: PredicateExpressions.Foundation::build_flatMap(
+                PredicateExpressions.Foundation::ConditionalCast<_, Sub>(
+                    PredicateExpressions.Foundation::build_Arg($0)
+                )
+            ) {
+                PredicateExpressions.Foundation::build_KeyPath(
+                    root: PredicateExpressions.Foundation::build_Arg($0),
+                    keyPath: \.y
+                )
+            },
+            rhs: PredicateExpressions.Foundation::build_Arg(2)
+        ),
+        rhs: PredicateExpressions.Foundation::TypeCheck<_, Sub >(
+            PredicateExpressions.Foundation::build_Arg($0)
+        )
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX44_12_9PredicatefMf14_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_evaluate(
+        PredicateExpressions.Foundation::build_Arg(a),
+        PredicateExpressions.Foundation::build_Arg($0)
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX46_12_9PredicatefMf16_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_Equal(
+        lhs: PredicateExpressions.Foundation::build_max(
+            PredicateExpressions.Foundation::build_KeyPath(
+                root: PredicateExpressions.Foundation::build_Arg($0),
+                keyPath: \.flags
+            )
+        ),
+        rhs: PredicateExpressions.Foundation::build_Arg(word)
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX47_12_10ExpressionfMf_.swift
+Foundation.Expression<Note, Int>({
+    PredicateExpressions.Foundation::build_Arithmetic(
+        lhs: PredicateExpressions.Foundation::build_KeyPath(
+            root: PredicateExpressions.Foundation::build_Arg($0),
+            keyPath: \.count
+        ),
+        rhs: PredicateExpressions.Foundation::build_Arg(1),
+        op: .add
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX48_12_9PredicatefMf17_.swift
+Foundation.Predicate<Note>({
+    PredicateExpressions.Foundation::build_Conjunction(
+        lhs: PredicateExpressions.Foundation::build_Comparison(
+            lhs: PredicateExpressions.Foundation::build_Division(
+                lhs: PredicateExpressions.Foundation::build_KeyPath(
+                    root: PredicateExpressions.Foundation::build_Arg($0),
+                    keyPath: \.score
+                ),
+                rhs: PredicateExpressions.Foundation::build_Arg(2)
+            ),
+            rhs: PredicateExpressions.Foundation::build_Arg(0.1),
+            op: .greaterThan
+        ),
+        rhs: PredicateExpressions.Foundation::build_Comparison(
+            lhs: PredicateExpressions.Foundation::build_Division(
+                lhs: PredicateExpressions.Foundation::build_KeyPath(
+                    root: PredicateExpressions.Foundation::build_Arg($0),
+                    keyPath: \.count
+                ),
+                rhs: PredicateExpressions.Foundation::build_Arg(2)
+            ),
+            rhs: PredicateExpressions.Foundation::build_Arg(1),
+            op: .greaterThan
+        )
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX49_12_9PredicatefMf18_.swift
+Foundation.Predicate<String, Int>({ s, n in
+    PredicateExpressions.Foundation::build_Equal(
+        lhs: PredicateExpressions.Foundation::build_KeyPath(
+            root: PredicateExpressions.Foundation::build_Arg(s),
+            keyPath: \.count
+        ),
+        rhs: PredicateExpressions.Foundation::build_Arg(n)
+    )
+})
+=== __swiftmacro_10Predicates0021Predicatesswift_IfFDefMX50_12_9PredicatefMf19_.swift
+Foundation.Predicate<Note>({ _ in
+    PredicateExpressions.Foundation::build_Arg(
+        true
+    )
+})
+=== __swiftmacro_10Predicates3Tag5ModelfMe_.swift
+extension Tag: nonisolated SwiftData.PersistentModel {
+}
+
+extension Tag: nonisolated Observation.Observable {
+}
+
+@available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Tag's persistentModelID instead")
+@available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Tag's persistentModelID instead")
+extension Tag: Sendable {
+}
+=== __swiftmacro_10Predicates3Tag5ModelfMm_.swift
+@Transient
+private var _$backingData: any SwiftData.BackingData<Tag> = Tag.createBackingData()
+
+public var persistentBackingData: any SwiftData.BackingData<Tag> {
+    get {
+        return _$backingData
+    }
+    set {
+        _$backingData = newValue
+    }
+}
+
+class var schemaMetadata: [SwiftData.Schema.PropertyMetadata] {
+  return [
+    SwiftData.Schema.PropertyMetadata(name: "name", keypath: \Tag.name, defaultValue: nil, metadata: nil)
+  ]
+}
+
+init(backingData: any SwiftData.BackingData<Tag>) {
+  _name = _SwiftDataNoType()
+  self.persistentBackingData = backingData
+}
+
+@Transient private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<_M>(
+    keyPath: KeyPath<Tag, _M>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<_M, _MR>(
+  keyPath: KeyPath<Tag, _M>,
+  _ mutation: () throws -> _MR
+) rethrows -> _MR {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+struct _SwiftDataNoType {
+}
+=== __swiftmacro_10Predicates3TagC13_$backingData33_30B599833963B6DC370562E3B8A0EBD4LL9TransientfMp_.swift
+
+=== __swiftmacro_10Predicates3TagC22_$observationRegistrar33_30B599833963B6DC370562E3B8A0EBD4LL9TransientfMp_.swift
+
+=== __swiftmacro_10Predicates3TagC4init5ModelfMr0_.swift
+
+=== __swiftmacro_10Predicates3TagC4name18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _name)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.name, to: initialValue)
+        _name = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.name)
+        return self.getValue(forKey: \.name)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.name) {
+            self.setValue(forKey: \.name, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_10Predicates3TagC4name18_PersistedPropertyfMp_.swift
+@Transient
+private var _name: _SwiftDataNoType
+=== __swiftmacro_10Predicates3TagC4name5ModelfMr_.swift
+@_PersistedProperty
+=== __swiftmacro_10Predicates3TagC5_name33_30B599833963B6DC370562E3B8A0EBD4LL9TransientfMp_.swift
+
+=== __swiftmacro_10Predicates4Note5ModelfMe_.swift
+extension Note: nonisolated SwiftData.PersistentModel {
+}
+
+extension Note: nonisolated Observation.Observable {
+}
+
+@available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Note's persistentModelID instead")
+@available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Note's persistentModelID instead")
+extension Note: Sendable {
+}
+=== __swiftmacro_10Predicates4Note5ModelfMm_.swift
+@Transient
+private var _$backingData: any SwiftData.BackingData<Note> = Note.createBackingData()
+
+public var persistentBackingData: any SwiftData.BackingData<Note> {
+    get {
+        return _$backingData
+    }
+    set {
+        _$backingData = newValue
+    }
+}
+
+class var schemaMetadata: [SwiftData.Schema.PropertyMetadata] {
+  return [
+    SwiftData.Schema.PropertyMetadata(name: "title", keypath: \Note.title, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "body", keypath: \Note.body, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "count", keypath: \Note.count, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "score", keypath: \Note.score, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "tags", keypath: \Note.tags, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "flags", keypath: \Note.flags, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "created", keypath: \Note.created, defaultValue: nil, metadata: nil)
+  ]
+}
+
+init(backingData: any SwiftData.BackingData<Note>) {
+  _title = _SwiftDataNoType()
+  _body = _SwiftDataNoType()
+  _count = _SwiftDataNoType()
+  _score = _SwiftDataNoType()
+  _tags = _SwiftDataNoType()
+  _flags = _SwiftDataNoType()
+  _created = _SwiftDataNoType()
+  self.persistentBackingData = backingData
+}
+
+@Transient private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<_M>(
+    keyPath: KeyPath<Note, _M>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<_M, _MR>(
+  keyPath: KeyPath<Note, _M>,
+  _ mutation: () throws -> _MR
+) rethrows -> _MR {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+struct _SwiftDataNoType {
+}
+=== __swiftmacro_10Predicates4NoteC13_$backingData33_30B599833963B6DC370562E3B8A0EBD4LL9TransientfMp_.swift
+
+=== __swiftmacro_10Predicates4NoteC22_$observationRegistrar33_30B599833963B6DC370562E3B8A0EBD4LL9TransientfMp_.swift
+
+=== __swiftmacro_10Predicates4NoteC4body18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _body)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.body, to: initialValue)
+        _body = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.body)
+        return self.getValue(forKey: \.body)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.body) {
+            self.setValue(forKey: \.body, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_10Predicates4NoteC4body18_PersistedPropertyfMp_.swift
+@Transient
+private var _body: _SwiftDataNoType?
+=== __swiftmacro_10Predicates4NoteC4body5ModelfMr0_.swift
+@_PersistedProperty
+=== __swiftmacro_10Predicates4NoteC4init5ModelfMr6_.swift
+
+=== __swiftmacro_10Predicates4NoteC4tags18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _tags)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.tags, to: initialValue)
+        _tags = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.tags)
+        return self.getValue(forKey: \.tags)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.tags) {
+            self.setValue(forKey: \.tags, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_10Predicates4NoteC4tags18_PersistedPropertyfMp_.swift
+@Transient
+private var _tags: _SwiftDataNoType
+=== __swiftmacro_10Predicates4NoteC4tags5ModelfMr3_.swift
+@_PersistedProperty
+=== __swiftmacro_10Predicates4NoteC5_body33_30B599833963B6DC370562E3B8A0EBD4LL9TransientfMp_.swift
+
+=== __swiftmacro_10Predicates4NoteC5_tags33_30B599833963B6DC370562E3B8A0EBD4LL9TransientfMp_.swift
+
+=== __swiftmacro_10Predicates4NoteC5count18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _count)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.count, to: initialValue)
+        _count = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.count)
+        return self.getValue(forKey: \.count)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.count) {
+            self.setValue(forKey: \.count, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_10Predicates4NoteC5count18_PersistedPropertyfMp_.swift
+@Transient
+private var _count: _SwiftDataNoType
+=== __swiftmacro_10Predicates4NoteC5count5ModelfMr1_.swift
+@_PersistedProperty
+=== __swiftmacro_10Predicates4NoteC5flags18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _flags)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.flags, to: initialValue)
+        _flags = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.flags)
+        return self.getValue(forKey: \.flags)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.flags) {
+            self.setValue(forKey: \.flags, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_10Predicates4NoteC5flags18_PersistedPropertyfMp_.swift
+@Transient
+private var _flags: _SwiftDataNoType
+=== __swiftmacro_10Predicates4NoteC5flags5ModelfMr4_.swift
+@_PersistedProperty
+=== __swiftmacro_10Predicates4NoteC5score18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _score)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.score, to: initialValue)
+        _score = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.score)
+        return self.getValue(forKey: \.score)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.score) {
+            self.setValue(forKey: \.score, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_10Predicates4NoteC5score18_PersistedPropertyfMp_.swift
+@Transient
+private var _score: _SwiftDataNoType
+=== __swiftmacro_10Predicates4NoteC5score5ModelfMr2_.swift
+@_PersistedProperty
+=== __swiftmacro_10Predicates4NoteC5title18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _title)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.title, to: initialValue)
+        _title = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.title)
+        return self.getValue(forKey: \.title)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.title) {
+            self.setValue(forKey: \.title, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_10Predicates4NoteC5title18_PersistedPropertyfMp_.swift
+@Transient
+private var _title: _SwiftDataNoType
+=== __swiftmacro_10Predicates4NoteC5title5ModelfMr_.swift
+@_PersistedProperty
+=== __swiftmacro_10Predicates4NoteC6_count33_30B599833963B6DC370562E3B8A0EBD4LL9TransientfMp_.swift
+
+=== __swiftmacro_10Predicates4NoteC6_flags33_30B599833963B6DC370562E3B8A0EBD4LL9TransientfMp_.swift
+
+=== __swiftmacro_10Predicates4NoteC6_score33_30B599833963B6DC370562E3B8A0EBD4LL9TransientfMp_.swift
+
+=== __swiftmacro_10Predicates4NoteC6_title33_30B599833963B6DC370562E3B8A0EBD4LL9TransientfMp_.swift
+
+=== __swiftmacro_10Predicates4NoteC7created18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _created)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.created, to: initialValue)
+        _created = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.created)
+        return self.getValue(forKey: \.created)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.created) {
+            self.setValue(forKey: \.created, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_10Predicates4NoteC7created18_PersistedPropertyfMp_.swift
+@Transient
+private var _created: _SwiftDataNoType
+=== __swiftmacro_10Predicates4NoteC7created5ModelfMr5_.swift
+@_PersistedProperty
+=== __swiftmacro_10Predicates4NoteC8_created33_30B599833963B6DC370562E3B8A0EBD4LL9TransientfMp_.swift
+
+=== error
+Predicates.swift:32:72: error: Global functions are not supported in this predicate (from macro 'Predicate')
+=== error
+Predicates.swift:46:73: error: Member access without an explicit base is not supported in this predicate (from macro 'Predicate')

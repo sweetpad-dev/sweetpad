@@ -160,6 +160,9 @@ struct Invocation {
     linker: Option<PathBuf>,
     /// Where the toolset a host without Xcode needs goes (see [`toolset`]).
     toolset: Option<PathBuf>,
+    /// The plugin for Apple's macros that the Darwin SDK has none for (see
+    /// [`macro_plugin`]).
+    macros: Option<PathBuf>,
 }
 
 /// Settings Xcode's own Swift Build resolves differently from the open-source
@@ -175,16 +178,71 @@ const XCODE_DEFAULTS: &[(&str, &str)] = &[("SKIP_COPYING_TEST_FRAMEWORKS", "YES"
 ///   is in (`_StoreKit_SwiftUI`), which Xcode's compiler loads by default
 ///   and the open-source one only when asked;
 /// - the stand-in in `tools` for the SDK's linker (see
-///   [`super::darwin_tools`]).
-fn toolset(tools: &Path) -> String {
+///   [`super::darwin_tools`]);
+/// - `macros`, the plugin that expands the macros of [`MACRO_MODULES`].
+fn toolset(tools: &Path, macros: Option<&Path>) -> String {
+    let mut options = vec![
+        "-Xfrontend".to_string(),
+        "-enable-cross-import-overlays".to_string(),
+    ];
+    if let Some(plugin) = macros {
+        options.push("-load-plugin-executable".to_string());
+        options.push(format!("{}#{}", plugin.display(), MACRO_MODULES.join(",")));
+    }
     let toolset = serde_json::json!({
         "schemaVersion": "1.0",
-        "swiftCompiler": {
-            "extraCLIOptions": ["-Xfrontend", "-enable-cross-import-overlays"]
-        },
+        "swiftCompiler": { "extraCLIOptions": options },
         "linker": { "path": tools.join("ld64.lld") },
     });
     format!("{toolset:#}\n")
+}
+
+/// Apple's macro plugins that `sweetpad-macros` stands in for. Xcode has
+/// them as macOS libraries. The Darwin SDK's plugin server has none of
+/// them, and the toolchain's own `FoundationMacros` names
+/// `FoundationEssentials` in its expansions, which the SDK's Foundation
+/// doesn't have.
+const MACRO_MODULES: &[&str] = &["FoundationMacros", "SwiftDataMacros"];
+
+/// `sweetpad-macros`, built from `sweetpad-cli/macros`: `SWEETPAD_MACROS`,
+/// else the one on `PATH`. A build without it fails only where a macro of
+/// [`MACRO_MODULES`] is used, with the compiler naming the module.
+fn macro_plugin() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("SWEETPAD_MACROS") {
+        return Some(PathBuf::from(path));
+    }
+    std::env::var_os("PATH")
+        .iter()
+        .flat_map(std::env::split_paths)
+        .map(|dir| dir.join("sweetpad-macros"))
+        .find(|candidate| candidate.is_file())
+}
+
+/// `swbuild build` for the scheme's targets, with the parameters file and
+/// the PIF.
+fn swbuild_args(
+    plan: &BuildPlan<'_>,
+    container: &Path,
+    parameters_file: &Path,
+    pif: &Path,
+) -> Result<Vec<String>, CliError> {
+    let mut args = vec![
+        "build".to_string(),
+        "--configuration".to_string(),
+        plan.configuration.to_string(),
+        "--buildParametersFile".to_string(),
+        parameters_file.display().to_string(),
+    ];
+    let build_for = match plan.action {
+        BuildAction::Build => BuildFor::Running,
+        BuildAction::BuildForTesting => BuildFor::Testing,
+    };
+    for target in scheme_targets(container, plan.scheme, build_for)? {
+        args.push("--target".to_string());
+        args.push(target);
+    }
+    args.push(pif.display().to_string());
+    Ok(args)
 }
 
 impl Invocation {
@@ -257,27 +315,12 @@ impl Invocation {
             settings.xcconfig.as_deref(),
         );
 
-        let mut args = vec![
-            "build".to_string(),
-            "--configuration".to_string(),
-            plan.configuration.to_string(),
-            "--buildParametersFile".to_string(),
-            parameters_file.display().to_string(),
-        ];
-        let build_for = match plan.action {
-            BuildAction::Build => BuildFor::Running,
-            BuildAction::BuildForTesting => BuildFor::Testing,
-        };
-        for target in scheme_targets(&container, plan.scheme, build_for)? {
-            args.push("--target".to_string());
-            args.push(target);
-        }
-        args.push(pif.display().to_string());
         Ok(Self {
             program: swbuild_program()?,
-            args,
+            args: swbuild_args(plan, &container, &parameters_file, &pif)?,
             cwd: xcodebuild::working_dir(plan.container),
             linker: host.as_ref().map(|h| h.bundle.join("toolset/bin/ld64.lld")),
+            macros: host.as_ref().and_then(|_| macro_plugin()),
             env: host
                 .zip(tools.as_deref())
                 .map(|(h, tools)| h.env(tools))
@@ -325,7 +368,7 @@ impl Invocation {
             link_tools(tools, self.linker.as_deref())?;
         }
         if let (Some(path), Some(tools)) = (&self.toolset, &self.tools) {
-            write_changed(path, toolset(tools).as_bytes())?;
+            write_changed(path, toolset(tools, self.macros.as_deref()).as_bytes())?;
         }
         Ok(())
     }
