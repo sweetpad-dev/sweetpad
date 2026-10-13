@@ -417,8 +417,9 @@ fn write_changed(path: &Path, contents: &[u8]) -> Result<(), CliError> {
 }
 
 /// Link this binary into `dir` under the names of the Xcode tools it stands
-/// in for: `actool`, the asset catalog compiler (see [`super::actool`]), and
-/// `xcstringstool`, the String Catalog compiler (see [`super::xcstringstool`]).
+/// in for: `actool`, the asset catalog compiler (see [`super::actool`]),
+/// `xcstringstool`, the String Catalog compiler (see [`super::xcstringstool`]),
+/// and the small Darwin tools like `lipo` (see [`super::darwin_tools`]).
 fn link_tools(dir: &Path) -> Result<(), CliError> {
     let fail = |e: std::io::Error| {
         CliError::new(format!(
@@ -428,7 +429,10 @@ fn link_tools(dir: &Path) -> Result<(), CliError> {
     };
     let exe = std::env::current_exe().map_err(fail)?;
     std::fs::create_dir_all(dir).map_err(fail)?;
-    for tool in ["actool", "xcstringstool"] {
+    let tools = ["actool", "xcstringstool"]
+        .iter()
+        .chain(super::darwin_tools::TOOLS);
+    for tool in tools {
         let path = dir.join(tool);
         let _ = std::fs::remove_file(&path);
         #[cfg(unix)]

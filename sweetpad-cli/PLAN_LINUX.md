@@ -84,22 +84,24 @@ swift-syntax and diff the expanded Swift text.
       binary, which never uses them
 - [ ] Open the PR to `main` (show the message first)
 
-## Toolchain tools (missing, but cheap)
+## Toolchain tools
 
 Swift Build names these in its xcspecs. The Swift toolchain has `llvm-ar`,
-`llvm-objcopy`, `docc` and `plutil`; xtool's bundle has `dsymutil` in
-`toolset/bin`, off PATH.
+`llvm-objcopy`, `docc` and `plutil`; xtool's bundle has `dsymutil` and
+`llvm-libtool-darwin` (as `llvm-lib`, the toolset's librarian) in
+`toolset/bin`, which the engine puts on `PATH`.
 
-- [ ] `copypng`: runs for every loose PNG in an iOS target
-      (`COMPRESS_PNG_FILES` defaults to YES). Stand-in: copy, dropping text
-      chunks for `-strip-PNG-text`
-- [ ] `libtool -static`: every static library target. Stand-in over
-      `llvm-ar --format=darwin`, handling `-filelist` and `-o`
-- [ ] `dsymutil`: Release (`dwarf-with-dsym`). Put xtool's on PATH
-- [ ] `lipo`: multi-arch builds and test bundles. Stand-in for `-create`,
-      `-info`, `-thin`, `-extract` and `-remove` (fat headers are simple)
-- [ ] `strip`: install and archive builds. `llvm-strip` (a symlink to
-      `llvm-objcopy`) with a wrapper for Apple's flags
+- [x] `libtool -static`: xtool's toolset already names its
+      `llvm-libtool-darwin` as the librarian
+- [x] `dsymutil`: Release (`dwarf-with-dsym`) finds xtool's on `PATH`
+- [x] `copypng`: copies, dropping text chunks for `-strip-PNG-text`. Xcode's
+      writes Apple's CgBI PNGs, which UIKit doesn't need
+- [x] `lipo`: `-create`, `-extract`, `-thin`, `-remove`, `-info`, `-archs`,
+      `-verify_arch`; checked with an arm64 + x86_64 simulator build
+- [x] `strip`: `llvm-objcopy` run as `llvm-strip`, which keeps the linker's
+      ad-hoc signature valid; checked with `DEPLOYMENT_POSTPROCESSING=YES`
+- [x] `ditto` for run scripts (XcodeGen gives a static library with Swift
+      sources one), copies only
 - [ ] `iconutil`: `.iconset` to `.icns` for macOS icons *(optional)*
 - [ ] `tiffutil`: multi-resolution TIFFs, macOS *(optional)*
 - [ ] `lex`/`yacc`, `unifdef`: apt's flex, bison and unifdef in the setup
@@ -218,7 +220,8 @@ overrides into variations.
 - [x] iOS Simulator, Debug: Xcode's app template, the Linux fixture, a
       SwiftUI app with Alamofire (project reference and package), the local
       checker apps; Ice Cubes compiles and fails only where Xcode 27 does too
-- [ ] Release configuration
+- [x] Release configuration: dSYM, strip on install, a static library, a
+      loose PNG; `corpus/_tools-app` (local) runs the same in the simulator
 - [ ] iOS device builds
 - [ ] App extensions, widgets and App Clips
 - [ ] Test targets (build the bundles)
@@ -251,7 +254,8 @@ Running in the simulator stays on a Mac.
   stand-in changes; clear the app's DerivedData before checking a new one.
 - Local checker apps live in the gitignored `sweetpad-lib/corpus/`:
   `_car-app` (47 asset lookups), `_strings-app`, `_alamofire-spm`,
-  `_alamofire-consumer`. Each prints its results to stderr for a diff
+  `_alamofire-consumer`, `_tools-app` (XcodeGen: static libraries, a loose
+  PNG). Each prints its results to stderr for a diff
   against Xcode's build.
 - `sweetpad-lib/corpus/_car-tools/` (gitignored) keeps the scripts used to
   decode `Assets.car`: `cardump.py` dumps one, `surgery.py` edits and
