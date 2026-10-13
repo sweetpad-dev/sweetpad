@@ -100,7 +100,12 @@ swift-syntax and diff the expanded Swift text.
       and view controllers, and widget, timeline and Live Activity previews,
       each expansion, error and warning as Xcode's. `@Entry` and `@State`
       build and run as with Xcode; the helper types are unreachable through
-      xtool's expansions
+      xtool's expansions. xtool's `@State` expands as Xcode's does. Its
+      `@Entry` leaves out Xcode's `#_SwiftUIEntryTypeCheck`, so a class or
+      closure default value builds without Xcode's warning that it
+      invalidates dependents on every access
+- [ ] SwiftUIMacros in `sweetpad-macros`, for those two warnings
+      *(optional)*
 - [ ] AppIntentsMacros, the schema macros *(optional)*
 - [ ] TipKitMacros, StateReportingMacros *(optional)*
 
@@ -153,9 +158,11 @@ Swift Build names these in its xcspecs. The Swift toolchain has `llvm-ar`,
       optimization) are left out
 - [ ] `intentbuilderc`: `.intentdefinition` to generated intent classes and
       strings
-- [ ] `appintentsmetadataprocessor`: `Metadata.appintents` from the
-      compiler's const values. A no-op first (the app runs, intents don't
-      register), real output later
+- [x] `appintentsmetadataprocessor`, as a no-op: `LM_SKIP_METADATA_EXTRACTION`
+      skips it, so the app builds and runs but its intents don't register
+- [ ] `appintentsmetadataprocessor` for real: `Metadata.appintents` from the
+      compiler's const values, which App Shortcuts, widget configuration
+      intents and intent buttons in widgets need
 - [ ] `coremlc`: generate the Swift class from the `.mlmodel`; the compiled
       `.mlmodelc` format is closed, so fail clearly or compile at runtime
       *(optional)*
