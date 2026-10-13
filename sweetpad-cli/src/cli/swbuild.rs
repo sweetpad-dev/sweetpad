@@ -936,13 +936,13 @@ impl MessageParser {
             kind @ ("error" | "warning" | "note" | "remark") => {
                 if kind == "error" {
                     self.errors = true;
-                    // `Linker command failed …` points at the project and says
-                    // nothing of why; any other error a task reports, in a file
-                    // or not, explains its failure.
+                    // `Linker command failed …` points at the project or the
+                    // package and says nothing of why; any other error a task
+                    // reports, in a file or not, explains its failure.
                     let at_project = m
                         .pointer("/location/path")
                         .and_then(Value::as_str)
-                        .is_some_and(|p| p.trim_end_matches('/').ends_with(".xcodeproj"));
+                        .is_some_and(is_container);
                     if !at_project
                         && let Some(id) =
                             m.pointer("/locationContext/taskID").and_then(Value::as_i64)
@@ -1085,7 +1085,7 @@ fn diagnostic(m: &Value) -> Parsed {
 ///
 /// Swift Build turns the linker's `ld:` and `clang:` lines into diagnostics
 /// of its own but leaves lld's (`ld64.lld: warning: …`) in the task's output,
-/// where it puts the project and target in front of each:
+/// where it puts the project or package and the target in front of each:
 /// `/p/App.xcodeproj: App: ld64.lld: warning: …`.
 fn linker_warnings(output: &str) -> Vec<Parsed> {
     let mut seen = HashSet::new();
@@ -1100,7 +1100,7 @@ fn linker_warnings(output: &str) -> Vec<Parsed> {
             let project = head
                 .split_once(": ")
                 .map(|(project, _)| project)
-                .filter(|project| project.ends_with(".xcodeproj"));
+                .filter(|project| is_container(project));
             seen.insert((project, message)).then(|| Parsed {
                 raw: match project {
                     Some(project) => format!("{project}: warning: {message}"),
@@ -1114,6 +1114,13 @@ fn linker_warnings(output: &str) -> Vec<Parsed> {
             })
         })
         .collect()
+}
+
+/// Whether `path` is a project or a package manifest, where Swift Build
+/// puts what a target's task says rather than in one of its files.
+fn is_container(path: &str) -> bool {
+    let path = path.trim_end_matches('/');
+    path.ends_with(".xcodeproj") || path.ends_with("/Package.swift")
 }
 
 /// lld's notice that it "does not support linking for platform iOS", which
@@ -1295,6 +1302,22 @@ mod tests {
         assert!(
             found.contains(&Event::Other(
                 "ld64.lld: error: undefined symbol: _foo".into()
+            )),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn an_error_on_a_package_still_shows_the_tool_output() {
+        let found = events(&[
+            r#"{"kind":"taskStarted","id":20,"ruleInfo":"Ld /dd/PackageFrameworks/Kit.framework/Kit normal","executionDescription":"Link Kit (arm64)"}"#,
+            r#"{"kind":"taskOutput","taskID":20,"data":"/s/Kit/Package.swift: Kit-product: ld64.lld: error: undefined symbol: _foo\n"}"#,
+            r#"{"kind":"error","message":"Linker command failed with exit code 1 (use -v to see invocation)","location":{"locationType":"path","path":"/s/Kit/Package.swift"},"locationContext":{"locationType":"task","taskID":20,"targetID":1}}"#,
+            r#"{"kind":"taskComplete","id":20,"result":"failed","signalled":false}"#,
+        ]);
+        assert!(
+            found.contains(&Event::Other(
+                "/s/Kit/Package.swift: Kit-product: ld64.lld: error: undefined symbol: _foo".into()
             )),
             "{found:?}"
         );
