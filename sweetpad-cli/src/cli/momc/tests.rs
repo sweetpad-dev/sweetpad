@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use super::archive::{Plist, read};
 use super::*;
+use crate::cli::keyed_archive::{Plist, read};
 use crate::cli::testdir::TempDir;
 
 fn fixtures() -> PathBuf {

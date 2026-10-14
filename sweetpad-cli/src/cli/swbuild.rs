@@ -483,9 +483,11 @@ fn write_changed(path: &Path, contents: &[u8]) -> Result<(), CliError> {
 
 /// Link this binary into `dir` under the names of the Xcode tools it stands
 /// in for: `actool`, the asset catalog compiler (see [`super::actool`]),
-/// `xcstringstool`, the String Catalog compiler (see [`super::xcstringstool`]),
-/// and the small Darwin tools like `lipo` (see [`super::darwin_tools`]), with
-/// the Darwin SDK's `linker` beside them for the linker stand-in to run.
+/// `ibtool`, the Interface Builder compiler (see [`super::ibtool`]), `momc`,
+/// the Core Data model compiler (see [`super::momc`]), `xcstringstool`, the
+/// String Catalog compiler (see [`super::xcstringstool`]), and the small
+/// Darwin tools like `lipo` (see [`super::darwin_tools`]), with the Darwin
+/// SDK's `linker` beside them for the linker stand-in to run.
 fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
     let fail = |e: std::io::Error| {
         CliError::new(format!(
@@ -495,7 +497,7 @@ fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
     };
     let exe = std::env::current_exe().map_err(fail)?;
     std::fs::create_dir_all(dir).map_err(fail)?;
-    let tools = ["actool", "momc", "xcstringstool"]
+    let tools = ["actool", "ibtool", "momc", "xcstringstool"]
         .iter()
         .chain(super::darwin_tools::TOOLS)
         .map(|tool| (*tool, exe.as_path()))

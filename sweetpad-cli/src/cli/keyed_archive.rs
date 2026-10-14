@@ -1,7 +1,9 @@
-//! Binary property lists, and the `NSKeyedArchiver` archives in them that a
-//! compiled model is: every object in one `$objects` array, each referring
-//! to the others by their index there, a UID, so an object graph with
-//! cycles, like an entity and its model, fits a tree.
+//! Binary property lists, and the `NSKeyedArchiver` archives written in
+//! them: every object in one `$objects` array, each referring to the others
+//! by their index there, a UID, so an object graph with cycles, like a Core
+//! Data entity and its model, fits a tree. The momc stand-in writes its
+//! models this way; the ibtool one writes a storyboard's `Info.plist` as a
+//! plain binary property list.
 
 use std::collections::HashMap;
 
@@ -9,7 +11,7 @@ use std::collections::HashMap;
 /// object in `$objects`; `Real32` is a single-precision real, which is how
 /// a `Float` attribute's default is kept.
 #[derive(Debug, Clone, PartialEq)]
-pub(super) enum Plist {
+pub(crate) enum Plist {
     Bool(bool),
     Int(i64),
     Real(f64),
@@ -22,13 +24,13 @@ pub(super) enum Plist {
 }
 
 /// The reference to `$null`, which stands for nil.
-pub(super) const NULL: Plist = Plist::Uid(0);
+pub(crate) const NULL: Plist = Plist::Uid(0);
 
 /// A class's name and its superclasses', as the archive records it.
-pub(super) type Class = &'static [&'static str];
+pub(crate) type Class = &'static [&'static str];
 
 /// Builds an `NSKeyedArchiver` archive one object at a time.
-pub(super) struct Archiver {
+pub(crate) struct Archiver {
     objects: Vec<Plist>,
     classes: HashMap<&'static str, u64>,
     strings: HashMap<String, u64>,
@@ -158,9 +160,9 @@ impl Archiver {
     }
 }
 
-pub(super) const ARRAY: Class = &["NSArray", "NSObject"];
-pub(super) const MUTABLE_ARRAY: Class = &["NSMutableArray", "NSArray", "NSObject"];
-pub(super) const SET: Class = &["NSSet", "NSObject"];
+pub(crate) const ARRAY: Class = &["NSArray", "NSObject"];
+pub(crate) const MUTABLE_ARRAY: Class = &["NSMutableArray", "NSArray", "NSObject"];
+pub(crate) const SET: Class = &["NSSet", "NSObject"];
 
 /// One object of a binary property list: a value's bytes, or a container's
 /// marker and the objects it holds, by index.
@@ -172,7 +174,7 @@ enum Flat {
 
 /// `value` as a `bplist00` file. Equal values that aren't containers are
 /// written once.
-pub(super) fn write(value: &Plist) -> Vec<u8> {
+pub(crate) fn write(value: &Plist) -> Vec<u8> {
     let mut objects = Vec::new();
     let mut seen = HashMap::new();
     flatten(value, &mut objects, &mut seen);
@@ -322,7 +324,7 @@ fn uint(n: u64, size: usize, out: &mut Vec<u8>) {
 }
 
 #[cfg(test)]
-pub(super) mod read {
+pub(crate) mod read {
     //! A reader for the binary property lists this module writes, and
     //! Xcode's momc, for the tests.
 

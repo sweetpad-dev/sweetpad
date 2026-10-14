@@ -54,6 +54,11 @@ fn main() -> ExitCode {
     if name == Some(std::ffi::OsStr::new("momc")) {
         return sweetpad_cli::cli::momc::main(&args);
     }
+    // Run as `ibtool`, it stands in for Xcode's Interface Builder compiler,
+    // which Swift Build also looks up on that `PATH`.
+    if name == Some(std::ffi::OsStr::new("ibtool")) {
+        return sweetpad_cli::cli::ibtool::main(&args);
+    }
     // Run as `lipo`, `strip`, `copypng`, `ditto` or
     // `embeddedBinaryValidationUtility`, it stands in for the Darwin tool of
     // that name, found on the same `PATH`.

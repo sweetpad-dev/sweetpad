@@ -21,7 +21,6 @@
 // doesn't go through `Output`.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
-mod archive;
 mod codegen;
 mod compile;
 mod model;

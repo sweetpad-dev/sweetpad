@@ -4,8 +4,8 @@
 
 use sweetpad_lib::xcode_hash::sha256;
 
-use super::archive::{Archiver, Class, MUTABLE_ARRAY, NULL, Plist, SET};
 use super::model::{Attribute, AttributeType, Entity, Model, Property, Relationship};
+use crate::cli::keyed_archive::{Archiver, Class, MUTABLE_ARRAY, NULL, Plist, SET};
 
 const MODEL: Class = &["NSManagedObjectModel", "NSObject"];
 const ENTITY: Class = &["NSEntityDescription", "NSObject"];
@@ -306,7 +306,7 @@ pub(super) fn archive(model: &Model) -> Vec<u8> {
                             )
                         })
                         .collect();
-                    let elements = a.collection(super::archive::ARRAY, elements);
+                    let elements = a.collection(crate::cli::keyed_archive::ARRAY, elements);
                     let name = a.string(&index.name);
                     a.object(
                         Some(at),
@@ -501,12 +501,12 @@ fn attribute_fields(
         fields.push(("NSAllowsCloudEncryption", Plist::Bool(true)));
     }
     if !predicates.is_empty() {
-        let predicates = a.collection(super::archive::ARRAY, predicates);
+        let predicates = a.collection(crate::cli::keyed_archive::ARRAY, predicates);
         let warnings = warnings
             .into_iter()
             .map(|w| a.value(Plist::Int(w)))
             .collect();
-        let warnings = a.collection(super::archive::ARRAY, warnings);
+        let warnings = a.collection(crate::cli::keyed_archive::ARRAY, warnings);
         fields.push(("NSValidationPredicates", predicates));
         fields.push(("NSValidationWarnings", warnings));
     }
@@ -948,7 +948,7 @@ pub(super) fn version_info(versions: &[(String, Hashes)], current: Option<&str>)
                 .collect(),
         ),
     ));
-    super::archive::write(&Plist::Dict(fields))
+    crate::cli::keyed_archive::write(&Plist::Dict(fields))
 }
 
 #[cfg(test)]

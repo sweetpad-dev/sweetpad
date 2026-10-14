@@ -1,6 +1,6 @@
 # Building Xcode projects on Linux
 
-Status on 2026-10-11. All the work is on branch `claude/linux-build-pif`, not
+Status on 2026-10-14. All the work is on branch `claude/linux-build-pif`, not
 merged into `main` yet.
 
 `sweetpad build` has a Swift Build engine, the default where there's no
@@ -147,7 +147,7 @@ Swift Build names these in its xcspecs. The Swift toolchain has `llvm-ar`,
 ## Apple compilers for data files
 
 - [ ] `ibtool`: XIBs and storyboards to `.nib`/`.storyboardc`. The biggest
-      item; see the ibtool section below
+      item, in progress; see the ibtool section below
 - [x] `momc`: `.xcdatamodel` to `.mom` and `.xcdatamodeld` to `.momd` with
       `VersionInfo.plist`, plus the generated Swift or Objective-C classes.
       Golden tests against Xcode's in `fixtures/momc` (`regen.py`). Fetch
@@ -222,9 +222,29 @@ colors and images against the asset catalogs (with fallback values), encodes
 fonts, overlays base localization `.strings`, and turns trait and size class
 overrides into variations.
 
-- [ ] NIBArchive writer, decoder and structural diff harness (2–3 days)
+- [x] NIBArchive writer, decoder and structural diff harness. `nib.rs`
+      writes the archive; `tests.rs` reads ours and Xcode's into a form that
+      doesn't depend on object or key order (some of ibtool's arrays come
+      from hash tables) and compares them. Golden storyboards in
+      `fixtures/ibtool` (`regen.py`). `IBTOOL_FIXTURES=<dir>` points the
+      test at another folder laid out the same way, and
+      `IBTOOL_DUMP=<dir>` writes both canonical forms there for a diff
 - [ ] `LaunchScreen.storyboard`: UIView, UILabel, UIImageView, constraints,
-      safe area; unblocks Xcode's UIKit template (2–3 days)
+      safe area; unblocks Xcode's UIKit template. The compiler is done:
+      plain view controllers, views, labels and image views, constraints
+      (multipliers, relations, priorities, symbolic spacing), the safe
+      area, system, sRGB and gray colors, and the regular, light and bold
+      system fonts. It matches Xcode structurally on the 4 fixtures and on
+      all 15 corpus launch screens, and `swbuild.rs` links it in as
+      `ibtool`. Left:
+  - [ ] `ibtool --version --output-format xml1`: Swift Build runs it first
+        and decodes the plist, so the Linux build of `_uikit-app` fails
+        until it answers. Xcode 27's prints a dict `com.apple.ibtool.version`
+        holding `bundle-version` 25098 and `short-bundle-version` 27.0
+  - [ ] Build `corpus/_uikit-app` on Linux and diff its `IBCHECK` lines
+        in the simulator with Xcode's build (`corpus/_ib-tools/ib-xcode.txt`)
+  - [ ] Other fonts (medium, semibold, heavy and the rest, custom fonts),
+        named colors from the asset catalog, `customClass`, more views
 - [ ] All 32 iOS corpus files matching structurally and passing runtime
       checks, seeded from `xib2nib`'s mappings (2–4 weeks)
 - [ ] Public XIB set and the coverage report; stop around 95% of weighted
@@ -334,8 +354,20 @@ Running in the simulator stays on a Mac.
   `@Model` classes with unique constraints, indices, a `@ModelActor` and
   `@Query`; `expansions/` holds Xcode's macro expansions), `_swiftui-app`
   (XcodeGen: `@Entry` values of several kinds, `@State`, `@Observable`, and
-  `#Preview` of SwiftUI and UIKit views). Each prints its
+  `#Preview` of SwiftUI and UIKit views), `_uikit-app` (XcodeGen: the
+  template, Kingfisher, Tuist and Alamofire launch screens and the
+  `Labels` and `Images` fixtures, loaded from storyboards and printed as
+  `IBCHECK` view trees with constraints). Each prints its
   results to stderr for a diff against Xcode's build.
+- The `linux-build.sh` scripts stop when the build leaves no products.
+  An empty products path once turned their `cp -R "$D"/.` into a copy of
+  the VM's root, Mac mounts included, which filled the disk.
+- `sweetpad-lib/corpus/_ib-tools/` (gitignored): `nibdump.py` dumps a
+  NIBArchive as it's laid out, `ibcheck.sh` installs an app in the booted
+  simulator and prints its `IBCHECK` lines, `ib-xcode.txt` is what
+  `_uikit-app` prints when Xcode builds it, and `vm.sh` runs a command in
+  the VM after rebuilding sweetpad there (`FILES=` lists the changed files
+  to touch first).
 - To diff one source file's macro expansions with Xcode's, typecheck it
   twice with `-Xfrontend -dump-macro-expansions`, once with
   `-load-plugin-executable <sweetpad-macros>#FoundationMacros,PreviewsMacros,SwiftDataMacros`
@@ -357,7 +389,7 @@ Running in the simulator stays on a Mac.
   check lines; the Alamofire apps want `afserver.py` running. Their paths
   point at a deleted scratch folder; adjust them before use.
 - Golden fixtures to regenerate after an Xcode update:
-  `sweetpad-cli/fixtures/actool`, `fixtures/xcstringstool` and
-  `fixtures/momc` (each has a `regen.py`), `macros/fixtures`
+  `sweetpad-cli/fixtures/actool`, `fixtures/xcstringstool`,
+  `fixtures/momc` and `fixtures/ibtool` (each has a `regen.py`), `macros/fixtures`
   (`check.py --record`), and the symbol templates' expected values in
   `src/cli/actool/glyph.rs`.
