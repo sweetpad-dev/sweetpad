@@ -84,14 +84,14 @@ answer is **remembered for that project**. Every later command reuses it.
 $ sweetpad status
 /path/to/SweetpadCIApp.xcodeproj (project)
   scheme        SweetpadCIApp  (remembered)
-  configuration Debug  (remembered)
+  configuration Debug  (scheme)
   destination   platform=iOS Simulator,id=F92801F8-…  (remembered)
 run `sweetpad app run` to build and launch
 ```
 
 That parenthetical is the useful part. When a build does something you didn't ask for, it names the
-layer responsible: a flag, an environment variable, a config file, a remembered answer, or
-auto-detection.
+layer responsible: a flag, an environment variable, a config file, a remembered answer, the scheme
+file, or auto-detection.
 
 :::note
 
@@ -120,6 +120,12 @@ sweetpad context remove --all       # forget the whole project context
 ```
 
 `context set` accepts `scheme`, `configuration`, `sdk`, `destination`, and `target`.
+
+A configuration is remembered per scheme, the way Xcode keeps one per scheme. A scheme with nothing
+remembered builds with the configuration its `.xcscheme` file sets: the Run action's for builds, the
+Test action's for `sweetpad test`. `context set configuration` applies to the selected scheme, so
+set the scheme first. For one configuration across every scheme, set `configuration` in
+`sweetpad.toml` instead.
 
 ### A separate context for tests
 

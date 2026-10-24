@@ -310,10 +310,7 @@ fn start(
     // toolchain rather than routing through xcodebuild (which would force a
     // destination on us). The dry run and `--` passthrough apply here too.
     if matches!(resolved.container, resolve::Container::SwiftPackage(_)) {
-        let configuration = resolved
-            .configuration
-            .clone()
-            .unwrap_or_else(|| "Debug".to_string());
+        let configuration = resolve::settle_configuration(ctx, &mut resolved, None, false)?;
         if show_command {
             let build_preview = xcodebuild::CommandPreview {
                 program: "swift",

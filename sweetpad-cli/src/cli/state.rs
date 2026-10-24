@@ -37,9 +37,14 @@ pub struct State {
 pub struct ProjectState {
     /// The build/run context — what `build` and `app` use.
     pub scheme: Option<String>,
-    pub configuration: Option<String>,
     pub sdk: Option<String>,
     pub destination: Option<String>,
+
+    /// The configuration picked for each scheme, by scheme name. A scheme with
+    /// no pick builds with the configuration its own `.xcscheme` names, the way
+    /// Xcode keeps one per scheme.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub configurations: BTreeMap<String, String>,
 
     /// The testing context, kept separate from the build context (mirrors the
     /// extension's `testing.*` keys). `test` reads this, falling back to the
@@ -73,7 +78,7 @@ impl ProjectState {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.scheme.is_none()
-            && self.configuration.is_none()
+            && self.configurations.is_empty()
             && self.sdk.is_none()
             && self.destination.is_none()
             && self.testing.is_empty()
@@ -90,9 +95,11 @@ impl ProjectState {
 #[serde(default)]
 pub struct TestingState {
     pub scheme: Option<String>,
-    pub configuration: Option<String>,
     pub target: Option<String>,
     pub destination: Option<String>,
+    /// The configuration picked for each scheme's tests, by scheme name.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub configurations: BTreeMap<String, String>,
 }
 
 impl TestingState {
@@ -100,7 +107,7 @@ impl TestingState {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.scheme.is_none()
-            && self.configuration.is_none()
+            && self.configurations.is_empty()
             && self.target.is_none()
             && self.destination.is_none()
     }
@@ -699,10 +706,10 @@ mod tests {
     fn project_mut_inserts_default() {
         let mut state = State::default();
         assert!(state.projects.is_empty());
-        state.project_mut("/x").configuration = Some("Release".into());
+        state.project_mut("/x").sdk = Some("iphoneos".into());
         assert_eq!(
-            state.projects.get("/x").unwrap().configuration.as_deref(),
-            Some("Release")
+            state.projects.get("/x").unwrap().sdk.as_deref(),
+            Some("iphoneos")
         );
     }
 

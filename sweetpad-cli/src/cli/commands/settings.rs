@@ -152,7 +152,8 @@ fn show(
         )?)
     };
 
-    let configuration = resolve::settle_configuration(ctx, &mut resolved, false)?;
+    let configuration =
+        resolve::settle_configuration(ctx, &mut resolved, scheme.as_deref(), false)?;
     // `--on` resolves to a concrete specifier here like it does for builds;
     // an explicit --destination (the resolved layer) otherwise applies. Both
     // typed is the same conflict it is for build/archive.

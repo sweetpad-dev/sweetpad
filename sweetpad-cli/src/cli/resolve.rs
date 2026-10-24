@@ -6,6 +6,10 @@
 //! explicit flag  >  env var  >  config file  >  remembered state  >  auto-discovery
 //! ```
 //!
+//! The configuration adds the scheme's own between remembered state and the
+//! `Debug` default, and remembers picks per scheme: see
+//! [`settle_configuration`].
+//!
 //! (Env vars are surfaced as flags by clap's `env = …`, so by the time we're
 //! here they're folded into the flag layer.) When a value is still missing and
 //! stdout is a TTY, commands may drop to an interactive picker; in non-TTY/CI
@@ -19,6 +23,7 @@
 //! --workspace/--project  >  sweetpad.toml workspace/project  >  auto-discovery
 //! ```
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use sweetpad_core::devices::simctl::version_key;
@@ -378,8 +383,19 @@ fn relative_to(path: &Path, base: &Path) -> String {
 pub struct Resolved {
     pub container: Container,
     pub scheme: Option<String>,
+    /// The configuration from the layers that don't depend on the scheme
+    /// (flag/env, config, sweetpad.toml). The remembered pick and the scheme's
+    /// own configuration need the settled scheme, so
+    /// [`settle_configuration`] adds them.
     pub configuration: Option<String>,
     pub destination: Option<String>,
+    /// Whether this resolves the test action, whose configuration comes from
+    /// the testing layers and the scheme's `TestAction`.
+    pub testing: bool,
+    /// A configuration chosen in the picker by [`settle_configuration`], for
+    /// [`remember`] to save as this scheme's pick. Every other source is
+    /// re-read on each run, so nothing else is saved.
+    pub picked_configuration: Option<String>,
     /// SDK override (`--sdk` / config / `context select sdk`). `None` lets the
     /// destination imply it, which is the common case.
     pub sdk: Option<String>,
@@ -414,18 +430,20 @@ pub fn resolve(ctx: &Context) -> Result<Resolved, CliError> {
             &pf.scheme,
             st.and_then(|s| s.scheme.as_ref()),
         ),
-        configuration: pick(
-            &ctx.targeting.configuration,
-            &cfg.configuration,
-            &pf.configuration,
-            st.and_then(|s| s.configuration.as_ref()),
-        ),
+        configuration: ctx
+            .targeting
+            .configuration
+            .clone()
+            .or_else(|| cfg.configuration.clone())
+            .or_else(|| pf.configuration.clone()),
         destination: pick(
             &ctx.targeting.destination,
             &cfg.destination,
             &pf.destination,
             st.and_then(|s| s.destination.as_ref()),
         ),
+        testing: false,
+        picked_configuration: None,
         sdk: pick(
             &ctx.targeting.sdk,
             &cfg.sdk,
@@ -479,15 +497,17 @@ pub fn resolve_testing(ctx: &Context) -> Result<Resolved, CliError> {
             &pf.scheme,
             st.and_then(|s| s.scheme.as_ref()),
         ),
-        configuration: pick(
-            &ctx.targeting.configuration,
-            &cfg.testing.configuration,
-            &pf.testing.configuration,
-            st.and_then(|s| s.testing.configuration.as_ref()),
-            &cfg.configuration,
-            &pf.configuration,
-            st.and_then(|s| s.configuration.as_ref()),
-        ),
+        // Only the layers above the remembered testing pick: that pick, and
+        // everything below it, needs the settled scheme (see
+        // `configuration_layer`).
+        configuration: ctx
+            .targeting
+            .configuration
+            .clone()
+            .or_else(|| cfg.testing.configuration.clone())
+            .or_else(|| pf.testing.configuration.clone()),
+        testing: true,
+        picked_configuration: None,
         destination: pick(
             &ctx.targeting.destination,
             &cfg.testing.destination,
@@ -1007,7 +1027,7 @@ pub fn build_target(
         candidates = schemes(&resolved.container)?;
     }
     let scheme = settle_scheme(ctx, resolved, &candidates, track)?;
-    let configuration = settle_configuration(ctx, resolved, track)?;
+    let configuration = settle_configuration(ctx, resolved, Some(&scheme), track)?;
 
     let key = resolved.container.key();
     // An explicit `--on` reference outranks every persisted destination layer
@@ -1053,7 +1073,7 @@ pub fn build_target(
 
 /// Settle the scheme: validate an explicit/remembered value against the
 /// project's schemes, recovering from a stale *remembered* one (see
-/// [`recover_stale`]), then auto-pick/prompt via [`choose`]. Every command
+/// [`recover_stale_scheme`]), then auto-pick/prompt via [`choose`]. Every command
 /// that settles a scheme goes through here so the recovery can't be missing
 /// on one of them.
 pub(crate) fn settle_scheme(
@@ -1068,7 +1088,7 @@ pub(crate) fn settle_scheme(
         // The recovered layer replaces the stale value on `resolved` itself:
         // `None` drops to the picker below *and* marks the field
         // picker-sourced for `remember`.
-        resolved.scheme = recover_stale(ctx, &resolved.container, "scheme", &s, err, track)?;
+        resolved.scheme = recover_stale_scheme(ctx, &resolved.container, &s, err, track)?;
         if let Some(higher) = &resolved.scheme {
             validate_choice("scheme", higher, candidates)?;
         }
@@ -1120,23 +1140,154 @@ fn missing_scheme(last_build: Option<&str>, candidates: &[String]) -> CliError {
     .kind(ErrorKind::TargetResolution)
 }
 
-/// Settle the build configuration: an explicit/remembered value is validated
-/// against the project's configurations (a stale remembered one recovers, see
-/// [`recover_stale`]), and the `Debug` default applies only when the project
-/// actually has a `Debug` — a project with only, say, `UAT-Debug`/`Prod`
-/// drops to the configuration picker instead of invoking xcodebuild with a
-/// nonexistent configuration. Swift packages skip validation (SwiftPM maps
-/// any name onto debug/release itself).
+/// Where a configuration from the layers comes from, as `status` and
+/// `context show` label it.
+pub type ConfigurationSource = &'static str;
+
+/// Every configuration the layers name for `scheme`, highest first:
+///
+/// ```text
+/// build:   flag > config > sweetpad.toml > remembered for the scheme
+/// testing: flag > testing config > testing sweetpad.toml > testing remembered
+///          > build config > build sweetpad.toml > build remembered
+/// ```
+///
+/// The scheme's own configuration comes after all of these
+/// ([`scheme_configuration`]). Remembered picks are kept per scheme, so with no
+/// scheme there is none to read.
+#[must_use]
+pub fn configuration_layers(
+    ctx: &Context,
+    container: &Container,
+    scheme: Option<&str>,
+    testing: bool,
+) -> Vec<(String, ConfigurationSource)> {
+    let key = container.key();
+    let cfg = ctx.config.for_project(&key);
+    let pf = ctx.project_file(container);
+    let st = ctx.state.projects.get(&key);
+    let remembered = |picks: Option<&BTreeMap<String, String>>| {
+        scheme.and_then(|s| picks.and_then(|p| p.get(s)).cloned())
+    };
+    let mut layers = vec![(ctx.targeting.configuration.clone(), "flag/env")];
+    if testing {
+        layers.push((cfg.testing.configuration.clone(), "config"));
+        layers.push((pf.testing.configuration.clone(), "sweetpad.toml"));
+        layers.push((
+            remembered(st.map(|s| &s.testing.configurations)),
+            "remembered",
+        ));
+        layers.push((cfg.configuration.clone(), "build config"));
+        layers.push((pf.configuration.clone(), "build sweetpad.toml"));
+        layers.push((
+            remembered(st.map(|s| &s.configurations)),
+            "build remembered",
+        ));
+    } else {
+        layers.push((cfg.configuration.clone(), "config"));
+        layers.push((pf.configuration.clone(), "sweetpad.toml"));
+        layers.push((remembered(st.map(|s| &s.configurations)), "remembered"));
+    }
+    layers
+        .into_iter()
+        .filter_map(|(value, source)| value.map(|v| (v, source)))
+        .collect()
+}
+
+/// The highest of [`configuration_layers`], the one a build uses when it is
+/// valid.
+#[must_use]
+pub fn configuration_layer(
+    ctx: &Context,
+    container: &Container,
+    scheme: Option<&str>,
+    testing: bool,
+) -> Option<(String, ConfigurationSource)> {
+    configuration_layers(ctx, container, scheme, testing)
+        .into_iter()
+        .next()
+}
+
+/// The configuration a scheme's own action builds with, as Xcode does: the
+/// `LaunchAction`'s for builds and runs, the `TestAction`'s for tests. `None`
+/// when the scheme has no file (an autocreated scheme), names none, or names
+/// one the project doesn't have (a stale `.xcscheme`), so the caller falls
+/// through to its default.
+#[must_use]
+pub fn scheme_configuration(container: &Container, scheme: &str, testing: bool) -> Option<String> {
+    let parsed = parse_scheme(container, scheme)?;
+    let configuration = if testing {
+        parsed.test_action.map(|t| t.configuration)
+    } else {
+        parsed.launch_configuration
+    }?;
+    configurations(container)
+        .ok()?
+        .contains(&configuration)
+        .then_some(configuration)
+}
+
+/// The configuration a build of `scheme` would use without prompting, and its
+/// source: [`configuration_layer`], then the scheme's own (`scheme`), then
+/// `Debug` when the project has one (`default`). `(None, "")` means the
+/// picker would ask. For `status` and `context show`; it doesn't validate the
+/// layers the way [`settle_configuration`] does.
+#[must_use]
+pub fn effective_configuration(
+    ctx: &Context,
+    container: &Container,
+    scheme: Option<&str>,
+    testing: bool,
+) -> (Option<String>, ConfigurationSource) {
+    if let Some((c, source)) = configuration_layer(ctx, container, scheme, testing) {
+        return (Some(c), source);
+    }
+    if !matches!(container, Container::SwiftPackage(_))
+        && let Some(c) = scheme.and_then(|s| scheme_configuration(container, s, testing))
+    {
+        return (Some(c), "scheme");
+    }
+    let has_debug = configurations(container)
+        .map(|c| c.is_empty() || c.iter().any(|x| x == "Debug"))
+        .unwrap_or(true);
+    if has_debug {
+        (Some("Debug".to_string()), "default")
+    } else {
+        (None, "")
+    }
+}
+
+/// The project's `defaultConfigurationName` (Xcode's "Use … for command-line
+/// builds"), which the configuration picker lists first. Only a hint: Xcode's
+/// templates set it to Release, and xcodebuild ignores it whenever a scheme is
+/// given.
+fn project_default_configuration(container: &Container) -> Option<String> {
+    match container {
+        Container::Workspace(p) => sweetpad_lib::workspace::open(p)
+            .ok()?
+            .default_configuration(),
+        Container::Project(p) => sweetpad_lib::project::open(p).ok()?.default_configuration,
+        Container::SwiftPackage(_) => None,
+    }
+}
+
+/// Settle the build configuration for `scheme`: the layers of
+/// [`configuration_layer`], then the scheme's own ([`scheme_configuration`]),
+/// then `Debug` when the project has one, else the picker — whose answer
+/// `remember` saves for this scheme. Values are validated against the
+/// project's configurations: a stale *remembered* pick is cleared (under
+/// `track`) and the next layer used; a stale flag or config value is the
+/// user's to fix and fails. Swift packages skip validation (SwiftPM maps any
+/// name onto debug/release itself) and have no scheme layers.
 pub fn settle_configuration(
     ctx: &mut Context,
     resolved: &mut Resolved,
+    scheme: Option<&str>,
     track: bool,
 ) -> Result<String, CliError> {
     if matches!(resolved.container, Container::SwiftPackage(_)) {
-        let c = resolved
-            .configuration
-            .clone()
-            .unwrap_or_else(|| "Debug".to_string());
+        let c = configuration_layer(ctx, &resolved.container, None, resolved.testing)
+            .map_or_else(|| "Debug".to_string(), |(c, _)| c);
         // SwiftPM knows debug and release; any other name silently maps to
         // debug in `configuration_arg` — say so instead of quietly building
         // something the user didn't ask for.
@@ -1150,34 +1301,84 @@ pub fn settle_configuration(
     // Candidate enumeration is advisory: if the project can't be read here the
     // build command itself will surface that, so fall back to the old behavior.
     let candidates = configurations(&resolved.container).unwrap_or_default();
-    if let Some(c) = resolved.configuration.clone()
-        && let Err(err) = validate_choice("configuration", &c, &candidates)
-    {
-        resolved.configuration =
-            recover_stale(ctx, &resolved.container, "configuration", &c, err, track)?;
-        if let Some(higher) = &resolved.configuration {
-            validate_choice("configuration", higher, &candidates)?;
-        }
+    for (c, source) in configuration_layers(ctx, &resolved.container, scheme, resolved.testing) {
+        let Err(err) = validate_choice("configuration", &c, &candidates) else {
+            return Ok(c);
+        };
+        // Remembered picks are the only layer the project can change under:
+        // flags and config are the user's to fix.
+        let Some(scheme) = scheme.filter(|_| source.ends_with("remembered")) else {
+            return Err(err);
+        };
+        let testing_pick = resolved.testing && source == "remembered";
+        forget_stale_configuration(ctx, &resolved.container, scheme, &c, testing_pick, track);
     }
-    if let Some(c) = resolved.configuration.clone() {
+    if let Some(c) =
+        scheme.and_then(|s| scheme_configuration(&resolved.container, s, resolved.testing))
+    {
         return Ok(c);
     }
     if candidates.is_empty() || candidates.iter().any(|c| c == "Debug") {
         return Ok("Debug".to_string());
     }
-    choose(ctx, "configuration", None, &candidates)
+    // The project's command-line default goes first, so it is the picker's
+    // highlighted row.
+    let mut ordered = candidates;
+    if let Some(default) = project_default_configuration(&resolved.container)
+        && let Some(at) = ordered.iter().position(|c| *c == default)
+    {
+        let first = ordered.remove(at);
+        ordered.insert(0, first);
+    }
+    let picked = choose(ctx, "configuration", None, &ordered)?;
+    resolved.picked_configuration = Some(picked.clone());
+    Ok(picked)
 }
 
-/// Recovery for a value that failed validation: when it came from *remembered
+/// Clear a remembered configuration pick the project no longer has, from the
+/// testing picks or the build ones, and warn. A preview (`track: false`) only
+/// warns.
+fn forget_stale_configuration(
+    ctx: &mut Context,
+    container: &Container,
+    scheme: &str,
+    value: &str,
+    testing: bool,
+    track: bool,
+) {
+    if !track {
+        ctx.out.warn(&format!(
+            "the remembered configuration {value:?} for scheme {scheme:?} no longer exists in \
+             the project — ignoring it for this preview (a real run clears it)"
+        ));
+        return;
+    }
+    let entry = ctx.state.project_mut(&container.key());
+    if testing {
+        entry.testing.configurations.remove(scheme);
+    } else {
+        entry.configurations.remove(scheme);
+    }
+    let _ = ctx.state.save();
+    let testing_flag = if testing { " --testing" } else { "" };
+    ctx.out.warn(&format!(
+        "the remembered configuration {value:?} for scheme {scheme:?} no longer exists in the \
+         project — cleared it ('sweetpad context remove configuration{testing_flag}' does this \
+         by hand)"
+    ));
+}
+
+/// Recovery for a scheme that failed validation: when it came from *remembered
 /// state* (the project changed under a stale pick), clear it, warn with the
 /// provenance, and hand back the layer above it (flag/config/sweetpad.toml) —
 /// `None` drops the caller to its auto-pick/prompt path. A failing value from
 /// any other layer re-raises `err` untouched: flags and config are the user's
 /// to fix. `track: false` (a dry run) recovers without persisting the clear.
-fn recover_stale(
+/// Configurations recover in [`settle_configuration`], since their picks are
+/// kept per scheme.
+fn recover_stale_scheme(
     ctx: &mut Context,
     container: &Container,
-    what: &str,
     value: &str,
     err: CliError,
     track: bool,
@@ -1188,21 +1389,12 @@ fn recover_stale(
     // layers, so recovery must clear whichever one(s) hold it, or a stale
     // testing pick fails every `sweetpad test` forever.
     let st = ctx.state.projects.get(&key);
-    let build_match = st.and_then(|p| match what {
-        "scheme" => p.scheme.as_deref(),
-        _ => p.configuration.as_deref(),
-    }) == Some(value);
-    let testing_match = st.and_then(|p| match what {
-        "scheme" => p.testing.scheme.as_deref(),
-        _ => p.testing.configuration.as_deref(),
-    }) == Some(value);
+    let build_match = st.and_then(|p| p.scheme.as_deref()) == Some(value);
+    let testing_match = st.and_then(|p| p.testing.scheme.as_deref()) == Some(value);
     if !build_match && !testing_match {
         return Err(err);
     }
-    let flag = match what {
-        "scheme" => ctx.targeting.scheme.clone(),
-        _ => ctx.targeting.configuration.clone(),
-    };
+    let flag = ctx.targeting.scheme.clone();
     if flag.as_deref() == Some(value) {
         // The flag independently names the same bad value — blame the flag.
         return Err(err);
@@ -1211,64 +1403,40 @@ fn recover_stale(
     // clear is gated on `track`; the warning still fires either way.
     if track {
         let entry = ctx.state.project_mut(&key);
-        if what == "scheme" {
-            if build_match {
-                entry.scheme = None;
-            }
-            if testing_match {
-                entry.testing.scheme = None;
-            }
-        } else {
-            if build_match {
-                entry.configuration = None;
-            }
-            if testing_match {
-                entry.testing.configuration = None;
-            }
+        if build_match {
+            entry.scheme = None;
+        }
+        if testing_match {
+            entry.testing.scheme = None;
         }
         let _ = ctx.state.save();
         let hint = if testing_match {
-            format!("'sweetpad context remove {what} --testing' does this by hand")
+            "'sweetpad context remove scheme --testing' does this by hand"
         } else {
-            format!("'sweetpad context remove {what}' does this by hand")
+            "'sweetpad context remove scheme' does this by hand"
         };
         ctx.out.warn(&format!(
-            "the remembered {what} {value:?} no longer exists in the project — cleared it ({hint})"
+            "the remembered scheme {value:?} no longer exists in the project — cleared it ({hint})"
         ));
     } else {
         ctx.out.warn(&format!(
-            "the remembered {what} {value:?} no longer exists in the project — ignoring it \
+            "the remembered scheme {value:?} no longer exists in the project — ignoring it \
              for this preview (a real run clears it)"
         ));
     }
     let cfg = ctx.config.for_project(&key);
     let pf = ctx.project_file(container);
-    let higher = match what {
-        "scheme" => flag
-            .or_else(|| testing_match.then(|| cfg.testing.scheme.clone()).flatten())
-            .or_else(|| testing_match.then(|| pf.testing.scheme.clone()).flatten())
-            .or_else(|| cfg.scheme.clone())
-            .or_else(|| pf.scheme.clone()),
-        _ => flag
-            .or_else(|| {
-                testing_match
-                    .then(|| cfg.testing.configuration.clone())
-                    .flatten()
-            })
-            .or_else(|| {
-                testing_match
-                    .then(|| pf.testing.configuration.clone())
-                    .flatten()
-            })
-            .or_else(|| cfg.configuration.clone())
-            .or_else(|| pf.configuration.clone()),
-    };
+    let higher = flag
+        .or_else(|| testing_match.then(|| cfg.testing.scheme.clone()).flatten())
+        .or_else(|| testing_match.then(|| pf.testing.scheme.clone()).flatten())
+        .or_else(|| cfg.scheme.clone())
+        .or_else(|| pf.scheme.clone());
     Ok(higher)
 }
 
 /// Recovery for a *remembered* simulator destination whose device no longer
 /// exists: clear it (under `track`), warn, and re-pick — the destination
-/// sibling of [`recover_stale`]. Returns `None` when the spec should be used
+/// sibling of [`recover_stale_scheme`]. Returns `None` when the spec should be used
 /// verbatim: not id-pinned, not state-sourced (flags/config are the user's to
 /// fix), or the device is still present.
 /// Whether a `-destination` specifier names physical hardware rather than a
@@ -1421,8 +1589,8 @@ pub fn remember(ctx: &mut Context, resolved: &Resolved, target: &BuildTarget, de
         st.scheme = Some(target.scheme.clone());
         dirty = true;
     }
-    if resolved.configuration.is_none() {
-        st.configuration = Some(target.configuration.clone());
+    if let Some(c) = &resolved.picked_configuration {
+        st.configurations.insert(target.scheme.clone(), c.clone());
         dirty = true;
     }
     if destination && resolved.destination.is_none() {
@@ -1454,8 +1622,8 @@ pub fn remember_testing(
         st.scheme = Some(target.scheme.clone());
         dirty = true;
     }
-    if resolved.configuration.is_none() {
-        st.configuration = Some(target.configuration.clone());
+    if let Some(c) = &resolved.picked_configuration {
+        st.configurations.insert(target.scheme.clone(), c.clone());
         dirty = true;
     }
     if destination && resolved.destination.is_none() {

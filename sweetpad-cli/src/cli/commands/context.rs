@@ -19,7 +19,8 @@ use crate::cli::{CliError, CommandResult, Context, ErrorKind, Render, Rendered, 
 pub enum Variable {
     /// The scheme to build/test.
     Scheme,
-    /// The build configuration (e.g. Debug).
+    /// The build configuration (e.g. Debug), remembered for the selected
+    /// scheme.
     Configuration,
     /// The -sdk override for builds and settings (build context only).
     Sdk,
@@ -169,18 +170,59 @@ struct ContextReport {
     cfg: crate::cli::config::Defaults,
     /// The committed sweetpad.toml's targeting keys — between cfg and state.
     project: crate::cli::config::Defaults,
+    /// The configuration in effect for each context: it depends on the scheme
+    /// and reads the scheme file, so it is worked out up front.
+    build_configuration: ScopeConfiguration,
+    testing_configuration: ScopeConfiguration,
+}
+
+/// A context's scheme and the configuration that scheme builds with.
+struct ScopeConfiguration {
+    scheme: Option<String>,
+    value: Option<String>,
+    source: &'static str,
+}
+
+impl ScopeConfiguration {
+    fn new(ctx: &Context, container: &Container, scope: Scope) -> Self {
+        let resolved = match scope {
+            Scope::Build => resolve::resolve(ctx),
+            Scope::Testing => resolve::resolve_testing(ctx),
+        };
+        let scheme = resolved.ok().and_then(|r| r.scheme);
+        let (value, source) = resolve::effective_configuration(
+            ctx,
+            container,
+            scheme.as_deref(),
+            matches!(scope, Scope::Testing),
+        );
+        Self {
+            scheme,
+            value,
+            source,
+        }
+    }
+}
+
+impl ContextReport {
+    fn configuration(&self, scope: Scope) -> &ScopeConfiguration {
+        match scope {
+            Scope::Build => &self.build_configuration,
+            Scope::Testing => &self.testing_configuration,
+        }
+    }
 }
 
 impl Render for ContextReport {
     fn human(&self, out: &Output) {
         let st = &self.state;
-        print_scope(out, st, &self.cfg, &self.project, Scope::Build);
+        print_scope(out, self, Scope::Build);
         if !st.testing.is_empty()
             || !testing_cfg_is_empty(&self.cfg)
             || !testing_cfg_is_empty(&self.project)
         {
             out.line("");
-            print_scope(out, st, &self.cfg, &self.project, Scope::Testing);
+            print_scope(out, self, Scope::Testing);
         }
         print_recents(out, st);
         print_last_launched(out, st);
@@ -189,11 +231,11 @@ impl Render for ContextReport {
     fn json(&self) -> serde_json::Value {
         let st = &self.state;
         serde_json::json!({ "container": self.container,
-            "build": scope_json(st, Scope::Build),
-            "testing": scope_json(st, Scope::Testing),
+            "build": scope_json(self, Scope::Build),
+            "testing": scope_json(self, Scope::Testing),
             "effective": {
-                "build": effective_json(st, &self.cfg, &self.project, Scope::Build),
-                "testing": effective_json(st, &self.cfg, &self.project, Scope::Testing),
+                "build": effective_json(self, Scope::Build),
+                "testing": effective_json(self, Scope::Testing),
             },
             "recentDestinations": recents_json(st),
             "lastLaunchedApp": serde_json::to_value(&st.last_launched_app).unwrap_or_default(),
@@ -225,6 +267,8 @@ fn report(ctx: &mut Context) -> CommandResult {
         testing: pf.testing.clone(),
     };
     Ok(Rendered::data(ContextReport {
+        build_configuration: ScopeConfiguration::new(ctx, &container, Scope::Build),
+        testing_configuration: ScopeConfiguration::new(ctx, &container, Scope::Testing),
         container: container.path().display().to_string(),
         state,
         cfg,
@@ -235,6 +279,37 @@ fn report(ctx: &mut Context) -> CommandResult {
 /// Show the saved build and testing context, recents, and last launched app.
 fn show(ctx: &mut Context) -> CommandResult {
     report(ctx)
+}
+
+/// The scheme a configuration pick in `scope` belongs to: the one `build` (or
+/// `test`, for the testing context) would use. Configurations are kept per
+/// scheme, so setting or clearing one without a scheme is refused.
+fn configuration_scheme(ctx: &Context, scope: Scope) -> Result<String, CliError> {
+    let resolved = match scope {
+        Scope::Build => resolve::resolve(ctx)?,
+        Scope::Testing => resolve::resolve_testing(ctx)?,
+    };
+    resolved.scheme.ok_or_else(|| {
+        let testing = if matches!(scope, Scope::Testing) {
+            " --testing"
+        } else {
+            ""
+        };
+        CliError::new(format!(
+            "a configuration is remembered per scheme and no scheme is selected; run 'sweetpad \
+             context set scheme <name>{testing}' first, or pass --scheme"
+        ))
+        .kind(ErrorKind::Usage)
+    })
+}
+
+/// The scheme to read or write `v` for: a scheme for a configuration, else none.
+fn scheme_for(ctx: &Context, scope: Scope, v: Variable) -> Result<Option<String>, CliError> {
+    if v == Variable::Configuration {
+        configuration_scheme(ctx, scope).map(Some)
+    } else {
+        Ok(None)
+    }
 }
 
 /// Non-interactive setter: `context set scheme MyApp` — the script/CI path the
@@ -256,10 +331,12 @@ fn set(ctx: &mut Context, v: Variable, value: &str, scope: Scope) -> CommandResu
         }
         Variable::Sdk | Variable::Destination | Variable::Target => {}
     }
+    let scheme = scheme_for(ctx, scope, v)?;
     set_field(
         ctx.state.project_mut(&key),
         scope,
         v,
+        scheme.as_deref(),
         Some(value.to_string()),
     );
     ctx.state.save().map_err(CliError::new)?;
@@ -323,8 +400,17 @@ fn select(ctx: &mut Context, variable: Option<Variable>, scope: Scope) -> Comman
         None => Variable::CORE.to_vec(),
     };
     for v in vars {
+        // Resolved per variable: `select` with no variable sets the scheme
+        // first, and the configuration is picked for that new scheme.
+        let scheme = scheme_for(ctx, scope, v)?;
         let value = prompt_value(ctx, &container, &key, scope, v)?;
-        set_field(ctx.state.project_mut(&key), scope, v, Some(value));
+        set_field(
+            ctx.state.project_mut(&key),
+            scope,
+            v,
+            scheme.as_deref(),
+            Some(value),
+        );
     }
     ctx.state.save().map_err(CliError::new)?;
     report(ctx)
@@ -394,8 +480,9 @@ fn remove(ctx: &mut Context, variable: Option<Variable>, all: bool, scope: Scope
         )
         .kind(ErrorKind::Usage));
     };
+    let scheme = scheme_for(ctx, scope, v)?;
     if let Some(st) = ctx.state.projects.get_mut(&key) {
-        set_field(st, scope, v, None);
+        set_field(st, scope, v, scheme.as_deref(), None);
     }
     prune(&mut ctx.state, &key);
     ctx.state.save().map_err(CliError::new)?;
@@ -450,7 +537,7 @@ fn prompt_value(
                 .state
                 .projects
                 .get(key)
-                .and_then(|st| get(st, scope, v).map(String::from));
+                .and_then(|st| get(st, scope, v, None).map(String::from));
             input(v.name(), current.as_deref(), ctx.out.use_color_stderr())
         }
     }
@@ -473,19 +560,28 @@ fn input(label: &str, current: Option<&str>, color: bool) -> Result<String, CliE
         .map_err(|e| CliError::new(format!("input cancelled: {e}")).kind(ErrorKind::UserCancel))
 }
 
-/// Read a variable's value in the given context.
-fn get(st: &ProjectState, scope: Scope, v: Variable) -> Option<&str> {
+/// Read a variable's value in the given context. A configuration is picked
+/// per scheme, so it reads the pick for `scheme`.
+fn get<'a>(
+    st: &'a ProjectState,
+    scope: Scope,
+    v: Variable,
+    scheme: Option<&str>,
+) -> Option<&'a str> {
+    let pick = |picks: &'a std::collections::BTreeMap<String, String>| {
+        scheme.and_then(|s| picks.get(s)).map(String::as_str)
+    };
     match scope {
         Scope::Build => match v {
             Variable::Scheme => st.scheme.as_deref(),
-            Variable::Configuration => st.configuration.as_deref(),
+            Variable::Configuration => pick(&st.configurations),
             Variable::Sdk => st.sdk.as_deref(),
             Variable::Destination => st.destination.as_deref(),
             Variable::Target => None,
         },
         Scope::Testing => match v {
             Variable::Scheme => st.testing.scheme.as_deref(),
-            Variable::Configuration => st.testing.configuration.as_deref(),
+            Variable::Configuration => pick(&st.testing.configurations),
             Variable::Target => st.testing.target.as_deref(),
             Variable::Destination => st.testing.destination.as_deref(),
             Variable::Sdk => None,
@@ -493,19 +589,35 @@ fn get(st: &ProjectState, scope: Scope, v: Variable) -> Option<&str> {
     }
 }
 
-/// Write a variable's value (or clear it with `None`) in the given context.
-fn set_field(st: &mut ProjectState, scope: Scope, v: Variable, value: Option<String>) {
+/// Write a variable's value (or clear it with `None`) in the given context. A
+/// configuration is written as the pick for `scheme`; with no scheme there is
+/// nothing to write it to, and callers refuse that case up front.
+fn set_field(
+    st: &mut ProjectState,
+    scope: Scope,
+    v: Variable,
+    scheme: Option<&str>,
+    value: Option<String>,
+) {
+    let pick = |picks: &mut std::collections::BTreeMap<String, String>| {
+        if let Some(scheme) = scheme {
+            match &value {
+                Some(c) => picks.insert(scheme.to_string(), c.clone()),
+                None => picks.remove(scheme),
+            };
+        }
+    };
     match scope {
         Scope::Build => match v {
             Variable::Scheme => st.scheme = value,
-            Variable::Configuration => st.configuration = value,
+            Variable::Configuration => pick(&mut st.configurations),
             Variable::Sdk => st.sdk = value,
             Variable::Destination => st.destination = value,
             Variable::Target => {}
         },
         Scope::Testing => match v {
             Variable::Scheme => st.testing.scheme = value,
-            Variable::Configuration => st.testing.configuration = value,
+            Variable::Configuration => pick(&mut st.testing.configurations),
             Variable::Target => st.testing.target = value,
             Variable::Destination => st.testing.destination = value,
             Variable::Sdk => {}
@@ -575,7 +687,7 @@ fn effective<'a>(
     if let Some(value) = defaults_value(project, scope, v) {
         return (Some(value), "sweetpad.toml");
     }
-    if let Some(value) = get(st, scope, v) {
+    if let Some(value) = get(st, scope, v, None) {
         return (Some(value), "remembered");
     }
     // `sweetpad test` falls back to the *build* context for scheme /
@@ -602,16 +714,10 @@ fn effective<'a>(
     (None, "")
 }
 
-fn print_scope(
-    out: &Output,
-    st: &ProjectState,
-    cfg: &crate::cli::config::Defaults,
-    project: &crate::cli::config::Defaults,
-    scope: Scope,
-) {
+fn print_scope(out: &Output, report: &ContextReport, scope: Scope) {
     out.line(scope.label());
     for v in scope_vars(scope) {
-        let (value, source) = effective(st, cfg, project, scope, v);
+        let (value, source) = effective_value(report, scope, v);
         let source = if source.is_empty() {
             String::new()
         } else {
@@ -625,16 +731,25 @@ fn print_scope(
     }
 }
 
-/// The effective view for JSON: `{value, source}` per variable.
-fn effective_json(
-    st: &ProjectState,
-    cfg: &crate::cli::config::Defaults,
-    project: &crate::cli::config::Defaults,
+/// [`effective`] for every variable but the configuration, which comes from
+/// the scheme's own ladder.
+fn effective_value(
+    report: &ContextReport,
     scope: Scope,
-) -> serde_json::Value {
+    v: Variable,
+) -> (Option<&str>, &'static str) {
+    if v == Variable::Configuration {
+        let c = report.configuration(scope);
+        return (c.value.as_deref(), c.source);
+    }
+    effective(&report.state, &report.cfg, &report.project, scope, v)
+}
+
+/// The effective view for JSON: `{value, source}` per variable.
+fn effective_json(report: &ContextReport, scope: Scope) -> serde_json::Value {
     let mut map = serde_json::Map::new();
     for v in scope_vars(scope) {
-        let (value, source) = effective(st, cfg, project, scope, v);
+        let (value, source) = effective_value(report, scope, v);
         map.insert(
             v.name().to_string(),
             serde_json::json!({
@@ -671,11 +786,23 @@ fn print_last_launched(out: &Output, st: &ProjectState) {
     }
 }
 
-fn scope_json(st: &ProjectState, scope: Scope) -> serde_json::Value {
+/// The remembered values. `configuration` is the pick for the context's
+/// scheme; `configurations` lists the pick for every scheme.
+fn scope_json(report: &ContextReport, scope: Scope) -> serde_json::Value {
+    let st = &report.state;
+    let scheme = report.configuration(scope).scheme.as_deref();
     let mut map = serde_json::Map::new();
     for v in scope_vars(scope) {
-        map.insert(v.name().to_string(), get(st, scope, v).into());
+        map.insert(v.name().to_string(), get(st, scope, v, scheme).into());
     }
+    let picks = match scope {
+        Scope::Build => &st.configurations,
+        Scope::Testing => &st.testing.configurations,
+    };
+    map.insert(
+        "configurations".to_string(),
+        serde_json::to_value(picks).unwrap_or_default(),
+    );
     serde_json::Value::Object(map)
 }
 
@@ -712,17 +839,60 @@ mod tests {
             project(&mut state),
             Scope::Build,
             Variable::Scheme,
+            None,
             Some("App".into()),
         );
         set_field(
             project(&mut state),
             Scope::Testing,
             Variable::Scheme,
+            None,
             Some("AppTests".into()),
         );
         let st = state.projects.get(KEY).unwrap();
-        assert_eq!(get(st, Scope::Build, Variable::Scheme), Some("App"));
-        assert_eq!(get(st, Scope::Testing, Variable::Scheme), Some("AppTests"));
+        assert_eq!(get(st, Scope::Build, Variable::Scheme, None), Some("App"));
+        assert_eq!(
+            get(st, Scope::Testing, Variable::Scheme, None),
+            Some("AppTests")
+        );
+    }
+
+    #[test]
+    fn a_configuration_is_picked_for_one_scheme() {
+        let mut state = State::default();
+        set_field(
+            project(&mut state),
+            Scope::Build,
+            Variable::Configuration,
+            Some("App UAT"),
+            Some("Release".into()),
+        );
+        set_field(
+            project(&mut state),
+            Scope::Testing,
+            Variable::Configuration,
+            Some("App UAT"),
+            Some("UAT".into()),
+        );
+        let st = state.projects.get(KEY).unwrap();
+        let read = |scope, scheme| get(st, scope, Variable::Configuration, Some(scheme));
+        assert_eq!(read(Scope::Build, "App UAT"), Some("Release"));
+        assert_eq!(read(Scope::Build, "App TEST"), None);
+        assert_eq!(read(Scope::Testing, "App UAT"), Some("UAT"));
+
+        set_field(
+            project(&mut state),
+            Scope::Build,
+            Variable::Configuration,
+            Some("App UAT"),
+            None,
+        );
+        let st = state.projects.get(KEY).unwrap();
+        assert!(st.configurations.is_empty());
+        assert_eq!(
+            st.testing.configurations.get("App UAT").map(String::as_str),
+            Some("UAT")
+        );
     }
 
     #[test]
@@ -740,9 +910,16 @@ mod tests {
             project(&mut state),
             Scope::Build,
             Variable::Scheme,
+            None,
             Some("App".into()),
         );
-        set_field(project(&mut state), Scope::Build, Variable::Scheme, None);
+        set_field(
+            project(&mut state),
+            Scope::Build,
+            Variable::Scheme,
+            None,
+            None,
+        );
         prune(&mut state, KEY);
         assert!(!state.projects.contains_key(KEY));
 

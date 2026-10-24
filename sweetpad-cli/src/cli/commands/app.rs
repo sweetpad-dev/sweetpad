@@ -1296,7 +1296,7 @@ fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
     let mut resolved = resolve::resolve(ctx)?;
     let schemes = resolve::schemes(&resolved.container)?;
     let scheme = resolve::settle_scheme(ctx, &mut resolved, &schemes, true)?;
-    let configuration = resolve::settle_configuration(ctx, &mut resolved, true)?;
+    let configuration = resolve::settle_configuration(ctx, &mut resolved, Some(&scheme), true)?;
 
     let (destination, target) = if matches!(resolved.container, resolve::Container::SwiftPackage(_))
     {

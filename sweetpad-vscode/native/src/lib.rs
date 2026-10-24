@@ -339,12 +339,9 @@ pub fn configurations(path: String) -> napi::Result<Vec<String>> {
 pub fn default_configuration(path: String) -> napi::Result<Option<String>> {
     let p = Path::new(&path);
     if is_workspace(p) {
-        let ws = workspace::open(p).map_err(to_napi_err)?;
-        Ok(ws
-            .project_refs
-            .iter()
-            .filter_map(|project_path| project::open(project_path).ok())
-            .find_map(|proj| proj.default_configuration))
+        Ok(workspace::open(p)
+            .map_err(to_napi_err)?
+            .default_configuration())
     } else {
         Ok(project::open(p).map_err(to_napi_err)?.default_configuration)
     }
