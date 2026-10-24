@@ -177,9 +177,7 @@ pub fn launch(
         cmd_args.push("--start-stopped");
     }
     cmd_args.extend_from_slice(&["--device", device_id, bundle_id]);
-    // Trailing arguments go to the app, exactly as `devicectl … <bundle-id>
-    // [<command-line-arguments> ...]` documents.
-    cmd_args.extend(args.iter().map(String::as_str));
+    push_app_args(&mut cmd_args, args);
     // devicectl forwards `DEVICECTL_CHILD_*` from its own environment to the
     // app, the same shape simctl uses for `SIMCTL_CHILD_*`.
     process::capture_env("xcrun", &cmd_args, None, env).context("launching the app on the device")
@@ -195,7 +193,7 @@ pub fn launch_console(
     env: &[(String, String)],
 ) -> Result<(), CliError> {
     let mut cmd_args = console_args(device_id, bundle_id);
-    cmd_args.extend(args.iter().map(String::as_str));
+    push_app_args(&mut cmd_args, args);
     process::stream_env("xcrun", &cmd_args, None, env)
 }
 
@@ -215,6 +213,17 @@ fn console_args<'a>(device_id: &'a str, bundle_id: &'a str) -> Vec<&'a str> {
     ]
 }
 
+/// Append the app's own arguments after a `--`, as `devicectl … <bundle-id>
+/// [-- <command-line-arguments> ...]` takes them. Without the separator
+/// devicectl reads a dash-prefixed argument such as `-debug-xl` as a cluster of
+/// its own short options (`-l <path>`) and fails before launching.
+fn push_app_args<'a>(cmd_args: &mut Vec<&'a str>, args: &'a [String]) {
+    if !args.is_empty() {
+        cmd_args.push("--");
+        cmd_args.extend(args.iter().map(String::as_str));
+    }
+}
+
 /// Like [`launch_console`] but spawned in the background with stdout/stderr piped,
 /// handing back the child so the interactive `app run` session can render the device
 /// console (the app's own output) while watching for the rebuild key.
@@ -225,7 +234,7 @@ pub fn spawn_console(
     env: &[(String, String)],
 ) -> Result<std::process::Child, CliError> {
     let mut cmd_args = console_args(device_id, bundle_id);
-    cmd_args.extend(args.iter().map(String::as_str));
+    push_app_args(&mut cmd_args, args);
     process::spawn_piped_both_env("xcrun", &cmd_args, None, env)
 }
 
@@ -326,4 +335,27 @@ pub fn app_processes(device_id: &str, app_dir_name: &str) -> Result<Vec<AppProce
         .map_err(|e| CliError::new(format!("reading devicectl output: {e}")))?;
     let _ = std::fs::remove_file(&tmp);
     parse::parse_app_processes(&raw, app_dir_name).map_err(CliError::new)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_args_follow_a_separator() {
+        let app_args = vec!["-debug-xl".to_string(), "--flag".to_string()];
+        let mut argv = console_args("UDID", "com.example.app");
+        push_app_args(&mut argv, &app_args);
+        assert_eq!(
+            argv[argv.len() - 4..],
+            ["com.example.app", "--", "-debug-xl", "--flag"]
+        );
+    }
+
+    #[test]
+    fn no_separator_without_app_args() {
+        let mut argv = console_args("UDID", "com.example.app");
+        push_app_args(&mut argv, &[]);
+        assert!(!argv.contains(&"--"));
+    }
 }
