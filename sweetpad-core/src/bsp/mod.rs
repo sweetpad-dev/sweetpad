@@ -529,11 +529,12 @@ fn discover_config_from_cwd() -> Result<PathBuf, String> {
 impl ResolvedConfig {
     fn from_flags(project_path: PathBuf, flags: &BTreeMap<String, String>) -> Self {
         ResolvedConfig {
-            project_path,
             configuration: flags
                 .get("configuration")
                 .cloned()
+                .or_else(|| launch_configuration(&project_path, flags.get("scheme")))
                 .unwrap_or_else(|| "Debug".into()),
+            project_path,
             scheme: flags.get("scheme").cloned(),
             destination_platform: None,
             sdk: flags.get("sdk").cloned(),
@@ -577,14 +578,17 @@ impl ResolvedConfig {
             })
             .ok_or("bsp.json missing projectPath/workspacePath")?;
         let (command_line, warning) = command_line_of(value, base);
+        let project_path = resolve(project_path);
+        let scheme = flags.get("scheme").cloned().or_else(|| pull("scheme"));
         Ok(ResolvedConfig {
-            project_path: resolve(project_path),
             configuration: flags
                 .get("configuration")
                 .cloned()
                 .or_else(|| configuration_of(value))
+                .or_else(|| launch_configuration(&project_path, scheme.as_ref()))
                 .unwrap_or_else(|| "Debug".into()),
-            scheme: flags.get("scheme").cloned().or_else(|| pull("scheme")),
+            project_path,
+            scheme,
             destination_platform: pull("destinationPlatform"),
             sdk: flags.get("sdk").cloned(),
             arch: flags.get("arch").cloned(),
@@ -668,6 +672,16 @@ fn build_args(value: &Value) -> Vec<String> {
         .filter_map(Value::as_str)
         .map(str::to_string)
         .collect()
+}
+
+/// With no configuration named, index what the scheme's Run action builds, as
+/// `sweetpad run` and Xcode's Run do.
+fn launch_configuration(project_path: &Path, scheme: Option<&String>) -> Option<String> {
+    crate::app_locator::scheme_configuration(
+        project_path,
+        scheme?,
+        crate::app_locator::SchemeAction::Launch,
+    )
 }
 
 /// The configuration the extension's builds use: a `-configuration` in
@@ -3114,6 +3128,57 @@ mod tests {
 
         let server = server_for(Some("CatApp"), Some("iphonesimulator"));
         assert_eq!(read(&server, "CatApp"), ios);
+    }
+
+    /// `bsp init --scheme` without `--configuration` indexes what the scheme's
+    /// Run action builds, as `sweetpad run` does; a configuration the project
+    /// lacks is skipped.
+    #[test]
+    fn a_scheme_without_a_configuration_indexes_its_run_configuration() {
+        let scratch = crate::scratch::ScratchDir::new("sweetpad-bsp-scheme-config").unwrap();
+        let project = scratch.join("App.xcodeproj");
+        let schemes = project.join("xcshareddata/xcschemes");
+        std::fs::create_dir_all(&schemes).unwrap();
+        std::fs::write(
+            project.join("project.pbxproj"),
+            r#"// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+		C1 = {isa = XCBuildConfiguration; buildSettings = {}; name = Debug; };
+		C2 = {isa = XCBuildConfiguration; buildSettings = {}; name = UAT; };
+		L1 = {isa = XCConfigurationList; buildConfigurations = (C1, C2, ); defaultConfigurationName = UAT; };
+		G1 = {isa = PBXGroup; children = (); sourceTree = "<group>"; };
+		P1 = {isa = PBXProject; buildConfigurationList = L1; mainGroup = G1; targets = (); };
+	};
+	rootObject = P1;
+}
+"#,
+        )
+        .unwrap();
+        for (name, run) in [("App UAT", "UAT"), ("App Stale", "Staging")] {
+            std::fs::write(
+                schemes.join(format!("{name}.xcscheme")),
+                format!(
+                    "<Scheme><BuildAction/><LaunchAction buildConfiguration=\"{run}\"/></Scheme>"
+                ),
+            )
+            .unwrap();
+        }
+        let configuration = |args: &[&str]| {
+            let args: Vec<String> = args.iter().map(|a| (*a).to_string()).collect();
+            ResolvedConfig::from_flags(project.clone(), &parse_flags(&args)).configuration
+        };
+        assert_eq!(configuration(&["--scheme", "App UAT"]), "UAT");
+        assert_eq!(
+            configuration(&["--scheme", "App UAT", "--configuration", "Debug"]),
+            "Debug"
+        );
+        assert_eq!(configuration(&["--scheme", "App Stale"]), "Debug");
+        assert_eq!(configuration(&[]), "Debug");
     }
 
     /// A `-configuration` in `buildArgs` replaces the one the extension picks

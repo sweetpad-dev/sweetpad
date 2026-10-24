@@ -1208,23 +1208,25 @@ pub fn configuration_layer(
         .next()
 }
 
-/// The configuration a scheme's own action builds with, as Xcode does: the
-/// `LaunchAction`'s for builds and runs, the `TestAction`'s for tests. `None`
-/// when the scheme has no file (an autocreated scheme), names none, or names
-/// one the project doesn't have (a stale `.xcscheme`), so the caller falls
-/// through to its default.
-#[must_use]
-pub fn scheme_configuration(container: &Container, scheme: &str, testing: bool) -> Option<String> {
-    let parsed = parse_scheme(container, scheme)?;
-    let configuration = if testing {
-        parsed.test_action.map(|t| t.configuration)
+pub use sweetpad_core::app_locator::SchemeAction;
+
+fn scheme_action(testing: bool) -> SchemeAction {
+    if testing {
+        SchemeAction::Test
     } else {
-        parsed.launch_configuration
-    }?;
-    configurations(container)
-        .ok()?
-        .contains(&configuration)
-        .then_some(configuration)
+        SchemeAction::Launch
+    }
+}
+
+/// The configuration a scheme's own action builds with, as Xcode does; see
+/// [`sweetpad_core::app_locator::scheme_configuration`].
+#[must_use]
+pub fn scheme_configuration(
+    container: &Container,
+    scheme: &str,
+    action: SchemeAction,
+) -> Option<String> {
+    sweetpad_core::app_locator::scheme_configuration(container.path(), scheme, action)
 }
 
 /// The configuration a build of `scheme` would use without prompting, and its
@@ -1243,7 +1245,8 @@ pub fn effective_configuration(
         return (Some(c), source);
     }
     if !matches!(container, Container::SwiftPackage(_))
-        && let Some(c) = scheme.and_then(|s| scheme_configuration(container, s, testing))
+        && let Some(c) =
+            scheme.and_then(|s| scheme_configuration(container, s, scheme_action(testing)))
     {
         return (Some(c), "scheme");
     }
@@ -1313,8 +1316,8 @@ pub fn settle_configuration(
         let testing_pick = resolved.testing && source == "remembered";
         forget_stale_configuration(ctx, &resolved.container, scheme, &c, testing_pick, track);
     }
-    if let Some(c) =
-        scheme.and_then(|s| scheme_configuration(&resolved.container, s, resolved.testing))
+    if let Some(c) = scheme
+        .and_then(|s| scheme_configuration(&resolved.container, s, scheme_action(resolved.testing)))
     {
         return Ok(c);
     }

@@ -40,11 +40,16 @@ fn project() -> TempDir {
     let schemes = dir.join("App.xcodeproj/xcshareddata/xcschemes");
     std::fs::create_dir_all(&schemes).unwrap();
     std::fs::write(dir.join("App.xcodeproj/project.pbxproj"), PBXPROJ).unwrap();
-    for (name, run, test) in [
-        ("App TEST", "TEST-Debug", "TEST-Debug"),
-        ("App UAT", "UAT", "UAT"),
-        ("App Prod", "Release", "TEST-Debug"),
-        ("App Stale", "Staging", "Staging"),
+    for (name, run, test, archive) in [
+        ("App TEST", "TEST-Debug", "TEST-Debug", ""),
+        (
+            "App UAT",
+            "UAT",
+            "UAT",
+            r#"<ArchiveAction buildConfiguration="UAT"/>"#,
+        ),
+        ("App Prod", "Release", "TEST-Debug", ""),
+        ("App Stale", "Staging", "Staging", ""),
     ] {
         std::fs::write(
             schemes.join(format!("{name}.xcscheme")),
@@ -54,6 +59,7 @@ fn project() -> TempDir {
    <BuildAction/>
    <TestAction buildConfiguration="{test}"/>
    <LaunchAction buildConfiguration="{run}"/>
+   {archive}
 </Scheme>
 "#
             ),
@@ -169,6 +175,18 @@ fn a_remembered_configuration_belongs_to_one_scheme() {
             .success()
     );
     assert_eq!(previewed_configuration(&dir, "build", "App UAT"), "UAT");
+}
+
+/// An archive builds what Xcode's Product > Archive does: the scheme's
+/// Archive action, and Release when the scheme names none.
+#[test]
+fn an_archive_builds_with_the_schemes_archive_configuration() {
+    let dir = project();
+    assert_eq!(previewed_configuration(&dir, "archive", "App UAT"), "UAT");
+    assert_eq!(
+        previewed_configuration(&dir, "archive", "App TEST"),
+        "Release"
+    );
 }
 
 /// The single project-wide configuration older versions remembered is the one
