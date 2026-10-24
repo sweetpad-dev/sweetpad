@@ -135,6 +135,9 @@ impl std::error::Error for Error {}
 pub enum Document {
     Pbxproj(Arc<Value>),
     Xcproj(Arc<crate::xcproj::Value>),
+    /// A local Swift package, addressed by its `Package.swift`, from the PIF
+    /// its container's packages were registered with ([`crate::pif`]).
+    Pif(Arc<crate::pif::Package>),
 }
 
 impl Document {
@@ -143,6 +146,9 @@ impl Document {
     /// A bundle holding both is invalid — Xcode says so rather than preferring
     /// one — so this reports it instead of guessing.
     pub fn parse(xcodeproj_path: &Path) -> Result<Self, Error> {
+        if let Some((package, _)) = crate::pif::registered(xcodeproj_path) {
+            return Ok(Document::Pif(package));
+        }
         let pbxproj = xcodeproj_path.join("project.pbxproj").exists();
         let xcproj = xcodeproj_path.join(crate::xcproj::DOCUMENT_NAME).exists();
         match (pbxproj, xcproj) {
@@ -164,6 +170,7 @@ impl Document {
             Document::Xcproj(value) => {
                 crate::project_xcproj::open_from_value(value, xcodeproj_path)
             }
+            Document::Pif(package) => Ok(package.open()),
         }
     }
 
@@ -186,6 +193,7 @@ impl Document {
                 target_name,
                 config_name,
             ),
+            Document::Pif(package) => package.build_settings(target_name, config_name),
         }
     }
 }
@@ -835,6 +843,9 @@ pub fn target_source_files(
     xcodeproj_path: &Path,
     target_name: &str,
 ) -> Result<Vec<PathBuf>, Error> {
+    if let Some((package, _)) = crate::pif::registered(xcodeproj_path) {
+        return package.source_files(target_name);
+    }
     if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
         return crate::project_xcproj::target_source_files(&value, xcodeproj_path, target_name);
     }
@@ -1069,6 +1080,9 @@ pub fn target_linked_frameworks(
     xcodeproj_path: &Path,
     target_name: &str,
 ) -> Result<Vec<String>, Error> {
+    if crate::pif::registered(xcodeproj_path).is_some() {
+        return Ok(Vec::new());
+    }
     if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
         return crate::project_xcproj::target_linked_frameworks(&value, target_name);
     }
@@ -1122,6 +1136,9 @@ pub fn target_linked_libraries(
     xcodeproj_path: &Path,
     target_name: &str,
 ) -> Result<Vec<String>, Error> {
+    if crate::pif::registered(xcodeproj_path).is_some() {
+        return Ok(Vec::new());
+    }
     if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
         return crate::project_xcproj::target_linked_libraries(&value, target_name);
     }
@@ -1177,6 +1194,9 @@ pub fn target_linked_libraries(
 /// modules to prepare. Same-project dependencies only; a cross-project
 /// `targetProxy` whose `target` doesn't resolve in this project is skipped.
 pub fn target_dependencies(xcodeproj_path: &Path, target_name: &str) -> Result<Vec<String>, Error> {
+    if let Some((package, _)) = crate::pif::registered(xcodeproj_path) {
+        return package.dependencies(target_name);
+    }
     if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
         return crate::project_xcproj::target_dependencies(&value, target_name);
     }
@@ -1185,6 +1205,43 @@ pub fn target_dependencies(xcodeproj_path: &Path, target_name: &str) -> Result<V
     let target = find_target(objects, project_obj, target_name)?
         .ok_or_else(|| Error::no_such_target(target_name))?;
     Ok(target_dependency_names(objects, target))
+}
+
+/// The names of the Swift package products a target links or depends on —
+/// `productName` of each `XCSwiftPackageProductDependency` in its
+/// `packageProductDependencies`, in pbxproj order.
+pub fn target_package_products(
+    xcodeproj_path: &Path,
+    target_name: &str,
+) -> Result<Vec<String>, Error> {
+    if crate::pif::registered(xcodeproj_path).is_some() {
+        return Ok(Vec::new());
+    }
+    if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
+        return crate::project_xcproj::target_package_products(&value, target_name);
+    }
+    let value = parse_pbxproj(xcodeproj_path)?;
+    let (objects, project_obj) = project_root(&value)?;
+    let target = find_target(objects, project_obj, target_name)?
+        .ok_or_else(|| Error::no_such_target(target_name))?;
+    let mut out: Vec<String> = Vec::new();
+    for id in target
+        .get("packageProductDependencies")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        if let Some(name) = objects
+            .get(id)
+            .and_then(|o| o.get("productName"))
+            .and_then(Value::as_str)
+            .filter(|n| !out.iter().any(|o| o == n))
+        {
+            out.push(name.to_string());
+        }
+    }
+    Ok(out)
 }
 
 fn target_dependency_names(objects: &Dict, target_obj: &Value) -> Vec<String> {
@@ -1213,6 +1270,9 @@ pub fn target_has_package_products(
     xcodeproj_path: &Path,
     target_name: &str,
 ) -> Result<bool, Error> {
+    if crate::pif::registered(xcodeproj_path).is_some() {
+        return Ok(false);
+    }
     if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
         return crate::project_xcproj::target_has_package_products(&value, target_name);
     }
@@ -1260,6 +1320,17 @@ pub fn transitive_dependencies(
     xcodeproj_path: &Path,
     target_name: &str,
 ) -> Result<Vec<String>, Error> {
+    if let Some((package, _)) = crate::pif::registered(xcodeproj_path) {
+        let mut out: Vec<String> = Vec::new();
+        let mut queue = package.dependencies(target_name)?;
+        while let Some(name) = queue.pop() {
+            if !out.contains(&name) {
+                queue.extend(package.dependencies(&name).unwrap_or_default());
+                out.push(name);
+            }
+        }
+        return Ok(out);
+    }
     if let Some(value) = crate::project_xcproj::parse_if_present(xcodeproj_path)? {
         return Ok(crate::project_xcproj::transitive_dependencies(
             &value,
@@ -1301,6 +1372,10 @@ fn visit_dependencies(
 /// A target that slips through but still can't be emitted is caught at build
 /// time (the executor falls back to `xcodebuild`).
 pub fn is_self_buildable(xcodeproj_path: &Path, target_name: &str) -> Result<bool, Error> {
+    // A package target builds through its package scheme.
+    if crate::pif::registered(xcodeproj_path).is_some() {
+        return Ok(false);
+    }
     if target_has_package_products(xcodeproj_path, target_name)? {
         return Ok(false);
     }

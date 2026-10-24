@@ -326,12 +326,17 @@ impl BuildContext {
     pub fn open(project_path: &Path) -> Result<Self, Error> {
         let document = Document::parse(project_path)?;
         let project = document.open(project_path)?;
+        // A local package builds as part of the container it was registered
+        // under, so its DerivedData is that container's.
+        let derived_data_container = matches!(document, Document::Pif(_))
+            .then(|| sweetpad_lib::pif::registered(project_path).map(|(_, container)| container))
+            .flatten();
         Ok(Self {
             project,
             document,
             xcspec: None,
             extra_xcconfig: Vec::new(),
-            derived_data_container: None,
+            derived_data_container,
             read_xcode_locations: false,
         })
     }

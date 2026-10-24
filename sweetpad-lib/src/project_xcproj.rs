@@ -836,6 +836,34 @@ fn links_a_package_product(target: &Value) -> bool {
             .any(|d| d.get("kind").and_then(Value::as_str) == Some("package"))
 }
 
+/// The package products a target consumes: each `package-product-members`
+/// entry, then each `{ kind: package }` dependency, by `product-name`.
+pub(crate) fn target_package_products(
+    value: &Value,
+    target_name: &str,
+) -> Result<Vec<String>, Error> {
+    let target =
+        find_target(value, target_name).ok_or_else(|| Error::no_such_target(target_name))?;
+    let members: &[Value] = target
+        .get("package-product-members")
+        .and_then(Value::as_array)
+        .unwrap_or_default();
+    let packages = dependencies(target)
+        .iter()
+        .filter(|d| d.get("kind").and_then(Value::as_str) == Some("package"));
+    let mut out: Vec<String> = Vec::new();
+    for name in members
+        .iter()
+        .chain(packages)
+        .filter_map(|e| e.get("product-name").and_then(Value::as_str))
+    {
+        if !out.iter().any(|o| o == name) {
+            out.push(name.to_string());
+        }
+    }
+    Ok(out)
+}
+
 pub(crate) fn transitive_dependencies(value: &Value, target_name: &str) -> Vec<String> {
     fn visit(
         value: &Value,

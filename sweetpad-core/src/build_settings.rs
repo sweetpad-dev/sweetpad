@@ -599,7 +599,15 @@ fn resolve_project_paths(
 ) -> Result<Vec<PathBuf>, String> {
     if let Some(ws_path) = workspace_path {
         let ws = workspace::open(ws_path).map_err(|e| e.to_string())?;
-        Ok(ws.project_refs)
+        // The local packages a build server registered build as part of the
+        // workspace, so their targets resolve through it too.
+        let mut projects = ws.project_refs;
+        projects.extend(
+            sweetpad_lib::pif::packages_of(ws_path)
+                .iter()
+                .map(|package| package.manifest()),
+        );
+        Ok(projects)
     } else if let Some(p) = project {
         Ok(vec![p.to_path_buf()])
     } else {

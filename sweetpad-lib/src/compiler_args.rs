@@ -240,6 +240,7 @@ pub fn swift_arguments(
     if let Some(v) = get("SWIFT_VERSION").filter(|v| present(v)) {
         a.pair("-swift-version", swift_version(v));
     }
+    emit_package_name(&mut a, settings);
 
     // --- Conditional compilation -------------------------------------------
     // SWIFT_ACTIVE_COMPILATION_CONDITIONS is a StringList encoded `-D$(value)`.
@@ -498,6 +499,12 @@ fn emit_compilation_defaults(a: &mut ArgBuilder, settings: &Settings, major: u32
     // build emits the module in-process, via -no-emit-module-separately-wmo).
     for flag in MODERN_DRIVER_DEFAULTS {
         if whole_module && *flag == "-experimental-emit-module-separately" {
+            continue;
+        }
+        // SwiftPM turns bare-slash regex literals off for a package target
+        // that does not opt in.
+        if *flag == "-enable-bare-slash-regex" && get("SWIFT_ENABLE_BARE_SLASH_REGEX") == Some("NO")
+        {
             continue;
         }
         a.flag(flag);
@@ -1065,6 +1072,18 @@ pub fn static_lib_arguments(settings: &Settings, arch: &str) -> Vec<String> {
     }
     emit_library_paths(&mut a, settings);
     a.into_vec()
+}
+
+/// The package a Swift package's target belongs to, which `package`
+/// declarations are visible across. SwiftPM sets `SWIFT_PACKAGE_NAME` for
+/// every package target; an Xcode project target sets none.
+fn emit_package_name(a: &mut ArgBuilder, settings: &Settings) {
+    if let Some(name) = settings
+        .get("SWIFT_PACKAGE_NAME")
+        .filter(|v| !v.is_empty() && !v.contains("$("))
+    {
+        a.pair("-package-name", name);
+    }
 }
 
 /// Driver flags a current Xcode emits unconditionally for a Swift target. These

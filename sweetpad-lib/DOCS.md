@@ -686,6 +686,36 @@ the build server via `buildTarget/prepare` — *we* must produce the modules.
   Remaining for "full" v3:
   per-target mixing, code-gen-resource classification, owning more
   output-layout geometry for mixed-language deps.
+- **Local Swift packages (#343)**: the package targets the root's targets
+  build are listed next to them, so sourcekit-lsp keeps a package's files in
+  the root workspace instead of opening an implicit SwiftPM workspace that
+  builds them again for macOS. Their targets, sources and settings come from
+  `swift package dump-pif` (`pif`, `sweetpad-core`'s `package_pif`), which
+  prints what Xcode's embedded SwiftPM builds: a stand-in root manifest
+  depends on the local packages, the dump runs on an APFS clone of the
+  container's `SourcePackages` with Xcode's `Package.resolved` and
+  `--disable-automatic-resolution`, and the clone's paths are mapped back to
+  Xcode's checkouts. Each package's `Package.swift` stands where a
+  `.xcodeproj` path does (`project::Document::Pif`), so resolution runs the
+  usual pipeline. What the pipeline needs on top:
+  - packages build with their Debug settings when the app's configuration
+    name contains `debug` in any case, Release otherwise, under the app's
+    configuration name (measured on Xcode 27.0);
+  - `SDKROOT = auto` drops, and a package target reads as the first app
+    target that uses it;
+  - each target takes what its dependencies impart
+    (`impartedBuildProperties`), which is where the module maps and header
+    paths of C targets come from, remote ones included;
+  - `__platform_filter` conditions become `[sdk=…]` ones.
+
+  The dump takes seconds cold, so `bsp serve` answers with the project's
+  targets at once and pushes `buildTarget/didChange` once it lands. It is
+  cached on disk against the manifests, `Package.resolved`,
+  `workspace-state.json` and the folders holding each target's sources, and
+  redone when the watcher sees one change. A package target prepares through
+  the scheme of the first product that builds it. When the dump fails (a
+  container Xcode never resolved, a manifest mid-edit), the project's own
+  targets are still served and the log says why.
 
 ### 8.3 The measurement loop
 
