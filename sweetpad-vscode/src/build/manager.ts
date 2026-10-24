@@ -38,6 +38,7 @@ import { MacOSLogSidecar, Pymd3Sidecar, SimulatorLogSidecar } from "../run/sidec
 import type { SimulatorDestination } from "../simulators/types";
 import { getSimulatorByUdid } from "../simulators/utils";
 import type { ProgressStatusBar } from "../system/status-bar";
+import { resolveConfiguration, setPickedConfiguration } from "./configuration";
 import { BUILD_TASK_PROBLEM_MATCHERS } from "./constants";
 import type { DiagnosticsManager } from "./diagnostics";
 import type { ParsedDiagnostic } from "./diagnostics-parser";
@@ -54,6 +55,7 @@ import {
   ensureAppPathExists,
   generateBuildServerConfigOnBuild,
   activateCurrentXcodeWorkspacePath,
+  getCurrentXcodeWorkspacePath,
   notifyXBSMissing,
   getSchemeLaunchSettings,
   getSwiftPMDirectory,
@@ -74,6 +76,8 @@ export type BuildSessionCommand = "build" | "run" | "launch" | "test" | "clean" 
 
 export type BuildSessionStarted = {
   scheme: string;
+  /** Null for commands that build nothing (resolving dependencies). */
+  configuration: string | null;
   command: BuildSessionCommand;
 };
 
@@ -256,21 +260,40 @@ export class BuildManager {
     this.emitter.emit("defaultSchemeForTestingUpdated", scheme);
   }
 
+  /**
+   * The configuration a build of the selected scheme in the current project uses, without asking.
+   * See `resolveConfiguration` for the order; undefined when nothing answers yet.
+   */
   getDefaultConfigurationForBuild(): string | undefined {
-    return this.workspaceState.get("build.xcodeConfiguration");
+    return this.getConfigurationForBuild({
+      xcworkspace: getCurrentXcodeWorkspacePath(this.workspaceState),
+      scheme: this.getDefaultSchemeForBuild(),
+    });
   }
 
-  getDefaultConfigurationForTesting(): string | undefined {
-    return this.workspaceState.get("testing.xcodeConfiguration");
+  getConfigurationForBuild(options: {
+    xcworkspace: string | undefined;
+    scheme: string | undefined;
+  }): string | undefined {
+    return resolveConfiguration({ workspaceState: this.workspaceState, scope: "build", ...options });
   }
 
-  setDefaultConfigurationForBuild(configuration: string | undefined): void {
-    this.workspaceState.update("build.xcodeConfiguration", configuration);
-    this.emitter.emit("defaultConfigurationForBuildUpdated", configuration);
+  getConfigurationForTesting(options: { xcworkspace: string; scheme: string }): string | undefined {
+    return resolveConfiguration({ workspaceState: this.workspaceState, scope: "testing", ...options });
   }
 
-  setDefaultConfigurationForTesting(configuration: string | undefined): void {
-    this.workspaceState.update("testing.xcodeConfiguration", configuration);
+  /** Pick a configuration for one scheme, or drop the pick with `undefined` to use the scheme's own. */
+  setConfigurationForBuild(options: { xcworkspace: string; scheme: string; configuration: string | undefined }): void {
+    setPickedConfiguration({ workspaceState: this.workspaceState, scope: "build", ...options });
+    this.emitter.emit("defaultConfigurationForBuildUpdated", this.getDefaultConfigurationForBuild());
+  }
+
+  setConfigurationForTesting(options: {
+    xcworkspace: string;
+    scheme: string;
+    configuration: string | undefined;
+  }): void {
+    setPickedConfiguration({ workspaceState: this.workspaceState, scope: "testing", ...options });
   }
 
   /**
@@ -365,13 +388,18 @@ export class BuildManager {
   async runSchemeTask(options: {
     name: string;
     scheme: string;
+    configuration: string | null;
     workspaceRoot: string;
     command: BuildSessionCommand;
     callback: (terminal: TaskTerminal) => Promise<void>;
   }): Promise<void> {
     this.cancellingSchemes.delete(options.scheme);
     this.startSchemeBuild(options.scheme);
-    this.emitter.emit("buildSessionStarted", { scheme: options.scheme, command: options.command });
+    this.emitter.emit("buildSessionStarted", {
+      scheme: options.scheme,
+      configuration: options.configuration,
+      command: options.command,
+    });
     let status: BuildSessionEnded["status"] = "succeeded";
     try {
       await runTask(this.execution, {
@@ -421,7 +449,7 @@ export class BuildManager {
     });
 
     this.progress.updateText("Searching for configuration");
-    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace });
+    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace, scheme: scheme });
 
     this.progress.updateText("Searching for destination");
     const destination = await askDestinationToRunOn(this.progress, this.destinations, {
@@ -439,6 +467,7 @@ export class BuildManager {
     await this.runSchemeTask({
       name: "Build",
       scheme: scheme,
+      configuration: configuration,
       workspaceRoot: workspaceRoot,
       command: "build",
       callback: async (terminal) => {
@@ -482,7 +511,7 @@ export class BuildManager {
       }));
 
     this.progress.updateText("Searching for configuration");
-    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace });
+    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace, scheme: scheme });
 
     this.progress.updateText("Searching for destination");
     const destination = await askDestinationToRunOn(this.progress, this.destinations, {
@@ -514,6 +543,7 @@ export class BuildManager {
     await this.runSchemeTask({
       name: "Run",
       scheme: scheme,
+      configuration: configuration,
       workspaceRoot: workspaceRoot,
       command: "run",
       callback: async (terminal) => {
@@ -601,7 +631,7 @@ export class BuildManager {
     });
 
     this.progress.updateText("Searching for configuration");
-    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace });
+    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace, scheme: scheme });
 
     this.progress.updateText("Searching for destination");
     const destination = await askDestinationToRunOn(this.progress, this.destinations, {
@@ -635,6 +665,7 @@ export class BuildManager {
     await this.runSchemeTask({
       name: options.debug ? "Debug" : "Launch",
       scheme: scheme,
+      configuration: configuration,
       workspaceRoot: workspaceRoot,
       command: "launch",
       callback: async (terminal) => {
@@ -1352,7 +1383,7 @@ export class BuildManager {
       (await askSchemeForBuild(this.progress, this, { title: "Select scheme to clean", xcworkspace: xcworkspace }));
 
     this.progress.updateText("Searching for configuration");
-    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace });
+    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace, scheme: scheme });
 
     this.progress.updateText("Searching for destination");
     const destination = await askDestinationToRunOn(this.progress, this.destinations, {
@@ -1370,6 +1401,7 @@ export class BuildManager {
     await this.runSchemeTask({
       name: "Clean",
       scheme: scheme,
+      configuration: configuration,
       workspaceRoot: workspaceRoot,
       command: "clean",
       callback: async (terminal) => {
@@ -1407,7 +1439,7 @@ export class BuildManager {
       (await askSchemeForBuild(this.progress, this, { title: "Select scheme to test", xcworkspace: xcworkspace }));
 
     this.progress.updateText("Searching for configuration");
-    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace });
+    const configuration = await askConfiguration(this.progress, this, { xcworkspace: xcworkspace, scheme: scheme });
 
     this.progress.updateText("Searching for destination");
     const destination = await askDestinationToRunOn(this.progress, this.destinations, {
@@ -1425,6 +1457,7 @@ export class BuildManager {
     await this.runSchemeTask({
       name: "Test",
       scheme: scheme,
+      configuration: configuration,
       workspaceRoot: workspaceRoot,
       command: "test",
       callback: async (terminal) => {
@@ -1455,6 +1488,7 @@ export class BuildManager {
     await this.runSchemeTask({
       name: "Resolve Dependencies",
       scheme: options.scheme,
+      configuration: null,
       workspaceRoot: workspaceRoot,
       command: "resolve-deps",
       callback: async (terminal) => {

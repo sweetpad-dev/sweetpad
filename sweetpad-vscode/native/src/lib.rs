@@ -331,6 +331,25 @@ pub fn configurations(path: String) -> napi::Result<Vec<String>> {
     }
 }
 
+/// The project's `defaultConfigurationName` (the "Use … for command-line
+/// builds" choice, `Release` in Xcode's templates) for a `.xcodeproj`, or the
+/// first member project that declares one for a `.xcworkspace`. `null` when
+/// none does.
+#[napi]
+pub fn default_configuration(path: String) -> napi::Result<Option<String>> {
+    let p = Path::new(&path);
+    if is_workspace(p) {
+        let ws = workspace::open(p).map_err(to_napi_err)?;
+        Ok(ws
+            .project_refs
+            .iter()
+            .filter_map(|project_path| project::open(project_path).ok())
+            .find_map(|proj| proj.default_configuration))
+    } else {
+        Ok(project::open(p).map_err(to_napi_err)?.default_configuration)
+    }
+}
+
 /// Options for a `buildSettings` resolution — mirrors
 /// `xcodebuild -showBuildSettings`. Either `project` or `workspace` is required;
 /// either `scheme` or `target` selects what to resolve.

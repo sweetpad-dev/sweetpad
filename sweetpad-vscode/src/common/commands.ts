@@ -164,8 +164,6 @@ export function resetSweetPadState(deps: AppDeps): void {
   deps.destinationsManager.setWorkspaceDestinationForTesting(undefined);
   deps.buildManager.setDefaultSchemeForBuild(undefined);
   deps.buildManager.setDefaultSchemeForTesting(undefined);
-  deps.buildManager.setDefaultConfigurationForBuild(undefined);
-  deps.buildManager.setDefaultConfigurationForTesting(undefined);
 
   void deps.buildManager.refreshSchemes();
   void deps.destinationsManager.refresh();

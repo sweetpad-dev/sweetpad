@@ -428,6 +428,7 @@ export class TestingManager {
     });
     const configuration = await askConfigurationForTesting(this.buildManager, {
       xcworkspace: xcworkspace,
+      scheme: scheme,
     });
     const supportedPlatforms = getSupportedPlatforms({
       scheme: scheme,

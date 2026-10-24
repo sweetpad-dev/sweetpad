@@ -44,6 +44,21 @@ export const buildConfigSet: HandlerFn<{ name?: string }, { configuration: Confi
       data: { available },
     });
   }
-  ctx.buildManager.setDefaultConfigurationForBuild(params.name);
+  // A pick belongs to one scheme of one project, the way Xcode keeps a configuration per scheme.
+  const xcworkspace = activateCurrentXcodeWorkspacePath({
+    workspaceState: ctx.workspaceState,
+    workspaceContext: ctx.workspaceContext,
+  });
+  const scheme = ctx.buildManager.getDefaultSchemeForBuild();
+  if (!xcworkspace || !scheme) {
+    throw new SweetpadRpcError(
+      ERROR_CODES.SCHEME_NOT_SET,
+      "buildConfig.set picks for the selected scheme; none is set.",
+      {
+        hint: methodHint("scheme.set", "--name <name>"),
+      },
+    );
+  }
+  ctx.buildManager.setConfigurationForBuild({ xcworkspace, scheme, configuration: params.name });
   return { configuration: { name: params.name, isSelected: true } satisfies ConfigurationEntity };
 };

@@ -49,6 +49,7 @@ vi.mock("../common/cli/scripts", () => ({
   findSchemeFile: vi.fn(),
   getBuildSettingsList: vi.fn(),
   getXcodeBuildCommand: vi.fn(() => "xcodebuild"),
+  getSchemeConfiguration: vi.fn(),
   SWEETPAD_CLI_MISSING_MESSAGE: "cli missing",
 }));
 

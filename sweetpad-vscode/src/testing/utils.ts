@@ -3,7 +3,6 @@ import * as vscode from "vscode";
 import type { BuildManager } from "../build/manager";
 import { askConfigurationBase } from "../common/askers";
 import { getSchemes, getTargets } from "../common/cli/scripts";
-import { getWorkspaceConfig } from "../common/config";
 import { type QuickPickItem, showQuickPick } from "../common/quick-pick";
 import type { DestinationPlatform } from "../destination/constants";
 import type { DestinationsManager } from "../destination/manager";
@@ -76,20 +75,17 @@ export async function askConfigurationForTesting(
   buildManager: BuildManager,
   options: {
     xcworkspace: string;
+    scheme: string;
   },
 ): Promise<string> {
-  const fromConfig = getWorkspaceConfig("testing.configuration");
-  if (fromConfig) {
-    return fromConfig;
-  }
-  const cached = buildManager.getDefaultConfigurationForTesting();
-  if (cached) {
-    return cached;
+  const resolved = buildManager.getConfigurationForTesting(options);
+  if (resolved) {
+    return resolved;
   }
   const selected = await askConfigurationBase({
     xcworkspace: options.xcworkspace,
   });
-  buildManager.setDefaultConfigurationForTesting(selected);
+  buildManager.setConfigurationForTesting({ ...options, configuration: selected });
   return selected;
 }
 
