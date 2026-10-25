@@ -2,7 +2,7 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
-## [0.2.20]
+## [0.2.20] - 2026-10-25
 
 - Index local Swift packages with the app's build settings ([#343](https://github.com/sweetpad-dev/sweetpad/issues/343), thanks [@satanworker](https://github.com/satanworker))
 - Fix every scheme building with the first configuration picked ([#342](https://github.com/sweetpad-dev/sweetpad/issues/342), thanks [@bartlomiejswierad-vodeno](https://github.com/bartlomiejswierad-vodeno))
