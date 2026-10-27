@@ -759,7 +759,26 @@ fn workspace_user_scheme_naming_a_renamed_target_resolves() {
     // target was renamed still calls it `OldName`. xcodebuild resolves the
     // buildable by its BlueprintIdentifier and builds `Scratch`, so the
     // resolver must too rather than fail with "no target matched scheme".
-    let (root, _proj) = scratch_copy("ws-stale-name");
+    let scheme =
+        SCRATCH_SCHEME_XML.replace("BlueprintName=\"Scratch\"", "BlueprintName=\"OldName\"");
+    let s = resolve_private_workspace_scheme("ws-stale-name", &scheme);
+    assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
+}
+
+#[test]
+fn workspace_user_scheme_naming_its_project_in_another_case_resolves() {
+    // Issue #344: `container:scratch.xcodeproj` names `Scratch.xcodeproj` on a
+    // case-insensitive volume, and xcodebuild builds the scheme's `Scratch`.
+    let scheme =
+        SCRATCH_SCHEME_XML.replace("container:Scratch.xcodeproj", "container:scratch.xcodeproj");
+    let s = resolve_private_workspace_scheme("ws-container-case", &scheme);
+    assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
+}
+
+/// Resolve `scheme_xml`, saved as the current user's `Private` scheme in a
+/// workspace whose single member is a copy of the Scratch project.
+fn resolve_private_workspace_scheme(tag: &str, scheme_xml: &str) -> BTreeMap<String, String> {
+    let (root, _proj) = scratch_copy(tag);
     let ws = root.join("Test.xcworkspace");
     std::fs::create_dir_all(&ws).unwrap();
     std::fs::write(
@@ -772,22 +791,16 @@ fn workspace_user_scheme_naming_a_renamed_target_resolves() {
         visible_user()
     ));
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(
-        dir.join("Private.xcscheme"),
-        SCRATCH_SCHEME_XML.replace("BlueprintName=\"Scratch\"", "BlueprintName=\"OldName\""),
-    )
-    .unwrap();
+    std::fs::write(dir.join("Private.xcscheme"), scheme_xml).unwrap();
 
-    let opts = BuildSettingsOptions {
+    resolve_one(BuildSettingsOptions {
         workspace: Some(ws),
         scheme: Some("Private".to_string()),
         configuration: "Debug".to_string(),
         sdk: "macosx".to_string(),
         arch: "arm64".to_string(),
         ..Default::default()
-    };
-    let s = resolve_one(opts);
-    assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
+    })
 }
 
 /// A workspace whose single member project is nested two directories below it

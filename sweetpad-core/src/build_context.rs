@@ -1142,14 +1142,18 @@ fn folded_location(value: &str, project_dir: Option<&str>) -> Option<String> {
 /// The container path is relative to the scheme's own anchor directory, which
 /// the planner doesn't know, so compare by `.xcodeproj` basename — enough to
 /// keep a workspace scheme's buildable out of a *different* project that
-/// happens to own a same-named target. An entry with no parseable container
-/// matches permissively.
+/// happens to own a same-named target. The basenames compare ignoring case,
+/// as xcodebuild opens `container:app.xcodeproj` for `App.xcodeproj` on a
+/// case-insensitive volume. An entry with no parseable container matches
+/// permissively.
 fn container_matches(container: &str, project_path: &Path) -> bool {
     let Some(rest) = container.strip_prefix("container:") else {
         return true;
     };
     match Path::new(rest).file_name() {
-        Some(basename) => project_path.file_name() == Some(basename),
+        Some(basename) => project_path.file_name().is_some_and(|own| {
+            sweetpad_lib::scheme::same_path_ignoring_case(Path::new(own), Path::new(basename))
+        }),
         None => true,
     }
 }

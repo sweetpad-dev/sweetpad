@@ -512,11 +512,19 @@ impl SchemeReferences {
         references.iter().any(|(p, t)| {
             t == target
                 && match (p, &project) {
-                    (Some(p), Some(project)) => p == project,
+                    (Some(p), Some(project)) => same_path_ignoring_case(p, project),
                     _ => true,
                 }
         })
     }
+}
+
+/// Whether two paths name the same file on the case-insensitive volumes a Mac
+/// formats by default, where Xcode follows a `ReferencedContainer` whose case
+/// differs from the bundle's name on disk.
+#[must_use]
+pub fn same_path_ignoring_case(a: &Path, b: &Path) -> bool {
+    a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
 }
 
 /// The file behind the scheme `name` that `xcodebuild` lists for `container`,
@@ -1600,6 +1608,25 @@ mod tests {
         // Building an app doesn't take its scheme's place, running is what does.
         assert!(!references.cover(Some(&dir), "Kit", true));
         assert!(!references.cover(Some(&dir), "Other", false));
+        let elsewhere = dir.parent().unwrap().join("Other.xcodeproj");
+        assert!(!references.cover(Some(&elsewhere), "App", true));
+    }
+
+    /// A `ReferencedContainer` cased differently from the bundle still names
+    /// it, as it does for Xcode on a case-insensitive volume.
+    #[test]
+    fn a_reference_names_its_project_whatever_the_case() {
+        let (_root, dir) = scratch_container("references-case");
+        let path = dir.join("xcshareddata/xcschemes/Custom.xcscheme");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            COVERING_SCHEME.replace("container:App.xcodeproj", "container:app.xcodeproj"),
+        )
+        .unwrap();
+        let references = SchemeReferences::of(&dir);
+
+        assert!(references.cover(Some(&dir), "App", true));
         let elsewhere = dir.parent().unwrap().join("Other.xcodeproj");
         assert!(!references.cover(Some(&elsewhere), "App", true));
     }
