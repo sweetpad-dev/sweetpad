@@ -234,10 +234,72 @@ impl From<xcscheme::Error> for Error {
     }
 }
 
-/// Parse an `.xcscheme` file into a typed [`Scheme`].
+/// Parse an `.xcscheme` file into a typed [`Scheme`], each buildable naming
+/// the target its `BlueprintIdentifier` points at today ([`rebind`]).
 pub fn parse_file(path: &Path) -> Result<Scheme, Error> {
     let root = xcscheme::parse_file(path)?;
-    from_element(&root)
+    let mut scheme = from_element(&root)?;
+    if let Some(base) = reference_base(path) {
+        let testables = scheme
+            .test_action
+            .iter_mut()
+            .flat_map(|t| t.testables.iter_mut().map(|t| &mut t.buildable));
+        for reference in scheme
+            .build_entries
+            .iter_mut()
+            .map(|e| &mut e.buildable)
+            .chain(testables)
+            .chain(scheme.launch_target.as_mut())
+            .chain(scheme.launch_macro_expansion.as_mut())
+        {
+            rebind(reference, base);
+        }
+    }
+    Ok(scheme)
+}
+
+/// The directory a scheme file's `container:` references resolve against:
+/// the one holding the `.xcodeproj` / `.xcworkspace` whose `xcshareddata` or
+/// `xcuserdata` the file sits in.
+fn reference_base(scheme_file: &Path) -> Option<&Path> {
+    scheme_file
+        .ancestors()
+        .find(|dir| {
+            matches!(
+                dir.file_name().and_then(OsStr::to_str),
+                Some("xcshareddata" | "xcuserdata")
+            )
+        })?
+        .parent()?
+        .parent()
+}
+
+/// The `.xcodeproj` a buildable's `ReferencedContainer` names, resolved
+/// against `base` ([`reference_base`]). `None` for a package's bare
+/// `container:`, which names no project.
+fn referenced_project(base: &Path, reference: &BuildableRef) -> Option<PathBuf> {
+    match reference.container.split_once(':') {
+        Some(("container", "")) => None,
+        Some(("container", rel)) => Some(crate::project::absolutize(&base.join(rel))),
+        Some(("absolute", abs)) => Some(crate::project::absolutize(Path::new(abs))),
+        _ => None,
+    }
+}
+
+/// Point `reference` at the target its `BlueprintIdentifier` names in its
+/// project, the way Xcode resolves it. The `BlueprintName` beside it is the
+/// target's name when the scheme was last saved, so a target renamed since
+/// still builds from a scheme that names it the old way (issue #344). A
+/// reference whose ID names no target keeps the name it has.
+fn rebind(reference: &mut BuildableRef, base: &Path) {
+    if reference.blueprint_identifier.is_empty() {
+        return;
+    }
+    if let Some(name) = referenced_project(base, reference)
+        .and_then(|project| crate::project::target_name(&project, &reference.blueprint_identifier))
+    {
+        reference.blueprint_name = name;
+    }
 }
 
 /// The login user whose `xcuserdata` Xcode would consult: the account's
@@ -396,11 +458,12 @@ impl SchemeReferences {
     #[must_use]
     pub fn of(container: &Path) -> Self {
         let base = container.parent().unwrap_or(Path::new(""));
-        let project_of = |reference: &BuildableRef| match reference.container.split_once(':') {
-            Some(("container", "")) => None,
-            Some(("container", rel)) => Some(crate::project::absolutize(&base.join(rel))),
-            Some(("absolute", abs)) => Some(crate::project::absolutize(Path::new(abs))),
-            _ => None,
+        let project_of = |mut reference: BuildableRef| {
+            rebind(&mut reference, base);
+            (
+                referenced_project(base, &reference),
+                reference.blueprint_name,
+            )
         };
         let mut out = Self::default();
         for name in container_schemes(container) {
@@ -419,8 +482,7 @@ impl SchemeReferences {
                     .and_then(|r| r.child("BuildableReference"))
                     .and_then(parse_buildable)
                 {
-                    out.runs
-                        .push((project_of(&reference), reference.blueprint_name.clone()));
+                    out.runs.push(project_of(reference));
                 }
             }
             let entries = root
@@ -432,8 +494,7 @@ impl SchemeReferences {
             {
                 if let Some(reference) = entry.child("BuildableReference").and_then(parse_buildable)
                 {
-                    out.builds
-                        .push((project_of(&reference), reference.blueprint_name.clone()));
+                    out.builds.push(project_of(reference));
                 }
             }
         }
@@ -1541,5 +1602,83 @@ mod tests {
         assert!(!references.cover(Some(&dir), "Other", false));
         let elsewhere = dir.parent().unwrap().join("Other.xcodeproj");
         assert!(!references.cover(Some(&elsewhere), "App", true));
+    }
+
+    /// A scheme saved while the Scratch fixture's target was still called
+    /// `OldName`, plus an entry whose ID names no target.
+    const STALE_NAME_SCHEME: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Scheme version = "1.7">
+   <BuildAction>
+      <BuildActionEntries>
+         <BuildActionEntry buildForRunning = "YES">
+            <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "14A71A1C6762522AADB33EF1"
+               BuildableName = "Scratch" BlueprintName = "OldName" ReferencedContainer = "container:Scratch.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry buildForRunning = "YES">
+            <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "000000000000000000000000"
+               BuildableName = "Gone" BlueprintName = "Gone" ReferencedContainer = "container:Scratch.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+   <TestAction>
+      <Testables>
+         <TestableReference skipped = "NO">
+            <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "14A71A1C6762522AADB33EF1"
+               BuildableName = "Scratch" BlueprintName = "OldName" ReferencedContainer = "container:Scratch.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+      </Testables>
+   </TestAction>
+   <LaunchAction>
+      <BuildableProductRunnable>
+         <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "14A71A1C6762522AADB33EF1"
+            BuildableName = "Scratch" BlueprintName = "OldName" ReferencedContainer = "container:Scratch.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </LaunchAction>
+</Scheme>
+"#;
+
+    /// Xcode resolves a buildable by its `BlueprintIdentifier`, so a scheme
+    /// that still calls a renamed target by its old name builds, tests and
+    /// runs it under its new one (issue #344).
+    #[test]
+    fn buildables_name_the_target_their_identifier_points_at() {
+        let root = TempDir::new("sweetpad-scheme-stale-name");
+        let dir = root.join("Scratch.xcodeproj");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::copy(
+            fixtures_root().join(
+                "_synthetic-xcconfigs/xcode-26.5.0/project/Scratch.xcodeproj/project.pbxproj",
+            ),
+            dir.join("project.pbxproj"),
+        )
+        .unwrap();
+        let path = dir.join(format!(
+            "xcuserdata/{}.xcuserdatad/xcschemes/Mine.xcscheme",
+            visible_user()
+        ));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, STALE_NAME_SCHEME).unwrap();
+
+        let scheme = parse_file(&path).unwrap();
+        let built: Vec<&str> = scheme
+            .build_entries
+            .iter()
+            .map(|e| e.buildable.blueprint_name.as_str())
+            .collect();
+        assert_eq!(built, ["Scratch", "Gone"]);
+        let tested = &scheme.test_action.as_ref().unwrap().testables[0];
+        assert_eq!(tested.buildable.blueprint_name, "Scratch");
+        assert_eq!(
+            scheme.launch_target.map(|b| b.blueprint_name).as_deref(),
+            Some("Scratch")
+        );
+
+        let references = SchemeReferences::of(&dir);
+        assert!(references.cover(Some(&dir), "Scratch", true));
+        assert!(!references.cover(Some(&dir), "OldName", true));
     }
 }

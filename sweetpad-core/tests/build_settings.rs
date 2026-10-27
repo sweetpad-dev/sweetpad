@@ -753,6 +753,43 @@ fn workspace_level_scheme_resolves() {
     assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
 }
 
+#[test]
+fn workspace_user_scheme_naming_a_renamed_target_resolves() {
+    // Regression for issue #344: a private workspace scheme saved before its
+    // target was renamed still calls it `OldName`. xcodebuild resolves the
+    // buildable by its BlueprintIdentifier and builds `Scratch`, so the
+    // resolver must too rather than fail with "no target matched scheme".
+    let (root, _proj) = scratch_copy("ws-stale-name");
+    let ws = root.join("Test.xcworkspace");
+    std::fs::create_dir_all(&ws).unwrap();
+    std::fs::write(
+        ws.join("contents.xcworkspacedata"),
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version=\"1.0\">\n  <FileRef location=\"group:Scratch.xcodeproj\"/>\n</Workspace>\n",
+    )
+    .unwrap();
+    let dir = ws.join(format!(
+        "xcuserdata/{}.xcuserdatad/xcschemes",
+        visible_user()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("Private.xcscheme"),
+        SCRATCH_SCHEME_XML.replace("BlueprintName=\"Scratch\"", "BlueprintName=\"OldName\""),
+    )
+    .unwrap();
+
+    let opts = BuildSettingsOptions {
+        workspace: Some(ws),
+        scheme: Some("Private".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    };
+    let s = resolve_one(opts);
+    assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
+}
+
 /// A workspace whose single member project is nested two directories below it
 /// (`<root>/Modules/App/Scratch.xcodeproj`) — the layout that defeats
 /// `find_derived_data_container`'s parent/grandparent search. Named `Apps`,

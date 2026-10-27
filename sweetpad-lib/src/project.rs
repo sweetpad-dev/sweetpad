@@ -205,6 +205,34 @@ pub fn open(xcodeproj_path: &Path) -> Result<Project, Error> {
     Document::parse(xcodeproj_path)?.open(xcodeproj_path)
 }
 
+/// The current name of the project's target whose object ID is `id`, the
+/// `BlueprintIdentifier` a scheme names it by. `None` when the project declares
+/// no such target or can't be read. Reads only the target list, so the
+/// scheme listing [`open`] builds can call it without recursing.
+#[must_use]
+pub fn target_name(xcodeproj_path: &Path, id: &str) -> Option<String> {
+    match Document::parse(xcodeproj_path).ok()? {
+        Document::Pbxproj(value) => {
+            let (objects, project_obj) = project_root(&value).ok()?;
+            let declared = project_obj
+                .get("targets")
+                .and_then(Value::as_array)?
+                .iter()
+                .any(|t| t.as_str() == Some(id));
+            if !declared {
+                return None;
+            }
+            objects
+                .get(id)?
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        }
+        Document::Xcproj(value) => crate::project_xcproj::target_name(&value, id),
+        Document::Pif(_) => None,
+    }
+}
+
 /// Like [`open`] but driven by an already-parsed pbxproj value. Use this when
 /// the caller has cached the pbxproj parse for reuse across multiple queries
 /// (e.g. [`crate::build_context::BuildContext`]).
@@ -4601,17 +4629,15 @@ pub fn scheme_for_target(xcodeproj_path: &Path, target: &str) -> Option<String> 
 
 /// The blueprint (target) names a scheme's `BuildAction` builds.
 fn scheme_build_action_targets(scheme_path: &Path) -> Vec<String> {
-    let Ok(root) = crate::xcscheme::parse_file(scheme_path) else {
-        return Vec::new();
-    };
-    let Some(build_action) = root.child("BuildAction") else {
-        return Vec::new();
-    };
-    build_action
-        .descendants_named("BuildableReference")
-        .iter()
-        .filter_map(|e| e.attr("BlueprintName").map(String::from))
-        .collect()
+    crate::scheme::parse_file(scheme_path)
+        .map(|scheme| {
+            scheme
+                .build_entries
+                .into_iter()
+                .map(|e| e.buildable.blueprint_name)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -6092,6 +6118,22 @@ mod tests {
     /// hash to different DerivedData folders if the trailing slash survived.
     /// `absolutize` normalizes both spellings, keeping the folder stable
     /// regardless of how the caller spelled the container path.
+    #[test]
+    fn target_name_looks_a_target_up_by_its_object_id() {
+        let pbxproj =
+            fixtures_root().join("_synthetic-xcconfigs/xcode-26.5.0/project/Scratch.xcodeproj");
+        assert_eq!(
+            target_name(&pbxproj, "14A71A1C6762522AADB33EF1").as_deref(),
+            Some("Scratch")
+        );
+        assert_eq!(target_name(&pbxproj, "000000000000000000000000"), None);
+        let xcproj = fixtures_root().join("_xcproj/NetNewsWire.xcodeproj");
+        assert_eq!(
+            target_name(&xcproj, "840D617B2029031C009BC708").as_deref(),
+            Some("NetNewsWire-iOS")
+        );
+    }
+
     #[test]
     fn trailing_slash_does_not_change_the_derived_data_hash() {
         let with = absolutize(Path::new("/root/Foo.xcodeproj/"));

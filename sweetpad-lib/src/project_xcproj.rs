@@ -109,6 +109,18 @@ fn extract_targets(value: &Value, configurations: &[String]) -> Vec<Target> {
         .collect()
 }
 
+/// The name of the target whose `id` is `id`; see [`crate::project::target_name`].
+pub(crate) fn target_name(value: &Value, id: &str) -> Option<String> {
+    value
+        .get("targets")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|target| target.get("id").and_then(Value::as_str) == Some(id))?
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
 /// The `isa` the pbxproj would have used, so downstream rules that match on it
 /// keep working whichever format the project is in.
 fn isa_for(target: &Value) -> &'static str {
