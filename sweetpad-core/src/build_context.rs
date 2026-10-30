@@ -549,10 +549,11 @@ impl BuildContext {
     }
 
     /// Turn a scheme's `BuildAction` into a list of [`ResolveQuery`]s
-    /// against this context. One query per entry that participates in
-    /// `build_for` (xcodebuild only builds the entries whose matching
-    /// `buildFor*` flag is set — a testing-only entry is skipped for a
-    /// plain build) and whose `BlueprintName` resolves to a target in
+    /// against this context. One query per buildable a build for
+    /// `build_for` builds ([`Scheme::buildables_for`]: xcodebuild only builds
+    /// the entries whose matching `buildFor*` flag is set — a testing-only
+    /// entry is skipped for a plain build — plus, for a run, the Run action's
+    /// runnable) whose `BlueprintName` resolves to a target in
     /// `self.project`; cross-container entries land in
     /// [`BuildPlan::skipped`].
     ///
@@ -581,13 +582,10 @@ impl BuildContext {
             .is_some_and(|t| t.code_coverage_enabled);
         let mut entries = Vec::new();
         let mut skipped = Vec::new();
-        for entry in &scheme.build_entries {
-            if !entry.builds_for(build_for) {
-                continue;
-            }
-            let name = &entry.buildable.blueprint_name;
+        for buildable in scheme.buildables_for(build_for) {
+            let name = &buildable.blueprint_name;
             let owned = self.project.targets.iter().any(|t| t.name == *name)
-                && container_matches(&entry.buildable.container, &self.project.path);
+                && container_matches(&buildable.container, &self.project.path);
             if owned {
                 let mut q = ResolveQuery::new(name, configuration, sdk, arch)
                     .with_code_coverage_enabled(code_coverage)
@@ -597,7 +595,7 @@ impl BuildContext {
                 }
                 entries.push(q);
             } else {
-                skipped.push(entry.buildable.clone());
+                skipped.push(buildable.clone());
             }
         }
         BuildPlan { entries, skipped }

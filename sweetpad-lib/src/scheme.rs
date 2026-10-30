@@ -169,6 +169,20 @@ pub struct BuildableRef {
     pub container: String,
 }
 
+impl BuildableRef {
+    /// Whether two references in one scheme name the same target: the same
+    /// container, and the same ID, or the same name where either has no ID.
+    #[must_use]
+    pub fn same_target(&self, other: &BuildableRef) -> bool {
+        same_path_ignoring_case(Path::new(&self.container), Path::new(&other.container))
+            && if self.blueprint_identifier.is_empty() || other.blueprint_identifier.is_empty() {
+                self.blueprint_name == other.blueprint_name
+            } else {
+                self.blueprint_identifier == other.blueprint_identifier
+            }
+    }
+}
+
 /// A `<CommandLineArgument>` under `LaunchAction.CommandLineArguments`.
 #[derive(Debug, Clone)]
 pub struct CommandLineArgument {
@@ -796,6 +810,42 @@ pub struct LaunchSettings {
 }
 
 impl Scheme {
+    /// What a build for `action` builds: the Build action's entries flagged
+    /// for it, then, for a run, the Run action's runnable when none of them is
+    /// it. xcodebuild adds the runnable itself, so a scheme whose Build action
+    /// is empty, or lists the app with `buildForRunning = "NO"`, still builds
+    /// and runs the app (issue #344).
+    #[must_use]
+    pub fn buildables_for(&self, action: BuildFor) -> Vec<&BuildableRef> {
+        let mut out: Vec<&BuildableRef> = self
+            .build_entries
+            .iter()
+            .filter(|e| e.builds_for(action))
+            .map(|e| &e.buildable)
+            .collect();
+        if action == BuildFor::Running {
+            self.add_runnable(&mut out);
+        }
+        out
+    }
+
+    /// Everything the scheme builds for any action: the Build action's
+    /// entries, then the runnable a run adds ([`Self::buildables_for`]).
+    #[must_use]
+    pub fn buildables(&self) -> Vec<&BuildableRef> {
+        let mut out: Vec<&BuildableRef> = self.build_entries.iter().map(|e| &e.buildable).collect();
+        self.add_runnable(&mut out);
+        out
+    }
+
+    fn add_runnable<'a>(&'a self, buildables: &mut Vec<&'a BuildableRef>) {
+        if let Some(runnable) = &self.launch_target
+            && !buildables.iter().any(|b| b.same_target(runnable))
+        {
+            buildables.push(runnable);
+        }
+    }
+
     /// The target whose resolved build settings expand `$(VAR)` in the launch
     /// arguments and environment: the Run action's `MacroExpansion`, or else
     /// the target it launches.
@@ -1707,5 +1757,72 @@ mod tests {
         let references = SchemeReferences::of(&dir);
         assert!(references.cover(Some(&dir), "Scratch", true));
         assert!(!references.cover(Some(&dir), "OldName", true));
+    }
+
+    /// A scheme whose Run action launches `App` (ID `A1`), with `entries` as
+    /// its Build action's entries.
+    fn running_scheme(entries: &str) -> Scheme {
+        let xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Scheme version="1.7">
+   <BuildAction>
+      <BuildActionEntries>{entries}</BuildActionEntries>
+   </BuildAction>
+   <LaunchAction buildConfiguration="Debug">
+      <BuildableProductRunnable>
+         <BuildableReference BlueprintIdentifier="A1" BuildableName="App.app"
+            BlueprintName="App" ReferencedContainer="container:App.xcodeproj"/>
+      </BuildableProductRunnable>
+   </LaunchAction>
+</Scheme>"#
+        );
+        from_element(&xcscheme::parse(&xml).unwrap()).unwrap()
+    }
+
+    fn entry(id: &str, name: &str, for_running: &str) -> String {
+        format!(
+            r#"<BuildActionEntry buildForRunning="{for_running}" buildForTesting="YES">
+            <BuildableReference BlueprintIdentifier="{id}" BuildableName="{name}"
+               BlueprintName="{name}" ReferencedContainer="container:App.xcodeproj"/>
+         </BuildActionEntry>"#
+        )
+    }
+
+    fn names(buildables: &[&BuildableRef]) -> Vec<String> {
+        buildables
+            .iter()
+            .map(|b| b.blueprint_name.clone())
+            .collect()
+    }
+
+    /// xcodebuild builds the Run action's app for a run even when no Build
+    /// action entry builds it for running (issue #344), and only once when
+    /// one does.
+    #[test]
+    fn a_run_builds_the_runnable_the_build_action_leaves_out() {
+        let empty = running_scheme("");
+        assert_eq!(names(&empty.buildables_for(BuildFor::Running)), ["App"]);
+        assert!(empty.buildables_for(BuildFor::Testing).is_empty());
+        assert_eq!(names(&empty.buildables()), ["App"]);
+
+        let not_for_running = running_scheme(&entry("A1", "App", "NO"));
+        assert_eq!(
+            names(&not_for_running.buildables_for(BuildFor::Running)),
+            ["App"]
+        );
+        assert_eq!(names(&not_for_running.buildables()), ["App"]);
+
+        let listed = running_scheme(&(entry("K1", "Kit", "YES") + &entry("A1", "App", "YES")));
+        assert_eq!(
+            names(&listed.buildables_for(BuildFor::Running)),
+            ["Kit", "App"]
+        );
+
+        let kit_only = running_scheme(&entry("K1", "Kit", "YES"));
+        assert_eq!(
+            names(&kit_only.buildables_for(BuildFor::Running)),
+            ["Kit", "App"]
+        );
+        assert_eq!(names(&kit_only.buildables_for(BuildFor::Testing)), ["Kit"]);
     }
 }

@@ -2082,16 +2082,17 @@ impl Server {
         listing
     }
 
-    /// The targets the scheme `name` builds: its build entries, then the
-    /// targets those depend on. A scheme with no file is one Xcode
-    /// autocreates, which builds the target it is named after.
+    /// The targets the scheme `name` builds: its build entries and the
+    /// runnable a run adds ([`scheme::Scheme::buildables`]), then the targets
+    /// those depend on. A scheme with no file is one Xcode autocreates, which
+    /// builds the target it is named after.
     fn scheme_targets(&self, name: &str) -> (Vec<String>, Vec<String>) {
         let entries: Vec<String> = match scheme::locate(&self.project_path, name) {
             Some(path) => scheme::parse_file(&path)
                 .map(|s| {
-                    s.build_entries
+                    s.buildables()
                         .into_iter()
-                        .map(|e| e.buildable.blueprint_name)
+                        .map(|b| b.blueprint_name.clone())
                         .collect()
                 })
                 .unwrap_or_default(),

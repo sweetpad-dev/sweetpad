@@ -442,8 +442,7 @@ fn write_scheme(dir: &PathBuf, name: &str) {
 }
 
 /// [`SCRATCH_SCHEME_XML`] with a Launch action that runs the `Scratch` target.
-fn write_running_scheme(dir: &PathBuf, name: &str) {
-    std::fs::create_dir_all(dir).unwrap();
+fn running_scheme_xml() -> String {
     let launch = r#"   <LaunchAction buildConfiguration="Debug">
       <BuildableProductRunnable runnableDebuggingMode="0">
          <BuildableReference
@@ -456,11 +455,12 @@ fn write_running_scheme(dir: &PathBuf, name: &str) {
       </BuildableProductRunnable>
    </LaunchAction>
 </Scheme>"#;
-    std::fs::write(
-        dir.join(format!("{name}.xcscheme")),
-        SCRATCH_SCHEME_XML.replace("</Scheme>", launch),
-    )
-    .unwrap();
+    SCRATCH_SCHEME_XML.replace("</Scheme>", launch)
+}
+
+fn write_running_scheme(dir: &PathBuf, name: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(dir.join(format!("{name}.xcscheme")), running_scheme_xml()).unwrap();
 }
 
 #[test]
@@ -772,6 +772,23 @@ fn workspace_user_scheme_naming_its_project_in_another_case_resolves() {
     let scheme =
         SCRATCH_SCHEME_XML.replace("container:Scratch.xcodeproj", "container:scratch.xcodeproj");
     let s = resolve_private_workspace_scheme("ws-container-case", &scheme);
+    assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
+}
+
+#[test]
+fn workspace_user_scheme_running_what_its_build_action_leaves_out_resolves() {
+    // Issue #344: xcodebuild builds the Run action's target for a run even
+    // when the Build action has no entries, or lists the target with
+    // `buildForRunning="NO"`.
+    let running = running_scheme_xml();
+    let start = running.find("<BuildActionEntries>").unwrap() + "<BuildActionEntries>".len();
+    let end = running.find("</BuildActionEntries>").unwrap();
+    let empty = format!("{}{}", &running[..start], &running[end..]);
+    let s = resolve_private_workspace_scheme("ws-empty-build-action", &empty);
+    assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
+
+    let not_for_running = running.replacen("buildForRunning=\"YES\"", "buildForRunning=\"NO\"", 1);
+    let s = resolve_private_workspace_scheme("ws-not-for-running", &not_for_running);
     assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
 }
 
