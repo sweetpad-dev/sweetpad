@@ -1749,13 +1749,25 @@ impl Server {
         }
     }
 
-    /// `SYMROOT` / `OBJROOT` for a `-target` build: the products and
-    /// intermediates roots inside the DerivedData the editor arguments resolve
-    /// against. Empty when that directory can't be located, which leaves
-    /// xcodebuild its own defaults rather than a half-pinned tree.
+    /// The products, intermediates and index store for a `-target` build,
+    /// inside the DerivedData the editor reads. Empty when DerivedData can't
+    /// be located.
     fn build_roots(&self) -> Vec<(&'static str, PathBuf)> {
         self.derived_data().map_or_else(Vec::new, |dd| {
-            vec![("SYMROOT", dd.products), ("OBJROOT", dd.intermediates)]
+            vec![
+                ("SYMROOT", dd.products),
+                ("OBJROOT", dd.intermediates),
+                // A test target without a scheme takes this -target fallback.
+                // Xcode 27.2 enables indexing for its Swift package dependencies
+                // but can leave the store path empty; SYMROOT/OBJROOT don't set it.
+                // The resulting `-index-store-path -Xcc` treats -Xcc as the path
+                // and writes into <project>.xcodeproj/-Xcc (#345).
+                // Keep this path aligned with initialize's indexStorePath.
+                (
+                    "INDEX_DATA_STORE_DIR",
+                    dd.folder.join("Index.noindex/DataStore"),
+                ),
+            ]
         })
     }
 
@@ -2752,6 +2764,43 @@ mod tests {
         fn flush(&mut self) -> io::Result<()> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn a_target_prepare_writes_to_the_advertised_index_store() {
+        let project = PathBuf::from(format!(
+            "{}/fixtures/_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj",
+            env!("SWEETPAD_LIB_DIR")
+        ));
+        let scratch = crate::scratch::ScratchDir::new("sweetpad-bsp-index-store").unwrap();
+        let flags = parse_flags(&[
+            "--project".into(),
+            project.display().to_string(),
+            "--derived-data-path".into(),
+            scratch.join("Custom DerivedData").display().to_string(),
+        ]);
+        let server = Server::build(
+            ResolvedConfig::from_flags(project, &flags),
+            None,
+            Arc::new(AtomicU8::new(LogLevel::Info as u8)),
+            CommandLine::default(),
+            Sent::default().writer(),
+        )
+        .unwrap();
+        let initialized = server.initialize();
+        let store = initialized["data"]["indexStorePath"].as_str().unwrap();
+        let (cmd, _) = server.prepare_command("SweetpadCIAppTests");
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy()).collect();
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["-target", "SweetpadCIAppTests"]),
+            "expected the fallback for a target without a scheme: {args:?}"
+        );
+        assert!(
+            args.iter()
+                .any(|a| a == &format!("INDEX_DATA_STORE_DIR={store}")),
+            "prepare must write index data where the client reads it: {args:?}"
+        );
     }
 
     #[test]
