@@ -2,6 +2,10 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.21] - 2026-11-02
+
+- Keep background indexing artifacts in DerivedData for projects with test targets and Swift package dependencies ([#345](https://github.com/sweetpad-dev/sweetpad/issues/345))
+
 ## [0.2.20] - 2026-10-25
 
 - Index local Swift packages with the app's build settings ([#343](https://github.com/sweetpad-dev/sweetpad/issues/343), thanks [@satanworker](https://github.com/satanworker))
