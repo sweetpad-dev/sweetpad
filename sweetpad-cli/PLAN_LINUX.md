@@ -1,6 +1,6 @@
 # Building Xcode projects on Linux
 
-Status on 2026-10-14. All the work is on branch `claude/linux-build-pif`, not
+Status on 2026-11-01. All the work is on branch `claude/linux-build-pif`, not
 merged into `main` yet.
 
 `sweetpad build` has a Swift Build engine, the default where there's no
@@ -24,6 +24,10 @@ Items marked *(optional)* can wait until a project needs them.
 - [x] Swift Build engine: runs swbuild and turns its messages into the
       events, diagnostics and productPath an xcodebuild build gives
       (`17c64909`, `bfbbeeb5`)
+- [x] Build requests preserve the scheme's implicit dependency and parallel
+      target policies. The active destination selects the SDK without changing
+      the platforms of implicit dependency candidates
+- [x] Framework module verification uses Swift Build's portable builtin verifier
 - [x] SwiftPM packages through `swift package dump-pif`, merged into the PIF
       (`42978410`)
 - [x] Cross-import overlays, through a toolset flag (`4e2a25c7`)
@@ -114,11 +118,39 @@ swift-syntax and diff the expanded Swift text.
 - [ ] Corpus sweep: build every corpus project on Linux (NetNewsWire,
       Kingfisher, the Tuist fixtures, Ice Cubes and the rest) and file each
       failure under the items below
+- [x] Kingfisher demo, Alamofire iOS Example and NetNewsWire iOS: Linux and
+      Xcode builds, bundle comparisons and simulator navigation tests.
+      See the real-app integration result below
 - [ ] Document the engine, the setup script and the stand-ins in
       `CLI_DESIGN.md` and the user docs (run the humanizer)
 - [ ] Decide whether hayro and resvg (7.5 MB, 66 crates) stay in the macOS
       binary, which never uses them
 - [ ] Open the PR to `main` (show the message first)
+
+### Additional real projects
+
+These six projects are planned additions to the corpus. Their Linux builds
+remain unverified. The priority reflects their expected testing value.
+
+| Priority | Project | Coverage to investigate |
+|---|---|---|
+| 1 | [Wikipedia iOS](https://github.com/wikimedia/wikipedia-ios) | Mixed Swift/Objective-C, framework targets, localization, widgets and multiple schemes |
+| 2 | [Mastodon iOS](https://github.com/mastodon/mastodon-ios) | SwiftPM dependencies, app groups, share and notification extensions, widgets |
+| 3 | [Swiftfin](https://github.com/jellyfin/Swiftfin) | SwiftUI, custom macros, shared code and separate iOS/tvOS targets |
+| 4 | [Firefox iOS](https://github.com/mozilla-mobile/firefox-ios) | Bootstrap scripts, bundled JavaScript, Swift packages and macros |
+| 5 | [CodeEdit](https://github.com/CodeEditApp/CodeEdit) | Native macOS packaging and dependencies across several repositories |
+| 6 | [WordPress iOS](https://github.com/wordpress-mobile/WordPress-iOS) | Large workspace, modules, dependency setup and API credential configuration |
+
+The first group is Wikipedia, Mastodon and Swiftfin. Firefox, CodeEdit and
+WordPress provide later coverage for more demanding builds.
+
+For each project:
+
+1. Pin a commit and record the setup requirements.
+2. Establish a passing Xcode build.
+3. Build the same target and configuration on Linux.
+4. Compare the app bundles and runtime behavior on the target Apple platform.
+5. Record setup failures separately from compiler failures.
 
 ## Toolchain tools
 
@@ -146,8 +178,9 @@ Swift Build names these in its xcspecs. The Swift toolchain has `llvm-ar`,
 
 ## Apple compilers for data files
 
-- [ ] `ibtool`: XIBs and storyboards to `.nib`/`.storyboardc`. The biggest
-      item, in progress; see the ibtool section below
+- [x] `ibtool`: XIBs and storyboards to `.nib`/`.storyboardc` for all 63
+      corpus documents: iOS, macOS, watchOS and tvOS. See the coverage and
+      remaining scope below
 - [x] `momc`: `.xcdatamodel` to `.mom` and `.xcdatamodeld` to `.momd` with
       `VersionInfo.plist`, plus the generated Swift or Objective-C classes.
       Golden tests against Xcode's in `fixtures/momc` (`regen.py`). Fetch
@@ -156,8 +189,13 @@ Swift Build names these in its xcspecs. The Swift toolchain has `llvm-ar`,
       and stop the build with an error naming them; so do date and decimal
       minimums and maximums. The CloudKit checks and the `.omo` file (only an
       optimization) are left out
-- [ ] `intentbuilderc`: `.intentdefinition` to generated intent classes and
-      strings
+- [x] `intentbuilderc`: Swift classes for NetNewsWire's legacy intent definition,
+      including String and URL parameters, responses, dynamic options and
+      resolution results. Generated declarations match Xcode 27's capture in
+      `fixtures/intentbuilderc`. Unsupported model features fail explicitly
+- [ ] `intentbuilderc`: Xcode's private runtime metadata upgrade, localization
+      and Siri registration. Compilation currently preserves the source
+      `.intentdefinition` and emits a warning about this limit
 - [x] `appintentsmetadataprocessor`, as a no-op: `LM_SKIP_METADATA_EXTRACTION`
       skips it, so the app builds and runs but its intents don't register
 - [ ] `appintentsmetadataprocessor` for real: `Metadata.appintents` from the
@@ -182,8 +220,8 @@ Swift Build names these in its xcspecs. The Swift toolchain has `llvm-ar`,
 
 The corpus has 63 IB files: 32 iOS, 26 macOS (almost all NetNewsWire), 4
 watchKit, 1 tvOS; 34 are storyboards, using 121 XML element kinds. iOS nibs
-are NIBArchive files; macOS nibs are NSKeyedArchiver plists of AppKit
-classes, a separate project.
+use NIBArchive. Xcode 27 also writes AppKit nibs in NIBArchive format.
+AppKit uses an NSIBObjectData root and separate object encoders.
 
 There's no open-source ibtool. References:
 [WinObjC's `xib2nib`](https://github.com/microsoft/WinObjC/tree/develop/tools/vsimporter/xib2nib)
@@ -204,8 +242,7 @@ attribute produces. A checker app dumps the loaded view tree (classes,
 frames after layout, constraints, text, colors, images, outlets, actions)
 for a diff against Xcode's build.
 
-Coverage, measured on the corpus and on a few thousand public XIBs and
-storyboards (the oracle compiles them in a batch on a Mac):
+Measure coverage on the corpus first. A larger public XIB set remains open:
 - input: the share of (element, attribute) pairs we translate, weighted
   by how often each appears; the most frequent missing pair goes next
 - output: the share of (class, key) pairs in ibtool's output we emit with
@@ -229,28 +266,303 @@ overrides into variations.
       `fixtures/ibtool` (`regen.py`). `IBTOOL_FIXTURES=<dir>` points the
       test at another folder laid out the same way, and
       `IBTOOL_DUMP=<dir>` writes both canonical forms there for a diff
-- [ ] `LaunchScreen.storyboard`: UIView, UILabel, UIImageView, constraints,
-      safe area; unblocks Xcode's UIKit template. The compiler is done:
-      plain view controllers, views, labels and image views, constraints
-      (multipliers, relations, priorities, symbolic spacing), the safe
-      area, system, sRGB and gray colors, and the regular, light and bold
-      system fonts. It matches Xcode structurally on the 4 fixtures and on
-      all 15 corpus launch screens, and `swbuild.rs` links it in as
-      `ibtool`. Left:
-  - [ ] `ibtool --version --output-format xml1`: Swift Build runs it first
-        and decodes the plist, so the Linux build of `_uikit-app` fails
-        until it answers. Xcode 27's prints a dict `com.apple.ibtool.version`
-        holding `bundle-version` 25098 and `short-bundle-version` 27.0
-  - [ ] Build `corpus/_uikit-app` on Linux and diff its `IBCHECK` lines
-        in the simulator with Xcode's build (`corpus/_ib-tools/ib-xcode.txt`)
-  - [ ] Other fonts (medium, semibold, heavy and the rest, custom fonts),
-        named colors from the asset catalog, `customClass`, more views
-- [ ] All 32 iOS corpus files matching structurally and passing runtime
-      checks, seeded from `xib2nib`'s mappings (2–4 weeks)
-- [ ] Public XIB set and the coverage report; stop around 95% of weighted
-      input pairs *(optional)*
-- [ ] AppKit nibs, NSKeyedArchiver (NetNewsWire's 26 files) *(optional)*
-- [ ] watchKit and tvOS IB files *(optional)*
+- [x] Version, compile and link operations, including single-file XIB output
+      and localization directories. The version probe matches Xcode 27's XML
+      plist (`com.apple.ibtool.version`, bundle 25098, short version 27.0)
+- [x] System font weights, italic and custom fonts, Dynamic Type descriptors,
+      system color fallbacks, named colors, images and SF Symbols
+- [x] Swift and Objective-C custom classes, module names, outlets, actions,
+      runtime attributes and Base.lproj localizable strings
+- [x] Buttons and button configurations, text fields, switches, sliders,
+      activity indicators, pickers, scroll views, stack views, visual effects
+      and refresh controls
+- [x] Navigation, table, collection and split controllers; static tables,
+      cell and supplementary-view prototypes, self-sizing layouts, toolbar
+      items, show/show-detail segues and connections across nib boundaries
+- [x] All 32 iOS corpus files compile on Linux and match Xcode structurally
+      at their original source paths: 24 storyboards and 8 XIBs
+- [x] Focused UIKit checks against an Xcode build on the iOS 27 iPhone 17
+      simulator. See the runtime result below
+- [ ] Public XIB set and a broader weighted coverage report *(optional)*
+- [x] AppKit encoders for all 26 macOS corpus files, containers and
+      storyboards included. Each matches Xcode structurally; the full audit
+      below lists what stays open beyond the corpus
+- [x] All four WatchKit corpus files and the tvOS corpus file match Xcode
+      structurally. This does not cover all WatchKit or tvOS controls.
+
+### iOS corpus sweep, 2026-11-01
+
+The completed Linux sweep accepts all 32 iOS documents and matches Xcode 27
+on all 32. The baseline accepted 15 and matched 14.
+
+| Result | Baseline | Completed |
+|---|---:|---:|
+| Storyboards compiled | 15 / 24 | 24 / 24 |
+| XIBs compiled | 0 / 8 | 8 / 8 |
+| Documents matching Xcode structurally | 14 / 32 | 32 / 32 |
+
+The final local report is
+`corpus/_ib-tools/sweep-linux-verified-2026-11-01/report.json`.
+It records source hashes, commands, diagnostics, archives and comparisons.
+The comparator reads the actual Linux output through `IBTOOL_ACTUAL`.
+It preserves property values and connection destinations while normalizing
+hash-table order, proxy numbering and equal NSString sharing. A regression
+test checks that normalization still detects a changed connection target.
+
+The first sweep exposed a path-dependent issue: Xcode wraps text from
+`Base.lproj` in `NSLocalizableString`. The final sweep uses the original
+paths, and a dedicated `Base.lproj/Localized.storyboard` fixture prevents
+copied sources from hiding this behavior again. Empty strings stay plain;
+controller and button configuration titles retain their localization keys.
+
+The focused runtime checker is the local `corpus/_uikit-app` project.
+It checks fonts, colors, custom classes, control properties, actions,
+XIB outlets, containers, static tables, prototype cells and a show-detail
+segue. Clean builds on Linux and Xcode both report zero errors and warnings.
+All 316 `IBCHECK` lines match on the iOS 27 iPhone 17 simulator. The local
+results are `corpus/_ib-tools/complete-{linux,xcode}-build.json`,
+`complete-{linux,xcode}.txt` and the empty `complete-runtime.diff`.
+Runtime checks supplement the full archive sweep; they do not launch each
+of the 32 original applications.
+
+Validation also passes on both hosts:
+
+- macOS: workspace library tests (715 CLI, 125 core and 449 library tests),
+  plus the new proxy-destination regression test
+- Linux: CLI library tests (710 passed; 6 platform-specific tests ignored)
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo fmt --all -- --check` and `git diff --check`
+
+To repeat the full sweep, choose a new output directory:
+
+```bash
+python3 sweetpad-cli/fixtures/ibtool/sweep.py \
+  --linux-vm sweetpad-linux \
+  --binary /home/hyzyla_home/sweetpad-target/debug/sweetpad \
+  --out sweetpad-lib/corpus/_ib-tools/sweep-linux-next
+```
+
+The script returns a nonzero status if compilation or structural comparison
+fails. `fixtures/ibtool/regen.py` refreshes the checked-in Xcode captures.
+`cargo test -p sweetpad-cli --lib cli::ibtool::tests` checks those captures
+without requiring Xcode.
+
+Coverage here means the current iOS corpus. External storyboard references,
+trait/idiom variations, non-base localization overlays and UIKit object types
+outside these fixtures still need separate oracle fixtures and validation.
+
+### Session handoff, 2026-11-03
+
+The working branch is `claude/linux-build-pif`. The compiler changes and new
+fixtures are still in the local working tree. The corpus audit reached 63/63
+structural matches. The AppKit runtime comparison passed 338 assertions and
+matched all 44 observations.
+
+1. Inspect `git status --short --branch` before you edit the compiler.
+2. Rebuild `sweetpad-cli` in the `sweetpad-linux` OrbStack VM.
+3. Run the corpus sweep from the repository root on the Mac.
+
+```sh
+python3 sweetpad-cli/fixtures/ibtool/sweep.py --runtime all \
+  --linux-vm sweetpad-linux \
+  --binary /home/hyzyla_home/sweetpad-target/debug/sweetpad \
+  --out /tmp/ibtool-linux-next
+```
+
+Use a new output directory for each run. Expect 63 compilations and 63
+structural matches. If a document differs, read its `cases/*/structural.diff`
+in the output directory.
+
+For the next coverage pass, select an unverified feature from the remaining
+work in the full audit. Start with a small fixture that isolates the feature.
+Compile it with native Xcode for the reference output. Compare the Linux output
+with that reference. If the change affects AppKit behavior, run the runtime
+checker as well. Run the full corpus sweep after the fix.
+
+### Full audit, 2026-11-03
+
+`fixtures/ibtool/audit.py` inventories all corpus platforms and installed Xcode
+metadata. It found 1,036 element/attribute pairs, 57 command options, 607 class
+descriptions and 1,828 inspector properties. Source-name matches are search
+hints. They do not prove implementation coverage.
+
+`fixtures/ibtool/sweep.py --runtime all` checks all 63 documents. The latest
+Linux audit, on 2026-11-03, compiles all 63 files and matches all 63 native
+outputs structurally: 32 iOS, 26 macOS, four watchKit and one tvOS document.
+Xcode also compiles all 63 files. No corpus differences remain.
+Results and commands are in
+`corpus/_ib-tools/audit-2026-11-01/full-sweep-linux14/report.json`.
+
+The expanded UIKit checker runs 56 assertions in English and French. The Linux
+and Xcode products pass all 112 assertions with identical results. These include
+accessibility, outlet collections, localized strings, trait changes, constraint
+changes, tab bars, embedded controllers, and button and custom segue triggers.
+The AppKit checker also validates Linux-generated resources in a native Mac
+executable. Both resource compilers pass the same 338 assertions and produce
+identical runtime observations. New checks cover accessibility descriptions,
+adaptive sheet layout, keyboard modifiers, recessed popups, storyboard table
+prototypes, control defaults, constraint precision and bindings without options.
+The reference and Linux reports are
+`corpus/_ib-tools/audit-2026-11-01/runtime-mac-xcode-finish63g/report.json` and
+`corpus/_ib-tools/audit-2026-11-01/runtime-mac-linux-finish63/report.json`.
+This checks resource compatibility; it does not prove a Linux build of that executable.
+Both checkers live under `fixtures/ibtool/runtime*`.
+
+`fixtures/ibtool/mutate.py` tests one mutation per selected iOS attribute pair.
+The first run found 16 gaps in 224 cases. All 224 now match Xcode on Linux.
+Fixes cover decimal integer spellings, unresolved cell labels, system color
+fallbacks, runtime booleans, layout priorities, zero minimum scale, navigation
+items and triple-column split controllers. Separate fixtures cover all four
+button configuration styles and their five corner styles. The report is
+`corpus/_ib-tools/audit-2026-11-01/property-mutations-linux-fixed/report.json`.
+
+New AppKit encoders cover stacks, grids, secure fields, WebKit views, menus,
+scroll containers, text views, tables, outline views, collection views and defaults controllers.
+Collection fixtures cover flow layouts, selection, spacing, supplementary sizes and legacy grids.
+Runtime checks load collection data through a data source and exercise item reuse.
+Outline checks expand a data-source tree and retain parent identities. Table encoding
+covers columns, header and data cells, sizing, scroll increments and selection
+options. All 48 isolated table variants match Xcode. Scroll fixtures cover
+three zoom levels. Thirty-three isolated text-view variants match Xcode.
+Menu-only Mac storyboards, ordinary view-controller scenes and window-controller
+scenes compile and load through AppKit. Controller fixtures cover named, unnamed and empty identifiers,
+custom classes, separate view archives, outlets, actions and mixed menu scenes.
+Window fixtures cover custom controllers, content-controller relationships,
+identifiers, tabbing modes and size limits. Content-controller assignments run
+after storyboard outlets because those assignments can load their views.
+A native-fixture regression test preserves that connection order.
+The runtime comparison also checks text getters that system preferences can
+override.
+
+Scene objects remain in controller archives and use external placeholders in view archives.
+Fixtures cover bindings to scene models, show segues, embed segues and split-controller relationships.
+Split checks cover child order, collapsed state, priorities, delegates and view frames.
+Tables also archive reusable prototype views in nested NSNib resources.
+
+Named fonts resolve through a captured system-font catalog, including family aliases.
+Unavailable names use the system font and retain their requested point size.
+Native fixtures cover private system names, weights and case-sensitive fallback.
+Font and layout profiles come from the macOS 27 native oracle environment.
+They do not establish custom-font activation or font availability on every OS version.
+
+Views now use a Cassowary solver with measured control metrics.
+The solver handles alignment rectangles, baselines, intrinsic sizes, priorities and constraint relations.
+It also propagates constraints across nested containers and resizes scroll contents.
+Separate fitting passes preserve native canvas geometry for partially sized containers.
+Window content retains its minimum size. Native profiles supply checkbox, popup,
+separator and system-image metrics.
+Fixtures cover equal-width sheet buttons, multiline fields, adaptive sheets,
+nested storyboard tables and centered bold labels.
+Grid rows and columns retain automatic sizing when content provides intrinsic dimensions.
+Other writing systems and custom fonts still need native metric profiles.
+Progress fixtures also preserve omitted and explicit range values; an omitted maximum is zero.
+Constraint encoding now includes relations, priorities, identifiers and ratio
+multipliers. Placeholder constraints are omitted. View metadata covers alpha,
+identifiers, tooltips and compression priorities. The structural comparator
+keeps parallel ownership arrays paired and preserves invalid or duplicate IDs.
+It resolves controller UUIDs through their package metadata and retains links
+between archives. It normalizes two private table caches that change when
+sandbox restrictions prevent access to window services. Table and scroller
+visibility, geometry and other flags remain part of the comparison.
+Accessibility object numbers are normalized together with ordinary object numbers;
+connector destinations and duplicate-number errors remain checked.
+
+Repeated native compilations can archive an Auto Layout child before or after
+its parent resizes. The comparator normalizes only that exact vertical resize
+offset, using required constraints anchored to the root. Sizes, fixed views,
+other offsets and the constraints remain checked. Regression tests reject a
+one-point error, a changed size, a changed constraint and an unanchored inequality.
+The sweep also uses the Rust harness's canonical plist comparison. Raw controller
+UUIDs change on every native compile and cannot serve as equality checks.
+
+Final validation passed `cargo test --workspace`, CLI Clippy for all targets,
+and Linux CLI tests: 729 passed, six ignored. Six new native fixtures cover
+the final layout, popup, table, accessibility, precision and binding fixes.
+
+The audit fixed an integer encoding error that structural comparisons missed.
+NIBArchive's compact integers are unsigned. Negative values need the 64-bit
+form. An AppKit image cell exposed the error at runtime. The new IntegerWidths
+fixture checks signed values and each compact-width boundary.
+
+Other additions include external storyboard references, companion strings,
+editable NIB packaging, stripping, diagnostic output formats, validation without
+output, and modal, custom, unwind and embed segue archives. Archive fixtures
+cover unwind segues; a working unwind navigation flow remains unverified.
+
+Remaining audit work includes:
+
+- More AppKit properties and object variants, including rich menu titles,
+  accessibility attributes beyond descriptions and additional data-cell classes.
+- Layout and font cases beyond the corpus, including other writing systems,
+  custom fonts and additional container combinations.
+- Further scene-model variants and controller initialization order.
+- More UIKit classes, rich text, gesture recognizers and property variants.
+- AppKit rich text storage and general sRGB color conversion. Named-color
+  fallbacks use seven captured native RGB samples. Other samples fail explicitly;
+  these profiles do not establish a general ColorSync replacement.
+- Additional trait conditions and relationship masks.
+- Import, export and editing commands from the command-option inventory.
+- SDK, target-device and deployment-target effects. Accepting these options
+  does not prove that every platform-specific transformation is implemented.
+
+Many unsupported properties still need isolated probes. The audit must not use
+corpus success, accepted arguments or source mentions as a claim of full parity.
+
+### Real-app integration, 2026-11-01
+
+All three apps build on Linux and Xcode for the arm64 iOS Simulator.
+The comparison uses Debug, deployment target 18.0 and disabled code signing.
+NetNewsWire also uses `SWIFT_TREAT_WARNINGS_AS_ERRORS=NO` on both hosts.
+
+| App | Pinned source revision | Linux build | Xcode build | Linked IB containers |
+|---|---|---|---|---:|
+| Kingfisher demo | `cf8be20d07654570554c8a8a4952bc8a5766a8b0` | Pass | Pass | 2 match |
+| Alamofire iOS Example | `7595cbcf59809f9977c5f6378500de2ad73b7ddb` | Pass | Pass | 2 match |
+| NetNewsWire iOS | `4d1cb6afae1aa7d52c51077f7f40d0d267e8cc4b` | Pass | Pass | 13 match |
+
+Kingfisher uses its root workspace, which includes the demo and framework.
+The legacy Kingfisher and Alamofire apps require scene delegates on iOS 27.
+Both hosts use the same small compatibility patches, saved with the results.
+NetNewsWire requires its existing script to generate `SecretKey.swift` before
+SwiftPM discovers that source. No credentials were supplied for this check.
+
+The simulator tests cover Kingfisher's Basic and Auto Sizing pages,
+Alamofire's main table and GET detail, and NetNewsWire's Settings and Add Account.
+They capture screenshots and accessibility trees on eight screens.
+The assertions also require Alamofire's section headers and at least one
+completed Kingfisher image request. All three tests pass on both hosts.
+
+Five complete accessibility trees match after process metadata normalization.
+Kingfisher's visible Auto Sizing cells also match. The remaining differences
+in the trees come from offscreen image requests, HTTP timing and live feed
+refreshes. The report retains all these differences.
+Five screenshots match pixel for pixel after exclusion of the status bar.
+NetNewsWire's Add Account screen has small service-icon rasterization
+differences: 0.187% of app pixels differ, while labels and frames match.
+
+The runtime comparison exposed an outlet-order defect that structural
+normalization hid. The compiler now connects `staticDataSource` before the
+table's `dataSource` outlet. This order prevents UIKit from caching empty
+section headers. A regression test checks this order against Xcode's fixture.
+
+All 17 linked storyboard/XIB containers match Xcode structurally.
+All bundle resource paths match after the extension icon fix.
+Xcode also includes debug/preview libraries and Alamofire's thread sanitizer
+runtime. The Linux bundles do not include that instrumentation.
+Binary bytes, sanitizer behavior and Siri registration are not parity claims.
+
+The local results are in `corpus/_app-integration/2026-11-01/`:
+
+- `build.py`, build envelopes and command records for both hosts
+- `kingfisher-ios27-compatibility.patch` and `alamofire-ios27-compatibility.patch`
+- `bundle-ib-comparison-final/report.json` and `bundle-inventory-final.json`
+- `ui/Tests/IntegrationTests.swift`, UI test envelopes and exported attachments
+- `ui-comparison-final/report.json` and the full accessibility tree differences
+- `report.json`, which summarizes builds, runtime checks and known limits
+
+Final regression checks pass: 722 CLI, 125 core and 449 library tests on macOS;
+716 CLI tests on Linux, with six platform-specific skips.
+Clippy with `-D warnings`, formatting and diff checks also pass.
 
 ## String Catalogs
 
@@ -279,6 +591,9 @@ overrides into variations.
       `--include-all-app-icons`) list the same in `assetutil` as Xcode's,
       except that Xcode packs the small sizes into atlases. The simulator
       shows the icon from the car alone
+- [x] Extension icons: `--standalone-icon-behavior all` preserves the extra
+      standalone sizes. NetNewsWire's share and widget extensions match Xcode's
+      icon file names and dimensions
 - [x] macOS app icons: `CFBundleIconName` for the icon in the car, and an
       `.icns` with the four sizes Xcode's actool stores beside it
 - [ ] Icon Composer `.icon` files *(optional)*
@@ -296,6 +611,8 @@ overrides into variations.
 - [x] iOS Simulator, Debug: Xcode's app template, the Linux fixture, a
       SwiftUI app with Alamofire (project reference and package), the local
       checker apps; Ice Cubes compiles and fails only where Xcode 27 does too
+- [x] Real iOS apps: Kingfisher demo, Alamofire iOS Example and NetNewsWire,
+      including its three extensions. See the integration result above
 - [x] Release configuration: dSYM, strip on install, a static library, a
       loose PNG; `corpus/_tools-app` (local) runs the same in the simulator
 - [x] iOS device builds: `corpus/_tools-app` (local) for
