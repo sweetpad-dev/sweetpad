@@ -642,9 +642,21 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       (xtool leaves them out); the same as Xcode's build
 - [ ] `BuildMachineOSBuild`: left out, since no macOS built the app. Find
       out whether App Store validation needs it
-- [ ] Signing with rcodesign (the apple-codesign crate) or xtool's signer:
-      certificates, profiles, entitlements
-- [ ] Device install through pymobiledevice3 or xtool's installer
+- [x] Signing: sweetpad stands in for `codesign` and `derq`, and answers
+      Swift Build's provisioning requests, which `swift-build-linux.patch`
+      sends to the tool `SWEETPAD_PROVISIONING` names. The identity comes
+      from a `.p12` file (`SWEETPAD_CODE_SIGN_P12`, its password in
+      `SWEETPAD_CODE_SIGN_P12_PASSWORD`), as Keychain Access or OpenSSL 3
+      exports it. Profiles come from Xcode's folders or
+      `SWEETPAD_PROVISIONING_PROFILES`, picked the way automatic signing
+      picks them. A device build of `corpus/_tools-app` (local), widget
+      included, passes `codesign --verify --deep --strict`. Apple's
+      `codesign` signs the same files to the same bytes, apart from the CMS
+      signing time
+- [ ] Install and launch that build on a device, signed with a real
+      Apple Development identity
+- [ ] Device install from Linux, through pymobiledevice3 or xtool's
+      installer
 - [ ] Archive and export an IPA *(optional)*
 - [ ] Upload with Transporter, which has a Linux build *(optional)*
 
