@@ -33,6 +33,7 @@ pub mod devicectl;
 pub mod exits;
 pub mod ibtool;
 pub mod inject;
+pub mod intentbuilderc;
 pub mod keyed_archive;
 pub mod merge;
 pub mod momc;

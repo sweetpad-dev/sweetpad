@@ -59,6 +59,9 @@ fn main() -> ExitCode {
     if name == Some(std::ffi::OsStr::new("ibtool")) {
         return sweetpad_cli::cli::ibtool::main(&args);
     }
+    if name == Some(std::ffi::OsStr::new("intentbuilderc")) {
+        return sweetpad_cli::cli::intentbuilderc::main(&args);
+    }
     // Run as `lipo`, `strip`, `copypng`, `ditto` or
     // `embeddedBinaryValidationUtility`, it stands in for the Darwin tool of
     // that name, found on the same `PATH`.
