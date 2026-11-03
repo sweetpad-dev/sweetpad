@@ -828,6 +828,7 @@ impl DarwinSdk {
             ("LM_SKIP_METADATA_EXTRACTION", "YES".to_string()),
             ("GENERATE_INTERMEDIATE_TEXT_BASED_STUBS", "NO".to_string()),
             ("DONT_RUN_SWIFT_STDLIB_TOOL", "YES".to_string()),
+            ("MODULE_VERIFIER_KIND", "builtin".to_string()),
             (
                 "STRINGS_FILE_INPUT_ENCODING",
                 "$(InputFileTextEncoding:default=utf-8)".to_string(),
