@@ -1,0 +1,35 @@
+<document type="com.apple.InterfaceBuilder3.Cocoa.Storyboard.XIB" version="3.0" toolsVersion="24412" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" initialViewController="vcA-aa-Aud"><dependencies><plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="24412" /></dependencies><scenes><scene sceneID="Scn-aa-Aud">
+      <objects>
+        <application id="App-aa-Aud" sceneMemberID="viewController">
+          <menu title="Audit" systemMenu="main" id="Mnu-aa-Aud" key="mainMenu">
+            <items>
+              <menuItem title="Tools" id="Itm-aa-Aud">
+                <menu key="submenu" title="Tools" id="Mnu-ab-Aud">
+                  <items>
+                    <menuItem title="Run" keyEquivalent="r" state="mixed" id="Itm-ab-Aud">
+                      <modifierMask key="keyEquivalentModifierMask" control="YES" option="YES" />
+                      <connections>
+                        <action selector="press:" target="Res-aa-Aud" id="Act-aa-Aud" />
+                      </connections>
+                    </menuItem>
+                    <menuItem isSeparatorItem="YES" id="Itm-ac-Aud" />
+                    <menuItem title="Disabled" enabled="NO" hidden="YES" id="Itm-ad-Aud">
+                      <modifierMask key="keyEquivalentModifierMask" />
+                      <string key="keyEquivalent" base64-UTF8="YES">DQ==</string>
+                    </menuItem>
+                  </items>
+                </menu>
+              </menuItem>
+            </items>
+          </menu>
+        </application>
+        <customObject id="Res-aa-Aud" customClass="NSResponder" sceneMemberID="firstResponder" />
+      </objects>
+    </scene>
+  <scene sceneID="sce-aa-Aud"><objects><viewController storyboardIdentifier="AuditController" title="Audit" id="vcA-aa-Aud" sceneMemberID="viewController" customClass="AuditController" customModule="App" customModuleProvider="target"><view key="view" id="vie-aa-Aud"><rect key="frame" x="0" y="0" width="300" height="200" /><autoresizingMask key="autoresizingMask" /><subviews><button id="Btn-aa-Vw1">
+          <rect key="frame" x="10" y="40" width="150" height="32" />
+          <buttonCell key="cell" type="push" title="Press" bezelStyle="rounded" imagePosition="overlaps" alignment="center" borderStyle="border" id="Btn-aa-Cl1">
+            <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES" />
+            <font key="font" metaFont="system" />
+          </buttonCell>
+        <connections><action selector="press:" target="vcA-aa-Aud" id="act-vc-Aud" /></connections></button></subviews></view><connections><outlet property="button" destination="Btn-aa-Vw1" id="out-vc-Aud" /></connections></viewController><customObject id="res-aa-Aud" userLabel="First Responder" customClass="NSResponder" sceneMemberID="firstResponder" /></objects></scene></scenes></document>

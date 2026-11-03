@@ -22,11 +22,19 @@ pub fn document(body: &str) -> String {
 #[must_use]
 pub fn of(value: &Value) -> String {
     let mut body = String::new();
-    render(value, 0, &mut body);
+    render(value, 0, &mut body, false);
     document(body.trim_end())
 }
 
-fn render(value: &Value, indent: usize, out: &mut String) {
+/// Preserve booleans and numbers for machine-readable tool diagnostics.
+#[must_use]
+pub fn typed_of(value: &Value) -> String {
+    let mut body = String::new();
+    render(value, 0, &mut body, true);
+    document(body.trim_end())
+}
+
+fn render(value: &Value, indent: usize, out: &mut String, typed: bool) {
     let pad = "\t".repeat(indent);
     match value {
         Value::Object(map) if map.is_empty() => {
@@ -38,7 +46,7 @@ fn render(value: &Value, indent: usize, out: &mut String) {
             keys.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));
             for key in keys {
                 let _ = writeln!(out, "{pad}\t<key>{}</key>", escape(key));
-                render(&map[key], indent + 1, out);
+                render(&map[key], indent + 1, out, typed);
             }
             let _ = writeln!(out, "{pad}</dict>");
         }
@@ -48,9 +56,20 @@ fn render(value: &Value, indent: usize, out: &mut String) {
         Value::Array(items) => {
             let _ = writeln!(out, "{pad}<array>");
             for item in items {
-                render(item, indent + 1, out);
+                render(item, indent + 1, out, typed);
             }
             let _ = writeln!(out, "{pad}</array>");
+        }
+        Value::Bool(value) if typed => {
+            let _ = writeln!(out, "{pad}<{}/>", if *value { "true" } else { "false" });
+        }
+        Value::Number(value) if typed => {
+            let kind = if value.is_i64() || value.is_u64() {
+                "integer"
+            } else {
+                "real"
+            };
+            let _ = writeln!(out, "{pad}<{kind}>{value}</{kind}>");
         }
         other => {
             let text = other

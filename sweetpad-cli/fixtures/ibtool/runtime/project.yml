@@ -1,0 +1,51 @@
+name: IBAudit
+options:
+  deploymentTarget:
+    iOS: '18.0'
+targets:
+  IBAudit:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - ../AdditionalViews.xib
+      - ../AdditionalViewVariants.xib
+      - ../FrameworkViewVariants.xib
+      - ../ViewProperties.xib
+      - ../IntegerWidths.xib
+      - ../MutationProperties.xib
+      - ../ButtonConfigurations.xib
+      - ../AuditProperties.xib
+      - ../Variations.xib
+      - ../VariationHidden.xib
+      - ../VariationColor.xib
+      - ../VariationMask.xib
+      - ../VariationMaskDefault.xib
+      - ../VariationConstraint.xib
+      - ../VariationConstraintMask.xib
+      - ../VariationMultiple.xib
+      - ../TabController.storyboard
+      - ../TabItems.xib
+      - ../Embed.storyboard
+      - ../ButtonSegue.storyboard
+      - ../BarButtonSegue.storyboard
+      - ../CustomSegue.storyboard
+      - ../References.storyboard
+      - ../ReferenceNavigation.storyboard
+      - ../Target.storyboard
+      - ../Base.lproj/Localization.storyboard
+      - ../fr.lproj/Localization.strings
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.ibaudit
+        PRODUCT_MODULE_NAME: App
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        CODE_SIGNING_ALLOWED: NO
+        SWIFT_VERSION: '5.0'
+        DEVELOPMENT_LANGUAGE: en
+schemes:
+  IBAudit:
+    build:
+      targets:
+        IBAudit: all

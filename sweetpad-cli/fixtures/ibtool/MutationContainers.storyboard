@@ -1,0 +1,66 @@
+<?xml version='1.0' encoding='utf-8'?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="18122" targetRuntime="iOS.CocoaTouch" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="Nav-aa-Vc1">
+  <dependencies>
+    <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="13104.12" />
+    <capability name="Safe area layout guides" minToolsVersion="9.0" />
+    <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0" />
+  </dependencies>
+  <scenes>
+    <scene sceneID="Nav-aa-Vc1-scene">
+      <objects>
+        <navigationController id="Nav-aa-Vc1" sceneMemberID="viewController">
+          <navigationBar key="navigationBar" id="Nav-aa-Bar">
+            <rect key="frame" x="0" y="0" width="390" height="44" />
+            <autoresizingMask key="autoresizingMask" widthSizable="YES" />
+          </navigationBar>
+          <connections>
+            <segue destination="Chd-00-Vc1" kind="show" id="Nav-aa-Seg" />
+          </connections>
+        </navigationController>
+        <placeholder id="Nav-aa-Vc1-responder" placeholderIdentifier="IBFirstResponder" sceneMemberID="firstResponder" />
+      </objects>
+    </scene>
+    <scene sceneID="Spl-aa-Scn">
+      <objects>
+        <splitViewController id="Spl-aa-Vc1" sceneMemberID="viewController" allowDoubleColumnStyle="NO">
+          <connections>
+            <segue destination="Chd-00-Vc1" kind="relationship" relationship="masterViewController" id="Seg-00-Aud" />
+            <segue destination="Chd-01-Vc1" kind="relationship" relationship="supplementaryViewController" id="Seg-01-Aud" />
+            <segue destination="Chd-02-Vc1" kind="relationship" relationship="detailViewController" id="Seg-02-Aud" />
+          </connections>
+        </splitViewController>
+        <placeholder placeholderIdentifier="IBFirstResponder" id="Res-01-Aud" sceneMemberID="firstResponder" />
+      </objects>
+    </scene>
+    <scene sceneID="Chd-00-Scn">
+      <objects>
+        <viewController id="Chd-00-Vc1" sceneMemberID="viewController">
+          <view key="view" id="Chd-00-Vw1">
+            <rect key="frame" x="0" y="0" width="390" height="844" />
+          </view>
+        </viewController>
+        <placeholder placeholderIdentifier="IBFirstResponder" id="Res-02-Aud" sceneMemberID="firstResponder" />
+      </objects>
+    </scene>
+    <scene sceneID="Chd-01-Scn">
+      <objects>
+        <viewController id="Chd-01-Vc1" sceneMemberID="viewController">
+          <view key="view" id="Chd-01-Vw1">
+            <rect key="frame" x="0" y="0" width="390" height="844" />
+          </view>
+        </viewController>
+        <placeholder placeholderIdentifier="IBFirstResponder" id="Res-03-Aud" sceneMemberID="firstResponder" />
+      </objects>
+    </scene>
+    <scene sceneID="Chd-02-Scn">
+      <objects>
+        <viewController id="Chd-02-Vc1" sceneMemberID="viewController">
+          <view key="view" id="Chd-02-Vw1">
+            <rect key="frame" x="0" y="0" width="390" height="844" />
+          </view>
+        </viewController>
+        <placeholder placeholderIdentifier="IBFirstResponder" id="Res-04-Aud" sceneMemberID="firstResponder" />
+      </objects>
+    </scene>
+  </scenes>
+</document>

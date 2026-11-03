@@ -1,0 +1,119 @@
+name: IBMacAudit
+options:
+  deploymentTarget:
+    macOS: '12.0'
+targets:
+  IBMacAudit:
+    type: application
+    platform: macOS
+    sources:
+      - App
+      - ../MacLayoutAdaptive.xib
+      - ../MacSceneTable.storyboard
+      - ../MacRecessedPopup.xib
+      - ../MacAccessibility.xib
+      - ../MacConstraintPrecision.xib
+      - ../MacBindingNoOptions.xib
+      - ../MacCell.xib
+      - ../MacControls.xib
+      - ../MacControlVariants.xib
+      - ../MacWindowVariants.xib
+      - ../MacBindings.xib
+      - ../MacPopup.xib
+      - ../MacPopupVariants.xib
+      - ../MacImages.xib
+      - ../MacGrid.xib
+      - ../MacGridDefaults.xib
+      - ../MacGridVariants.xib
+      - ../MacSecureField.xib
+      - ../MacWebView.xib
+      - ../MacWebViewVariants.xib
+      - ../MacSystemRed.xib
+      - ../MacConstraintVariants.xib
+      - ../MacPlaceholderConstraint.xib
+      - ../MacMenus.xib
+      - ../MacMenuVariants.xib
+      - ../MacDefaultPriorities.xib
+      - ../MacCustomPriorities.xib
+      - ../MacViewProperties.xib
+      - ../MacScrollView.xib
+      - ../MacScrollViewVariants.xib
+      - ../MacScrollZoomIn.xib
+      - ../MacScrollZoomOut.xib
+      - ../MacTextView.xib
+      - ../MacTextViewVariants.xib
+      - ../MacTextViewClearBackground.xib
+      - ../MacTextViewCalibratedColor.xib
+      - ../MacDefaultsShared.xib
+      - ../MacDefaultsPrivate.xib
+      - ../MacDefaultsDeferred.xib
+      - ../MacMenuStoryboard.storyboard
+      - ../MacViewController.storyboard
+      - ../MacUnnamedController.storyboard
+      - ../MacConnectedController.storyboard
+      - ../MacMenuAndController.storyboard
+      - ../MacWindowController.storyboard
+      - ../MacCustomWindowController.storyboard
+      - ../MacWindowRelationship.storyboard
+      - ../MacCustomWindowRelationship.storyboard
+      - ../MacSceneObjects.storyboard
+      - ../MacSplitController.storyboard
+      - ../MacEmbedSplit.storyboard
+      - ../MacOutlineView.xib
+      - ../MacOutlineSidebar.xib
+      - ../MacOutlineOptions.xib
+      - ../MacRecessedButton.xib
+      - ../MacShowSegue.storyboard
+      - ../MacUnnamedWindowContent.storyboard
+      - ../MacCollectionView.xib
+      - ../MacCollectionOptions.xib
+      - ../MacLegacyCollection.xib
+      - ../MacCollectionDefaults.xib
+      - ../MacSeparator.xib
+      - ../MacTablePrototype.xib
+      - ../MacCheckButtons.xib
+      - ../MacControlPriorities.xib
+      - ../MacTableView.xib
+      - ../MacTableViewDefaultSpacing.xib
+      - ../MacTableColumns.xib
+      - ../MacTableOverflow.xib
+      - ../MacTableMinimum.xib
+      - ../MacTableFixedColumn.xib
+      - ../MacTableSmallColumn.xib
+      - ../MacScrollerPriorities.xib
+      - ../MacStack.xib
+      - ../MacStackViews.xib
+      - ../MacStackDefaults.xib
+      - ../MacStackMetadata.xib
+      - ../MacCustomField.xib
+      - ../MacFirstResponder.xib
+      - ../MacStringValues.xib
+      - ../MacFont-subheadline.xib
+      - ../MacFont-headline.xib
+      - ../MacFont-callout.xib
+      - ../MacFont-title3.xib
+      - ../MacFont-custom.xib
+      - ../MacNamedFonts.xib
+      - ../MacLayoutSheet.xib
+      - ../MacLayoutProgress.xib
+      - ../MacLayoutMultiline.xib
+      - ../MacProgressRanges.xib
+      - ../MacSceneLayout.storyboard
+      - ../MacGridMixed.xib
+      - ../MacGridIntrinsic.xib
+      - ../MacTextFieldVariants.xib
+      - ../MacTextColorEditable.xib
+      - ../MacTextColorLabel.xib
+      - ../Base.lproj/MacLocalizedControls.xib
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.ibmacaudit
+        PRODUCT_MODULE_NAME: App
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        SWIFT_VERSION: '5.0'
+schemes:
+  IBMacAudit:
+    build:
+      targets:
+        IBMacAudit: all

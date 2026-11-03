@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='utf-8'?>
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="9531" systemVersion="15C50" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+  <dependencies>
+    <deployment identifier="macosx" />
+    <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="9531" />
+  </dependencies>
+  <objects>
+    <customObject id="-2" userLabel="File's Owner" />
+    <customObject id="-1" userLabel="First Responder" customClass="FirstResponder" />
+    <customObject id="-3" userLabel="Application" customClass="NSObject" />
+    <customView id="PdN-uu-KZg">
+      <rect key="frame" x="0.0" y="0.0" width="250" height="250" />
+      <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES" />
+      <point key="canvasLocation" x="56" y="464" />
+      <subviews>
+        <textView id="Txt-aa-Aud" editable="NO" richText="NO" importsGraphics="NO" drawsBackground="NO" verticallyResizable="YES" horizontallyResizable="YES" allowsUndo="YES" smartInsertDelete="YES" continuousSpellChecking="YES" grammarChecking="YES" spellingCorrection="YES" quoteSubstitution="YES" dashSubstitution="YES" linkDetection="YES" textReplacement="YES" dataDetection="YES" allowsCharacterPickerTouchBarItem="NO" textCompletion="NO" findStyle="bar" customClass="AuditTextView" customModule="App">
+          <rect key="frame" x="10" y="10" width="180" height="100" />
+          <autoresizingMask key="autoresizingMask" />
+          <size key="minSize" width="180" height="100" />
+          <size key="maxSize" width="180" height="10000000" />
+          <color key="backgroundColor" red="1" green="1" blue="1" alpha="0" colorSpace="custom" customColorSpace="sRGB" />
+          <color key="textColor" name="secondaryLabelColor" catalog="System" colorSpace="catalog" />
+          <color key="insertionPointColor" name="textColor" catalog="System" colorSpace="catalog" />
+        </textView>
+      </subviews>
+    </customView>
+  </objects>
+</document>

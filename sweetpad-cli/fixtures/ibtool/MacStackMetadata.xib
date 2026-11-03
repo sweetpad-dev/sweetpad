@@ -1,0 +1,36 @@
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="9531" systemVersion="15C50" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+  <dependencies>
+    <deployment identifier="macosx" />
+    <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="9531" />
+  </dependencies>
+  <objects>
+    <customObject id="-2" userLabel="File's Owner" />
+    <customObject id="-1" userLabel="First Responder" customClass="FirstResponder" />
+    <customObject id="-3" userLabel="Application" customClass="NSObject" />
+    <customView id="PdN-uu-KZg">
+      <rect key="frame" x="0.0" y="0.0" width="250" height="250" />
+      <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES" />
+      <point key="canvasLocation" x="56" y="464" />
+      <subviews>
+        <stackView distribution="fillEqually" orientation="vertical" alignment="leading" spacing="9" horizontalStackHuggingPriority="249.99998474121094" verticalStackHuggingPriority="249.99998474121094" detachesHiddenViews="YES" translatesAutoresizingMaskIntoConstraints="NO" id="uDK-ji-zlT">
+          <rect key="frame" x="199" y="151" width="0.0" height="102" />
+        <subviews><textField id="Txt-aa-Vw1">
+          <rect key="frame" x="10" y="10" width="150" height="22" />
+          <textFieldCell key="cell" title="Hello" id="Txt-aa-Cl1">
+            <font key="font" metaFont="system" />
+            <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog" />
+            <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog" />
+          </textFieldCell>
+        </textField>
+        <button id="Btn-aa-Vw1">
+          <rect key="frame" x="10" y="40" width="150" height="32" />
+          <buttonCell key="cell" type="push" title="Press" bezelStyle="rounded" imagePosition="overlaps" alignment="center" borderStyle="border" id="Btn-aa-Cl1">
+            <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES" />
+            <font key="font" metaFont="system" />
+          </buttonCell>
+        </button>
+        </subviews><visibilityPriorities><integer value="500" /><integer value="1000" /></visibilityPriorities><customSpacing><real value="12" /><real value="3.4028234663852886e+38" /></customSpacing><edgeInsets key="edgeInsets" top="1" left="2" bottom="3" right="4" /></stackView>
+      </subviews>
+    </customView>
+  </objects>
+</document>

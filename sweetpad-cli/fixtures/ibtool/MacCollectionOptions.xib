@@ -1,0 +1,24 @@
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="9531" systemVersion="15C50" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+  <dependencies>
+    <deployment identifier="macosx" />
+    <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="9531" />
+  </dependencies>
+  <objects>
+    <customObject id="-2" userLabel="File's Owner" />
+    <customObject id="-1" userLabel="First Responder" customClass="FirstResponder" />
+    <customObject id="-3" userLabel="Application" customClass="NSObject" />
+    <customView id="PdN-uu-KZg">
+      <rect key="frame" x="0.0" y="0.0" width="250" height="250" />
+      <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES" />
+      <point key="canvasLocation" x="56" y="464" />
+      <subviews><collectionView id="XnK-6H-mn7" selectable="YES" allowsMultipleSelection="YES" allowsEmptySelection="NO" maxNumberOfRows="3" maxNumberOfColumns="4" maxNumberOfGridRows="3" maxNumberOfGridColumns="4">
+                                            <rect key="frame" x="10" y="10" width="180" height="100" />
+                                            <autoresizingMask key="autoresizingMask" widthSizable="YES" />
+                                            <collectionViewFlowLayout key="collectionViewLayout" minimumInteritemSpacing="23" minimumLineSpacing="17" id="DFD-7H-C8z" scrollDirection="horizontal">
+                                                <size key="itemSize" width="250" height="250" />
+                                                <edgeInsets key="sectionInset" left="40" right="40" top="30" bottom="30" />
+                                            <size key="headerReferenceSize" width="25" height="35" /><size key="footerReferenceSize" width="45" height="55" /></collectionViewFlowLayout>
+                                            <color key="primaryBackgroundColor" name="controlBackgroundColor" catalog="System" colorSpace="catalog" />
+                                            <size key="minItemSize" width="20" height="30" /><size key="maxItemSize" width="80" height="90" /></collectionView></subviews></customView>
+  </objects>
+</document>

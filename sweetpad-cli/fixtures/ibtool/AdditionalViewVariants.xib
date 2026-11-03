@@ -1,0 +1,26 @@
+<?xml version='1.0' encoding='utf-8'?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.XIB" version="3.0" toolsVersion="18122" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES">
+    <device id="retina6_1" orientation="portrait" appearance="light" />
+    <dependencies>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="18093" />
+        <capability name="Safe area layout guides" minToolsVersion="9.0" />
+        <capability name="System colors in document resources" minToolsVersion="11.0" />
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0" />
+    </dependencies>
+    <objects>
+        <placeholder placeholderIdentifier="IBFilesOwner" id="-1" userLabel="File's Owner" />
+        <placeholder placeholderIdentifier="IBFirstResponder" id="-2" customClass="UIResponder" />
+        <view contentMode="scaleToFill" id="iN0-l3-epB">
+            <rect key="frame" x="0.0" y="0.0" width="414" height="896" />
+            <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES" />
+            <viewLayoutGuide key="safeArea" id="vUN-kp-3ea" />
+            <color key="backgroundColor" systemColor="systemBackgroundColor" />
+            <point key="canvasLocation" x="83" y="119" />
+        <subviews><progressView id="A00-aa-Vw1" contentMode="scaleToFill" progress="0.375" progressViewStyle="bar"><rect key="frame" x="0" y="0" width="300" height="45" /></progressView><stepper id="A01-aa-Vw1" contentMode="scaleToFill" value="3" minimumValue="1" maximumValue="12" stepValue="0.5" continuous="NO" autorepeat="NO" wraps="YES"><rect key="frame" x="0" y="60" width="300" height="45" /></stepper><pageControl id="A02-aa-Vw1" contentMode="scaleToFill" numberOfPages="5" currentPage="2" hidesForSinglePage="YES" defersCurrentPageDisplay="YES"><rect key="frame" x="0" y="120" width="300" height="45" /></pageControl><segmentedControl id="A03-aa-Vw1" contentMode="scaleToFill" selectedSegmentIndex="1" momentary="YES"><rect key="frame" x="0" y="180" width="300" height="45" /><segments><segment title="First" width="70" /><segment title="Second" /></segments></segmentedControl><textView id="A04-aa-Vw1" contentMode="scaleToFill" text="Editable text"><rect key="frame" x="0" y="240" width="300" height="45" /><fontDescription key="fontDescription" type="system" pointSize="17" /><textInputTraits key="textInputTraits" /></textView><searchBar id="A05-aa-Vw1" contentMode="scaleToFill"><rect key="frame" x="0" y="300" width="300" height="45" /></searchBar><toolbar id="A06-aa-Vw1" contentMode="scaleToFill"><rect key="frame" x="0" y="360" width="300" height="45" /><items /></toolbar><tabBar id="A07-aa-Vw1" contentMode="scaleToFill"><rect key="frame" x="0" y="420" width="300" height="45" /><items /></tabBar><wkWebView id="A08-aa-Vw1" contentMode="scaleToFill"><rect key="frame" x="0" y="480" width="300" height="45" /><wkWebViewConfiguration key="configuration"><wkPreferences key="preferences" /></wkWebViewConfiguration></wkWebView><mapView id="A09-aa-Vw1" contentMode="scaleToFill"><rect key="frame" x="0" y="540" width="300" height="45" /></mapView></subviews></view>
+    </objects>
+    <resources>
+        <systemColor name="systemBackgroundColor">
+            <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace" />
+        </systemColor>
+    </resources>
+</document>

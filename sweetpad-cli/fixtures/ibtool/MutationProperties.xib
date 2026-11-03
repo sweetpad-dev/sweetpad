@@ -1,0 +1,55 @@
+<?xml version='1.0' encoding='utf-8'?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.XIB" version="3.0" targetRuntime="iOS.CocoaTouch" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" toolsVersion="18122">
+  <objects>
+    <placeholder placeholderIdentifier="IBFilesOwner" id="-1">
+      </placeholder>
+    <placeholder placeholderIdentifier="IBFirstResponder" id="-2" customClass="UIResponder" />
+    <view id="Root-aa-Vw1">
+      <rect key="frame" x="0" y="0" width="390" height="844" />
+      <subviews>
+        <activityIndicatorView id="Act-00-Aud" horizontalHuggingPriority="751" verticalHuggingPriority="750" fixedFrame="YES" style="medium">
+          <rect key="frame" x="10" y="55" width="200" height="40" />
+        </activityIndicatorView>
+        <activityIndicatorView id="Act-01-Aud" horizontalHuggingPriority="750" verticalHuggingPriority="751" fixedFrame="YES" style="medium">
+          <rect key="frame" x="10" y="110" width="200" height="40" />
+        </activityIndicatorView>
+        <activityIndicatorView id="Act-02-Aud" horizontalHuggingPriority="750" verticalHuggingPriority="750" fixedFrame="NO" style="medium">
+          <rect key="frame" x="10" y="165" width="200" height="40" />
+        </activityIndicatorView>
+        <switch id="Swi-aa-Aud" horizontalHuggingPriority="751" verticalHuggingPriority="751" translatesAutoresizingMaskIntoConstraints="NO">
+          <rect key="frame" x="10" y="220" width="200" height="40" />
+          <constraints>
+            <constraint firstAttribute="width" constant="51" id="Con-aa-Aud" />
+          </constraints>
+        </switch>
+        <label id="Lbl-aa-Aud" text="No minimum" minimumScaleFactor="0" adjustsFontSizeToFit="YES">
+          <rect key="frame" x="10" y="275" width="200" height="40" />
+          <fontDescription key="fontDescription" type="system" pointSize="17" />
+        </label>
+        <view id="Run-aa-Aud" userInteractionEnabled="YES">
+          <rect key="frame" x="10" y="330" width="200" height="40" />
+          <userDefinedRuntimeAttributes>
+            <userDefinedRuntimeAttribute type="boolean" keyPath="hidden" value="Toggle Read" />
+          </userDefinedRuntimeAttributes>
+        </view>
+        <view id="Col-00-Aud">
+          <rect key="frame" x="10" y="385" width="200" height="40" />
+          <color key="backgroundColor" systemColor="systemBackgroundColor" />
+        </view>
+        <view id="Col-01-Aud">
+          <rect key="frame" x="10" y="440" width="200" height="40" />
+          <color key="backgroundColor" xcode11CocoaTouchSystemColor="labelColor" cocoaTouchSystemColor="whiteColor" />
+        </view>
+        <view id="Col-02-Aud">
+          <rect key="frame" x="10" y="495" width="200" height="40" />
+          <color key="backgroundColor" xcode11CocoaTouchSystemColor="systemBackgroundColor" cocoaTouchSystemColor="darkTextColor" />
+        </view>
+      </subviews>
+    </view>
+  </objects>
+  <resources>
+    <systemColor name="systemBackgroundColor">
+      <color white="0" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace" />
+    </systemColor>
+  </resources>
+</document>

@@ -66,7 +66,7 @@ impl From<Option<Id>> for Value {
 #[derive(Debug, Clone, PartialEq)]
 struct Object {
     class: &'static str,
-    values: Vec<(&'static str, Value)>,
+    values: Vec<(String, Value)>,
 }
 
 /// Where the archive lets a decoder that lacks a class use another: a
@@ -98,9 +98,63 @@ impl Graph {
         Id(self.objects.len() - 1)
     }
 
+    pub fn object_with_values(
+        &mut self,
+        class: &'static str,
+        values: Vec<(&'static str, Value)>,
+    ) -> Id {
+        let object = self.object(class);
+        for (key, value) in values {
+            self.set(object, key, value);
+        }
+        object
+    }
+
+    pub fn intern(&mut self, object: Id) -> Id {
+        let key = format!(
+            "{}{:?}",
+            self.objects[object.0].class, self.objects[object.0].values
+        );
+        *self.shared.entry(key).or_insert(object)
+    }
+
     /// Archives `value` under `key` in `id`, after the values it has.
-    pub fn set(&mut self, id: Id, key: &'static str, value: impl Into<Value>) {
-        self.objects[id.0].values.push((key, value.into()));
+    pub fn set(&mut self, id: Id, key: &str, value: impl Into<Value>) {
+        self.objects[id.0]
+            .values
+            .push((key.to_string(), value.into()));
+    }
+
+    pub fn replace(&mut self, id: Id, key: &'static str, value: impl Into<Value>) {
+        self.objects[id.0].values.retain(|(k, _)| *k != key);
+        self.set(id, key, value);
+    }
+
+    pub fn remove(&mut self, id: Id, key: &str) {
+        self.objects[id.0].values.retain(|(k, _)| k != key);
+    }
+
+    pub fn references(&self, id: Id) -> Vec<Id> {
+        self.objects[id.0]
+            .values
+            .iter()
+            .filter_map(|(_, value)| match value {
+                Value::Object(id) => Some(*id),
+                _ => None,
+            })
+            .collect()
+    }
+
+    pub fn value(&self, id: Id, key: &str) -> Option<Value> {
+        self.objects[id.0]
+            .values
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.clone())
+    }
+
+    pub fn class(&self, id: Id) -> &'static str {
+        self.objects[id.0].class
     }
 
     /// An object of `class` with `values`, the same one for every call
@@ -110,7 +164,13 @@ impl Graph {
         if let Some(&id) = self.shared.get(&key) {
             return id;
         }
-        self.objects.push(Object { class, values });
+        self.objects.push(Object {
+            class,
+            values: values
+                .into_iter()
+                .map(|(key, value)| (key.to_string(), value))
+                .collect(),
+        });
         let id = Id(self.objects.len() - 1);
         self.shared.insert(key, id);
         id
@@ -137,7 +197,13 @@ impl Graph {
         if class == "NSArray" && items.is_empty() {
             return self.shared(class, values);
         }
-        self.objects.push(Object { class, values });
+        self.objects.push(Object {
+            class,
+            values: values
+                .into_iter()
+                .map(|(key, value)| (key.to_string(), value))
+                .collect(),
+        });
         Id(self.objects.len() - 1)
     }
 
@@ -149,6 +215,17 @@ impl Graph {
             values.push((ELEMENT, Value::Object(value)));
         }
         self.shared(class, values)
+    }
+
+    /// Mutable registration tables are separate objects even when empty.
+    pub fn fresh_dictionary(&mut self, class: &'static str, entries: &[(Id, Id)]) -> Id {
+        let object = self.object(class);
+        self.set(object, "NSInlinedValue", true);
+        for &(key, value) in entries {
+            self.set(object, ELEMENT, key);
+            self.set(object, ELEMENT, value);
+        }
+        object
     }
 
     /// The archive of everything `root` reaches.
@@ -168,8 +245,8 @@ impl Graph {
                 classes.push(object.class);
             }
             for (key, _) in &object.values {
-                if !key_index.contains_key(key) {
-                    key_index.insert(*key, keys.len());
+                if !key_index.contains_key(key.as_str()) {
+                    key_index.insert(key.as_str(), keys.len());
                     keys.push(key);
                 }
             }
@@ -191,7 +268,7 @@ impl Graph {
             varint(value_count, &mut objects);
             varint(object.values.len(), &mut objects);
             for (key, value) in &object.values {
-                varint(key_index[key], &mut values);
+                varint(key_index[key.as_str()], &mut values);
                 encode(value, &index, &mut values);
             }
             value_count += object.values.len();
@@ -275,13 +352,15 @@ pub(super) fn doubles(values: &[f64]) -> Value {
 fn encode(value: &Value, index: &HashMap<Id, usize>, out: &mut Vec<u8>) {
     match value {
         Value::Int(n) => {
-            if let Ok(n) = i8::try_from(*n) {
+            // The compact 8/16/32-bit forms are unsigned. Negative NSInteger
+            // values must use the 64-bit form, as Xcode's encoder does.
+            if let Ok(n) = u8::try_from(*n) {
                 out.push(0);
                 out.extend_from_slice(&n.to_le_bytes());
-            } else if let Ok(n) = i16::try_from(*n) {
+            } else if let Ok(n) = u16::try_from(*n) {
                 out.push(1);
                 out.extend_from_slice(&n.to_le_bytes());
-            } else if let Ok(n) = i32::try_from(*n) {
+            } else if let Ok(n) = u32::try_from(*n) {
                 out.push(2);
                 out.extend_from_slice(&n.to_le_bytes());
             } else {
@@ -407,9 +486,9 @@ pub(super) mod read {
                 bytes
             };
             let value = match kind {
-                0 => Read::Int(i64::from(i8::from_le_bytes(take(1).try_into().unwrap()))),
-                1 => Read::Int(i64::from(i16::from_le_bytes(take(2).try_into().unwrap()))),
-                2 => Read::Int(i64::from(i32::from_le_bytes(take(4).try_into().unwrap()))),
+                0 => Read::Int(i64::from(u8::from_le_bytes(take(1).try_into().unwrap()))),
+                1 => Read::Int(i64::from(u16::from_le_bytes(take(2).try_into().unwrap()))),
+                2 => Read::Int(i64::from(u32::from_le_bytes(take(4).try_into().unwrap()))),
                 3 => Read::Int(i64::from_le_bytes(take(8).try_into().unwrap())),
                 4 => Read::Bool(false),
                 5 => Read::Bool(true),

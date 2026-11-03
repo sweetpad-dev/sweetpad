@@ -1,0 +1,58 @@
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="9531" systemVersion="15C50" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+  <dependencies>
+    <deployment identifier="macosx" />
+    <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="9531" />
+  </dependencies>
+  <objects>
+    <customObject id="-2" userLabel="File's Owner" />
+    <customObject id="-1" userLabel="First Responder" customClass="FirstResponder" />
+    <customObject id="-3" userLabel="Application" customClass="NSObject" />
+    <customView id="PdN-uu-KZg">
+      <rect key="frame" x="0.0" y="0.0" width="250" height="250" />
+      <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES" />
+      <point key="canvasLocation" x="56" y="464" />
+      <subviews>
+        <scrollView borderType="none" horizontalLineScroll="10" horizontalPageScroll="10" verticalLineScroll="10" verticalPageScroll="10" hasHorizontalScroller="NO" id="UTe-5f-47F" hasVerticalScroller="NO">
+          <rect key="frame" x="20" y="20" width="180" height="100" />
+          <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES" />
+          <clipView key="contentView" copiesOnScroll="NO" id="MeG-49-sPS">
+            <rect key="frame" x="0" y="0" width="180" height="100" />
+            <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES" />
+            <subviews><tableView id="Tbl-aa-Aud" viewBased="YES" style="plain" columnAutoresizingStyle="uniform" verticalHuggingPriority="750">
+                        <rect key="frame" x="0" y="0" width="180" height="100" />
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES" />
+                        <color key="backgroundColor" name="controlBackgroundColor" catalog="System" colorSpace="catalog" />
+                        <color key="gridColor" name="gridColor" catalog="System" colorSpace="catalog" />
+                        <tableColumns>
+                            <tableColumn width="177" minWidth="40" maxWidth="1000" id="PRn-8s-32o">
+                                <tableHeaderCell key="headerCell" lineBreakMode="truncatingTail" borderStyle="border">
+                                    <font key="font" metaFont="smallSystem" />
+                                    <color key="textColor" name="headerTextColor" catalog="System" colorSpace="catalog" />
+                                    <color key="backgroundColor" name="headerColor" catalog="System" colorSpace="catalog" />
+                                </tableHeaderCell>
+                                <textFieldCell key="dataCell" lineBreakMode="truncatingTail" selectable="YES" editable="YES" title="Text Cell" id="XUR-hj-KzG">
+                                    <font key="font" metaFont="system" />
+                                    <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog" />
+                                    <color key="backgroundColor" name="controlBackgroundColor" catalog="System" colorSpace="catalog" />
+                                </textFieldCell>
+                                <tableColumnResizingMask key="resizingMask" resizeWithTable="YES" userResizable="YES" />
+                            <prototypeCellViews><tableCellView identifier="AuditCell" id="cel-aa-Aud"><rect key="frame" x="0" y="0" width="148" height="17" /><autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES" /><subviews><textField id="Txt-aa-Vw1">
+          <rect key="frame" x="10" y="10" width="150" height="22" />
+          <textFieldCell key="cell" title="Hello" id="Txt-aa-Cl1">
+            <font key="font" metaFont="system" />
+            <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog" />
+            <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog" />
+          </textFieldCell>
+        </textField></subviews><connections><outlet property="textField" destination="Txt-aa-Vw1" id="out-cv-Aud" /></connections></tableCellView></prototypeCellViews></tableColumn>
+                        </tableColumns>
+                        <size key="intercellSpacing" width="3" height="2" /></tableView></subviews><color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog" />
+          </clipView>
+          <scroller key="verticalScroller" verticalHuggingPriority="750" horizontal="NO" id="wLl-nc-XBT" hidden="YES">
+            <rect key="frame" x="-100" y="-100" width="17" height="100" />
+            <autoresizingMask key="autoresizingMask" />
+          </scroller>
+        </scrollView>
+      </subviews>
+    </customView>
+  </objects>
+</document>

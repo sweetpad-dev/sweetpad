@@ -1,0 +1,90 @@
+<?xml version='1.0' encoding='utf-8'?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.XIB" version="3.0" targetRuntime="iOS.CocoaTouch" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" toolsVersion="18122">
+  <objects>
+    <placeholder placeholderIdentifier="IBFilesOwner" id="-1" customClass="FeatureOwner" customModule="Probe">
+      <connections>
+        <outlet property="view" destination="Root-aa-Vw1" id="Out-aa-Vw1" />
+      </connections>
+    </placeholder>
+    <placeholder placeholderIdentifier="IBFirstResponder" id="-2" customClass="UIResponder" />
+    <view id="Root-aa-Vw1" customClass="FeatureView" customModule="Probe">
+      <rect key="frame" x="0" y="0" width="390" height="844" />
+      <subviews>
+        <activityIndicatorView opaque="NO" contentMode="scaleToFill" horizontalHuggingPriority="750" verticalHuggingPriority="750" fixedFrame="YES" style="medium" translatesAutoresizingMaskIntoConstraints="NO" id="YvV-hB-lzT">
+          <rect key="frame" x="36" y="6" width="20" height="20" />
+          <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES" />
+        </activityIndicatorView>
+        <visualEffectView opaque="NO" clipsSubviews="YES" contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="bHh-pW-oTS">
+          <rect key="frame" x="-4" y="794" width="410" height="8" />
+          <view key="contentView" opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="center" insetsLayoutMarginsFromSafeArea="NO" id="StS-kO-TuW">
+            <rect key="frame" x="0.0" y="0.0" width="410" height="8" />
+            <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES" />
+          </view>
+          <blurEffect style="systemUltraThinMaterial" />
+        </visualEffectView>
+        <slider opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" value="1" minValue="1" maxValue="3" translatesAutoresizingMaskIntoConstraints="NO" id="B7g-v4-Vyj" customClass="TickMarkSlider" customModule="NetNewsWire" customModuleProvider="target">
+          <rect key="frame" x="16" y="10" width="382" height="34" />
+          <color key="thumbTintColor" name="primaryAccentColor" />
+        </slider>
+        <refreshControl key="refreshControl" opaque="NO" multipleTouchEnabled="YES" contentMode="center" enabled="NO" contentHorizontalAlignment="center" contentVerticalAlignment="center" id="e6J-W5-mRs">
+          <autoresizingMask key="autoresizingMask" />
+        </refreshControl>
+        <pickerView contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="45M-CC-Cpm">
+          <rect key="frame" x="0.0" y="359" width="414" height="377" />
+          <color key="backgroundColor" systemColor="secondarySystemBackgroundColor" />
+        </pickerView>
+      </subviews>
+      <constraints>
+        <constraint firstItem="YvV-hB-lzT" firstAttribute="width" constant="20" id="Mor-00-Con" />
+        <constraint firstItem="bHh-pW-oTS" firstAttribute="width" constant="410" id="Mor-01-Con" />
+        <constraint firstItem="B7g-v4-Vyj" firstAttribute="width" constant="382" id="Mor-02-Con" />
+        <constraint firstItem="e6J-W5-mRs" firstAttribute="width" constant="1000" id="Mor-03-Con" />
+        <constraint firstItem="45M-CC-Cpm" firstAttribute="width" constant="414" id="Mor-04-Con" />
+      </constraints>
+    </view>
+  </objects>
+  <resources>
+    <namedColor name="secondaryAccentColor">
+      <color red="0.031372549019607843" green="0.41568627450980394" blue="0.93333333333333335" alpha="1" colorSpace="custom" customColorSpace="sRGB" />
+    </namedColor>
+    <systemColor name="secondaryLabelColor">
+      <color red="0.23529411759999999" green="0.23529411759999999" blue="0.26274509800000001" alpha="0.59999999999999998" colorSpace="custom" customColorSpace="sRGB" />
+    </systemColor>
+    <systemColor name="systemGroupedBackgroundColor">
+      <color red="0.94901960780000005" green="0.94901960780000005" blue="0.96862745100000003" alpha="1" colorSpace="custom" customColorSpace="sRGB" />
+    </systemColor>
+    <namedColor name="barBackgroundColor">
+      <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace" />
+    </namedColor>
+    <namedColor name="fullScreenBackgroundColor">
+      <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace" />
+    </namedColor>
+    <namedColor name="primaryAccentColor">
+      <color red="0.031372549019607843" green="0.41568627450980394" blue="0.93333333333333335" alpha="1" colorSpace="custom" customColorSpace="sRGB" />
+    </namedColor>
+    <systemColor name="labelColor">
+      <color white="0.0" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace" />
+    </systemColor>
+    <systemColor name="secondarySystemBackgroundColor">
+      <color red="0.94901960784313721" green="0.94901960784313721" blue="0.96862745098039216" alpha="1" colorSpace="custom" customColorSpace="sRGB" />
+    </systemColor>
+    <systemColor name="secondarySystemFillColor">
+      <color red="0.47058823529411764" green="0.47058823529411764" blue="0.50196078431372548" alpha="0.16" colorSpace="custom" customColorSpace="sRGB" />
+    </systemColor>
+    <systemColor name="secondarySystemGroupedBackgroundColor">
+      <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace" />
+    </systemColor>
+    <systemColor name="separatorColor">
+      <color red="0.23529411764705882" green="0.23529411764705882" blue="0.2627450980392157" alpha="0.12" colorSpace="custom" customColorSpace="sRGB" />
+    </systemColor>
+    <systemColor name="systemBackgroundColor">
+      <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace" />
+    </systemColor>
+    <systemColor name="tertiaryLabelColor">
+      <color red="0.23529411764705882" green="0.23529411764705882" blue="0.2627450980392157" alpha="0.29803921568627451" colorSpace="custom" customColorSpace="sRGB" />
+    </systemColor>
+    <systemColor name="groupTableViewBackgroundColor">
+      <color red="0.94901960784313721" green="0.94901960784313721" blue="0.96862745098039216" alpha="1" colorSpace="custom" customColorSpace="sRGB" />
+    </systemColor>
+  </resources>
+</document>

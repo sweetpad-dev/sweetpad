@@ -9,6 +9,8 @@ use super::nib::read::{self, Read};
 use super::*;
 use crate::cli::keyed_archive::{self, Plist};
 use crate::cli::testdir::TempDir;
+mod normalize;
+mod operations;
 
 /// The fixtures, or `IBTOOL_FIXTURES`, a folder laid out the same way, to
 /// hold other storyboards up against Xcode's ibtool.
@@ -19,11 +21,24 @@ fn fixtures() -> PathBuf {
     )
 }
 
-fn storyboards() -> Vec<PathBuf> {
+fn documents() -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = std::fs::read_dir(fixtures())
         .unwrap()
-        .map(|e| e.unwrap().path())
-        .filter(|p| p.extension().is_some_and(|e| e == "storyboard"))
+        .flat_map(|e| {
+            let path = e.unwrap().path();
+            if path.is_dir() && path.extension().is_some_and(|e| e == "lproj") {
+                std::fs::read_dir(path)
+                    .unwrap()
+                    .map(|e| e.unwrap().path())
+                    .collect()
+            } else {
+                vec![path]
+            }
+        })
+        .filter(|p| {
+            p.extension()
+                .is_some_and(|e| e == "storyboard" || e == "xib")
+        })
         .collect();
     found.sort();
     found
@@ -31,10 +46,24 @@ fn storyboards() -> Vec<PathBuf> {
 
 /// The arrays whose order comes from a hash table in Xcode's ibtool, so
 /// isn't the document's or anything this can reproduce.
-const UNORDERED: &[&str] = &["UINibObjectsKey", "UIViewAutolayoutConstraints"];
+const UNORDERED: &[&str] = &[
+    "NSConnections",
+    "NSViewConstraints",
+    "UINibObjectsKey",
+    "UINibConnectionsKey",
+    "UIViewAutolayoutConstraints",
+    "UIStoryboardSegueTemplates",
+    "UINibKeyValuePairsKey",
+];
 
 fn scalar(value: &Read) -> String {
     match value {
+        Read::Data(bytes) if bytes.starts_with(b"canonical nested nib:\n") => {
+            String::from_utf8(bytes.clone()).unwrap()
+        }
+        Read::Data(bytes) if bytes.starts_with(b"NIBArchive") => {
+            format!("nested nib:\n{}", canonical(bytes))
+        }
         Read::Data(bytes) => match std::str::from_utf8(bytes) {
             Ok(text) if !text.starts_with('\u{7}') => format!("{text:?}"),
             _ => bytes.iter().fold("data ".to_string(), |mut out, b| {
@@ -52,6 +81,25 @@ fn signature(objects: &[read::Object], index: usize, depth: usize) -> String {
     let object = &objects[index];
     let mut values: Vec<&(String, Read)> = object.values.iter().collect();
     values.sort_by(|a, b| a.0.cmp(&b.0));
+    if matches!(
+        object.class.as_str(),
+        "NSDictionary" | "NSMutableDictionary"
+    ) {
+        let entries: Vec<_> = object
+            .values
+            .iter()
+            .filter(|(key, _)| key == "UINibEncoderEmptyKey")
+            .collect();
+        let mut pairs: Vec<_> = entries.chunks(2).collect();
+        pairs.sort_by_cached_key(|pair| match &pair[0].1 {
+            Read::Object(key) => signature(objects, *key, 1),
+            other => scalar(other),
+        });
+        values.retain(|(key, _)| key != "UINibEncoderEmptyKey");
+        for pair in pairs {
+            values.extend(pair.iter().copied());
+        }
+    }
     let mut out = object.class.clone();
     for (key, value) in values {
         let text = match value {
@@ -70,7 +118,11 @@ fn signature(objects: &[read::Object], index: usize, depth: usize) -> String {
 /// written in: each object's values sorted by key, the unordered arrays
 /// sorted, and every object numbered by when a walk in that order meets it.
 fn canonical(data: &[u8]) -> String {
-    let objects = read::parse(data);
+    canonical_with(data, &BTreeMap::new())
+}
+fn canonical_with(data: &[u8], names: &normalize::Names) -> String {
+    let mut objects = read::parse(data);
+    normalize::prepare(&mut objects, names);
     let mut out = String::new();
     let mut seen = BTreeMap::new();
     walk(&objects, 0, 0, "", false, &mut seen, &mut out);
@@ -97,13 +149,36 @@ fn walk(
     let _ = writeln!(out, "{pad}{label}{} @{n}", object.class);
     let mut values: Vec<&(String, Read)> = object.values.iter().collect();
     values.sort_by(|a, b| a.0.cmp(&b.0));
+    if matches!(
+        object.class.as_str(),
+        "NSDictionary" | "NSMutableDictionary"
+    ) {
+        let entries: Vec<_> = object
+            .values
+            .iter()
+            .filter(|(key, _)| key == "UINibEncoderEmptyKey")
+            .collect();
+        let mut pairs: Vec<_> = entries.chunks(2).collect();
+        pairs.sort_by_cached_key(|pair| match &pair[0].1 {
+            Read::Object(key) => signature(objects, *key, 1),
+            other => scalar(other),
+        });
+        values.retain(|(key, _)| key != "UINibEncoderEmptyKey");
+        for pair in pairs {
+            values.extend(pair.iter().copied());
+        }
+    }
     if unordered {
         values.sort_by_cached_key(|(key, value)| {
             let order = match value {
                 Read::Object(child) => signature(objects, *child, 2),
                 other => scalar(other),
             };
-            (key.clone(), order)
+            let previous = match value {
+                Read::Object(child) => seen.get(child).copied().unwrap_or(usize::MAX),
+                _ => usize::MAX,
+            };
+            (key.clone(), order, previous)
         });
     }
     for (key, value) in values {
@@ -127,7 +202,12 @@ fn walk(
 fn first_difference(actual: &str, expected: &str) -> String {
     for (i, (a, e)) in actual.lines().zip(expected.lines()).enumerate() {
         if a != e {
-            return format!("line {}:\n  got:      {a:?}\n  expected: {e:?}", i + 1);
+            return format!(
+                "line {}:\n  got:      {:?}\n  expected: {:?}",
+                i + 1,
+                a.chars().take(200).collect::<String>(),
+                e.chars().take(200).collect::<String>()
+            );
         }
     }
     format!(
@@ -139,6 +219,7 @@ fn first_difference(actual: &str, expected: &str) -> String {
 
 fn sorted(value: Plist) -> Plist {
     match value {
+        Plist::Array(entries) => Plist::Array(entries.into_iter().map(sorted).collect()),
         Plist::Dict(entries) => {
             let mut entries: Vec<(String, Plist)> =
                 entries.into_iter().map(|(k, v)| (k, sorted(v))).collect();
@@ -150,6 +231,9 @@ fn sorted(value: Plist) -> Plist {
 }
 
 fn files(dir: &Path) -> BTreeMap<String, Vec<u8>> {
+    if dir.is_file() {
+        return BTreeMap::from([("document.nib".to_string(), std::fs::read(dir).unwrap())]);
+    }
     std::fs::read_dir(dir)
         .unwrap()
         .map(|e| e.unwrap().path())
@@ -163,29 +247,41 @@ fn files(dir: &Path) -> BTreeMap<String, Vec<u8>> {
 }
 
 #[test]
-fn each_storyboard_compiles_as_xcode_compiles_it() {
+fn each_document_compiles_as_xcode_compiles_it() {
     let mut failures = Vec::new();
-    for storyboard in storyboards() {
+    for storyboard in documents() {
         let name = storyboard
             .file_stem()
             .unwrap()
             .to_string_lossy()
             .into_owned();
+        let compiled_name = format!(
+            "{name}.{}",
+            if storyboard.extension().is_some_and(|e| e == "xib") {
+                "nib"
+            } else {
+                "storyboardc"
+            }
+        );
         let out = TempDir::new("sweetpad-ibtool");
         let args = Args {
             compilation_directory: Some(out.to_path_buf()),
+            module: "App".to_string(),
             ..Args::default()
         };
-        if let Err(e) = compile(&storyboard, &args) {
-            failures.push(format!("{name}: {e}"));
-            continue;
-        }
-        let ours = files(&out.join(format!("{name}.storyboardc")));
-        let xcode = files(
-            &fixtures()
-                .join("expected")
-                .join(format!("{name}.storyboardc")),
-        );
+        // A corpus sweep can compare the actual Linux compiler's output,
+        // preserving source-path context such as Base.lproj localization.
+        let actual = if let Some(actual) = std::env::var_os("IBTOOL_ACTUAL") {
+            PathBuf::from(actual)
+        } else {
+            if let Err(e) = compile(&storyboard, &args) {
+                failures.push(format!("{name}: {e}"));
+                continue;
+            }
+            out.to_path_buf()
+        };
+        let ours = files(&actual.join(&compiled_name));
+        let xcode = files(&fixtures().join("expected").join(&compiled_name));
         if ours.keys().ne(xcode.keys()) {
             failures.push(format!(
                 "{name} compiles to {:?}, Xcode to {:?}",
@@ -194,12 +290,27 @@ fn each_storyboard_compiles_as_xcode_compiles_it() {
             ));
             continue;
         }
+        let ours_names = normalize::upstreams(&ours);
+        let xcode_names = normalize::upstreams(&xcode);
         for (file, data) in &ours {
-            if file == "Info.plist" {
+            if Path::new(file)
+                .extension()
+                .is_some_and(|extension| extension == "plist")
+            {
                 let (got, want) = (
-                    sorted(keyed_archive::read::parse(data)),
-                    sorted(keyed_archive::read::parse(&xcode[file])),
+                    sorted(normalize::metadata(data)),
+                    sorted(normalize::metadata(&xcode[file])),
                 );
+                if let Some(dump) = std::env::var_os("IBTOOL_DUMP") {
+                    let dump = Path::new(&dump);
+                    std::fs::write(dump.join(format!("{name}-{file}.got")), format!("{got:#?}"))
+                        .unwrap();
+                    std::fs::write(
+                        dump.join(format!("{name}-{file}.want")),
+                        format!("{want:#?}"),
+                    )
+                    .unwrap();
+                }
                 if got != want {
                     failures.push(format!(
                         "{name} {file}:\n  got:      {got:?}\n  expected: {want:?}"
@@ -207,9 +318,14 @@ fn each_storyboard_compiles_as_xcode_compiles_it() {
                 }
                 continue;
             }
-            let (got, want) = (canonical(data), canonical(&xcode[file]));
+            let empty = BTreeMap::new();
+            let (got, want) = (
+                canonical_with(data, ours_names.get(file).unwrap_or(&empty)),
+                canonical_with(&xcode[file], xcode_names.get(file).unwrap_or(&empty)),
+            );
             if let Some(dump) = std::env::var_os("IBTOOL_DUMP") {
                 let dump = Path::new(&dump);
+                std::fs::write(dump.join(format!("{name}-{file}.got.nib")), data).unwrap();
                 std::fs::write(dump.join(format!("{name}-{file}.got")), &got).unwrap();
                 std::fs::write(dump.join(format!("{name}-{file}.want")), &want).unwrap();
             }
@@ -219,6 +335,90 @@ fn each_storyboard_compiles_as_xcode_compiles_it() {
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn the_version_probe_matches_xcode() {
+    let args = ["--version", "--output-format", "xml1"].map(str::to_string);
+    assert!(parse_args(&args).unwrap().version);
+    assert_eq!(
+        String::from_utf8(output::encode(output::Format::Xml, &output::version_data())).unwrap(),
+        include_str!("../../../fixtures/ibtool/expected/version.plist")
+    );
+}
+
+#[test]
+fn static_sections_are_connected_before_a_table_queries_its_data_source() {
+    fn outlet_labels(data: &[u8]) -> Vec<String> {
+        let objects = read::parse(data);
+        let reference = |object: usize, key: &str| {
+            objects[object].values.iter().find_map(|(k, v)| match v {
+                Read::Object(id) if k == key => Some(*id),
+                _ => None,
+            })
+        };
+        let connections = reference(0, "UINibConnectionsKey").unwrap();
+        objects[connections]
+            .values
+            .iter()
+            .filter_map(|(_, value)| match value {
+                Read::Object(id) => reference(*id, "UILabel"),
+                _ => None,
+            })
+            .filter_map(|label| {
+                objects[label].values.iter().find_map(|(key, value)| {
+                    if let Read::Data(bytes) = value
+                        && key == "NS.bytes"
+                    {
+                        return String::from_utf8(bytes.clone()).ok();
+                    }
+                    None
+                })
+            })
+            .collect()
+    }
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/ibtool");
+    let out = TempDir::new("sweetpad-static-table-order");
+    compile(
+        &fixtures.join("AlamofireMain.storyboard"),
+        &Args {
+            compilation_directory: Some(out.to_path_buf()),
+            module: "App".into(),
+            ..Args::default()
+        },
+    )
+    .unwrap();
+    let expected = files(&fixtures.join("expected/AlamofireMain.storyboardc"));
+    let actual = files(&out.join("AlamofireMain.storyboardc"));
+    let mut checked = 0;
+    for (name, bytes) in expected.iter().filter(|(name, _)| {
+        Path::new(name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("nib"))
+    }) {
+        let labels = outlet_labels(bytes);
+        if let Some(static_source) = labels.iter().position(|label| label == "staticDataSource") {
+            let data_source = labels
+                .iter()
+                .position(|label| label == "dataSource")
+                .unwrap();
+            assert!(static_source < data_source, "Xcode's outlet order changed");
+            let labels = outlet_labels(&actual[name]);
+            assert!(
+                labels
+                    .iter()
+                    .position(|label| label == "staticDataSource")
+                    .unwrap()
+                    < labels
+                        .iter()
+                        .position(|label| label == "dataSource")
+                        .unwrap(),
+                "{name}: connecting dataSource first caches empty section headers"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 0);
 }
 
 #[test]
@@ -282,8 +482,70 @@ fn a_view_it_doesnt_know_is_refused_by_name() {
         </objects></scene></scenes></document>"#,
     )
     .unwrap();
-    let Err(error) = storyboard::compile(&document) else {
+    let Err(error) = storyboard::compile(&document, &Options::default()) else {
         panic!("compiled");
     };
     assert!(error.contains("<datePicker>"), "{error}");
+}
+
+/// Renumbering a loading boundary is harmless; changing the destination of
+/// a connection must still be caught by the corpus comparison.
+#[test]
+fn proxy_normalization_preserves_connection_destinations() {
+    fn archives(reverse_names: bool, reverse_targets: bool) -> BTreeMap<String, Vec<u8>> {
+        let mut controller = nib::Graph::default();
+        let object = controller.object("UIViewController");
+        let name = controller.string("Example-view");
+        controller.set(object, "UINibName", name);
+        let mut entries = Vec::new();
+        for (index, identifier) in ["first", "second"].into_iter().enumerate() {
+            let template = controller.object("UIStoryboardShowSegueTemplate");
+            let identifier = controller.string(identifier);
+            controller.set(template, "UIIdentifier", identifier);
+            let number = if reverse_names { 2 - index } else { index + 1 };
+            let key = controller.string(&format!("UpstreamPlaceholder-{number}"));
+            entries.push((key, template));
+        }
+        let table = controller.dictionary("NSDictionary", &entries);
+        controller.set(object, "UIExternalObjectsTableForViewLoading", table);
+        let root = storyboard::nib_root(&mut controller, &[object], &[object], &[], &[]);
+        let mut view = nib::Graph::default();
+        let mut top = Vec::new();
+        for number in 1..=2 {
+            top.push(storyboard::proxy(
+                &mut view,
+                &format!("UpstreamPlaceholder-{number}"),
+            ));
+        }
+        let mut connections = Vec::new();
+        let mut objects = top.clone();
+        for index in 0..2 {
+            let button = view.object("UIButton");
+            view.set(
+                button,
+                "UIContentHorizontalAlignment",
+                i64::try_from(index).unwrap(),
+            );
+            objects.push(button);
+            let target = if reverse_targets { 1 - index } else { index };
+            connections.push(storyboard::outlet(
+                &mut view,
+                "selectionSegueTemplate",
+                button,
+                top[target],
+            ));
+        }
+        let root_view = storyboard::nib_root(&mut view, &top, &objects, &connections, &[]);
+        BTreeMap::from([
+            ("Example.nib".to_string(), controller.write(root)),
+            ("Example-view.nib".to_string(), view.write(root_view)),
+        ])
+    }
+    fn normalized_view(files: &BTreeMap<String, Vec<u8>>) -> String {
+        let names = normalize::upstreams(files);
+        canonical_with(&files["Example-view.nib"], &names["Example-view.nib"])
+    }
+    let original = normalized_view(&archives(false, false));
+    assert_eq!(original, normalized_view(&archives(true, true)));
+    assert_ne!(original, normalized_view(&archives(true, false)));
 }

@@ -20,6 +20,11 @@ sweetpad-core = { path = "sweetpad-core" }
 # JSON is a well-known standard format, not worth reinventing; hand-rolled
 # parsing is reserved for Apple's project-domain formats (DOCS.md §3.1).
 serde_json = "1"
+# Interface Builder stores control characters in Base64-encoded XML strings.
+# minreq's proxy support already depends on this standard-format decoder.
+base64 = "0.22"
+# AppKit's archived frames follow Auto Layout's linear constraints and priorities.
+cassowary = "0.3"
 # Unicode NFD for the DerivedData path hash (xcode_hash); UAX #15 with a
 # de-facto crate — not worth hand-rolling the decomposition tables.
 unicode-normalization = "0.1"
