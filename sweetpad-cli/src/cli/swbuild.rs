@@ -71,7 +71,7 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
         let _ = std::fs::remove_dir_all(&invocation.locations.products);
         let _ = std::fs::remove_dir_all(&invocation.locations.intermediates);
     }
-    invocation.write_inputs(out)?;
+    invocation.write_inputs(plan, out)?;
     let start = Instant::now();
     let program = invocation.program.to_string_lossy().into_owned();
     let args: Vec<&str> = invocation.args.iter().map(String::as_str).collect();
@@ -232,6 +232,10 @@ fn swbuild_args(
         plan.configuration.to_string(),
         "--buildParametersFile".to_string(),
         parameters_file.display().to_string(),
+        "--buildRequestFile".to_string(),
+        pif.with_file_name("build-request.json")
+            .display()
+            .to_string(),
     ];
     let build_for = match plan.action {
         BuildAction::Build => BuildFor::Running,
@@ -339,7 +343,7 @@ impl Invocation {
     /// Write the workspace's PIF, with its Swift packages, and the build
     /// parameters, and link this binary in as the Xcode tools Swift Build
     /// needs where there is no Xcode.
-    fn write_inputs(&self, out: &Output) -> Result<(), CliError> {
+    fn write_inputs(&self, plan: &BuildPlan<'_>, out: &Output) -> Result<(), CliError> {
         let translate = |e: sweetpad_lib::project::Error| {
             CliError::new(format!(
                 "couldn't translate {} for Swift Build: {e}",
@@ -362,6 +366,8 @@ impl Invocation {
             std::fs::write(path, text)
                 .map_err(|e| CliError::new(format!("couldn't write {}: {e}", path.display())))
         };
+        let request = build_request(plan, &self.container, &pif, &self.parameters)?;
+        write(&self.pif.with_file_name("build-request.json"), &request)?;
         write(&self.pif, &Value::Array(pif))?;
         write(&self.parameters_file, &self.parameters)?;
         if let Some(tools) = &self.tools {
@@ -644,6 +650,47 @@ fn scheme_targets(
     Ok(targets)
 }
 
+/// The console build command disables implicit dependencies by default.
+/// Supply a request so workspace-linked products follow the scheme's policy,
+/// as they do in Xcode, instead of silently building only explicit targets.
+fn build_request(
+    plan: &BuildPlan<'_>,
+    container: &Path,
+    pif: &[Value],
+    parameters: &Value,
+) -> Result<Value, CliError> {
+    let build_for = match plan.action {
+        BuildAction::Build => BuildFor::Running,
+        BuildAction::BuildForTesting => BuildFor::Testing,
+    };
+    let mut targets = Vec::new();
+    for name in scheme_targets(container, plan.scheme, build_for)? {
+        let target = pif
+            .iter()
+            .filter(|object| object["type"] == "target")
+            .map(|object| &object["contents"])
+            .find(|target| target["name"] == name)
+            .ok_or_else(|| {
+                CliError::new(format!("scheme target '{name}' isn't in the workspace PIF"))
+            })?;
+        targets.push(json!({"guid":target["guid"]}));
+    }
+    let scheme = sweetpad_lib::scheme::locate(container, plan.scheme)
+        .and_then(|path| sweetpad_lib::scheme::parse_file(&path).ok());
+    Ok(json!({
+        "parameters":parameters,
+        "configuredTargets":targets,
+        "useParallelTargets":scheme.as_ref().is_none_or(|s|s.parallelize_buildables),
+        "useImplicitDependencies":scheme.as_ref().is_none_or(|s|s.build_implicit_dependencies),
+        "dependencyScope":"workspace", "useDryRun":false,
+        "continueBuildingAfterErrors":false, "hideShellScriptEnvironment":true,
+        "showNonLoggedProgress":true, "enableIndexBuildArena":false,
+        "useLegacyBuildLocations":false,
+        "buildCommand":{"command":"build","style":"buildOnly","skipDependencies":false},
+        "schemeCommand":"launch", "containerPath":container,
+    }))
+}
+
 /// Swift Build's build parameters: the configuration, the run destination,
 /// where the build writes (the folders `xcodebuild` uses, so the product
 /// locator finds the app), and the settings that override the project's.
@@ -763,7 +810,6 @@ impl DarwinSdk {
             ));
         }
         [
-            ("SDKROOT", sdk.to_string()),
             (
                 "LIBRARY_SEARCH_PATHS",
                 format!("$(inherited) {}", swift_libraries.display()),
@@ -1478,6 +1524,40 @@ mod tests {
             err.to_string()
                 .contains("'-allowProvisioningUpdates' is an xcodebuild flag")
         );
+    }
+
+    #[test]
+    fn build_requests_follow_the_schemes_dependency_policy() {
+        let dir = crate::cli::testdir::TempDir::new("sweetpad-build-request");
+        let project = dir.join("Demo.xcodeproj");
+        let schemes = project.join("xcshareddata/xcschemes");
+        std::fs::create_dir_all(&schemes).unwrap();
+        let pif = vec![json!({"type":"target","contents":{"guid":"DEMO-GUID","name":"Demo"}})];
+        let container = Container::Project(project.clone());
+        let plan = BuildPlan {
+            action: BuildAction::Build,
+            container: &container,
+            scheme: "Demo",
+            configuration: "Debug",
+            destination: Some("generic/platform=iOS Simulator"),
+            sdk: None,
+            clean: false,
+            hot: false,
+            hot_entitlements: None,
+            result_bundle: None,
+            passthrough: &[],
+        };
+        for implicit in [true, false] {
+            let value = if implicit { "YES" } else { "NO" };
+            std::fs::write(schemes.join("Demo.xcscheme"),format!(r#"<Scheme><BuildAction buildImplicitDependencies="{value}" parallelizeBuildables="NO"><BuildActionEntries><BuildActionEntry buildForRunning="YES"><BuildableReference BlueprintIdentifier="1" BlueprintName="Demo" ReferencedContainer="container:Demo.xcodeproj"/></BuildActionEntry></BuildActionEntries></BuildAction></Scheme>"#)).unwrap();
+            let request =
+                build_request(&plan, &project, &pif, &json!({"configurationName":"Debug"}))
+                    .unwrap();
+            assert_eq!(request["useImplicitDependencies"], implicit);
+            assert_eq!(request["useParallelTargets"], false);
+            assert_eq!(request["configuredTargets"], json!([{"guid":"DEMO-GUID"}]));
+            assert_eq!(request["parameters"]["configurationName"], "Debug");
+        }
     }
 
     #[test]
