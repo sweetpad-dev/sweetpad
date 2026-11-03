@@ -49,7 +49,10 @@ pub(super) fn compile(args: &Args) -> Result<(), String> {
         };
         match platform {
             "iphoneos" | "iphonesimulator" => {
-                let ok = write_ios_icon(set, name, &output, &mut written);
+                let mut ok = write_ios_icon(set, name, &output, &mut written);
+                if ok && args.value("--standalone-icon-behavior") == Some("all") {
+                    ok = write_all_ios_icons(set, name, &output, &mut written);
+                }
                 if ok {
                     info.extend(ios_icon_info(name, &devices));
                 }
@@ -398,6 +401,46 @@ fn write_ios_icon(set: &Asset, name: &str, output: &Path, written: &mut Vec<Path
             }
         };
         let path = output.join(file);
+        if write(&path, &bytes).is_err() {
+            return false;
+        }
+        written.push(path);
+    }
+    true
+}
+
+/// Extensions request every standalone icon, including legacy notification
+/// sizes. A universal single-size icon also retains its 1024-point image;
+/// classic ios-marketing slots remain in Assets.car.
+fn write_all_ios_icons(set: &Asset, name: &str, output: &Path, written: &mut Vec<PathBuf>) -> bool {
+    for entry in &set.entries {
+        let Some(source) = entry
+            .filename
+            .as_ref()
+            .filter(|_| !entry.appearance && !entry.other_traits)
+        else {
+            continue;
+        };
+        let suffix = match entry.idiom.as_str() {
+            "iphone" | "universal" => "",
+            "ipad" => "~ipad",
+            _ => continue,
+        };
+        let Some(size) = entry.size.as_deref() else {
+            continue;
+        };
+        let scale = entry
+            .scale
+            .as_deref()
+            .filter(|s| *s != "1x")
+            .map_or_else(String::new, |s| format!("@{s}"));
+        let path = output.join(format!("{name}{size}{scale}{suffix}.png"));
+        if written.contains(&path) {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(set.dir.join(source)) else {
+            return false;
+        };
         if write(&path, &bytes).is_err() {
             return false;
         }

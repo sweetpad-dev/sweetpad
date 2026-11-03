@@ -896,3 +896,34 @@ fn a_data_set_goes_in_the_car_with_its_type() {
     assert_eq!(idioms, [0, 2]);
     assert_eq!(car_names(&out.join("Assets.car")), ["Config"]);
 }
+
+#[test]
+fn extensions_keep_all_standalone_icon_sizes() {
+    let dir = TempDir::new("sweetpad-icon-extension");
+    let catalog = dir.join("Assets.xcassets");
+    let set = catalog.join("AppIcon.appiconset");
+    std::fs::create_dir_all(&set).unwrap();
+    let entries = [
+        ("small.png", "iphone", "20x20", "2x", 40),
+        ("phone.png", "iphone", "60x60", "2x", 120),
+        ("tablet.png", "ipad", "76x76", "2x", 152),
+        ("store.png", "ios-marketing", "1024x1024", "1x", 1024),
+    ];
+    let mut images = Vec::new();
+    for (filename, idiom, size, scale, pixels) in entries {
+        std::fs::write(set.join(filename), png_of(pixels, [7, 19, 31, 255])).unwrap();
+        images.push(json!({"filename":filename,"idiom":idiom,"size":size,"scale":scale}));
+    }
+    write_json(&set.join("Contents.json"), &json!({"images":images}));
+    let out = dir.join("out");
+    let mut args = platform_args(&catalog, &out, "iphonesimulator");
+    args.flags
+        .push(("--app-icon".into(), Some("AppIcon".into())));
+    args.flags
+        .push(("--standalone-icon-behavior".into(), Some("all".into())));
+    compile::compile(&args).unwrap();
+    assert!(out.join("AppIcon20x20@2x.png").is_file());
+    assert!(out.join("AppIcon60x60@2x.png").is_file());
+    assert!(out.join("AppIcon76x76@2x~ipad.png").is_file());
+    assert!(!out.join("AppIcon1024x1024.png").exists());
+}
