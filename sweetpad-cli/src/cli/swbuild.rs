@@ -327,7 +327,7 @@ impl Invocation {
             macros: host.as_ref().and_then(|_| macro_plugin()),
             env: host
                 .zip(tools.as_deref())
-                .map(|(h, tools)| h.env(tools))
+                .map(|(h, tools)| h.env(tools, DarwinSdk::signs(&sdk)))
                 .unwrap_or_default(),
             container,
             pif,
@@ -509,6 +509,9 @@ fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
         "momc",
         "xcstringstool",
         "intentbuilderc",
+        "codesign",
+        "derq",
+        super::codesign::provisioning::TOOL,
     ]
     .iter()
     .chain(super::darwin_tools::TOOLS)
@@ -781,8 +784,11 @@ impl DarwinSdk {
 
     /// The settings a build needs without Xcode's own tools.
     ///
-    /// - `CODE_SIGNING_ALLOWED=NO`: the app is signed after the build, by a
-    ///   tool that runs here.
+    /// - `CODE_SIGNING_ALLOWED=NO`, unless the build is for a device and has
+    ///   an identity to sign with (see [`Self::signs`]): the linker's ad hoc
+    ///   signature is all a simulator asks for. A signed build sets
+    ///   `CODESIGN=codesign`, the stand-in, over the bundle's `true`, which
+    ///   leaves signing to xtool.
     /// - `SWIFT_SDK_TOOLSETS`: the bundle's linker, which links for Apple
     ///   platforms where the toolchain's own refuses to, and `toolset`, with
     ///   what a build here needs on top (see [`toolset`]).
@@ -822,7 +828,6 @@ impl DarwinSdk {
             ),
             ("ARCHS", arch.to_string()),
             ("ONLY_ACTIVE_ARCH", "YES".to_string()),
-            ("CODE_SIGNING_ALLOWED", "NO".to_string()),
             (
                 "SWIFT_SDK_TOOLSETS",
                 format!(
@@ -842,8 +847,23 @@ impl DarwinSdk {
         ]
         .into_iter()
         .chain(versions)
+        .chain(std::iter::once(if Self::signs(sdk) {
+            ("CODESIGN", "codesign".to_string())
+        } else {
+            ("CODE_SIGNING_ALLOWED", "NO".to_string())
+        }))
         .map(|(k, v)| (k.to_string(), v))
         .collect()
+    }
+
+    /// Whether a build for `sdk` is signed: one for a device, with an
+    /// identity in `SWEETPAD_CODE_SIGN_P12` to sign with, which the
+    /// `codesign` and provisioning stand-ins sign with as Xcode would (see
+    /// [`super::codesign`]).
+    fn signs(sdk: &str) -> bool {
+        let platform = sdk.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
+        ["iphoneos", "appletvos", "watchos", "xros"].contains(&platform)
+            && super::codesign::identity_configured()
     }
 
     /// Whether the bundle has the `version.plist` of the platform `sdk` is
@@ -865,8 +885,9 @@ impl DarwinSdk {
     /// Swift Build takes the platforms from `XCODE_EXTRA_PLATFORM_FOLDERS`,
     /// with no Xcode to find them in, and looks tools like `dsymutil` and
     /// `xcstringstool` up on `PATH`, so the stand-ins in `tools` go first,
-    /// then the bundle's.
-    fn env(&self, tools: &Path) -> Vec<(String, Option<String>)> {
+    /// then the bundle's. A signed build has Swift Build ask the
+    /// provisioning stand-in for what Xcode would provision.
+    fn env(&self, tools: &Path, signs: bool) -> Vec<(String, Option<String>)> {
         let mut path = vec![tools.to_path_buf(), self.bundle.join("toolset/bin")];
         path.extend(
             std::env::var_os("PATH")
@@ -891,6 +912,15 @@ impl DarwinSdk {
             ),
             ("SDKROOT".to_string(), None),
             ("DEVELOPER_DIR".to_string(), None),
+            (
+                "SWEETPAD_PROVISIONING".to_string(),
+                signs.then(|| {
+                    tools
+                        .join(super::codesign::provisioning::TOOL)
+                        .display()
+                        .to_string()
+                }),
+            ),
         ]
     }
 }

@@ -114,12 +114,19 @@ swift sdk list
 section "swbuild ($TAG)"
 SWB="$HOME/src/swift-build"
 [ -d "$SWB/.git" ] || git clone -q --depth 1 --branch "$TAG" https://github.com/swiftlang/swift-build.git "$SWB"
-# swift-build-linux.patch: a macOS app's build registers it with Launch
-# Services through /System/…/lsregister, and Swift Build fails the build when
-# that can't start, where it only notes a run that fails. The patch notes
-# both.
+# swift-build-linux.patch makes three changes. A macOS app's build registers
+# it with Launch Services through /System/…/lsregister, and Swift Build fails
+# the build when that can't start, where it only notes a run that fails; the
+# patch notes both. Swift Build's console asks no one for a signing identity
+# or provisioning profile, so it signs only ad hoc; the patch has it ask the
+# tool SWEETPAD_PROVISIONING names, which sweetpad sets for a device build.
+# And it runs /usr/bin/derq by absolute path for a signed target's DER
+# entitlements; the patch has it look derq up on the search path first.
+# A checkout holding an older version of the patch is reset before this one
+# goes on.
 PATCH="$(cd "$(dirname "$0")" && pwd)/swift-build-linux.patch"
 if ! git -C "$SWB" apply --reverse --check "$PATCH" 2>/dev/null; then
+  git -C "$SWB" checkout -q -- .
   git -C "$SWB" apply "$PATCH"
   rm -f "$SWB/.build/release/swbuild"
 fi

@@ -27,6 +27,7 @@ use sweetpad_core::xcodebuild_args;
 
 pub mod actool;
 pub mod buildlog;
+pub mod codesign;
 pub mod config;
 pub mod darwin_tools;
 pub mod devicectl;

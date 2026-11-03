@@ -62,6 +62,23 @@ fn main() -> ExitCode {
     if name == Some(std::ffi::OsStr::new("intentbuilderc")) {
         return sweetpad_cli::cli::intentbuilderc::main(&args);
     }
+    // Run as `codesign`, it signs what a Linux build makes for a device; as
+    // `derq`, it writes a target's entitlements in DER; and as
+    // `sweetpad-provisioning`, it answers Swift Build's provisioning
+    // requests, from the identity and profiles the engine points at.
+    if name == Some(std::ffi::OsStr::new("codesign")) {
+        return sweetpad_cli::cli::codesign::main(&args);
+    }
+    if name == Some(std::ffi::OsStr::new("derq")) {
+        return sweetpad_cli::cli::codesign::derq_main(&args);
+    }
+    if name
+        == Some(std::ffi::OsStr::new(
+            sweetpad_cli::cli::codesign::provisioning::TOOL,
+        ))
+    {
+        return sweetpad_cli::cli::codesign::provisioning::main(&args);
+    }
     // Run as `lipo`, `strip`, `copypng`, `ditto` or
     // `embeddedBinaryValidationUtility`, it stands in for the Darwin tool of
     // that name, found on the same `PATH`.

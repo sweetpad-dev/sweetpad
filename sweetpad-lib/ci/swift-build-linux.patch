@@ -1,3 +1,18 @@
+diff --git a/Sources/SWBTaskConstruction/TaskProducers/OtherTaskProducers/GeneratedFilesTaskProducer.swift b/Sources/SWBTaskConstruction/TaskProducers/OtherTaskProducers/GeneratedFilesTaskProducer.swift
+index 17f0d1e..8743508 100644
+--- a/Sources/SWBTaskConstruction/TaskProducers/OtherTaskProducers/GeneratedFilesTaskProducer.swift
++++ b/Sources/SWBTaskConstruction/TaskProducers/OtherTaskProducers/GeneratedFilesTaskProducer.swift
+@@ -62,7 +62,9 @@ final class GeneratedFilesTaskProducer: PhasedTaskProducer, TaskProducer {
+             await appendGeneratedTasks(&tasks) { delegate in
+                 await context.productPackagingSpec.constructProductEntitlementsTasks(CommandBuildContext(producer: context, scope: scope, inputs: [FileToBuild(context: context, absolutePath: input)], output: entitlements.output), delegate, entitlementsVariant, fs: context.workspaceContext.fs)
+ 
+-                delegate.createTask(type: context.productPackagingSpec, ruleInfo: ["ProcessProductPackagingDER", entitlements.output.str, entitlements.outputDer.str], commandLine: ["/usr/bin/derq", "query", "-f", "xml", "-i", entitlements.output.str, "-o", entitlements.outputDer.str, "--raw"], environment: EnvironmentBindings([:]), workingDirectory: context.defaultWorkingDirectory, inputs: [delegate.createNode(entitlements.output)], outputs: [delegate.createNode(entitlements.outputDer)], action: delegate.taskActionCreationDelegate.createDeferredExecutionTaskActionIfRequested(userPreferences: context.userPreferences), execDescription: "Generate DER entitlements", enableSandboxing: context.productPackagingSpec.enableSandboxing)
++                // derq is in /usr/bin on macOS; elsewhere a stand-in may be on the search path.
++                let derq = context.executableSearchPaths.lookup(Path("derq"))?.str ?? "/usr/bin/derq"
++                delegate.createTask(type: context.productPackagingSpec, ruleInfo: ["ProcessProductPackagingDER", entitlements.output.str, entitlements.outputDer.str], commandLine: [derq, "query", "-f", "xml", "-i", entitlements.output.str, "-o", entitlements.outputDer.str, "--raw"], environment: EnvironmentBindings([:]), workingDirectory: context.defaultWorkingDirectory, inputs: [delegate.createNode(entitlements.output)], outputs: [delegate.createNode(entitlements.outputDer)], action: delegate.taskActionCreationDelegate.createDeferredExecutionTaskActionIfRequested(userPreferences: context.userPreferences), execDescription: "Generate DER entitlements", enableSandboxing: context.productPackagingSpec.enableSandboxing)
+             }
+         }
+ 
 diff --git a/Sources/SWBTaskExecution/TaskActions/LSRegisterURLTaskAction.swift b/Sources/SWBTaskExecution/TaskActions/LSRegisterURLTaskAction.swift
 index 3acf74a..f3da327 100644
 --- a/Sources/SWBTaskExecution/TaskActions/LSRegisterURLTaskAction.swift
@@ -22,3 +37,110 @@ index 3acf74a..f3da327 100644
          }
  
          // We don't ever fail if `lsregister` fails, instead we just emit a note.
+diff --git a/Sources/SwiftBuild/ConsoleCommands/SWBServiceConsoleBuildCommand.swift b/Sources/SwiftBuild/ConsoleCommands/SWBServiceConsoleBuildCommand.swift
+index bfd26de..e676f86 100644
+--- a/Sources/SwiftBuild/ConsoleCommands/SWBServiceConsoleBuildCommand.swift
++++ b/Sources/SwiftBuild/ConsoleCommands/SWBServiceConsoleBuildCommand.swift
+@@ -489,6 +489,11 @@ fileprivate func runBuildOperation(startInfo: SwiftBuildMessage.BuildStartedInfo
+ 
+ private final class PlanningOperationDelegate: SWBPlanningOperationDelegate, Sendable {
+     public func provisioningTaskInputs(targetGUID: String, provisioningSourceData: SWBProvisioningTaskInputsSourceData) async -> SWBProvisioningTaskInputs {
++        // Without Xcode to provision a real identity, the tool named here
++        // answers for it.
++        if let tool = ProcessInfo.processInfo.environment["SWEETPAD_PROVISIONING"], !tool.isEmpty {
++            return externalProvisioningTaskInputs(tool: tool, targetGUID: targetGUID, sourceData: provisioningSourceData)
++        }
+         let identity = provisioningSourceData.signingCertificateIdentifier
+         if identity == "-" {
+             let signedEntitlements = provisioningSourceData.entitlementsDestination == "Signature"
+@@ -512,6 +517,90 @@ private final class PlanningOperationDelegate: SWBPlanningOperationDelegate, Sen
+     }
+ }
+ 
++/// The provisioning inputs `tool` gives for a target: the request goes to its
++/// standard input and the inputs come back on its standard output, each an
++/// XML property list. The tool reports a signing problem in the inputs'
++/// `errors`; a tool that fails is an error too.
++private func externalProvisioningTaskInputs(tool: String, targetGUID: String, sourceData: SWBProvisioningTaskInputsSourceData) -> SWBProvisioningTaskInputs {
++    func failure(_ description: String) -> SWBProvisioningTaskInputs {
++        SWBProvisioningTaskInputs(errors: [["description": description]])
++    }
++    let profileSupport: String
++    switch sourceData.provisioningProfileSupport {
++    case .unsupported: profileSupport = "unsupported"
++    case .optional: profileSupport = "optional"
++    case .required: profileSupport = "required"
++    }
++    var request: [String: PropertyListItem] = [
++        "targetGUID": .plString(targetGUID),
++        "configurationName": .plString(sourceData.configurationName),
++        "provisioningProfileSupport": .plString(profileSupport),
++        "provisioningProfileSpecifier": .plString(sourceData.provisioningProfileSpecifier),
++        "provisioningProfileUUID": .plString(sourceData.provisioningProfileUUID),
++        "provisioningStyle": .plString(sourceData.provisioningStyle == .automatic ? "automatic" : "manual"),
++        "bundleIdentifier": .plString(sourceData.bundleIdentifier),
++        "productTypeEntitlements": .plDict(sourceData.productTypeEntitlements.propertyList),
++        "productTypeIdentifier": .plString(sourceData.productTypeIdentifier),
++        "signingCertificateIdentifier": .plString(sourceData.signingCertificateIdentifier),
++        "signingRequiresTeam": .plBool(sourceData.signingRequiresTeam),
++        "sdkRoot": .plString(sourceData.sdkRoot),
++        "supportsEntitlements": .plBool(sourceData.supportsEntitlements),
++        "wantsBaseEntitlementInjection": .plBool(sourceData.wantsBaseEntitlementInjection),
++        "entitlementsDestination": .plString(sourceData.entitlementsDestination),
++        "localSigningStyle": .plString(sourceData.localSigningStyle),
++        "enableCloudSigning": .plBool(sourceData.enableCloudSigning),
++    ]
++    request["teamID"] = sourceData.teamID.map { .plString($0) }
++    request["projectEntitlementsFile"] = sourceData.projectEntitlementsFile.map { .plString($0) }
++    request["projectEntitlements"] = sourceData.projectEntitlements.map { .plDict($0.propertyList) }
++    request["sdkVariant"] = sourceData.sdkVariant.map { .plString($0) }
++    do {
++        let process = Process()
++        process.executableURL = URL(fileURLWithPath: tool)
++        let input = Pipe()
++        let output = Pipe()
++        let errors = Pipe()
++        process.standardInput = input
++        process.standardOutput = output
++        process.standardError = errors
++        try process.run()
++        input.fileHandleForWriting.write(Data(try PropertyListItem.plDict(request).asBytes(.xml)))
++        try input.fileHandleForWriting.close()
++        let response = output.fileHandleForReading.readDataToEndOfFile()
++        let message = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
++        process.waitUntilExit()
++        guard process.terminationStatus == 0 else {
++            return failure("\(tool) failed: \(message)")
++        }
++        guard let inputs = try PropertyList.fromBytes(Array(response)).dictValue else {
++            return failure("\(tool) answered with something other than a dictionary")
++        }
++        func string(_ key: String) -> String? {
++            inputs[key]?.stringValue
++        }
++        func entitlements(_ key: String) throws -> [String: SWBPropertyListItem]? {
++            try inputs[key]?.dictValue.map { try .init($0) }
++        }
++        return SWBProvisioningTaskInputs(
++            identityHash: string("identityHash"),
++            identityName: string("identityName"),
++            profileName: string("profileName"),
++            profileUUID: string("profileUUID"),
++            profilePath: string("profilePath"),
++            designatedRequirements: string("designatedRequirements"),
++            signedEntitlements: try entitlements("signedEntitlements"),
++            simulatedEntitlements: try entitlements("simulatedEntitlements"),
++            appIdentifierPrefix: string("appIdentifierPrefix"),
++            teamIdentifierPrefix: string("teamIdentifierPrefix"),
++            isEnterpriseTeam: inputs["isEnterpriseTeam"]?.boolValue ?? false,
++            errors: (inputs["errors"]?.stringArrayValue ?? []).map { ["description": $0] },
++            warnings: inputs["warnings"]?.stringArrayValue ?? []
++        )
++    } catch {
++        return failure("couldn't get the provisioning inputs from \(tool): \(error)")
++    }
++}
++
+ func registerBuildCommands() {
+     for commandClass in ([
+         SWBServiceConsoleBuildCommand.self,

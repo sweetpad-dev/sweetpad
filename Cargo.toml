@@ -42,6 +42,13 @@ flate2 = "1"
 hayro = { version = "0.8", default-features = false }
 resvg = { version = "0.48", default-features = false }
 svgtypes = "0.16"
+# The codesign stand-in signs with an identity exported from Keychain Access:
+# RSA signatures, and the Triple DES and AES that a .p12 file's contents are
+# encrypted with. The signature formats around them are Apple's, and
+# hand-rolled.
+rsa = { version = "0.9", default-features = false, features = ["std"] }
+des = "0.8"
+aes = "0.8"
 # The system calls: the account's home, name and cache directory, read the
 # way Xcode's tools read them (getpwuid_r, confstr), and the raw-input flags
 # the CLI's interactive rebuild session flips.
