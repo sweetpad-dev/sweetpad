@@ -41,7 +41,21 @@ Items marked *(optional)* can wait until a project needs them.
       target alone links none of its code. `corpus/_alamofire-dynamic`
       (local) embeds `AlamofireDynamic.framework` and passes its checks
 - [ ] SwiftPM: per-test-target products *(optional)*
-- [ ] SwiftPM: package schemes *(optional)*
+- [ ] SwiftPM: a local package's own schemes, which it keeps in its
+      `.swiftpm/xcode` folder: NetNewsWire's `Account` and `Articles` build
+      with Xcode and fail here, since they name no project target
+      *(optional)*
+- [ ] Mach-O on Linux: Swift Build reads Mach-O files only on Darwin
+      (`#if canImport(Darwin)` in `SWBUtil/MachO.swift`), and fails every
+      read elsewhere. It reads a package's binary XCFramework of a framework
+      to decide whether to embed it, a macOS framework from an XCFramework
+      (Sparkle, in NetNewsWire's Mac app) and a watch app's Messages stub.
+      Port the reader in `swift-build-linux.patch`
+- [ ] Macros Tuist builds as macOS tools: its Xcode-project integration of
+      packages makes a macro target a `tool` with `SDKROOT = macosx`, which
+      the targets using it load with `-load-plugin-executable`. That Mach-O
+      can't run here, so the macro isn't found (`swift-case-paths` in a
+      Tuist fixture). Build such a tool for the host
 
 ## Apple's macros
 
@@ -115,9 +129,9 @@ swift-syntax and diff the expanded Swift text.
 
 ## Merging the branch
 
-- [ ] Corpus sweep: build every corpus project on Linux (NetNewsWire,
-      Kingfisher, the Tuist fixtures, Ice Cubes and the rest) and file each
-      failure under the items below
+- [x] Corpus sweep: every scheme of every corpus project, on Linux and
+      with Xcode 27. See the sweep below; each failure is filed under its
+      item
 - [x] Kingfisher demo, Alamofire iOS Example and NetNewsWire iOS: Linux and
       Xcode builds, bundle comparisons and simulator navigation tests.
       See the real-app integration result below
@@ -126,6 +140,61 @@ swift-syntax and diff the expanded Swift text.
 - [ ] Decide whether hayro and resvg (7.5 MB, 66 crates) stay in the macOS
       binary, which never uses them
 - [ ] Open the PR to `main` (show the message first)
+
+### Corpus sweep, 2026-11-04
+
+`ci/linux-sweep.py` builds every scheme of every corpus project in its
+Debug configuration on Linux, and with Xcode 27 wherever Linux fails. Of
+127 schemes, 76 build on Linux, 41 fail with Xcode 27 too, and 10 fail
+only on Linux. The results are in `corpus/_linux-sweep` (local): a JSON
+file and a log per scheme, and `summary.md` over them.
+
+Both hosts build a scheme the same way. It builds for the first platform
+it supports, of iOS Simulator, macOS, tvOS, watchOS and visionOS
+Simulator; a package's scheme builds for iOS Simulator. Xcode 27 refuses
+deployment targets below iOS 15, macOS 12, tvOS 15 and watchOS 9, which
+Alamofire, Kingfisher and five Tuist fixtures set, so those schemes build
+again with the targets of iOS 18's generation. The Xcode builds don't
+sign, since Linux signs only a device build.
+
+The failures only on Linux are filed above:
+
+| Schemes | Cause | Item |
+|---|---|---|
+| 4 in a Tuist fixture | `CasePathsMacros`, built as a macOS tool | Engine |
+| 2 in Tuist's Core Data fixture | `mapc` | Apple compilers |
+| NetNewsWire (Mac) | Sparkle's binary, through the Mach-O reader | Engine |
+| NetNewsWire's `Account`, `Articles` | a package's own schemes | Engine |
+| Alamofire visionOS | no visionOS platform | Build kinds |
+
+The failures with Xcode 27 too:
+
+- Ice Cubes 2.1.3 doesn't build with Xcode 27: RevenueCat's `PaywallColor`
+  redeclares a memberwise initializer, and `Document` is ambiguous in
+  `HTMLString.swift` against the iOS 27 SDK. Its packages' own schemes
+  fail here before that, as NetNewsWire's do
+- NetNewsWire's iOS schemes treat warnings as errors. Xcode 27's compiler
+  warns about a `weak` capture in `MainTimelineModernViewController.swift`,
+  and Swift 6.4 doesn't; with `SWIFT_TREAT_WARNINGS_AS_ERRORS=NO` both
+  build. Here they also passed the project's type-check limits (500 and
+  650 ms) only when built one at a time
+- WatchKit 1 apps (`watchapp2`, `watchkit2-extension`) in a Tuist fixture
+  and Alamofire: Xcode 27 no longer builds them
+- Alamofire's and Kingfisher's tvOS and watchOS schemes: no platform here,
+  and Xcode stops on their deployment targets, which the sweep raises only
+  after a Linux failure that names one
+- A Tuist workspace scheme whose test target imports a module it doesn't
+  depend on, `_spm-broken` (on purpose), test-only schemes, and
+  `RevenueCatUI`, a remote package's scheme that sweetpad doesn't list on
+  either host
+
+During the sweep, sweetpad passed the scheme's targets to `swbuild` by name
+as well as in the build request, and `swbuild` looks names up before the
+request replaces them. A package whose product and module share a name
+(NetNewsWire's `CloudKitSync`, `NewsBlur`, `RSCoreResources`) failed with
+"Found multiple targets named"; the request alone names the targets now,
+by GUID. Swift Build's service also crashed once on Kingfisher's macOS
+demo while three builds ran at once; it builds on its own.
 
 ### Additional real projects
 
@@ -204,7 +273,8 @@ Swift Build names these in its xcspecs. The Swift toolchain has `llvm-ar`,
 - [ ] `coremlc`: generate the Swift class from the `.mlmodel`; the compiled
       `.mlmodelc` format is closed, so fail clearly or compile at runtime
       *(optional)*
-- [ ] `mapc`: Core Data mapping models *(optional)*
+- [ ] `mapc`: Core Data mapping models. Tuist's Core Data fixture has one,
+      which Xcode builds *(optional)*
 - [ ] `TextureAtlas`: SpriteKit `.atlas` to `.atlasc` *(optional)*
 - [ ] SceneKit tools (`scntool`, `copySceneKitAssets`,
       `compileSceneKitShaders`): copy first *(optional)*
@@ -632,7 +702,9 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       asset lookups, the app icon among them. Swift
       Build needs `swift-build-linux.patch` (`linux-setup.sh` applies it)
       to skip registering the app with Launch Services; upstream it
-- [ ] watchOS, tvOS and visionOS apps *(optional)*
+- [ ] watchOS, tvOS and visionOS apps. The Darwin SDK bundle has none of
+      their platforms, so Alamofire's and Kingfisher's schemes for them fail
+      with "unable to resolve run destination platform" *(optional)*
 - [ ] Mac Catalyst *(optional)*
 
 ## Past building
