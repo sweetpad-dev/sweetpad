@@ -663,14 +663,9 @@ fn build_request(
     };
     let mut targets = Vec::new();
     for name in scheme_targets(container, plan.scheme, build_for)? {
-        let target = pif
-            .iter()
-            .filter(|object| object["type"] == "target")
-            .map(|object| &object["contents"])
-            .find(|target| target["name"] == name)
-            .ok_or_else(|| {
-                CliError::new(format!("scheme target '{name}' isn't in the workspace PIF"))
-            })?;
+        let target = pif_target(pif, &name).ok_or_else(|| {
+            CliError::new(format!("scheme target '{name}' isn't in the workspace PIF"))
+        })?;
         targets.push(json!({"guid":target["guid"]}));
     }
     let scheme = sweetpad_lib::scheme::locate(container, plan.scheme)
@@ -687,6 +682,30 @@ fn build_request(
         "buildCommand":{"command":"build","style":"buildOnly","skipDependencies":false},
         "schemeCommand":"launch", "containerPath":container,
     }))
+}
+
+/// The PIF target a scheme builds as `name`: the project's target of that
+/// name, else a local package's product. SwiftPM names a product's target
+/// `<name>-product` and a module's `<name>`, and the scheme Xcode makes for
+/// a product builds the product, which may share no name with a module, as
+/// one made only of binary targets doesn't. A package's module of the name
+/// comes last.
+fn pif_target<'a>(pif: &'a [Value], name: &str) -> Option<&'a Value> {
+    let targets = || {
+        pif.iter()
+            .filter(|object| object["type"] == "target")
+            .map(|object| &object["contents"])
+    };
+    let from_package = |target: &Value| {
+        target["guid"]
+            .as_str()
+            .is_some_and(|g| g.starts_with("PACKAGE-"))
+    };
+    let product = format!("{name}-product");
+    targets()
+        .find(|t| t["name"] == name && !from_package(t))
+        .or_else(|| targets().find(|t| t["name"] == product && from_package(t)))
+        .or_else(|| targets().find(|t| t["name"] == name))
 }
 
 /// Swift Build's build parameters: the configuration, the run destination,
@@ -1589,6 +1608,29 @@ mod tests {
             assert_eq!(request["configuredTargets"], json!([{"guid":"DEMO-GUID"}]));
             assert_eq!(request["parameters"]["configurationName"], "Debug");
         }
+    }
+
+    #[test]
+    fn a_scheme_names_a_project_target_then_a_package_product() {
+        let target =
+            |guid: &str, name: &str| json!({"type":"target","contents":{"guid":guid,"name":name}});
+        let pif = vec![
+            target("PACKAGE-TARGET:Shared", "Shared"),
+            target("PACKAGE-PRODUCT:shared_Shared.Shared", "Shared-product"),
+            target("PACKAGE-PRODUCT:vendor_Foo.Foo", "Foo-product"),
+            target("PACKAGE-TARGET:Lonely", "Lonely"),
+            target("APP-GUID", "Shared"),
+        ];
+        let guid = |name: &str| pif_target(&pif, name).map(|t| t["guid"].clone());
+        assert_eq!(guid("Shared"), Some(json!("APP-GUID")));
+        assert_eq!(guid("Foo"), Some(json!("PACKAGE-PRODUCT:vendor_Foo.Foo")));
+        assert_eq!(guid("Lonely"), Some(json!("PACKAGE-TARGET:Lonely")));
+        assert_eq!(guid("Missing"), None);
+        let packages_only = &pif[..4];
+        assert_eq!(
+            pif_target(packages_only, "Shared").map(|t| t["guid"].clone()),
+            Some(json!("PACKAGE-PRODUCT:shared_Shared.Shared"))
+        );
     }
 
     #[test]

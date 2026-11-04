@@ -43,9 +43,13 @@ Items marked *(optional)* can wait until a project needs them.
 - [ ] SwiftPM: per-test-target products *(optional)*
 - [ ] SwiftPM: a local package's own schemes, which it keeps in its
       `.swiftpm/xcode` folder: NetNewsWire's `Account` and `Articles` build
-      with Xcode and fail here, since they name no project target. The
-      scheme of a product that is only a binary target fails too ("isn't in
-      the workspace PIF"), `Foo` in `corpus/_xcframework-app` *(optional)*
+      with Xcode and fail here, since they name no project target
+      *(optional)*
+- [x] SwiftPM: the scheme Xcode makes for a local package's product builds
+      the product's target, `<name>-product` in SwiftPM's PIF, when no
+      project target has the scheme's name. A product shares no name with a
+      module when it's made only of binary targets, like `Foo` in
+      `corpus/_xcframework-app`, which builds here as with Xcode
 - [x] Mach-O on Linux: Swift Build reads Mach-O files only on Darwin
       (`#if canImport(Darwin)` in `SWBUtil/MachO.swift`), and fails every
       read elsewhere. It reads a package's binary XCFramework of a framework
@@ -212,6 +216,9 @@ again on Linux with `corpus/_xcframework-app` added: 78 of 129 schemes
 build. Every scheme that built before still builds, the app in
 `_xcframework-app` builds, and NetNewsWire's iOS widget passed its
 type-check limits this time. Its Mac app now stops at its own script.
+With the `xcrun` stand-in and package product schemes, 79 build: `Foo`
+joins them, and NetNewsWire's Mac app gets through `xcrun` to the
+script's `import Darwin`.
 
 ### Additional real projects
 
