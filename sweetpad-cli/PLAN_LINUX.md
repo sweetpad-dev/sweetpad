@@ -62,11 +62,6 @@ Items marked *(optional)* can wait until a project needs them.
       files, which are UTF-16. The patch names the encodings Foundation
       converts on every platform; NetNewsWire's 91 `.strings` files come out
       byte for byte as Xcode's
-- [ ] An `xcrun` stand-in: script phases run tools through `xcrun`, which
-      Linux doesn't have. NetNewsWire's Mac app runs
-      `xcrun -sdk macosx swift buildscripts/VerifyNoBS.swift`, though that
-      script imports `Darwin` and can't run here anyway; with it skipped, the
-      app builds *(optional)*
 - [ ] Macros Tuist builds as macOS tools: its Xcode-project integration of
       packages makes a macro target a `tool` with `SDKROOT = macosx`, which
       the targets using it load with `-load-plugin-executable`. That Mach-O
@@ -261,6 +256,14 @@ Swift Build names these in its xcspecs. The Swift toolchain has `llvm-ar`,
       ad-hoc signature valid; checked with `DEPLOYMENT_POSTPROCESSING=YES`
 - [x] `ditto` for run scripts (XcodeGen gives a static library with Swift
       sources one), copies only
+- [x] `xcrun` for run scripts: runs a tool from `PATH`, which has the
+      toolchain's and the stand-ins, and answers `--find` and the `--show-sdk-*` queries from the
+      Darwin SDK. A Mac script runs a tool for the host with `-sdk macosx`,
+      so that runs it without `SDKROOT`; another SDK becomes its `SDKROOT`.
+      The script phase in `corpus/_xcframework-app` gets Xcode's answers.
+      NetNewsWire's Mac app gets through it to `VerifyNoBS.swift`, which
+      imports `Darwin` and can't run here; with that script skipped, the app
+      builds
 - [ ] `iconutil`: `.iconset` to `.icns` for macOS icons *(optional)*
 - [ ] `tiffutil`: multi-resolution TIFFs, macOS *(optional)*
 - [ ] `lex`/`yacc`, `unifdef`: apt's flex, bison and unifdef in the setup

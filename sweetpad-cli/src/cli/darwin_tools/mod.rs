@@ -13,7 +13,9 @@
 //! - `embeddedBinaryValidationUtility`, which checks each app extension an
 //!   app embeds (see [`embedded_binary`]);
 //! - `ld64.lld`, in front of xtool's linker, which loads whole the archives
-//!   xtool makes in place of relocatable objects (see [`ld`]).
+//!   xtool makes in place of relocatable objects (see [`ld`]);
+//! - `xcrun`, which run scripts start tools through and ask about an SDK
+//!   with (see [`xcrun`]).
 
 // What these print is the tools' output, which Swift Build and scripts
 // parse, so it doesn't go through `Output`.
@@ -25,6 +27,7 @@ mod embedded_binary;
 mod ld;
 mod lipo;
 mod strip;
+mod xcrun;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -37,6 +40,7 @@ pub const TOOLS: &[&str] = &[
     "ld64.lld",
     "lipo",
     "strip",
+    "xcrun",
 ];
 
 /// The name of the link to the Darwin SDK's own linker, beside the stand-in
@@ -53,6 +57,7 @@ pub fn main(tool: &str, args: &[String]) -> Option<ExitCode> {
         "ld64.lld" => return Some(ld::main(args)),
         "lipo" => lipo::main(args),
         "strip" => strip::main(args),
+        "xcrun" => return Some(xcrun::main(args)),
         _ => return None,
     };
     Some(match result {

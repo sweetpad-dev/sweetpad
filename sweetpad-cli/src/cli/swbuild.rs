@@ -735,6 +735,18 @@ fn parameters(
     })
 }
 
+/// Where the Darwin Swift SDK bundle is: `SWEETPAD_DARWIN_SDK`, else the one
+/// `xtool sdk install` writes.
+pub(super) fn darwin_sdk_bundle() -> PathBuf {
+    std::env::var_os("SWEETPAD_DARWIN_SDK").map_or_else(
+        || {
+            PathBuf::from(std::env::var("HOME").unwrap_or_default())
+                .join(".swiftpm/swift-sdks/darwin.artifactbundle")
+        },
+        PathBuf::from,
+    )
+}
+
 /// A Darwin Swift SDK bundle: the Apple SDKs, Xcode's runtime libraries and a
 /// linker that writes Mach-O, which stand in for Xcode where there is none.
 struct DarwinSdk {
@@ -743,19 +755,12 @@ struct DarwinSdk {
 
 impl DarwinSdk {
     /// The bundle a build here needs: none on macOS, where Swift Build finds
-    /// Xcode itself. Elsewhere `SWEETPAD_DARWIN_SDK`, else the one
-    /// `xtool sdk install` writes.
+    /// Xcode itself, and elsewhere the one at [`darwin_sdk_bundle`].
     fn for_host() -> Result<Option<Self>, CliError> {
         if cfg!(target_os = "macos") {
             return Ok(None);
         }
-        let bundle = std::env::var_os("SWEETPAD_DARWIN_SDK").map_or_else(
-            || {
-                PathBuf::from(std::env::var("HOME").unwrap_or_default())
-                    .join(".swiftpm/swift-sdks/darwin.artifactbundle")
-            },
-            PathBuf::from,
-        );
+        let bundle = darwin_sdk_bundle();
         if !bundle.join("toolset-swb.json").is_file() {
             return Err(CliError::new(format!(
                 "no Darwin Swift SDK at {}, which a build for Apple platforms needs without Xcode",
