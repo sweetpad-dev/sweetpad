@@ -158,7 +158,22 @@ Debug adapter ('sweetpad dap'):
 
   SWEETPAD_LLDB_DAP         the lldb-dap to start in place of 'xcrun lldb-dap'
   SWEETPAD_DAP_LOG          file that records every message between the
-                            editor and lldb-dap",
+                            editor and lldb-dap
+
+Linux builds (Swift Build, where there is no Xcode):
+
+  SWEETPAD_DARWIN_SDK       the Darwin SDK bundle 'xtool sdk install' made
+                            (default ~/.swiftpm/swift-sdks/darwin.artifactbundle)
+  SWEETPAD_SWBUILD          the swbuild to run, in place of the one on PATH
+  SWEETPAD_MACROS           the sweetpad-macros plugin, in place of the one
+                            on PATH
+  SWEETPAD_CODE_SIGN_P12    the .p12 file holding the identity a device
+                            build signs with
+  SWEETPAD_CODE_SIGN_P12_PASSWORD
+                            that file's password
+  SWEETPAD_PROVISIONING_PROFILES
+                            a folder of provisioning profiles, in place of
+                            Xcode's folders",
     },
     Topic {
         name: "exit-codes",

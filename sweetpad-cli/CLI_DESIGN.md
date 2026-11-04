@@ -4532,6 +4532,103 @@ a second pass changes nothing, that a failed edit leaves the bundle's bytes
 and signature as they were, and that a bundle without `get-task-allow` is left
 alone.
 
+## 9w. v8 — building on Linux with Swift Build
+
+> `sweetpad build` builds an unmodified Xcode project where there is no
+> Xcode. `PLAN_LINUX.md` is the working record: what builds, what doesn't,
+> the corpus sweeps and the open items. This section keeps the decisions.
+> The user guide is `sweetpad-docs/docs/cli/linux.md`.
+
+**The engine follows the host.** `Engine::for_host` picks xcodebuild on
+macOS and Swift Build everywhere else, so the same command line builds on
+both. A hidden `--engine swift-build` (`SWEETPAD_ENGINE`) runs Swift Build on
+a Mac too, which is how a build is checked against xcodebuild's; it stays
+hidden because nothing else needs it. `build --show-command` prints the
+`swbuild` command line.
+
+**Swift Build gets a PIF and a build request, never a target name.**
+`sweetpad-lib`'s emitter translates the workspace into Swift Build's PIF,
+with GUIDs as `xcodebuild -dumpPIF` derives them. The packages come from
+`swift package dump-pif` over a root manifest naming the workspace's
+packages, pinned by its `Package.resolved`, with the checkouts in
+DerivedData's `SourcePackages` as Xcode keeps them, and are merged into the
+PIF. `--experimental-build-dylibs-as-frameworks` builds a dynamic product as
+the framework Xcode makes of it. The build request names the scheme's
+targets by GUID and carries its parallel and implicit-dependency settings.
+`swbuild` resolves `--target` names before the request replaces them, and
+fails on a name a package's product and module share, so none is passed.
+A scheme without a file names a project target, else a local package's
+product (`<name>-product` in SwiftPM's PIF), else a package's module: the
+scheme Xcode makes for a product builds the product, which shares no name
+with a module when it's made only of binary targets.
+
+**Everything goes where xcodebuild's build would.** The build writes to the
+DerivedData folder xcodebuild would use, so the product locator, `app run`'s
+lookups and the extension find the product unchanged. The PIF, the request,
+the parameters, the toolset and the stand-ins' folder go in
+`Intermediates.noindex/SweetPad`, and a file is rewritten only when its
+contents change, which keeps SwiftPM's manifest cache.
+
+**The Darwin SDK replaces Xcode.** xtool's bundle (`SWEETPAD_DARWIN_SDK`)
+has the Apple SDKs, Xcode's runtime libraries and an `ld64.lld` that writes
+Mach-O. The engine names its platforms in `XCODE_EXTRA_PLATFORM_FOLDERS`,
+adds a toolset with the cross-import overlay flag, the linker stand-in and
+the macro plugin, and overrides the settings that would start an Xcode-only
+step (`DarwinSdk::overrides` lists each with its reason). The Xcode version
+settings come from Xcode's `version.plist`, which `linux-setup.sh` copies
+beside the bundle, since Swift Build reports 99.99.99 without one.
+
+**A stand-in is the sweetpad binary under the tool's name.** The engine
+links the binary into the stand-ins' folder under each name, puts the folder
+on `swbuild`'s `PATH`, and `main` dispatches on `argv[0]`. One binary keeps
+the stand-ins at the CLI's version, with nothing more to install. Where the
+corpus can check, a stand-in's output is Xcode's byte for byte: asset
+catalogs, nibs, String Catalogs, Core Data models, signatures. What a
+stand-in doesn't do fails with an error that names it. The stand-ins are
+`actool`, `ibtool`, `momc`, `xcstringstool`, `intentbuilderc`, `codesign`,
+`derq`, the provisioning tool, `copypng`, `ditto`, `lipo`, `strip`,
+`embeddedBinaryValidationUtility`, `ld64.lld` and `xcrun`.
+
+**`xcrun -sdk macosx` runs a tool for the host.** A run script is a host
+program. A Mac script says `-sdk macosx` to run a tool for the Mac it's on,
+and here the host is Linux, where a Darwin `SDKROOT` breaks the toolchain's
+own builds: a `swift` script fails to build `CDispatch`. So the stand-in
+runs the tool without `SDKROOT` for macOS, gives it the SDK's path for any
+other `-sdk`, as `xcrun` does, and leaves the script's alone without one.
+`--find` and the `--show-sdk-*` queries answer from the Darwin SDK.
+
+**Swift Build is patched, as little as it can be.** `linux-setup.sh` builds
+`swbuild` at the toolchain's tag with `ci/swift-build-linux.patch`. Each
+change is one an upstream pull request could take: a failed `lsregister`
+start is a note, as a failed run already is; provisioning requests go to the
+tool `SWEETPAD_PROVISIONING` names; `derq` is looked up on the search path;
+the Mach-O reader has its structures on every platform; and text encodings
+are found by name without CoreFoundation.
+
+**Signing has no keychain.** The identity is a `.p12` file
+(`SWEETPAD_CODE_SIGN_P12`, its password in `SWEETPAD_CODE_SIGN_P12_PASSWORD`),
+and the profile is picked as automatic signing picks it, from Xcode's
+folders or `SWEETPAD_PROVISIONING_PROFILES`. The `codesign` stand-in's
+signature is Apple's byte for byte, apart from the CMS signing time. Only a
+device build signs; a simulator build keeps the linker's ad hoc signature.
+
+**Apple's macros come from `sweetpad-macros`.** The Darwin SDK's plugin
+server has no `SwiftDataMacros`, has `#Preview` only for SwiftUI views, and
+its `FoundationMacros` expands to `FoundationEssentials`, which the SDK
+doesn't have. `sweetpad-cli/macros` builds one plugin for all three, which
+the toolset loads.
+
+**Linux builds come from source.** The Homebrew release stays a macOS
+binary. `linux-setup.sh` provisions Ubuntu 24.04, an OrbStack machine on a
+Mac or a host of its own, and the guide builds sweetpad with cargo.
+
+**Testing.** Unit tests cover the PIF lookups, the build request and
+parameters, `swbuild`'s message parser and each stand-in.
+`cli_build_swift_build` runs the engine on macOS against a stub `swbuild`
+that checks its inputs. `ci/linux-build.sh` builds a fixture end to end in
+the VM, and `ci/linux-sweep.py` builds every scheme of the corpus on Linux,
+and with Xcode where Linux fails.
+
 ## 10. Testing
 
 The CLI modules carry inline `#[cfg(test)]` units that need no Xcode, so the
