@@ -20,13 +20,14 @@ function selection(params: GetParams, ctx: RpcContext) {
       hint: methodHint("scheme.set", "--name <name>"),
     });
   }
-  const configuration = params?.configuration ?? ctx.buildManager.getDefaultConfigurationForBuild() ?? "Debug";
   const xcworkspace =
     params?.xcworkspace ??
     activateCurrentXcodeWorkspacePath({ workspaceState: ctx.workspaceState, workspaceContext: ctx.workspaceContext });
   if (!xcworkspace) {
     throw new SweetpadRpcError(ERROR_CODES.NO_WORKSPACE, "No Xcode workspace detected for this folder.");
   }
+  const configuration =
+    params?.configuration ?? ctx.buildManager.getConfigurationForBuild({ xcworkspace, scheme }) ?? "Debug";
   // A caller-supplied `xcworkspace` skips the activation above, so the active folder can name a
   // different project than this one — resolve the root from the project instead.
   const workspaceRoot = getWorkspaceRoot({ xcworkspace, workspaceContext: ctx.workspaceContext });

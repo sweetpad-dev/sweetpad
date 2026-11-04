@@ -88,7 +88,6 @@ pub fn run(ctx: &mut Context) -> CommandResult {
     let key = resolved.container.key();
     let cfg = ctx.config.for_project(&key);
     let pf_scheme = ctx.project_file(&resolved.container).scheme.clone();
-    let pf_configuration = ctx.project_file(&resolved.container).configuration.clone();
     let pf_destination = ctx.project_file(&resolved.container).destination.clone();
     let pf_sdk = ctx.project_file(&resolved.container).sdk.clone();
     let st = ctx.state.projects.get(&key).cloned().unwrap_or_default();
@@ -126,26 +125,14 @@ pub fn run(ctx: &mut Context) -> CommandResult {
         note: "",
     });
 
-    let (value, source) = provenance(
-        &resolved.configuration,
-        &cfg.configuration,
-        &pf_configuration,
-        &st.configuration,
+    // The scheme's own configuration and the per-scheme pick need the scheme,
+    // so the configuration has its own ladder (see `settle_configuration`).
+    let (value, source) = resolve::effective_configuration(
+        ctx,
+        &resolved.container,
+        resolved.scheme.as_deref(),
+        false,
     );
-    // An unset configuration falls to `Debug` only when the project has one
-    // (otherwise the picker runs) — show which of those will happen.
-    let (value, source) = if let Some(v) = value {
-        (Some(v), source)
-    } else {
-        let has_debug = resolve::configurations(&resolved.container)
-            .map(|c| c.is_empty() || c.iter().any(|x| x == "Debug"))
-            .unwrap_or(true);
-        if has_debug {
-            (Some("Debug".to_string()), "default")
-        } else {
-            (None, "")
-        }
-    };
     rows.push(Row {
         name: "configuration",
         value,

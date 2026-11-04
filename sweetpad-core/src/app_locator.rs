@@ -314,6 +314,40 @@ pub fn find_scheme(container: &Path, name: &str) -> Option<scheme::Scheme> {
     scheme::parse_file(&file).ok()
 }
 
+/// The scheme action whose configuration a command builds with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SchemeAction {
+    /// `LaunchAction`: builds, runs, and the index of what they compile.
+    Launch,
+    /// `TestAction`: tests.
+    Test,
+    /// `ArchiveAction`: archives.
+    Archive,
+}
+
+/// The configuration scheme `name`'s own `action` builds with, as Xcode does.
+/// `None` when the scheme has no file (an autocreated scheme), names none, or
+/// names one the container doesn't have (a stale `.xcscheme`), so the caller
+/// falls through to its default.
+#[must_use]
+pub fn scheme_configuration(container: &Path, name: &str, action: SchemeAction) -> Option<String> {
+    let parsed = find_scheme(container, name)?;
+    let configuration = match action {
+        SchemeAction::Launch => parsed.launch_configuration,
+        SchemeAction::Test => parsed.test_action.map(|t| t.configuration),
+        SchemeAction::Archive => parsed.archive_configuration,
+    }?;
+    let known = match container.extension().and_then(|e| e.to_str()) {
+        Some("xcworkspace") => sweetpad_lib::workspace::open(container)
+            .ok()?
+            .merged_configurations(),
+        Some("xcodeproj") => sweetpad_lib::project::open(container).ok()?.configurations,
+        // SwiftPM maps any name onto debug or release itself.
+        _ => return Some(configuration),
+    };
+    known.contains(&configuration).then_some(configuration)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;

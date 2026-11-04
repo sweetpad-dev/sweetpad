@@ -118,7 +118,9 @@ impl SupportedPlatforms {
 /// doesn't resolve. `None` means "don't filter", so a missing file falls back
 /// to every target in the container rather than to an empty set.
 ///
-/// Entries count regardless of which action they build for. A per-action set
+/// Entries count regardless of which action they build for, and so does the
+/// Run action's runnable that a run builds
+/// ([`sweetpad_lib::scheme::Scheme::buildables`]). A per-action set
 /// (Run vs Test vs Archive) could only ever narrow this further, and a
 /// narrower set makes a scheme look *more* platform-specific than it is, the
 /// wrong direction to guess in, since over-narrowing would send a build to a
@@ -126,9 +128,9 @@ impl SupportedPlatforms {
 fn scheme_build_targets(container: &Path, scheme: &str) -> Option<BTreeSet<String>> {
     let parsed = find_scheme(container, scheme)?;
     let names: BTreeSet<String> = parsed
-        .build_entries
-        .iter()
-        .map(|e| e.buildable.blueprint_name.clone())
+        .buildables()
+        .into_iter()
+        .map(|b| b.blueprint_name.clone())
         .collect();
     (!names.is_empty()).then_some(names)
 }

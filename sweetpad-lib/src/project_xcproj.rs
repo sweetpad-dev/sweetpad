@@ -109,6 +109,18 @@ fn extract_targets(value: &Value, configurations: &[String]) -> Vec<Target> {
         .collect()
 }
 
+/// The name of the target whose `id` is `id`; see [`crate::project::target_name`].
+pub(crate) fn target_name(value: &Value, id: &str) -> Option<String> {
+    value
+        .get("targets")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|target| target.get("id").and_then(Value::as_str) == Some(id))?
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
 /// The `isa` the pbxproj would have used, so downstream rules that match on it
 /// keep working whichever format the project is in.
 fn isa_for(target: &Value) -> &'static str {
@@ -834,6 +846,34 @@ fn links_a_package_product(target: &Value) -> bool {
         || dependencies(target)
             .iter()
             .any(|d| d.get("kind").and_then(Value::as_str) == Some("package"))
+}
+
+/// The package products a target consumes: each `package-product-members`
+/// entry, then each `{ kind: package }` dependency, by `product-name`.
+pub(crate) fn target_package_products(
+    value: &Value,
+    target_name: &str,
+) -> Result<Vec<String>, Error> {
+    let target =
+        find_target(value, target_name).ok_or_else(|| Error::no_such_target(target_name))?;
+    let members: &[Value] = target
+        .get("package-product-members")
+        .and_then(Value::as_array)
+        .unwrap_or_default();
+    let packages = dependencies(target)
+        .iter()
+        .filter(|d| d.get("kind").and_then(Value::as_str) == Some("package"));
+    let mut out: Vec<String> = Vec::new();
+    for name in members
+        .iter()
+        .chain(packages)
+        .filter_map(|e| e.get("product-name").and_then(Value::as_str))
+    {
+        if !out.iter().any(|o| o == name) {
+            out.push(name.to_string());
+        }
+    }
+    Ok(out)
 }
 
 pub(crate) fn transitive_dependencies(value: &Value, target_name: &str) -> Vec<String> {

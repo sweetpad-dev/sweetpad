@@ -442,8 +442,7 @@ fn write_scheme(dir: &PathBuf, name: &str) {
 }
 
 /// [`SCRATCH_SCHEME_XML`] with a Launch action that runs the `Scratch` target.
-fn write_running_scheme(dir: &PathBuf, name: &str) {
-    std::fs::create_dir_all(dir).unwrap();
+fn running_scheme_xml() -> String {
     let launch = r#"   <LaunchAction buildConfiguration="Debug">
       <BuildableProductRunnable runnableDebuggingMode="0">
          <BuildableReference
@@ -456,11 +455,12 @@ fn write_running_scheme(dir: &PathBuf, name: &str) {
       </BuildableProductRunnable>
    </LaunchAction>
 </Scheme>"#;
-    std::fs::write(
-        dir.join(format!("{name}.xcscheme")),
-        SCRATCH_SCHEME_XML.replace("</Scheme>", launch),
-    )
-    .unwrap();
+    SCRATCH_SCHEME_XML.replace("</Scheme>", launch)
+}
+
+fn write_running_scheme(dir: &PathBuf, name: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(dir.join(format!("{name}.xcscheme")), running_scheme_xml()).unwrap();
 }
 
 #[test]
@@ -751,6 +751,73 @@ fn workspace_level_scheme_resolves() {
     };
     let s = resolve_one(opts);
     assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
+}
+
+#[test]
+fn workspace_user_scheme_naming_a_renamed_target_resolves() {
+    // Regression for issue #344: a private workspace scheme saved before its
+    // target was renamed still calls it `OldName`. xcodebuild resolves the
+    // buildable by its BlueprintIdentifier and builds `Scratch`, so the
+    // resolver must too rather than fail with "no target matched scheme".
+    let scheme =
+        SCRATCH_SCHEME_XML.replace("BlueprintName=\"Scratch\"", "BlueprintName=\"OldName\"");
+    let s = resolve_private_workspace_scheme("ws-stale-name", &scheme);
+    assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
+}
+
+#[test]
+fn workspace_user_scheme_naming_its_project_in_another_case_resolves() {
+    // Issue #344: `container:scratch.xcodeproj` names `Scratch.xcodeproj` on a
+    // case-insensitive volume, and xcodebuild builds the scheme's `Scratch`.
+    let scheme =
+        SCRATCH_SCHEME_XML.replace("container:Scratch.xcodeproj", "container:scratch.xcodeproj");
+    let s = resolve_private_workspace_scheme("ws-container-case", &scheme);
+    assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
+}
+
+#[test]
+fn workspace_user_scheme_running_what_its_build_action_leaves_out_resolves() {
+    // Issue #344: xcodebuild builds the Run action's target for a run even
+    // when the Build action has no entries, or lists the target with
+    // `buildForRunning="NO"`.
+    let running = running_scheme_xml();
+    let start = running.find("<BuildActionEntries>").unwrap() + "<BuildActionEntries>".len();
+    let end = running.find("</BuildActionEntries>").unwrap();
+    let empty = format!("{}{}", &running[..start], &running[end..]);
+    let s = resolve_private_workspace_scheme("ws-empty-build-action", &empty);
+    assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
+
+    let not_for_running = running.replacen("buildForRunning=\"YES\"", "buildForRunning=\"NO\"", 1);
+    let s = resolve_private_workspace_scheme("ws-not-for-running", &not_for_running);
+    assert_eq!(s.get("TARGET_NAME").map(String::as_str), Some("Scratch"));
+}
+
+/// Resolve `scheme_xml`, saved as the current user's `Private` scheme in a
+/// workspace whose single member is a copy of the Scratch project.
+fn resolve_private_workspace_scheme(tag: &str, scheme_xml: &str) -> BTreeMap<String, String> {
+    let (root, _proj) = scratch_copy(tag);
+    let ws = root.join("Test.xcworkspace");
+    std::fs::create_dir_all(&ws).unwrap();
+    std::fs::write(
+        ws.join("contents.xcworkspacedata"),
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version=\"1.0\">\n  <FileRef location=\"group:Scratch.xcodeproj\"/>\n</Workspace>\n",
+    )
+    .unwrap();
+    let dir = ws.join(format!(
+        "xcuserdata/{}.xcuserdatad/xcschemes",
+        visible_user()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("Private.xcscheme"), scheme_xml).unwrap();
+
+    resolve_one(BuildSettingsOptions {
+        workspace: Some(ws),
+        scheme: Some("Private".to_string()),
+        configuration: "Debug".to_string(),
+        sdk: "macosx".to_string(),
+        arch: "arm64".to_string(),
+        ..Default::default()
+    })
 }
 
 /// A workspace whose single member project is nested two directories below it

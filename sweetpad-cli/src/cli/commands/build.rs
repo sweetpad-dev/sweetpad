@@ -335,7 +335,14 @@ fn start(
     // toolchain rather than routing through xcodebuild (which would force a
     // destination on us). The dry run and `--` passthrough apply here too.
     if matches!(resolved.container, resolve::Container::SwiftPackage(_)) {
-        return build_package(ctx, &resolved, testing, clean, show_command, passthrough);
+        return build_package(
+            ctx,
+            &mut resolved,
+            testing,
+            clean,
+            show_command,
+            passthrough,
+        );
     }
 
     let target = match engine {
@@ -411,17 +418,14 @@ fn start(
 
 /// [`start`] for a Swift package, which builds with `swift build`.
 fn build_package(
-    ctx: &Context,
-    resolved: &resolve::Resolved,
+    ctx: &mut Context,
+    resolved: &mut resolve::Resolved,
     testing: bool,
     clean: bool,
     show_command: bool,
     passthrough: &[String],
 ) -> CommandResult {
-    let configuration = resolved
-        .configuration
-        .clone()
-        .unwrap_or_else(|| "Debug".to_string());
+    let configuration = resolve::settle_configuration(ctx, resolved, None, false)?;
     if show_command {
         let build_preview = xcodebuild::CommandPreview {
             program: "swift",

@@ -205,14 +205,13 @@ export class BuildSessionRegistry implements vscode.Disposable {
 
     const startedAt = new Date();
     const command = sessionCommandToBuildCommand(info.command);
-    const configuration = this.buildManager.getDefaultConfigurationForBuild() ?? null;
     const destination = this.destinationsManager.getSelectedXcodeDestinationForBuild()?.name ?? null;
 
     this.current = {
       buildId,
       command,
       scheme: info.scheme,
-      configuration,
+      configuration: info.configuration,
       destination,
       originator,
       caller,

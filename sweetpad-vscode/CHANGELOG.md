@@ -2,6 +2,15 @@
 
 New features, improvements and bug fixes for SweetPad are documented in this file.
 
+## [0.2.21] - 2026-11-02
+
+- Keep background indexing artifacts in DerivedData for projects with test targets and Swift package dependencies ([#345](https://github.com/sweetpad-dev/sweetpad/issues/345))
+
+## [0.2.20] - 2026-10-25
+
+- Index local Swift packages with the app's build settings ([#343](https://github.com/sweetpad-dev/sweetpad/issues/343), thanks [@satanworker](https://github.com/satanworker))
+- Fix every scheme building with the first configuration picked ([#342](https://github.com/sweetpad-dev/sweetpad/issues/342), thanks [@bartlomiejswierad-vodeno](https://github.com/bartlomiejswierad-vodeno))
+
 ## [0.2.19] - 2026-10-10
 
 - Debug through `sweetpad dap` when the SweetPad CLI is installed ([#340](https://github.com/sweetpad-dev/sweetpad/issues/340), thanks [@amgdev9](https://github.com/amgdev9))

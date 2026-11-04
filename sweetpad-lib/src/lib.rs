@@ -55,6 +55,7 @@ pub mod tree;
 pub mod tree_pbxproj;
 pub mod tree_xcproj;
 pub mod workspace;
+pub mod workspace_pif;
 pub mod xcconfig;
 pub mod xcode;
 pub mod xcode_hash;

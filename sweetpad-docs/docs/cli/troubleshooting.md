@@ -38,12 +38,12 @@ it for one command, and `developer_dir` in `sweetpad.toml` pins it for the proje
 $ sweetpad status
 /path/to/MyApp.xcodeproj (project)
   scheme        MyApp  (remembered)
-  configuration Debug  (remembered)
+  configuration Debug  (scheme)
   destination   platform=iOS Simulator,id=F92801F8-…  (remembered)
 ```
 
 The parenthetical is the point: it names the layer each value came from: a flag, an environment
-variable, a config file, a remembered answer, or auto-detection. When a build targets something you
+variable, a config file, a remembered answer, the scheme file, or auto-detection. When a build targets something you
 didn't ask for, this says who asked.
 
 `sweetpad status` also prints the effective `[xcodebuild] args`, so a build shaped by a committed file

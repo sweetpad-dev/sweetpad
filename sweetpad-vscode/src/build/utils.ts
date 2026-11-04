@@ -47,6 +47,7 @@ import {
 import type { SimulatorDestination } from "../simulators/types";
 import type { ProgressStatusBar } from "../system/status-bar";
 import { getToolById } from "../tools/constants";
+import { resolveConfiguration } from "./configuration";
 import type { BuildManager } from "./manager";
 
 export type SelectedDestination = {
@@ -472,22 +473,19 @@ export async function askConfiguration(
   buildManager: BuildManager,
   options: {
     xcworkspace: string;
+    scheme: string;
   },
 ): Promise<string> {
   progress.updateText("Searching for build configuration");
 
-  const fromConfig = getWorkspaceConfig("build.configuration");
-  if (fromConfig) {
-    return fromConfig;
-  }
-  const cached = buildManager.getDefaultConfigurationForBuild();
-  if (cached) {
-    return cached;
+  const resolved = buildManager.getConfigurationForBuild(options);
+  if (resolved) {
+    return resolved;
   }
   const selected = await askConfigurationBase({
     xcworkspace: options.xcworkspace,
   });
-  buildManager.setDefaultConfigurationForBuild(selected);
+  buildManager.setConfigurationForBuild({ ...options, configuration: selected });
   return selected;
 }
 
@@ -677,7 +675,12 @@ export async function repairStaleBuildServerConfig(options: {
       // there the repair rewrites the launcher and seeds nothing.
       xcworkspace: selected && detectWorkspaceType(selected) === "spm" ? undefined : selected,
       scheme: undefined,
-      configuration: options.workspaceState.get("build.xcodeConfiguration"),
+      configuration: resolveConfiguration({
+        workspaceState: options.workspaceState,
+        scope: "build",
+        xcworkspace: selected,
+        scheme: getWorkspaceConfig("build.scheme") ?? options.workspaceState.get("build.xcodeScheme"),
+      }),
     });
     await restartSwiftLSP();
   } catch (error) {
@@ -752,7 +755,12 @@ export async function generateBuildServerConfigOnBuild(options: {
         xcworkspace: options.xcworkspace,
         scheme: options.scheme,
         workspaceRoot: options.workspaceRoot,
-        configuration: options.workspaceState.get("build.xcodeConfiguration"),
+        configuration: resolveConfiguration({
+          workspaceState: options.workspaceState,
+          scope: "build",
+          xcworkspace: options.xcworkspace,
+          scheme: options.scheme,
+        }),
       });
     }
     return;
@@ -789,7 +797,12 @@ export async function generateBuildServerConfigOnBuild(options: {
         xcworkspace: options.xcworkspace,
         scheme: options.scheme,
         workspaceRoot: options.workspaceRoot,
-        configuration: options.workspaceState.get("build.xcodeConfiguration"),
+        configuration: resolveConfiguration({
+          workspaceState: options.workspaceState,
+          scope: "build",
+          xcworkspace: options.xcworkspace,
+          scheme: options.scheme,
+        }),
       });
     }
     return;

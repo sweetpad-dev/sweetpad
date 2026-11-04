@@ -146,7 +146,7 @@ export async function resolveDapSelection(
   const configuration =
     stringField(config, "configuration") ??
     task?.configuration ??
-    (await askConfiguration(deps.progressStatusBar, deps.buildManager, { xcworkspace: xcworkspace }));
+    (await askConfiguration(deps.progressStatusBar, deps.buildManager, { xcworkspace: xcworkspace, scheme: scheme }));
 
   const destination = await resolveDapDestination(deps, {
     config: config,

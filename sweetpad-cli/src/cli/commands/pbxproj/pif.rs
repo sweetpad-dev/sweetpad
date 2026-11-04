@@ -54,7 +54,8 @@ pub fn run(ctx: &mut Context, args: &PifArgs) -> CommandResult {
             ));
         }
     };
-    let objects = sweetpad_lib::pif::pif(&path).map_err(|e| CliError::new(e.to_string()))?;
+    let objects =
+        sweetpad_lib::workspace_pif::pif(&path).map_err(|e| CliError::new(e.to_string()))?;
     let pif = serde_json::Value::Array(objects);
     let written = match &args.file {
         Some(path) => {

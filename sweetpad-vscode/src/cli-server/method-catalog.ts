@@ -64,11 +64,13 @@ export const METHOD_CATALOG = {
     returns: "{ configurations: ConfigurationEntity[] }",
   },
   "buildConfig.get": {
-    description: "Return the currently selected Xcode build configuration (or null).",
+    description:
+      "Return the build configuration the selected scheme builds with (or null): the sweetpad.build.configuration setting, else the pick for that scheme, else the scheme's own LaunchAction configuration. Changes when the scheme changes.",
     returns: "{ configuration: ConfigurationEntity | null }",
   },
   "buildConfig.set": {
-    description: "Persist the Xcode build configuration selection.",
+    description:
+      "Pick the build configuration for the selected scheme only; other schemes keep theirs. Set the scheme first (scheme.set), and pick again after switching schemes if needed.",
     params: { name: { type: "string", required: true } },
     returns: "{ configuration: ConfigurationEntity }",
   },

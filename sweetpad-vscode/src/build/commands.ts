@@ -3,15 +3,16 @@ import path from "node:path";
 import * as vscode from "vscode";
 
 import { getBuildServerProvider } from "../bsp/commands";
-import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
-import { type XcodeScheme, getBuildConfigurations, getIsXBSInstalled, getSchemes } from "../common/cli/scripts";
+import { askConfigurationForScheme, showYesNoQuestion } from "../common/askers";
+import { type XcodeScheme, getIsXBSInstalled, getSchemeConfiguration, getSchemes } from "../common/cli/scripts";
 import type { AppDeps } from "../common/commands";
 import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { ExecBaseError, ExtensionError } from "../common/errors";
 import { exec } from "../common/exec";
 import { getWorkspaceRelativePath, isFileExists, removeDirectory } from "../common/files";
-import { showInputBox, showQuickPick } from "../common/quick-pick";
+import { showQuickPick } from "../common/quick-pick";
 import { runTask } from "../common/tasks/run";
+import { getPickedConfiguration } from "./configuration";
 import type { BuildTreeItem } from "./tree";
 import {
   askSchemeForBuild,
@@ -379,23 +380,28 @@ export async function selectConfigurationForBuildCommand(deps: AppDeps): Promise
     workspaceContext: deps.workspaceContext,
     buildManager: deps.buildManager,
   });
-
-  deps.progressStatusBar.updateText("Searching for configurations");
-  const configurations = await getBuildConfigurations({
+  const scheme = await askSchemeForBuild(deps.progressStatusBar, deps.buildManager, {
+    title: "Select scheme to pick a configuration for",
     xcworkspace: xcworkspace,
   });
 
-  let selected: string | undefined;
-  if (configurations.length === 0) {
-    selected = await showInputBox({
-      title: "No configurations found. Please enter configuration name manually",
-    });
-  } else {
-    selected = await showConfigurationPicker(configurations);
+  deps.progressStatusBar.updateText("Searching for configurations");
+  const answer = await askConfigurationForScheme({
+    xcworkspace: xcworkspace,
+    scheme: scheme,
+    schemeDefault: getSchemeConfiguration({ xcworkspace: xcworkspace, scheme: scheme, action: "launch" }),
+    current:
+      getWorkspaceConfig("build.configuration") ??
+      getPickedConfiguration({ workspaceState: deps.workspaceState, scope: "build", xcworkspace, scheme }),
+  });
+  if (!answer) {
+    vscode.window.showErrorMessage("Configuration was not selected");
+    return;
   }
 
-  if (!selected) {
-    vscode.window.showErrorMessage("Configuration was not selected");
+  // The scheme's own configuration is what applies without a pick, so going back to it drops the pick.
+  if (answer.configuration === undefined) {
+    deps.buildManager.setConfigurationForBuild({ xcworkspace, scheme, configuration: undefined });
     return;
   }
 
@@ -403,10 +409,10 @@ export async function selectConfigurationForBuildCommand(deps: AppDeps): Promise
     title: "Do you want to update configuration in the workspace settings (.vscode/settings.json)?",
   });
   if (saveAnswer) {
-    await updateWorkspaceConfig("build.configuration", selected);
-    deps.buildManager.setDefaultConfigurationForBuild(undefined);
+    await updateWorkspaceConfig("build.configuration", answer.configuration);
+    deps.buildManager.setConfigurationForBuild({ xcworkspace, scheme, configuration: undefined });
   } else {
-    deps.buildManager.setDefaultConfigurationForBuild(selected);
+    deps.buildManager.setConfigurationForBuild({ xcworkspace, scheme, configuration: answer.configuration });
   }
 }
 

@@ -1,5 +1,14 @@
-import { type XcodeConfiguration, getBuildConfigurations } from "./cli/scripts";
-import { showQuickPick } from "./quick-pick";
+import path from "node:path";
+
+import * as vscode from "vscode";
+
+import {
+  type XcodeConfiguration,
+  findSchemeFile,
+  getBuildConfigurations,
+  getProjectDefaultConfiguration,
+} from "./cli/scripts";
+import { type QuickPickItem, showInputBox, showQuickPick } from "./quick-pick";
 
 export const DEFAULT_DEBUG_CONFIGURATION = "Debug";
 export const DEFAULT_RELEASE_CONFIGURATION = "Release";
@@ -37,31 +46,91 @@ export async function askConfigurationBase(options: { xcworkspace: string }) {
     return DEFAULT_DEBUG_CONFIGURATION;
   }
 
-  // todo: we can try to find configuration in schemes files for "launch" action
-  // File: MyApp.xcodeproj/xcuserdata/YourName.xcuserdatad/xcschemes/MyApp.xcscheme
-  // Path: /Scheme/BuildAction[buildConfiguration]
-  // Path: /Scheme/LaunchAction[buildConfiguration]
+  const projectDefaultConfigration = getProjectDefaultConfiguration(options.xcworkspace);
 
   // Give user a choice to select configuration if we don't know wich one to use
-  return await showConfigurationPicker(configurations);
+  return await showConfigurationPicker(configurations, {
+    projectDefault: projectDefaultConfigration,
+  });
 }
 
 /**
- * Just show quick pick with all configurations and return selected configuration name
+ * Show quick pick with all configurations and return selected configuration name.
  */
-export async function showConfigurationPicker(configurations: XcodeConfiguration[]): Promise<string> {
+async function showConfigurationPicker(
+  configurations: XcodeConfiguration[],
+  options: { projectDefault: string | undefined },
+): Promise<string> {
   const selected = await showQuickPick({
     title: "Select configuration",
-    items: configurations.map((configuration) => {
-      return {
-        label: configuration.name,
-        context: {
-          configuration,
-        },
-      };
-    }),
+    items: configurationRows(configurations, { projectDefault: options.projectDefault, current: undefined }),
   });
-  return selected.context.configuration.name;
+  return selected.context.configuration;
+}
+
+/**
+ * One row per configuration, the one in effect with a check. `projectDefault` is the project's
+ * "Use … for command-line builds" configuration: it goes first, so it is the highlighted row.
+ */
+function configurationRows(
+  configurations: XcodeConfiguration[],
+  options: { projectDefault: string | undefined; current: string | undefined },
+) {
+  const first = configurations.filter((c) => c.name === options.projectDefault);
+  const rest = configurations.filter((c) => c.name !== options.projectDefault);
+  return [...first, ...rest].map((configuration) => ({
+    label: `${configuration.name === options.current ? "$(check) " : ""}${configuration.name}`,
+    description: configuration.name === options.projectDefault ? "Xcode command-line default" : undefined,
+    context: { configuration: configuration.name },
+  }));
+}
+
+/**
+ * The picker behind "Select configuration" for one scheme. Resolves to the picked name, or to
+ * `{ configuration: undefined }` when the user picks the scheme's own configuration back, and to
+ * undefined when nothing was picked. A project that lists no configurations asks for a name instead.
+ */
+export async function askConfigurationForScheme(options: {
+  xcworkspace: string;
+  scheme: string;
+  /** The scheme's own configuration, offered as the first row so a pick can be undone. */
+  schemeDefault: string | undefined;
+  /** The configuration picked or set for this scheme, checked in the list; undefined when the scheme's own applies. */
+  current: string | undefined;
+}): Promise<{ configuration: string | undefined } | undefined> {
+  const configurations = await getBuildConfigurations({ xcworkspace: options.xcworkspace });
+  if (configurations.length === 0) {
+    const entered = await showInputBox({
+      title: "No configurations found. Please enter configuration name manually",
+    });
+    return entered ? { configuration: entered } : undefined;
+  }
+
+  // Xcode's command-line default only applies to builds without a scheme, so it is a hint only
+  // when this scheme names no configuration of its own.
+  const rows = configurationRows(configurations, {
+    projectDefault: options.schemeDefault ? undefined : getProjectDefaultConfiguration(options.xcworkspace),
+    current: options.current,
+  });
+  const items: QuickPickItem<{ configuration: string | undefined }>[] = rows;
+  if (options.schemeDefault) {
+    // The reset row is an action, not a configuration, so it gets an icon and sits below a separator.
+    const inEffect = options.current === undefined;
+    const schemeFile = await findSchemeFile(options.xcworkspace, options.scheme);
+    items.push(
+      { label: "", kind: vscode.QuickPickItemKind.Separator, context: { configuration: undefined } },
+      {
+        label: `$(${inEffect ? "check" : "discard"}) Use the scheme's configuration`,
+        description: schemeFile ? `${options.schemeDefault}, from ${path.basename(schemeFile)}` : options.schemeDefault,
+        context: { configuration: undefined },
+      },
+    );
+  }
+  const selected = await showQuickPick({
+    title: `Select configuration for scheme "${options.scheme}"`,
+    items: items,
+  });
+  return selected.context;
 }
 
 export async function showYesNoQuestion(options: { title: string }): Promise<boolean> {

@@ -58,7 +58,11 @@ describe("BuildSessionRegistry", () => {
     });
     await reg.start();
 
-    pump(emitter, "buildSessionStarted", { scheme: "MyApp", command: "build" } satisfies BuildSessionStarted);
+    pump(emitter, "buildSessionStarted", {
+      scheme: "MyApp",
+      configuration: "Debug",
+      command: "build",
+    } satisfies BuildSessionStarted);
     pump(emitter, "buildLogLine", { line: "Compiling MyApp", diagnostic: null });
     pump(emitter, "buildLogLine", {
       line: "/path/Foo.swift:10:5: error: cannot find 'Bar'",

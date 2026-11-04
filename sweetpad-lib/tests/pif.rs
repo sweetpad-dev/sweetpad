@@ -29,8 +29,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-use sweetpad_lib::pif::pif;
 use sweetpad_lib::project::standardize;
+use sweetpad_lib::workspace_pif::pif;
 
 fn lib_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -343,8 +343,8 @@ fn corpus_package_dependencies_match_xcode() {
             eprintln!("no {container}; skipped");
             continue;
         }
-        let packages = sweetpad_lib::pif::packages(&path).unwrap();
-        let manifest = sweetpad_lib::pif::manifest(&packages).replace(&root, "$(CORPUS)");
+        let packages = sweetpad_lib::workspace_pif::packages(&path).unwrap();
+        let manifest = sweetpad_lib::workspace_pif::manifest(&packages).replace(&root, "$(CORPUS)");
         let dependencies: Vec<&str> = manifest
             .lines()
             .filter_map(|l| l.trim().strip_suffix(','))

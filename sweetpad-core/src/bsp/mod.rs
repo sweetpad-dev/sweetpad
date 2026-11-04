@@ -16,7 +16,7 @@ use std::fs::OpenOptions;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -29,7 +29,7 @@ use crate::framing::{read_message, write_message};
 use crate::scratch::{ScratchDir, TmpdirLeftovers};
 use crate::xcodebuild_args;
 use control::{LogLevel, TelemetryServer};
-use sweetpad_lib::{compiler_args, derived_data, project, scheme};
+use sweetpad_lib::{compiler_args, derived_data, pif, project, scheme};
 
 /// Write a `buildServer.json` so `sourcekit-lsp` discovers and launches this
 /// server. Its `argv` is the current executable followed by
@@ -194,6 +194,11 @@ pub fn run_with(args: &[String], command_line: CommandLine) -> Result<(), String
                 // The client is now ready for notifications: watch the project
                 // for structure changes and push `buildTarget/didChange`.
                 if !watching {
+                    // The local packages come from a `swift package dump-pif`
+                    // that takes seconds cold, so their targets join once it
+                    // finishes, with a `buildTarget/didChange`.
+                    let loader = Arc::clone(&server);
+                    std::thread::spawn(move || loader.load_packages());
                     Arc::clone(&server).spawn_change_watcher();
                     watching = true;
                     // Warm every target in the background. The cold window —
@@ -309,6 +314,9 @@ struct Server {
     /// ([`Self::builds_as_catalyst`]), against the [`Self::prepare_stamps`]
     /// they were read at.
     catalyst: Mutex<CatalystTargets>,
+    /// Set while the local packages are being read ([`Self::load_packages`]),
+    /// so a change seen meanwhile does not start a second dump.
+    loading_packages: AtomicBool,
 }
 
 /// [`Server::builds_as_catalyst`]'s answers, and the project and config
@@ -529,11 +537,12 @@ fn discover_config_from_cwd() -> Result<PathBuf, String> {
 impl ResolvedConfig {
     fn from_flags(project_path: PathBuf, flags: &BTreeMap<String, String>) -> Self {
         ResolvedConfig {
-            project_path,
             configuration: flags
                 .get("configuration")
                 .cloned()
+                .or_else(|| launch_configuration(&project_path, flags.get("scheme")))
                 .unwrap_or_else(|| "Debug".into()),
+            project_path,
             scheme: flags.get("scheme").cloned(),
             destination_platform: None,
             sdk: flags.get("sdk").cloned(),
@@ -577,14 +586,17 @@ impl ResolvedConfig {
             })
             .ok_or("bsp.json missing projectPath/workspacePath")?;
         let (command_line, warning) = command_line_of(value, base);
+        let project_path = resolve(project_path);
+        let scheme = flags.get("scheme").cloned().or_else(|| pull("scheme"));
         Ok(ResolvedConfig {
-            project_path: resolve(project_path),
             configuration: flags
                 .get("configuration")
                 .cloned()
                 .or_else(|| configuration_of(value))
+                .or_else(|| launch_configuration(&project_path, scheme.as_ref()))
                 .unwrap_or_else(|| "Debug".into()),
-            scheme: flags.get("scheme").cloned().or_else(|| pull("scheme")),
+            project_path,
+            scheme,
             destination_platform: pull("destinationPlatform"),
             sdk: flags.get("sdk").cloned(),
             arch: flags.get("arch").cloned(),
@@ -668,6 +680,16 @@ fn build_args(value: &Value) -> Vec<String> {
         .filter_map(Value::as_str)
         .map(str::to_string)
         .collect()
+}
+
+/// With no configuration named, index what the scheme's Run action builds, as
+/// `sweetpad run` and Xcode's Run do.
+fn launch_configuration(project_path: &Path, scheme: Option<&String>) -> Option<String> {
+    crate::app_locator::scheme_configuration(
+        project_path,
+        scheme?,
+        crate::app_locator::SchemeAction::Launch,
+    )
 }
 
 /// The configuration the extension's builds use: a `-configuration` in
@@ -792,6 +814,7 @@ impl Server {
             prepared: Mutex::new(BTreeMap::new()),
             last_prepare_failure: Mutex::new(None),
             catalyst: Mutex::new(CatalystTargets::default()),
+            loading_packages: AtomicBool::new(false),
         };
         server.bind_telemetry(config.socket.as_deref());
         server.log(&format!(
@@ -997,7 +1020,7 @@ impl Server {
     /// returns it directly; a workspace finds the first member whose targets
     /// include `target` (a cross-project name clash resolves to the first).
     fn project_for_target(&self, target: &str) -> PathBuf {
-        if self.projects.len() == 1 {
+        if self.projects.len() == 1 && !self.is_package_target(target) {
             return self.projects[0].clone();
         }
         self.projects
@@ -1007,9 +1030,145 @@ impl Server {
                     .map(|c| c.project.targets.iter().any(|t| t.name == target))
                     .unwrap_or(false)
             })
-            .or_else(|| self.projects.first())
             .cloned()
+            .or_else(|| self.package_of(target).map(|p| p.manifest()))
+            .or_else(|| self.projects.first().cloned())
             .unwrap_or_else(|| self.project_path.clone())
+    }
+
+    /// The registered local package that compiles `target`, when no member
+    /// project declares a target of that name.
+    fn package_of(&self, target: &str) -> Option<Arc<pif::Package>> {
+        pif::packages_of(&self.project_path)
+            .into_iter()
+            .find(|p| p.targets.iter().any(|t| t.name == target))
+    }
+
+    /// Whether `target` is a local package's rather than a member project's.
+    fn is_package_target(&self, target: &str) -> bool {
+        self.package_of(target).is_some()
+            && !self.projects.iter().any(|p| {
+                BuildContext::open(p)
+                    .is_ok_and(|c| c.project.targets.iter().any(|t| t.name == target))
+            })
+    }
+
+    /// The first member-project target that builds the package target
+    /// `target`, through the products it uses or what those depend on.
+    /// `None` for a member project's own target.
+    fn package_consumer(&self, target: &str) -> Option<String> {
+        if !self.is_package_target(target) {
+            return None;
+        }
+        let packages = pif::packages_of(&self.project_path);
+        for project in &self.projects {
+            let Ok(ctx) = BuildContext::open(project) else {
+                continue;
+            };
+            for consumer in &ctx.project.targets {
+                let mut queue = self.package_dependencies(project, &consumer.name);
+                let mut seen: BTreeSet<String> = BTreeSet::new();
+                while let Some(name) = queue.pop() {
+                    if name == target {
+                        return Some(consumer.name.clone());
+                    }
+                    if seen.insert(name.clone()) {
+                        queue.extend(
+                            packages
+                                .iter()
+                                .flat_map(|p| p.targets.iter())
+                                .filter(|t| t.name == name)
+                                .flat_map(|t| t.dependencies.iter().cloned()),
+                        );
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// The root's `SourcePackages`, where Xcode keeps its package checkouts.
+    fn source_packages(&self) -> Option<PathBuf> {
+        self.derived_data().map(|l| l.folder.join("SourcePackages"))
+    }
+
+    /// Read the root's local packages from their PIF, file them where
+    /// resolution finds them, and tell the client the targets changed when
+    /// the packages did. A failure leaves the project's own targets served,
+    /// and says why in the log.
+    fn load_packages(&self) {
+        if self.loading_packages.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let loaded = match (
+            self.source_packages(),
+            crate::package_pif::cache_dir(&self.project_path),
+        ) {
+            (Some(source_packages), Some(cache)) => {
+                let toolchain = crate::package_members::Toolchain {
+                    swift: None,
+                    developer_dir: self.developer_dir(),
+                };
+                let started = Instant::now();
+                crate::package_pif::load(&self.project_path, &source_packages, &cache, &toolchain)
+                    .map(|packages| (packages, started.elapsed()))
+            }
+            _ => Err("no DerivedData folder to find the package checkouts in".to_string()),
+        };
+        match loaded {
+            Ok((packages, took)) => {
+                let names: Vec<&str> = packages.iter().map(|p| p.name.as_str()).collect();
+                self.log(&format!("local packages: {names:?} in {took:?}"));
+                let before = pif::packages_of(&self.project_path);
+                let changed = before.len() != packages.len()
+                    || before.iter().zip(&packages).any(|(a, b)| **a != *b);
+                pif::register(&self.project_path, packages);
+                if changed {
+                    self.notify_targets_changed();
+                }
+            }
+            // Whatever was read before stays: a manifest that stops
+            // evaluating is usually mid-edit.
+            Err(e) => self.log(&format!("local packages are not indexed: {e}")),
+        }
+        self.loading_packages.store(false, Ordering::SeqCst);
+    }
+
+    /// What [`Self::load_packages`] reads, to watch for changes.
+    fn package_inputs(&self) -> Vec<PathBuf> {
+        self.source_packages()
+            .map_or_else(Vec::new, |source_packages| {
+                crate::package_pif::inputs(
+                    &self.project_path,
+                    &source_packages,
+                    &pif::packages_of(&self.project_path),
+                )
+            })
+    }
+
+    /// The local package targets `target` builds through the package
+    /// products it uses.
+    fn package_dependencies(&self, owning: &Path, target: &str) -> Vec<String> {
+        let products = project::target_package_products(owning, target).unwrap_or_default();
+        if products.is_empty() {
+            return Vec::new();
+        }
+        let packages = pif::packages_of(&self.project_path);
+        let mut out: Vec<String> = Vec::new();
+        for product in &products {
+            for package in &packages {
+                for (name, built) in &package.products {
+                    if name == product {
+                        for t in built {
+                            if !out.contains(t) {
+                                out.push(t.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// Whether the root is a `.xcworkspace` (prepare builds with `-workspace`).
@@ -1091,12 +1250,17 @@ impl Server {
             .map(|name| {
                 // Only edges to targets we also expose are useful to sourcekit-lsp;
                 // drop any that fall outside this project's target set.
-                let deps: Vec<Value> = project::target_dependencies(&self.project_for_target(name), name)
-                    .unwrap_or_default()
+                let owning = self.project_for_target(name);
+                let mut deps = project::target_dependencies(&owning, name).unwrap_or_default();
+                deps.extend(self.package_dependencies(&owning, name));
+                let deps: Vec<Value> = deps
                     .into_iter()
                     .filter(|d| targets.contains(d))
                     .map(|d| target_id(&d))
                     .collect();
+                // A package target's files sit under its package directory.
+                let base = pif::registered(&owning)
+                    .map_or_else(|| base.clone(), |(package, _)| file_uri(&package.dir));
                 json!({
                     "id": target_id(name),
                     "displayName": name,
@@ -1114,22 +1278,41 @@ impl Server {
     /// The project's current target names — re-read from disk (the pbxproj parse
     /// is `(len, mtime)`-cached, so this is cheap and reflects edits), falling
     /// back to the startup set if the project momentarily fails to open.
+    ///
+    /// The local package targets follow: those behind the package products
+    /// the project's targets use, and what those depend on — the package
+    /// targets a build of the project compiles.
     fn current_targets(&self) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
+        let mut used: Vec<String> = Vec::new();
         for p in &self.projects {
             if let Ok(ctx) = BuildContext::open(p) {
                 for t in &ctx.project.targets {
                     if !out.contains(&t.name) {
                         out.push(t.name.clone());
                     }
+                    used.extend(self.package_dependencies(p, &t.name));
                 }
             }
         }
         if out.is_empty() {
-            self.targets.clone()
-        } else {
-            out
+            return self.targets.clone();
         }
+        let packages = pif::packages_of(&self.project_path);
+        while let Some(name) = used.pop() {
+            if out.contains(&name) {
+                continue;
+            }
+            if let Some(target) = packages
+                .iter()
+                .flat_map(|p| p.targets.iter())
+                .find(|t| t.name == name)
+            {
+                used.extend(target.dependencies.iter().cloned());
+                out.push(name);
+            }
+        }
+        out
     }
 
     /// Watch the project file (and the `bsp.json` config, when present)
@@ -1155,12 +1338,27 @@ impl Server {
                 |paths: &[PathBuf]| paths.iter().map(|p| file_stamp(p)).collect::<Vec<_>>();
             let mut last_doc = stamp_all(&documents);
             let mut last_cfg = config.as_deref().map(file_stamp);
+            let mut packages = self.package_inputs();
+            let mut last_packages = stamp_all(&packages);
             loop {
                 std::thread::sleep(interval);
                 let now_doc = stamp_all(&documents);
                 if now_doc != last_doc {
                     last_doc = now_doc;
                     self.notify_targets_changed();
+                }
+                // A manifest, a source folder or the resolved versions
+                // changing can change the packages, so they are read again.
+                // A load in progress picks the change up itself.
+                if !self.loading_packages.load(Ordering::SeqCst) {
+                    let now = self.package_inputs();
+                    let now_stamps = stamp_all(&now);
+                    if now != packages || now_stamps != last_packages {
+                        packages = now;
+                        last_packages = now_stamps;
+                        let loader = Arc::clone(&self);
+                        std::thread::spawn(move || loader.load_packages());
+                    }
                 }
                 if let (Some(path), Some(prev)) = (config.as_deref(), last_cfg.as_mut()) {
                     let now_cfg = file_stamp(path);
@@ -1411,8 +1609,20 @@ impl Server {
     /// The `xcodebuild` invocation that prepares `target`, and a phrase naming
     /// how, for the log.
     fn prepare_command(&self, target: &str) -> (Command, String) {
-        let owning = self.project_for_target(target);
-        let scheme = project::scheme_for_target(&owning, target);
+        let mut owning = self.project_for_target(target);
+        // A package target builds through the scheme Xcode gives the first
+        // product that builds it, in the root that lists that scheme.
+        let scheme = match pif::registered(&owning) {
+            Some((package, _)) => {
+                owning.clone_from(&self.project_path);
+                package
+                    .products
+                    .iter()
+                    .find(|(_, built)| built.iter().any(|t| t == target))
+                    .map(|(name, _)| name.clone())
+            }
+            None => project::scheme_for_target(&owning, target),
+        };
         let EditorPlatform { sdk, arch, .. } = self.editor_platform(target);
         let developer = self.developer_dir();
         let mut cmd = Command::new(developer.as_ref().map_or_else(
@@ -1539,13 +1749,25 @@ impl Server {
         }
     }
 
-    /// `SYMROOT` / `OBJROOT` for a `-target` build: the products and
-    /// intermediates roots inside the DerivedData the editor arguments resolve
-    /// against. Empty when that directory can't be located, which leaves
-    /// xcodebuild its own defaults rather than a half-pinned tree.
+    /// The products, intermediates and index store for a `-target` build,
+    /// inside the DerivedData the editor reads. Empty when DerivedData can't
+    /// be located.
     fn build_roots(&self) -> Vec<(&'static str, PathBuf)> {
         self.derived_data().map_or_else(Vec::new, |dd| {
-            vec![("SYMROOT", dd.products), ("OBJROOT", dd.intermediates)]
+            vec![
+                ("SYMROOT", dd.products),
+                ("OBJROOT", dd.intermediates),
+                // A test target without a scheme takes this -target fallback.
+                // Xcode 27.2 enables indexing for its Swift package dependencies
+                // but can leave the store path empty; SYMROOT/OBJROOT don't set it.
+                // The resulting `-index-store-path -Xcc` treats -Xcc as the path
+                // and writes into <project>.xcodeproj/-Xcc (#345).
+                // Keep this path aligned with initialize's indexStorePath.
+                (
+                    "INDEX_DATA_STORE_DIR",
+                    dd.folder.join("Index.noindex/DataStore"),
+                ),
+            ]
         })
     }
 
@@ -1872,16 +2094,17 @@ impl Server {
         listing
     }
 
-    /// The targets the scheme `name` builds: its build entries, then the
-    /// targets those depend on. A scheme with no file is one Xcode
-    /// autocreates, which builds the target it is named after.
+    /// The targets the scheme `name` builds: its build entries and the
+    /// runnable a run adds ([`scheme::Scheme::buildables`]), then the targets
+    /// those depend on. A scheme with no file is one Xcode autocreates, which
+    /// builds the target it is named after.
     fn scheme_targets(&self, name: &str) -> (Vec<String>, Vec<String>) {
         let entries: Vec<String> = match scheme::locate(&self.project_path, name) {
             Some(path) => scheme::parse_file(&path)
                 .map(|s| {
-                    s.build_entries
+                    s.buildables()
                         .into_iter()
-                        .map(|e| e.buildable.blueprint_name)
+                        .map(|b| b.blueprint_name.clone())
                         .collect()
                 })
                 .unwrap_or_default(),
@@ -1949,6 +2172,11 @@ impl Server {
                 arch,
                 catalyst: false,
             };
+        }
+        // A package target names no platform of its own (`SDKROOT = auto`):
+        // Xcode builds it for the target that uses it.
+        if let Some(consumer) = self.package_consumer(target) {
+            return self.editor_platform(&consumer);
         }
         let (sdkroot, supported) = self.authored_platform(target);
         let destination = self.destination_family();
@@ -2503,8 +2731,9 @@ fn narrow(targets: &mut Vec<String>, mut rule: impl FnMut(&str) -> bool) {
 mod tests {
     use super::{
         CommandLine, LogLevel, ResolvedConfig, Server, Value, derived_data, editor_sdk_for,
-        file_uri, parse_flags, path_from_uri, target_name_from_uri, write_config,
+        file_uri, parse_flags, path_from_uri, pif, target_name_from_uri, write_config,
     };
+    use serde_json::json;
     use std::collections::BTreeMap;
     use std::io::{self, Write};
     use std::path::{Path, PathBuf};
@@ -2535,6 +2764,43 @@ mod tests {
         fn flush(&mut self) -> io::Result<()> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn a_target_prepare_writes_to_the_advertised_index_store() {
+        let project = PathBuf::from(format!(
+            "{}/fixtures/_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj",
+            env!("SWEETPAD_LIB_DIR")
+        ));
+        let scratch = crate::scratch::ScratchDir::new("sweetpad-bsp-index-store").unwrap();
+        let flags = parse_flags(&[
+            "--project".into(),
+            project.display().to_string(),
+            "--derived-data-path".into(),
+            scratch.join("Custom DerivedData").display().to_string(),
+        ]);
+        let server = Server::build(
+            ResolvedConfig::from_flags(project, &flags),
+            None,
+            Arc::new(AtomicU8::new(LogLevel::Info as u8)),
+            CommandLine::default(),
+            Sent::default().writer(),
+        )
+        .unwrap();
+        let initialized = server.initialize();
+        let store = initialized["data"]["indexStorePath"].as_str().unwrap();
+        let (cmd, _) = server.prepare_command("SweetpadCIAppTests");
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy()).collect();
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["-target", "SweetpadCIAppTests"]),
+            "expected the fallback for a target without a scheme: {args:?}"
+        );
+        assert!(
+            args.iter()
+                .any(|a| a == &format!("INDEX_DATA_STORE_DIR={store}")),
+            "prepare must write index data where the client reads it: {args:?}"
+        );
     }
 
     #[test]
@@ -3116,9 +3382,162 @@ mod tests {
         assert_eq!(read(&server, "CatApp"), ios);
     }
 
+    /// `bsp init --scheme` without `--configuration` indexes what the scheme's
+    /// Run action builds, as `sweetpad run` does; a configuration the project
+    /// lacks is skipped.
+    #[test]
+    fn a_scheme_without_a_configuration_indexes_its_run_configuration() {
+        let scratch = crate::scratch::ScratchDir::new("sweetpad-bsp-scheme-config").unwrap();
+        let project = scratch.join("App.xcodeproj");
+        let schemes = project.join("xcshareddata/xcschemes");
+        std::fs::create_dir_all(&schemes).unwrap();
+        std::fs::write(
+            project.join("project.pbxproj"),
+            r#"// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+		C1 = {isa = XCBuildConfiguration; buildSettings = {}; name = Debug; };
+		C2 = {isa = XCBuildConfiguration; buildSettings = {}; name = UAT; };
+		L1 = {isa = XCConfigurationList; buildConfigurations = (C1, C2, ); defaultConfigurationName = UAT; };
+		G1 = {isa = PBXGroup; children = (); sourceTree = "<group>"; };
+		P1 = {isa = PBXProject; buildConfigurationList = L1; mainGroup = G1; targets = (); };
+	};
+	rootObject = P1;
+}
+"#,
+        )
+        .unwrap();
+        for (name, run) in [("App UAT", "UAT"), ("App Stale", "Staging")] {
+            std::fs::write(
+                schemes.join(format!("{name}.xcscheme")),
+                format!(
+                    "<Scheme><BuildAction/><LaunchAction buildConfiguration=\"{run}\"/></Scheme>"
+                ),
+            )
+            .unwrap();
+        }
+        let configuration = |args: &[&str]| {
+            let args: Vec<String> = args.iter().map(|a| (*a).to_string()).collect();
+            ResolvedConfig::from_flags(project.clone(), &parse_flags(&args)).configuration
+        };
+        assert_eq!(configuration(&["--scheme", "App UAT"]), "UAT");
+        assert_eq!(
+            configuration(&["--scheme", "App UAT", "--configuration", "Debug"]),
+            "Debug"
+        );
+        assert_eq!(configuration(&["--scheme", "App Stale"]), "Debug");
+        assert_eq!(configuration(&[]), "Debug");
+    }
+
     /// A `-configuration` in `buildArgs` replaces the one the extension picks
     /// on its builds' command line, so the index resolves that configuration,
     /// at startup and when the file changes, and the prepare build takes it.
+    /// The local packages registered for a root join its targets: the ones
+    /// behind the products its targets use and what those depend on, with
+    /// edges from the app, and a prepare through the product's scheme.
+    #[test]
+    fn local_package_targets_join_the_project_targets() {
+        let scratch = crate::scratch::ScratchDir::new("sweetpad-bsp-local-packages").unwrap();
+        let project = scratch.join("App.xcodeproj");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(
+            project.join("project.pbxproj"),
+            r#"// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+		C1 = {isa = XCBuildConfiguration; buildSettings = {SDKROOT = iphoneos; }; name = Debug; };
+		L1 = {isa = XCConfigurationList; buildConfigurations = (C1, ); defaultConfigurationName = Debug; };
+		G1 = {isa = PBXGroup; children = (); sourceTree = "<group>"; };
+		D1 = {isa = XCSwiftPackageProductDependency; productName = Feature; };
+		T1 = {isa = PBXNativeTarget; buildConfigurationList = L1; buildPhases = (); dependencies = (); name = App; packageProductDependencies = (D1, ); productType = "com.apple.product-type.application"; };
+		P1 = {isa = PBXProject; buildConfigurationList = L1; mainGroup = G1; targets = (T1, ); };
+	};
+	rootObject = P1;
+}
+"#,
+        )
+        .unwrap();
+        let dir = |name: &str| {
+            scratch
+                .join("Packages")
+                .join(name)
+                .to_string_lossy()
+                .into_owned()
+        };
+        let target = |sig: &str, guid: &str, name: &str, deps: Value| {
+            json!({ "type": "target", "signature": sig, "contents": {
+                "guid": guid, "name": name, "type": "standard",
+                "productTypeIdentifier": "org.swift.product-type.library.static",
+                "dependencies": deps, "buildConfigurations": [] } })
+        };
+        let package = |sig: &str, name: &str, targets: Value| {
+            json!({ "type": "project", "signature": sig, "contents": {
+                "guid": format!("PACKAGE:{}", name.to_lowercase()), "projectName": name,
+                "projectDirectory": dir(name), "buildConfigurations": [],
+                "groupTree": { "type": "group", "path": "", "sourceTree": "<group>" },
+                "targets": targets } })
+        };
+        let dumped = vec![
+            package("p1", "Core", json!(["t1", "t2", "t5"])),
+            target("t1", "PACKAGE-TARGET:Core", "Core", json!([])),
+            target("t2", "PACKAGE-TARGET:Unused", "Unused", json!([])),
+            json!({ "type": "target", "signature": "t5", "contents": {
+                "guid": "PACKAGE-PRODUCT:core_Core.Core", "name": "Core-product", "type": "packageProduct",
+                "dependencies": [{ "guid": "PACKAGE-TARGET:Core" }] } }),
+            package("p2", "Feature", json!(["t3", "t4"])),
+            target(
+                "t3",
+                "PACKAGE-TARGET:Feature",
+                "Feature",
+                json!([{ "guid": "PACKAGE-PRODUCT:core_Core.Core" }]),
+            ),
+            json!({ "type": "target", "signature": "t4", "contents": {
+                "guid": "PACKAGE-PRODUCT:feature_Feature.Feature", "name": "Feature-product", "type": "packageProduct",
+                "dependencies": [{ "guid": "PACKAGE-TARGET:Feature" }] } }),
+        ];
+        let server = Server::build(
+            ResolvedConfig::from_flags(project.clone(), &BTreeMap::new()),
+            None,
+            Arc::new(AtomicU8::new(LogLevel::Info as u8)),
+            CommandLine::default(),
+            Sent::default().writer(),
+        )
+        .unwrap();
+        pif::register(&server.project_path, pif::parse(&dumped, &[]));
+
+        assert_eq!(server.current_targets(), ["App", "Feature", "Core"]);
+        let targets = server.build_targets();
+        let deps = |name: &str| -> Vec<String> {
+            targets["targets"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["displayName"] == name)
+                .unwrap()["dependencies"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|d| target_name_from_uri(d["uri"].as_str().unwrap()))
+                .collect()
+        };
+        assert_eq!(deps("App"), ["Feature"]);
+        assert_eq!(deps("Feature"), ["Core"]);
+        // A package names no platform; it reads as the app that uses it.
+        assert_eq!(server.package_consumer("Core").as_deref(), Some("App"));
+        assert_eq!(server.package_consumer("App"), None);
+        let (_, how) = server.prepare_command("Core");
+        assert!(how.starts_with("scheme Core "), "{how}");
+        pif::register(&server.project_path, Vec::new());
+    }
+
     #[test]
     fn a_configuration_in_build_args_is_the_one_the_index_resolves() {
         let project = format!(

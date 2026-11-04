@@ -2491,10 +2491,9 @@ fn xml_attr(s: &str) -> String {
 /// dry run (`--show-command` previews instead of executing), `--coverage`
 /// (`--enable-code-coverage`), and `--` passthrough.
 fn spm_test(ctx: &mut Context, resolved: &resolve::Resolved, args: &RunArgs) -> CommandResult {
-    let configuration = resolved
-        .configuration
-        .clone()
-        .unwrap_or_else(|| "Debug".to_string());
+    // A package has no scheme layers, so settling never reaches the picker or
+    // records anything on this copy.
+    let configuration = resolve::settle_configuration(ctx, &mut resolved.clone(), None, false)?;
 
     if args.show_command {
         return Ok(Rendered::data(xcodebuild::CommandPreview {

@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 
+import { getPickedConfiguration } from "../build/configuration";
 import type { BuildTreeItem } from "../build/tree";
 import { askXcodeWorkspacePath } from "../build/utils";
-import { showConfigurationPicker, showYesNoQuestion } from "../common/askers";
-import { getBuildConfigurations } from "../common/cli/scripts";
+import { askConfigurationForScheme, showYesNoQuestion } from "../common/askers";
+import { getSchemeConfiguration } from "../common/cli/scripts";
 import type { AppDeps } from "../common/commands";
-import { updateWorkspaceConfig } from "../common/config";
-import { showInputBox } from "../common/quick-pick";
+import { getWorkspaceConfig, updateWorkspaceConfig } from "../common/config";
 import { askSchemeForTesting, askTestingTarget } from "./utils";
 
 export async function selectTestingTargetCommand(deps: AppDeps): Promise<void> {
@@ -67,23 +67,28 @@ export async function selectConfigurationForTestingCommand(deps: AppDeps): Promi
     workspaceContext: deps.workspaceContext,
     buildManager: deps.buildManager,
   });
-
-  deps.progressStatusBar.updateText("Searching for configurations");
-  const configurations = await getBuildConfigurations({
+  const scheme = await askSchemeForTesting(deps.progressStatusBar, deps.buildManager, {
+    title: "Select scheme to pick a configuration for",
     xcworkspace: xcworkspace,
   });
 
-  let selected: string | undefined;
-  if (configurations.length === 0) {
-    selected = await showInputBox({
-      title: "No configurations found. Please enter configuration name manually",
-    });
-  } else {
-    selected = await showConfigurationPicker(configurations);
+  deps.progressStatusBar.updateText("Searching for configurations");
+  const answer = await askConfigurationForScheme({
+    xcworkspace: xcworkspace,
+    scheme: scheme,
+    schemeDefault: getSchemeConfiguration({ xcworkspace: xcworkspace, scheme: scheme, action: "test" }),
+    current:
+      getWorkspaceConfig("testing.configuration") ??
+      getPickedConfiguration({ workspaceState: deps.workspaceState, scope: "testing", xcworkspace, scheme }),
+  });
+  if (!answer) {
+    vscode.window.showErrorMessage("Configuration was not selected");
+    return;
   }
 
-  if (!selected) {
-    vscode.window.showErrorMessage("Configuration was not selected");
+  // The scheme's own configuration is what applies without a pick, so going back to it drops the pick.
+  if (answer.configuration === undefined) {
+    deps.buildManager.setConfigurationForTesting({ xcworkspace, scheme, configuration: undefined });
     return;
   }
 
@@ -91,9 +96,9 @@ export async function selectConfigurationForTestingCommand(deps: AppDeps): Promi
     title: "Do you want to update configuration in the workspace settings (.vscode/settings.json)?",
   });
   if (saveAnswer) {
-    await updateWorkspaceConfig("testing.configuration", selected);
-    deps.buildManager.setDefaultConfigurationForTesting(undefined);
+    await updateWorkspaceConfig("testing.configuration", answer.configuration);
+    deps.buildManager.setConfigurationForTesting({ xcworkspace, scheme, configuration: undefined });
   } else {
-    deps.buildManager.setDefaultConfigurationForTesting(selected);
+    deps.buildManager.setConfigurationForTesting({ xcworkspace, scheme, configuration: answer.configuration });
   }
 }

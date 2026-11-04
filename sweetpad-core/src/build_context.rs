@@ -326,12 +326,17 @@ impl BuildContext {
     pub fn open(project_path: &Path) -> Result<Self, Error> {
         let document = Document::parse(project_path)?;
         let project = document.open(project_path)?;
+        // A local package builds as part of the container it was registered
+        // under, so its DerivedData is that container's.
+        let derived_data_container = matches!(document, Document::Pif(_))
+            .then(|| sweetpad_lib::pif::registered(project_path).map(|(_, container)| container))
+            .flatten();
         Ok(Self {
             project,
             document,
             xcspec: None,
             extra_xcconfig: Vec::new(),
-            derived_data_container: None,
+            derived_data_container,
             read_xcode_locations: false,
         })
     }
@@ -544,10 +549,11 @@ impl BuildContext {
     }
 
     /// Turn a scheme's `BuildAction` into a list of [`ResolveQuery`]s
-    /// against this context. One query per entry that participates in
-    /// `build_for` (xcodebuild only builds the entries whose matching
-    /// `buildFor*` flag is set — a testing-only entry is skipped for a
-    /// plain build) and whose `BlueprintName` resolves to a target in
+    /// against this context. One query per buildable a build for
+    /// `build_for` builds ([`Scheme::buildables_for`]: xcodebuild only builds
+    /// the entries whose matching `buildFor*` flag is set — a testing-only
+    /// entry is skipped for a plain build — plus, for a run, the Run action's
+    /// runnable) whose `BlueprintName` resolves to a target in
     /// `self.project`; cross-container entries land in
     /// [`BuildPlan::skipped`].
     ///
@@ -576,13 +582,10 @@ impl BuildContext {
             .is_some_and(|t| t.code_coverage_enabled);
         let mut entries = Vec::new();
         let mut skipped = Vec::new();
-        for entry in &scheme.build_entries {
-            if !entry.builds_for(build_for) {
-                continue;
-            }
-            let name = &entry.buildable.blueprint_name;
+        for buildable in scheme.buildables_for(build_for) {
+            let name = &buildable.blueprint_name;
             let owned = self.project.targets.iter().any(|t| t.name == *name)
-                && container_matches(&entry.buildable.container, &self.project.path);
+                && container_matches(&buildable.container, &self.project.path);
             if owned {
                 let mut q = ResolveQuery::new(name, configuration, sdk, arch)
                     .with_code_coverage_enabled(code_coverage)
@@ -592,7 +595,7 @@ impl BuildContext {
                 }
                 entries.push(q);
             } else {
-                skipped.push(entry.buildable.clone());
+                skipped.push(buildable.clone());
             }
         }
         BuildPlan { entries, skipped }
@@ -1137,14 +1140,18 @@ fn folded_location(value: &str, project_dir: Option<&str>) -> Option<String> {
 /// The container path is relative to the scheme's own anchor directory, which
 /// the planner doesn't know, so compare by `.xcodeproj` basename — enough to
 /// keep a workspace scheme's buildable out of a *different* project that
-/// happens to own a same-named target. An entry with no parseable container
-/// matches permissively.
+/// happens to own a same-named target. The basenames compare ignoring case,
+/// as xcodebuild opens `container:app.xcodeproj` for `App.xcodeproj` on a
+/// case-insensitive volume. An entry with no parseable container matches
+/// permissively.
 fn container_matches(container: &str, project_path: &Path) -> bool {
     let Some(rest) = container.strip_prefix("container:") else {
         return true;
     };
     match Path::new(rest).file_name() {
-        Some(basename) => project_path.file_name() == Some(basename),
+        Some(basename) => project_path.file_name().is_some_and(|own| {
+            sweetpad_lib::scheme::same_path_ignoring_case(Path::new(own), Path::new(basename))
+        }),
         None => true,
     }
 }

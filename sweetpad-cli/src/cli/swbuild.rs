@@ -3,7 +3,7 @@
 //!
 //! Swift Build takes no project files. It reads the project interchange
 //! format (PIF) Xcode translates a workspace into, so a build writes the
-//! workspace's PIF ([`sweetpad_lib::pif::pif`]), with the Swift packages it
+//! workspace's PIF ([`sweetpad_lib::workspace_pif::pif`]), with the Swift packages it
 //! uses as SwiftPM emits them, and its build parameters beside the build's
 //! intermediates, then runs `swbuild build` on them.
 //! swbuild reports the build as a stream of JSON messages, which
@@ -339,11 +339,11 @@ impl Invocation {
                 self.container.display()
             ))
         };
-        let mut pif = sweetpad_lib::pif::pif(&self.container).map_err(translate)?;
-        let packages = sweetpad_lib::pif::packages(&self.container).map_err(translate)?;
+        let mut pif = sweetpad_lib::workspace_pif::pif(&self.container).map_err(translate)?;
+        let packages = sweetpad_lib::workspace_pif::packages(&self.container).map_err(translate)?;
         if !packages.is_empty() {
             let dumped = self.package_pif(&packages, out)?;
-            sweetpad_lib::pif::add_packages(&mut pif, dumped, &self.packages);
+            sweetpad_lib::workspace_pif::add_packages(&mut pif, dumped, &self.packages);
         }
         let write = |path: &Path, value: &Value| -> Result<(), CliError> {
             if let Some(dir) = path.parent() {
@@ -374,12 +374,12 @@ impl Invocation {
     /// `SourcePackages`, where Xcode keeps them.
     fn package_pif(
         &self,
-        packages: &[sweetpad_lib::pif::Package],
+        packages: &[sweetpad_lib::workspace_pif::Package],
         out: &Output,
     ) -> Result<Vec<Value>, CliError> {
         write_changed(
             &self.packages.join("Package.swift"),
-            sweetpad_lib::pif::manifest(packages).as_bytes(),
+            sweetpad_lib::workspace_pif::manifest(packages).as_bytes(),
         )?;
         if let Ok(resolved) = std::fs::read(resolved_file(&self.container)) {
             write_changed(&self.packages.join("Package.resolved"), &resolved)?;

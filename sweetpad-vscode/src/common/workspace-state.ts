@@ -52,7 +52,8 @@ export type WorkspaceTypes = {
   "build.xcodeWorkspacePathRecent": string[];
   "build.xcodeProjectPath": string;
   "build.xcodeScheme": string;
-  "build.xcodeConfiguration": string;
+  /** xcworkspace path -> scheme name -> configuration picked for that scheme. */
+  "build.xcodeConfigurationByScheme": Record<string, Record<string, string>>;
   "build.xcodeDestination": SelectedDestination;
   "build.xcodeDestinationsUsageStatistics": Record<string, number>; // destinationId -> usageCount
   "build.xcodeDestinationsRecent": SelectedDestination[];
@@ -66,7 +67,8 @@ export type WorkspaceTypes = {
   "build.lspDiagnosticsEnabled": boolean;
   "build.lspDiagnosticsPostReloadAction": "enabled" | "disabled";
   "testing.xcodeTarget": string;
-  "testing.xcodeConfiguration": string;
+  /** xcworkspace path -> scheme name -> configuration picked for that scheme. */
+  "testing.xcodeConfigurationByScheme": Record<string, Record<string, string>>;
   "testing.xcodeDestination": SelectedDestination;
   "testing.xcodeScheme": string;
   "hotReload.injectWarningShownCount": number;

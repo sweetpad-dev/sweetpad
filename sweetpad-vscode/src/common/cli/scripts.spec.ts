@@ -12,6 +12,8 @@ import { getShellDeveloperDir } from "../tasks/shell-env";
 import {
   findSchemeFile,
   getBuildSettingsList,
+  getProjectDefaultConfiguration,
+  getSchemeConfiguration,
   getSchemes,
   getSimulatorAppPath,
   getSupportedPlatforms,
@@ -32,6 +34,9 @@ vi.mock("@sweetpad/native", async (importOriginal) => ({
   schemes: vi.fn(),
   targets: vi.fn(),
   locateScheme: vi.fn(),
+  parseScheme: vi.fn(),
+  configurations: vi.fn(),
+  defaultConfiguration: vi.fn(),
 }));
 
 const mockGetConfiguration = vscode.workspace.getConfiguration as Mock;
@@ -44,6 +49,9 @@ const mockSupportedPlatforms = sweetpadLib.supportedPlatforms as Mock;
 const mockSchemes = sweetpadLib.schemes as Mock;
 const mockTargets = sweetpadLib.targets as Mock;
 const mockLocateScheme = sweetpadLib.locateScheme as Mock;
+const mockParseScheme = sweetpadLib.parseScheme as Mock;
+const mockConfigurations = sweetpadLib.configurations as Mock;
+const mockDefaultConfiguration = sweetpadLib.defaultConfiguration as Mock;
 
 /** `getWorkspaceConfig` reads `getConfiguration("sweetpad").get(key)`. */
 function mockConfig(values: Record<string, unknown>) {
@@ -525,6 +533,77 @@ describe("findSchemeFile", () => {
   it("has no file for an autocreated scheme", async () => {
     mockLocateScheme.mockReturnValue(null);
     expect(await findSchemeFile("/proj/App.xcodeproj", "App")).toBeUndefined();
+  });
+});
+
+describe("getSchemeConfiguration", () => {
+  const SCHEME_FILE = "/proj/App.xcodeproj/xcshareddata/xcschemes/App UAT.xcscheme";
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockLocateScheme.mockReturnValue(SCHEME_FILE);
+    mockConfigurations.mockReturnValue(["TEST-Debug", "UAT", "Release"]);
+    mockParseScheme.mockReturnValue({ launchConfiguration: "UAT", testAction: { configuration: "TEST-Debug" } });
+  });
+
+  it("reads the launch action for builds and the test action for tests", () => {
+    const options = { xcworkspace: "/proj/App.xcworkspace", scheme: "App UAT" };
+    expect(getSchemeConfiguration({ ...options, action: "launch" })).toBe("UAT");
+    expect(getSchemeConfiguration({ ...options, action: "test" })).toBe("TEST-Debug");
+    expect(mockParseScheme).toHaveBeenCalledWith(SCHEME_FILE);
+  });
+
+  // A stale .xcscheme can name a configuration the project no longer has; building with it fails,
+  // so it answers nothing and the caller falls through to its own default.
+  it("skips a configuration the project doesn't have", () => {
+    mockParseScheme.mockReturnValue({ launchConfiguration: "Staging", testAction: null });
+    expect(
+      getSchemeConfiguration({ xcworkspace: "/proj/App.xcworkspace", scheme: "App UAT", action: "launch" }),
+    ).toBeUndefined();
+    expect(
+      getSchemeConfiguration({ xcworkspace: "/proj/App.xcworkspace", scheme: "App UAT", action: "test" }),
+    ).toBeUndefined();
+  });
+
+  it("has nothing for an autocreated scheme", () => {
+    mockLocateScheme.mockReturnValue(null);
+    expect(
+      getSchemeConfiguration({ xcworkspace: "/proj/App.xcworkspace", scheme: "App", action: "launch" }),
+    ).toBeUndefined();
+    expect(mockParseScheme).not.toHaveBeenCalled();
+  });
+
+  it("has nothing when the scheme file can't be read", () => {
+    mockParseScheme.mockImplementation(() => {
+      throw new Error("bad xml");
+    });
+    expect(
+      getSchemeConfiguration({ xcworkspace: "/proj/App.xcworkspace", scheme: "App UAT", action: "launch" }),
+    ).toBeUndefined();
+  });
+
+  it("checks a Swift package's scheme against Debug and Release", () => {
+    mockParseScheme.mockReturnValue({ launchConfiguration: "Release", testAction: null });
+    expect(getSchemeConfiguration({ xcworkspace: "/pkg/Package.swift", scheme: "Pkg", action: "launch" })).toBe(
+      "Release",
+    );
+    expect(mockConfigurations).not.toHaveBeenCalled();
+  });
+});
+
+describe("getProjectDefaultConfiguration", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("reads the project's command-line default", () => {
+    mockDefaultConfiguration.mockReturnValue("UAT-Release");
+    expect(getProjectDefaultConfiguration("/proj/App.xcworkspace")).toBe("UAT-Release");
+  });
+
+  it("has none for a Swift package", () => {
+    expect(getProjectDefaultConfiguration("/pkg/Package.swift")).toBeUndefined();
+    expect(mockDefaultConfiguration).not.toHaveBeenCalled();
   });
 });
 

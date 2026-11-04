@@ -124,7 +124,8 @@ pub fn run(ctx: &mut Context, purge: bool) -> CommandResult {
         Container::Project(_) | Container::Workspace(_) => {
             let schemes = resolve::schemes(&resolved.container)?;
             let scheme = resolve::settle_scheme(ctx, &mut resolved, &schemes, true)?;
-            let configuration = resolve::settle_configuration(ctx, &mut resolved, true)?;
+            let configuration =
+                resolve::settle_configuration(ctx, &mut resolved, Some(&scheme), true)?;
             let args = xcodebuild_clean_args(ctx, &resolved.container, scheme, configuration)?;
             let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
             let cwd = xcodebuild::working_dir(&resolved.container);

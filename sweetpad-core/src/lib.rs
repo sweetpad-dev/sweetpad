@@ -18,6 +18,7 @@ pub mod devices;
 pub mod framing;
 pub mod hot;
 pub mod package_members;
+pub mod package_pif;
 pub mod paths;
 pub mod scratch;
 pub mod supported_platforms;

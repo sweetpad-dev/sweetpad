@@ -1,1788 +1,695 @@
-//! Swift Build's project interchange format (PIF) for an Xcode workspace or
-//! project.
+//! Local Swift packages as the PIF describes them, so their sources resolve
+//! the way Xcode builds them (#343).
 //!
-//! Swift Build (`swiftlang/swift-build`) never reads a project file. Xcode
-//! translates the workspace into PIF before handing it over, and the
-//! open-source engine's own `.xcodeproj` support shells out to
-//! `xcodebuild -dumpPIF` for that translation. Emitting PIF here is what lets
-//! the engine build an unmodified project on a host without Xcode.
-//! `xcodebuild -dumpPIF` is the oracle: GUIDs, key spellings and value shapes
-//! follow what it prints, and Swift Build's `PIFLoader` decides which keys are
-//! required.
+//! Xcode has its embedded SwiftPM turn each package into a PIF project and
+//! builds that. `swift package dump-pif` prints the same projects, so a
+//! package's targets, sources and settings come from there rather than from a
+//! `.xcodeproj`: [`root_manifest`] stands in for the workspace, a caller that
+//! can spawn the toolchain dumps its PIF, and [`parse`] keeps the projects of
+//! the local packages. Spawning belongs to `sweetpad-core`; this module only
+//! reads.
 //!
-//! SwiftPM packages come from SwiftPM itself ([`packages`]): Xcode has its
-//! embedded SwiftPM emit each package as a project of its own, and the
-//! projects here refer to their products by the GUIDs SwiftPM gives them.
+//! A package is addressed by its `Package.swift`, which stands where a
+//! `.xcodeproj` path does everywhere else: [`register`] files the parsed
+//! packages under the container whose build they belong to, and
+//! [`crate::project::Document::parse`] finds one there. `PROJECT_DIR` is then
+//! the package directory, as it is in Xcode.
+//!
+//! Each package has a Debug and a Release configuration, and Xcode builds the
+//! packages with Debug settings when the app's configuration name contains
+//! `debug` in any case (`Debug`, `Debug-UAT`, `UAT-Debug`) and with Release
+//! settings otherwise (`UAT`, `Beta Release`), measured on Xcode 27.0. The
+//! build directories keep the app's configuration name (`UAT-iphonesimulator`),
+//! so only the settings layers follow [`package_configuration`].
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
-use serde_json::{Map, Value as Json, json};
+use serde_json::Value as Json;
 
-use crate::catalog_cache;
-use crate::pbxproj::{Dict, Value};
-use crate::pif_file_types;
-use crate::pif_sync::{self, Kind, Node};
-use crate::project::{self, Error, Parents};
-use crate::spm;
-use crate::workspace;
-use crate::xcode_hash::{md5_hex, sha256_base64};
-use crate::xcspec;
+use crate::project::{self, BuildSettingsContext, Error, Project, Target as ProjectTarget};
+use crate::xcconfig::{Assignment, Condition};
 
-mod packages;
-pub use packages::{Package, add_packages, manifest, packages};
-
-/// The PIF `xcodebuild -dumpPIF` prints for a `.xcworkspace` or an
-/// `.xcodeproj`: a workspace object, then each project followed by its
-/// targets.
-///
-/// The projects are the workspace's members plus every project they reach
-/// through project references, in path order. A bare project stands in a
-/// workspace of its own, `X.xcodeproj/project.xcworkspace`.
-pub fn pif(container: &Path) -> Result<Vec<Json>, Error> {
-    let Opened {
-        name,
-        path: workspace_path,
-        graph,
-        ..
-    } = Opened::of(container)?;
-    let mut projects = Vec::new();
-    for file in &graph.projects {
-        projects.push(Emitter::new(&graph, file)?.emit()?);
-    }
-    let workspace = object(
-        "workspace",
-        json!({
-            "guid": md5_hex(name.as_bytes()),
-            "name": name,
-            "path": workspace_path,
-            "projects": projects.iter().map(|(p, _)| p["signature"].clone()).collect::<Vec<_>>(),
-        }),
-    );
-    let mut out = vec![workspace];
-    for (project, targets) in projects {
-        out.push(project);
-        out.extend(targets);
-    }
-    Ok(out)
+/// One local package's PIF project.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Package {
+    /// The project name, which is the package's name.
+    pub name: String,
+    /// The package directory.
+    pub dir: PathBuf,
+    /// Settings per configuration name, `Debug` and `Release`.
+    configurations: Vec<(String, Vec<Assignment>)>,
+    default_configuration: Option<String>,
+    /// The targets a build compiles, in PIF order: no tests, no dynamic
+    /// variants, no product aggregates.
+    pub targets: Vec<Target>,
+    /// Each product's name and the targets it builds.
+    pub products: Vec<(String, Vec<String>)>,
 }
 
-/// The workspace a container stands for.
-struct Opened {
-    name: String,
-    path: PathBuf,
-    graph: Graph,
-    /// The package folders the workspace itself holds.
-    package_refs: Vec<PathBuf>,
+/// A compiled target of a [`Package`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct Target {
+    pub name: String,
+    /// `org.swift.product-type.library.static` and the like.
+    pub product_type: String,
+    configurations: Vec<(String, Vec<Assignment>)>,
+    /// What the targets it depends on impart to it, per configuration: the
+    /// module maps and header paths of the C targets among them, remote ones
+    /// included.
+    imparted: Vec<(String, Vec<Assignment>)>,
+    /// Absolute paths of the files its sources phase compiles.
+    pub sources: Vec<PathBuf>,
+    /// The local package targets it depends on directly, through a product or
+    /// not. Targets of remote packages are left out.
+    pub dependencies: Vec<String>,
 }
 
-impl Opened {
-    /// A `.xcworkspace`, or a bare project standing in a workspace of its own,
-    /// `X.xcodeproj/project.xcworkspace`.
-    fn of(container: &Path) -> Result<Self, Error> {
-        let container = project::standardize(container);
-        let base_dir = container
-            .parent()
-            .map_or_else(PathBuf::new, Path::to_path_buf);
-        if container.extension().is_some_and(|e| e == "xcworkspace") {
-            let ws = workspace::open(&container).map_err(|e| Error::BadProject(e.to_string()))?;
-            let roots = ws
-                .project_refs
+impl Package {
+    /// The `Package.swift` that stands for this package's project path.
+    #[must_use]
+    pub fn manifest(&self) -> PathBuf {
+        self.dir.join("Package.swift")
+    }
+
+    fn target(&self, name: &str) -> Result<&Target, Error> {
+        self.targets
+            .iter()
+            .find(|t| t.name == name)
+            .ok_or_else(|| Error::NoSuchTarget(name.to_string()))
+    }
+
+    /// The package as a [`Project`]: its targets and its two configurations.
+    #[must_use]
+    pub fn open(&self) -> Project {
+        let configurations: Vec<String> =
+            self.configurations.iter().map(|(n, _)| n.clone()).collect();
+        Project {
+            name: self.name.clone(),
+            path: self.manifest(),
+            targets: self
+                .targets
                 .iter()
-                .map(|p| (project::standardize(p), false))
-                .collect();
-            Ok(Self {
-                name: ws.name,
-                path: container.clone(),
-                graph: Graph::load(roots, base_dir)?,
-                package_refs: ws.package_refs,
-            })
-        } else {
-            Ok(Self {
-                name: stem(&container),
-                path: container.join("project.xcworkspace"),
-                graph: Graph::load(vec![(container.clone(), true)], base_dir)?,
-                package_refs: Vec::new(),
-            })
+                .map(|t| ProjectTarget {
+                    name: t.name.clone(),
+                    isa: "PBXNativeTarget".to_string(),
+                    product_type: Some(t.product_type.clone()),
+                    configurations: configurations.clone(),
+                })
+                .collect(),
+            configurations,
+            default_configuration: self.default_configuration.clone(),
+            schemes: Vec::new(),
+            package_refs: Vec::new(),
         }
     }
-}
 
-/// One `.xcodeproj` of the workspace.
-struct ProjectFile {
-    /// Standardized: symlinks resolved and a leading `/private` dropped.
-    path: PathBuf,
-    guid: String,
-    value: Arc<Value>,
-}
-
-/// Every project the PIF covers, and the directory their GUIDs are relative to.
-struct Graph {
-    base_dir: PathBuf,
-    projects: Vec<ProjectFile>,
-    /// Xcode's build-setting defaults, for the few values a product type
-    /// decides.
-    defaults: Option<xcspec::Catalog>,
-}
-
-impl Graph {
-    /// The projects in `roots` and every project they reference, transitively.
-    /// A required root must parse; any other project that isn't there is
-    /// skipped, as Xcode shows it missing and carries on.
-    fn load(roots: Vec<(PathBuf, bool)>, base_dir: PathBuf) -> Result<Self, Error> {
-        let mut queue: VecDeque<(PathBuf, bool)> = roots.into();
-        let mut seen = HashSet::new();
-        let mut projects = Vec::new();
-        while let Some((path, required)) = queue.pop_front() {
-            if !seen.insert(path.clone()) {
-                continue;
-            }
-            if !required && !path.join("project.pbxproj").is_file() {
-                continue;
-            }
-            let value = project::parse_pbxproj(&path)?;
-            for referenced in referenced_projects(&value, &path) {
-                queue.push_back((referenced, false));
-            }
-            projects.push(ProjectFile {
-                guid: project_guid(&path, &base_dir),
-                path,
-                value,
-            });
-        }
-        projects.sort_by(|a, b| a.path.as_os_str().cmp(b.path.as_os_str()));
-        Ok(Self {
-            base_dir,
-            projects,
-            defaults: catalog_cache::embedded().ok(),
+    /// The settings layers of `target` for the app configuration `config`:
+    /// the package's, what its dependencies impart, then the target's, each
+    /// in the configuration [`package_configuration`] picks. `PROJECT_NAME` is the package's name,
+    /// which the `Package.swift` path does not spell.
+    pub fn build_settings(
+        &self,
+        target: &str,
+        config: &str,
+    ) -> Result<BuildSettingsContext, Error> {
+        let target = self.target(target)?;
+        let mut project_layer = vec![Assignment {
+            key: "PROJECT_NAME".to_string(),
+            conditions: Vec::new(),
+            value: self.name.clone(),
+            condition: None,
+        }];
+        project_layer.extend(pick(&self.configurations, config));
+        Ok(BuildSettingsContext {
+            layers: vec![
+                Vec::new(),
+                project_layer,
+                pick(&target.imparted, config),
+                pick(&target.configurations, config),
+            ],
+            product_type: Some(target.product_type.clone()),
+            target_isa: "PBXNativeTarget".to_string(),
+            has_package_product_dependencies: false,
+            test_host_target: None,
+            development_region: None,
         })
     }
 
-    fn get(&self, path: &Path) -> Option<&ProjectFile> {
-        self.projects.iter().find(|p| p.path == path)
+    pub fn source_files(&self, target: &str) -> Result<Vec<PathBuf>, Error> {
+        Ok(self.target(target)?.sources.clone())
+    }
+
+    pub fn dependencies(&self, target: &str) -> Result<Vec<String>, Error> {
+        Ok(self.target(target)?.dependencies.clone())
     }
 }
 
-/// Xcode's GUID for a project: the MD5 of its path relative to the
-/// workspace's directory, so it survives moving the whole tree.
-fn project_guid(xcodeproj: &Path, base_dir: &Path) -> String {
-    md5_hex(relative_path(xcodeproj, base_dir).as_bytes())
+/// The package configuration Xcode builds with for the app configuration
+/// `config`: `Debug` when its name contains `debug` in any case, else
+/// `Release`.
+#[must_use]
+pub fn package_configuration(config: &str) -> &'static str {
+    if config.to_ascii_lowercase().contains("debug") {
+        "Debug"
+    } else {
+        "Release"
+    }
 }
 
-/// The projects a project's `projectReferences` name, standardized.
-fn referenced_projects(value: &Value, xcodeproj: &Path) -> Vec<PathBuf> {
-    let Ok((objects, project_obj)) = project::project_root(value) else {
-        return Vec::new();
-    };
-    let dir = project_directory(project_obj, xcodeproj);
-    let parents = Parents::of(objects);
-    project_obj
-        .get("projectReferences")
-        .and_then(Value::as_array)
-        .unwrap_or_default()
+fn pick(configurations: &[(String, Vec<Assignment>)], config: &str) -> Vec<Assignment> {
+    let wanted = package_configuration(config);
+    configurations
         .iter()
-        .filter_map(|r| r.get("ProjectRef").and_then(Value::as_str))
-        .map(|id| project::standardize(&parents.group_dir(id, &dir)))
+        .find(|(name, _)| name == wanted)
+        .map(|(_, settings)| settings.clone())
+        .unwrap_or_default()
+}
+
+/// A root `Package.swift` that depends on the local packages in `dirs`, for
+/// `swift package dump-pif` to describe them the way Xcode's SwiftPM does
+/// for the workspace. The packages they depend on in turn come along.
+#[must_use]
+pub fn root_manifest(dirs: &[PathBuf]) -> String {
+    let mut out = String::from(
+        "// swift-tools-version:5.9\n\
+         // The local Swift packages an Xcode workspace uses, for SweetPad's build server.\n\
+         import PackageDescription\n\n\
+         let package = Package(\n    name: \"SweetPadPackages\",\n    dependencies: [\n",
+    );
+    for dir in dirs {
+        let _ = writeln!(
+            out,
+            "        .package(path: {}),",
+            literal(&dir.to_string_lossy())
+        );
+    }
+    out.push_str("    ]\n)\n");
+    out
+}
+
+/// `text` as a Swift string literal.
+fn literal(text: &str) -> String {
+    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// The local packages in `pif`, the objects `swift package dump-pif` printed:
+/// every package whose directory is outside `skip`, the root manifest's
+/// directory and the scratch path holding the remote checkouts. Edges to the
+/// targets of skipped packages are dropped.
+#[must_use]
+#[allow(clippy::too_many_lines)]
+pub fn parse(pif: &[Json], skip: &[PathBuf]) -> Vec<Package> {
+    let skip: Vec<PathBuf> = skip.iter().map(|d| project::standardize(d)).collect();
+    let targets: HashMap<&str, &Json> = pif
+        .iter()
+        .filter(|o| o["type"] == "target")
+        .filter_map(|o| Some((o["signature"].as_str()?, &o["contents"])))
+        .collect();
+    let by_guid: HashMap<&str, &Json> = targets
+        .values()
+        .filter_map(|t| Some((t["guid"].as_str()?, *t)))
+        .collect();
+    let dynamic: HashSet<&str> = targets
+        .values()
+        .filter_map(|t| t["dynamicTargetVariantGuid"].as_str())
+        .collect();
+    // A target is kept when it belongs to a local package and is compiled
+    // into the app: a library or executable, not a test bundle.
+    let mut kept: HashMap<&str, String> = HashMap::new();
+    let mut packages = Vec::new();
+    for object in pif.iter().filter(|o| o["type"] == "project") {
+        let project = &object["contents"];
+        let Some(guid) = project["guid"].as_str() else {
+            continue;
+        };
+        let dir = PathBuf::from(project["projectDirectory"].as_str().unwrap_or_default());
+        let standardized = project::standardize(&dir);
+        if !guid.starts_with("PACKAGE:") || skip.iter().any(|s| standardized.starts_with(s)) {
+            continue;
+        }
+        let files = file_paths(&project["groupTree"], &dir);
+        let mut package = Package {
+            name: project["projectName"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            configurations: configurations(&project["buildConfigurations"]),
+            default_configuration: project["defaultConfigurationName"]
+                .as_str()
+                .map(str::to_string),
+            dir,
+            targets: Vec::new(),
+            products: Vec::new(),
+        };
+        for target in project["targets"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|s| targets.get(s.as_str()?))
+        {
+            let target_guid = target["guid"].as_str().unwrap_or_default();
+            let name = target["name"].as_str().unwrap_or_default().to_string();
+            if target["type"] == "packageProduct" {
+                let product = name.strip_suffix("-product").unwrap_or(&name).to_string();
+                package.products.push((product, Vec::new()));
+                continue;
+            }
+            let Some(product_type) = target["productTypeIdentifier"].as_str() else {
+                continue;
+            };
+            if dynamic.contains(target_guid) || product_type.contains("test") {
+                continue;
+            }
+            kept.insert(target_guid, name.clone());
+            package.targets.push(Target {
+                name,
+                product_type: product_type.to_string(),
+                configurations: configurations(&target["buildConfigurations"]),
+                imparted: Vec::new(),
+                sources: sources(target, &files),
+                dependencies: Vec::new(),
+            });
+        }
+        packages.push((project, package));
+    }
+    // Edges resolve once every local target is known: a product stands for
+    // the targets it builds, and a target outside the local packages drops.
+    let resolve = |guid: &str| -> Vec<String> {
+        let mut out = Vec::new();
+        let mut queue = vec![guid];
+        let mut seen = HashSet::new();
+        while let Some(guid) = queue.pop() {
+            if !seen.insert(guid) {
+                continue;
+            }
+            if let Some(name) = kept.get(guid) {
+                out.push(name.clone());
+            } else if let Some(product) =
+                by_guid.get(guid).filter(|t| t["type"] == "packageProduct")
+            {
+                queue.extend(guids(&product["dependencies"]).into_iter().rev());
+            }
+        }
+        out
+    };
+    packages
+        .into_iter()
+        .map(|(project, mut package)| {
+            for target in project["targets"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|s| targets.get(s.as_str()?))
+            {
+                let name = target["name"].as_str().unwrap_or_default();
+                let edges: Vec<String> = guids(&target["dependencies"])
+                    .into_iter()
+                    .flat_map(&resolve)
+                    .collect();
+                if target["type"] == "packageProduct" {
+                    let product = name.strip_suffix("-product").unwrap_or(name);
+                    if let Some((_, built)) =
+                        package.products.iter_mut().find(|(p, _)| p == product)
+                    {
+                        *built = edges;
+                    }
+                } else if kept.contains_key(target["guid"].as_str().unwrap_or_default())
+                    && let Some(kept) = package.targets.iter_mut().find(|t| t.name == name)
+                {
+                    kept.dependencies = edges;
+                    kept.imparted = imparted(target, &by_guid);
+                }
+            }
+            package.products.retain(|(_, built)| !built.is_empty());
+            package
+        })
         .collect()
 }
 
-struct Emitter<'a> {
-    graph: &'a Graph,
-    file: &'a ProjectFile,
-    objects: &'a Dict,
-    root_id: &'a str,
-    project_obj: &'a Value,
-    project_dir: PathBuf,
-    parents: Parents<'a>,
-    class_prefix: String,
-    /// Each product file reference, and the target that builds it.
-    producers: HashMap<&'a str, &'a str>,
-    /// What each synchronized folder holds.
-    synced: HashMap<&'a str, Vec<Node>>,
-    /// The synchronized folders in navigator order.
-    synced_order: Vec<&'a str>,
+/// The settings every target `target` depends on imparts to it, directly or
+/// through other targets and products, merged per configuration in
+/// dependency order.
+fn imparted(target: &Json, by_guid: &HashMap<&str, &Json>) -> Vec<(String, Vec<Assignment>)> {
+    let mut out: Vec<(String, Vec<Assignment>)> = Vec::new();
+    let mut queue: Vec<&str> = guids(&target["dependencies"]);
+    queue.reverse();
+    let mut seen = HashSet::new();
+    while let Some(guid) = queue.pop() {
+        if !seen.insert(guid) {
+            continue;
+        }
+        let Some(dependency) = by_guid.get(guid) else {
+            continue;
+        };
+        for config in dependency["buildConfigurations"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            let Some(name) = config["name"].as_str() else {
+                continue;
+            };
+            let Some(settings) = config["impartedBuildProperties"]["buildSettings"].as_object()
+            else {
+                continue;
+            };
+            if !out.iter().any(|(n, _)| n == name) {
+                out.push((name.to_string(), Vec::new()));
+            }
+            if let Some((_, merged)) = out.iter_mut().find(|(n, _)| n == name) {
+                merged.extend(settings.iter().flat_map(|(k, v)| assignments(k, v)));
+            }
+        }
+        let mut next = guids(&dependency["dependencies"]);
+        next.reverse();
+        queue.extend(next);
+    }
+    out
 }
 
-impl<'a> Emitter<'a> {
-    fn new(graph: &'a Graph, file: &'a ProjectFile) -> Result<Self, Error> {
-        let (objects, project_obj) = project::project_root(&file.value)?;
-        let root_id = file
-            .value
-            .get("rootObject")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let project_dir = project_directory(project_obj, &file.path);
-        let parents = Parents::of(objects);
-        let producers = objects
-            .iter()
-            .filter_map(|(id, o)| Some((o.get("productReference")?.as_str()?, id.as_str())))
-            .collect();
-        let region = development_region(project_obj);
-        let synced: HashMap<&str, Vec<Node>> = objects
-            .iter()
-            .filter(|(_, o)| isa(o) == "PBXFileSystemSynchronizedRootGroup")
-            .filter_map(|(id, o)| {
-                let dir = parents.group_dir(id, &project_dir);
-                Some((id.as_str(), pif_sync::expand(&dir, o.as_dict()?, region)))
-            })
-            .collect();
-        let mut synced_order = Vec::new();
-        if let Some(main_group) = project_obj.get("mainGroup").and_then(Value::as_str) {
-            navigator_order(objects, main_group, &mut synced_order, &mut HashSet::new());
-        }
-        synced_order.retain(|id| synced.contains_key(id));
-        let mut unreachable: Vec<&str> = synced
-            .keys()
-            .copied()
-            .filter(|id| !synced_order.contains(id))
-            .collect();
-        unreachable.sort_unstable();
-        synced_order.extend(unreachable);
-        Ok(Self {
-            graph,
-            file,
-            objects,
-            root_id,
-            project_obj,
-            project_dir,
-            parents,
-            class_prefix: str_at(project_obj, "attributes", "CLASSPREFIX").unwrap_or_default(),
-            producers,
-            synced,
-            synced_order,
-        })
-    }
+fn guids(dependencies: &Json) -> Vec<&str> {
+    dependencies
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|d| d["guid"].as_str())
+        .collect()
+}
 
-    /// Xcode's GUID for a pbxproj object: the project's GUID followed by the
-    /// MD5 of the object's ID, so a GUID is stable across dumps and unique
-    /// across the projects of a workspace.
-    fn guid(&self, id: &str) -> String {
-        format!("{}{}", self.file.guid, md5_hex(id.as_bytes()))
-    }
-
-    /// The GUID of something found inside the synchronized folder `root`:
-    /// a base64 SHA-256 over the project GUID, the folder's ID and `rest`.
-    fn synced_guid(&self, root: &str, rest: &str) -> String {
-        sha256_base64(format!("{}{root}{rest}", self.file.guid).as_bytes())
-    }
-
-    fn get(&self, id: &str) -> Option<&'a Dict> {
-        self.objects.get(id).and_then(Value::as_dict)
-    }
-
-    fn emit(&self) -> Result<(Json, Vec<Json>), Error> {
-        let mut targets = Vec::new();
-        for id in ids(self.project_obj, "targets") {
-            if let Some(target) = self.target(id)? {
-                targets.push(target);
-            }
-        }
-        Ok((self.project(&targets)?, targets))
-    }
-
-    fn project(&self, targets: &[Json]) -> Result<Json, Error> {
-        let main_group = self
-            .project_obj
-            .get("mainGroup")
-            .and_then(Value::as_str)
-            .ok_or_else(|| Error::BadProject("project has no mainGroup".into()))?;
-        let mut group_tree = self
-            .reference(main_group, false)
-            .ok_or_else(|| Error::BadProject(format!("mainGroup {main_group} is not a group")))?;
-        // The main group always takes the project's name, whatever it's called
-        // in the file.
-        group_tree["name"] = json!(stem(&self.file.path));
-        if let Some(recovered) = self.recovered_references(main_group) {
-            match group_tree.get_mut("children").and_then(Json::as_array_mut) {
-                Some(children) => children.push(recovered),
-                None => group_tree["children"] = json!([recovered]),
-            }
-        }
-
-        let config_list = self.configuration_list(self.project_obj);
-        let contents = json!({
-            "appPreferencesBuildSettings": {},
-            "buildConfigurations": self.configurations(self.project_obj)?,
-            "classPrefix": self.class_prefix,
-            "defaultConfigurationName": config_list
-                .and_then(|l| l.get("defaultConfigurationName"))
-                .and_then(Value::as_str)
-                .unwrap_or("Release"),
-            "developmentRegion": development_region(self.project_obj),
-            "groupTree": group_tree,
-            "guid": self.file.guid,
-            "knownRegions": match self.project_obj.get("knownRegions") {
-                Some(regions) => json!(strings(Some(regions))),
-                None => json!(["en", "Base"]),
-            },
-            "path": self.file.path,
-            "projectDirectory": self.project_dir,
-            "targets": targets.iter().map(|t| t["signature"].clone()).collect::<Vec<_>>(),
-        });
-        Ok(object("project", contents))
-    }
-
-    fn reference(&self, id: &str, in_variant_group: bool) -> Option<Json> {
-        let obj = self.get(id)?;
-        let source_tree = obj
-            .get("sourceTree")
-            .and_then(Value::as_str)
-            .unwrap_or("<group>");
-        let path = obj.get("path").and_then(Value::as_str);
-        let name = obj.get("name").and_then(Value::as_str);
-        let mut out = Map::new();
-        out.insert("guid".into(), json!(self.guid(id)));
-        out.insert("sourceTree".into(), json!(source_tree));
-        match isa_of(obj) {
-            "PBXFileReference" => {
-                // A file is known by its path alone; Xcode drops a display name.
-                let path = path.or(name).unwrap_or_default();
-                let file_type = file_ref_type(obj, path);
-                out.insert("type".into(), json!("file"));
-                out.insert("path".into(), json!(path));
-                if let Some(encoding) = obj
-                    .get("fileEncoding")
-                    .and_then(Value::as_str)
-                    .filter(|_| pif_file_types::is_text(file_type))
-                    .and_then(text_encoding_name)
-                {
-                    out.insert("fileTextEncoding".into(), json!(encoding));
-                }
-                if in_variant_group {
-                    out.insert("regionVariantName".into(), json!(name.unwrap_or_default()));
-                }
-                out.insert("fileType".into(), json!(file_type));
-            }
-            "PBXGroup" => {
-                out.insert("type".into(), json!("group"));
-                out.insert("name".into(), json!(name.or(path).unwrap_or_default()));
-                out.insert("path".into(), json!(path.unwrap_or_default()));
-                self.insert_children(obj, false, &mut out);
-            }
-            "PBXVariantGroup" => {
-                out.insert("type".into(), json!("variantGroup"));
-                out.insert("name".into(), json!(name.or(path).unwrap_or_default()));
-                out.insert("path".into(), json!(path.unwrap_or_default()));
-                self.insert_children(obj, true, &mut out);
-            }
-            "XCVersionGroup" => {
-                let path = path.unwrap_or_default();
-                out.insert("type".into(), json!("versionGroup"));
-                out.insert(
-                    "name".into(),
-                    json!(path.rsplit('/').next().unwrap_or(path)),
-                );
-                out.insert("path".into(), json!(path));
-                out.insert("fileType".into(), json!("wrapper.xcdatamodeld"));
-                self.insert_children(obj, false, &mut out);
-            }
-            "PBXFileSystemSynchronizedRootGroup" => {
-                out.insert("type".into(), json!("group"));
-                out.insert("name".into(), json!(name.or(path).unwrap_or_default()));
-                out.insert("path".into(), json!(path.unwrap_or_default()));
-                let children: Vec<Json> = self
-                    .synced
-                    .get(id)
-                    .map(|nodes| nodes.iter().map(|n| self.synced_node(id, n)).collect())
-                    .unwrap_or_default();
-                if !children.is_empty() {
-                    out.insert("children".into(), Json::Array(children));
-                }
-            }
-            _ => return None,
-        }
-        Some(Json::Object(out))
-    }
-
-    /// A group's children, without the product references Xcode keeps out of
-    /// the tree (the target's `productReference` carries them). Xcode leaves
-    /// out an empty `children`.
-    fn insert_children(&self, group: &Dict, in_variant_group: bool, out: &mut Map<String, Json>) {
-        let children: Vec<Json> = ids_in(group, "children")
-            .filter(|child| !self.producers.contains_key(child))
-            .filter_map(|child| self.reference(child, in_variant_group))
-            .collect();
-        if !children.is_empty() {
-            out.insert("children".into(), Json::Array(children));
-        }
-    }
-
-    fn synced_node(&self, root: &str, node: &Node) -> Json {
-        let mut out = Map::new();
-        let guid = match node.kind {
-            Kind::VariantGroup => self.synced_guid(root, &format!("{}VariantGroup", node.rel)),
-            _ => self.synced_guid(root, &node.rel),
+/// Every file reference in a group tree, by GUID, as an absolute path.
+fn file_paths(tree: &Json, dir: &Path) -> HashMap<String, PathBuf> {
+    fn visit(node: &Json, parent: &Path, dir: &Path, out: &mut HashMap<String, PathBuf>) {
+        let path = node["path"].as_str().unwrap_or_default();
+        let here = match node["sourceTree"].as_str() {
+            Some("<absolute>") => PathBuf::from(path),
+            Some("SOURCE_ROOT") => dir.join(path),
+            _ => parent.join(path),
         };
-        out.insert("guid".into(), json!(guid));
-        out.insert("sourceTree".into(), json!("<group>"));
-        out.insert("path".into(), json!(node.path));
-        match node.kind {
-            Kind::File => {
-                out.insert("type".into(), json!("file"));
-                out.insert("fileType".into(), json!(node.file_type));
-                if let Some(region) = &node.region {
-                    out.insert("regionVariantName".into(), json!(region));
-                }
-            }
-            Kind::Group => {
-                out.insert("type".into(), json!("group"));
-                out.insert("name".into(), json!(node.name));
-            }
-            Kind::VariantGroup => {
-                out.insert("type".into(), json!("variantGroup"));
-                out.insert("name".into(), json!(node.name));
-            }
-            Kind::VersionGroup => {
-                out.insert("type".into(), json!("versionGroup"));
-                out.insert("name".into(), json!(node.name));
-                out.insert("fileType".into(), json!(node.file_type));
-            }
-        }
-        if node.kind != Kind::File && !node.children.is_empty() {
-            out.insert(
-                "children".into(),
-                Json::Array(
-                    node.children
-                        .iter()
-                        .map(|c| self.synced_node(root, c))
-                        .collect(),
-                ),
-            );
-        }
-        Json::Object(out)
-    }
-
-    /// The group Xcode appends to the tree for files that build files use
-    /// but no group lists. Build files resolve only against the tree, so
-    /// without it they would point at nothing. Xcode gives it a random GUID.
-    fn recovered_references(&self, main_group: &str) -> Option<Json> {
-        let mut reachable = HashSet::new();
-        self.collect_reachable(main_group, &mut reachable, 0);
-        let mut orphans: Vec<&str> = Vec::new();
-        for target in ids(self.project_obj, "targets").filter_map(|t| self.objects.get(t)) {
-            for phase in ids(target, "buildPhases").filter_map(|p| self.get(p)) {
-                for file_ref in ids_in(phase, "files")
-                    .filter_map(|f| self.get(f))
-                    .filter_map(|f| f.get("fileRef").and_then(Value::as_str))
-                {
-                    let referable = self.get(file_ref).is_some_and(|r| {
-                        matches!(
-                            isa_of(r),
-                            "PBXFileReference" | "PBXVariantGroup" | "XCVersionGroup"
-                        )
-                    });
-                    if referable
-                        && !reachable.contains(file_ref)
-                        && !self.producers.contains_key(file_ref)
-                        && !orphans.contains(&file_ref)
-                    {
-                        orphans.push(file_ref);
-                    }
-                }
-            }
-        }
-        if orphans.is_empty() {
-            return None;
-        }
-        Some(json!({
-            "children": orphans.iter().filter_map(|id| self.reference(id, false)).collect::<Vec<_>>(),
-            "guid": self.guid("Recovered References"),
-            "name": "Recovered References",
-            "path": "",
-            "sourceTree": "<group>",
-            "type": "group",
-        }))
-    }
-
-    fn collect_reachable(&self, id: &'a str, out: &mut HashSet<&'a str>, depth: usize) {
-        if depth > 256 || !out.insert(id) {
-            return;
-        }
-        if let Some(group) = self.get(id) {
-            for child in ids_in(group, "children") {
-                self.collect_reachable(child, out, depth + 1);
-            }
-        }
-    }
-
-    fn configuration_list(&self, owner: &Value) -> Option<&'a Dict> {
-        owner
-            .get("buildConfigurationList")
-            .and_then(Value::as_str)
-            .and_then(|id| self.get(id))
-    }
-
-    fn configurations(&self, owner: &Value) -> Result<Json, Error> {
-        let list = self
-            .configuration_list(owner)
-            .ok_or_else(|| Error::BadProject("object has no buildConfigurationList".into()))?;
-        let mut out = Vec::new();
-        for id in ids_in(list, "buildConfigurations") {
-            let Some(config) = self.get(id) else { continue };
-            let settings: Map<String, Json> = config
-                .get("buildSettings")
-                .and_then(Value::as_dict)
-                .map(|d| {
-                    d.iter()
-                        .map(|(k, v)| (k.clone(), json!(setting_string(v))))
-                        .collect()
-                })
-                .unwrap_or_default();
-            let mut entry = json!({
-                "buildSettings": settings,
-                "guid": self.guid(id),
-                "name": config.get("name").and_then(Value::as_str).unwrap_or_default(),
-            });
-            if let Some(base) = config
-                .get("baseConfigurationReference")
-                .and_then(Value::as_str)
-            {
-                entry["baseConfigurationFileReference"] = json!(self.guid(base));
-            } else if let (Some(anchor), Some(rel)) = (
-                config
-                    .get("baseConfigurationReferenceAnchor")
-                    .and_then(Value::as_str),
-                config
-                    .get("baseConfigurationReferenceRelativePath")
-                    .and_then(Value::as_str),
-            ) {
-                entry["baseConfigurationFileReference"] = json!(self.synced_guid(anchor, rel));
-            }
-            out.push(entry);
-        }
-        Ok(Json::Array(out))
-    }
-
-    fn target(&self, id: &str) -> Result<Option<Json>, Error> {
-        let Some(obj) = self.objects.get(id) else {
-            return Ok(None);
-        };
-        let isa = isa(obj);
-        let name = obj.get("name").and_then(Value::as_str).unwrap_or_default();
-        let mut c = Map::new();
-        c.insert("guid".into(), json!(self.guid(id)));
-        c.insert("name".into(), json!(name));
-        c.insert("buildConfigurations".into(), self.configurations(obj)?);
-        c.insert("dependencies".into(), self.dependencies(obj));
-        match isa {
-            "PBXNativeTarget" => {
-                let product_type = obj
-                    .get("productType")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                let phases = self.build_phases(id, obj);
-                if let Some(language) = predominant_language(&phases, &self.file_types(&phases)) {
-                    c.insert("predominantSourceCodeLanguage".into(), json!(language));
-                }
-                c.insert("type".into(), json!("standard"));
-                c.insert("buildPhases".into(), Json::Array(phases));
-                c.insert("buildRules".into(), self.build_rules(obj));
-                c.insert("productTypeIdentifier".into(), json!(product_type));
-                if let Some(product) = obj.get("productReference").and_then(Value::as_str) {
-                    let product_name = self
-                        .get(product)
-                        .and_then(|p| p.get("path").or_else(|| p.get("name")))
-                        .and_then(Value::as_str)
-                        .unwrap_or_default();
-                    c.insert(
-                        "productReference".into(),
-                        json!({ "guid": self.guid(product), "name": product_name, "type": "product" }),
-                    );
-                }
-                if matches!(
-                    product_type,
-                    "com.apple.product-type.bundle.unit-test"
-                        | "com.apple.product-type.bundle.ui-testing"
-                ) {
-                    c.insert(
-                        "performanceTestsBaselinesPath".into(),
-                        json!(
-                            self.file
-                                .path
-                                .join("xcshareddata/xcbaselines")
-                                .join(format!("{id}.xcbaseline"))
-                        ),
-                    );
-                }
-                c.insert("provisioningSourceData".into(), self.provisioning(id, obj));
-            }
-            "PBXAggregateTarget" => {
-                c.insert("type".into(), json!("aggregate"));
-                c.insert(
-                    "buildPhases".into(),
-                    Json::Array(self.build_phases(id, obj)),
-                );
-                c.insert("buildRules".into(), json!([]));
-                c.insert("provisioningSourceData".into(), self.provisioning(id, obj));
-            }
-            "PBXLegacyTarget" => {
-                c.insert("type".into(), json!("external"));
-                c.insert("toolPath".into(), json!(str_of(obj, "buildToolPath")));
-                c.insert(
-                    "arguments".into(),
-                    json!(str_of(obj, "buildArgumentsString")),
-                );
-                c.insert(
-                    "workingDirectory".into(),
-                    json!(str_of(obj, "buildWorkingDirectory")),
-                );
-                c.insert(
-                    "passBuildSettingsInEnvironment".into(),
-                    json!(pif_bool(
-                        obj.get("passBuildSettingsInEnvironment")
-                            .and_then(Value::as_str)
-                            != Some("0")
-                    )),
-                );
-            }
-            _ => return Ok(None),
-        }
-        if isa != "PBXLegacyTarget" && !self.class_prefix.is_empty() {
-            c.insert("classPrefix".into(), json!(self.class_prefix));
-        }
-        Ok(Some(object("target", Json::Object(c))))
-    }
-
-    /// The target's dependencies on other targets, then one per SwiftPM
-    /// product it links.
-    fn dependencies(&self, target: &Value) -> Json {
-        let mut out = Vec::new();
-        for dep in ids(target, "dependencies").filter_map(|id| self.get(id)) {
-            let resolved = match dep.get("target").and_then(Value::as_str) {
-                Some(target_id) => Some((self.guid(target_id), self.target_name(target_id))),
-                None => dep
-                    .get("targetProxy")
-                    .and_then(Value::as_str)
-                    .and_then(|p| self.proxied_target(p)),
-            };
-            let Some((guid, name)) = resolved else {
-                continue;
-            };
-            let mut entry = json!({ "guid": guid, "name": name });
-            if let Some(filters) = platform_filters(dep) {
-                entry["platformFilters"] = filters;
-            }
-            out.push(entry);
-        }
-        // Products follow the order the Frameworks phases link them in, then
-        // the ones nothing links.
-        let mut products: Vec<&str> = ids(target, "buildPhases")
-            .filter_map(|id| self.get(id))
-            .filter(|p| isa_of(p) == "PBXFrameworksBuildPhase")
-            .flat_map(|p| ids_in(p, "files"))
-            .filter_map(|f| self.get(f)?.get("productRef")?.as_str())
-            .filter(|p| ids(target, "packageProductDependencies").any(|d| d == *p))
-            .collect();
-        for dep_id in ids(target, "packageProductDependencies") {
-            if !products.contains(&dep_id) {
-                products.push(dep_id);
-            }
-        }
-        for dep_id in products {
-            let Some(guid) = self.package_product(dep_id) else {
-                continue;
-            };
-            let name = self
-                .get(dep_id)
-                .and_then(|d| d.get("productName"))
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            let mut entry = json!({ "guid": guid, "name": name });
-            if let Some(filters) = self
-                .linking_build_file(target, dep_id)
-                .and_then(platform_filters)
-            {
-                entry["platformFilters"] = filters;
-            }
-            out.push(entry);
-        }
-        Json::Array(out)
-    }
-
-    fn target_name(&self, target_id: &str) -> String {
-        self.get(target_id)
-            .and_then(|t| t.get("name"))
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string()
-    }
-
-    /// The target a `PBXContainerItemProxy` of type 1 names: its GUID and the
-    /// name Xcode shows, which spells out the project of a target in another
-    /// one (`Lib (from Lib.xcodeproj)`).
-    fn proxied_target(&self, proxy_id: &str) -> Option<(String, String)> {
-        let proxy = self.get(proxy_id)?;
-        let portal = proxy.get("containerPortal").and_then(Value::as_str)?;
-        let remote_id = proxy.get("remoteGlobalIDString").and_then(Value::as_str)?;
-        if portal == self.root_id {
-            return Some((self.guid(remote_id), self.target_name(remote_id)));
-        }
-        let path = self.portal_path(portal);
-        let guid = format!(
-            "{}{}",
-            project_guid(&path, &self.graph.base_dir),
-            md5_hex(remote_id.as_bytes())
-        );
-        let remote_name = self
-            .graph
-            .get(&path)
-            .and_then(|p| project_object(p, remote_id))
-            .and_then(|t| t.get("name"))
-            .and_then(Value::as_str)
-            .or_else(|| proxy.get("remoteInfo").and_then(Value::as_str))
-            .unwrap_or_default();
-        let file_name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        Some((guid, format!("{remote_name} (from {file_name})")))
-    }
-
-    /// The target in another project that builds the product a
-    /// `PBXReferenceProxy` stands for.
-    fn proxied_producer(&self, reference_proxy: &Dict) -> Option<String> {
-        let proxy = self.get(reference_proxy.get("remoteRef")?.as_str()?)?;
-        let portal = proxy.get("containerPortal").and_then(Value::as_str)?;
-        let product_id = proxy.get("remoteGlobalIDString").and_then(Value::as_str)?;
-        let path = self.portal_path(portal);
-        let remote = self.graph.get(&path)?;
-        let (objects, _) = project::project_root(&remote.value).ok()?;
-        let target_id = objects.iter().find_map(|(id, o)| {
-            (o.get("productReference").and_then(Value::as_str) == Some(product_id))
-                .then_some(id.as_str())
-        })?;
-        Some(format!("{}{}", remote.guid, md5_hex(target_id.as_bytes())))
-    }
-
-    /// The `.xcodeproj` a container proxy's `containerPortal` file reference
-    /// points at.
-    fn portal_path(&self, portal: &str) -> PathBuf {
-        project::standardize(&self.parents.group_dir(portal, &self.project_dir))
-    }
-
-    /// SwiftPM's GUID for the product an `XCSwiftPackageProductDependency`
-    /// names: `PACKAGE-PRODUCT:<package identity>_<product>.<product>`.
-    fn package_product(&self, dep_id: &str) -> Option<String> {
-        let dep = self.get(dep_id)?;
-        let product = dep.get("productName").and_then(Value::as_str)?;
-        let identity = match dep
-            .get("package")
-            .and_then(Value::as_str)
-            .and_then(|p| self.get(p))
+        if node["type"] == "file"
+            && let Some(guid) = node["guid"].as_str()
         {
-            Some(package) if isa_of(package) == "XCRemoteSwiftPackageReference" => {
-                spm::identity_from_url(&str_of_dict(package, "repositoryURL"))
-            }
-            Some(package) => spm::identity_from_path(&str_of_dict(package, "relativePath")),
-            None => self.local_package_identity(product),
-        };
-        Some(format!("PACKAGE-PRODUCT:{identity}_{product}.{product}"))
-    }
-
-    /// The identity of the local package a product with no `package` comes
-    /// from: the package folder named like the product, else the one whose
-    /// manifest mentions the product's name, else the only one. Knowing for
-    /// sure means evaluating the manifests.
-    fn local_package_identity(&self, product: &str) -> String {
-        let mut folders: Vec<PathBuf> = self
-            .objects
-            .iter()
-            .filter(|(_, o)| isa(o) == "PBXFileReference")
-            .map(|(id, _)| self.parents.group_dir(id, &self.project_dir))
-            .filter(|dir| dir.join("Package.swift").is_file())
-            .collect();
-        for (root, nodes) in &self.synced {
-            let root_dir = self.parents.group_dir(root, &self.project_dir);
-            folders.extend(
-                nodes
-                    .iter()
-                    .flat_map(Node::walk)
-                    .filter(|n| n.package)
-                    .map(|n| root_dir.join(&n.rel)),
-            );
+            out.insert(guid.to_string(), here.clone());
         }
-        let name = |dir: &PathBuf| {
-            dir.file_name()
-                .map(|n| n.to_string_lossy().to_ascii_lowercase())
-                .unwrap_or_default()
-        };
-        let quoted = format!("\"{product}\"");
-        folders
-            .iter()
-            .find(|dir| name(dir) == product.to_ascii_lowercase())
-            .or_else(|| {
-                folders.iter().find(|dir| {
-                    std::fs::read_to_string(dir.join("Package.swift"))
-                        .is_ok_and(|manifest| manifest.contains(&quoted))
-                })
-            })
-            .or(if folders.len() == 1 {
-                folders.first()
-            } else {
-                None
-            })
-            .map_or_else(|| product.to_ascii_lowercase(), name)
+        for child in node["children"].as_array().into_iter().flatten() {
+            visit(child, &here, dir, out);
+        }
     }
+    let mut out = HashMap::new();
+    visit(tree, dir, dir, &mut out);
+    out
+}
 
-    /// The build file in the target's Frameworks phases that links the
-    /// SwiftPM product `dep_id`.
-    fn linking_build_file(&self, target: &Value, dep_id: &str) -> Option<&'a Dict> {
-        ids(target, "buildPhases")
-            .filter_map(|id| self.get(id))
-            .filter(|p| isa_of(p) == "PBXFrameworksBuildPhase")
-            .flat_map(|p| ids_in(p, "files"))
-            .filter_map(|f| self.get(f))
-            .find(|f| f.get("productRef").and_then(Value::as_str) == Some(dep_id))
-    }
+fn sources(target: &Json, files: &HashMap<String, PathBuf>) -> Vec<PathBuf> {
+    target["buildPhases"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|phase| phase["type"] == "com.apple.buildphase.sources")
+        .flat_map(|phase| phase["buildFiles"].as_array().into_iter().flatten())
+        .filter_map(|file| files.get(file["fileReference"].as_str()?).cloned())
+        .collect()
+}
 
-    fn build_phases(&self, target_id: &str, target: &Value) -> Vec<Json> {
-        let phase_ids: Vec<&str> = ids(target, "buildPhases").collect();
-        let mut synced = self.synced_build_files(target_id, target, &phase_ids);
-        phase_ids
+fn configurations(list: &Json) -> Vec<(String, Vec<Assignment>)> {
+    list.as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| {
+            let name = c["name"].as_str()?.to_string();
+            let settings = c["buildSettings"].as_object()?;
+            Some((
+                name,
+                settings
+                    .iter()
+                    .flat_map(|(k, v)| assignments(k, v))
+                    .collect(),
+            ))
+        })
+        .collect()
+}
+
+/// One PIF setting as assignments. `SDKROOT` and `SDK_VARIANT` set to `auto`
+/// drop: Xcode builds a package for the target that uses it, so the SDK the
+/// query resolves for stands. A `[__platform_filter=ios;ios-simulator]`
+/// condition becomes one `[sdk=…*]` assignment per SDK it names, since the
+/// resolver matches SDKs, not PIF platform filters; Mac Catalyst has no SDK
+/// of its own and drops.
+fn assignments(key: &str, value: &Json) -> Vec<Assignment> {
+    let value = match value {
+        Json::String(s) => s.clone(),
+        Json::Array(items) => items
             .iter()
-            .filter_map(|id| self.build_phase(id, synced.remove(*id).unwrap_or_default()))
+            .filter_map(Json::as_str)
+            .map(|s| {
+                if s.contains(char::is_whitespace) {
+                    format!("\"{s}\"")
+                } else {
+                    s.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+        _ => return Vec::new(),
+    };
+    let (key, conditions) = project::split_conditional_key(key);
+    if matches!(key.as_str(), "SDKROOT" | "SDK_VARIANT") && value == "auto" {
+        return Vec::new();
+    }
+    let (filters, mut conditions): (Vec<Condition>, Vec<Condition>) = conditions
+        .into_iter()
+        .partition(|c| c.key == "__platform_filter");
+    let Some(filter) = filters.first() else {
+        return vec![Assignment {
+            key,
+            conditions,
+            value,
+            condition: None,
+        }];
+    };
+    conditions.push(Condition {
+        key: "sdk".to_string(),
+        value: String::new(),
+    });
+    filter
+        .value
+        .split(';')
+        .filter_map(platform_sdk)
+        .map(|sdk| {
+            let mut conditions = conditions.clone();
+            if let Some(last) = conditions.last_mut() {
+                last.value = format!("{sdk}*");
+            }
+            Assignment {
+                key: key.clone(),
+                conditions,
+                value: value.clone(),
+                condition: None,
+            }
+        })
+        .collect()
+}
+
+/// The SDK a PIF platform filter names.
+fn platform_sdk(filter: &str) -> Option<&'static str> {
+    Some(match filter {
+        "macos" => "macosx",
+        "ios" => "iphoneos",
+        "ios-simulator" => "iphonesimulator",
+        "tvos" => "appletvos",
+        "tvos-simulator" => "appletvsimulator",
+        "watchos" => "watchos",
+        "watchos-simulator" => "watchsimulator",
+        "xros" => "xros",
+        "xros-simulator" => "xrsimulator",
+        "driverkit" => "driverkit",
+        _ => return None,
+    })
+}
+
+/// The packages filed under each container, by manifest.
+static REGISTRY: Mutex<BTreeMap<PathBuf, (Arc<Package>, PathBuf)>> = Mutex::new(BTreeMap::new());
+
+/// File `packages` as the local packages of `container`, the workspace or
+/// project whose build they are part of, in place of what it had before.
+pub fn register(container: &Path, packages: Vec<Package>) {
+    let mut registry = REGISTRY.lock().unwrap_or_else(PoisonError::into_inner);
+    registry.retain(|_, (_, owner)| owner != container);
+    for package in packages {
+        registry.insert(
+            project::standardize(&package.manifest()),
+            (Arc::new(package), container.to_path_buf()),
+        );
+    }
+}
+
+/// The package whose `Package.swift` is `manifest`, and the container it was
+/// filed under.
+#[must_use]
+pub fn registered(manifest: &Path) -> Option<(Arc<Package>, PathBuf)> {
+    if manifest.file_name()? != "Package.swift" {
+        return None;
+    }
+    REGISTRY
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&project::standardize(manifest))
+        .cloned()
+}
+
+/// The packages filed under `container`.
+#[must_use]
+pub fn packages_of(container: &Path) -> Vec<Arc<Package>> {
+    REGISTRY
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .values()
+        .filter(|(_, owner)| owner == container)
+        .map(|(package, _)| Arc::clone(package))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn conditions(a: &Assignment) -> Vec<(String, String)> {
+        a.conditions
+            .iter()
+            .map(|c| (c.key.clone(), c.value.clone()))
             .collect()
     }
 
-    fn build_phase(&self, id: &str, synced: Vec<Json>) -> Option<Json> {
-        let phase = self.get(id)?;
-        let kind = phase_kind(isa_of(phase))?;
-        let mut files: Vec<Json> = ids_in(phase, "files")
-            .filter_map(|f| self.build_file(f, kind))
-            .collect();
-        // Where Xcode puts a synchronized folder's files among the listed ones
-        // has no build meaning: after the first in Resources, else at the end.
-        let at = if kind == "resources" {
-            files.len().min(1)
-        } else {
-            files.len()
-        };
-        files.splice(at..at, synced);
-        let mut out = Map::new();
-        out.insert("guid".into(), json!(self.guid(id)));
-        out.insert("type".into(), json!(format!("com.apple.buildphase.{kind}")));
-        match kind {
-            "shell-script" => {
-                out.insert("buildFiles".into(), json!([]));
-                shell_script_keys(phase, id, &mut out);
-            }
-            "copy-files" => {
-                out.insert("buildFiles".into(), Json::Array(files));
-                copy_files_keys(phase, &mut out);
-            }
-            _ => {
-                out.insert("buildFiles".into(), Json::Array(files));
-            }
-        }
-        Some(Json::Object(out))
-    }
-
-    fn build_file(&self, id: &str, phase_kind: &str) -> Option<Json> {
-        let file = self.get(id)?;
-        let mut out = Map::new();
-        if let Some(file_ref) = file.get("fileRef").and_then(Value::as_str) {
-            out.insert("guid".into(), json!(self.guid(id)));
-            let referenced = self.get(file_ref);
-            if let Some(proxy) = referenced.filter(|r| isa_of(r) == "PBXReferenceProxy") {
-                out.insert(
-                    "targetReference".into(),
-                    json!(self.proxied_producer(proxy)?),
-                );
-            } else if let Some(producer) = self.producers.get(file_ref) {
-                out.insert("targetReference".into(), json!(self.guid(producer)));
-            } else {
-                out.insert("fileReference".into(), json!(self.guid(file_ref)));
-                let path = referenced
-                    .and_then(|r| r.get("path").or_else(|| r.get("name")))
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                let file_type = referenced.map_or("", |r| file_ref_type(r, path));
-                if phase_kind == "sources" && file_type == "file.intentdefinition" {
-                    out.insert("intentsCodegenVisibility".into(), json!("public"));
-                }
-            }
-        } else if let Some(product) = file.get("productRef").and_then(Value::as_str) {
-            // SwiftPM product build files take the dependency's ID, unprefixed.
-            out.insert("guid".into(), json!(md5_hex(product.as_bytes())));
-            out.insert(
-                "targetReference".into(),
-                json!(self.package_product(product)?),
-            );
-        } else {
-            return None;
-        }
-        let settings = file.get("settings").and_then(Value::as_dict);
-        apply_attributes(
-            &strings(settings.and_then(|s| s.get("ATTRIBUTES"))),
-            &mut out,
+    #[test]
+    fn a_platform_filter_becomes_one_sdk_condition_per_sdk() {
+        let out = assignments(
+            "CLANG_ENABLE_MODULES[__platform_filter=ios;ios-simulator]",
+            &json!("YES"),
         );
-        if let Some(flags) = settings
-            .and_then(|s| s.get("COMPILER_FLAGS"))
-            .and_then(Value::as_str)
-        {
-            out.insert("additionalCompilerOptions".into(), json!(flags));
-        }
-        if let Some(filters) = platform_filters(file) {
-            out.insert("platformFilters".into(), filters);
-        }
-        Some(Json::Object(out))
-    }
-
-    /// The build files the target's synchronized folders add, by phase ID.
-    ///
-    /// Every file in a folder is a member unless the folder's exception set
-    /// for this target lists it, and lands in the phase its type defaults
-    /// to, if the target has one. A phase exception set adds files to that
-    /// phase on top.
-    fn synced_build_files(
-        &self,
-        target_id: &str,
-        target: &Value,
-        phase_ids: &[&str],
-    ) -> HashMap<String, Vec<Json>> {
-        let mut out: HashMap<String, Vec<Json>> = HashMap::new();
-        let first_phase = |isa_name: &str| -> Option<&str> {
-            phase_ids
-                .iter()
-                .copied()
-                .find(|p| self.get(p).is_some_and(|ph| isa_of(ph) == isa_name))
-        };
-        let own: Vec<&str> = ids(target, "fileSystemSynchronizedGroups").collect();
-        // A folder the target doesn't list can still give it files: its
-        // exception set for the target then names what joins, not what stays
-        // out. Those come after the target's own folders.
-        let roots = own.iter().copied().chain(
-            self.synced_order
-                .iter()
-                .copied()
-                .filter(|r| !own.contains(r)),
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].key, "CLANG_ENABLE_MODULES");
+        assert_eq!(conditions(&out[0]), [("sdk".into(), "iphoneos*".into())]);
+        assert_eq!(
+            conditions(&out[1]),
+            [("sdk".into(), "iphonesimulator*".into())]
         );
-        for root in roots {
-            let (Some(root_obj), Some(nodes)) = (self.get(root), self.synced.get(root)) else {
-                continue;
-            };
-            let listed = own.contains(&root);
-            let exceptions: Vec<&Dict> = ids_in(root_obj, "exceptions")
-                .filter_map(|e| self.get(e))
-                .collect();
-            let target_set = exceptions.iter().copied().find(|e| {
-                isa_of(e) == "PBXFileSystemSynchronizedBuildFileExceptionSet"
-                    && e.get("target").and_then(Value::as_str) == Some(target_id)
-            });
-            if !listed && target_set.is_none() {
-                continue;
-            }
-            let named = target_set
-                .map(|e| strings(e.get("membershipExceptions")))
-                .unwrap_or_default();
-            for node in nodes.iter().flat_map(Node::walk) {
-                if node.kind == Kind::Group
-                    || node.file_type == "text.plist.entitlements"
-                    || is_named(node, &named) == listed
-                {
-                    continue;
-                }
-                let phase_isa = default_phase(&node.file_type, node.kind);
-                let Some(phase) = first_phase(phase_isa) else {
-                    continue;
-                };
-                let mut file = self.synced_build_file(root, phase, node);
-                if let Some(set) = target_set {
-                    apply_synced_settings(set, &exception_key(node), &mut file);
-                    if phase_isa == "PBXHeadersBuildPhase" {
-                        if strings(set.get("publicHeaders")).contains(&node.rel) {
-                            file.insert("headerVisibility".into(), json!("public"));
-                        } else if strings(set.get("privateHeaders")).contains(&node.rel) {
-                            file.insert("headerVisibility".into(), json!("private"));
-                        }
-                    }
-                }
-                out.entry(phase.to_string())
-                    .or_default()
-                    .push(Json::Object(file));
-            }
-            for set in exceptions.iter().filter(|e| {
-                isa_of(e) == "PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet"
-            }) {
-                let Some(phase) = set
-                    .get("buildPhase")
-                    .and_then(Value::as_str)
-                    .filter(|p| phase_ids.contains(p))
-                else {
-                    continue;
-                };
-                for rel in strings(set.get("membershipExceptions")) {
-                    let Some(node) = nodes
-                        .iter()
-                        .flat_map(Node::walk)
-                        .find(|n| exception_key(n) == rel)
-                    else {
-                        continue;
-                    };
-                    let mut file = self.synced_build_file(root, phase, node);
-                    apply_synced_settings(set, &rel, &mut file);
-                    out.entry(phase.to_string())
-                        .or_default()
-                        .push(Json::Object(file));
-                }
-            }
-        }
-        out
+        assert!(assignments("X[__platform_filter=ios-maccatalyst]", &json!("YES")).is_empty());
+        assert!(assignments("SDKROOT", &json!("auto")).is_empty());
     }
 
-    fn synced_build_file(&self, root: &str, phase: &str, node: &Node) -> Map<String, Json> {
-        let reference = match node.kind {
-            Kind::VariantGroup => self.synced_guid(root, &format!("{}VariantGroup", node.rel)),
-            _ => self.synced_guid(root, &node.rel),
-        };
-        let mut file = Map::new();
-        file.insert(
-            "guid".into(),
-            json!(self.synced_guid(root, &format!("{phase}{}", node.rel))),
+    #[test]
+    fn a_list_setting_joins_and_quotes_what_has_spaces() {
+        let out = assignments(
+            "HEADER_SEARCH_PATHS",
+            &json!(["/work/My Kit/include", "$(inherited)"]),
         );
-        file.insert("fileReference".into(), json!(reference));
-        file
+        assert_eq!(out[0].value, "\"/work/My Kit/include\" $(inherited)");
     }
 
-    /// The file type of each `fileReference` the phases name.
-    fn file_types(&self, phases: &[Json]) -> HashMap<String, String> {
-        let mut out = HashMap::new();
-        for (id, obj) in self.objects {
-            if isa(obj) == "PBXFileReference" {
-                let path = obj
-                    .get("path")
-                    .or_else(|| obj.get("name"))
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                if let Some(dict) = obj.as_dict() {
-                    out.insert(self.guid(id), file_ref_type(dict, path).to_string());
-                }
-            }
+    #[test]
+    fn a_configuration_containing_debug_builds_packages_as_debug() {
+        for config in ["Debug", "debug", "Debug-UAT", "UAT-Debug"] {
+            assert_eq!(package_configuration(config), "Debug", "{config}");
         }
-        for (root, nodes) in &self.synced {
-            for node in nodes.iter().flat_map(Node::walk) {
-                if node.kind == Kind::File {
-                    out.insert(self.synced_guid(root, &node.rel), node.file_type.clone());
-                }
-            }
+        for config in ["Release", "UAT", "Beta Release"] {
+            assert_eq!(package_configuration(config), "Release", "{config}");
         }
-        let used: HashSet<&str> = phases
-            .iter()
-            .filter_map(|p| p["buildFiles"].as_array())
-            .flatten()
-            .filter_map(|f| f["fileReference"].as_str())
-            .collect();
-        out.retain(|guid, _| used.contains(guid.as_str()));
-        out
     }
 
-    fn build_rules(&self, target: &Value) -> Json {
-        Json::Array(
-            ids(target, "buildRules")
-                .filter_map(|id| Some(build_rule(self.get(id)?, &self.guid(id))))
-                .collect(),
-        )
+    #[test]
+    fn the_root_manifest_depends_on_each_package_by_path() {
+        let text = root_manifest(&[PathBuf::from("/work/Packages/My \"Kit\"")]);
+        assert!(text.contains(".package(path: \"/work/Packages/My \\\"Kit\\\"\"),"));
     }
 
-    /// Per configuration, how the target signs and the bundle identifier its
-    /// Info.plist declares. Swift Build reads the style from `CODE_SIGN_STYLE`
-    /// whenever that's set, so the fallback matters little.
-    fn provisioning(&self, target_id: &str, target: &Value) -> Json {
-        let Some(list) = self.configuration_list(target) else {
-            return json!([]);
-        };
-        let project_configs: Vec<&Dict> = self
-            .configuration_list(self.project_obj)
-            .map(|l| {
-                ids_in(l, "buildConfigurations")
-                    .filter_map(|id| self.get(id))
-                    .collect()
-            })
-            .unwrap_or_default();
-        let attribute_style = self
-            .project_obj
-            .get("attributes")
-            .and_then(|a| a.get("TargetAttributes"))
-            .and_then(|t| t.get(target_id))
-            .and_then(|t| t.get("ProvisioningStyle"))
-            .and_then(Value::as_str);
-        let target_name = target
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let product_defaults = self
-            .graph
-            .defaults
-            .as_ref()
-            .map(|c| c.layer_for(target.get("productType").and_then(Value::as_str), None))
-            .unwrap_or_default();
-        let entries: Vec<Json> = ids_in(list, "buildConfigurations")
-            .filter_map(|id| self.get(id))
-            .map(|config| {
-                let name = config
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                let project_config = project_configs
-                    .iter()
-                    .find(|c| c.get("name").and_then(Value::as_str) == Some(name));
-                let mut layers = vec![product_defaults.clone()];
-                layers.extend(
-                    project::build_settings_layers(&self.file.path, target_name, name)
-                        .unwrap_or_default(),
-                );
-                let setting = |key: &str| {
-                    project::last_unconditional_setting(&layers, key).or_else(|| {
-                        setting_of(config, key)
-                            .or_else(|| project_config.and_then(|c| setting_of(c, key)))
-                            .map(str::to_string)
-                    })
-                };
-                let style = match setting("CODE_SIGN_STYLE").as_deref().or(attribute_style) {
-                    Some("Manual") => 1,
-                    _ => 0,
-                };
-                json!({
-                    "bundleIdentifierFromInfoPlist": self.plist_bundle_identifier(
-                        setting("INFOPLIST_FILE").as_deref(),
-                        setting("GENERATE_INFOPLIST_FILE").as_deref() == Some("YES"),
-                    ),
-                    "configurationName": name,
-                    "provisioningStyle": style,
-                })
-            })
-            .collect();
-        Json::Array(entries)
-    }
-
-    /// The `CFBundleIdentifier` written in a target's Info.plist, unexpanded.
-    /// One Xcode generates (or completes) says `$(PRODUCT_BUNDLE_IDENTIFIER)`;
-    /// without either, it is empty.
-    fn plist_bundle_identifier(&self, infoplist: Option<&str>, generated: bool) -> String {
-        let fallback = || {
-            if generated {
-                "$(PRODUCT_BUNDLE_IDENTIFIER)".to_string()
-            } else {
-                String::new()
-            }
-        };
-        let Some(infoplist) = infoplist.filter(|p| !p.is_empty()) else {
-            return fallback();
-        };
-        let relative = [
-            "$(SRCROOT)/",
-            "$(PROJECT_DIR)/",
-            "${SRCROOT}/",
-            "${PROJECT_DIR}/",
+    /// The shape `dump-pif` prints: a package whose library has a dynamic
+    /// variant and a test target, exposed through a product another local
+    /// package depends on.
+    fn dumped() -> Vec<Json> {
+        let config =
+            |name: &str, settings: Json| json!({ "name": name, "buildSettings": settings });
+        let target = |sig: &str, contents: Json| json!({ "type": "target", "signature": sig, "contents": contents });
+        vec![
+            json!({ "type": "project", "signature": "p1", "contents": {
+                "guid": "PACKAGE:core", "projectName": "Core", "projectDirectory": "/work/Core",
+                "defaultConfigurationName": "Release",
+                "buildConfigurations": [config("Debug", json!({"DEBUG_SETTING": "YES"})), config("Release", json!({}))],
+                "groupTree": { "type": "group", "path": "/", "sourceTree": "<absolute>", "children": [
+                    { "type": "group", "path": "/work/Core/Sources/Core", "sourceTree": "<absolute>", "children": [
+                        { "type": "file", "guid": "F1", "path": "Core.swift", "sourceTree": "<group>" }
+                    ]}
+                ]},
+                "targets": ["t1", "t2", "t3", "t4"],
+            }}),
+            target(
+                "t1",
+                json!({ "guid": "PACKAGE-TARGET:Core", "name": "Core", "type": "standard",
+                "productTypeIdentifier": "org.swift.product-type.library.static",
+                "dynamicTargetVariantGuid": "PACKAGE-TARGET:Core-dynamic",
+                "buildConfigurations": [config("Debug", json!({"SWIFT_PACKAGE_NAME": "core"}))],
+                "buildPhases": [{ "type": "com.apple.buildphase.sources", "buildFiles": [{ "fileReference": "F1" }] }],
+                "dependencies": [] }),
+            ),
+            target(
+                "t2",
+                json!({ "guid": "PACKAGE-TARGET:Core-dynamic", "name": "Core", "type": "standard",
+                "productTypeIdentifier": "com.apple.product-type.library.dynamic", "dependencies": [] }),
+            ),
+            target(
+                "t3",
+                json!({ "guid": "PACKAGE-PRODUCT:core_Core.Core", "name": "Core-product", "type": "packageProduct",
+                "dependencies": [{ "guid": "PACKAGE-TARGET:Core" }] }),
+            ),
+            target(
+                "t4",
+                json!({ "guid": "PACKAGE-TARGET:CoreTests", "name": "CoreTests", "type": "standard",
+                "productTypeIdentifier": "com.apple.product-type.bundle.unit-test", "dependencies": [] }),
+            ),
+            json!({ "type": "project", "signature": "p2", "contents": {
+                "guid": "PACKAGE:feature", "projectName": "Feature", "projectDirectory": "/work/Feature",
+                "buildConfigurations": [], "groupTree": { "type": "group", "path": "", "sourceTree": "<group>" },
+                "targets": ["t5"],
+            }}),
+            target(
+                "t5",
+                json!({ "guid": "PACKAGE-TARGET:Feature", "name": "Feature", "type": "standard",
+                "productTypeIdentifier": "org.swift.product-type.library.static",
+                "dependencies": [{ "guid": "PACKAGE-PRODUCT:core_Core.Core" }, { "guid": "PACKAGE-PRODUCT:remote_X.X" }] }),
+            ),
+            json!({ "type": "project", "signature": "p3", "contents": {
+                "guid": "PACKAGE:root", "projectName": "SweetPadPackages", "projectDirectory": "/scratch/root",
+                "targets": [] }}),
         ]
-        .iter()
-        .find_map(|prefix| infoplist.strip_prefix(prefix))
-        .unwrap_or(infoplist);
-        if relative.contains("$(") || relative.contains("${") {
-            return fallback();
-        }
-        crate::derived_data::plist_strings(&self.project_dir.join(relative))
-            .into_iter()
-            .find_map(|(key, value)| (key == "CFBundleIdentifier").then_some(value))
-            .unwrap_or_else(fallback)
     }
-}
 
-/// Every node under `id`, parents first, in navigator order.
-fn navigator_order<'v>(
-    objects: &'v Dict,
-    id: &'v str,
-    out: &mut Vec<&'v str>,
-    seen: &mut HashSet<&'v str>,
-) {
-    if seen.len() > 100_000 || !seen.insert(id) {
-        return;
+    #[test]
+    fn local_packages_keep_their_compiled_targets_and_local_edges() {
+        let packages = parse(&dumped(), &[PathBuf::from("/scratch")]);
+        assert_eq!(packages.len(), 2);
+        let core = &packages[0];
+        assert_eq!(core.targets.len(), 1);
+        assert_eq!(
+            core.targets[0].sources,
+            [PathBuf::from("/work/Core/Sources/Core/Core.swift")]
+        );
+        assert_eq!(
+            core.products,
+            [("Core".to_string(), vec!["Core".to_string()])]
+        );
+        assert_eq!(packages[1].targets[0].dependencies, ["Core"]);
     }
-    out.push(id);
-    let children = objects
-        .get(id)
-        .and_then(|o| o.get("children"))
-        .and_then(Value::as_array)
-        .unwrap_or_default();
-    for child in children.iter().filter_map(Value::as_str) {
-        navigator_order(objects, child, out, seen);
+
+    #[test]
+    fn settings_follow_the_package_configuration_for_the_app_one() {
+        let packages = parse(&dumped(), &[PathBuf::from("/scratch")]);
+        let settings = packages[0].build_settings("Core", "UAT-Debug").unwrap();
+        let keys: Vec<&str> = settings.layers[1].iter().map(|a| a.key.as_str()).collect();
+        assert_eq!(keys, ["PROJECT_NAME", "DEBUG_SETTING"]);
+        assert_eq!(settings.layers[3][0].key, "SWIFT_PACKAGE_NAME");
+        let release = packages[0].build_settings("Core", "UAT").unwrap();
+        assert_eq!(release.layers[1].len(), 1);
     }
-}
-
-/// A pbxproj object in another project of the graph.
-fn project_object<'p>(project: &'p ProjectFile, id: &str) -> Option<&'p Value> {
-    project::project_root(&project.value)
-        .ok()
-        .and_then(|(objects, _)| objects.get(id))
-}
-
-/// A PIF top-level object. The signature is the content hash: Swift Build
-/// caches loaded objects by signature, so it must change whenever the
-/// contents do.
-fn object(kind: &str, contents: Json) -> Json {
-    let hash = md5_hex(contents.to_string().as_bytes());
-    let mut out = Map::new();
-    out.insert(
-        "signature".into(),
-        json!(format!("{}@v11_hash={hash}", kind.to_uppercase())),
-    );
-    out.insert("type".into(), json!(kind));
-    out.insert("contents".into(), contents);
-    Json::Object(out)
-}
-
-/// PIF's name for a build phase `isa`.
-fn phase_kind(isa: &str) -> Option<&'static str> {
-    Some(match isa {
-        "PBXSourcesBuildPhase" => "sources",
-        "PBXFrameworksBuildPhase" => "frameworks",
-        "PBXHeadersBuildPhase" => "headers",
-        "PBXResourcesBuildPhase" => "resources",
-        "PBXCopyFilesBuildPhase" => "copy-files",
-        "PBXShellScriptBuildPhase" => "shell-script",
-        "PBXRezBuildPhase" => "rez",
-        _ => return None,
-    })
-}
-
-/// The phase a synchronized folder's file joins by default: Sources for
-/// what compiles (and data models, catalogs and intent definitions), Headers
-/// for headers, Resources for the rest.
-fn default_phase(file_type: &str, kind: Kind) -> &'static str {
-    if kind == Kind::VariantGroup {
-        return "PBXResourcesBuildPhase";
-    }
-    match file_type {
-        "sourcecode.c.h" | "sourcecode.cpp.h" => "PBXHeadersBuildPhase",
-        "sourcecode.swift"
-        | "sourcecode.c.c"
-        | "sourcecode.c.objc"
-        | "sourcecode.cpp.cpp"
-        | "sourcecode.cpp.objcpp"
-        | "sourcecode.c.c.preprocessed"
-        | "sourcecode.c.objc.preprocessed"
-        | "sourcecode.cpp.cpp.preprocessed"
-        | "sourcecode.cpp.objcpp.preprocessed"
-        | "sourcecode.metal"
-        | "sourcecode.applescript"
-        | "sourcecode.asm"
-        | "sourcecode.asm.asm"
-        | "sourcecode.asm.llvm"
-        | "sourcecode.nasm"
-        | "sourcecode.lex"
-        | "sourcecode.yacc"
-        | "sourcecode.mig"
-        | "sourcecode.iig"
-        | "sourcecode.dtrace"
-        | "sourcecode.opencl"
-        | "wrapper.xcdatamodeld"
-        | "wrapper.xcdatamodel"
-        | "wrapper.xcmappingmodel"
-        | "folder.documentationcatalog"
-        | "file.intentdefinition"
-        | "file.mlmodel"
-        | "folder.mlpackage" => "PBXSourcesBuildPhase",
-        _ => "PBXResourcesBuildPhase",
-    }
-}
-
-/// Whether an exception set's paths name a synchronized node: the node
-/// itself, a folder above it, or one of a variant group's translations.
-fn is_named(node: &Node, paths: &[String]) -> bool {
-    let names = |rel: &str| {
-        paths.iter().any(|e| {
-            rel == e
-                || rel
-                    .strip_prefix(e.as_str())
-                    .is_some_and(|r| r.starts_with('/'))
-        })
-    };
-    names(&exception_key(node)) || node.children.iter().any(|c| names(&c.rel))
-}
-
-/// How an exception set spells a synchronized node's path. A variant group
-/// is `/Localized/<folder holding the .lproj folders>/<group name>`.
-fn exception_key(node: &Node) -> String {
-    if node.kind != Kind::VariantGroup {
-        return node.rel.clone();
-    }
-    let lproj_dir = node.rel.rsplit_once('/').map_or("", |(dir, _)| dir);
-    match lproj_dir.rsplit_once('/') {
-        Some((dir, _)) => format!("/Localized/{dir}/{}", node.name),
-        None => format!("/Localized/{}", node.name),
-    }
-}
-
-/// Per-file settings an exception set gives a synchronized file, spelled
-/// like a build file's own.
-fn apply_synced_settings(set: &Dict, rel: &str, file: &mut Map<String, Json>) {
-    let by_path = |key: &str| {
-        set.get(key)
-            .and_then(Value::as_dict)
-            .and_then(|d| d.get(rel))
-    };
-    if let Some(flags) = by_path("additionalCompilerFlagsByRelativePath").and_then(Value::as_str) {
-        file.insert("additionalCompilerOptions".into(), json!(flags));
-    }
-    if let Some(attributes) = by_path("attributesByRelativePath") {
-        apply_attributes(&strings(Some(attributes)), file);
-    }
-    if let Some(filters) = by_path("platformFiltersByRelativePath")
-        .map(|f| strings(Some(f)))
-        .and_then(|names| filters_json(&names))
-    {
-        file.insert("platformFilters".into(), filters);
-    }
-}
-
-/// A build file's `ATTRIBUTES` as PIF flags. Xcode writes only the ones
-/// that are set, and leaves a project header's visibility out.
-fn apply_attributes(attributes: &[String], out: &mut Map<String, Json>) {
-    for attribute in attributes {
-        match attribute.as_str() {
-            "Public" | "Private" => {
-                out.insert("headerVisibility".into(), json!(attribute.to_lowercase()));
-            }
-            "Weak" => {
-                out.insert("shouldLinkWeakly".into(), json!("true"));
-            }
-            "CodeSignOnCopy" => {
-                out.insert("codeSignOnCopy".into(), json!("true"));
-            }
-            "RemoveHeadersOnCopy" => {
-                out.insert("removeHeadersOnCopy".into(), json!("true"));
-            }
-            _ => {}
-        }
-    }
-}
-
-/// An object's `platformFilter`/`platformFilters` as PIF platform filters.
-fn platform_filters(obj: &Dict) -> Option<Json> {
-    let mut names = strings(obj.get("platformFilters"));
-    names.extend(strings(obj.get("platformFilter")));
-    filters_json(&names)
-}
-
-/// Platform names as PIF platform filters, sorted by environment, then
-/// platform. Mac Catalyst is iOS in the `maccatalyst` environment.
-fn filters_json(names: &[String]) -> Option<Json> {
-    if names.is_empty() {
-        return None;
-    }
-    let mut pairs: Vec<(&str, &str)> = names
-        .iter()
-        .map(|n| match n.as_str() {
-            "maccatalyst" => ("maccatalyst", "ios"),
-            other => ("", other),
-        })
-        .collect();
-    pairs.sort_unstable();
-    pairs.dedup();
-    Some(Json::Array(
-        pairs
-            .into_iter()
-            .map(|(environment, platform)| {
-                if environment.is_empty() {
-                    json!({ "platform": platform })
-                } else {
-                    json!({ "environment": environment, "platform": platform })
-                }
-            })
-            .collect(),
-    ))
-}
-
-fn build_rule(rule: &Dict, guid: &str) -> Json {
-    let file_type = str_of_dict(rule, "fileType");
-    let compiler = str_of_dict(rule, "compilerSpec");
-    let patterns = rule.get("filePatterns").and_then(Value::as_str);
-    let name = rule.get("name").and_then(Value::as_str).map_or_else(
-        || {
-            let using = if compiler == "com.apple.compilers.proxy.script" {
-                "Script"
-            } else {
-                compiler.as_str()
-            };
-            match patterns {
-                Some(p) => format!("Files '{p}' using {using}"),
-                None => format!("{file_type} using {using}"),
-            }
-        },
-        str::to_string,
-    );
-    let mut out = Map::new();
-    out.insert("guid".into(), json!(guid));
-    out.insert("name".into(), json!(name));
-    out.insert("fileTypeIdentifier".into(), json!(file_type));
-    out.insert("compilerSpecificationIdentifier".into(), json!(compiler));
-    out.insert(
-        "inputFilePaths".into(),
-        json!(strings(rule.get("inputFiles"))),
-    );
-    out.insert(
-        "outputFilePaths".into(),
-        json!(strings(rule.get("outputFiles"))),
-    );
-    // Xcode leaves a rule's file lists out of the PIF.
-    out.insert("inputFileListPaths".into(), json!([]));
-    out.insert("outputFileListPaths".into(), json!([]));
-    out.insert(
-        "runOncePerArchitecture".into(),
-        json!(flag(rule, "runOncePerArchitecture", true)),
-    );
-    if let Some(patterns) = patterns {
-        out.insert("filePatterns".into(), json!(patterns));
-    }
-    if let Some(script) = rule.get("script").and_then(Value::as_str) {
-        out.insert("scriptContents".into(), json!(script));
-    }
-    if let Some(flags) = rule.get("outputFilesCompilerFlags") {
-        let split: Vec<Vec<&str>> = match flags {
-            Value::Array(items) => items
-                .iter()
-                .filter_map(Value::as_str)
-                .map(|f| f.split_whitespace().collect())
-                .collect(),
-            _ => Vec::new(),
-        };
-        out.insert("outputFilesCompilerFlags".into(), json!(split));
-    }
-    dependency_file_keys(rule, &mut out);
-    Json::Object(out)
-}
-
-/// The keys a copy-files phase adds: where its files land.
-fn copy_files_keys(phase: &Dict, out: &mut Map<String, Json>) {
-    let destination = match phase.get("dstSubfolder").and_then(Value::as_str) {
-        Some(name) => copy_destination_named(name),
-        None => copy_destination(
-            phase
-                .get("dstSubfolderSpec")
-                .and_then(Value::as_str)
-                .unwrap_or("16"),
-        ),
-    };
-    out.insert("destinationSubfolder".into(), json!(destination));
-    out.insert(
-        "destinationSubpath".into(),
-        json!(str_of_dict(phase, "dstPath")),
-    );
-    install_only_key(phase, out);
-}
-
-/// `runOnlyForDeploymentPostprocessing`, which Xcode writes only when set.
-fn install_only_key(phase: &Dict, out: &mut Map<String, Json>) {
-    if flag(phase, "runOnlyForDeploymentPostprocessing", false) == "true" {
-        out.insert("runOnlyForDeploymentPostprocessing".into(), json!("true"));
-    }
-}
-
-/// The keys a run-script phase adds: the script, its shell, and the inputs
-/// and outputs dependency analysis reads.
-fn shell_script_keys(phase: &Dict, id: &str, out: &mut Map<String, Json>) {
-    let text =
-        |key: &str, default: &str| json!(phase.get(key).and_then(Value::as_str).unwrap_or(default));
-    out.insert("name".into(), text("name", "Run Script"));
-    out.insert("shellPath".into(), text("shellPath", "/bin/sh"));
-    out.insert("scriptContents".into(), text("shellScript", ""));
-    out.insert("originalObjectID".into(), json!(id));
-    for (key, pif_key) in [
-        ("inputPaths", "inputFilePaths"),
-        ("outputPaths", "outputFilePaths"),
-        ("inputFileListPaths", "inputFileListPaths"),
-        ("outputFileListPaths", "outputFileListPaths"),
-    ] {
-        out.insert(pif_key.into(), json!(strings(phase.get(key))));
-    }
-    out.insert(
-        "emitEnvironment".into(),
-        json!(flag(phase, "showEnvVarsInLog", true)),
-    );
-    out.insert(
-        "alwaysOutOfDate".into(),
-        json!(flag(phase, "alwaysOutOfDate", false)),
-    );
-    out.insert(
-        "alwaysRunForInstallHdrs".into(),
-        json!(flag(phase, "alwaysRunForInstallHdrs", false)),
-    );
-    out.insert("sandboxingOverride".into(), json!("basedOnBuildSetting"));
-    install_only_key(phase, out);
-    dependency_file_keys(phase, out);
-}
-
-/// A `dependencyFile` as the makefile-format dependency info PIF names.
-fn dependency_file_keys(obj: &Dict, out: &mut Map<String, Json>) {
-    if let Some(file) = obj.get("dependencyFile").and_then(Value::as_str) {
-        out.insert("dependencyFileFormat".into(), json!("makefile"));
-        out.insert("dependencyFilePaths".into(), json!([file]));
-    }
-}
-
-/// A pbxproj `0`/`1` flag as PIF's `"false"`/`"true"`, `default` when absent.
-fn flag(obj: &Dict, key: &str, default: bool) -> &'static str {
-    let value = match obj.get(key).and_then(Value::as_str) {
-        Some("1") => true,
-        Some("0") => false,
-        _ => default,
-    };
-    pif_bool(value)
-}
-
-/// The directory `<group>` and `SOURCE_ROOT` paths resolve against:
-/// the `.xcodeproj`'s parent, moved by the project's `projectDirPath`.
-fn project_directory(project_obj: &Value, xcodeproj: &Path) -> PathBuf {
-    let parent = xcodeproj
-        .parent()
-        .map_or_else(PathBuf::new, Path::to_path_buf);
-    match project_obj.get("projectDirPath").and_then(Value::as_str) {
-        Some(dir) if !dir.is_empty() => project::standardize(&parent.join(dir)),
-        _ => parent,
-    }
-}
-
-fn development_region(project_obj: &Value) -> &str {
-    project_obj
-        .get("developmentRegion")
-        .and_then(Value::as_str)
-        .unwrap_or("en")
-}
-
-/// A file reference's type: what the project says, else what Xcode would
-/// detect from the name. No extension reads as text, an unknown one as a
-/// plain file.
-fn file_ref_type<'v>(obj: &'v Dict, path: &str) -> &'v str {
-    if let Some(declared) = obj
-        .get("explicitFileType")
-        .or_else(|| obj.get("lastKnownFileType"))
-        .and_then(Value::as_str)
-    {
-        return declared;
-    }
-    let name = path.rsplit('/').next().unwrap_or(path);
-    match name.strip_prefix('.').unwrap_or(name).rsplit_once('.') {
-        None => "text",
-        Some((_, ext)) => pif_file_types::for_extension(ext).unwrap_or("file"),
-    }
-}
-
-/// The language Xcode reports for a target: the one most of its files are
-/// written in, counted across every phase. Xcode's tie-break is unknown.
-fn predominant_language(
-    phases: &[Json],
-    file_types: &HashMap<String, String>,
-) -> Option<&'static str> {
-    let mut counts: Vec<(&'static str, usize)> = Vec::new();
-    for file_ref in phases
-        .iter()
-        .filter_map(|p| p["buildFiles"].as_array())
-        .flatten()
-        .filter_map(|f| f["fileReference"].as_str())
-    {
-        let language = match file_types.get(file_ref).map(String::as_str) {
-            Some("sourcecode.swift") => "Swift",
-            Some("sourcecode.c.c") => "C",
-            Some("sourcecode.c.objc") => "Objective-C",
-            Some("sourcecode.cpp.cpp") => "C-Plus-Plus",
-            Some("sourcecode.cpp.objcpp") => "Objective-C-Plus-Plus",
-            Some("sourcecode.javascript") => "JavaScript",
-            _ => continue,
-        };
-        match counts.iter_mut().find(|(l, _)| *l == language) {
-            Some((_, n)) => *n += 1,
-            None => counts.push((language, 1)),
-        }
-    }
-    let best = counts
-        .iter()
-        .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(a.0)))?;
-    Some(match best.0 {
-        "Swift" => "Xcode.SourceCodeLanguage.Swift",
-        "C" => "Xcode.SourceCodeLanguage.C",
-        "Objective-C" => "Xcode.SourceCodeLanguage.Objective-C",
-        "C-Plus-Plus" => "Xcode.SourceCodeLanguage.C-Plus-Plus",
-        "Objective-C-Plus-Plus" => "Xcode.SourceCodeLanguage.Objective-C-Plus-Plus",
-        _ => "Xcode.SourceCodeLanguage.JavaScript",
-    })
-}
-
-/// A pbxproj setting as the single string PIF stores. A list setting joins
-/// with single spaces as written, without quoting: Xcode doesn't either, so an
-/// element with a space of its own splits into two words.
-fn setting_string(value: &Value) -> String {
-    match value {
-        Value::String(s) => s.clone(),
-        Value::Array(items) => items
-            .iter()
-            .filter_map(Value::as_str)
-            .collect::<Vec<_>>()
-            .join(" "),
-        Value::Dict(_) => String::new(),
-    }
-}
-
-fn setting_of<'v>(config: &'v Dict, key: &str) -> Option<&'v str> {
-    config
-        .get("buildSettings")
-        .and_then(|s| s.get(key))
-        .and_then(Value::as_str)
-}
-
-/// PIF's spelling of a copy-files phase's `dstSubfolderSpec`.
-fn copy_destination(spec: &str) -> &'static str {
-    match spec {
-        "0" => "",
-        "1" => "$(WRAPPER_NAME)",
-        "2" => "$(INFOPLIST_PATH)",
-        "3" => "$(PKGINFO_PATH)",
-        "4" | "17" => "$(EXECUTABLE_PATH)",
-        "5" => "$(CONTENTS_FOLDER_PATH)",
-        "6" => "$(EXECUTABLE_FOLDER_PATH)",
-        "7" => "$(UNLOCALIZED_RESOURCES_FOLDER_PATH)",
-        "8" => "$(PUBLIC_HEADERS_FOLDER_PATH)",
-        "9" => "$(PRIVATE_HEADERS_FOLDER_PATH)",
-        "10" => "$(FRAMEWORKS_FOLDER_PATH)",
-        "11" => "$(SHARED_FRAMEWORKS_FOLDER_PATH)",
-        "12" => "$(SHARED_SUPPORT_FOLDER_PATH)",
-        "13" => "$(PLUGINS_FOLDER_PATH)",
-        "14" => "$(SCRIPTS_FOLDER_PATH)",
-        "15" => "$(JAVA_FOLDER_PATH)",
-        _ => "<builtProductsDir>",
-    }
-}
-
-/// PIF's spelling of the newer, named `dstSubfolder`.
-fn copy_destination_named(name: &str) -> &'static str {
-    match name {
-        "None" => "",
-        "Wrapper" => "$(WRAPPER_NAME)",
-        "InfoPlist" => "$(INFOPLIST_PATH)",
-        "PkgInfo" => "$(PKGINFO_PATH)",
-        "MainExecutable" => "$(EXECUTABLE_PATH)",
-        "Contents" => "$(CONTENTS_FOLDER_PATH)",
-        "Executables" => "$(EXECUTABLE_FOLDER_PATH)",
-        "Resources" => "$(UNLOCALIZED_RESOURCES_FOLDER_PATH)",
-        "Frameworks" => "$(FRAMEWORKS_FOLDER_PATH)",
-        "SharedFrameworks" => "$(SHARED_FRAMEWORKS_FOLDER_PATH)",
-        "SharedSupport" => "$(SHARED_SUPPORT_FOLDER_PATH)",
-        "PlugIns" => "$(PLUGINS_FOLDER_PATH)",
-        "AppleScripts" => "$(SCRIPTS_FOLDER_PATH)",
-        "Java" => "$(JAVA_FOLDER_PATH)",
-        _ => "<builtProductsDir>",
-    }
-}
-
-/// The IANA name PIF uses for a pbxproj `fileEncoding`, an `NSStringEncoding`
-/// number, as `CFStringConvertEncodingToIANACharSetName` spells it. `None` for
-/// an encoding without a name, which Xcode leaves out.
-fn text_encoding_name(encoding: &str) -> Option<&'static str> {
-    Some(match encoding.parse::<u64>().ok()? {
-        1 => "us-ascii",
-        2 => "x-nextstep",
-        3 => "euc-jp",
-        4 => "utf-8",
-        5 => "iso-8859-1",
-        6 => "x-mac-symbol",
-        8 => "cp932",
-        9 => "iso-8859-2",
-        10 => "utf-16",
-        11 => "windows-1251",
-        12 => "windows-1252",
-        13 => "windows-1253",
-        14 => "windows-1254",
-        15 => "windows-1250",
-        21 => "iso-2022-jp",
-        30 => "macintosh",
-        0x8000_0001 => "x-mac-japanese",
-        0x9000_0100 => "utf-16be",
-        0x9400_0100 => "utf-16le",
-        0x8c00_0100 => "utf-32",
-        0x9800_0100 => "utf-32be",
-        0x9c00_0100 => "utf-32le",
-        _ => return None,
-    })
-}
-
-/// `path` relative to `base`, `/`-joined, climbing with `..` where `base`
-/// isn't an ancestor. Both are absolute.
-fn relative_path(path: &Path, base: &Path) -> String {
-    let path: Vec<_> = path.components().collect();
-    let base: Vec<_> = base.components().collect();
-    let common = path.iter().zip(&base).take_while(|(a, b)| a == b).count();
-    let mut parts: Vec<String> = vec!["..".to_string(); base.len() - common];
-    parts.extend(
-        path[common..]
-            .iter()
-            .map(|c| c.as_os_str().to_string_lossy().into_owned()),
-    );
-    parts.join("/")
-}
-
-fn pif_bool(value: bool) -> &'static str {
-    if value { "true" } else { "false" }
-}
-
-fn isa(obj: &Value) -> &str {
-    obj.get("isa").and_then(Value::as_str).unwrap_or_default()
-}
-
-fn isa_of(obj: &Dict) -> &str {
-    obj.get("isa").and_then(Value::as_str).unwrap_or_default()
-}
-
-fn ids<'v>(obj: &'v Value, key: &str) -> impl Iterator<Item = &'v str> {
-    obj.get(key)
-        .and_then(Value::as_array)
-        .unwrap_or_default()
-        .iter()
-        .filter_map(Value::as_str)
-}
-
-fn ids_in<'v>(obj: &'v Dict, key: &str) -> impl Iterator<Item = &'v str> {
-    obj.get(key)
-        .and_then(Value::as_array)
-        .unwrap_or_default()
-        .iter()
-        .filter_map(Value::as_str)
-}
-
-fn strings(value: Option<&Value>) -> Vec<String> {
-    match value {
-        Some(Value::Array(items)) => items
-            .iter()
-            .filter_map(Value::as_str)
-            .map(str::to_string)
-            .collect(),
-        Some(Value::String(s)) => vec![s.clone()],
-        _ => Vec::new(),
-    }
-}
-
-fn str_of(obj: &Value, key: &str) -> String {
-    obj.get(key)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
-}
-
-fn str_of_dict(obj: &Dict, key: &str) -> String {
-    obj.get(key)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
-}
-
-fn str_at(obj: &Value, outer: &str, inner: &str) -> Option<String> {
-    obj.get(outer)
-        .and_then(|o| o.get(inner))
-        .and_then(Value::as_str)
-        .map(str::to_string)
-}
-
-fn stem(path: &Path) -> String {
-    path.file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default()
 }

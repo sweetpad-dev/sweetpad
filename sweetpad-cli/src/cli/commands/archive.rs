@@ -121,7 +121,7 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
 
     let schemes = resolve::schemes(&resolved.container)?;
     let scheme = resolve::settle_scheme(ctx, &mut resolved, &schemes, !args.show_command)?;
-    let configuration = archive_configuration(ctx, &resolved)?;
+    let configuration = archive_configuration(ctx, &resolved, &scheme)?;
     let destination = archive_destination(ctx, &resolved, &scheme, &configuration)?;
 
     // A relative output dir must mean the same directory for the CLI's own
@@ -216,13 +216,15 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
     }))
 }
 
-/// The archive's configuration: flag > user config > sweetpad.toml >
+/// The archive's configuration: flag > user config > sweetpad.toml > the
+/// scheme's `ArchiveAction` (what Xcode's Product > Archive builds) >
 /// `Release`. The *remembered* layer is deliberately skipped — a Debug pick
 /// remembered from the daily build loop must not silently turn distribution
 /// archives into Debug builds.
 fn archive_configuration(
     ctx: &mut Context,
     resolved: &resolve::Resolved,
+    scheme: &str,
 ) -> Result<String, CliError> {
     let key = resolved.container.key();
     let cfg = ctx.config.for_project(&key);
@@ -233,6 +235,13 @@ fn archive_configuration(
         .clone()
         .or(cfg.configuration)
         .or(pf)
+        .or_else(|| {
+            resolve::scheme_configuration(
+                &resolved.container,
+                scheme,
+                resolve::SchemeAction::Archive,
+            )
+        })
         .unwrap_or_else(|| "Release".to_string());
     let candidates = resolve::configurations(&resolved.container).unwrap_or_default();
     if configuration == "Release" && !candidates.is_empty() && !candidates.contains(&configuration)

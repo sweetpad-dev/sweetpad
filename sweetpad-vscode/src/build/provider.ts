@@ -177,6 +177,7 @@ class ActionDispatcher {
       definition.configuration ??
       (await askConfiguration(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspace,
+        scheme: scheme,
       }));
 
     const destination = await this.getDestination({
@@ -299,6 +300,7 @@ class ActionDispatcher {
       definition.configuration ??
       (await askConfiguration(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspace,
+        scheme: scheme,
       }));
 
     const destination = await this.getDestination({
@@ -364,6 +366,7 @@ class ActionDispatcher {
       definition.configuration ??
       (await askConfiguration(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspace,
+        scheme: scheme,
       }));
 
     const destination = await this.getDestination({
@@ -460,6 +463,7 @@ class ActionDispatcher {
       definition.configuration ??
       (await askConfiguration(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspace,
+        scheme: scheme,
       }));
 
     const destination = await this.getDestination({
@@ -511,6 +515,7 @@ class ActionDispatcher {
       definition.configuration ??
       (await askConfiguration(this.deps.progressStatusBar, this.deps.buildManager, {
         xcworkspace: xcworkspace,
+        scheme: scheme,
       }));
 
     const destination = await this.getDestination({

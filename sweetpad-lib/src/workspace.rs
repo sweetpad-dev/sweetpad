@@ -321,6 +321,16 @@ impl Workspace {
         from_projects
     }
 
+    /// The first member project's `defaultConfigurationName` (the "Use … for
+    /// command-line builds" choice). `None` when no member project declares one.
+    #[must_use]
+    pub fn default_configuration(&self) -> Option<String> {
+        self.project_refs
+            .iter()
+            .filter_map(|project_path| project::open(project_path).ok())
+            .find_map(|proj| proj.default_configuration)
+    }
+
     /// Collect a per-project string list across every member project,
     /// deduplicated in first-seen order. Projects that fail to open are skipped.
     fn merged_from_projects<I>(&self, pick: impl Fn(project::Project) -> I) -> Vec<String>
