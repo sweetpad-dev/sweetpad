@@ -114,20 +114,30 @@ swift sdk list
 section "swbuild ($TAG)"
 SWB="$HOME/src/swift-build"
 [ -d "$SWB/.git" ] || git clone -q --depth 1 --branch "$TAG" https://github.com/swiftlang/swift-build.git "$SWB"
-# swift-build-linux.patch makes three changes. A macOS app's build registers
+# swift-build-linux.patch makes five changes. A macOS app's build registers
 # it with Launch Services through /System/…/lsregister, and Swift Build fails
 # the build when that can't start, where it only notes a run that fails; the
 # patch notes both. Swift Build's console asks no one for a signing identity
 # or provisioning profile, so it signs only ad hoc; the patch has it ask the
 # tool SWEETPAD_PROVISIONING names, which sweetpad sets for a device build.
-# And it runs /usr/bin/derq by absolute path for a signed target's DER
+# It runs /usr/bin/derq by absolute path for a signed target's DER
 # entitlements; the patch has it look derq up on the search path first.
+# Its Mach-O reader takes the file's structures from the Darwin SDK and
+# fails every read elsewhere; the patch defines them in a new file,
+# SWBUtil/MachOStructures.swift, and names the architectures itself. And it
+# finds a text encoding by name only through CoreFoundation, so a Mac app's
+# .strings can't be written as UTF-16; the patch names the encodings
+# Foundation converts on every platform.
 # A checkout holding an older version of the patch is reset before this one
-# goes on.
+# goes on. The new file is marked intent-to-add, so `git diff` in the
+# checkout writes the whole patch back; `git apply --intent-to-add` would
+# drop every other file from the index.
 PATCH="$(cd "$(dirname "$0")" && pwd)/swift-build-linux.patch"
 if ! git -C "$SWB" apply --reverse --check "$PATCH" 2>/dev/null; then
-  git -C "$SWB" checkout -q -- .
+  git -C "$SWB" reset -q --hard
+  git -C "$SWB" clean -fdq -- Sources
   git -C "$SWB" apply "$PATCH"
+  git -C "$SWB" add --intent-to-add -- $(git -C "$SWB" ls-files --others --exclude-standard -- Sources)
   rm -f "$SWB/.build/release/swbuild"
 fi
 if [ ! -x "$SWB/.build/release/swbuild" ] || [ ! -x "$SWB/.build/release/SWBBuildServiceBundle" ]; then

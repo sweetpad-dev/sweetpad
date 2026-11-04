@@ -43,14 +43,30 @@ Items marked *(optional)* can wait until a project needs them.
 - [ ] SwiftPM: per-test-target products *(optional)*
 - [ ] SwiftPM: a local package's own schemes, which it keeps in its
       `.swiftpm/xcode` folder: NetNewsWire's `Account` and `Articles` build
-      with Xcode and fail here, since they name no project target
-      *(optional)*
-- [ ] Mach-O on Linux: Swift Build reads Mach-O files only on Darwin
+      with Xcode and fail here, since they name no project target. The
+      scheme of a product that is only a binary target fails too ("isn't in
+      the workspace PIF"), `Foo` in `corpus/_xcframework-app` *(optional)*
+- [x] Mach-O on Linux: Swift Build reads Mach-O files only on Darwin
       (`#if canImport(Darwin)` in `SWBUtil/MachO.swift`), and fails every
       read elsewhere. It reads a package's binary XCFramework of a framework
       to decide whether to embed it, a macOS framework from an XCFramework
       (Sparkle, in NetNewsWire's Mac app) and a watch app's Messages stub.
-      Port the reader in `swift-build-linux.patch`
+      `swift-build-linux.patch` defines the structures it reads in a new
+      `SWBUtil/MachOStructures.swift` and names the architectures, as
+      `macho_arch_name_for_cpu_type` does. `corpus/_xcframework-app` (local,
+      its C framework made by `Vendor/make-xcframework.sh`) embeds a
+      package's binary framework as Xcode does, and NetNewsWire's Mac app
+      embeds Sparkle
+- [x] Text encodings: Swift Build finds an encoding by its name only
+      through CoreFoundation, so it couldn't write a Mac app's `.strings`
+      files, which are UTF-16. The patch names the encodings Foundation
+      converts on every platform; NetNewsWire's 91 `.strings` files come out
+      byte for byte as Xcode's
+- [ ] An `xcrun` stand-in: script phases run tools through `xcrun`, which
+      Linux doesn't have. NetNewsWire's Mac app runs
+      `xcrun -sdk macosx swift buildscripts/VerifyNoBS.swift`, though that
+      script imports `Darwin` and can't run here anyway; with it skipped, the
+      app builds *(optional)*
 - [ ] Macros Tuist builds as macOS tools: its Xcode-project integration of
       packages makes a macro target a `tool` with `SDKROOT = macosx`, which
       the targets using it load with `-load-plugin-executable`. That Mach-O
@@ -163,7 +179,7 @@ The failures only on Linux are filed above:
 |---|---|---|
 | 4 in a Tuist fixture | `CasePathsMacros`, built as a macOS tool | Engine |
 | 2 in Tuist's Core Data fixture | `mapc` | Apple compilers |
-| NetNewsWire (Mac) | Sparkle's binary, through the Mach-O reader | Engine |
+| NetNewsWire (Mac) | Sparkle's binary, through the Mach-O reader; now its `VerifyNoBS.swift` script, which imports `Darwin` | Engine |
 | NetNewsWire's `Account`, `Articles` | a package's own schemes | Engine |
 | Alamofire visionOS | no visionOS platform | Build kinds |
 
@@ -195,6 +211,12 @@ request replaces them. A package whose product and module share a name
 "Found multiple targets named"; the request alone names the targets now,
 by GUID. Swift Build's service also crashed once on Kingfisher's macOS
 demo while three builds ran at once; it builds on its own.
+
+After the Mach-O reader and text encodings were ported, the sweep ran
+again on Linux with `corpus/_xcframework-app` added: 78 of 129 schemes
+build. Every scheme that built before still builds, the app in
+`_xcframework-app` builds, and NetNewsWire's iOS widget passed its
+type-check limits this time. Its Mac app now stops at its own script.
 
 ### Additional real projects
 
