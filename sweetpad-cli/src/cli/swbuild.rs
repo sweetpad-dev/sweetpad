@@ -218,15 +218,13 @@ fn macro_plugin() -> Option<PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
-/// `swbuild build` for the scheme's targets, with the parameters file and
-/// the PIF.
-fn swbuild_args(
-    plan: &BuildPlan<'_>,
-    container: &Path,
-    parameters_file: &Path,
-    pif: &Path,
-) -> Result<Vec<String>, CliError> {
-    let mut args = vec![
+/// `swbuild build` with the parameters file, the PIF and the build request,
+/// which names the scheme's targets by GUID. A `--target` would name them
+/// again, and `swbuild` looks those names up before the request replaces
+/// them, failing on a name two targets share, like a package's product and
+/// module.
+fn swbuild_args(plan: &BuildPlan<'_>, parameters_file: &Path, pif: &Path) -> Vec<String> {
+    vec![
         "build".to_string(),
         "--configuration".to_string(),
         plan.configuration.to_string(),
@@ -236,17 +234,8 @@ fn swbuild_args(
         pif.with_file_name("build-request.json")
             .display()
             .to_string(),
-    ];
-    let build_for = match plan.action {
-        BuildAction::Build => BuildFor::Running,
-        BuildAction::BuildForTesting => BuildFor::Testing,
-    };
-    for target in scheme_targets(container, plan.scheme, build_for)? {
-        args.push("--target".to_string());
-        args.push(target);
-    }
-    args.push(pif.display().to_string());
-    Ok(args)
+        pif.display().to_string(),
+    ]
 }
 
 impl Invocation {
@@ -321,7 +310,7 @@ impl Invocation {
 
         Ok(Self {
             program: swbuild_program()?,
-            args: swbuild_args(plan, &container, &parameters_file, &pif)?,
+            args: swbuild_args(plan, &parameters_file, &pif),
             cwd: xcodebuild::working_dir(plan.container),
             linker: host.as_ref().map(|h| h.bundle.join("toolset/bin/ld64.lld")),
             macros: host.as_ref().and_then(|_| macro_plugin()),
