@@ -28,8 +28,9 @@ fn project() -> PathBuf {
 }
 
 /// A `swbuild` in `dir` that fails unless its parameters file and PIF exist
-/// and it was asked for the scheme's target, then prints `messages` the way
-/// swbuild frames them (byte count, then the JSON) and exits with `status`.
+/// and its build request names a target of the PIF, then prints `messages`
+/// the way swbuild frames them (byte count, then the JSON) and exits with
+/// `status`.
 fn write_stub(dir: &Path, messages: &[&str], status: i32) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
 
@@ -45,17 +46,18 @@ fn write_stub(dir: &Path, messages: &[&str], status: i32) -> PathBuf {
         &stub,
         format!(
             "#!/bin/sh\n\
-             params=; target=; last=\n\
+             params=; request=; last=\n\
              while [ $# -gt 0 ]; do\n\
              case \"$1\" in\n\
              --buildParametersFile) params=\"$2\"; shift;;\n\
-             --target) target=\"$2\"; shift;;\n\
+             --buildRequestFile) request=\"$2\"; shift;;\n\
              esac\n\
              last=\"$1\"; shift\n\
              done\n\
              [ -f \"$params\" ] || {{ echo \"error: no parameters file '$params'\"; exit 64; }}\n\
              [ -f \"$last\" ] || {{ echo \"error: no PIF '$last'\"; exit 64; }}\n\
-             [ \"$target\" = SweetpadCIMac ] || {{ echo \"error: target '$target'\"; exit 64; }}\n\
+             guid=$(sed -n 's/.*\"configuredTargets\":\\[{{\"guid\":\"\\([^\"]*\\)\"}}\\].*/\\1/p' \"$request\")\n\
+             [ -n \"$guid\" ] && grep -q \"\\\"guid\\\":\\\"$guid\\\"\" \"$last\" || {{ echo \"error: target '$guid'\"; exit 64; }}\n\
              cat '{}'\nexit {status}\n",
             transcript.display()
         ),
@@ -171,7 +173,8 @@ fn show_command_names_the_inputs_without_building() {
     let out = stdout(&output);
     assert!(out.starts_with("swbuild build"), "{out}");
     assert!(out.contains("--buildParametersFile"), "{out}");
-    assert!(out.contains("--target SweetpadCIMac"), "{out}");
+    assert!(out.contains("--buildRequestFile"), "{out}");
+    assert!(!out.contains("--target"), "{out}");
     assert!(out.contains("workspace.pif.json"), "{out}");
 }
 
