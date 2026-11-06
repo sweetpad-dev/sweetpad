@@ -535,6 +535,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(target_os = "macos"), ignore = "signs with codesign")]
     fn opting_in_adds_the_bundle_id_and_keeps_a_valid_signature() {
         let dir = sweetpad_core::scratch::ScratchDir::new("sweetpad-private-logs").unwrap();
         let app = signed_bundle(&dir, true, "");
@@ -551,6 +552,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(target_os = "macos"), ignore = "signs with codesign")]
     fn a_failed_edit_leaves_the_built_app_as_it_was() {
         let dir = sweetpad_core::scratch::ScratchDir::new("sweetpad-private-logs").unwrap();
         // A string where the subsystems' dict belongs: PlistBuddy can't add
@@ -568,6 +570,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(target_os = "macos"), ignore = "signs with codesign")]
     fn a_build_no_debugger_may_attach_to_is_left_alone() {
         let dir = sweetpad_core::scratch::ScratchDir::new("sweetpad-private-logs").unwrap();
         let app = signed_bundle(&dir, false, "");

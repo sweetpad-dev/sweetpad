@@ -214,6 +214,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(target_os = "macos"), ignore = "edits plists with PlistBuddy")]
     fn strip_removes_the_sandbox_and_adds_get_task_allow() {
         let dir = TempDir::new("sweetpad-sandbox");
         let cache = dir.join("cache");
@@ -233,6 +234,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(target_os = "macos"), ignore = "edits plists with PlistBuddy")]
     fn plan_matrix() {
         let dir = TempDir::new("sweetpad-sandbox");
         let cache = dir.join("cache");

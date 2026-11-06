@@ -1,0 +1,23 @@
+{
+  "alamofire-proj": "alamofire/Alamofire.xcodeproj",
+  "alamofire-ws": "alamofire/Alamofire.xcworkspace",
+  "ice-cubes": "ice-cubes/IceCubesApp.xcodeproj",
+  "kingfisher-demo": "kingfisher/Demo/Kingfisher-Demo.xcodeproj",
+  "kingfisher-proj": "kingfisher/Kingfisher.xcodeproj",
+  "kingfisher-ws": "kingfisher/Kingfisher.xcworkspace",
+  "netnewswire": "netnewswire/NetNewsWire.xcodeproj",
+  "synthetic-other-flags": "_synthetic-other-flags/OtherFlags.xcodeproj",
+  "synthetic-rich": "_synthetic-rich/Scratch.xcodeproj",
+  "synthetic-staticlib": "_synthetic-staticlib/Scratch.xcodeproj",
+  "tuist-buildable-folders": "tuist-fixtures/examples/xcode/generated_app_with_buildable_folders/App.xcodeproj",
+  "tuist-coredata": "tuist-fixtures/examples/xcode/generated_ios_app_with_coredata/App.xcodeproj",
+  "tuist-custom-config-ws": "tuist-fixtures/examples/xcode/generated_ios_app_with_custom_configuration/Workspace.xcworkspace",
+  "tuist-framework-tests": "tuist-fixtures/examples/xcode/generated_app_with_framework_and_tests/App.xcodeproj",
+  "tuist-packages-tests": "tuist-fixtures/examples/xcode/xcode_project_with_packages_and_tests/App.xcodeproj",
+  "tuist-static-libs-ws": "tuist-fixtures/examples/xcode/generated_ios_app_with_static_libraries/iOSAppWithTransistiveStaticLibraries.xcworkspace",
+  "tuist-watchapp2": "tuist-fixtures/examples/xcode/generated_ios_app_with_watchapp2/App.xcodeproj",
+  "tuist-xcode-app": "tuist-fixtures/examples/xcode/xcode_app/App.xcodeproj",
+  "tuist-xcode-project-ios-app": "tuist-fixtures/examples/xcode/xcode_project_ios_app/App.xcodeproj",
+  "tuist-xcode-project-with-tests": "tuist-fixtures/examples/xcode/xcode_project_with_tests/App.xcodeproj",
+  "tuist-xcstrings-ws": "tuist-fixtures/examples/xcode/generated_ios_app_with_static_framework_with_xcstrings/App.xcworkspace"
+}

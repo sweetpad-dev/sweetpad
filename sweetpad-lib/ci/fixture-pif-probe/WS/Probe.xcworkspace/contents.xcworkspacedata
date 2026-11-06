@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <Group
+      location = "group:../Probe"
+      name = "ProbeGroup">
+      <FileRef
+         location = "group:Probe.xcodeproj">
+      </FileRef>
+   </Group>
+   <FileRef
+      location = "container:../Second/Second.xcodeproj">
+   </FileRef>
+</Workspace>

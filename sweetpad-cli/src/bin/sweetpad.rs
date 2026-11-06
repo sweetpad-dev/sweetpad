@@ -35,8 +35,58 @@ fn main() -> ExitCode {
     // Run as `sweetpad-dap`, the binary is `sweetpad dap`: an editor whose
     // debug adapter setting takes a binary but no arguments (Zed's Swift
     // adapter) starts the adapter through that name.
-    if std::path::Path::new(&program).file_name() == Some(std::ffi::OsStr::new("sweetpad-dap")) {
+    let name = std::path::Path::new(&program).file_name();
+    if name == Some(std::ffi::OsStr::new("sweetpad-dap")) {
         args.insert(0, "dap".to_string());
+    }
+    // Run as `actool`, the binary stands in for Xcode's asset catalog compiler,
+    // which the Swift Build engine points Swift Build at on Linux.
+    if name == Some(std::ffi::OsStr::new("actool")) {
+        return sweetpad_cli::cli::actool::main(&args);
+    }
+    // Run as `xcstringstool`, it stands in for Xcode's String Catalog
+    // compiler, which Swift Build looks up on the `PATH` the engine gives it.
+    if name == Some(std::ffi::OsStr::new("xcstringstool")) {
+        return sweetpad_cli::cli::xcstringstool::main(&args);
+    }
+    // Run as `momc`, it stands in for Xcode's Core Data model compiler,
+    // which Swift Build also looks up on that `PATH`.
+    if name == Some(std::ffi::OsStr::new("momc")) {
+        return sweetpad_cli::cli::momc::main(&args);
+    }
+    // Run as `ibtool`, it stands in for Xcode's Interface Builder compiler,
+    // which Swift Build also looks up on that `PATH`.
+    if name == Some(std::ffi::OsStr::new("ibtool")) {
+        return sweetpad_cli::cli::ibtool::main(&args);
+    }
+    if name == Some(std::ffi::OsStr::new("intentbuilderc")) {
+        return sweetpad_cli::cli::intentbuilderc::main(&args);
+    }
+    // Run as `codesign`, it signs what a Linux build makes for a device; as
+    // `derq`, it writes a target's entitlements in DER; and as
+    // `sweetpad-provisioning`, it answers Swift Build's provisioning
+    // requests, from the identity and profiles the engine points at.
+    if name == Some(std::ffi::OsStr::new("codesign")) {
+        return sweetpad_cli::cli::codesign::main(&args);
+    }
+    if name == Some(std::ffi::OsStr::new("derq")) {
+        return sweetpad_cli::cli::codesign::derq_main(&args);
+    }
+    if name
+        == Some(std::ffi::OsStr::new(
+            sweetpad_cli::cli::codesign::provisioning::TOOL,
+        ))
+    {
+        return sweetpad_cli::cli::codesign::provisioning::main(&args);
+    }
+    // Run as `lipo`, `strip`, `copypng`, `ditto` or
+    // `embeddedBinaryValidationUtility`, it stands in for the Darwin tool of
+    // that name, found on the same `PATH`.
+    if let Some(code) = name
+        .and_then(std::ffi::OsStr::to_str)
+        .and_then(|tool| sweetpad_cli::cli::darwin_tools::main(tool, &args))
+    {
+        return code;
     }
     match args.first().map(String::as_str) {
         Some("vscode") => ExitCode::from(sweetpad_cli::vscode_cli::run(&args[1..])),

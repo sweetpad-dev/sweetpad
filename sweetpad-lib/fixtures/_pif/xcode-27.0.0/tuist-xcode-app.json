@@ -1,0 +1,363 @@
+[
+ {
+  "contents": {
+   "guid": "ac863f346e618f9a959b5c95d5d28941",
+   "name": "App",
+   "path": "$(CORPUS)/tuist-fixtures/examples/xcode/xcode_app/App.xcodeproj/project.xcworkspace",
+   "projects": [
+    "PROJECT@v11_mod=eb7608de36746b49c2711e8fd7316a67_hash=0ca3007d900a678c2b4d53418799ee3dplugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1"
+   ]
+  },
+  "signature": "WORKSPACE@v11_hash=(null)_subobjects=4e3b793eaadd41a55d0e53e61d558239",
+  "type": "workspace"
+ },
+ {
+  "contents": {
+   "appPreferencesBuildSettings": {},
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ALWAYS_SEARCH_USER_PATHS": "NO",
+      "ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS": "YES",
+      "CLANG_ANALYZER_NONNULL": "YES",
+      "CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION": "YES_AGGRESSIVE",
+      "CLANG_CXX_LANGUAGE_STANDARD": "gnu++20",
+      "CLANG_ENABLE_MODULES": "YES",
+      "CLANG_ENABLE_OBJC_ARC": "YES",
+      "CLANG_ENABLE_OBJC_WEAK": "YES",
+      "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+      "CLANG_WARN_BOOL_CONVERSION": "YES",
+      "CLANG_WARN_COMMA": "YES",
+      "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+      "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+      "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+      "CLANG_WARN_DOCUMENTATION_COMMENTS": "YES",
+      "CLANG_WARN_EMPTY_BODY": "YES",
+      "CLANG_WARN_ENUM_CONVERSION": "YES",
+      "CLANG_WARN_INFINITE_RECURSION": "YES",
+      "CLANG_WARN_INT_CONVERSION": "YES",
+      "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+      "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+      "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+      "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+      "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+      "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+      "CLANG_WARN_UNGUARDED_AVAILABILITY": "YES_AGGRESSIVE",
+      "CLANG_WARN_UNREACHABLE_CODE": "YES",
+      "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+      "COPY_PHASE_STRIP": "NO",
+      "DEBUG_INFORMATION_FORMAT": "dwarf",
+      "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+      "ENABLE_TESTABILITY": "YES",
+      "ENABLE_USER_SCRIPT_SANDBOXING": "YES",
+      "GCC_C_LANGUAGE_STANDARD": "gnu17",
+      "GCC_DYNAMIC_NO_PIC": "NO",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "GCC_OPTIMIZATION_LEVEL": "0",
+      "GCC_PREPROCESSOR_DEFINITIONS": "DEBUG=1 $(inherited)",
+      "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+      "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+      "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+      "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+      "GCC_WARN_UNUSED_FUNCTION": "YES",
+      "GCC_WARN_UNUSED_VARIABLE": "YES",
+      "LOCALIZATION_PREFERS_STRING_CATALOGS": "YES",
+      "MTL_ENABLE_DEBUG_INFO": "INCLUDE_SOURCE",
+      "MTL_FAST_MATH": "YES",
+      "ONLY_ACTIVE_ARCH": "YES",
+      "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "DEBUG $(inherited)",
+      "SWIFT_OPTIMIZATION_LEVEL": "-Onone"
+     },
+     "guid": "0ca3007d900a678c2b4d53418799ee3d5326c540ecc226ae2b8b089c4db39771",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ALWAYS_SEARCH_USER_PATHS": "NO",
+      "ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS": "YES",
+      "CLANG_ANALYZER_NONNULL": "YES",
+      "CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION": "YES_AGGRESSIVE",
+      "CLANG_CXX_LANGUAGE_STANDARD": "gnu++20",
+      "CLANG_ENABLE_MODULES": "YES",
+      "CLANG_ENABLE_OBJC_ARC": "YES",
+      "CLANG_ENABLE_OBJC_WEAK": "YES",
+      "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+      "CLANG_WARN_BOOL_CONVERSION": "YES",
+      "CLANG_WARN_COMMA": "YES",
+      "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+      "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+      "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+      "CLANG_WARN_DOCUMENTATION_COMMENTS": "YES",
+      "CLANG_WARN_EMPTY_BODY": "YES",
+      "CLANG_WARN_ENUM_CONVERSION": "YES",
+      "CLANG_WARN_INFINITE_RECURSION": "YES",
+      "CLANG_WARN_INT_CONVERSION": "YES",
+      "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+      "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+      "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+      "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+      "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+      "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+      "CLANG_WARN_UNGUARDED_AVAILABILITY": "YES_AGGRESSIVE",
+      "CLANG_WARN_UNREACHABLE_CODE": "YES",
+      "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+      "COPY_PHASE_STRIP": "NO",
+      "DEBUG_INFORMATION_FORMAT": "dwarf-with-dsym",
+      "ENABLE_NS_ASSERTIONS": "NO",
+      "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+      "ENABLE_USER_SCRIPT_SANDBOXING": "YES",
+      "GCC_C_LANGUAGE_STANDARD": "gnu17",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+      "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+      "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+      "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+      "GCC_WARN_UNUSED_FUNCTION": "YES",
+      "GCC_WARN_UNUSED_VARIABLE": "YES",
+      "LOCALIZATION_PREFERS_STRING_CATALOGS": "YES",
+      "MTL_ENABLE_DEBUG_INFO": "NO",
+      "MTL_FAST_MATH": "YES",
+      "SWIFT_COMPILATION_MODE": "wholemodule"
+     },
+     "guid": "0ca3007d900a678c2b4d53418799ee3dbb6dd040a42037d56753cc7a243fcf46",
+     "name": "Release"
+    }
+   ],
+   "classPrefix": "",
+   "defaultConfigurationName": "Release",
+   "developmentRegion": "en",
+   "groupTree": {
+    "children": [
+     {
+      "children": [
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "0ca3007d900a678c2b4d53418799ee3de6d4b26d2613c2bc00dfa0848308712f",
+        "path": "App.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "sourcecode.swift",
+        "guid": "0ca3007d900a678c2b4d53418799ee3d05ff324be6cb80385fb3b35811dd73c0",
+        "path": "ContentView.swift",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "folder.assetcatalog",
+        "guid": "0ca3007d900a678c2b4d53418799ee3da0b0e07487fd2eac4fc8dde513f3b3df",
+        "path": "Assets.xcassets",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "text.plist.entitlements",
+        "guid": "0ca3007d900a678c2b4d53418799ee3d628387dee064d27f127b45d3526303fa",
+        "path": "App.entitlements",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "children": [
+         {
+          "fileType": "folder.assetcatalog",
+          "guid": "0ca3007d900a678c2b4d53418799ee3d5b02db775b24995fae5d92212a0b50bb",
+          "path": "Preview Assets.xcassets",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "0ca3007d900a678c2b4d53418799ee3daf8ac64302fa8cd6ac266663733348e5",
+        "name": "Preview Content",
+        "path": "Preview Content",
+        "sourceTree": "<group>",
+        "type": "group"
+       }
+      ],
+      "guid": "0ca3007d900a678c2b4d53418799ee3d6b675d2510958af197bc807cb23e4a1e",
+      "name": "App",
+      "path": "App",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "guid": "0ca3007d900a678c2b4d53418799ee3d0e1015cc9897254bee9f767c2186d02c",
+      "name": "Products",
+      "path": "",
+      "sourceTree": "<group>",
+      "type": "group"
+     }
+    ],
+    "guid": "0ca3007d900a678c2b4d53418799ee3d7f98fc578382da571e2709f988ac9ab4",
+    "name": "App",
+    "path": "",
+    "sourceTree": "<group>",
+    "type": "group"
+   },
+   "guid": "0ca3007d900a678c2b4d53418799ee3d",
+   "knownRegions": [
+    "en",
+    "Base"
+   ],
+   "path": "$(CORPUS)/tuist-fixtures/examples/xcode/xcode_app/App.xcodeproj",
+   "projectDirectory": "$(CORPUS)/tuist-fixtures/examples/xcode/xcode_app",
+   "targets": [
+    "TARGET@v11_hash=177bc80e578e15504717938e85f5e02e"
+   ]
+  },
+  "signature": "PROJECT@v11_mod=eb7608de36746b49c2711e8fd7316a67_hash=0ca3007d900a678c2b4d53418799ee3dplugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1",
+  "type": "project"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+      "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
+      "CODE_SIGN_ENTITLEMENTS": "App/App.entitlements",
+      "CODE_SIGN_IDENTITY": "Apple Development",
+      "CODE_SIGN_STYLE": "Automatic",
+      "CURRENT_PROJECT_VERSION": "1",
+      "DEVELOPMENT_ASSET_PATHS": "\"App/Preview Content\"",
+      "DEVELOPMENT_TEAM": "",
+      "ENABLE_PREVIEWS": "YES",
+      "GENERATE_INFOPLIST_FILE": "YES",
+      "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]": "YES",
+      "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]": "YES",
+      "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]": "YES",
+      "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]": "YES",
+      "INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]": "YES",
+      "INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]": "YES",
+      "INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]": "UIStatusBarStyleDefault",
+      "INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]": "UIStatusBarStyleDefault",
+      "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad": "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
+      "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone": "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
+      "IPHONEOS_DEPLOYMENT_TARGET": "17.4",
+      "LD_RUNPATH_SEARCH_PATHS": "@executable_path/Frameworks",
+      "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": "@executable_path/../Frameworks",
+      "MACOSX_DEPLOYMENT_TARGET": "14.4",
+      "MARKETING_VERSION": "1.0",
+      "PRODUCT_BUNDLE_IDENTIFIER": "tuist.io.App",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "PROVISIONING_PROFILE_SPECIFIER": "",
+      "SDKROOT": "auto",
+      "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
+      "SUPPORTS_MACCATALYST": "NO",
+      "SWIFT_EMIT_LOC_STRINGS": "YES",
+      "SWIFT_VERSION": "5.0",
+      "TARGETED_DEVICE_FAMILY": "1,2"
+     },
+     "guid": "0ca3007d900a678c2b4d53418799ee3dc8cd122a9b4ee8062c524e208b4b0488",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+      "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
+      "CODE_SIGN_ENTITLEMENTS": "App/App.entitlements",
+      "CODE_SIGN_IDENTITY": "Apple Development",
+      "CODE_SIGN_STYLE": "Automatic",
+      "CURRENT_PROJECT_VERSION": "1",
+      "DEVELOPMENT_ASSET_PATHS": "\"App/Preview Content\"",
+      "DEVELOPMENT_TEAM": "",
+      "ENABLE_PREVIEWS": "YES",
+      "GENERATE_INFOPLIST_FILE": "YES",
+      "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]": "YES",
+      "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]": "YES",
+      "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]": "YES",
+      "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]": "YES",
+      "INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]": "YES",
+      "INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]": "YES",
+      "INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]": "UIStatusBarStyleDefault",
+      "INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]": "UIStatusBarStyleDefault",
+      "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad": "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
+      "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone": "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
+      "IPHONEOS_DEPLOYMENT_TARGET": "17.4",
+      "LD_RUNPATH_SEARCH_PATHS": "@executable_path/Frameworks",
+      "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": "@executable_path/../Frameworks",
+      "MACOSX_DEPLOYMENT_TARGET": "14.4",
+      "MARKETING_VERSION": "1.0",
+      "PRODUCT_BUNDLE_IDENTIFIER": "tuist.io.App",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "PROVISIONING_PROFILE_SPECIFIER": "",
+      "SDKROOT": "auto",
+      "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
+      "SUPPORTS_MACCATALYST": "NO",
+      "SWIFT_EMIT_LOC_STRINGS": "YES",
+      "SWIFT_VERSION": "5.0",
+      "TARGETED_DEVICE_FAMILY": "1,2"
+     },
+     "guid": "0ca3007d900a678c2b4d53418799ee3d9cebbc9b9f6aa6436e81a199d357987e",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "0ca3007d900a678c2b4d53418799ee3d05ff324be6cb80385fb3b35811dd73c0",
+       "guid": "0ca3007d900a678c2b4d53418799ee3da47fc1e43bc4f595f3fe79554e464af4"
+      },
+      {
+       "fileReference": "0ca3007d900a678c2b4d53418799ee3de6d4b26d2613c2bc00dfa0848308712f",
+       "guid": "0ca3007d900a678c2b4d53418799ee3d2514b8d4a93a3d3f8d0418733d7791ff"
+      }
+     ],
+     "guid": "0ca3007d900a678c2b4d53418799ee3d27b479d2bee14183c44a4d34778edceb",
+     "type": "com.apple.buildphase.sources"
+    },
+    {
+     "buildFiles": [],
+     "guid": "0ca3007d900a678c2b4d53418799ee3d3d1ff6ba74195aa51fa333b677c13b92",
+     "type": "com.apple.buildphase.frameworks"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "0ca3007d900a678c2b4d53418799ee3d5b02db775b24995fae5d92212a0b50bb",
+       "guid": "0ca3007d900a678c2b4d53418799ee3d96a32b00dc0a7d3eca5deb87df5378fa"
+      },
+      {
+       "fileReference": "0ca3007d900a678c2b4d53418799ee3da0b0e07487fd2eac4fc8dde513f3b3df",
+       "guid": "0ca3007d900a678c2b4d53418799ee3d8e5849b6aaa7c9fd72eff2c3b0b7f10c"
+      }
+     ],
+     "guid": "0ca3007d900a678c2b4d53418799ee3d93c377538299f395ad5c6c46271009b5",
+     "type": "com.apple.buildphase.resources"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [],
+   "guid": "0ca3007d900a678c2b4d53418799ee3d14e4ed77bea920c559c198f0889add6a",
+   "name": "App",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Swift",
+   "productReference": {
+    "guid": "0ca3007d900a678c2b4d53418799ee3d1a22c407afb620337f230b2caf75cc9d",
+    "name": "App.app",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.application",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Debug",
+     "provisioningStyle": 0
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Release",
+     "provisioningStyle": 0
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=177bc80e578e15504717938e85f5e02e",
+  "type": "target"
+ }
+]

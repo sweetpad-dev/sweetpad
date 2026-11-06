@@ -1,0 +1,435 @@
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX100_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf14_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX100_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf14_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        101
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Provider", as: .systemMedium) {
+            Small()
+        } timelineProvider: {
+            Provider()
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX127_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf15_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX127_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf15_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        128
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview(as: .systemSmall, using: Choice()) {
+            Configurable()
+        } timelineProvider: {
+            IntentProvider()
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX158_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf16_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX158_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf16_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        159
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Live", as: .content, using: Delivery(name: "x")) {
+            Live()
+        } contentStates: {
+            Delivery.ContentState(minutes: 1)
+            Delivery.ContentState(minutes: 2)
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX19_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX19_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        20
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                V()
+            }
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX21_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf0_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX21_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf0_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        22
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Named") {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                V()
+            }
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX23_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf1_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX23_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf1_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        24
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Traits", traits: .landscapeLeft) {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                V()
+            }
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX25_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf2_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX25_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf2_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        26
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview(traits: .sizeThatFitsLayout, .fixedLayout(width: 10, height: 10)) {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                V()
+            }
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX29_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf3_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX29_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf3_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        30
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                let n = 3
+                return V(n: n)
+            }
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX34_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf4_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX34_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf4_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        35
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                V()
+                V(n: 1)
+            }
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX39_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf5_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX39_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf5_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        40
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            struct __P_Previewable_Transform_Wrapper: SwiftUI.View {
+                @State var x = 1
+
+                var body: some SwiftUI.View {
+                    B(x: $x)
+                }
+            }
+            return __P_Previewable_Transform_Wrapper()
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX44_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf6_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX44_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf6_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        45
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Previewable", traits: .landscapeLeft) {
+            struct __P_Previewable_Transform_Wrapper: SwiftUI.View {
+                @State var x: Int = 1
+
+                @FocusState var focused: Bool
+
+                var body: some SwiftUI.View {
+                    let y = 2
+                    B(x: $x)
+                        .focused($focused)
+                        .padding(CGFloat(y))
+                }
+            }
+            return __P_Previewable_Transform_Wrapper()
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX53_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf7_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX53_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf7_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        54
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Arguments", arguments: [1, 2]) { n in
+            V(n: n)
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX57_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf8_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX57_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf8_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        58
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            @resultBuilder struct __B_Builder<Content> {
+                static func buildBlock(_ content: Content) -> Content {
+                    content
+                }
+            }
+            func __b_buildContent<Content>(@__B_Builder<Content> build: () -> Content) -> Content {
+                build()
+            }
+            return __b_buildContent {
+                UIView()
+            }
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX59_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf9_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX59_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf9_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        60
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Kit", traits: .landscapeLeft) {
+            @resultBuilder struct __B_Builder<Content> {
+                static func buildBlock(_ content: Content) -> Content {
+                    content
+                }
+            }
+            func __b_buildContent<Content>(@__B_Builder<Content> build: () -> Content) -> Content {
+                build()
+            }
+            return __b_buildContent {
+                UIViewController()
+            }
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX61_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf10_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX61_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf10_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        62
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            @resultBuilder struct __B_Builder<Content> {
+                static func buildBlock(_ content: Content) -> Content {
+                    content
+                }
+            }
+            func __b_buildContent<Content>(@__B_Builder<Content> build: () -> Content) -> Content {
+                build()
+            }
+            return __b_buildContent {
+                let label = UILabel()
+                label.text = "x"
+                return label
+            }
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX67_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf11_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX67_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf11_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        68
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Kit arguments", arguments: [1, 2]) { n in
+            UIView()
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX69_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf12_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX69_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf12_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        70
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Kit view controller arguments", traits: .portrait, arguments: ["a"]) { s in
+            UIViewController()
+        }
+    }
+}
+=== __swiftmacro_8Previews0019Previewsswift_DJEEdfMX93_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf13_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s8Previews0019Previewsswift_DJEEdfMX93_0_33_1E10CFCF3E9A25847BF43C3E7569D157Ll7PreviewfMf13_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "Previews/Previews.swift"
+    }
+    static var line: Int {
+        94
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview(as: .systemSmall) {
+            Small()
+        } timeline: {
+            Entry(date: .now)
+            Entry(date: .distantFuture)
+        }
+    }
+}

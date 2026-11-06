@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="24A335" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="v7">
+    <entity name="Base" representedClassName="Base" isAbstract="YES" elementID="OldBase" versionHashModifier="b2" syncable="YES">
+        <attribute name="created" optional="YES" attributeType="Date" defaultDateTimeInterval="631152000" usesScalarValueType="NO"/>
+        <attribute name="uid" optional="YES" attributeType="UUID" defaultValueString="7E3AA9A4-9C3F-4C45-9A6E-2C2B0B3D5E61" usesScalarValueType="NO"/>
+        <userInfo>
+            <entry key="kind" value="root"/>
+        </userInfo>
+    </entity>
+    <entity name="Doc" representedClassName="Doc" parentEntity="Base" syncable="YES">
+        <attribute name="title" attributeType="String" minValueString="1" maxValueString="80" regularExpressionString="[A-Z].*" defaultValueString="Untitled" spotlightIndexingEnabled="YES"/>
+        <attribute name="pages" optional="YES" attributeType="Integer 16" minValueString="1" maxValueString="999" defaultValueString="5" usesScalarValueType="YES"/>
+        <attribute name="rating" optional="YES" attributeType="Double" minValueString="0.5" maxValueString="5" defaultValueString="2" usesScalarValueType="YES"/>
+        <attribute name="weight" optional="YES" attributeType="Float" minValueString="0" defaultValueString="0.1" usesScalarValueType="YES"/>
+        <attribute name="big" optional="YES" attributeType="Integer 64" defaultValueString="9000000000" usesScalarValueType="YES"/>
+        <attribute name="price" optional="YES" attributeType="Decimal" defaultValueString="-12.340"/>
+        <attribute name="zero" optional="YES" attributeType="Decimal" defaultValueString="0"/>
+        <attribute name="huge" optional="YES" attributeType="Decimal" defaultValueString="123456789012345678901234"/>
+        <attribute name="on" optional="YES" attributeType="Boolean" defaultValueString="YES" usesScalarValueType="YES"/>
+        <attribute name="off" optional="YES" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="when" optional="YES" attributeType="Date" defaultValueString="2020-01-01" usesScalarValueType="NO"/>
+        <attribute name="link" optional="YES" attributeType="URI" defaultValueString="https://sweetpad.dev"/>
+        <attribute name="blob" optional="YES" attributeType="Binary" allowsExternalBinaryDataStorage="YES" preserveAfterDeletion="YES"/>
+        <attribute name="secret" optional="YES" attributeType="String" allowsCloudEncryption="YES"/>
+        <attribute name="truth" optional="YES" attributeType="String" storedInTruthFile="YES"/>
+        <attribute name="scratch" optional="YES" transient="YES" attributeType="String"/>
+        <attribute name="tags" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="[String]"/>
+        <attribute name="legacy" optional="YES" attributeType="Transformable" valueTransformerName="NSKeyedUnarchiveFromData"/>
+        <attribute name="renamed" optional="YES" attributeType="String" elementID="oldName" versionHashModifier="r1"/>
+        <attribute name="slug" optional="YES" attributeType="String" indexed="YES"/>
+        <attribute name="note" optional="YES" attributeType="String">
+            <userInfo>
+                <entry key="hint" value="free text"/>
+                <entry key="max" value="200"/>
+            </userInfo>
+        </attribute>
+        <relationship name="chapters" optional="YES" toMany="YES" minCount="1" maxCount="50" deletionRule="Cascade" ordered="YES" destinationEntity="Chapter" inverseName="doc" inverseEntity="Chapter"/>
+        <relationship name="owner" maxCount="1" deletionRule="Deny" destinationEntity="Person" inverseName="docs" inverseEntity="Person"/>
+        <relationship name="cache" optional="YES" transient="YES" maxCount="1" deletionRule="No Action" destinationEntity="Person">
+            <userInfo>
+                <entry key="why" value="memo"/>
+            </userInfo>
+        </relationship>
+        <fetchIndex name="byTitleAndPages">
+            <fetchIndexElement property="title" type="Binary" order="ascending"/>
+            <fetchIndexElement property="pages" type="Binary" order="descending"/>
+        </fetchIndex>
+        <uniquenessConstraints>
+            <uniquenessConstraint>
+                <constraint value="title"/>
+            </uniquenessConstraint>
+            <uniquenessConstraint>
+                <constraint value="title"/>
+                <constraint value="pages"/>
+            </uniquenessConstraint>
+        </uniquenessConstraints>
+    </entity>
+    <entity name="Chapter" representedClassName="Chapter" syncable="YES">
+        <attribute name="number" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="doc" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Doc" inverseName="chapters" inverseEntity="Doc" versionHashModifier="d2"/>
+    </entity>
+    <entity name="Person" syncable="YES">
+        <attribute name="name" optional="YES" attributeType="String"/>
+        <relationship name="docs" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="Doc" inverseName="owner" inverseEntity="Doc"/>
+    </entity>
+    <configuration name="Cloud">
+        <memberEntity name="Doc"/>
+        <memberEntity name="Chapter"/>
+    </configuration>
+    <configuration name="Local">
+        <memberEntity name="Person"/>
+    </configuration>
+</model>

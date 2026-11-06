@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>a%@b</key>
+	<string>a%@b</string>
+	<key>argument in substitution %lld %@</key>
+	<string>argument in substitution %lld %@</string>
+	<key>conflict %@</key>
+	<string>conflict %@</string>
+	<key>de only %lld</key>
+	<string>de only %lld</string>
+	<key>de substitution %lld</key>
+	<string>de substitution %lld</string>
+	<key>device key</key>
+	<string>device key</string>
+	<key>files %@ %lld</key>
+	<string>files %@ %lld</string>
+	<key>greeting %@</key>
+	<string>greeting %@</string>
+	<key>item count</key>
+	<string>item count</string>
+	<key>key %@ differs from value</key>
+	<string>key %@ differs from value</string>
+	<key>label vs plain</key>
+	<string>label vs plain</string>
+	<key>plural one extra</key>
+	<string>plural one extra</string>
+	<key>positional %2$@ %1$lld</key>
+	<string>positional %2$@ %1$lld</string>
+	<key>repeated %1$@ %1$@</key>
+	<string>repeated %1$@ %1$@</string>
+	<key>snake labels %lld %lld</key>
+	<string>snake labels %lld %lld</string>
+	<key>sub without argnum</key>
+	<string>sub without argnum</string>
+	<key>two subs</key>
+	<string>two subs</string>
+	<key>type0 %d</key>
+	<string>type0 %d</string>
+	<key>type10 %g</key>
+	<string>type10 %g</string>
+	<key>type13 %@</key>
+	<string>type13 %@</string>
+	<key>type16 %.2f</key>
+	<string>type16 %.2f</string>
+	<key>type17 %5d</key>
+	<string>type17 %5d</string>
+	<key>type18 %-3ld</key>
+	<string>type18 %-3ld</string>
+	<key>type2 %u</key>
+	<string>type2 %u</string>
+	<key>type3 %ld</key>
+	<string>type3 %ld</string>
+	<key>type4 %lu</key>
+	<string>type4 %lu</string>
+	<key>type5 %lld</key>
+	<string>type5 %lld</string>
+	<key>type6 %llu</key>
+	<string>type6 %llu</string>
+	<key>type7 %f</key>
+	<string>type7 %f</string>
+	<key>type8 %lf</key>
+	<string>type8 %lf</string>
+	<key>uk only value %@</key>
+	<string>Привіт %@</string>
+	<key>welcome</key>
+	<string>welcome</string>
+</dict>
+</plist>

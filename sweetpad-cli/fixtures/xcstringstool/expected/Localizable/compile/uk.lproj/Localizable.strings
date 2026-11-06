@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Hello, world!</key>
+	<string>Привіт, світе!</string>
+	<key>inbox.count %lld</key>
+	<string>inbox.count %lld</string>
+	<key>welcome.title</key>
+	<string>Вітаємо</string>
+</dict>
+</plist>

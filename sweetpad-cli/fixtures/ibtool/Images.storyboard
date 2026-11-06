@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="23504" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="Im1-aa-Vc1">
+    <device id="retina6_12" orientation="portrait" appearance="light"/>
+    <dependencies>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="23506"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <!--View Controller-->
+        <scene sceneID="Im1-aa-Sc1">
+            <objects>
+                <viewController id="Im1-aa-Vc1" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="Im1-aa-Vw1">
+                        <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="Background" translatesAutoresizingMaskIntoConstraints="NO" id="Im1-aa-Iv1">
+                                <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                            </imageView>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="Logo" translatesAutoresizingMaskIntoConstraints="NO" id="Im1-aa-Iv2">
+                                <rect key="frame" x="139.66666666666666" y="369" width="114" height="114"/>
+                                <constraints>
+                                    <constraint firstAttribute="height" constant="114" id="Im1-aa-Co8"/>
+                                    <constraint firstAttribute="width" secondItem="Im1-aa-Iv2" secondAttribute="height" multiplier="1:1" id="Im1-aa-Co9"/>
+                                </constraints>
+                            </imageView>
+                        </subviews>
+                        <viewLayoutGuide key="safeArea" id="Im1-aa-Sa1"/>
+                        <color key="backgroundColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <constraints>
+                            <constraint firstItem="Im1-aa-Iv1" firstAttribute="top" secondItem="Im1-aa-Vw1" secondAttribute="top" id="Im1-aa-Co1"/>
+                            <constraint firstItem="Im1-aa-Iv1" firstAttribute="trailing" secondItem="Im1-aa-Sa1" secondAttribute="trailing" id="Im1-aa-Co2"/>
+                            <constraint firstItem="Im1-aa-Iv1" firstAttribute="leading" secondItem="Im1-aa-Sa1" secondAttribute="leading" id="Im1-aa-Co3"/>
+                            <constraint firstAttribute="bottom" secondItem="Im1-aa-Iv1" secondAttribute="bottom" id="Im1-aa-Co4"/>
+                            <constraint firstItem="Im1-aa-Iv2" firstAttribute="centerY" secondItem="Im1-aa-Vw1" secondAttribute="centerY" id="Im1-aa-Co5"/>
+                            <constraint firstItem="Im1-aa-Iv2" firstAttribute="centerX" secondItem="Im1-aa-Vw1" secondAttribute="centerX" id="Im1-aa-Co6"/>
+                            <constraint firstItem="Im1-aa-Iv2" firstAttribute="width" relation="lessThanOrEqual" secondItem="Im1-aa-Vw1" secondAttribute="width" multiplier="0.5" priority="750" id="Im1-aa-Co7"/>
+                            <constraint firstItem="Im1-aa-Iv2" firstAttribute="top" relation="greaterThanOrEqual" secondItem="Im1-aa-Sa1" secondAttribute="top" constant="16" id="Im1-aa-C10"/>
+                        </constraints>
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="Im1-aa-Fr1" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="52" y="374"/>
+        </scene>
+    </scenes>
+    <resources>
+        <image name="Background" width="402" height="874"/>
+        <image name="Logo" width="114" height="114"/>
+    </resources>
+</document>

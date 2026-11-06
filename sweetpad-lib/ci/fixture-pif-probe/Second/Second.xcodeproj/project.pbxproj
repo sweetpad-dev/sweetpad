@@ -1,0 +1,126 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+		085ED5CF6C6DA1A0E613BC98 = {
+			fileRef = 4465A09C49EAD9D2E2A3ACEA;
+			isa = PBXBuildFile;
+		};
+		0BBDAF638E3A14C9F018286C = {
+			attributes = {
+			};
+			buildConfigurationList = BDA621DE489BA8C547D0BA71;
+			isa = PBXProject;
+			mainGroup = 9E607151E3D896D10C05F105;
+			productRefGroup = F218E568A742E64465F86DF7;
+			projectDirPath = Root;
+			projectRoot = "";
+			targets = (
+				C8331B44146005D2B2588131,
+			);
+		};
+		1AB05843A9221037F512AB17 = {
+			buildConfigurations = (
+				A2BCCCF8F4F79CB08DC4DDC1,
+				78C50970C79D8618BCEF4165,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+			isa = XCConfigurationList;
+		};
+		30CC23D48B43B1830D31EC8F = {
+			buildSettings = {
+				SDKROOT = macosx;
+			};
+			isa = XCBuildConfiguration;
+			name = Release;
+		};
+		4465A09C49EAD9D2E2A3ACEA = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.c;
+			path = lib.c;
+			sourceTree = "<group>";
+		};
+		50A84879E4A1E8452696D093 = {
+			buildActionMask = 2147483647;
+			files = (
+				085ED5CF6C6DA1A0E613BC98,
+			);
+			isa = PBXSourcesBuildPhase;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78C50970C79D8618BCEF4165 = {
+			buildSettings = {
+				PRODUCT_NAME = SecondLib;
+			};
+			isa = XCBuildConfiguration;
+			name = Release;
+		};
+		97AD9CC5C88EDF156FDD95D6 = {
+			explicitFileType = archive.ar;
+			includeInIndex = 0;
+			isa = PBXFileReference;
+			path = libSecondLib.a;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		9E607151E3D896D10C05F105 = {
+			children = (
+				4465A09C49EAD9D2E2A3ACEA,
+				F218E568A742E64465F86DF7,
+			);
+			isa = PBXGroup;
+			name = CustomMainName;
+			sourceTree = "<group>";
+		};
+		A2BCCCF8F4F79CB08DC4DDC1 = {
+			buildSettings = {
+				PRODUCT_NAME = SecondLib;
+			};
+			isa = XCBuildConfiguration;
+			name = Debug;
+		};
+		B0798B42F8E6AA7BFB317878 = {
+			buildSettings = {
+				SDKROOT = macosx;
+			};
+			isa = XCBuildConfiguration;
+			name = Debug;
+		};
+		BDA621DE489BA8C547D0BA71 = {
+			buildConfigurations = (
+				B0798B42F8E6AA7BFB317878,
+				30CC23D48B43B1830D31EC8F,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+			isa = XCConfigurationList;
+		};
+		C8331B44146005D2B2588131 = {
+			buildConfigurationList = 1AB05843A9221037F512AB17;
+			buildPhases = (
+				50A84879E4A1E8452696D093,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			isa = PBXNativeTarget;
+			name = SecondLib;
+			productName = SecondLib;
+			productReference = 97AD9CC5C88EDF156FDD95D6;
+			productType = "com.apple.product-type.library.static";
+		};
+		F218E568A742E64465F86DF7 = {
+			children = (
+				97AD9CC5C88EDF156FDD95D6,
+			);
+			isa = PBXGroup;
+			name = Products;
+			sourceTree = "<group>";
+		};
+	};
+	rootObject = 0BBDAF638E3A14C9F018286C;
+}

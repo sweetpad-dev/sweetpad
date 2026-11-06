@@ -1,0 +1,312 @@
+[
+  {
+    "contents": {
+      "guid": "0cdadb300405442ea6689f30f5b89e9a",
+      "name": "LinuxApp",
+      "path": "$(FIXTURE_DIR)/LinuxApp.xcodeproj/project.xcworkspace",
+      "projects": [
+        "PROJECT@v11_mod=e6a959387b088aa402b00d3c152075c1_hash=623395126d18e201a7e312d6f19cb315plugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1"
+      ]
+    },
+    "signature": "WORKSPACE@v11_hash=(null)_subobjects=2b0b3b426fcf1027d9d21e58503e629f",
+    "type": "workspace"
+  },
+  {
+    "contents": {
+      "appPreferencesBuildSettings": {},
+      "buildConfigurations": [
+        {
+          "buildSettings": {
+            "ALWAYS_SEARCH_USER_PATHS": "NO",
+            "ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS": "YES",
+            "CLANG_ANALYZER_NONNULL": "YES",
+            "CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION": "YES_AGGRESSIVE",
+            "CLANG_CXX_LANGUAGE_STANDARD": "gnu++20",
+            "CLANG_ENABLE_MODULES": "YES",
+            "CLANG_ENABLE_OBJC_ARC": "YES",
+            "CLANG_ENABLE_OBJC_WEAK": "YES",
+            "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+            "CLANG_WARN_BOOL_CONVERSION": "YES",
+            "CLANG_WARN_COMMA": "YES",
+            "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+            "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+            "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+            "CLANG_WARN_DOCUMENTATION_COMMENTS": "YES",
+            "CLANG_WARN_EMPTY_BODY": "YES",
+            "CLANG_WARN_ENUM_CONVERSION": "YES",
+            "CLANG_WARN_INFINITE_RECURSION": "YES",
+            "CLANG_WARN_INT_CONVERSION": "YES",
+            "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+            "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+            "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+            "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+            "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+            "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+            "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+            "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+            "CLANG_WARN_UNGUARDED_AVAILABILITY": "YES_AGGRESSIVE",
+            "CLANG_WARN_UNREACHABLE_CODE": "YES",
+            "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+            "COPY_PHASE_STRIP": "NO",
+            "DEBUG_INFORMATION_FORMAT": "dwarf",
+            "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+            "ENABLE_TESTABILITY": "YES",
+            "ENABLE_USER_SCRIPT_SANDBOXING": "YES",
+            "GCC_C_LANGUAGE_STANDARD": "gnu17",
+            "GCC_DYNAMIC_NO_PIC": "NO",
+            "GCC_NO_COMMON_BLOCKS": "YES",
+            "GCC_OPTIMIZATION_LEVEL": "0",
+            "GCC_PREPROCESSOR_DEFINITIONS": "DEBUG=1 $(inherited)",
+            "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+            "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+            "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+            "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+            "GCC_WARN_UNUSED_FUNCTION": "YES",
+            "GCC_WARN_UNUSED_VARIABLE": "YES",
+            "IPHONEOS_DEPLOYMENT_TARGET": "18.0",
+            "LOCALIZATION_PREFERS_STRING_CATALOGS": "YES",
+            "MTL_ENABLE_DEBUG_INFO": "INCLUDE_SOURCE",
+            "MTL_FAST_MATH": "YES",
+            "ONLY_ACTIVE_ARCH": "YES",
+            "SDKROOT": "iphoneos",
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "DEBUG $(inherited)",
+            "SWIFT_OPTIMIZATION_LEVEL": "-Onone"
+          },
+          "guid": "623395126d18e201a7e312d6f19cb315bf69373c6428cc1ca641fb714508daab",
+          "name": "Debug"
+        },
+        {
+          "buildSettings": {
+            "ALWAYS_SEARCH_USER_PATHS": "NO",
+            "ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS": "YES",
+            "CLANG_ANALYZER_NONNULL": "YES",
+            "CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION": "YES_AGGRESSIVE",
+            "CLANG_CXX_LANGUAGE_STANDARD": "gnu++20",
+            "CLANG_ENABLE_MODULES": "YES",
+            "CLANG_ENABLE_OBJC_ARC": "YES",
+            "CLANG_ENABLE_OBJC_WEAK": "YES",
+            "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+            "CLANG_WARN_BOOL_CONVERSION": "YES",
+            "CLANG_WARN_COMMA": "YES",
+            "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+            "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+            "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+            "CLANG_WARN_DOCUMENTATION_COMMENTS": "YES",
+            "CLANG_WARN_EMPTY_BODY": "YES",
+            "CLANG_WARN_ENUM_CONVERSION": "YES",
+            "CLANG_WARN_INFINITE_RECURSION": "YES",
+            "CLANG_WARN_INT_CONVERSION": "YES",
+            "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+            "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+            "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+            "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+            "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+            "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+            "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+            "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+            "CLANG_WARN_UNGUARDED_AVAILABILITY": "YES_AGGRESSIVE",
+            "CLANG_WARN_UNREACHABLE_CODE": "YES",
+            "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+            "COPY_PHASE_STRIP": "NO",
+            "DEBUG_INFORMATION_FORMAT": "dwarf-with-dsym",
+            "ENABLE_NS_ASSERTIONS": "NO",
+            "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+            "ENABLE_USER_SCRIPT_SANDBOXING": "YES",
+            "GCC_C_LANGUAGE_STANDARD": "gnu17",
+            "GCC_NO_COMMON_BLOCKS": "YES",
+            "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+            "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+            "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+            "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+            "GCC_WARN_UNUSED_FUNCTION": "YES",
+            "GCC_WARN_UNUSED_VARIABLE": "YES",
+            "IPHONEOS_DEPLOYMENT_TARGET": "18.0",
+            "LOCALIZATION_PREFERS_STRING_CATALOGS": "YES",
+            "MTL_ENABLE_DEBUG_INFO": "NO",
+            "MTL_FAST_MATH": "YES",
+            "SDKROOT": "iphoneos",
+            "SWIFT_COMPILATION_MODE": "wholemodule",
+            "VALIDATE_PRODUCT": "YES"
+          },
+          "guid": "623395126d18e201a7e312d6f19cb3155f5ae49cef2c59a6f5819acee66084cf",
+          "name": "Release"
+        }
+      ],
+      "classPrefix": "",
+      "defaultConfigurationName": "Release",
+      "developmentRegion": "en",
+      "groupTree": {
+        "children": [
+          {
+            "children": [
+              {
+                "fileType": "sourcecode.swift",
+                "guid": "623395126d18e201a7e312d6f19cb31525f2659f9a963a8840bf4117c6228434",
+                "path": "LinuxApp.swift",
+                "sourceTree": "<group>",
+                "type": "file"
+              },
+              {
+                "fileType": "sourcecode.swift",
+                "guid": "623395126d18e201a7e312d6f19cb315a397107dd9265e4cd8eaae3927a529c6",
+                "path": "ContentView.swift",
+                "sourceTree": "<group>",
+                "type": "file"
+              },
+              {
+                "fileType": "sourcecode.swift",
+                "guid": "623395126d18e201a7e312d6f19cb31516bb49f2e4569e0ca821bffc517c97c0",
+                "path": "Greeting.swift",
+                "sourceTree": "<group>",
+                "type": "file"
+              }
+            ],
+            "guid": "623395126d18e201a7e312d6f19cb315cf56c6a8d083ba795eeedc79b61de392",
+            "name": "LinuxApp",
+            "path": "LinuxApp",
+            "sourceTree": "<group>",
+            "type": "group"
+          },
+          {
+            "guid": "623395126d18e201a7e312d6f19cb3159d6581212c0698e963a00394366ef1b2",
+            "name": "Products",
+            "path": "",
+            "sourceTree": "<group>",
+            "type": "group"
+          }
+        ],
+        "guid": "623395126d18e201a7e312d6f19cb3157cdd9b7650803c2e32d045dd73bd93af",
+        "name": "LinuxApp",
+        "path": "",
+        "sourceTree": "<group>",
+        "type": "group"
+      },
+      "guid": "623395126d18e201a7e312d6f19cb315",
+      "knownRegions": [
+        "en",
+        "Base"
+      ],
+      "path": "$(FIXTURE_DIR)/LinuxApp.xcodeproj",
+      "projectDirectory": "$(FIXTURE_DIR)",
+      "targets": [
+        "TARGET@v11_hash=c67a77e5c700f54c5fa5a3d78c8cadb3"
+      ]
+    },
+    "signature": "PROJECT@v11_mod=e6a959387b088aa402b00d3c152075c1_hash=623395126d18e201a7e312d6f19cb315plugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1",
+    "type": "project"
+  },
+  {
+    "contents": {
+      "buildConfigurations": [
+        {
+          "buildSettings": {
+            "CODE_SIGN_STYLE": "Automatic",
+            "CURRENT_PROJECT_VERSION": "1",
+            "ENABLE_PREVIEWS": "YES",
+            "GENERATE_INFOPLIST_FILE": "YES",
+            "INFOPLIST_KEY_UIApplicationSceneManifest_Generation": "YES",
+            "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents": "YES",
+            "INFOPLIST_KEY_UILaunchScreen_Generation": "YES",
+            "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad": "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
+            "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone": "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
+            "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks",
+            "MARKETING_VERSION": "1.0",
+            "PRODUCT_BUNDLE_IDENTIFIER": "dev.sweetpad.LinuxApp",
+            "PRODUCT_NAME": "$(TARGET_NAME)",
+            "STRING_CATALOG_GENERATE_SYMBOLS": "YES",
+            "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+            "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+            "SWIFT_EMIT_LOC_STRINGS": "YES",
+            "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
+            "SWIFT_VERSION": "5.0",
+            "TARGETED_DEVICE_FAMILY": "1,2"
+          },
+          "guid": "623395126d18e201a7e312d6f19cb31528dab37ca2f57156c6f365779323a05a",
+          "name": "Debug"
+        },
+        {
+          "buildSettings": {
+            "CODE_SIGN_STYLE": "Automatic",
+            "CURRENT_PROJECT_VERSION": "1",
+            "ENABLE_PREVIEWS": "YES",
+            "GENERATE_INFOPLIST_FILE": "YES",
+            "INFOPLIST_KEY_UIApplicationSceneManifest_Generation": "YES",
+            "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents": "YES",
+            "INFOPLIST_KEY_UILaunchScreen_Generation": "YES",
+            "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad": "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
+            "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone": "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
+            "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks",
+            "MARKETING_VERSION": "1.0",
+            "PRODUCT_BUNDLE_IDENTIFIER": "dev.sweetpad.LinuxApp",
+            "PRODUCT_NAME": "$(TARGET_NAME)",
+            "STRING_CATALOG_GENERATE_SYMBOLS": "YES",
+            "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+            "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+            "SWIFT_EMIT_LOC_STRINGS": "YES",
+            "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
+            "SWIFT_VERSION": "5.0",
+            "TARGETED_DEVICE_FAMILY": "1,2"
+          },
+          "guid": "623395126d18e201a7e312d6f19cb3155405d6a261d982a8e084e6330fb14633",
+          "name": "Release"
+        }
+      ],
+      "buildPhases": [
+        {
+          "buildFiles": [
+            {
+              "fileReference": "623395126d18e201a7e312d6f19cb31525f2659f9a963a8840bf4117c6228434",
+              "guid": "623395126d18e201a7e312d6f19cb315e5f2642d590a09137c3d01327fff2904"
+            },
+            {
+              "fileReference": "623395126d18e201a7e312d6f19cb315a397107dd9265e4cd8eaae3927a529c6",
+              "guid": "623395126d18e201a7e312d6f19cb31587d9917d4c3e3336d50c4a1e2b0a335b"
+            },
+            {
+              "fileReference": "623395126d18e201a7e312d6f19cb31516bb49f2e4569e0ca821bffc517c97c0",
+              "guid": "623395126d18e201a7e312d6f19cb31571a25268d3abd3d14e886c178c76eeab"
+            }
+          ],
+          "guid": "623395126d18e201a7e312d6f19cb31514efb8b024beb53e37eee9d38761033c",
+          "type": "com.apple.buildphase.sources"
+        },
+        {
+          "buildFiles": [],
+          "guid": "623395126d18e201a7e312d6f19cb31530f7313271d861a32176414ce7f33387",
+          "type": "com.apple.buildphase.frameworks"
+        },
+        {
+          "buildFiles": [],
+          "guid": "623395126d18e201a7e312d6f19cb3151443f55fda5fd7cebe29f71fef0d5c26",
+          "type": "com.apple.buildphase.resources"
+        }
+      ],
+      "buildRules": [],
+      "dependencies": [],
+      "guid": "623395126d18e201a7e312d6f19cb31575d292f74331dd4584566b72d42df8c1",
+      "name": "LinuxApp",
+      "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Swift",
+      "productReference": {
+        "guid": "623395126d18e201a7e312d6f19cb315d5ed7ab92fccc451ee9f499576f6d3c4",
+        "name": "LinuxApp.app",
+        "type": "product"
+      },
+      "productTypeIdentifier": "com.apple.product-type.application",
+      "provisioningSourceData": [
+        {
+          "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+          "configurationName": "Debug",
+          "provisioningStyle": 0
+        },
+        {
+          "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+          "configurationName": "Release",
+          "provisioningStyle": 0
+        }
+      ],
+      "type": "standard"
+    },
+    "signature": "TARGET@v11_hash=c67a77e5c700f54c5fa5a3d78c8cadb3",
+    "type": "target"
+  }
+]

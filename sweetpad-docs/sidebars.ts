@@ -46,6 +46,7 @@ const sidebars: SidebarsConfig = {
     'cli/destinations',
     'cli/simulators',
     'cli/app-lifecycle',
+    'cli/linux',
     group('Your project'),
     'cli/project-new',
     'cli/project',

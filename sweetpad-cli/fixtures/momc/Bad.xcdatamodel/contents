@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="1" systemVersion="1" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="A" representedClassName="A" syncable="YES" codeGenerationType="class">
+        <relationship name="b" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Nope"/>
+        <relationship name="c" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="A"/>
+    </entity>
+</model>

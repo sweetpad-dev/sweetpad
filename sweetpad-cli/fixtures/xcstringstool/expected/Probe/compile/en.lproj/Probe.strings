@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>50% off</key>
+	<string>Half price</string>
+	<key>Device</key>
+	<string>Select</string>
+	<key>Device then plural %lld</key>
+	<string>%lld things</string>
+	<key>Empty value</key>
+	<string></string>
+	<key>Escapes &amp; &lt;tags&gt; "quotes" 'apostrophes'</key>
+	<string>Line one
+Line two	tab &amp; &lt;b&gt; "q" 'a' \ back 😀 %@ %1$@ %%CR</string>
+	<key>Every device</key>
+	<string>Other</string>
+	<key>Manual device</key>
+	<string>o</string>
+	<key>Manual device plural %lld</key>
+	<string>%lld o</string>
+	<key>Manual key</key>
+	<string>Manual value</string>
+	<key>Manual with no value</key>
+	<string>Manual with no value</string>
+	<key>Only English</key>
+	<string>Only English value</string>
+	<key>Plain</key>
+	<string>Plain English</string>
+	<key>Sort Z</key>
+	<string>Z</string>
+	<key>Sort z</key>
+	<string>z</string>
+	<key>Sort é</key>
+	<string>é</string>
+	<key>Sort 😀</key>
+	<string>emoji</string>
+	<key>Sort </key>
+	<string>private use</string>
+	<key>Sort ｚ</key>
+	<string>fullwidth</string>
+	<key>Sub in device %lld</key>
+	<string>%lld elsewhere</string>
+</dict>
+</plist>

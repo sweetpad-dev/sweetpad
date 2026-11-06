@@ -1,0 +1,4 @@
+Features.xcdatamodel: note: Model Features version checksum: UjE4HNM/ethHnzFP1wZrwR+cIUE4n+nwq2NutwAKQcQ=
+$(DIR)/Features.xcdatamodeld/Features.xcdatamodel:Doc.truth: warning: Doc.truth is set to be stored using a Spotlight external record file, which is deprecated. Use Core Spotlight integration instead. [5]
+$(DIR)/Features.xcdatamodeld/Features.xcdatamodel:Doc.cache: warning: Setting the No Action Delete Rule on Doc.cache may result in relationships to deleted objects [7]
+$(DIR)/Features.xcdatamodeld/Features.xcdatamodel:Doc.cache: warning: Doc.cache should have an inverse [2]

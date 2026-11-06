@@ -1,0 +1,16 @@
+<document type="com.apple.InterfaceBuilder3.Cocoa.Storyboard.XIB" version="3.0" toolsVersion="24412" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" initialViewController="win-aa-Aud"><dependencies><plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="24412" /></dependencies><scenes><scene sceneID="sce-aa-Aud"><objects><windowController storyboardIdentifier="WindowController" showSeguePresentationStyle="single" id="win-aa-Aud" sceneMemberID="viewController">
+                    <window key="window" identifier="InspectorPanel" title="Inspector" allowsToolTipsWhenApplicationIsInactive="NO" autorecalculatesKeyViewLoop="NO" hidesOnDeactivate="YES" releasedWhenClosed="NO" visibleAtLaunch="NO" frameAutosaveName="" animationBehavior="default" tabbingMode="disallowed" id="bma-LM-jVu">
+                        <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" utility="YES" />
+                        <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES" />
+                        <rect key="contentRect" x="314" y="928" width="256" height="256" />
+                        <rect key="screenRect" x="0.0" y="0.0" width="2560" height="1417" />
+                        <value key="minSize" type="size" width="256" height="256" />
+                        <value key="maxSize" type="size" width="256" height="2048" />
+                        </window>
+                    <connections><segue destination="vcA-aa-Aud" kind="relationship" relationship="window.shadowedContentViewController" id="seg-co-Aud" /></connections></windowController><customObject id="res-win-Aud" userLabel="First Responder" customClass="NSResponder" sceneMemberID="firstResponder" /></objects></scene><scene sceneID="sce-co-Aud"><objects><viewController storyboardIdentifier="AuditController" title="Audit" id="vcA-aa-Aud" sceneMemberID="viewController" customClass="AuditController" customModule="App" customModuleProvider="target"><view key="view" id="vie-aa-Aud"><rect key="frame" x="0" y="0" width="300" height="200" /><autoresizingMask key="autoresizingMask" /><subviews><button id="Btn-aa-Vw1">
+          <rect key="frame" x="10" y="40" width="150" height="32" />
+          <buttonCell key="cell" type="push" title="Press" bezelStyle="rounded" imagePosition="overlaps" alignment="center" borderStyle="border" id="Btn-aa-Cl1">
+            <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES" />
+            <font key="font" metaFont="system" />
+          </buttonCell>
+        <connections><action selector="press:" target="vcA-aa-Aud" id="act-vc-Aud" /></connections></button></subviews></view><connections><outlet property="button" destination="Btn-aa-Vw1" id="out-vc-Aud" /></connections></viewController><customObject id="res-aa-Aud" userLabel="First Responder" customClass="NSResponder" sceneMemberID="firstResponder" /></objects></scene></scenes></document>

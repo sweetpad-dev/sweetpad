@@ -1,0 +1,4235 @@
+[
+ {
+  "contents": {
+   "guid": "aa66d7428d7386e605462613e04023da",
+   "name": "Kingfisher",
+   "path": "$(CORPUS)/kingfisher/Kingfisher.xcworkspace",
+   "projects": [
+    "PROJECT@v11_mod=ed3a69965af1c91dae6f5c86c46dee56_hash=4317e6f9e093b34afb81bb588c7a8e46plugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1",
+    "PROJECT@v11_mod=3815eb5ae5ca3ceb6715eb495e6d68e7_hash=a17ccb4923d030263240808f7bc3c92dplugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1"
+   ]
+  },
+  "signature": "WORKSPACE@v11_hash=5bd8f50a445a892cd9e52b878462a138_subobjects=80592ba78b95ed653e636cf8f7b6a22f",
+  "type": "workspace"
+ },
+ {
+  "contents": {
+   "appPreferencesBuildSettings": {},
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ALWAYS_SEARCH_USER_PATHS": "NO",
+      "ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS": "YES",
+      "CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED": "YES",
+      "CLANG_CXX_LANGUAGE_STANDARD": "gnu++0x",
+      "CLANG_CXX_LIBRARY": "libc++",
+      "CLANG_ENABLE_MODULES": "YES",
+      "CLANG_ENABLE_OBJC_ARC": "YES",
+      "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+      "CLANG_WARN_BOOL_CONVERSION": "YES",
+      "CLANG_WARN_COMMA": "YES",
+      "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+      "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+      "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+      "CLANG_WARN_EMPTY_BODY": "YES",
+      "CLANG_WARN_ENUM_CONVERSION": "YES",
+      "CLANG_WARN_INFINITE_RECURSION": "YES",
+      "CLANG_WARN_INT_CONVERSION": "YES",
+      "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+      "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+      "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+      "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+      "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+      "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+      "CLANG_WARN_UNREACHABLE_CODE": "YES",
+      "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "iPhone Developer",
+      "COPY_PHASE_STRIP": "NO",
+      "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+      "ENABLE_TESTABILITY": "YES",
+      "ENABLE_USER_SCRIPT_SANDBOXING": "YES",
+      "GCC_C_LANGUAGE_STANDARD": "gnu99",
+      "GCC_DYNAMIC_NO_PIC": "NO",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "GCC_OPTIMIZATION_LEVEL": "0",
+      "GCC_PREPROCESSOR_DEFINITIONS": "DEBUG=1 $(inherited)",
+      "GCC_SYMBOLS_PRIVATE_EXTERN": "NO",
+      "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+      "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+      "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+      "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+      "GCC_WARN_UNUSED_FUNCTION": "YES",
+      "GCC_WARN_UNUSED_VARIABLE": "YES",
+      "IPHONEOS_DEPLOYMENT_TARGET": "13.0",
+      "MACOSX_DEPLOYMENT_TARGET": "10.15",
+      "MTL_ENABLE_DEBUG_INFO": "YES",
+      "ONLY_ACTIVE_ARCH": "YES",
+      "SDKROOT": "iphoneos",
+      "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
+      "SWIFT_STRICT_CONCURRENCY": "complete",
+      "SWIFT_VERSION": "5.0",
+      "TARGETED_DEVICE_FAMILY": "1,2",
+      "TVOS_DEPLOYMENT_TARGET": "13.0",
+      "WATCHOS_DEPLOYMENT_TARGET": "6.0",
+      "XROS_DEPLOYMENT_TARGET": "1.0"
+     },
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46423446913ecc7607fccd21bf9c8ba009",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ALWAYS_SEARCH_USER_PATHS": "NO",
+      "ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS": "YES",
+      "CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED": "YES",
+      "CLANG_CXX_LANGUAGE_STANDARD": "gnu++0x",
+      "CLANG_CXX_LIBRARY": "libc++",
+      "CLANG_ENABLE_MODULES": "YES",
+      "CLANG_ENABLE_OBJC_ARC": "YES",
+      "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+      "CLANG_WARN_BOOL_CONVERSION": "YES",
+      "CLANG_WARN_COMMA": "YES",
+      "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+      "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+      "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+      "CLANG_WARN_EMPTY_BODY": "YES",
+      "CLANG_WARN_ENUM_CONVERSION": "YES",
+      "CLANG_WARN_INFINITE_RECURSION": "YES",
+      "CLANG_WARN_INT_CONVERSION": "YES",
+      "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+      "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+      "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+      "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+      "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+      "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+      "CLANG_WARN_UNREACHABLE_CODE": "YES",
+      "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "iPhone Developer",
+      "COPY_PHASE_STRIP": "NO",
+      "ENABLE_NS_ASSERTIONS": "NO",
+      "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+      "ENABLE_USER_SCRIPT_SANDBOXING": "YES",
+      "GCC_C_LANGUAGE_STANDARD": "gnu99",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+      "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+      "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+      "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+      "GCC_WARN_UNUSED_FUNCTION": "YES",
+      "GCC_WARN_UNUSED_VARIABLE": "YES",
+      "IPHONEOS_DEPLOYMENT_TARGET": "13.0",
+      "MACOSX_DEPLOYMENT_TARGET": "10.15",
+      "MTL_ENABLE_DEBUG_INFO": "NO",
+      "SDKROOT": "iphoneos",
+      "SWIFT_COMPILATION_MODE": "wholemodule",
+      "SWIFT_OPTIMIZATION_LEVEL": "-O",
+      "SWIFT_STRICT_CONCURRENCY": "complete",
+      "SWIFT_VERSION": "5.0",
+      "TARGETED_DEVICE_FAMILY": "1,2",
+      "TVOS_DEPLOYMENT_TARGET": "13.0",
+      "VALIDATE_PRODUCT": "YES",
+      "WATCHOS_DEPLOYMENT_TARGET": "6.0",
+      "XROS_DEPLOYMENT_TARGET": "1.0"
+     },
+     "guid": "4317e6f9e093b34afb81bb588c7a8e464a6aeadf1bf4e03831e4097fd29377b1",
+     "name": "Release"
+    }
+   ],
+   "classPrefix": "",
+   "defaultConfigurationName": "Release",
+   "developmentRegion": "en",
+   "groupTree": {
+    "children": [
+     {
+      "fileType": "text.plist.entitlements",
+      "guid": "4317e6f9e093b34afb81bb588c7a8e460418e95a846c29f8584d5a5cb02c65ee",
+      "path": "Kingfisher-Demo.entitlements",
+      "sourceTree": "<group>",
+      "type": "file"
+     },
+     {
+      "children": [
+       {
+        "children": [
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "text.plist.xml",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e465aa08e97c2b2cda5d4e41fed1a2f3182",
+          "path": "Info.plist",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46ce62d1d5d7aa8329ec111ec93c0524ff",
+          "path": "AppDelegate.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "file.storyboard",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46575560d4d8cdcea22d8d61230450cf4b",
+          "path": "LaunchScreen.storyboard",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "children": [
+           {
+            "fileType": "file.storyboard",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46712e05d633a7ebae3b6a4b8ac7fa6f65",
+            "path": "Base.lproj/Main.storyboard",
+            "regionVariantName": "Base",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46267ecdf7ef4e4ecd953918385ccf38ea",
+          "name": "Main.storyboard",
+          "path": "",
+          "sourceTree": "<group>",
+          "type": "variantGroup"
+         },
+         {
+          "children": [
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e4643e6706b57d5660629b8b9676fb2e3e4",
+            "path": "LivePhotoViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46628a5124a0ab1d90a309b41e3047759b",
+            "path": "ProcessorCollectionViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e466acf8912c1eb986fe82fd9d52e8544bc",
+            "path": "InfinityCollectionViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46e8ac47f4f8d0c69b89c417aa50a919ae",
+            "path": "TransitionViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileTextEncoding": "utf-8",
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e465bdb23f1c71943f994d9c3b0ae1388cb",
+            "path": "NormalLoadingViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e463e80f224eb26e6219310e70a58d38cca",
+            "path": "OrientationImagesViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46b98fdf02e478b95bf0711e6e4b2e92fe",
+            "path": "AutoSizingTableViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileTextEncoding": "utf-8",
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e460e74a1683c3f416fe8bf7eef017e6de6",
+            "path": "ImageCollectionViewCell.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46a9239ebf82c8298c9f308ee67f007a7c",
+            "path": "MainViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e460294d11cf6f8971423844a139161fc33",
+            "path": "HighResolutionCollectionViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e467b48a74cab03a4a4b0b1f9a69537d8f2",
+            "path": "DetailImageViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e469dac2f4342e75d38bf4c8c2dcc9e15fa",
+            "path": "GIFViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e4673a381fafb6071094e3fb866da4f4139",
+            "path": "GIFHeavyViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46771bf32db6bd29f41e62c3ced44ab4d0",
+            "path": "IndicatorCollectionViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e465b7c7d8c6faaf4768854fdabce1f7efd",
+            "path": "ImageDataProviderCollectionViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46a67bbe0cdeb849ad7c4b397a839c7b55",
+            "path": "ProgressiveJPEGViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e4619ab5bad25351675ac0c86ea148ec439",
+            "path": "TextAttachmentViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46048ef7b4414333e3bb2259d830a10f66",
+            "path": "AVAssetImageGeneratorViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e464f6c52eaa1c8ad9c1f981fcdb2a013fd",
+            "path": "PHPickerResultViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e4647c3682c07a55d0f4eba527f9ebaa6c6",
+            "path": "SwiftUIViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e4608a0dba264365562d60f84c8f79df612",
+            "path": "NetworkMetricsViewController.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46b7ee2b716d1473254aa6aad661fb3a84",
+          "name": "ViewControllers",
+          "path": "ViewControllers",
+          "sourceTree": "<group>",
+          "type": "group"
+         },
+         {
+          "children": [
+           {
+            "children": [
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "4317e6f9e093b34afb81bb588c7a8e46dae22bfda9efcda468bf475e575526b0",
+              "path": "Issue2295View.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "4317e6f9e093b34afb81bb588c7a8e46284af65154a11ea4af59c07e1c6d38ff",
+              "path": "Issue1998View.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "4317e6f9e093b34afb81bb588c7a8e46217bc00b0417479d870c47ad485c1cb8",
+              "path": "Issue2035View.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "sourcecode.swift",
+              "guid": "4317e6f9e093b34afb81bb588c7a8e463e2775fdd1dab79b1e55b6b5cea7f415",
+              "path": "Issue2352View.swift",
+              "sourceTree": "<group>",
+              "type": "file"
+             }
+            ],
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46abd05f963567ab0b3a7f80ec43afa538",
+            "name": "Regression",
+            "path": "Regression",
+            "sourceTree": "<group>",
+            "type": "group"
+           },
+           {
+            "fileTextEncoding": "utf-8",
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46320c014242f40eb0dceb0fa714c9937f",
+            "path": "MainView.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e461cb07cc309a9bcd23a1d448816d75fe2",
+            "path": "LoadingFailureDemo.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileTextEncoding": "utf-8",
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46cf43a8598da31ef045d5415953fd2095",
+            "path": "ListDemo.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e460efde9d33f4d9a15dde1228a78dc21c0",
+            "path": "GridDemo.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46ceaa622ce4cfe3c77e0414efaba06fd8",
+            "path": "GeometryReaderDemo.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileTextEncoding": "utf-8",
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e468b86fadf666ba23a5181dc12645cfdf4",
+            "path": "SingleViewDemo.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e4681ea40944b23e35f37feaa7a54403181",
+            "path": "ProgressiveJPEGDemo.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e469a4c9c8ebfa525ed5e123624207d1971",
+            "path": "TransitionViewDemo.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e464b6b8cd8a65c4c4fdc4f05ccd32568f5",
+            "path": "LazyVStackDemo.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46ca1ff9bf46dfcfb2adfe342cbe5bff5e",
+            "path": "SizingAnimationDemo.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e4639d5d8d9931505649cd6923da47cb4d8",
+            "path": "AnimatedImageDemo.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e469f37cf9cce2debb867a393db88226f2f",
+            "path": "LoadTransitionDemo.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46bbcdcfbfabcfe3698212e312dd5240c5",
+            "path": "PhotosPickerDemo.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46b1a007c2fccbf5090d63a54cac11ed21",
+          "name": "SwiftUIViews",
+          "path": "SwiftUIViews",
+          "sourceTree": "<group>",
+          "type": "group"
+         },
+         {
+          "children": [
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e4664b32364c5c6fc1cc780cbf289698f7e",
+            "path": "UIViewController+KingfisherOperation.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46b7c216a2043659e9fcf9343aaf12599b",
+          "name": "Extensions",
+          "path": "Extensions",
+          "sourceTree": "<group>",
+          "type": "group"
+         },
+         {
+          "children": [
+           {
+            "fileType": "image.gif",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e4601c1e63fa028ff678c3ecea13377ed85",
+            "path": "loader.gif",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46a1ccacd330418660b9eabf93634b01d4",
+            "path": "ImageLoader.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "4317e6f9e093b34afb81bb588c7a8e463cefa9aa7cb9675d2de28f8c1661993e",
+          "name": "Resources",
+          "path": "Resources",
+          "sourceTree": "<group>",
+          "type": "group"
+         },
+         {
+          "fileType": "folder.assetcatalog",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e463a8f8a46923c83caca6a5af9a9490c0b",
+          "path": "Images.xcassets",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "4317e6f9e093b34afb81bb588c7a8e4685163132b46ae4cebb90ba785a4ed37f",
+        "name": "Kingfisher-Demo",
+        "path": "Demo/Kingfisher-Demo",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e4669a722d1e56917209b3b3f201fb51169",
+          "path": "AppDelegate.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "folder.assetcatalog",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e463e6616e5f550c86059b206aa7fc33d09",
+          "path": "Assets.xcassets",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "children": [
+           {
+            "fileType": "file.storyboard",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46eeb2a404718f090599fbb8e3e9ce6575",
+            "path": "Base.lproj/Main.storyboard",
+            "regionVariantName": "Base",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46414e77a3866e234f56cfd8f52393549a",
+          "name": "Main.storyboard",
+          "path": "",
+          "sourceTree": "<group>",
+          "type": "variantGroup"
+         },
+         {
+          "fileType": "file.xib",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e468e661f0a7c0f2bdbc2b3b8c3dc69e302",
+          "path": "Cell.xib",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "text.plist.xml",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46e9e9cd6d9ae4719757bf7885e30ceef4",
+          "path": "Info.plist",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e462f742b081bc7e327e6486f7476949bd3",
+          "path": "ViewController.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46a970e8956158cde7442a7381bb0c78e3",
+          "path": "GIFHeavyViewController.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46cfc9f24952d6b9917250aec9c9dcd1c0",
+          "path": "SwiftUIViewController.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "4317e6f9e093b34afb81bb588c7a8e461d913afc4408fd7fb8caffc456514013",
+        "name": "Kingfisher-macOS-Demo",
+        "path": "Demo/Kingfisher-macOS-Demo",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46018dfbc0dea4f81c78d51b0cc28e893f",
+          "path": "AppDelegate.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "folder.assetcatalog",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e468354902d7ddeabbb8cefc21ca453c82b",
+          "path": "Assets.xcassets",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "children": [
+           {
+            "fileType": "file.storyboard",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e46c8c6ae455a9be1528ff378fcb07cb246",
+            "path": "Base.lproj/Main.storyboard",
+            "regionVariantName": "Base",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "4317e6f9e093b34afb81bb588c7a8e463fd75d4823f22fc6917a90e3e9d00ec3",
+          "name": "Main.storyboard",
+          "path": "",
+          "sourceTree": "<group>",
+          "type": "variantGroup"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "text.plist.xml",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46b4ba2ce07d904fda76b417cec6e3837a",
+          "path": "Info.plist",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "4317e6f9e093b34afb81bb588c7a8e46aab5b5cb3a4d58734a5d2edb5df92bf7",
+        "name": "Kingfisher-tvOS-Demo",
+        "path": "Demo/Kingfisher-tvOS-Demo",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileType": "folder.assetcatalog",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e467610b59c10039afbb12e57cfb164d51c",
+          "path": "Assets.xcassets",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e460536782663fb6123621b9c7161a0e38a",
+          "path": "ExtensionDelegate.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "text.plist.xml",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e466302bc384e351657981bf325c1e57187",
+          "path": "Info.plist",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46930845c604031db2a1ba28e2d34f56ca",
+          "path": "InterfaceController.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "4317e6f9e093b34afb81bb588c7a8e462215d815a9546e08a94df862e97cf2d9",
+        "name": "Kingfisher-watchOS-Demo Extension",
+        "path": "Demo/Kingfisher-watchOS-Demo Extension",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileType": "folder.assetcatalog",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46737ff298f72aafcf771460d23c556f8e",
+          "path": "Assets.xcassets",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "children": [
+           {
+            "fileType": "file.storyboard",
+            "guid": "4317e6f9e093b34afb81bb588c7a8e4654103b18546ed67821e2e5e3e1026aeb",
+            "path": "Base.lproj/Interface.storyboard",
+            "regionVariantName": "Base",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "4317e6f9e093b34afb81bb588c7a8e46cbb70ec3f4ae2e125a5eda2e92efd429",
+          "name": "Interface.storyboard",
+          "path": "",
+          "sourceTree": "<group>",
+          "type": "variantGroup"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "text.plist.xml",
+          "guid": "4317e6f9e093b34afb81bb588c7a8e460ee330f3925555c0bcb79e065fd7dbb7",
+          "path": "Info.plist",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "4317e6f9e093b34afb81bb588c7a8e46ae3eff45c81e476b852db9143c38dd82",
+        "name": "Kingfisher-watchOS-Demo",
+        "path": "Demo/Kingfisher-watchOS-Demo",
+        "sourceTree": "<group>",
+        "type": "group"
+       }
+      ],
+      "guid": "4317e6f9e093b34afb81bb588c7a8e4684b72fcc56cd5fbfd3e79148272048bb",
+      "name": "Demo",
+      "path": "",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "guid": "4317e6f9e093b34afb81bb588c7a8e466c6873fb0e8c2bd363df1429aec6c059",
+      "name": "Products",
+      "path": "",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "children": [
+       {
+        "fileType": "wrapper.framework",
+        "guid": "4317e6f9e093b34afb81bb588c7a8e465be0082db8f4ede32bfe7f397430033e",
+        "path": "Kingfisher.framework",
+        "sourceTree": "BUILT_PRODUCTS_DIR",
+        "type": "file"
+       },
+       {
+        "fileType": "wrapper.framework",
+        "guid": "4317e6f9e093b34afb81bb588c7a8e46a33b0efa6b3007a9261539130e3003ef",
+        "path": "Kingfisher.framework",
+        "sourceTree": "BUILT_PRODUCTS_DIR",
+        "type": "file"
+       },
+       {
+        "fileType": "wrapper.framework",
+        "guid": "4317e6f9e093b34afb81bb588c7a8e46f5323d2c6bf4bfa76c4c97d22cf5f4c5",
+        "path": "KingfisherSwiftUI.framework",
+        "sourceTree": "BUILT_PRODUCTS_DIR",
+        "type": "file"
+       },
+       {
+        "fileType": "wrapper.framework",
+        "guid": "4317e6f9e093b34afb81bb588c7a8e4698cd772881e3657ae24a69316f5c1b07",
+        "path": "Kingfisher.framework",
+        "sourceTree": "BUILT_PRODUCTS_DIR",
+        "type": "file"
+       },
+       {
+        "fileType": "wrapper.framework",
+        "guid": "4317e6f9e093b34afb81bb588c7a8e4604e77e2cfa6ba754b03092a6b3d1e04a",
+        "path": "Kingfisher.framework",
+        "sourceTree": "BUILT_PRODUCTS_DIR",
+        "type": "file"
+       },
+       {
+        "fileType": "wrapper.framework",
+        "guid": "4317e6f9e093b34afb81bb588c7a8e46b8fada43e2121fac01efee8334f2d9be",
+        "path": "Kingfisher.framework",
+        "sourceTree": "BUILT_PRODUCTS_DIR",
+        "type": "file"
+       }
+      ],
+      "guid": "4317e6f9e093b34afb81bb588c7a8e46c0f578f2a25ff48e62754b3797c23f73",
+      "name": "Frameworks",
+      "path": "",
+      "sourceTree": "<group>",
+      "type": "group"
+     }
+    ],
+    "guid": "4317e6f9e093b34afb81bb588c7a8e469a94d8bcc464874b73723f278d096c9c",
+    "name": "Kingfisher-Demo",
+    "path": "",
+    "sourceTree": "<group>",
+    "type": "group"
+   },
+   "guid": "4317e6f9e093b34afb81bb588c7a8e46",
+   "knownRegions": [
+    "en",
+    "Base"
+   ],
+   "path": "$(CORPUS)/kingfisher/Demo/Kingfisher-Demo.xcodeproj",
+   "projectDirectory": "$(CORPUS)/kingfisher/Demo",
+   "targets": [
+    "TARGET@v11_hash=38f4efac0a49561832abccb933eccdf0",
+    "TARGET@v11_hash=55285021971bc66bd207c189d8ef0158",
+    "TARGET@v11_hash=653297895232faae5097ab06acaec4b7",
+    "TARGET@v11_hash=c7e6f8e9368cdf9fa56bccebf59b0472",
+    "TARGET@v11_hash=ac925f3108ac8a0e7607ae592ccc28bd"
+   ]
+  },
+  "signature": "PROJECT@v11_mod=ed3a69965af1c91dae6f5c86c46dee56_hash=4317e6f9e093b34afb81bb588c7a8e46plugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1",
+  "type": "project"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+      "CODE_SIGN_ENTITLEMENTS": "Kingfisher-Demo.entitlements",
+      "CODE_SIGN_IDENTITY": "iPhone Developer",
+      "DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER": "YES",
+      "DEVELOPMENT_TEAM": "A4YJ9MRZ66",
+      "INFOPLIST_FILE": "Demo/Kingfisher-Demo/Info.plist",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks",
+      "MACOSX_DEPLOYMENT_TARGET": "11.0",
+      "PRODUCT_BUNDLE_IDENTIFIER": "com.onevcat.$(PRODUCT_NAME:rfc1034identifier)",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator xros xrsimulator",
+      "SUPPORTS_MACCATALYST": "YES",
+      "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "TARGETED_DEVICE_FAMILY": "1,2,7"
+     },
+     "guid": "4317e6f9e093b34afb81bb588c7a8e461c066dbc44d0515c198ddbcf00470b97",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+      "CODE_SIGN_ENTITLEMENTS": "Kingfisher-Demo.entitlements",
+      "CODE_SIGN_IDENTITY": "iPhone Developer",
+      "DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER": "YES",
+      "DEVELOPMENT_TEAM": "A4YJ9MRZ66",
+      "INFOPLIST_FILE": "Demo/Kingfisher-Demo/Info.plist",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks",
+      "MACOSX_DEPLOYMENT_TARGET": "11.0",
+      "PRODUCT_BUNDLE_IDENTIFIER": "com.onevcat.$(PRODUCT_NAME:rfc1034identifier)",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator xros xrsimulator",
+      "SUPPORTS_MACCATALYST": "YES",
+      "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SWIFT_COMPILATION_MODE": "wholemodule",
+      "SWIFT_OPTIMIZATION_LEVEL": "-O",
+      "TARGETED_DEVICE_FAMILY": "1,2,7"
+     },
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46dbe55be934c1e3f4785763d66e304aeb",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46048ef7b4414333e3bb2259d830a10f66",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46cc4d433b5f869073fdd0db03cd41426b"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46a67bbe0cdeb849ad7c4b397a839c7b55",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46b1e9e560c1a393e1dcf79dd3b67de717"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46a1ccacd330418660b9eabf93634b01d4",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46531b97ea77eaaefd48fbc7091efa8d5d"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4619ab5bad25351675ac0c86ea148ec439",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46abdf58b916268167c05a5330a208691a"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e465bdb23f1c71943f994d9c3b0ae1388cb",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e467d93a514585d217cdb12bd24bd098da0"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46e8ac47f4f8d0c69b89c417aa50a919ae",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46ab322d415e0674d4d2babb8de862a940"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e469f37cf9cce2debb867a393db88226f2f",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46fbbb73286e2f84ee89bc5e4ef7c49a01"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46628a5124a0ab1d90a309b41e3047759b",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e466afc2e42032b12049e902d014b88cda4"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46771bf32db6bd29f41e62c3ced44ab4d0",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e4688a5fee6edb82575b0262c909551691b"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e468b86fadf666ba23a5181dc12645cfdf4",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e469bffb3d057babd5278a4a16880b46090"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4608a0dba264365562d60f84c8f79df612",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46b5a9818a2a7911dd31b0338392321d62"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e460e74a1683c3f416fe8bf7eef017e6de6",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46fcc97d6b6b99abf8937c760a020cb65c"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46ca1ff9bf46dfcfb2adfe342cbe5bff5e",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46f1969f92f02f42740eb4be1f5eac49ec"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4639d5d8d9931505649cd6923da47cb4d8",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e465231af81c9248c88dd13d0ccd2fa8808"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46284af65154a11ea4af59c07e1c6d38ff",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46c1cef86ea5d1f9fe5ce9adbcd98a5897"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4664b32364c5c6fc1cc780cbf289698f7e",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e469d98c0c8439f10ef0f2ecfac775459c1"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e461cb07cc309a9bcd23a1d448816d75fe2",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e4661740ac78741ed4f59cf0687cc53e5d3"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4681ea40944b23e35f37feaa7a54403181",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e4622c5d7ce9e757c44ff3b84fa6b971b10"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46b98fdf02e478b95bf0711e6e4b2e92fe",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e463427c9b87e2e5fce5d069d995d751059"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46cf43a8598da31ef045d5415953fd2095",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46ff2687822276325e0eed16a698a931d8"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e464b6b8cd8a65c4c4fdc4f05ccd32568f5",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e4607845feb69b1707f1a6e0ae0ce409c0a"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e465b7c7d8c6faaf4768854fdabce1f7efd",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e460b4463b0dd9f3749404a2d99a67d0c18"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e463e80f224eb26e6219310e70a58d38cca",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46970dc9aaf15e3fa2e0769b2426742509"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e460294d11cf6f8971423844a139161fc33",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e463983f79525eaedb5c9239687e5f7528f"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46320c014242f40eb0dceb0fa714c9937f",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46b1ebaced8643041f1c6fde2a22ad01af"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46ceaa622ce4cfe3c77e0414efaba06fd8",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46c6516cdf13064e2588634c4a431301fa"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4647c3682c07a55d0f4eba527f9ebaa6c6",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e468ede66b95bcdc8b66e6eabc746bda5e9"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46bbcdcfbfabcfe3698212e312dd5240c5",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e462a36f4ceed7f28ce608194598f8d916f"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46ce62d1d5d7aa8329ec111ec93c0524ff",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e463b44d790d9daff1712bf709696052ef7"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e467b48a74cab03a4a4b0b1f9a69537d8f2",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46ac99c6fdebfb706620b070bfad2c0383"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e460efde9d33f4d9a15dde1228a78dc21c0",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46eddfa66f3ab5c8e29a24c5c4b18d2c37"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e466acf8912c1eb986fe82fd9d52e8544bc",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e469685a489c63c21b93d9783c364c69932"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e464f6c52eaa1c8ad9c1f981fcdb2a013fd",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e460d9258707038777807fdb896d5396ffe"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46dae22bfda9efcda468bf475e575526b0",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46175a49c1b4ffa243a4afb93fac774886"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46a9239ebf82c8298c9f308ee67f007a7c",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46a0c44f071cabcea5eb389e8626aa53ef"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e463e2775fdd1dab79b1e55b6b5cea7f415",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e463eaff35c2ddb4e190c97388aca25718d"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4643e6706b57d5660629b8b9676fb2e3e4",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e4686b2d5725652be2a320d5976f7b9e849"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46217bc00b0417479d870c47ad485c1cb8",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46dc69d7f0626a7ba169a830a0010ad805"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e469dac2f4342e75d38bf4c8c2dcc9e15fa",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e4614bcbca057614f26d15c788f2e49bc91"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e469a4c9c8ebfa525ed5e123624207d1971",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e4689730f29f294103e964f3e2fd72d44cd"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4673a381fafb6071094e3fb866da4f4139",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e4692921936ee105967f27ed3d28625e407"
+      }
+     ],
+     "guid": "4317e6f9e093b34afb81bb588c7a8e463fceed0412ef0b3044880556da82b284",
+     "type": "com.apple.buildphase.sources"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46b8fada43e2121fac01efee8334f2d9be",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46c6a866d08d384b1fc4bfd90f11e1e351"
+      }
+     ],
+     "guid": "4317e6f9e093b34afb81bb588c7a8e4627dcece5e96c89e3df9e97ad27d80c49",
+     "type": "com.apple.buildphase.frameworks"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e463a8f8a46923c83caca6a5af9a9490c0b",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e466bbf475d618d78639fb71d05a4a70877"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4601c1e63fa028ff678c3ecea13377ed85",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e465aa3032105705d7a43e06ad00d694879"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46575560d4d8cdcea22d8d61230450cf4b",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e461ddef065f64ab936ce0e531c847917c5"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46267ecdf7ef4e4ecd953918385ccf38ea",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e465b98c42a5c34503133678d49db750fb3"
+      }
+     ],
+     "guid": "4317e6f9e093b34afb81bb588c7a8e463d45e5120f68b0b8086ec4c8dc559ec6",
+     "type": "com.apple.buildphase.resources"
+    },
+    {
+     "buildFiles": [
+      {
+       "codeSignOnCopy": "true",
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46b8fada43e2121fac01efee8334f2d9be",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e4606a000e8e36a83f190681fd335f3533c",
+       "removeHeadersOnCopy": "true"
+      }
+     ],
+     "destinationSubfolder": "$(FRAMEWORKS_FOLDER_PATH)",
+     "destinationSubpath": "",
+     "guid": "4317e6f9e093b34afb81bb588c7a8e467fa7e9295e039424ef7d3b07e659ab2e",
+     "type": "com.apple.buildphase.copy-files"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [],
+   "guid": "4317e6f9e093b34afb81bb588c7a8e46a2c420adc7eca96377b1080a897b1bb2",
+   "name": "Kingfisher-Demo",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Swift",
+   "productReference": {
+    "guid": "4317e6f9e093b34afb81bb588c7a8e46e7c0ed42feb921edfccf09bfe2318fb5",
+    "name": "Kingfisher-Demo.app",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.application",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Debug",
+     "provisioningStyle": 0
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Release",
+     "provisioningStyle": 0
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=38f4efac0a49561832abccb933eccdf0",
+  "type": "target"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "App Icon & Top Shelf Image",
+      "ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME": "LaunchImage",
+      "CODE_SIGN_IDENTITY[sdk=appletvos*]": "iPhone Developer",
+      "CODE_SIGN_STYLE": "Automatic",
+      "DEBUG_INFORMATION_FORMAT": "dwarf",
+      "DEVELOPMENT_TEAM": "",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "INFOPLIST_FILE": "Demo/Kingfisher-tvOS-Demo/Info.plist",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks",
+      "MACOSX_DEPLOYMENT_TARGET": "11.0",
+      "PRODUCT_BUNDLE_IDENTIFIER": "com.onevcat.Kingfisher-tvOS-Demo",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "PROVISIONING_PROFILE_SPECIFIER": "",
+      "SDKROOT": "appletvos",
+      "TARGETED_DEVICE_FAMILY": "3"
+     },
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46a46b4fb7d51141bf43e715275fc74e18",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "App Icon & Top Shelf Image",
+      "ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME": "LaunchImage",
+      "CODE_SIGN_IDENTITY[sdk=appletvos*]": "iPhone Developer",
+      "CODE_SIGN_STYLE": "Automatic",
+      "DEBUG_INFORMATION_FORMAT": "dwarf-with-dsym",
+      "DEVELOPMENT_TEAM": "",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "INFOPLIST_FILE": "Demo/Kingfisher-tvOS-Demo/Info.plist",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks",
+      "MACOSX_DEPLOYMENT_TARGET": "11.0",
+      "PRODUCT_BUNDLE_IDENTIFIER": "com.onevcat.Kingfisher-tvOS-Demo",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "PROVISIONING_PROFILE_SPECIFIER": "",
+      "SDKROOT": "appletvos",
+      "SWIFT_COMPILATION_MODE": "wholemodule",
+      "SWIFT_OPTIMIZATION_LEVEL": "-O",
+      "TARGETED_DEVICE_FAMILY": "3"
+     },
+     "guid": "4317e6f9e093b34afb81bb588c7a8e464dca3473699ddf7ee0284596f1a05eae",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46a1ccacd330418660b9eabf93634b01d4",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e466b72025ebeaa4150df7e2e73c9e846a7"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e465bdb23f1c71943f994d9c3b0ae1388cb",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46005e86712b08dac3d743deda8923de74"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e460e74a1683c3f416fe8bf7eef017e6de6",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e462582074a0c571df40ea70960b76e34f5"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e463e80f224eb26e6219310e70a58d38cca",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46fde0c9f985feaf0d628226a7a88476c9"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4664b32364c5c6fc1cc780cbf289698f7e",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e4699c543b0097ac1cd7cdb394beca911aa"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46018dfbc0dea4f81c78d51b0cc28e893f",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e469774fe017403790ab4114cd8e3719395"
+      }
+     ],
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46ea0871a9c44199633876a414f5c09e5c",
+     "type": "com.apple.buildphase.sources"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4604e77e2cfa6ba754b03092a6b3d1e04a",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e4658ff9e70b22be91ae3fe112a9d94f610"
+      }
+     ],
+     "guid": "4317e6f9e093b34afb81bb588c7a8e464a2082c8af61f283fd7d7a220968fdda",
+     "type": "com.apple.buildphase.frameworks"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4601c1e63fa028ff678c3ecea13377ed85",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e468bd1ff7fbcfbae2e3fb03f34f9ecef30"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e468354902d7ddeabbb8cefc21ca453c82b",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e467896ba76bc18dbd90687880ebacb34b2"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e463fd75d4823f22fc6917a90e3e9d00ec3",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e463b98d47e46525148ad3d002ad15d1ef3"
+      }
+     ],
+     "guid": "4317e6f9e093b34afb81bb588c7a8e4627c2a7f73d1effcbee87df73e79a6297",
+     "type": "com.apple.buildphase.resources"
+    },
+    {
+     "buildFiles": [
+      {
+       "codeSignOnCopy": "true",
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4604e77e2cfa6ba754b03092a6b3d1e04a",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46029c39ae65e0ad7876d00023f837c595",
+       "removeHeadersOnCopy": "true"
+      }
+     ],
+     "destinationSubfolder": "$(FRAMEWORKS_FOLDER_PATH)",
+     "destinationSubpath": "",
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46a147f5d22226e8a473430d81e609e85b",
+     "type": "com.apple.buildphase.copy-files"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [],
+   "guid": "4317e6f9e093b34afb81bb588c7a8e46e206e8a257dc3f68d43a6158cbf4e9a7",
+   "name": "Kingfisher-tvOS-Demo",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Swift",
+   "productReference": {
+    "guid": "4317e6f9e093b34afb81bb588c7a8e4616c8501afa11ad72cb013dabfa5aa6ce",
+    "name": "Kingfisher-tvOS-Demo.app",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.application",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Debug",
+     "provisioningStyle": 0
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Release",
+     "provisioningStyle": 0
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=55285021971bc66bd207c189d8ef0158",
+  "type": "target"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+      "CODE_SIGN_IDENTITY": "Mac Developer",
+      "CODE_SIGN_STYLE": "Automatic",
+      "COMBINE_HIDPI_IMAGES": "YES",
+      "DEAD_CODE_STRIPPING": "YES",
+      "DEBUG_INFORMATION_FORMAT": "dwarf",
+      "DEVELOPMENT_TEAM": "A4YJ9MRZ66",
+      "ENABLE_HARDENED_RUNTIME": "YES",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "INFOPLIST_FILE": "Demo/Kingfisher-macOS-Demo/Info.plist",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/../Frameworks",
+      "MACOSX_DEPLOYMENT_TARGET": "11.0",
+      "PRODUCT_BUNDLE_IDENTIFIER": "com.onevcat.Kingfisher-OSX-Demo",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "PROVISIONING_PROFILE_SPECIFIER": "",
+      "SDKROOT": "macosx"
+     },
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46593e8884b49afd47afec8393ef23bc95",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+      "CODE_SIGN_IDENTITY": "Mac Developer",
+      "CODE_SIGN_STYLE": "Automatic",
+      "COMBINE_HIDPI_IMAGES": "YES",
+      "DEAD_CODE_STRIPPING": "YES",
+      "DEBUG_INFORMATION_FORMAT": "dwarf-with-dsym",
+      "DEVELOPMENT_TEAM": "A4YJ9MRZ66",
+      "ENABLE_HARDENED_RUNTIME": "YES",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "INFOPLIST_FILE": "Demo/Kingfisher-macOS-Demo/Info.plist",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/../Frameworks",
+      "MACOSX_DEPLOYMENT_TARGET": "11.0",
+      "PRODUCT_BUNDLE_IDENTIFIER": "com.onevcat.Kingfisher-OSX-Demo",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "PROVISIONING_PROFILE_SPECIFIER": "",
+      "SDKROOT": "macosx",
+      "SWIFT_COMPILATION_MODE": "wholemodule",
+      "SWIFT_OPTIMIZATION_LEVEL": "-O"
+     },
+     "guid": "4317e6f9e093b34afb81bb588c7a8e4628d319da54d4cc1c684b706e42b2b293",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46cfc9f24952d6b9917250aec9c9dcd1c0",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e465ce3332992590252ce140e842f1666b8"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e462f742b081bc7e327e6486f7476949bd3",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e462ed583b31196f2a09942cc5e5db2e305"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46a970e8956158cde7442a7381bb0c78e3",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e462c159055f96a5c0ba04de3d334f24fb7"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4669a722d1e56917209b3b3f201fb51169",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46c8ea5adbe70537ee0fb5b0ec2069d609"
+      }
+     ],
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46e7b1bf34221c48d7ecf7df5909ee758c",
+     "type": "com.apple.buildphase.sources"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4698cd772881e3657ae24a69316f5c1b07",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e462e5ca88c0cc64b0ab94e2597bf995b83"
+      }
+     ],
+     "guid": "4317e6f9e093b34afb81bb588c7a8e466d22d666f36497fa96e5a043e8e1b42f",
+     "type": "com.apple.buildphase.frameworks"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e463e6616e5f550c86059b206aa7fc33d09",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46c733619dccf2d0045992fa1edc95e3dd"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e468e661f0a7c0f2bdbc2b3b8c3dc69e302",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46eca030e14310a389b96bb4145a48032b"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4601c1e63fa028ff678c3ecea13377ed85",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e467f46b423c46e0ae491375350927047d3"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46414e77a3866e234f56cfd8f52393549a",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e4668df06316480e0827adc89293ee1af45"
+      }
+     ],
+     "guid": "4317e6f9e093b34afb81bb588c7a8e469d43ce45c2fe4f9beea6f30111b79620",
+     "type": "com.apple.buildphase.resources"
+    },
+    {
+     "buildFiles": [
+      {
+       "codeSignOnCopy": "true",
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e4698cd772881e3657ae24a69316f5c1b07",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46886be2489e2eff6932e13f0173a57b64",
+       "removeHeadersOnCopy": "true"
+      }
+     ],
+     "destinationSubfolder": "$(FRAMEWORKS_FOLDER_PATH)",
+     "destinationSubpath": "",
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46979fa98f0782eeb035e07f4ef302b3f2",
+     "type": "com.apple.buildphase.copy-files"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [],
+   "guid": "4317e6f9e093b34afb81bb588c7a8e462f358145fca136681960b91a1bdb385d",
+   "name": "Kingfisher-macOS-Demo",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Swift",
+   "productReference": {
+    "guid": "4317e6f9e093b34afb81bb588c7a8e4684e449e4daec48d316f075b2fdaf7d47",
+    "name": "Kingfisher-macOS-Demo.app",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.application",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Debug",
+     "provisioningStyle": 0
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Release",
+     "provisioningStyle": 0
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=653297895232faae5097ab06acaec4b7",
+  "type": "target"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+      "CODE_SIGN_IDENTITY": "iPhone Developer",
+      "CODE_SIGN_IDENTITY[sdk=watchos*]": "iPhone Developer",
+      "CODE_SIGN_STYLE": "Automatic",
+      "DEBUG_INFORMATION_FORMAT": "dwarf",
+      "DEVELOPMENT_TEAM": "",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "IBSC_MODULE": "Kingfisher_watchOS_Demo_Extension",
+      "INFOPLIST_FILE": "Demo/Kingfisher-watchOS-Demo/Info.plist",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks",
+      "MACOSX_DEPLOYMENT_TARGET": "11.0",
+      "PRODUCT_BUNDLE_IDENTIFIER": "com.onevcat.Kingfisher-Demo.watchkitapp",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "PROVISIONING_PROFILE_SPECIFIER": "",
+      "SDKROOT": "watchos",
+      "SKIP_INSTALL": "YES",
+      "TARGETED_DEVICE_FAMILY": "4"
+     },
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46ee54077f969261ce2317a00c5c23ab7d",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+      "CODE_SIGN_IDENTITY": "iPhone Developer",
+      "CODE_SIGN_IDENTITY[sdk=watchos*]": "iPhone Developer",
+      "CODE_SIGN_STYLE": "Automatic",
+      "DEBUG_INFORMATION_FORMAT": "dwarf-with-dsym",
+      "DEVELOPMENT_TEAM": "",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "IBSC_MODULE": "Kingfisher_watchOS_Demo_Extension",
+      "INFOPLIST_FILE": "Demo/Kingfisher-watchOS-Demo/Info.plist",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks",
+      "MACOSX_DEPLOYMENT_TARGET": "11.0",
+      "PRODUCT_BUNDLE_IDENTIFIER": "com.onevcat.Kingfisher-Demo.watchkitapp",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "PROVISIONING_PROFILE_SPECIFIER": "",
+      "SDKROOT": "watchos",
+      "SKIP_INSTALL": "YES",
+      "TARGETED_DEVICE_FAMILY": "4"
+     },
+     "guid": "4317e6f9e093b34afb81bb588c7a8e463012125950758f98a681f2cccd0de770",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46cbb70ec3f4ae2e125a5eda2e92efd429",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46c59f33de19b67917827e3b0c3a19045e"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46737ff298f72aafcf771460d23c556f8e",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46b2c71e426ca3df6451d295cfcd69e61d"
+      }
+     ],
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46cad9934491ea69393d6fd557b231fce6",
+     "type": "com.apple.buildphase.resources"
+    },
+    {
+     "buildFiles": [
+      {
+       "guid": "4317e6f9e093b34afb81bb588c7a8e462ee27a608aaf2ef09f9dfd6e69d4d098",
+       "removeHeadersOnCopy": "true",
+       "targetReference": "4317e6f9e093b34afb81bb588c7a8e46995d1ea6b97155f9a79a7b58e73e4c0d"
+      }
+     ],
+     "destinationSubfolder": "$(PLUGINS_FOLDER_PATH)",
+     "destinationSubpath": "",
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46093c79f45ec3bbd5fbd8e20ba9fd9602",
+     "type": "com.apple.buildphase.copy-files"
+    },
+    {
+     "buildFiles": [],
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46645d4adb85c0d4fec4ae1e3a611d032f",
+     "type": "com.apple.buildphase.frameworks"
+    },
+    {
+     "buildFiles": [],
+     "destinationSubfolder": "$(FRAMEWORKS_FOLDER_PATH)",
+     "destinationSubpath": "",
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46e58f0273df86a6efc81db8be0fa32463",
+     "type": "com.apple.buildphase.copy-files"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [
+    {
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46995d1ea6b97155f9a79a7b58e73e4c0d",
+     "name": "Kingfisher-watchOS-Demo Extension"
+    }
+   ],
+   "guid": "4317e6f9e093b34afb81bb588c7a8e464562a785859b6de67fe9b214fbc9b759",
+   "name": "Kingfisher-watchOS-Demo",
+   "productReference": {
+    "guid": "4317e6f9e093b34afb81bb588c7a8e46234da1f4e4188f2f86ec245e78910f6d",
+    "name": "Kingfisher-watchOS-Demo.app",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.application.watchapp2",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Debug",
+     "provisioningStyle": 0
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Release",
+     "provisioningStyle": 0
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=c7e6f8e9368cdf9fa56bccebf59b0472",
+  "type": "target"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "CLANG_ENABLE_MODULES": "YES",
+      "DEBUG_INFORMATION_FORMAT": "dwarf",
+      "DEVELOPMENT_TEAM": "",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "INFOPLIST_FILE": "Demo/Kingfisher-watchOS-Demo Extension/Info.plist",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks",
+      "MACOSX_DEPLOYMENT_TARGET": "11.0",
+      "PRODUCT_BUNDLE_IDENTIFIER": "com.onevcat.Kingfisher-Demo.watchkitapp.watchkitextension",
+      "PRODUCT_NAME": "${TARGET_NAME}",
+      "SDKROOT": "watchos",
+      "SKIP_INSTALL": "YES",
+      "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
+      "TARGETED_DEVICE_FAMILY": "4"
+     },
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46ec5bddfc55a1c9f82e49a3996e428b87",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "CLANG_ENABLE_MODULES": "YES",
+      "DEBUG_INFORMATION_FORMAT": "dwarf-with-dsym",
+      "DEVELOPMENT_TEAM": "",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "INFOPLIST_FILE": "Demo/Kingfisher-watchOS-Demo Extension/Info.plist",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks",
+      "MACOSX_DEPLOYMENT_TARGET": "11.0",
+      "PRODUCT_BUNDLE_IDENTIFIER": "com.onevcat.Kingfisher-Demo.watchkitapp.watchkitextension",
+      "PRODUCT_NAME": "${TARGET_NAME}",
+      "SDKROOT": "watchos",
+      "SKIP_INSTALL": "YES",
+      "SWIFT_COMPILATION_MODE": "wholemodule",
+      "SWIFT_OPTIMIZATION_LEVEL": "-O",
+      "TARGETED_DEVICE_FAMILY": "4"
+     },
+     "guid": "4317e6f9e093b34afb81bb588c7a8e4655dad5f7beaec30d65d345e9b58f855b",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e460536782663fb6123621b9c7161a0e38a",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e469b76ff8b0787ea935601f54f536f3c1c"
+      },
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e46930845c604031db2a1ba28e2d34f56ca",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e464ae4c28fbb1d0920a4a4309a3d7c58db"
+      }
+     ],
+     "guid": "4317e6f9e093b34afb81bb588c7a8e4644116d01ccee7c91b0a6969102489b25",
+     "type": "com.apple.buildphase.sources"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e465be0082db8f4ede32bfe7f397430033e",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46b63d6f9da80732a4165ec3d7fa31a39b"
+      }
+     ],
+     "guid": "4317e6f9e093b34afb81bb588c7a8e4689bc0c73b1449257d39c27c31f4a96a8",
+     "type": "com.apple.buildphase.frameworks"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e467610b59c10039afbb12e57cfb164d51c",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e46a961767fdc6aeb189b7a00ffee73e4ad"
+      }
+     ],
+     "guid": "4317e6f9e093b34afb81bb588c7a8e4615ff0b93170556d2a4e9f2f173ac4b8f",
+     "type": "com.apple.buildphase.resources"
+    },
+    {
+     "buildFiles": [
+      {
+       "codeSignOnCopy": "true",
+       "fileReference": "4317e6f9e093b34afb81bb588c7a8e465be0082db8f4ede32bfe7f397430033e",
+       "guid": "4317e6f9e093b34afb81bb588c7a8e4616aaa6f277592096dc31d7fe7495131c",
+       "removeHeadersOnCopy": "true"
+      }
+     ],
+     "destinationSubfolder": "$(FRAMEWORKS_FOLDER_PATH)",
+     "destinationSubpath": "",
+     "guid": "4317e6f9e093b34afb81bb588c7a8e46a717f5cfeacec96b10b9363c65c0f31f",
+     "type": "com.apple.buildphase.copy-files"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [],
+   "guid": "4317e6f9e093b34afb81bb588c7a8e46995d1ea6b97155f9a79a7b58e73e4c0d",
+   "name": "Kingfisher-watchOS-Demo Extension",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Swift",
+   "productReference": {
+    "guid": "4317e6f9e093b34afb81bb588c7a8e464fc492c000614b379b36f26fca7772e6",
+    "name": "Kingfisher-watchOS-Demo Extension.appex",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.watchkit2-extension",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Debug",
+     "provisioningStyle": 0
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Release",
+     "provisioningStyle": 0
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=ac925f3108ac8a0e7607ae592ccc28bd",
+  "type": "target"
+ },
+ {
+  "contents": {
+   "appPreferencesBuildSettings": {},
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ALWAYS_SEARCH_USER_PATHS": "NO",
+      "ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS": "YES",
+      "CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED": "YES",
+      "CLANG_CXX_LANGUAGE_STANDARD": "gnu++0x",
+      "CLANG_CXX_LIBRARY": "libc++",
+      "CLANG_ENABLE_OBJC_ARC": "YES",
+      "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+      "CLANG_WARN_BOOL_CONVERSION": "YES",
+      "CLANG_WARN_COMMA": "YES",
+      "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+      "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+      "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+      "CLANG_WARN_EMPTY_BODY": "YES",
+      "CLANG_WARN_ENUM_CONVERSION": "YES",
+      "CLANG_WARN_INFINITE_RECURSION": "YES",
+      "CLANG_WARN_INT_CONVERSION": "YES",
+      "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+      "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+      "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+      "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+      "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+      "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+      "CLANG_WARN_UNREACHABLE_CODE": "YES",
+      "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+      "COPY_PHASE_STRIP": "NO",
+      "DEAD_CODE_STRIPPING": "YES",
+      "DEBUG_INFORMATION_FORMAT": "dwarf",
+      "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+      "ENABLE_TESTABILITY": "YES",
+      "ENABLE_USER_SCRIPT_SANDBOXING": "YES",
+      "GCC_C_LANGUAGE_STANDARD": "gnu99",
+      "GCC_DYNAMIC_NO_PIC": "NO",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "GCC_OPTIMIZATION_LEVEL": "0",
+      "GCC_PREPROCESSOR_DEFINITIONS": "DEBUG=1 $(inherited)",
+      "GCC_SYMBOLS_PRIVATE_EXTERN": "NO",
+      "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+      "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+      "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+      "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+      "GCC_WARN_UNUSED_FUNCTION": "YES",
+      "GCC_WARN_UNUSED_VARIABLE": "YES",
+      "IPHONEOS_DEPLOYMENT_TARGET": "13.0",
+      "LD_DYLIB_INSTALL_NAME": "@rpath",
+      "MACOSX_DEPLOYMENT_TARGET": "10.15",
+      "ONLY_ACTIVE_ARCH": "YES",
+      "PRODUCT_BUNDLE_PACKAGE_TYPE": "BNDL",
+      "SDKROOT": "",
+      "SUPPORTED_PLATFORMS": "watchsimulator iphonesimulator appletvsimulator watchos appletvos iphoneos macosx",
+      "SWIFT_INSTALL_OBJC_HEADER": "NO",
+      "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
+      "SWIFT_VERSION": "5.0",
+      "TARGETED_DEVICE_FAMILY": "1,2,3,4",
+      "TVOS_DEPLOYMENT_TARGET": "13.0",
+      "WATCHOS_DEPLOYMENT_TARGET": "6.0",
+      "XROS_DEPLOYMENT_TARGET": "1.0",
+      "_EXPERIMENTAL_SWIFT_EXPLICIT_MODULES": "YES"
+     },
+     "guid": "a17ccb4923d030263240808f7bc3c92d423446913ecc7607fccd21bf9c8ba009",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ALWAYS_SEARCH_USER_PATHS": "NO",
+      "ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS": "YES",
+      "CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED": "YES",
+      "CLANG_CXX_LANGUAGE_STANDARD": "gnu++0x",
+      "CLANG_CXX_LIBRARY": "libc++",
+      "CLANG_ENABLE_OBJC_ARC": "YES",
+      "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+      "CLANG_WARN_BOOL_CONVERSION": "YES",
+      "CLANG_WARN_COMMA": "YES",
+      "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+      "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+      "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+      "CLANG_WARN_EMPTY_BODY": "YES",
+      "CLANG_WARN_ENUM_CONVERSION": "YES",
+      "CLANG_WARN_INFINITE_RECURSION": "YES",
+      "CLANG_WARN_INT_CONVERSION": "YES",
+      "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+      "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+      "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+      "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+      "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+      "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+      "CLANG_WARN_UNREACHABLE_CODE": "YES",
+      "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+      "COPY_PHASE_STRIP": "NO",
+      "DEAD_CODE_STRIPPING": "YES",
+      "DEBUG_INFORMATION_FORMAT": "dwarf-with-dsym",
+      "ENABLE_NS_ASSERTIONS": "NO",
+      "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+      "ENABLE_USER_SCRIPT_SANDBOXING": "YES",
+      "GCC_C_LANGUAGE_STANDARD": "gnu99",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+      "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+      "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+      "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+      "GCC_WARN_UNUSED_FUNCTION": "YES",
+      "GCC_WARN_UNUSED_VARIABLE": "YES",
+      "IPHONEOS_DEPLOYMENT_TARGET": "13.0",
+      "LD_DYLIB_INSTALL_NAME": "@rpath",
+      "MACOSX_DEPLOYMENT_TARGET": "10.15",
+      "PRODUCT_BUNDLE_PACKAGE_TYPE": "BNDL",
+      "SDKROOT": "",
+      "SUPPORTED_PLATFORMS": "watchsimulator iphonesimulator appletvsimulator watchos appletvos iphoneos macosx",
+      "SWIFT_COMPILATION_MODE": "wholemodule",
+      "SWIFT_INSTALL_OBJC_HEADER": "NO",
+      "SWIFT_OPTIMIZATION_LEVEL": "-O",
+      "SWIFT_VERSION": "5.0",
+      "TARGETED_DEVICE_FAMILY": "1,2,3,4",
+      "TVOS_DEPLOYMENT_TARGET": "13.0",
+      "WATCHOS_DEPLOYMENT_TARGET": "6.0",
+      "XROS_DEPLOYMENT_TARGET": "1.0",
+      "_EXPERIMENTAL_SWIFT_EXPLICIT_MODULES": "YES"
+     },
+     "guid": "a17ccb4923d030263240808f7bc3c92d4a6aeadf1bf4e03831e4097fd29377b1",
+     "name": "Release"
+    }
+   ],
+   "classPrefix": "",
+   "defaultConfigurationName": "Release",
+   "developmentRegion": "en",
+   "groupTree": {
+    "children": [
+     {
+      "children": [
+       {
+        "fileType": "folder.documentationcatalog",
+        "guid": "a17ccb4923d030263240808f7bc3c92dc3c199a5da1c2a1cea5a8efea23b13b2",
+        "path": "Documentation.docc",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileTextEncoding": "utf-8",
+        "fileType": "text.plist.xml",
+        "guid": "a17ccb4923d030263240808f7bc3c92dd95688309fcc01b62946f97690e511c4",
+        "path": "Info.plist",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "fileType": "text.xml",
+        "guid": "a17ccb4923d030263240808f7bc3c92d654b22f11da0042fed19b5ddda9dfb4b",
+        "path": "PrivacyInfo.xcprivacy",
+        "sourceTree": "<group>",
+        "type": "file"
+       },
+       {
+        "children": [
+         {
+          "children": [
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "a17ccb4923d030263240808f7bc3c92d860a4e5a245aadcae973d83a34985036",
+            "path": "Source.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "a17ccb4923d030263240808f7bc3c92ddc21c65ab1143ef7902019b0c32dcc6b",
+            "path": "LivePhotoSource.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileTextEncoding": "utf-8",
+            "fileType": "sourcecode.swift",
+            "guid": "a17ccb4923d030263240808f7bc3c92d640d38fc9a586a968f60bee9ab79c7bc",
+            "path": "Resource.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "a17ccb4923d030263240808f7bc3c92d567d0bc579dee14f01c69f83dadbf92e",
+            "path": "Sources/General/ImageSource/ImageDataProvider.swift",
+            "sourceTree": "SOURCE_ROOT",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "a17ccb4923d030263240808f7bc3c92d60f11bb6976b2502a3aaf4018887da13",
+            "path": "AVAssetImageDataProvider.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "a17ccb4923d030263240808f7bc3c92d93ea4590132f3d84781c7842577e13b3",
+            "path": "PHPickerResultImageDataProvider.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "a17ccb4923d030263240808f7bc3c92dc3dd10b53c9baf1e719a08803bad09ba",
+            "path": "PhotosPickerItemImageDataProvider.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "a17ccb4923d030263240808f7bc3c92d7eb5f827185e90c95cddd6bcc1c13cad",
+          "name": "ImageSource",
+          "path": "ImageSource",
+          "sourceTree": "<group>",
+          "type": "group"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d4faa7eef15115d55cc3ea04af2d206da",
+          "path": "Kingfisher.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92df6ddce1fa266b11d8c36bdc73e38ad71",
+          "path": "KF.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d3870711777511630faa2070ce1164562",
+          "path": "KFOptionsSetter.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d5b8b1b241039e2ff4bd56646ccdc6e83",
+          "path": "KingfisherError.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dc335bb8f6af8c59f1548693da9367719",
+          "path": "KingfisherManager.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d45efc34a81eabbd50c6de0d77d84c412",
+          "path": "KingfisherManager+LivePhoto.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92de05708ffd5ed49b96a867233b4baa7a1",
+          "path": "KingfisherOptionsInfo.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "a17ccb4923d030263240808f7bc3c92d89778f99c33fc49aeff1d583ed8cafc1",
+        "name": "General",
+        "path": "General",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dda64380420e192aa32fafee414604e8e",
+          "path": "Image.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dc92a4bb3c50f893c6f71f441ef928379",
+          "path": "ImageDrawing.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92daf835dc6ffef92e6289cefcb1e4d19f9",
+          "path": "ImageFormat.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d7b991c926702b09db0c0d4e7aeb9a2d3",
+          "path": "ImageTransition.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d98b0e94b52400367f1e53bee94d352f5",
+          "path": "ImageProcessor.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d1d78fb6b678c59b2d20a62f4fdc9473b",
+          "path": "ImageProgressive.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92defa266015f7fdcb3ad5d4c6b0f8356e8",
+          "path": "Filter.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92de10b2dc0da2783b7f7d73bf34d18e980",
+          "path": "Placeholder.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d480b5e1f7b3333553a411e6401e769c5",
+          "path": "GIFAnimatedImage.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d0a31a44b57cc215e7ce3f6e7a24a0390",
+          "path": "GraphicsContext.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "a17ccb4923d030263240808f7bc3c92d0e957cde59837b50e810bd549e2d81d5",
+        "name": "Image",
+        "path": "Image",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92daee398d0e95f0e410156bdd6a72273e6",
+          "path": "NetworkMonitor.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dd09d8ad5ddf568acc02ff979e9d2432b",
+          "path": "RequestModifier.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d990de18b363f92fa3224a6c6cba4682d",
+          "path": "RedirectHandler.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d2ec37cc7a00004e6c80790b3f24d043c",
+          "path": "ImageDownloader.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dff2f5ae1a6f2c3f4b3ffb8008e7a2167",
+          "path": "ImageDownloader+LivePhoto.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dd00759de4906f6e77ddb84eb0e72ea6e",
+          "path": "SessionDelegate.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d86ecab8a8fa153029536608dbe4287e2",
+          "path": "SessionDataTask.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d59e0568c1f00063d3693c9a3b6ec4531",
+          "path": "ImageDownloaderDelegate.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dfec8d083fa59e68dd08bac08f701b65d",
+          "path": "NetworkMetrics.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dfe3f2bb48e8c12839d04ae3c5170f845",
+          "path": "AuthenticationChallengeResponsable.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d08321bf361cd8439a63f400dfe8f5918",
+          "path": "ImageDataProcessor.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92df9bd67d0e1dfed908b9726734373408f",
+          "path": "ImageModifier.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d0b6cfc1f8a4f1c3b7f1f62f930f33714",
+          "path": "ImagePrefetcher.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d9b5494c62c7fa86cf0cdd41dae4f6900",
+          "path": "RetryStrategy.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "a17ccb4923d030263240808f7bc3c92d4834b2dc23bdb42cc131f0cb939d69ef",
+        "name": "Networking",
+        "path": "Networking",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92da2d07ce262019090a29d219af8a8f526",
+          "path": "ImageCache.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d7ceb0935e0e137c3648620b78f152f57",
+          "path": "CacheSerializer.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d20f7842ee317d0b467ee1283ad409a95",
+          "path": "FormatIndicatedCacheSerializer.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d2204709b25ff0f38ee9d4124e4ce8ca2",
+          "path": "Storage.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dd459b0429f8158b00fcafadcfe14313b",
+          "path": "MemoryStorage.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d1a449fc6793746d3b772fa47391c8fa4",
+          "path": "DiskStorage.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "a17ccb4923d030263240808f7bc3c92d4ae4ac3f206bcf3b997122d88e9fcd1c",
+        "name": "Cache",
+        "path": "Cache",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92db47888016e4b85c8d50b0b732f49bc1f",
+          "path": "Indicator.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d98803504a170a5f156640974257798dc",
+          "path": "AnimatedImageView.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "a17ccb4923d030263240808f7bc3c92df1b680378b20b629425458219abe8497",
+        "name": "Views",
+        "path": "Views",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d9dad6d6abc30c3bb3e27b99549d8c036",
+          "path": "PHLivePhotoView+Kingfisher.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dec8f9f7bf52c4df4925b636573ea85e1",
+          "path": "NSTextAttachment+Kingfisher.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92db956c11339fec5f858c45ca22a8c3e0d",
+          "path": "ImageView+Kingfisher.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d71cd020e12034bf209f1612b9f1cd37e",
+          "path": "NSButton+Kingfisher.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d4240414e15a73e35680ffcd23842e324",
+          "path": "HasImageComponent+Kingfisher.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dad257114c76ff2b430940539ab9ed28a",
+          "path": "UIButton+Kingfisher.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d9dd0857455f966e0fcaf7d57aa90fe43",
+          "path": "CPListItem+Kingfisher.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "a17ccb4923d030263240808f7bc3c92db781056002830e7fae911104328b42ec",
+        "name": "Extensions",
+        "path": "Extensions",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d732bd81ff0772f03713b1c19721693e2",
+          "path": "Result.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d261ea045df20a9b2a54066bbabc10213",
+          "path": "Box.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d17b3c05fb52661910215beb7a523177a",
+          "path": "ExtensionHelpers.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d7f4da0cb267a5f45ad8f4fdb1cabc576",
+          "path": "SizeExtensions.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92de1099395bb53580a3a4228412b66d04a",
+          "path": "Delegate.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d071db8aa24f5c0996597865ad4aeb127",
+          "path": "Runtime.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92ddfe6a0e69b5899051857446b36cf3f3c",
+          "path": "CallbackQueue.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d484fb08dc14c5ae78b45038af1df010e",
+          "path": "DisplayLink.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d38a45981bc2317f0f4d4e72462e943eb",
+          "path": "String+SHA256.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dc1b229ce1597f8081109984afe146c6f",
+          "path": "CancellationToken.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "a17ccb4923d030263240808f7bc3c92df8307ffc2ddfdec3981f1db5e43e95b2",
+        "name": "Utility",
+        "path": "Utility",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92db5e5cfa43ead7984d20478c413c3085f",
+          "path": "ImageBinder.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92da5255cd451fe90260442a7d2fc20c03d",
+          "path": "ImageContext.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dc85b4e66f7af315a80a871edf3093107",
+          "path": "KFImage.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d5f037ed49f6b8cc109f27598e6d27d6e",
+          "path": "KFAnimatedImage.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d549ffc48af8a2754ba1b64a4e992d826",
+          "path": "KFImageRenderer.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dbeb2af8687193c4e5dd226cbe3a62473",
+          "path": "KFImageOptions.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d44ab3c50fe09e8b446c5f05f67529265",
+          "path": "KFImageProtocol.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "a17ccb4923d030263240808f7bc3c92dfb2aa89a09088ee4826bcd07d495f162",
+        "name": "SwiftUI",
+        "path": "SwiftUI",
+        "sourceTree": "<group>",
+        "type": "group"
+       }
+      ],
+      "guid": "a17ccb4923d030263240808f7bc3c92d43af54fc8a6b440505c07f3036bbe57d",
+      "name": "Sources",
+      "path": "Sources",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "children": [
+       {
+        "children": [
+         {
+          "children": [
+           {
+            "fileTextEncoding": "utf-8",
+            "fileType": "text",
+            "guid": "a17ccb4923d030263240808f7bc3c92dfa874f46e75da776fb1a1d0dab51b589",
+            "path": "LICENSE",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileTextEncoding": "utf-8",
+            "fileType": "net.daringfireball.markdown",
+            "guid": "a17ccb4923d030263240808f7bc3c92dc9c9a594b53a91db15e8004477b5afe2",
+            "path": "README.md",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "children": [
+             {
+              "children": [
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92d8fdad54622183ac4ce1a330562110633",
+                "path": "LSStubRequest.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92d51ccf178c438e03e5f31aa3fabeef158",
+                "path": "LSStubResponse.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92dd3a55aef7d5ffe7b0e26751dfd2bb417",
+                "path": "LSStubResponse.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92daca63e83171e547ecd605f732452c814",
+                "path": "LSStubRequest.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               }
+              ],
+              "guid": "a17ccb4923d030263240808f7bc3c92d6297e41d5546d2b40b2b9105e6e6ed03",
+              "name": "Stubs",
+              "path": "Stubs",
+              "sourceTree": "<group>",
+              "type": "group"
+             },
+             {
+              "fileTextEncoding": "utf-8",
+              "fileType": "sourcecode.c.objc",
+              "guid": "a17ccb4923d030263240808f7bc3c92dca26ccdc1d357dd8904d93a3c7021cf9",
+              "path": "LSNocilla.m",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "children": [
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92da32ac168b642d27c20e1761e519aee9d",
+                "path": "LSHTTPRequestDiff.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92d1ca9a4ba418f0831215dee1f66cc2180",
+                "path": "LSHTTPRequestDiff.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               }
+              ],
+              "guid": "a17ccb4923d030263240808f7bc3c92d671435ddafb5dbfcd88c1fe53afea84f",
+              "name": "Diff",
+              "path": "Diff",
+              "sourceTree": "<group>",
+              "type": "group"
+             },
+             {
+              "fileTextEncoding": "utf-8",
+              "fileType": "sourcecode.c.h",
+              "guid": "a17ccb4923d030263240808f7bc3c92d38616ced388c3c1979bc610d31051a13",
+              "path": "Nocilla.h",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "children": [
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92df95d1cd07ba07777d659444531a4944f",
+                "path": "LSHTTPClientHook.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92de43db2224a01d904eb160882ac553e9d",
+                "path": "LSHTTPClientHook.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "children": [
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.objc",
+                  "guid": "a17ccb4923d030263240808f7bc3c92d00867f2a46b1ef8fd8fadaee15b39ae1",
+                  "path": "NSURLRequest+LSHTTPRequest.m",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 },
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.h",
+                  "guid": "a17ccb4923d030263240808f7bc3c92d24219a7af05ae7a43c1c6a58a630dcd8",
+                  "path": "NSURLRequest+DSL.h",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 },
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.h",
+                  "guid": "a17ccb4923d030263240808f7bc3c92d95e57171c7898e5156faca7a597b6251",
+                  "path": "LSNSURLHook.h",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 },
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.h",
+                  "guid": "a17ccb4923d030263240808f7bc3c92d3b5e8ce3e7484a74cd8515d278760778",
+                  "path": "LSHTTPStubURLProtocol.h",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 },
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.h",
+                  "guid": "a17ccb4923d030263240808f7bc3c92d1ffe21ff16dd380d79b013f49c30e993",
+                  "path": "NSURLRequest+LSHTTPRequest.h",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 },
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.objc",
+                  "guid": "a17ccb4923d030263240808f7bc3c92d7f17928d4144d64d741769ec71d7bd0a",
+                  "path": "LSNSURLHook.m",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 },
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.objc",
+                  "guid": "a17ccb4923d030263240808f7bc3c92d5997d0e03ae53d822a1117dfba4d34a9",
+                  "path": "NSURLRequest+DSL.m",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 },
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.objc",
+                  "guid": "a17ccb4923d030263240808f7bc3c92d274d3bf94b25c312d8212f072282c3c1",
+                  "path": "LSHTTPStubURLProtocol.m",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 }
+                ],
+                "guid": "a17ccb4923d030263240808f7bc3c92d77995227bd1524d99f3c50d6a83d1443",
+                "name": "NSURLRequest",
+                "path": "NSURLRequest",
+                "sourceTree": "<group>",
+                "type": "group"
+               },
+               {
+                "children": [
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.h",
+                  "guid": "a17ccb4923d030263240808f7bc3c92d816077519fef92bda47115667eb8f3b9",
+                  "path": "LSASIHTTPRequestHook.h",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 },
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.objc",
+                  "guid": "a17ccb4923d030263240808f7bc3c92dd8e625d015c1ef19cc518627540da24d",
+                  "path": "ASIHTTPRequestStub.m",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 },
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.h",
+                  "guid": "a17ccb4923d030263240808f7bc3c92dea288144bc65593bf720574818951744",
+                  "path": "LSASIHTTPRequestAdapter.h",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 },
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.objc",
+                  "guid": "a17ccb4923d030263240808f7bc3c92d86265846ff06671fd32b9cf14877c891",
+                  "path": "LSASIHTTPRequestHook.m",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 },
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.objc",
+                  "guid": "a17ccb4923d030263240808f7bc3c92d113bb6aa322c1058ceff276b9bfc4546",
+                  "path": "LSASIHTTPRequestAdapter.m",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 },
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.h",
+                  "guid": "a17ccb4923d030263240808f7bc3c92d9f60282a67618e648729a1eacbeba153",
+                  "path": "ASIHTTPRequestStub.h",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 }
+                ],
+                "guid": "a17ccb4923d030263240808f7bc3c92de5f32644198f3a058d9e7e418c7dd9b9",
+                "name": "ASIHTTPRequest",
+                "path": "ASIHTTPRequest",
+                "sourceTree": "<group>",
+                "type": "group"
+               },
+               {
+                "children": [
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.h",
+                  "guid": "a17ccb4923d030263240808f7bc3c92d54a263c5d082d9eea770b9fe8fcecfc4",
+                  "path": "LSNSURLSessionHook.h",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 },
+                 {
+                  "fileTextEncoding": "utf-8",
+                  "fileType": "sourcecode.c.objc",
+                  "guid": "a17ccb4923d030263240808f7bc3c92d7e127cfc609369b27c8fe720a8cf63d0",
+                  "path": "LSNSURLSessionHook.m",
+                  "sourceTree": "<group>",
+                  "type": "file"
+                 }
+                ],
+                "guid": "a17ccb4923d030263240808f7bc3c92dae5748bd9023ed3a78a6452e30032c97",
+                "name": "NSURLSession",
+                "path": "NSURLSession",
+                "sourceTree": "<group>",
+                "type": "group"
+               }
+              ],
+              "guid": "a17ccb4923d030263240808f7bc3c92d4b5f4495c0a885c0137edb9b8489c4f0",
+              "name": "Hooks",
+              "path": "Hooks",
+              "sourceTree": "<group>",
+              "type": "group"
+             },
+             {
+              "children": [
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92d027b3244fd5b9f13a6246a685323fff5",
+                "path": "LSHTTPBody.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92db96812ad4119da510bac752e116ea729",
+                "path": "LSHTTPRequest.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92da67d44a3567b5ff6d42a32e6127dcfb4",
+                "path": "LSHTTPResponse.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               }
+              ],
+              "guid": "a17ccb4923d030263240808f7bc3c92db1e521821cc201c2b87996188e57d839",
+              "name": "Model",
+              "path": "Model",
+              "sourceTree": "<group>",
+              "type": "group"
+             },
+             {
+              "fileTextEncoding": "utf-8",
+              "fileType": "sourcecode.c.h",
+              "guid": "a17ccb4923d030263240808f7bc3c92dd4adba0a134642fe6445f4374d6dc601",
+              "path": "LSNocilla.h",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "children": [
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92d2b96f98bef0f58ae01b891adabbef6c7",
+                "path": "LSMatcheable.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92d6063672549ff8fa23900ceaef16683b5",
+                "path": "LSMatcher.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92ddc457d03206c0aa69a14d891f5afaf52",
+                "path": "LSStringMatcher.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92d730d994e16430158f75bf7ffca128f40",
+                "path": "NSRegularExpression+Matcheable.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92d60183475906aa398a19734536b2837ed",
+                "path": "LSRegexMatcher.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92d50cc31e65e3ec3fcb30bd15c1b6c8d2b",
+                "path": "NSString+Matcheable.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92d3f9a468c67eb56d52c80b0804b3b410c",
+                "path": "NSData+Matcheable.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92d8d71c107cf06fcb441f60153d84f7ccd",
+                "path": "LSDataMatcher.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92dc3d63f4e4dda19dc9265e7e88e5c8a00",
+                "path": "LSMatcher.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92df32ef24d05e05b16c2d6b89f376e28ac",
+                "path": "LSRegexMatcher.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92d715667cfbaa20056bd1014ecac2ca750",
+                "path": "NSRegularExpression+Matcheable.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92d24c911e3e3cd6da80a88ad9f8aff0c45",
+                "path": "LSStringMatcher.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92d33a25811e55e88cc675960a5e33189a2",
+                "path": "NSString+Matcheable.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92d7c8ff8701419ba31234e5fb7d7d699e7",
+                "path": "LSDataMatcher.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92dd7247a54bd4e1fce3be4d3fe28b6907c",
+                "path": "NSData+Matcheable.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               }
+              ],
+              "guid": "a17ccb4923d030263240808f7bc3c92d0f77971d394ebb8f7ff3356044ea0566",
+              "name": "Matchers",
+              "path": "Matchers",
+              "sourceTree": "<group>",
+              "type": "group"
+             },
+             {
+              "children": [
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92d5f49726f0430a546e791a96a95d54bc7",
+                "path": "NSData+Nocilla.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92d4683536b142fdfe9d4c67d045bbfbf63",
+                "path": "NSString+Nocilla.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92da356d4160aa340ef9cdb1e85529743d1",
+                "path": "NSData+Nocilla.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92df02626b3aba6bfc4e524ba016a8e9a4a",
+                "path": "NSString+Nocilla.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               }
+              ],
+              "guid": "a17ccb4923d030263240808f7bc3c92d7f6f3d10109d8c5716857bf700c17fec",
+              "name": "Categories",
+              "path": "Categories",
+              "sourceTree": "<group>",
+              "type": "group"
+             },
+             {
+              "children": [
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92d78c079d464b74edb1ffff97362eeca09",
+                "path": "LSHTTPRequestDSLRepresentation.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92dfbdaab6122ddd24ebbaa2e46279d4dc2",
+                "path": "LSStubRequestDSL.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92da928ed00ebc54aa06f73cba2665ab297",
+                "path": "LSStubResponseDSL.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.objc",
+                "guid": "a17ccb4923d030263240808f7bc3c92de470115f88076564b9556b4b1104d6b8",
+                "path": "LSStubRequestDSL.m",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92df9555408f3c6569f4c2b122d74486b1c",
+                "path": "LSHTTPRequestDSLRepresentation.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               },
+               {
+                "fileTextEncoding": "utf-8",
+                "fileType": "sourcecode.c.h",
+                "guid": "a17ccb4923d030263240808f7bc3c92d66252af014f6145dfdadea79aa829a6d",
+                "path": "LSStubResponseDSL.h",
+                "sourceTree": "<group>",
+                "type": "file"
+               }
+              ],
+              "guid": "a17ccb4923d030263240808f7bc3c92dfd9512e57d17cb01ae7abe2d0fb4a605",
+              "name": "DSL",
+              "path": "DSL",
+              "sourceTree": "<group>",
+              "type": "group"
+             }
+            ],
+            "guid": "a17ccb4923d030263240808f7bc3c92d704e86167e949e7dcc356c5ba12b4d27",
+            "name": "Nocilla",
+            "path": "Nocilla",
+            "sourceTree": "<group>",
+            "type": "group"
+           }
+          ],
+          "guid": "a17ccb4923d030263240808f7bc3c92d7610340719c809aade605501e1766440",
+          "name": "Nocilla",
+          "path": "Nocilla",
+          "sourceTree": "<group>",
+          "type": "group"
+         }
+        ],
+        "guid": "a17ccb4923d030263240808f7bc3c92dc86c24e7269390d6ef496f686312fe28",
+        "name": "Dependency",
+        "path": "Tests/Dependency",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "children": [
+           {
+            "fileType": "image.png",
+            "guid": "a17ccb4923d030263240808f7bc3c92d41f1f2fff96fce0ab8469d2c2578ee17",
+            "path": "gradient-8b-srgb-opaque.png",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "image.png",
+            "guid": "a17ccb4923d030263240808f7bc3c92d4c949fee89516203745049ea5c275d26",
+            "path": "gradient-8b-srgb-alpha.png",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "image.png",
+            "guid": "a17ccb4923d030263240808f7bc3c92d141771d6573be1fd35066c6fe5e65989",
+            "path": "gradient-8b-displayp3-alpha.png",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "image.png",
+            "guid": "a17ccb4923d030263240808f7bc3c92d04434c7e5467a5e83dfa71975cc11f9c",
+            "path": "gradient-8b-gray.png",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "image.png",
+            "guid": "a17ccb4923d030263240808f7bc3c92d450dbf80276709389d1de62ac8fc27a5",
+            "path": "gradient-8b-indexed.png",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "file",
+            "guid": "a17ccb4923d030263240808f7bc3c92d9c1337c62c47125cb5f5e2349c12ea18",
+            "path": "gradient-10b-srgb-opaque.heic",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "file",
+            "guid": "a17ccb4923d030263240808f7bc3c92deb7f74dc5ffa694c6087c572c65e2a69",
+            "path": "gradient-10b-srgb-alpha.heic",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "file",
+            "guid": "a17ccb4923d030263240808f7bc3c92dd73c5e9bcaf312c00977fe921aa6e503",
+            "path": "gradient-10b-displayp3-alpha.heic",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "image.png",
+            "guid": "a17ccb4923d030263240808f7bc3c92dcc5a3626c74841326399e7654d8f9081",
+            "path": "gradient-16b-srgb-alpha.png",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "image.png",
+            "guid": "a17ccb4923d030263240808f7bc3c92d41844719ebaef017f9df1e63616b494e",
+            "path": "gradient-16b-gray.png",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "a17ccb4923d030263240808f7bc3c92d611bdc26615386b0bfb4d0805098c5d5",
+          "name": "PixelFormats",
+          "path": "PixelFormats",
+          "sourceTree": "<group>",
+          "type": "group"
+         },
+         {
+          "children": [
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "a17ccb4923d030263240808f7bc3c92da0ce9fb263fbe17a8162383f212593af",
+            "path": "StubHelpers.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "a17ccb4923d030263240808f7bc3c92db2a078ad1674c6237bc548a695bd79cd",
+            "path": "StaleCacheTestHelpers.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "a17ccb4923d030263240808f7bc3c92da438430b1ae605f167357e12e56e2177",
+          "name": "Utils",
+          "path": "Utils",
+          "sourceTree": "<group>",
+          "type": "group"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "text.plist.xml",
+          "guid": "a17ccb4923d030263240808f7bc3c92d6602b853b3c39b2114e9c372c748fb5e",
+          "path": "Info.plist",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "image.gif",
+          "guid": "a17ccb4923d030263240808f7bc3c92d36a0a2176f1ead15fd006f46be9ade1d",
+          "path": "dancing-banana.gif",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "image.gif",
+          "guid": "a17ccb4923d030263240808f7bc3c92d494a297658d3ed6919a28a401cc7049d",
+          "path": "single-frame.gif",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d5dd7fba33a104041d0ba7fba5f121c02",
+          "path": "ImageCacheTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d56e0f400e7bc54bc672dc865ec0339f6",
+          "path": "StringExtensionTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dc67cfdf6eacfb53b8126255335dd3cad",
+          "path": "ImageDownloaderTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92de9112a15bfd4e0a4c33dcd990e961f1b",
+          "path": "ImageExtensionTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92da404f545d1d9c0206dfab247f2cbc584",
+          "path": "PixelFormatDecodingTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92db1691a762b35897ccac5bbc446421a59",
+          "path": "ImageDataProviderCancellationTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d5dc697a5c72043e0343446f6a5fd6b32",
+          "path": "ImageDrawingTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dde3c39edeae4673e188f846860414b9c",
+          "path": "ImagePrefetcherTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92df05f73b1c946f553d46e0b78ce2040d0",
+          "path": "ImageViewExtensionTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dddef5e96ac35057c04eefab715c1dd31",
+          "path": "KingfisherManagerTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d72ee0eb88238a6d3b93c0be45656c942",
+          "path": "KingfisherOptionsInfoTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92db64fa3262092483073c7c935269df791",
+          "path": "KingfisherTestHelper.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d2beddc986578f62ef7588bc8e5a753ca",
+          "path": "ImageModifierTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.c.h",
+          "guid": "a17ccb4923d030263240808f7bc3c92df98c3073b1d168800d45601c02e709d6",
+          "path": "KingfisherTests-Bridging-Header.h",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dd1e941b6b1c275ffdb72144e34ad61bb",
+          "path": "UIButtonExtensionTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileTextEncoding": "utf-8",
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d3d6ea9722575d67f20ce21441c691e14",
+          "path": "NSButtonExtensionTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d1c108371fce8e77cee7d3a51b7c873b9",
+          "path": "MemoryStorageTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d70b180be9152fd8fe01b766b06cc4b62",
+          "path": "DiskStorageTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d4a5353942ff08b1a457dde13ebbe57fc",
+          "path": "StorageExpirationTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d22f857ea9280ca242e39ce80eb901161",
+          "path": "ImageDataProviderTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d80892504627feded0b15da3c48396ad2",
+          "path": "LivePhotoSourceTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d19ec01cea0aa1dd3d57c9afaba2860f2",
+          "path": "ImageProcessorTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d3c7ac461061f893317f03e3e42af5753",
+          "path": "DataReceivingSideEffectTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92d5a3e88989e11592dd531e6cb6ead1a20",
+          "path": "RetryStrategyTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         },
+         {
+          "fileType": "sourcecode.swift",
+          "guid": "a17ccb4923d030263240808f7bc3c92dfcb8a6735617a4116759dd1ec56bf439",
+          "path": "StaleCacheTests.swift",
+          "sourceTree": "<group>",
+          "type": "file"
+         }
+        ],
+        "guid": "a17ccb4923d030263240808f7bc3c92d76e365a8b60da85bf6514571dc2a7c24",
+        "name": "KingfisherTests",
+        "path": "Tests/KingfisherTests",
+        "sourceTree": "<group>",
+        "type": "group"
+       }
+      ],
+      "guid": "a17ccb4923d030263240808f7bc3c92de772b5319957ef89980b95590338a7b4",
+      "name": "Tests",
+      "path": "",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "guid": "a17ccb4923d030263240808f7bc3c92d6c6873fb0e8c2bd363df1429aec6c059",
+      "name": "Products",
+      "path": "",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "children": [
+       {
+        "fileType": "wrapper.framework",
+        "guid": "a17ccb4923d030263240808f7bc3c92dabcc902d908f61baed816abb0bb19005",
+        "path": "System/Library/Frameworks/QuartzCore.framework",
+        "sourceTree": "SDKROOT",
+        "type": "file"
+       },
+       {
+        "fileType": "wrapper.framework",
+        "guid": "a17ccb4923d030263240808f7bc3c92d9c3cd40357e3a25b646e0bdeb5dd775e",
+        "path": "System/Library/Frameworks/CFNetwork.framework",
+        "sourceTree": "SDKROOT",
+        "type": "file"
+       },
+       {
+        "fileType": "wrapper.framework",
+        "guid": "a17ccb4923d030263240808f7bc3c92d2d85415d36ee560ea8bb0876a57ace4f",
+        "path": "System/Library/Frameworks/WatchKit.framework",
+        "sourceTree": "SDKROOT",
+        "type": "file"
+       }
+      ],
+      "guid": "a17ccb4923d030263240808f7bc3c92d3ad002f93d418037a2ca4bfa04ba601f",
+      "name": "Frameworks",
+      "path": "",
+      "sourceTree": "<group>",
+      "type": "group"
+     }
+    ],
+    "guid": "a17ccb4923d030263240808f7bc3c92d9a94d8bcc464874b73723f278d096c9c",
+    "name": "Kingfisher",
+    "path": "",
+    "sourceTree": "<group>",
+    "type": "group"
+   },
+   "guid": "a17ccb4923d030263240808f7bc3c92d",
+   "knownRegions": [
+    "en",
+    "Base"
+   ],
+   "path": "$(CORPUS)/kingfisher/Kingfisher.xcodeproj",
+   "projectDirectory": "$(CORPUS)/kingfisher",
+   "targets": [
+    "TARGET@v11_hash=a6d16f009840efd85fc72a27e557cafc",
+    "TARGET@v11_hash=9aed7000ab01210a742f5dccc7738afc"
+   ]
+  },
+  "signature": "PROJECT@v11_mod=3815eb5ae5ca3ceb6715eb495e6d68e7_hash=a17ccb4923d030263240808f7bc3c92dplugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1",
+  "type": "project"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "APPLICATION_EXTENSION_API_ONLY": "YES",
+      "CLANG_ANALYZER_NONNULL": "YES",
+      "CLANG_WARN_ASSIGN_ENUM": "YES",
+      "CLANG_WARN_CXX0X_EXTENSIONS": "YES",
+      "CLANG_WARN_DOCUMENTATION_COMMENTS": "YES",
+      "CLANG_WARN_IMPLICIT_SIGN_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_EXPLICIT_OWNERSHIP_TYPE": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_ATOMIC_PROPERTIES": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+      "CLANG_WARN_OBJC_MISSING_PROPERTY_SYNTHESIS": "YES",
+      "CLANG_WARN_OBJC_REPEATED_USE_OF_WEAK": "YES",
+      "CLANG_WARN_SUSPICIOUS_IMPLICIT_CONVERSION": "YES",
+      "CLANG_WARN_UNREACHABLE_CODE": "YES_AGGRESSIVE",
+      "CLANG_WARN__EXIT_TIME_DESTRUCTORS": "YES",
+      "CURRENT_PROJECT_VERSION": "3320",
+      "DEAD_CODE_STRIPPING": "YES",
+      "DEFINES_MODULE": "YES",
+      "DYLIB_COMPATIBILITY_VERSION": "1",
+      "DYLIB_CURRENT_VERSION": "3320",
+      "DYLIB_INSTALL_NAME_BASE": "@rpath",
+      "ENABLE_MODULE_VERIFIER": "YES",
+      "GCC_TREAT_IMPLICIT_FUNCTION_DECLARATIONS_AS_ERRORS": "YES",
+      "GCC_TREAT_INCOMPATIBLE_POINTER_TYPE_WARNINGS_AS_ERRORS": "YES",
+      "GCC_WARN_ABOUT_MISSING_FIELD_INITIALIZERS": "YES",
+      "GCC_WARN_ABOUT_MISSING_NEWLINE": "YES",
+      "GCC_WARN_ABOUT_MISSING_PROTOTYPES": "YES",
+      "GCC_WARN_FOUR_CHARACTER_CONSTANTS": "YES",
+      "GCC_WARN_HIDDEN_VIRTUAL_FUNCTIONS": "YES",
+      "GCC_WARN_INITIALIZER_NOT_FULLY_BRACKETED": "YES",
+      "GCC_WARN_NON_VIRTUAL_DESTRUCTOR": "YES",
+      "GCC_WARN_SIGN_COMPARE": "YES",
+      "GCC_WARN_STRICT_SELECTOR_MATCH": "YES",
+      "GCC_WARN_UNKNOWN_PRAGMAS": "YES",
+      "GCC_WARN_UNUSED_LABEL": "YES",
+      "GCC_WARN_UNUSED_PARAMETER": "YES",
+      "INFOPLIST_FILE": "Sources/Info.plist",
+      "LD_DYLIB_INSTALL_NAME": "$(DYLIB_INSTALL_NAME_BASE:standardizepath)/$(EXECUTABLE_PATH)",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks @loader_path/Frameworks",
+      "MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS": "gnu99 gnu++11",
+      "OTHER_SWIFT_FLAGS": "-Xfrontend -warn-long-expression-type-checking=150",
+      "PRODUCT_BUNDLE_IDENTIFIER": "com.onevcat.$(PRODUCT_NAME:rfc1034identifier)",
+      "PRODUCT_BUNDLE_PACKAGE_TYPE": "FMWK",
+      "PRODUCT_NAME": "Kingfisher",
+      "SKIP_INSTALL": "YES",
+      "SUPPORTED_PLATFORMS": "appletvos appletvsimulator iphoneos iphonesimulator macosx watchos watchsimulator xros xrsimulator",
+      "SUPPORTS_MACCATALYST": "NO",
+      "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "DEBUG",
+      "SWIFT_INSTALL_OBJC_HEADER": "YES",
+      "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
+      "SWIFT_STRICT_CONCURRENCY": "complete",
+      "TARGETED_DEVICE_FAMILY": "1,2,3,4,7",
+      "VERSIONING_SYSTEM": "apple-generic"
+     },
+     "guid": "a17ccb4923d030263240808f7bc3c92d38c4c3e5b53064a6859a1799e3f6bb1b",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "APPLICATION_EXTENSION_API_ONLY": "YES",
+      "CLANG_ANALYZER_NONNULL": "YES",
+      "CLANG_WARN_ASSIGN_ENUM": "YES",
+      "CLANG_WARN_CXX0X_EXTENSIONS": "YES",
+      "CLANG_WARN_DOCUMENTATION_COMMENTS": "YES",
+      "CLANG_WARN_IMPLICIT_SIGN_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_EXPLICIT_OWNERSHIP_TYPE": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_ATOMIC_PROPERTIES": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+      "CLANG_WARN_OBJC_MISSING_PROPERTY_SYNTHESIS": "YES",
+      "CLANG_WARN_OBJC_REPEATED_USE_OF_WEAK": "YES",
+      "CLANG_WARN_SUSPICIOUS_IMPLICIT_CONVERSION": "YES",
+      "CLANG_WARN_UNREACHABLE_CODE": "YES_AGGRESSIVE",
+      "CLANG_WARN__EXIT_TIME_DESTRUCTORS": "YES",
+      "CURRENT_PROJECT_VERSION": "3320",
+      "DEAD_CODE_STRIPPING": "YES",
+      "DEFINES_MODULE": "YES",
+      "DYLIB_COMPATIBILITY_VERSION": "1",
+      "DYLIB_CURRENT_VERSION": "3320",
+      "DYLIB_INSTALL_NAME_BASE": "@rpath",
+      "ENABLE_MODULE_VERIFIER": "YES",
+      "GCC_TREAT_IMPLICIT_FUNCTION_DECLARATIONS_AS_ERRORS": "YES",
+      "GCC_TREAT_INCOMPATIBLE_POINTER_TYPE_WARNINGS_AS_ERRORS": "YES",
+      "GCC_WARN_ABOUT_MISSING_FIELD_INITIALIZERS": "YES",
+      "GCC_WARN_ABOUT_MISSING_NEWLINE": "YES",
+      "GCC_WARN_ABOUT_MISSING_PROTOTYPES": "YES",
+      "GCC_WARN_FOUR_CHARACTER_CONSTANTS": "YES",
+      "GCC_WARN_HIDDEN_VIRTUAL_FUNCTIONS": "YES",
+      "GCC_WARN_INITIALIZER_NOT_FULLY_BRACKETED": "YES",
+      "GCC_WARN_NON_VIRTUAL_DESTRUCTOR": "YES",
+      "GCC_WARN_SIGN_COMPARE": "YES",
+      "GCC_WARN_STRICT_SELECTOR_MATCH": "YES",
+      "GCC_WARN_UNKNOWN_PRAGMAS": "YES",
+      "GCC_WARN_UNUSED_LABEL": "YES",
+      "GCC_WARN_UNUSED_PARAMETER": "YES",
+      "INFOPLIST_FILE": "Sources/Info.plist",
+      "LD_DYLIB_INSTALL_NAME": "$(DYLIB_INSTALL_NAME_BASE:standardizepath)/$(EXECUTABLE_PATH)",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/Frameworks @loader_path/Frameworks",
+      "MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS": "gnu99 gnu++11",
+      "OTHER_SWIFT_FLAGS": "",
+      "PRODUCT_BUNDLE_IDENTIFIER": "com.onevcat.$(PRODUCT_NAME:rfc1034identifier)",
+      "PRODUCT_BUNDLE_PACKAGE_TYPE": "FMWK",
+      "PRODUCT_NAME": "Kingfisher",
+      "SKIP_INSTALL": "YES",
+      "SUPPORTED_PLATFORMS": "appletvos appletvsimulator iphoneos iphonesimulator macosx watchos watchsimulator xros xrsimulator",
+      "SUPPORTS_MACCATALYST": "NO",
+      "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SWIFT_INSTALL_OBJC_HEADER": "YES",
+      "SWIFT_OPTIMIZATION_LEVEL": "-Owholemodule",
+      "SWIFT_STRICT_CONCURRENCY": "complete",
+      "TARGETED_DEVICE_FAMILY": "1,2,3,4,7",
+      "VERSIONING_SYSTEM": "apple-generic"
+     },
+     "guid": "a17ccb4923d030263240808f7bc3c92dbf163204d7f1063e8922a1493aa60421",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92df9bd67d0e1dfed908b9726734373408f",
+       "guid": "a17ccb4923d030263240808f7bc3c92d2d6309828c80878f730ee881748c671c"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d7ceb0935e0e137c3648620b78f152f57",
+       "guid": "a17ccb4923d030263240808f7bc3c92d36c968e81d384f1c2e0d2de17b39dd70"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d567d0bc579dee14f01c69f83dadbf92e",
+       "guid": "a17ccb4923d030263240808f7bc3c92d515ecafd4c202de1f398d8cfcaf6d452"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d549ffc48af8a2754ba1b64a4e992d826",
+       "guid": "a17ccb4923d030263240808f7bc3c92d9eec2cb67de779d77690102bddf3964d"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d98803504a170a5f156640974257798dc",
+       "guid": "a17ccb4923d030263240808f7bc3c92d56f662bcd66cae4cc07f4ab855350448"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d2204709b25ff0f38ee9d4124e4ce8ca2",
+       "guid": "a17ccb4923d030263240808f7bc3c92d0c233e1e9a5283b631e95595a47f3468"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92de10b2dc0da2783b7f7d73bf34d18e980",
+       "guid": "a17ccb4923d030263240808f7bc3c92d5b191081a54997860651992f760ad80b"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d1a449fc6793746d3b772fa47391c8fa4",
+       "guid": "a17ccb4923d030263240808f7bc3c92d329dfc8c424be670cf913e701b985aba"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dd459b0429f8158b00fcafadcfe14313b",
+       "guid": "a17ccb4923d030263240808f7bc3c92d8483ca9d292da9d96e66e866df3937e4"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92da5255cd451fe90260442a7d2fc20c03d",
+       "guid": "a17ccb4923d030263240808f7bc3c92de549ab05a2caea3bf6099fd9c6baeaba"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d60f11bb6976b2502a3aaf4018887da13",
+       "guid": "a17ccb4923d030263240808f7bc3c92daf1a21ca23af267d2ef2c5ca11c7e48b"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92de1099395bb53580a3a4228412b66d04a",
+       "guid": "a17ccb4923d030263240808f7bc3c92df9cfd860537b1ae38442dd6e46db0a36"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d7b991c926702b09db0c0d4e7aeb9a2d3",
+       "guid": "a17ccb4923d030263240808f7bc3c92ddff6e17bb08d25cd729a3eaff26b8105"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92ddc21c65ab1143ef7902019b0c32dcc6b",
+       "guid": "a17ccb4923d030263240808f7bc3c92d06c687b1b8d47bf4440804d745a9d099"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d17b3c05fb52661910215beb7a523177a",
+       "guid": "a17ccb4923d030263240808f7bc3c92d26feb1d75b5dabc191b052c4b3469127"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d1d78fb6b678c59b2d20a62f4fdc9473b",
+       "guid": "a17ccb4923d030263240808f7bc3c92d1a2d81ddec0e56f6b33f21094204c121"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dc3dd10b53c9baf1e719a08803bad09ba",
+       "guid": "a17ccb4923d030263240808f7bc3c92d4251d12c6a1264484605a482580a5297"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d98b0e94b52400367f1e53bee94d352f5",
+       "guid": "a17ccb4923d030263240808f7bc3c92d1b7ac6f09b154e85e6730c6aa0805c32"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dda64380420e192aa32fafee414604e8e",
+       "guid": "a17ccb4923d030263240808f7bc3c92d804e6b0519f4868abfbed7d7d6c54fd5"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92db5e5cfa43ead7984d20478c413c3085f",
+       "guid": "a17ccb4923d030263240808f7bc3c92d0b80b340f3b2fc88685be764112825a6"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d45efc34a81eabbd50c6de0d77d84c412",
+       "guid": "a17ccb4923d030263240808f7bc3c92d5c8d749b38cf33ad740fb6287912bb63"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d59e0568c1f00063d3693c9a3b6ec4531",
+       "guid": "a17ccb4923d030263240808f7bc3c92dc968d0012e61437bb523d339eafff434"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d4240414e15a73e35680ffcd23842e324",
+       "guid": "a17ccb4923d030263240808f7bc3c92d4f280cb8b1d4a1ac59058213141f4e60"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d3870711777511630faa2070ce1164562",
+       "guid": "a17ccb4923d030263240808f7bc3c92d02e26d320da4deb295d518d70af468b9"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92df6ddce1fa266b11d8c36bdc73e38ad71",
+       "guid": "a17ccb4923d030263240808f7bc3c92dd7a46032b34d112e827c6ebc6c7a9e1f"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d4faa7eef15115d55cc3ea04af2d206da",
+       "guid": "a17ccb4923d030263240808f7bc3c92d48d4beaae64c9e5214ee02caf1fb696b"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92daee398d0e95f0e410156bdd6a72273e6",
+       "guid": "a17ccb4923d030263240808f7bc3c92ddbb4c0384d96cbd51e2db0a43ac5b286"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dc85b4e66f7af315a80a871edf3093107",
+       "guid": "a17ccb4923d030263240808f7bc3c92d0d77cca249e83f1faf47740ef8ebde5d"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dfec8d083fa59e68dd08bac08f701b65d",
+       "guid": "a17ccb4923d030263240808f7bc3c92d5759afeee4a9b099a6164dd26bdb0219"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92ddfe6a0e69b5899051857446b36cf3f3c",
+       "guid": "a17ccb4923d030263240808f7bc3c92d273394494ae2c73b75a337e2132a8f11"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d20f7842ee317d0b467ee1283ad409a95",
+       "guid": "a17ccb4923d030263240808f7bc3c92d0a77160d85da5b5bde8e8634b33ea585"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d7f4da0cb267a5f45ad8f4fdb1cabc576",
+       "guid": "a17ccb4923d030263240808f7bc3c92d6cbbe59c5ab8af99082944d18f28d6c6"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dc335bb8f6af8c59f1548693da9367719",
+       "guid": "a17ccb4923d030263240808f7bc3c92d1d2f0147ba1cb9916ef8597982941248"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d071db8aa24f5c0996597865ad4aeb127",
+       "guid": "a17ccb4923d030263240808f7bc3c92dbc52877e50ef2ad58925d21c519ab029"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dd09d8ad5ddf568acc02ff979e9d2432b",
+       "guid": "a17ccb4923d030263240808f7bc3c92d702a3dea35037a6f0205c32404b6f2e8"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d08321bf361cd8439a63f400dfe8f5918",
+       "guid": "a17ccb4923d030263240808f7bc3c92d7034ff3439441fc279a3038f2d8f23d2"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92db47888016e4b85c8d50b0b732f49bc1f",
+       "guid": "a17ccb4923d030263240808f7bc3c92d87ad8c7efd0fb9854f276de8fb4e8e58"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d2ec37cc7a00004e6c80790b3f24d043c",
+       "guid": "a17ccb4923d030263240808f7bc3c92df73e27f186a95b5828cd895fa5773e45"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d9b5494c62c7fa86cf0cdd41dae4f6900",
+       "guid": "a17ccb4923d030263240808f7bc3c92dc36e541cefe47f07757eec3c894beebe"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92daf835dc6ffef92e6289cefcb1e4d19f9",
+       "guid": "a17ccb4923d030263240808f7bc3c92d31c0ffbe68f9b7de40ca2888af6342b7"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dec8f9f7bf52c4df4925b636573ea85e1",
+       "guid": "a17ccb4923d030263240808f7bc3c92dc1974e9036dd5e11ca308095df93a02b"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dbeb2af8687193c4e5dd226cbe3a62473",
+       "guid": "a17ccb4923d030263240808f7bc3c92d7b93f1bfb07a7513a0a2c4531fa0f165"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92da2d07ce262019090a29d219af8a8f526",
+       "guid": "a17ccb4923d030263240808f7bc3c92dfd9ceaf24eab648c3ae3260c68f803c6"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d44ab3c50fe09e8b446c5f05f67529265",
+       "guid": "a17ccb4923d030263240808f7bc3c92d11ac3ba977a60410badd46db9fc82e4f"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d0b6cfc1f8a4f1c3b7f1f62f930f33714",
+       "guid": "a17ccb4923d030263240808f7bc3c92d518f4ba331b73a72948c9844f0b98454"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d93ea4590132f3d84781c7842577e13b3",
+       "guid": "a17ccb4923d030263240808f7bc3c92da725b6d3ebb951983045428ed7a109f2"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d484fb08dc14c5ae78b45038af1df010e",
+       "guid": "a17ccb4923d030263240808f7bc3c92dda2cf340b2a48287bc7101588933171c"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92db956c11339fec5f858c45ca22a8c3e0d",
+       "guid": "a17ccb4923d030263240808f7bc3c92db89a932e06fefd8dce25bbc38bac47ce"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dad257114c76ff2b430940539ab9ed28a",
+       "guid": "a17ccb4923d030263240808f7bc3c92d760c6fb6dc00b53506a1beaafc6a1a78"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dff2f5ae1a6f2c3f4b3ffb8008e7a2167",
+       "guid": "a17ccb4923d030263240808f7bc3c92d01aaf0675ca95a85f259145dfe80dbfd"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d480b5e1f7b3333553a411e6401e769c5",
+       "guid": "a17ccb4923d030263240808f7bc3c92d39a6efdcfacd5569ffb4341e43206ea0"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d9dd0857455f966e0fcaf7d57aa90fe43",
+       "guid": "a17ccb4923d030263240808f7bc3c92db1950d0f6aa19e0b43e8d41cda4632fe"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d732bd81ff0772f03713b1c19721693e2",
+       "guid": "a17ccb4923d030263240808f7bc3c92dd92e5bf3eb89f7fd808c512663c4e6d7"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d860a4e5a245aadcae973d83a34985036",
+       "guid": "a17ccb4923d030263240808f7bc3c92da40307120b6f41e46283f0822565504a"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dd00759de4906f6e77ddb84eb0e72ea6e",
+       "guid": "a17ccb4923d030263240808f7bc3c92ddab264a61de69ab28df38f6672fd29e2"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92defa266015f7fdcb3ad5d4c6b0f8356e8",
+       "guid": "a17ccb4923d030263240808f7bc3c92d48615d3b044aa4c5177d5b66a1fdae7f"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d71cd020e12034bf209f1612b9f1cd37e",
+       "guid": "a17ccb4923d030263240808f7bc3c92df841f18d0a442e388a7b5ba1a108691f"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d640d38fc9a586a968f60bee9ab79c7bc",
+       "guid": "a17ccb4923d030263240808f7bc3c92db300629ebab0dfaa7ca1353a41b17bb5"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d0a31a44b57cc215e7ce3f6e7a24a0390",
+       "guid": "a17ccb4923d030263240808f7bc3c92d05d14f48e6149c074e5b283d2df03ac0"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d990de18b363f92fa3224a6c6cba4682d",
+       "guid": "a17ccb4923d030263240808f7bc3c92d926aa00d327b20648ef480b479159b8c"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d5f037ed49f6b8cc109f27598e6d27d6e",
+       "guid": "a17ccb4923d030263240808f7bc3c92dc60d145619268e74610097b0d639ef6c"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dc92a4bb3c50f893c6f71f441ef928379",
+       "guid": "a17ccb4923d030263240808f7bc3c92daef36f945a038908e0c2ce3d75190697"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d86ecab8a8fa153029536608dbe4287e2",
+       "guid": "a17ccb4923d030263240808f7bc3c92d37e1e91cd400688cda61cac9e7076e50"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d5b8b1b241039e2ff4bd56646ccdc6e83",
+       "guid": "a17ccb4923d030263240808f7bc3c92de003139cece3f726a4628d3d5a376c94"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d261ea045df20a9b2a54066bbabc10213",
+       "guid": "a17ccb4923d030263240808f7bc3c92d9520f9c74d6c24daa3fef785b43f1834"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dfe3f2bb48e8c12839d04ae3c5170f845",
+       "guid": "a17ccb4923d030263240808f7bc3c92dc8bc5e2e1f5ef185a065650fe497fe49"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d38a45981bc2317f0f4d4e72462e943eb",
+       "guid": "a17ccb4923d030263240808f7bc3c92d318af0ddc2d62b99793206a455cdbb5b"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d9dad6d6abc30c3bb3e27b99549d8c036",
+       "guid": "a17ccb4923d030263240808f7bc3c92d487d021d028613537887b1f6f6fc50f5"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92de05708ffd5ed49b96a867233b4baa7a1",
+       "guid": "a17ccb4923d030263240808f7bc3c92d3817801a9dfca209a893859149f33d13"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dc1b229ce1597f8081109984afe146c6f",
+       "guid": "a17ccb4923d030263240808f7bc3c92d78cb863089b5242d542d579cad9eaee7"
+      }
+     ],
+     "guid": "a17ccb4923d030263240808f7bc3c92d9f2d9df11f4298b6c47d6fad311c97fa",
+     "type": "com.apple.buildphase.sources"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d654b22f11da0042fed19b5ddda9dfb4b",
+       "guid": "a17ccb4923d030263240808f7bc3c92dbf1341d5bd77d1ab946a73f98213431b"
+      }
+     ],
+     "destinationSubfolder": "$(UNLOCALIZED_RESOURCES_FOLDER_PATH)",
+     "destinationSubpath": "",
+     "guid": "a17ccb4923d030263240808f7bc3c92da4cf730c1f07b24e59b3f76cf1a9da67",
+     "type": "com.apple.buildphase.copy-files"
+    },
+    {
+     "buildFiles": [],
+     "guid": "a17ccb4923d030263240808f7bc3c92d6d3244684d2ede09bca19808fba8ea9e",
+     "type": "com.apple.buildphase.frameworks"
+    },
+    {
+     "buildFiles": [],
+     "guid": "a17ccb4923d030263240808f7bc3c92d529eb32410e5d0a9285455fd294bc395",
+     "type": "com.apple.buildphase.headers"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [],
+   "guid": "a17ccb4923d030263240808f7bc3c92d7eeec3e99f0cb1453a66fdd2760bcdeb",
+   "name": "Kingfisher",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Swift",
+   "productReference": {
+    "guid": "a17ccb4923d030263240808f7bc3c92dda212dd201df86b5412a580479935778",
+    "name": "Kingfisher.framework",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.framework",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Debug",
+     "provisioningStyle": 1
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Release",
+     "provisioningStyle": 1
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=a6d16f009840efd85fc72a27e557cafc",
+  "type": "target"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "CLANG_ENABLE_MODULES": "YES",
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "",
+      "DEAD_CODE_STRIPPING": "YES",
+      "GCC_PREPROCESSOR_DEFINITIONS": "DEBUG=1 $(inherited)",
+      "INFOPLIST_FILE": "Tests/KingfisherTests/Info.plist",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks @executable_path/Frameworks @loader_path/Frameworks",
+      "PRODUCT_BUNDLE_IDENTIFIER": "com.onevcat.$(PRODUCT_NAME:rfc1034identifier)",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "SUPPORTED_PLATFORMS": "appletvos appletvsimulator iphoneos iphonesimulator macosx watchos watchsimulator xros xrsimulator",
+      "SUPPORTS_MACCATALYST": "NO",
+      "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SWIFT_OBJC_BRIDGING_HEADER": "Tests/KingfisherTests/KingfisherTests-Bridging-Header.h",
+      "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
+      "TARGETED_DEVICE_FAMILY": "1,2,3,4,7"
+     },
+     "guid": "a17ccb4923d030263240808f7bc3c92d98eaabccdee00e17223b1115d240435a",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "CLANG_ENABLE_MODULES": "YES",
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "",
+      "DEAD_CODE_STRIPPING": "YES",
+      "INFOPLIST_FILE": "Tests/KingfisherTests/Info.plist",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks @executable_path/Frameworks @loader_path/Frameworks",
+      "PRODUCT_BUNDLE_IDENTIFIER": "com.onevcat.$(PRODUCT_NAME:rfc1034identifier)",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "SUPPORTED_PLATFORMS": "appletvos appletvsimulator iphoneos iphonesimulator macosx watchos watchsimulator xros xrsimulator",
+      "SUPPORTS_MACCATALYST": "NO",
+      "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD": "NO",
+      "SWIFT_COMPILATION_MODE": "wholemodule",
+      "SWIFT_OBJC_BRIDGING_HEADER": "Tests/KingfisherTests/KingfisherTests-Bridging-Header.h",
+      "SWIFT_OPTIMIZATION_LEVEL": "-O",
+      "TARGETED_DEVICE_FAMILY": "1,2,3,4,7"
+     },
+     "guid": "a17ccb4923d030263240808f7bc3c92d44244344c8437859ea9d455655046958",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92db64fa3262092483073c7c935269df791",
+       "guid": "a17ccb4923d030263240808f7bc3c92d6eb49c397e9b01e98fa1d4a7dcc5ab5a"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d730d994e16430158f75bf7ffca128f40",
+       "guid": "a17ccb4923d030263240808f7bc3c92d3fbf2ce8e89b0a69250b4ab4066f33ea"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dd1e941b6b1c275ffdb72144e34ad61bb",
+       "guid": "a17ccb4923d030263240808f7bc3c92d1232f74e5e1ef61755427478b68d662a"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d4a5353942ff08b1a457dde13ebbe57fc",
+       "guid": "a17ccb4923d030263240808f7bc3c92d21581a03763468f5759089dcc2f828af"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d00867f2a46b1ef8fd8fadaee15b39ae1",
+       "guid": "a17ccb4923d030263240808f7bc3c92d7c44d6aa6305338caec09d70dbb17fef"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d1c108371fce8e77cee7d3a51b7c873b9",
+       "guid": "a17ccb4923d030263240808f7bc3c92d0f42c069d62cdc9ebf6f2c47822789c3"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d86265846ff06671fd32b9cf14877c891",
+       "guid": "a17ccb4923d030263240808f7bc3c92d1b778981a4526ae0da0bf48997dc19cf"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d72ee0eb88238a6d3b93c0be45656c942",
+       "guid": "a17ccb4923d030263240808f7bc3c92ddce359a43e7d09113dd400839681632f"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dde3c39edeae4673e188f846860414b9c",
+       "guid": "a17ccb4923d030263240808f7bc3c92d86707cfd70772e38f9a54722043ee597"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dddef5e96ac35057c04eefab715c1dd31",
+       "guid": "a17ccb4923d030263240808f7bc3c92d546fc07bbb563f88db3aa54dc4f65632"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dd8e625d015c1ef19cc518627540da24d",
+       "guid": "a17ccb4923d030263240808f7bc3c92dd4edbc3add0c54a0cec08fb4dedbf605"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d274d3bf94b25c312d8212f072282c3c1",
+       "guid": "a17ccb4923d030263240808f7bc3c92d2609ff821d5fd247feee1d93a9adf75a"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dc67cfdf6eacfb53b8126255335dd3cad",
+       "guid": "a17ccb4923d030263240808f7bc3c92d3b9f91337c115dc84e023e73aad69de2"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d50cc31e65e3ec3fcb30bd15c1b6c8d2b",
+       "guid": "a17ccb4923d030263240808f7bc3c92df9337932aa10214ccd63ccd14a055661"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d113bb6aa322c1058ceff276b9bfc4546",
+       "guid": "a17ccb4923d030263240808f7bc3c92dad2d0572f2647729f4d9b42a048a3d11"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d24c911e3e3cd6da80a88ad9f8aff0c45",
+       "guid": "a17ccb4923d030263240808f7bc3c92d0b760bf0197fe776b0d1d57c990ad5e0"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d8fdad54622183ac4ce1a330562110633",
+       "guid": "a17ccb4923d030263240808f7bc3c92df341fd9923c2923bb0b00281a12e824d"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92de9112a15bfd4e0a4c33dcd990e961f1b",
+       "guid": "a17ccb4923d030263240808f7bc3c92db5052d367aa81152fe06c3c0abeb880b"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92da356d4160aa340ef9cdb1e85529743d1",
+       "guid": "a17ccb4923d030263240808f7bc3c92d2a98bf41e70cf19a721f71ed400b2c64"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d3d6ea9722575d67f20ce21441c691e14",
+       "guid": "a17ccb4923d030263240808f7bc3c92d35f4de224bf9be165ebe424ee142029b"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d4683536b142fdfe9d4c67d045bbfbf63",
+       "guid": "a17ccb4923d030263240808f7bc3c92d0329b0c5919b7f381447c1c529a2b992"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92df32ef24d05e05b16c2d6b89f376e28ac",
+       "guid": "a17ccb4923d030263240808f7bc3c92dd8eef1a636b738ad999013d0984a1b78"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d2beddc986578f62ef7588bc8e5a753ca",
+       "guid": "a17ccb4923d030263240808f7bc3c92dc1f3f45ef7eb6ae75ba41a150c81e758"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d80892504627feded0b15da3c48396ad2",
+       "guid": "a17ccb4923d030263240808f7bc3c92d27a65698d30100a0cba45d13dad1ac4a"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92df05f73b1c946f553d46e0b78ce2040d0",
+       "guid": "a17ccb4923d030263240808f7bc3c92d6d908709fa22eccb25d8f3870e6d840e"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92df95d1cd07ba07777d659444531a4944f",
+       "guid": "a17ccb4923d030263240808f7bc3c92d568072102a2370e7994498d2dddff74a"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92da32ac168b642d27c20e1761e519aee9d",
+       "guid": "a17ccb4923d030263240808f7bc3c92d4bd89cf0694ea582cbccfd91c0600752"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d5dc697a5c72043e0343446f6a5fd6b32",
+       "guid": "a17ccb4923d030263240808f7bc3c92da0f0e8505b11d8c424608958bf6c579c"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92da404f545d1d9c0206dfab247f2cbc584",
+       "guid": "a17ccb4923d030263240808f7bc3c92df250a85045ef8ab96c7055d55ddae2a6"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92db1691a762b35897ccac5bbc446421a59",
+       "guid": "a17ccb4923d030263240808f7bc3c92de9268f381d24cc005f698b7e8b13685c"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d5997d0e03ae53d822a1117dfba4d34a9",
+       "guid": "a17ccb4923d030263240808f7bc3c92ddbf760b009964607256941858b808240"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92da928ed00ebc54aa06f73cba2665ab297",
+       "guid": "a17ccb4923d030263240808f7bc3c92d28bdb068c1f0b208b8703ce7a4c2e6b1"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d8d71c107cf06fcb441f60153d84f7ccd",
+       "guid": "a17ccb4923d030263240808f7bc3c92d68d0fcd1aa97b6f9996251a5b6678db8"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d70b180be9152fd8fe01b766b06cc4b62",
+       "guid": "a17ccb4923d030263240808f7bc3c92d7a5450ada0460e96e0b4632b420c715f"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92de470115f88076564b9556b4b1104d6b8",
+       "guid": "a17ccb4923d030263240808f7bc3c92d052f4083e58b397a086f4607c8d171b7"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d22f857ea9280ca242e39ce80eb901161",
+       "guid": "a17ccb4923d030263240808f7bc3c92d236d4900dacd03192d29f1d073089c0d"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d7e127cfc609369b27c8fe720a8cf63d0",
+       "guid": "a17ccb4923d030263240808f7bc3c92d9ee128a05771b244cdb283b58f27988b"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dca26ccdc1d357dd8904d93a3c7021cf9",
+       "guid": "a17ccb4923d030263240808f7bc3c92dea54e75fbdd2eb0d35f8780aa8b78fb9"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dc3d63f4e4dda19dc9265e7e88e5c8a00",
+       "guid": "a17ccb4923d030263240808f7bc3c92d0b527b198b19757aebafc4944ea15df7"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92da0ce9fb263fbe17a8162383f212593af",
+       "guid": "a17ccb4923d030263240808f7bc3c92d48682c335fdc6a6a3038b1373f6dd38a"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d5a3e88989e11592dd531e6cb6ead1a20",
+       "guid": "a17ccb4923d030263240808f7bc3c92d9b3e47601553d0c32c034bcfac0820b6"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d56e0f400e7bc54bc672dc865ec0339f6",
+       "guid": "a17ccb4923d030263240808f7bc3c92d2adbd0c8a8a25827c552fb231956ff65"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d19ec01cea0aa1dd3d57c9afaba2860f2",
+       "guid": "a17ccb4923d030263240808f7bc3c92d8dc5a99d872c0b513a3b611e99f4f874"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d78c079d464b74edb1ffff97362eeca09",
+       "guid": "a17ccb4923d030263240808f7bc3c92d40782c39e2f1a922c5d27e9d47371ba2"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d7f17928d4144d64d741769ec71d7bd0a",
+       "guid": "a17ccb4923d030263240808f7bc3c92d878f4a74d4176b960650d91f45ab7a92"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d3f9a468c67eb56d52c80b0804b3b410c",
+       "guid": "a17ccb4923d030263240808f7bc3c92dca8514c01f3f5bbfa563f70f72062b1a"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d51ccf178c438e03e5f31aa3fabeef158",
+       "guid": "a17ccb4923d030263240808f7bc3c92d875f851ddfbf61bdaf05f70121ea5066"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d5dd7fba33a104041d0ba7fba5f121c02",
+       "guid": "a17ccb4923d030263240808f7bc3c92d0861c25b59e9a10e74d65a61312161bf"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d3c7ac461061f893317f03e3e42af5753",
+       "guid": "a17ccb4923d030263240808f7bc3c92db048c1a0bf7718a99afeb81e11c292ed"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92db2a078ad1674c6237bc548a695bd79cd",
+       "guid": "a17ccb4923d030263240808f7bc3c92d30029bf9bc18e9984ba5ae2b8eec161c"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dfcb8a6735617a4116759dd1ec56bf439",
+       "guid": "a17ccb4923d030263240808f7bc3c92d5d919d820cdf6366f061426b48f536e4"
+      }
+     ],
+     "guid": "a17ccb4923d030263240808f7bc3c92d8f68599d95eddd147d9d036363b3d19b",
+     "type": "com.apple.buildphase.sources"
+    },
+    {
+     "buildFiles": [
+      {
+       "guid": "a17ccb4923d030263240808f7bc3c92dfddac42802d862bbb1405df6445050c2",
+       "targetReference": "a17ccb4923d030263240808f7bc3c92d7eeec3e99f0cb1453a66fdd2760bcdeb"
+      }
+     ],
+     "guid": "a17ccb4923d030263240808f7bc3c92deea6bf7f0dc155ab79bed98b28d37110",
+     "type": "com.apple.buildphase.frameworks"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dfa874f46e75da776fb1a1d0dab51b589",
+       "guid": "a17ccb4923d030263240808f7bc3c92da48989fa7bb6524e0556c9a594341b42"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d494a297658d3ed6919a28a401cc7049d",
+       "guid": "a17ccb4923d030263240808f7bc3c92def1376cf479d7fd1285ad217518e7bd8"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dc9c9a594b53a91db15e8004477b5afe2",
+       "guid": "a17ccb4923d030263240808f7bc3c92d9cea1486861899cb0a7d7c875cf46960"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d36a0a2176f1ead15fd006f46be9ade1d",
+       "guid": "a17ccb4923d030263240808f7bc3c92dd34d9c60c4a919e8cd10acf55bbf22c4"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d41f1f2fff96fce0ab8469d2c2578ee17",
+       "guid": "a17ccb4923d030263240808f7bc3c92d0df747fcb98aa3b57cd5beece05aa652"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d4c949fee89516203745049ea5c275d26",
+       "guid": "a17ccb4923d030263240808f7bc3c92d3cb566f163d0d98c7548c1dea0302f7a"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d141771d6573be1fd35066c6fe5e65989",
+       "guid": "a17ccb4923d030263240808f7bc3c92dbf324bc223f8d91e3f32d9ee6dba10c3"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d04434c7e5467a5e83dfa71975cc11f9c",
+       "guid": "a17ccb4923d030263240808f7bc3c92d3f7d5f5b6f6a51a8bbcc7974f1460a0c"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d450dbf80276709389d1de62ac8fc27a5",
+       "guid": "a17ccb4923d030263240808f7bc3c92d7d36c9dbbf759881a606d2182860db28"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d9c1337c62c47125cb5f5e2349c12ea18",
+       "guid": "a17ccb4923d030263240808f7bc3c92d536c7fa861b14cdf4d18c77649334302"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92deb7f74dc5ffa694c6087c572c65e2a69",
+       "guid": "a17ccb4923d030263240808f7bc3c92df78b71c4e0cda3cf81993a1775a16ec0"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dd73c5e9bcaf312c00977fe921aa6e503",
+       "guid": "a17ccb4923d030263240808f7bc3c92d5f4b1833601a852957ad42c7df299d6e"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92dcc5a3626c74841326399e7654d8f9081",
+       "guid": "a17ccb4923d030263240808f7bc3c92d533323631a14c2a1082613f0c0060bd4"
+      },
+      {
+       "fileReference": "a17ccb4923d030263240808f7bc3c92d41844719ebaef017f9df1e63616b494e",
+       "guid": "a17ccb4923d030263240808f7bc3c92d6648d39aa7fe199c4758792828b57951"
+      }
+     ],
+     "guid": "a17ccb4923d030263240808f7bc3c92de80ecb800f2262d337a61326c2f54087",
+     "type": "com.apple.buildphase.resources"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [
+    {
+     "guid": "a17ccb4923d030263240808f7bc3c92d7eeec3e99f0cb1453a66fdd2760bcdeb",
+     "name": "Kingfisher"
+    }
+   ],
+   "guid": "a17ccb4923d030263240808f7bc3c92d30093a70b2fcc5c53ceb8fe614aee862",
+   "name": "KingfisherTests",
+   "performanceTestsBaselinesPath": "$(CORPUS)/kingfisher/Kingfisher.xcodeproj/xcshareddata/xcbaselines/D1ED2D3E1AD2D09F00CFC3EB.xcbaseline",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Swift",
+   "productReference": {
+    "guid": "a17ccb4923d030263240808f7bc3c92deac9a0c7ca30cdc27665f095f06b17eb",
+    "name": "KingfisherTests.xctest",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.bundle.unit-test",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Debug",
+     "provisioningStyle": 1
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Release",
+     "provisioningStyle": 1
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=9aed7000ab01210a742f5dccc7738afc",
+  "type": "target"
+ }
+]

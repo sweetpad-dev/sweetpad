@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="1" systemVersion="1" minimumToolsVersion="Automatic" sourceLanguage="Objective-C" userDefinedModelVersionIdentifier="">
+    <entity name="P" representedClassName="P" syncable="YES" codeGenerationType="class">
+        <attribute name="bin" optional="YES" attributeType="Binary"/>
+        <attribute name="uid" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="day" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="yes" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="d" optional="YES" attributeType="Double" usesScalarValueType="YES"/>
+        <attribute name="i" optional="YES" attributeType="Integer 32" usesScalarValueType="YES"/>
+        <attribute name="l" optional="YES" attributeType="Integer 64" usesScalarValueType="YES"/>
+        <attribute name="s" attributeType="String"/>
+        <attribute name="plain" optional="YES" attributeType="Integer 32"/>
+        <relationship name="q" maxCount="1" deletionRule="Nullify" destinationEntity="Q"/>
+        <relationship name="rs" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="R" inverseName="owner" inverseEntity="R"/>
+        <relationship name="qs" optional="YES" toMany="YES" deletionRule="Nullify" ordered="YES" destinationEntity="Q" inverseName="list" inverseEntity="Q"/>
+    </entity>
+    <entity name="Q" representedClassName="Q" parentEntity="P" syncable="YES" codeGenerationType="class">
+        <relationship name="list" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="P" inverseName="qs" inverseEntity="P"/>
+    </entity>
+    <entity name="R" representedClassName="R" parentEntity="Q" syncable="YES" codeGenerationType="category">
+        <relationship name="owner" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="P" inverseName="rs" inverseEntity="P"/>
+    </entity>
+</model>

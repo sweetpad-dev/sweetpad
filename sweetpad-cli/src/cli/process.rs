@@ -212,12 +212,30 @@ pub fn stream_lines(
     program: &str,
     args: &[&str],
     cwd: Option<&Path>,
+    on_line: impl FnMut(&str),
+) -> Result<bool, CliError> {
+    stream_lines_with_env(program, args, cwd, &[], on_line)
+}
+
+/// [`stream_lines`] with changes to the child's environment: each `(name,
+/// Some(value))` sets a variable and each `(name, None)` removes one.
+pub fn stream_lines_with_env(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    env: &[(String, Option<String>)],
     mut on_line: impl FnMut(&str),
 ) -> Result<bool, CliError> {
     let mut cmd = Command::new(program);
     cmd.args(args);
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
+    }
+    for (name, value) in env {
+        match value {
+            Some(value) => cmd.env(name, value),
+            None => cmd.env_remove(name),
+        };
     }
     let (reader, out, err) = merged_output_pipe(program)?;
     cmd.stdout(out).stderr(err);
@@ -279,6 +297,7 @@ fn merged_output_pipe(program: &str) -> Result<(std::fs::File, Stdio, Stdio), Cl
     }
 }
 
+#[cfg(target_os = "macos")]
 unsafe extern "C" {
     /// `<spawn.h>` since macOS 10.15, which the libc crate doesn't bind for
     /// Apple targets.
@@ -302,6 +321,7 @@ pub(crate) struct Suspended {
 /// on top, its stdin is `/dev/null`, and every other descriptor stays behind
 /// (`POSIX_SPAWN_CLOEXEC_DEFAULT`), so it can't hold a debug adapter's
 /// protocol pipes open. It starts in `cwd`, or in this process's directory.
+#[cfg(target_os = "macos")]
 pub(crate) fn spawn_suspended(
     program: &Path,
     args: &[String],
@@ -399,6 +419,20 @@ pub(crate) fn spawn_suspended(
         stdout,
         stderr,
     })
+}
+
+/// Starting a process suspended relies on Apple's `POSIX_SPAWN_START_SUSPENDED`.
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn spawn_suspended(
+    program: &Path,
+    _args: &[String],
+    _env: &[(String, String)],
+    _cwd: Option<&Path>,
+) -> Result<Suspended, CliError> {
+    Err(CliError::new(format!(
+        "cannot start '{}' suspended for the debugger: that needs macOS",
+        program.display()
+    )))
 }
 
 /// SIGTERM a process by pid. Used to end something this tool is responsible for
@@ -595,6 +629,7 @@ pub fn spawn_group_inherit(
 pub(crate) fn spawn_error(program: &str, e: &std::io::Error) -> CliError {
     if e.kind() == std::io::ErrorKind::NotFound {
         let hint = match program {
+            "swift" if !cfg!(target_os = "macos") => " (install a Swift toolchain from swift.org)",
             "xcrun" | "xcodebuild" | "xcode-select" | "swift" | "simctl" => {
                 " (Xcode command-line tools are required)"
             }

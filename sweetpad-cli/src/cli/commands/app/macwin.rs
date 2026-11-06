@@ -8,7 +8,7 @@
 //! so no binding crate is pulled in. Everything above it (`ps` parsing,
 //! window filtering and picking) is pure and unit-tested.
 
-use std::ffi::c_void;
+use std::ffi::{c_char, c_void};
 use std::path::Path;
 
 use crate::cli::CliError;
@@ -64,23 +64,70 @@ const KCG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY: u32 = 1 << 0;
 const KCG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS: u32 = 1 << 4;
 const KCG_NULL_WINDOW_ID: u32 = 0;
 
+#[cfg(target_os = "macos")]
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
     fn CFArrayGetCount(array: CFTypeRef) -> CFIndex;
     fn CFArrayGetValueAtIndex(array: CFTypeRef, idx: CFIndex) -> CFTypeRef;
     fn CFDictionaryGetValue(dict: CFTypeRef, key: CFTypeRef) -> CFTypeRef;
-    fn CFStringCreateWithCString(alloc: CFTypeRef, s: *const i8, encoding: u32) -> CFTypeRef;
-    fn CFStringGetCString(s: CFTypeRef, buf: *mut i8, size: CFIndex, encoding: u32) -> u8;
+    fn CFStringCreateWithCString(alloc: CFTypeRef, s: *const c_char, encoding: u32) -> CFTypeRef;
+    fn CFStringGetCString(s: CFTypeRef, buf: *mut c_char, size: CFIndex, encoding: u32) -> u8;
     fn CFNumberGetValue(number: CFTypeRef, number_type: CFIndex, out: *mut c_void) -> u8;
     fn CFRelease(cf: CFTypeRef);
 }
 
+#[cfg(target_os = "macos")]
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
     fn CGWindowListCopyWindowInfo(option: u32, relative_to: u32) -> CFTypeRef;
     fn CGPreflightScreenCaptureAccess() -> u8;
     fn CGRequestScreenCaptureAccess() -> u8;
 }
+
+/// Off macOS there is no window server to ask. These stand in for the
+/// framework calls so the module builds, and every one of them comes back
+/// empty: no windows, no capture access.
+#[cfg(not(target_os = "macos"))]
+#[allow(non_snake_case, clippy::missing_safety_doc)]
+mod unavailable {
+    use super::{CFIndex, CFTypeRef, c_char, c_void};
+
+    pub unsafe fn CFArrayGetCount(_: CFTypeRef) -> CFIndex {
+        0
+    }
+    pub unsafe fn CFArrayGetValueAtIndex(_: CFTypeRef, _: CFIndex) -> CFTypeRef {
+        std::ptr::null()
+    }
+    pub unsafe fn CFDictionaryGetValue(_: CFTypeRef, _: CFTypeRef) -> CFTypeRef {
+        std::ptr::null()
+    }
+    pub unsafe fn CFStringCreateWithCString(_: CFTypeRef, _: *const c_char, _: u32) -> CFTypeRef {
+        std::ptr::null()
+    }
+    pub unsafe fn CFStringGetCString(_: CFTypeRef, _: *mut c_char, _: CFIndex, _: u32) -> u8 {
+        0
+    }
+    pub unsafe fn CFNumberGetValue(_: CFTypeRef, _: CFIndex, _: *mut c_void) -> u8 {
+        0
+    }
+    pub unsafe fn CFRelease(_: CFTypeRef) {}
+    pub unsafe fn CGWindowListCopyWindowInfo(_: u32, _: u32) -> CFTypeRef {
+        std::ptr::null()
+    }
+    pub unsafe fn CGPreflightScreenCaptureAccess() -> u8 {
+        0
+    }
+    pub unsafe fn CGRequestScreenCaptureAccess() -> u8 {
+        0
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+use unavailable::{
+    CFArrayGetCount, CFArrayGetValueAtIndex, CFDictionaryGetValue, CFNumberGetValue, CFRelease,
+    CFStringCreateWithCString, CFStringGetCString, CGPreflightScreenCaptureAccess,
+    CGRequestScreenCaptureAccess, CGWindowListCopyWindowInfo,
+};
 
 /// Whether this process (attributed to the hosting terminal app) already
 /// holds the Screen Recording permission.
@@ -158,18 +205,22 @@ unsafe fn dict_string(dict: CFTypeRef, key: &CFKey) -> Option<String> {
     if value.is_null() {
         return None;
     }
-    let mut buf = vec![0i8; 1024];
+    let mut buf = vec![0u8; 1024];
     let len = CFIndex::try_from(buf.len()).unwrap_or(1024);
-    let ok = unsafe { CFStringGetCString(value, buf.as_mut_ptr(), len, KCF_STRING_ENCODING_UTF8) };
+    let ok = unsafe {
+        CFStringGetCString(
+            value,
+            buf.as_mut_ptr().cast::<c_char>(),
+            len,
+            KCF_STRING_ENCODING_UTF8,
+        )
+    };
     if ok == 0 {
         return None;
     }
-    let bytes: Vec<u8> = buf
-        .iter()
-        .take_while(|&&c| c != 0)
-        .map(|&c| c.cast_unsigned())
-        .collect();
-    String::from_utf8(bytes).ok()
+    let end = buf.iter().position(|b| *b == 0).unwrap_or(buf.len());
+    buf.truncate(end);
+    String::from_utf8(buf).ok()
 }
 
 /// Every on-screen window, front-to-back, minus desktop chrome. Needs no TCC

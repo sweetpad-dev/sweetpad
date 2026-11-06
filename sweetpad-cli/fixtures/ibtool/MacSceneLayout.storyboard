@@ -1,0 +1,69 @@
+<document type="com.apple.InterfaceBuilder3.Cocoa.Storyboard.XIB" version="3.0" toolsVersion="24412" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" initialViewController="vcA-aa-Aud">
+  <dependencies>
+    <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="24412" />
+  </dependencies>
+  <scenes>
+    <scene sceneID="sce-aa-Aud">
+      <objects>
+        <viewController storyboardIdentifier="AuditController" title="Audit" id="vcA-aa-Aud" sceneMemberID="viewController" customClass="AuditController" customModule="App" customModuleProvider="target">
+          <view key="view" id="vie-aa-Aud">
+            <rect key="frame" x="0" y="0" width="300" height="200" />
+            <autoresizingMask key="autoresizingMask" />
+            <subviews>
+              <button id="Btn-aa-Vw1">
+                <rect key="frame" x="10" y="40" width="150" height="32" />
+                <buttonCell key="cell" type="push" title="Press" bezelStyle="rounded" imagePosition="overlaps" alignment="center" borderStyle="border" id="Btn-aa-Cl1">
+                  <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES" />
+                  <font key="font" metaFont="system" />
+                </buttonCell>
+                <connections>
+                  <action selector="press:" target="vcA-aa-Aud" id="act-vc-Aud" />
+                </connections>
+              </button>
+              <textField id="Txt-aa-Vw1" translatesAutoresizingMaskIntoConstraints="NO">
+                <rect key="frame" x="10" y="10" width="150" height="22" />
+                <textFieldCell key="cell" title="Hello" id="Txt-aa-Cl1" editable="YES" selectable="YES" scrollable="YES" drawsBackground="YES" borderStyle="bezel" lineBreakMode="truncatingTail" sendsActionOnEndEditing="YES" usesSingleLineMode="YES" controlSize="small" placeholderString="Hint">
+                  <font key="font" metaFont="system" />
+                  <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog" />
+                  <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog" />
+                </textFieldCell>
+                <connections>
+                  <binding destination="def-aa-Aud" name="value" keyPath="values.AuditSceneMessage" id="Bnd-aa-Bn1">
+                    <dictionary key="options">
+                      <bool key="NSRaisesForNotApplicableKeys" value="NO" />
+                      <bool key="NSAllowsEditingMultipleValuesSelection" value="NO" />
+                    </dictionary>
+                  </binding>
+                </connections>
+                <constraints>
+                  <constraint firstAttribute="width" constant="150" id="Lay-wid-Con" />
+                </constraints>
+              </textField>
+              <textField id="Lay-txt-New" translatesAutoresizingMaskIntoConstraints="NO">
+                <rect key="frame" x="10" y="10" width="150" height="22" />
+                <textFieldCell key="cell" title="Hello" id="Lay-cel-New">
+                  <font key="font" metaFont="system" />
+                  <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog" />
+                  <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog" />
+                </textFieldCell>
+              </textField>
+            </subviews>
+            <constraints>
+              <constraint firstItem="Txt-aa-Vw1" firstAttribute="leading" secondItem="vie-aa-Aud" secondAttribute="leading" constant="20" id="Lay-0-Con" />
+              <constraint firstItem="Txt-aa-Vw1" firstAttribute="top" secondItem="vie-aa-Aud" secondAttribute="top" constant="20" id="Lay-1-Con" />
+              <constraint firstItem="Lay-txt-New" firstAttribute="leading" secondItem="vie-aa-Aud" secondAttribute="leading" constant="20" id="Txt-0-Con" />
+              <constraint firstItem="Lay-txt-New" firstAttribute="top" secondItem="vie-aa-Aud" secondAttribute="top" constant="80" id="Txt-1-Con" />
+            </constraints>
+          </view>
+          <connections>
+            <outlet property="button" destination="Btn-aa-Vw1" id="out-vc-Aud" />
+            <outlet property="defaults" destination="def-aa-Aud" id="out-md-Aud" />
+          </connections>
+        </viewController>
+        <customObject id="res-aa-Aud" userLabel="First Responder" customClass="NSResponder" sceneMemberID="firstResponder" />
+        <userDefaultsController id="def-aa-Aud" representsSharedInstance="YES" />
+        <customObject id="mod-aa-Aud" customClass="AuditOwner" customModule="App" customModuleProvider="target" />
+      </objects>
+    </scene>
+  </scenes>
+</document>

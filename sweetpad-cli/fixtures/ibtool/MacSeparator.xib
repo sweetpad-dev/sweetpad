@@ -1,0 +1,16 @@
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="9531" systemVersion="15C50" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+  <dependencies>
+    <deployment identifier="macosx" />
+    <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="9531" />
+  </dependencies>
+  <objects>
+    <customObject id="-2" userLabel="File's Owner" />
+    <customObject id="-1" userLabel="First Responder" customClass="FirstResponder" />
+    <customObject id="-3" userLabel="Application" customClass="NSObject" />
+    <customView id="PdN-uu-KZg">
+      <rect key="frame" x="0.0" y="0.0" width="250" height="250" />
+      <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES" />
+      <point key="canvasLocation" x="56" y="464" />
+      <subviews><box id="box-aa-Aud" boxType="separator" verticalHuggingPriority="750"><rect key="frame" x="10" y="30" width="150" height="5" /></box></subviews></customView>
+  </objects>
+</document>

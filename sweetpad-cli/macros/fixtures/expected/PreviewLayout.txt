@@ -1,0 +1,273 @@
+=== __swiftmacro_13PreviewLayout0024PreviewLayoutswift_ynAHffMX17_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s13PreviewLayout0024PreviewLayoutswift_ynAHffMX17_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewLayout/PreviewLayout.swift"
+    }
+    static var line: Int {
+        18
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                // a comment
+
+                V()   // trailing
+
+                V(n: 2)
+            }
+        }
+    }
+}
+=== __swiftmacro_13PreviewLayout0024PreviewLayoutswift_ynAHffMX25_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf0_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s13PreviewLayout0024PreviewLayoutswift_ynAHffMX25_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf0_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewLayout/PreviewLayout.swift"
+    }
+    static var line: Int {
+        26
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+              VStack {
+                  V()
+              }
+            }
+        }
+    }
+}
+=== __swiftmacro_13PreviewLayout0024PreviewLayoutswift_ynAHffMX31_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf1_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s13PreviewLayout0024PreviewLayoutswift_ynAHffMX31_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf1_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewLayout/PreviewLayout.swift"
+    }
+    static var line: Int {
+        32
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Paren", body: {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                            V()
+                        }
+        })
+    }
+}
+=== __swiftmacro_13PreviewLayout0024PreviewLayoutswift_ynAHffMX33_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf2_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s13PreviewLayout0024PreviewLayoutswift_ynAHffMX33_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf2_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewLayout/PreviewLayout.swift"
+    }
+    static var line: Int {
+        34
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                V();
+                V(n: 1)
+            }
+        }
+    }
+}
+=== __swiftmacro_13PreviewLayout0024PreviewLayoutswift_ynAHffMX35_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf3_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s13PreviewLayout0024PreviewLayoutswift_ynAHffMX35_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf3_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewLayout/PreviewLayout.swift"
+    }
+    static var line: Int {
+        36
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview(
+            "Multi",
+            traits: .landscapeLeft,
+        ) {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                V()
+            }
+        }
+    }
+}
+=== __swiftmacro_13PreviewLayout0024PreviewLayoutswift_ynAHffMX52_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf5_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s13PreviewLayout0024PreviewLayoutswift_ynAHffMX52_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf5_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewLayout/PreviewLayout.swift"
+    }
+    static var line: Int {
+        53
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Group", arguments: [1, 2]) { (n: Int) in
+            // comment
+            V(n: n)
+        }
+    }
+}
+=== __swiftmacro_13PreviewLayout0024PreviewLayoutswift_ynAHffMX57_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf6_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s13PreviewLayout0024PreviewLayoutswift_ynAHffMX57_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf6_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewLayout/PreviewLayout.swift"
+    }
+    static var line: Int {
+        58
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Group2", arguments: [1, 2]) {
+            n in
+            V(n: n)
+        }
+    }
+}
+=== __swiftmacro_13PreviewLayout0024PreviewLayoutswift_ynAHffMX61_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf7_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s13PreviewLayout0024PreviewLayoutswift_ynAHffMX61_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf7_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewLayout/PreviewLayout.swift"
+    }
+    static var line: Int {
+        62
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview("Group3", arguments: [1, 2]) {
+            V(n: $0)
+        }
+    }
+}
+=== __swiftmacro_13PreviewLayout0024PreviewLayoutswift_ynAHffMX63_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf8_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s13PreviewLayout0024PreviewLayoutswift_ynAHffMX63_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf8_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewLayout/PreviewLayout.swift"
+    }
+    static var line: Int {
+        64
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            @resultBuilder struct __B_Builder<Content> {
+                static func buildBlock(_ content: Content) -> Content {
+                    content
+                }
+            }
+            func __b_buildContent<Content>(@__B_Builder<Content> build: () -> Content) -> Content {
+                build()
+            }
+            return __b_buildContent {
+                UIView() as UIView
+            }
+        }
+    }
+}
+=== __swiftmacro_13PreviewLayout0024PreviewLayoutswift_ynAHffMX65_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf9_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s13PreviewLayout0024PreviewLayoutswift_ynAHffMX65_0_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf9_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewLayout/PreviewLayout.swift"
+    }
+    static var line: Int {
+        66
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            @resultBuilder struct __B_Builder<Content> {
+                static func buildBlock(_ content: Content) -> Content {
+                    content
+                }
+            }
+            func __b_buildContent<Content>(@__B_Builder<Content> build: () -> Content) -> Content {
+                build()
+            }
+            return __b_buildContent {
+            	UIView()
+            }
+        }
+    }
+}
+=== __swiftmacro_13PreviewLayout0024PreviewLayoutswift_ynAHffMX71_4_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s13PreviewLayout0024PreviewLayoutswift_ynAHffMX71_4_33_15B3C5FA506CCE997F1403BE6D7393D4Ll0A0fMf_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewLayout/PreviewLayout.swift"
+    }
+    static var line: Int {
+        72
+    }
+    static var column: Int {
+        5
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                V()
+            }
+        }
+    }
+}
+=== diagnostic
+PreviewLayout.swift:47:5: error: '@Previewable' items must be at the beginning of the preview block (from macro 'Preview')

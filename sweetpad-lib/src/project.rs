@@ -318,7 +318,7 @@ impl Project {
 /// `xcodebuild` synthesizes no schemes from their manifests. A path with no
 /// `Package.swift` is dropped rather than reported, so a reference left behind
 /// by a moved package cannot invent a scheme.
-fn local_package_refs(
+pub(crate) fn local_package_refs(
     value: &Value,
     objects: &Dict,
     project_obj: &Value,
@@ -623,7 +623,7 @@ pub fn parse_pbxproj(xcodeproj_path: &Path) -> Result<Arc<Value>, Error> {
 
 /// Pull the `objects` dict and the root project object out of a parsed
 /// pbxproj. Both shapes are stable and required by every higher-level query.
-fn project_root(value: &Value) -> Result<(&Dict, &Value), Error> {
+pub(crate) fn project_root(value: &Value) -> Result<(&Dict, &Value), Error> {
     let root = value
         .as_dict()
         .ok_or_else(|| Error::BadProject("pbxproj root is not a dict".into()))?;
@@ -6045,7 +6045,7 @@ mod tests {
 
         // `/tmp` is a symlink to `/private/tmp`; the short spelling is the one
         // Foundation reports, and so the one xcodebuild hashes.
-        if Path::new("/private/tmp").exists() {
+        if tmp_links_into_private() {
             assert_eq!(
                 standardize(Path::new("/private/tmp")),
                 PathBuf::from("/tmp")
@@ -6059,12 +6059,18 @@ mod tests {
         assert_eq!(standardize(&missing), absolutize(&missing));
     }
 
+    /// Whether `/tmp` is macOS's root symlink into `/private`. A Linux host can
+    /// have a `/private/tmp` without it: OrbStack mounts the Mac's `/private`.
+    fn tmp_links_into_private() -> bool {
+        fs::canonicalize("/tmp").is_ok_and(|p| p == Path::new("/private/tmp"))
+    }
+
     /// A `-derivedDataPath` loses only the `/private` in front of a root
     /// symlink, whether or not the directory exists yet, and keeps every
     /// other part of its spelling.
     #[test]
     fn without_private_root_drops_only_the_private_prefix() {
-        if !Path::new("/private/tmp").exists() {
+        if !tmp_links_into_private() {
             return;
         }
         for (given, spelled) in [

@@ -15,7 +15,7 @@
 //! What an app *exposes* is still up to the app — an unlabeled SwiftUI view
 //! shows up as a bare `AXGroup` with no title to match on.
 
-use std::ffi::{CString, c_void};
+use std::ffi::{CString, c_char, c_void};
 
 use crate::cli::CliError;
 
@@ -34,12 +34,13 @@ const KAX_ERROR_CANNOT_COMPLETE: AXError = -25204;
 /// nodes, so this is far above anything real.
 const NODE_BUDGET: usize = 20_000;
 
+#[cfg(target_os = "macos")]
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
     fn CFArrayGetCount(array: CFTypeRef) -> CFIndex;
     fn CFArrayGetValueAtIndex(array: CFTypeRef, idx: CFIndex) -> CFTypeRef;
-    fn CFStringCreateWithCString(alloc: CFTypeRef, s: *const i8, encoding: u32) -> CFTypeRef;
-    fn CFStringGetCString(s: CFTypeRef, buf: *mut i8, size: CFIndex, encoding: u32) -> u8;
+    fn CFStringCreateWithCString(alloc: CFTypeRef, s: *const c_char, encoding: u32) -> CFTypeRef;
+    fn CFStringGetCString(s: CFTypeRef, buf: *mut c_char, size: CFIndex, encoding: u32) -> u8;
     fn CFGetTypeID(cf: CFTypeRef) -> usize;
     fn CFStringGetTypeID() -> usize;
     fn CFArrayGetTypeID() -> usize;
@@ -59,6 +60,7 @@ unsafe extern "C" {
     static kCFTypeDictionaryValueCallBacks: c_void;
 }
 
+#[cfg(target_os = "macos")]
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
     fn AXIsProcessTrustedWithOptions(options: CFTypeRef) -> u8;
@@ -78,6 +80,82 @@ unsafe extern "C" {
     fn AXUIElementPerformAction(element: CFTypeRef, action: CFTypeRef) -> AXError;
 }
 
+/// Off macOS there is no Accessibility API to link. These stand in for the
+/// framework calls so the module builds: access is never granted and every
+/// element lookup fails.
+#[cfg(not(target_os = "macos"))]
+#[allow(non_snake_case, clippy::missing_safety_doc)]
+mod unavailable {
+    use super::{AXError, CFIndex, CFTypeRef, KAX_ERROR_API_DISABLED, c_char};
+
+    pub unsafe fn CFArrayGetCount(_: CFTypeRef) -> CFIndex {
+        0
+    }
+    pub unsafe fn CFArrayGetValueAtIndex(_: CFTypeRef, _: CFIndex) -> CFTypeRef {
+        std::ptr::null()
+    }
+    pub unsafe fn CFStringCreateWithCString(_: CFTypeRef, _: *const c_char, _: u32) -> CFTypeRef {
+        std::ptr::null()
+    }
+    pub unsafe fn CFStringGetCString(_: CFTypeRef, _: *mut c_char, _: CFIndex, _: u32) -> u8 {
+        0
+    }
+    pub unsafe fn CFGetTypeID(_: CFTypeRef) -> usize {
+        0
+    }
+    pub unsafe fn CFStringGetTypeID() -> usize {
+        1
+    }
+    pub unsafe fn CFArrayGetTypeID() -> usize {
+        2
+    }
+    pub unsafe fn CFBooleanGetTypeID() -> usize {
+        3
+    }
+    pub unsafe fn CFBooleanGetValue(_: CFTypeRef) -> u8 {
+        0
+    }
+    pub unsafe fn CFRelease(_: CFTypeRef) {}
+    pub unsafe fn AXIsProcessTrustedWithOptions(_: CFTypeRef) -> u8 {
+        0
+    }
+    pub unsafe fn AXUIElementCreateApplication(_: i32) -> CFTypeRef {
+        std::ptr::null()
+    }
+    pub unsafe fn AXUIElementGetTypeID() -> usize {
+        4
+    }
+    pub unsafe fn AXUIElementCopyAttributeValue(
+        _: CFTypeRef,
+        _: CFTypeRef,
+        _: *mut CFTypeRef,
+    ) -> AXError {
+        KAX_ERROR_API_DISABLED
+    }
+    pub unsafe fn AXUIElementSetAttributeValue(
+        _: CFTypeRef,
+        _: CFTypeRef,
+        _: CFTypeRef,
+    ) -> AXError {
+        KAX_ERROR_API_DISABLED
+    }
+    pub unsafe fn AXUIElementCopyActionNames(_: CFTypeRef, _: *mut CFTypeRef) -> AXError {
+        KAX_ERROR_API_DISABLED
+    }
+    pub unsafe fn AXUIElementPerformAction(_: CFTypeRef, _: CFTypeRef) -> AXError {
+        KAX_ERROR_API_DISABLED
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+use unavailable::{
+    AXIsProcessTrustedWithOptions, AXUIElementCopyActionNames, AXUIElementCopyAttributeValue,
+    AXUIElementCreateApplication, AXUIElementGetTypeID, AXUIElementPerformAction,
+    AXUIElementSetAttributeValue, CFArrayGetCount, CFArrayGetTypeID, CFArrayGetValueAtIndex,
+    CFBooleanGetTypeID, CFBooleanGetValue, CFGetTypeID, CFRelease, CFStringCreateWithCString,
+    CFStringGetCString, CFStringGetTypeID,
+};
+
 /// Whether this process (attributed to the hosting terminal app) already
 /// holds the Accessibility permission.
 pub fn has_accessibility_access() -> bool {
@@ -87,6 +165,7 @@ pub fn has_accessibility_access() -> bool {
 /// Trigger the one-time OS permission prompt (registers the hosting app in
 /// System Settings → Privacy & Security → Accessibility). Returns
 /// immediately; the grant lands on a future run.
+#[cfg(target_os = "macos")]
 pub fn request_accessibility_access() {
     let key = CFStr::new("AXTrustedCheckOptionPrompt");
     let options = unsafe {
@@ -107,6 +186,10 @@ pub fn request_accessibility_access() {
         CFRelease(options);
     }
 }
+
+/// No prompt to raise off macOS.
+#[cfg(not(target_os = "macos"))]
+pub fn request_accessibility_access() {}
 
 /// The error for a missing Accessibility grant, naming the exact settings
 /// pane. Mirrors `macwin::permission_error` for Screen Recording.
@@ -164,7 +247,7 @@ unsafe fn cf_string(value: CFTypeRef) -> Option<String> {
     let ok = unsafe {
         CFStringGetCString(
             value,
-            buf.as_mut_ptr().cast::<i8>(),
+            buf.as_mut_ptr().cast::<c_char>(),
             capacity,
             KCF_STRING_ENCODING_UTF8,
         )

@@ -20,9 +20,35 @@ sweetpad-core = { path = "sweetpad-core" }
 # JSON is a well-known standard format, not worth reinventing; hand-rolled
 # parsing is reserved for Apple's project-domain formats (DOCS.md §3.1).
 serde_json = "1"
+# Interface Builder stores control characters in Base64-encoded XML strings.
+# minreq's proxy support already depends on this standard-format decoder.
+base64 = "0.22"
+# AppKit's archived frames follow Auto Layout's linear constraints and priorities.
+cassowary = "0.3"
 # Unicode NFD for the DerivedData path hash (xcode_hash); UAX #15 with a
 # de-facto crate — not worth hand-rolling the decomposition tables.
 unicode-normalization = "0.1"
+# PNG, read and written for the app icons and images the Linux build's actool
+# stand-in puts in the bundle; a standard format with a de-facto crate.
+png = "0.18"
+# Gzip, for the image pixels in the actool stand-in's Assets.car; png already
+# depends on it.
+flate2 = "1"
+# The actool stand-in draws a catalog's vector images the way Xcode does,
+# into bitmaps: PDFs with hayro, SVGs and symbol templates with resvg (and
+# the usvg and roxmltree it re-exports, and svgtypes, which usvg parses
+# with). Both are pure Rust; PDF and SVG are standard formats too large to
+# hand-roll.
+hayro = { version = "0.8", default-features = false }
+resvg = { version = "0.48", default-features = false }
+svgtypes = "0.16"
+# The codesign stand-in signs with an identity exported from Keychain Access:
+# RSA signatures, and the Triple DES and AES that a .p12 file's contents are
+# encrypted with. The signature formats around them are Apple's, and
+# hand-rolled.
+rsa = { version = "0.9", default-features = false, features = ["std"] }
+des = "0.8"
+aes = "0.8"
 # The system calls: the account's home, name and cache directory, read the
 # way Xcode's tools read them (getpwuid_r, confstr), and the raw-input flags
 # the CLI's interactive rebuild session flips.

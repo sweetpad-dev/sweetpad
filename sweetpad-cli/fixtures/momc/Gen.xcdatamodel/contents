@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="1" systemVersion="1" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="A" representedClassName="A" syncable="YES" codeGenerationType="class">
+        <relationship name="b" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="B" inverseName="as" inverseEntity="B"/>
+        <attribute name="i16" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="i32" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="NO"/>
+        <attribute name="dbl" optional="YES" attributeType="Double" usesScalarValueType="NO"/>
+        <attribute name="flt" attributeType="Float" defaultValueString="1.25" usesScalarValueType="YES"/>
+        <attribute name="flag" optional="YES" attributeType="Boolean" usesScalarValueType="NO"/>
+        <attribute name="dec" optional="YES" attributeType="Decimal"/>
+        <attribute name="when" optional="YES" attributeType="Date" usesScalarValueType="YES"/>
+        <attribute name="link" optional="YES" attributeType="URI"/>
+        <attribute name="list" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="[String]"/>
+        <attribute name="obj" optional="YES" attributeType="Transformable"/>
+        <attribute name="oid" optional="YES" attributeType="ObjectID"/>
+        <attribute name="default" optional="YES" attributeType="String"/>
+        <attribute name="tmp" optional="YES" transient="YES" attributeType="String"/>
+        <relationship name="cs" optional="YES" toMany="YES" deletionRule="Cascade" ordered="YES" destinationEntity="C" inverseName="a" inverseEntity="C"/>
+    </entity>
+    <entity name="B" representedClassName="BObject" isAbstract="YES" syncable="YES" codeGenerationType="category">
+        <attribute name="title" optional="YES" attributeType="String"/>
+        <relationship name="as" optional="YES" toMany="YES" deletionRule="Deny" destinationEntity="A" inverseName="b" inverseEntity="A"/>
+    </entity>
+    <entity name="C" representedClassName="C" syncable="YES">
+        <attribute name="n" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="a" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="A" inverseName="cs" inverseEntity="A"/>
+    </entity>
+    <entity name="D" representedClassName="D" parentEntity="B" syncable="YES" codeGenerationType="class">
+        <attribute name="extra" optional="YES" attributeType="String"/>
+    </entity>
+    <entity name="E" syncable="YES" codeGenerationType="class">
+        <attribute name="x" optional="YES" attributeType="String"/>
+    </entity>
+</model>

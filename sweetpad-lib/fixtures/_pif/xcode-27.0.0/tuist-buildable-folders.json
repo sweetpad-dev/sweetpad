@@ -1,0 +1,468 @@
+[
+ {
+  "contents": {
+   "guid": "ac863f346e618f9a959b5c95d5d28941",
+   "name": "App",
+   "path": "$(CORPUS)/tuist-fixtures/examples/xcode/generated_app_with_buildable_folders/App.xcodeproj/project.xcworkspace",
+   "projects": [
+    "PROJECT@v11_mod=ae3ad823dafe06813acbb7fd3df93db0_hash=0ca3007d900a678c2b4d53418799ee3dplugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1"
+   ]
+  },
+  "signature": "WORKSPACE@v11_hash=c55fe694dc14950f25246332e0a9b8e1_subobjects=28d062f8fe86f60bb6874b884c697b50",
+  "type": "workspace"
+ },
+ {
+  "contents": {
+   "appPreferencesBuildSettings": {},
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ALWAYS_SEARCH_USER_PATHS": "NO",
+      "CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED": "YES",
+      "CLANG_ANALYZER_NONNULL": "YES",
+      "CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION": "YES_AGGRESSIVE",
+      "CLANG_CXX_LANGUAGE_STANDARD": "gnu++14",
+      "CLANG_CXX_LIBRARY": "libc++",
+      "CLANG_ENABLE_MODULES": "YES",
+      "CLANG_ENABLE_OBJC_ARC": "YES",
+      "CLANG_ENABLE_OBJC_WEAK": "YES",
+      "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+      "CLANG_WARN_BOOL_CONVERSION": "YES",
+      "CLANG_WARN_COMMA": "YES",
+      "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+      "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+      "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+      "CLANG_WARN_DOCUMENTATION_COMMENTS": "YES",
+      "CLANG_WARN_EMPTY_BODY": "YES",
+      "CLANG_WARN_ENUM_CONVERSION": "YES",
+      "CLANG_WARN_INFINITE_RECURSION": "YES",
+      "CLANG_WARN_INT_CONVERSION": "YES",
+      "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+      "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+      "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+      "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+      "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+      "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+      "CLANG_WARN_UNGUARDED_AVAILABILITY": "YES_AGGRESSIVE",
+      "CLANG_WARN_UNREACHABLE_CODE": "YES",
+      "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+      "COPY_PHASE_STRIP": "NO",
+      "DEAD_CODE_STRIPPING": "YES",
+      "DEBUG_INFORMATION_FORMAT": "dwarf",
+      "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+      "ENABLE_TESTABILITY": "YES",
+      "GCC_C_LANGUAGE_STANDARD": "gnu11",
+      "GCC_DYNAMIC_NO_PIC": "NO",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "GCC_OPTIMIZATION_LEVEL": "0",
+      "GCC_PREPROCESSOR_DEFINITIONS": "DEBUG=1 $(inherited)",
+      "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+      "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+      "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+      "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+      "GCC_WARN_UNUSED_FUNCTION": "YES",
+      "GCC_WARN_UNUSED_VARIABLE": "YES",
+      "MTL_ENABLE_DEBUG_INFO": "YES",
+      "ONLY_ACTIVE_ARCH": "YES",
+      "PRODUCT_NAME": "$(TARGET_NAME)"
+     },
+     "guid": "0ca3007d900a678c2b4d53418799ee3d2df919869f6c700fb7291d02fe289b68",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ALWAYS_SEARCH_USER_PATHS": "NO",
+      "CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED": "YES",
+      "CLANG_ANALYZER_NONNULL": "YES",
+      "CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION": "YES_AGGRESSIVE",
+      "CLANG_CXX_LANGUAGE_STANDARD": "gnu++14",
+      "CLANG_CXX_LIBRARY": "libc++",
+      "CLANG_ENABLE_MODULES": "YES",
+      "CLANG_ENABLE_OBJC_ARC": "YES",
+      "CLANG_ENABLE_OBJC_WEAK": "YES",
+      "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+      "CLANG_WARN_BOOL_CONVERSION": "YES",
+      "CLANG_WARN_COMMA": "YES",
+      "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+      "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+      "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+      "CLANG_WARN_DOCUMENTATION_COMMENTS": "YES",
+      "CLANG_WARN_EMPTY_BODY": "YES",
+      "CLANG_WARN_ENUM_CONVERSION": "YES",
+      "CLANG_WARN_INFINITE_RECURSION": "YES",
+      "CLANG_WARN_INT_CONVERSION": "YES",
+      "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+      "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+      "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+      "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+      "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+      "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+      "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+      "CLANG_WARN_UNGUARDED_AVAILABILITY": "YES_AGGRESSIVE",
+      "CLANG_WARN_UNREACHABLE_CODE": "YES",
+      "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+      "COPY_PHASE_STRIP": "NO",
+      "DEAD_CODE_STRIPPING": "YES",
+      "DEBUG_INFORMATION_FORMAT": "dwarf-with-dsym",
+      "ENABLE_NS_ASSERTIONS": "NO",
+      "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+      "GCC_C_LANGUAGE_STANDARD": "gnu11",
+      "GCC_NO_COMMON_BLOCKS": "YES",
+      "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+      "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+      "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+      "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+      "GCC_WARN_UNUSED_FUNCTION": "YES",
+      "GCC_WARN_UNUSED_VARIABLE": "YES",
+      "MTL_ENABLE_DEBUG_INFO": "NO",
+      "PRODUCT_NAME": "$(TARGET_NAME)",
+      "VALIDATE_PRODUCT": "YES"
+     },
+     "guid": "0ca3007d900a678c2b4d53418799ee3d1a808f2c482b0a445bf0a9c6b8bd7301",
+     "name": "Release"
+    }
+   ],
+   "classPrefix": "",
+   "defaultConfigurationName": "Release",
+   "developmentRegion": "en",
+   "groupTree": {
+    "children": [
+     {
+      "guid": "0ca3007d900a678c2b4d53418799ee3dc2c2e91a8fa5d9a8f69bdbbe122791c4",
+      "name": "Products",
+      "path": "",
+      "sourceTree": "<group>",
+      "type": "group"
+     },
+     {
+      "children": [
+       {
+        "children": [
+         {
+          "children": [
+           {
+            "children": [
+             {
+              "fileType": "text.json",
+              "guid": "0CVSkS77U+k9dfZEuIjrm5Paf2hRf2xBBOWyNQfUONI=",
+              "path": "ios_only.json",
+              "sourceTree": "<group>",
+              "type": "file"
+             },
+             {
+              "fileType": "text.json",
+              "guid": "m08PqygWqOAQbO+qOOou+nWgKJ+Ce3VvZByfenJ3hl4=",
+              "path": "tvos_only.json",
+              "sourceTree": "<group>",
+              "type": "file"
+             }
+            ],
+            "guid": "nJluwSvQ5SDApJITRVgkL+jC8XAsYhu1jzV+BLOukLc=",
+            "name": "PlatformSpecific",
+            "path": "PlatformSpecific",
+            "sourceTree": "<group>",
+            "type": "group"
+           },
+           {
+            "children": [
+             {
+              "fileType": "folder.assetcatalog",
+              "guid": "YtLhsDTN6PBRs73qGqw2RpQUR8ikRT4+SeCy0KAzBKw=",
+              "path": "Preview Assets.xcassets",
+              "sourceTree": "<group>",
+              "type": "file"
+             }
+            ],
+            "guid": "SvNH3/1lhR9a1xwizhwwyIsGv6wTdULItry+fKLj5w8=",
+            "name": "Preview Content",
+            "path": "Preview Content",
+            "sourceTree": "<group>",
+            "type": "group"
+           },
+           {
+            "fileType": "folder.assetcatalog",
+            "guid": "oIpXOGc7o+8wTo3loYUsd3BSYmgbPxxwhP3eLt0X/tY=",
+            "path": "Assets.xcassets",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "0ca3007d900a678c2b4d53418799ee3d436343d00aef97258b22e6591a2ef4cc",
+          "name": "Resources",
+          "path": "Resources",
+          "sourceTree": "<group>",
+          "type": "group"
+         },
+         {
+          "children": [
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "n97MTXwaMlN6uzE6X/GM4Yp84Jq39SYUJYr6GBSws30=",
+            "path": "AppWithBuildableFoldersApp.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "/Gj1GY7ss9EtwKHdq/7v+x7GhXa/OZWF8hOXFrKchcw=",
+            "path": "ContentView.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "beD3h2i2BbsYSS7JlAmlvPjZFa+h0aDJkZYyqShgd3Y=",
+            "path": "Excluded.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "XCDbw6NNfaTM3HdBIa+c2FqDQY9y0uI7Bx2LneWDU54=",
+            "path": "WithCompilerFlags.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "0ca3007d900a678c2b4d53418799ee3daacf2aebeb16daa630d0987112fba9f2",
+          "name": "Sources",
+          "path": "Sources",
+          "sourceTree": "<group>",
+          "type": "group"
+         }
+        ],
+        "guid": "0ca3007d900a678c2b4d53418799ee3d033280f2fbd4eb0cf0d178c3b3c89314",
+        "name": "App",
+        "path": "App",
+        "sourceTree": "<group>",
+        "type": "group"
+       },
+       {
+        "children": [
+         {
+          "children": [
+           {
+            "fileType": "text.plist",
+            "guid": "0ca3007d900a678c2b4d53418799ee3d89a42c44c591c6e327538ee88800e698",
+            "path": "App-Info.plist",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "0ca3007d900a678c2b4d53418799ee3dd38a7c21f9b3c9509158adca07e5802d",
+          "name": "InfoPlists",
+          "path": "InfoPlists",
+          "sourceTree": "<group>",
+          "type": "group"
+         },
+         {
+          "children": [
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "0ca3007d900a678c2b4d53418799ee3d06232b70989d5616c2548b911784a6c6",
+            "path": "TuistAssets+App.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           },
+           {
+            "fileType": "sourcecode.swift",
+            "guid": "0ca3007d900a678c2b4d53418799ee3d82be21e86b777626f5408f232e493d7a",
+            "path": "TuistBundle+App.swift",
+            "sourceTree": "<group>",
+            "type": "file"
+           }
+          ],
+          "guid": "0ca3007d900a678c2b4d53418799ee3d78b63d314fd47bf81987d777792d54f2",
+          "name": "Sources",
+          "path": "Sources",
+          "sourceTree": "<group>",
+          "type": "group"
+         }
+        ],
+        "guid": "0ca3007d900a678c2b4d53418799ee3d7c8490c288cbc247d9cd24bfc377dc23",
+        "name": "Derived",
+        "path": "Derived",
+        "sourceTree": "<group>",
+        "type": "group"
+       }
+      ],
+      "guid": "0ca3007d900a678c2b4d53418799ee3da363ed5ef43feab69b0d42a4abd612d6",
+      "name": "Project",
+      "path": "",
+      "sourceTree": "<group>",
+      "type": "group"
+     }
+    ],
+    "guid": "0ca3007d900a678c2b4d53418799ee3d4eaf8f91cc10fa0b99f10297537f1f8e",
+    "name": "App",
+    "path": "",
+    "sourceTree": "<group>",
+    "type": "group"
+   },
+   "guid": "0ca3007d900a678c2b4d53418799ee3d",
+   "knownRegions": [
+    "Base",
+    "en"
+   ],
+   "path": "$(CORPUS)/tuist-fixtures/examples/xcode/generated_app_with_buildable_folders/App.xcodeproj",
+   "projectDirectory": "$(CORPUS)/tuist-fixtures/examples/xcode/generated_app_with_buildable_folders",
+   "targets": [
+    "TARGET@v11_hash=316398edb3ca9bc5b2af5f5c9bedd247"
+   ]
+  },
+  "signature": "PROJECT@v11_mod=ae3ad823dafe06813acbb7fd3df93db0_hash=0ca3007d900a678c2b4d53418799ee3dplugins=1OJSG6M1FOV3XYQCBH7Z29RZ0FPR9XDE1",
+  "type": "project"
+ },
+ {
+  "contents": {
+   "buildConfigurations": [
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+      "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
+      "CODE_SIGN_IDENTITY": "-",
+      "COMBINE_HIDPI_IMAGES": "YES",
+      "ENABLE_PREVIEWS": "YES",
+      "INFOPLIST_FILE": "Derived/InfoPlists/App-Info.plist",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/../Frameworks",
+      "OTHER_LDFLAGS": "$(inherited) -L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+      "PRODUCT_BUNDLE_IDENTIFIER": "dev.tuist.app-with-buildable-folders",
+      "PRODUCT_NAME": "App",
+      "SDKROOT": "macosx",
+      "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "$(inherited) DEBUG",
+      "SWIFT_COMPILATION_MODE": "singlefile",
+      "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
+      "SWIFT_VERSION": "5.0"
+     },
+     "guid": "0ca3007d900a678c2b4d53418799ee3d52de807fca0c4b6c7052aad77e992b2e",
+     "name": "Debug"
+    },
+    {
+     "buildSettings": {
+      "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+      "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
+      "CODE_SIGN_IDENTITY": "-",
+      "COMBINE_HIDPI_IMAGES": "YES",
+      "ENABLE_PREVIEWS": "YES",
+      "INFOPLIST_FILE": "Derived/InfoPlists/App-Info.plist",
+      "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/../Frameworks",
+      "OTHER_LDFLAGS": "$(inherited) -L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+      "PRODUCT_BUNDLE_IDENTIFIER": "dev.tuist.app-with-buildable-folders",
+      "PRODUCT_NAME": "App",
+      "SDKROOT": "macosx",
+      "SWIFT_COMPILATION_MODE": "wholemodule",
+      "SWIFT_OPTIMIZATION_LEVEL": "-O",
+      "SWIFT_VERSION": "5.0"
+     },
+     "guid": "0ca3007d900a678c2b4d53418799ee3db26e3303f724812d604c34bdbcb41c5d",
+     "name": "Release"
+    }
+   ],
+   "buildPhases": [
+    {
+     "buildFiles": [
+      {
+       "fileReference": "n97MTXwaMlN6uzE6X/GM4Yp84Jq39SYUJYr6GBSws30=",
+       "guid": "hRR/u9waNQQDRsROPxOIkhoeoH3lSXYQ86C+nj9KiwM="
+      },
+      {
+       "fileReference": "/Gj1GY7ss9EtwKHdq/7v+x7GhXa/OZWF8hOXFrKchcw=",
+       "guid": "9owFEDJIqW2SkxccVdI4JpN31HGpihBzouYFE5axcKM="
+      },
+      {
+       "fileReference": "beD3h2i2BbsYSS7JlAmlvPjZFa+h0aDJkZYyqShgd3Y=",
+       "guid": "tUQaUpzLHS1wjWAFSvavh+uC3cS/xxrvoEAlxwnwEeI="
+      },
+      {
+       "fileReference": "XCDbw6NNfaTM3HdBIa+c2FqDQY9y0uI7Bx2LneWDU54=",
+       "guid": "bT1m9XIScU3LcKsLQE/Gvz2qORXAjnkx79LDfm4HCmc="
+      },
+      {
+       "fileReference": "0ca3007d900a678c2b4d53418799ee3d06232b70989d5616c2548b911784a6c6",
+       "guid": "0ca3007d900a678c2b4d53418799ee3db6e0fea7578b26c3711be790fe89cb79"
+      },
+      {
+       "fileReference": "0ca3007d900a678c2b4d53418799ee3d82be21e86b777626f5408f232e493d7a",
+       "guid": "0ca3007d900a678c2b4d53418799ee3d029268c1d16eefcf95ac4a76b038daf6"
+      }
+     ],
+     "guid": "0ca3007d900a678c2b4d53418799ee3d19ad9f92d5371284202a91bee07493bc",
+     "type": "com.apple.buildphase.sources"
+    },
+    {
+     "buildFiles": [
+      {
+       "fileReference": "0CVSkS77U+k9dfZEuIjrm5Paf2hRf2xBBOWyNQfUONI=",
+       "guid": "uk5MpzWJ18OEsReFjq87BQ+S1Ab8zx9IJBCGQ43peIg=",
+       "platformFilters": [
+        {
+         "platform": "ios"
+        }
+       ]
+      },
+      {
+       "fileReference": "m08PqygWqOAQbO+qOOou+nWgKJ+Ce3VvZByfenJ3hl4=",
+       "guid": "iJYz+vE36D5kag6Vyd/We2jA1XedHwY5lBsAp3mJwCQ=",
+       "platformFilters": [
+        {
+         "platform": "macos"
+        }
+       ]
+      },
+      {
+       "fileReference": "YtLhsDTN6PBRs73qGqw2RpQUR8ikRT4+SeCy0KAzBKw=",
+       "guid": "ZsViZpAf8FjK2UHC9PNokfgfS7U6eURb+sovi8V74oY="
+      },
+      {
+       "fileReference": "oIpXOGc7o+8wTo3loYUsd3BSYmgbPxxwhP3eLt0X/tY=",
+       "guid": "nq4bU2t35ixAabpvAq0k6MElyZfbFmot8/gsDfS5Whw="
+      }
+     ],
+     "guid": "0ca3007d900a678c2b4d53418799ee3d919fdb645b84dbba61ab4aa06a4be731",
+     "type": "com.apple.buildphase.resources"
+    },
+    {
+     "buildFiles": [],
+     "guid": "0ca3007d900a678c2b4d53418799ee3d7fece851ba060f50fc5caef828dca6d5",
+     "type": "com.apple.buildphase.frameworks"
+    },
+    {
+     "buildFiles": [],
+     "destinationSubfolder": "$(FRAMEWORKS_FOLDER_PATH)",
+     "destinationSubpath": "",
+     "guid": "0ca3007d900a678c2b4d53418799ee3dab2c91576db9e58896b0afbe157a7986",
+     "type": "com.apple.buildphase.copy-files"
+    }
+   ],
+   "buildRules": [],
+   "dependencies": [],
+   "guid": "0ca3007d900a678c2b4d53418799ee3da80172b0834d4bbc5617065839c16120",
+   "name": "App",
+   "predominantSourceCodeLanguage": "Xcode.SourceCodeLanguage.Swift",
+   "productReference": {
+    "guid": "0ca3007d900a678c2b4d53418799ee3d9c63d00a89f2b91d45a117bc8ee9c410",
+    "name": "App.app",
+    "type": "product"
+   },
+   "productTypeIdentifier": "com.apple.product-type.application",
+   "provisioningSourceData": [
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Debug",
+     "provisioningStyle": 1
+    },
+    {
+     "bundleIdentifierFromInfoPlist": "$(PRODUCT_BUNDLE_IDENTIFIER)",
+     "configurationName": "Release",
+     "provisioningStyle": 1
+    }
+   ],
+   "type": "standard"
+  },
+  "signature": "TARGET@v11_hash=316398edb3ca9bc5b2af5f5c9bedd247",
+  "type": "target"
+ }
+]

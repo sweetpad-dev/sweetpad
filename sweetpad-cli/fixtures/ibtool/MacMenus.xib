@@ -1,0 +1,33 @@
+<?xml version='1.0' encoding='utf-8'?>
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="9531" systemVersion="15C50" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+  <dependencies>
+    <deployment identifier="macosx" />
+    <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="9531" />
+  </dependencies>
+  <objects>
+    <customObject id="-2" userLabel="File's Owner" />
+    <customObject id="-1" userLabel="First Responder" customClass="FirstResponder" />
+    <customObject id="-3" userLabel="Application" customClass="NSObject" />
+    <menu title="Audit" systemMenu="main" id="Mnu-aa-Aud">
+      <items>
+        <menuItem title="Tools" id="Itm-aa-Aud">
+          <menu key="submenu" title="Tools" id="Mnu-ab-Aud">
+            <items>
+              <menuItem title="Run" keyEquivalent="r" state="mixed" id="Itm-ab-Aud">
+                <modifierMask key="keyEquivalentModifierMask" control="YES" option="YES" />
+                <connections>
+                  <action selector="press:" target="-1" id="Act-aa-Aud" />
+                </connections>
+              </menuItem>
+              <menuItem isSeparatorItem="YES" id="Itm-ac-Aud" />
+              <menuItem title="Disabled" enabled="NO" hidden="YES" id="Itm-ad-Aud">
+                <modifierMask key="keyEquivalentModifierMask" />
+                <string key="keyEquivalent" base64-UTF8="YES">DQ==</string>
+              </menuItem>
+            </items>
+          </menu>
+        </menuItem>
+      </items>
+    </menu>
+  </objects>
+</document>

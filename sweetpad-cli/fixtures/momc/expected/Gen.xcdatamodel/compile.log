@@ -1,0 +1,2 @@
+$(DIR)/Gen.xcdatamodel:A.obj: warning: A.obj is using a nil or insecure value transformer. Please switch to NSSecureUnarchiveFromDataTransformerName or a custom NSValueTransformer subclass of NSSecureUnarchiveFromDataTransformer [2]
+$(DIR)/Gen.xcdatamodel:A.oid: error: A.oid must have a defined type [2]

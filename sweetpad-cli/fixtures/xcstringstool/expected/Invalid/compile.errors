@@ -1,0 +1,4 @@
+$(DIR)/Invalid.xcstrings: error: Cannot infer format specifier for string group because more than one numerical specifier was found (en: Two numbers %ld %u)
+$(DIR)/Invalid.xcstrings: error: Fallback value cannot be further varied (en: Device other varied %lld|==|device.other)
+$(DIR)/Invalid.xcstrings: error: Plural case cannot be further varied (en: Plural then device %lld|==|plural.one)
+$(DIR)/Invalid.xcstrings: error: Plural variation requires referencing the number in the string. To maintain grammatical correctness for strings that do not reference the number of items, use separate top-level strings for one and greater than one. (en: No number)

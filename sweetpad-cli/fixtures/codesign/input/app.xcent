@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>application-identifier</key>
+	<string>TESTTEAM01.dev.sweetpad.fixture</string>
+	<key>com.apple.developer.icloud-container-environment</key>
+	<string>Development</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>TESTTEAM01</string>
+	<key>fixture.count</key>
+	<integer>3</integer>
+	<key>get-task-allow</key>
+	<true/>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>TESTTEAM01.dev.sweetpad.fixture</string>
+	</array>
+</dict>
+</plist>

@@ -25,12 +25,19 @@ use std::process::ExitCode;
 use clap::{CommandFactory, Parser, Subcommand};
 use sweetpad_core::xcodebuild_args;
 
+pub mod actool;
 pub mod buildlog;
+pub mod codesign;
 pub mod config;
+pub mod darwin_tools;
 pub mod devicectl;
 pub mod exits;
+pub mod ibtool;
 pub mod inject;
+pub mod intentbuilderc;
+pub mod keyed_archive;
 pub mod merge;
+pub mod momc;
 pub mod oslog;
 pub mod output;
 pub mod pbxedit;
@@ -44,11 +51,14 @@ pub mod scaffold;
 pub mod signals;
 pub mod simctl;
 pub mod state;
+pub mod swbuild;
 pub mod swiftpm;
 #[cfg(test)]
 #[path = "../../../sweetpad-lib/src/testdir.rs"]
 pub(crate) mod testdir;
 pub mod xcodebuild;
+pub mod xcstringstool;
+pub mod xml_plist;
 
 pub mod commands;
 

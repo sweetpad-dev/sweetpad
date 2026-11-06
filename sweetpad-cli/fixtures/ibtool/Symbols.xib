@@ -1,0 +1,126 @@
+<?xml version='1.0' encoding='utf-8'?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.XIB" version="3.0" targetRuntime="iOS.CocoaTouch" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" toolsVersion="18122">
+  <objects>
+    <placeholder placeholderIdentifier="IBFilesOwner" id="-1" customClass="FeatureOwner" customModule="Probe">
+      <connections>
+        <outlet property="view" destination="Root-aa-Vw1" id="Out-aa-Vw1" />
+      </connections>
+    </placeholder>
+    <placeholder placeholderIdentifier="IBFirstResponder" id="-2" customClass="UIResponder" />
+    <view id="Root-aa-Vw1" customClass="FeatureView" customModule="Probe">
+      <rect key="frame" x="0" y="0" width="390" height="844" />
+      <subviews>
+        <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="noV-fz-88z">
+          <rect key="frame" x="356" y="10" width="39" height="39" />
+          <constraints>
+            <constraint firstAttribute="width" constant="39" id="HBO-zo-rb2" />
+            <constraint firstAttribute="height" constant="39" id="oUY-3E-b1N" />
+          </constraints>
+          <state key="normal" title="Button" />
+          <buttonConfiguration key="configuration" style="plain">
+            <imageReference key="image" image="chevron.down" catalog="system" symbolScale="medium" />
+            <preferredSymbolConfiguration key="preferredSymbolConfigurationForImage" scale="small" />
+            <color key="baseForegroundColor" systemColor="labelColor" />
+          </buttonConfiguration>
+        </button>
+        <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="RmY-a3-hUg">
+          <rect key="frame" x="350" y="124" width="44" height="44" />
+          <constraints>
+            <constraint firstAttribute="width" constant="44" id="56o-Zr-T0w" />
+            <constraint firstAttribute="height" constant="44" id="lBg-Wy-k9P" />
+          </constraints>
+          <color key="tintColor" name="primaryAccentColor" />
+          <state key="normal" image="square.and.arrow.up.fill" catalog="system" />
+          <buttonConfiguration key="configuration" style="tinted" image="square.and.arrow.up" catalog="system" cornerStyle="capsule" />
+        </button>
+        <button opaque="NO" clipsSubviews="YES" contentMode="center" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="cXR-ll-xBx">
+          <rect key="frame" x="8" y="124" width="44" height="44" />
+          <constraints>
+            <constraint firstAttribute="height" constant="44" id="6kc-Gw-KbZ" />
+            <constraint firstAttribute="width" constant="44" id="cBq-gs-WzN" />
+          </constraints>
+          <color key="tintColor" name="primaryAccentColor" />
+          <state key="normal" image="multiply.circle.fill" catalog="system">
+            <preferredSymbolConfiguration key="preferredSymbolConfiguration" scale="large" weight="regular" />
+          </state>
+          <buttonConfiguration key="configuration" style="tinted" image="multiply.circle" catalog="system" cornerStyle="capsule">
+            <preferredSymbolConfiguration key="preferredSymbolConfigurationForImage" scale="large" weight="regular" />
+          </buttonConfiguration>
+        </button>
+        <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="ySI-TE-gHl">
+          <rect key="frame" x="167.33333333333334" y="404" width="79.666666666666657" height="34.333333333333314" />
+          <inset key="imageEdgeInsets" minX="0.0" minY="0.0" maxX="2.2250738585072014e-308" maxY="0.0" />
+          <state key="normal" title="Tap Me" />
+          <buttonConfiguration key="configuration" style="plain" title="Tap Me" />
+        </button>
+        <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="safari" catalog="system" translatesAutoresizingMaskIntoConstraints="NO" id="p82-kn-lfh">
+          <rect key="frame" x="329" y="3.5" width="25" height="24" />
+          <color key="tintColor" name="primaryAccentColor" />
+          <constraints>
+            <constraint firstAttribute="width" constant="25" id="Suu-bu-Lar" />
+            <constraint firstAttribute="height" constant="25" id="gD0-zu-2pr" />
+          </constraints>
+        </imageView>
+      </subviews>
+    </view>
+  </objects>
+  <resources>
+    <image name="chevron.down" catalog="system" width="128" height="70" />
+    <image name="chevron.down.circle" catalog="system" width="128" height="123" />
+    <image name="chevron.up" catalog="system" width="128" height="70" />
+    <image name="circle" catalog="system" width="128" height="123" />
+    <image name="gear" catalog="system" width="128" height="122" />
+    <image name="line.3.horizontal.decrease" catalog="system" width="128" height="73" />
+    <image name="markAllAsRead" width="13" height="20" />
+    <image name="multiply.circle" catalog="system" width="128" height="123" />
+    <image name="multiply.circle.fill" catalog="system" width="128" height="123" />
+    <image name="plus" catalog="system" width="128" height="113" />
+    <image name="square.and.arrow.up" catalog="system" width="110" height="128" />
+    <image name="square.and.arrow.up.fill" catalog="system" width="117" height="128" />
+    <image name="star" catalog="system" width="128" height="116" />
+    <namedColor name="barBackgroundColor">
+      <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace" />
+    </namedColor>
+    <namedColor name="fullScreenBackgroundColor">
+      <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace" />
+    </namedColor>
+    <namedColor name="primaryAccentColor">
+      <color red="0.031372549019607843" green="0.41568627450980394" blue="0.93333333333333335" alpha="1" colorSpace="custom" customColorSpace="sRGB" />
+    </namedColor>
+    <systemColor name="labelColor">
+      <color white="0.0" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace" />
+    </systemColor>
+    <systemColor name="secondaryLabelColor">
+      <color red="0.23529411764705882" green="0.23529411764705882" blue="0.2627450980392157" alpha="0.59999999999999998" colorSpace="custom" customColorSpace="sRGB" />
+    </systemColor>
+    <systemColor name="secondarySystemBackgroundColor">
+      <color red="0.94901960784313721" green="0.94901960784313721" blue="0.96862745098039216" alpha="1" colorSpace="custom" customColorSpace="sRGB" />
+    </systemColor>
+    <systemColor name="secondarySystemFillColor">
+      <color red="0.47058823529411764" green="0.47058823529411764" blue="0.50196078431372548" alpha="0.16" colorSpace="custom" customColorSpace="sRGB" />
+    </systemColor>
+    <systemColor name="secondarySystemGroupedBackgroundColor">
+      <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace" />
+    </systemColor>
+    <systemColor name="separatorColor">
+      <color red="0.23529411764705882" green="0.23529411764705882" blue="0.2627450980392157" alpha="0.12" colorSpace="custom" customColorSpace="sRGB" />
+    </systemColor>
+    <systemColor name="systemBackgroundColor">
+      <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace" />
+    </systemColor>
+    <systemColor name="tertiaryLabelColor">
+      <color red="0.23529411764705882" green="0.23529411764705882" blue="0.2627450980392157" alpha="0.29803921568627451" colorSpace="custom" customColorSpace="sRGB" />
+    </systemColor>
+    <image name="safari" catalog="system" width="128" height="123" />
+    <image name="safari.fill" catalog="system" width="128" height="123" />
+    <namedColor name="deleteBackgroundColor">
+      <color red="1" green="0.23100002110004425" blue="0.18799999356269836" alpha="1" colorSpace="custom" customColorSpace="sRGB" />
+    </namedColor>
+    <namedColor name="secondaryAccentColor">
+      <color red="0.031372549019607843" green="0.41568627450980394" blue="0.93333333333333335" alpha="1" colorSpace="custom" customColorSpace="sRGB" />
+    </namedColor>
+    <systemColor name="systemRedColor">
+      <color red="1" green="0.2196078431372549" blue="0.23529411764705882" alpha="1" colorSpace="custom" customColorSpace="sRGB" />
+    </systemColor>
+  </resources>
+</document>

@@ -1,0 +1,605 @@
+=== __swiftmacro_6Models0017Modelsswift_yEEFcfMX28_4_33_5B5C4E9DD2991B209D8B55F54D39D273Ll6UniquefMf_.swift
+
+=== __swiftmacro_6Models0017Modelsswift_yEEFcfMX29_4_33_5B5C4E9DD2991B209D8B55F54D39D273Ll5IndexfMf_.swift
+
+=== __swiftmacro_6Models4Book5ModelfMe_.swift
+extension Book: nonisolated SwiftData.PersistentModel {
+}
+
+extension Book: nonisolated Observation.Observable {
+}
+
+@available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Book's persistentModelID instead")
+@available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Book's persistentModelID instead")
+extension Book: Sendable {
+}
+=== __swiftmacro_6Models4Book5ModelfMm_.swift
+@Transient
+private var _$backingData: any SwiftData.BackingData<Book> = Book.createBackingData()
+
+public var persistentBackingData: any SwiftData.BackingData<Book> {
+    get {
+        return _$backingData
+    }
+    set {
+        _$backingData = newValue
+    }
+}
+
+class var schemaMetadata: [SwiftData.Schema.PropertyMetadata] {
+  let storedProperties = [
+    SwiftData.Schema.PropertyMetadata(name: "title", keypath: \Book.title, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "pages", keypath: \Book.pages, defaultValue: 0, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "rating", keypath: \Book.rating, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "tags", keypath: \Book.tags, defaultValue: [], metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "genre", keypath: \Book.genre, defaultValue: Genre.fiction, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "info", keypath: \Book.info, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "author", keypath: \Book.author, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "cover", keypath: \Book.cover, defaultValue: nil, metadata: SwiftData.Schema.Attribute(.externalStorage)),
+    SwiftData.Schema.PropertyMetadata(name: "tagline", keypath: \Book.tagline, defaultValue: nil, metadata: SwiftData.Schema.Attribute(originalName: "subtitle")),
+    SwiftData.Schema.PropertyMetadata(name: "added", keypath: \Book.added, defaultValue: Date(timeIntervalSinceReferenceDate: 0), metadata: nil)
+  ]
+  var otherProperties = [SwiftData.Schema.PropertyMetadata]()
+  if #available(macOS 15, iOS 18, tvOS 18, watchOS 11, visionOS 2, *) {
+    otherProperties.append(
+      SwiftData.Schema.PropertyMetadata(name: "SwiftData.Schema.Index", keypath: \SwiftData.Schema.encodingVersion, defaultValue: nil, metadata: SwiftData.Schema.Index<Book>([\.title], [\.pages, \.rating])))
+  }
+  if #available(macOS 15, iOS 18, tvOS 18, watchOS 11, visionOS 2, *) {
+    otherProperties.append(
+      SwiftData.Schema.PropertyMetadata(name: "SwiftData.Schema.Unique", keypath: \SwiftData.Schema.encodingVersion, defaultValue: nil, metadata: SwiftData.Schema.Unique<Book>([\.title, \.pages])))
+  }
+  return storedProperties + otherProperties
+}
+
+init(backingData: any SwiftData.BackingData<Book>) {
+  _title = _SwiftDataNoType()
+  _pages = _SwiftDataNoType()
+  _rating = _SwiftDataNoType()
+  _tags = _SwiftDataNoType()
+  _genre = _SwiftDataNoType()
+  _info = _SwiftDataNoType()
+  _author = _SwiftDataNoType()
+  _cover = _SwiftDataNoType()
+  _tagline = _SwiftDataNoType()
+  _added = _SwiftDataNoType()
+  self.persistentBackingData = backingData
+}
+
+@Transient private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<_M>(
+    keyPath: KeyPath<Book, _M>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<_M, _MR>(
+  keyPath: KeyPath<Book, _M>,
+  _ mutation: () throws -> _MR
+) rethrows -> _MR {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+struct _SwiftDataNoType {
+}
+=== __swiftmacro_6Models4BookC13_$backingData33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models4BookC1_5ModelfMr12_.swift
+
+=== __swiftmacro_6Models4BookC1_5ModelfMr13_.swift
+
+=== __swiftmacro_6Models4BookC22_$observationRegistrar33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models4BookC4info18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _info)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.info, to: initialValue)
+        _info = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.info)
+        return self.getValue(forKey: \.info)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.info) {
+            self.setValue(forKey: \.info, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models4BookC4info18_PersistedPropertyfMp_.swift
+@Transient
+private var _info: _SwiftDataNoType?
+=== __swiftmacro_6Models4BookC4info5ModelfMr4_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models4BookC4init5ModelfMr11_.swift
+
+=== __swiftmacro_6Models4BookC4tags18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _tags)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.tags, to: initialValue)
+        _tags = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.tags)
+        return self.getValue(forKey: \.tags)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.tags) {
+            self.setValue(forKey: \.tags, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models4BookC4tags18_PersistedPropertyfMp_.swift
+@Transient
+private var _tags: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Models4BookC4tags5ModelfMr2_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models4BookC5_info33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models4BookC5_tags33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models4BookC5added18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _added)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.added, to: initialValue)
+        _added = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.added)
+        return self.getValue(forKey: \.added)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.added) {
+            self.setValue(forKey: \.added, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models4BookC5added18_PersistedPropertyfMp_.swift
+@Transient
+private var _added: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Models4BookC5added5ModelfMr9_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models4BookC5cover18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _cover)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.cover, to: initialValue)
+        _cover = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.cover)
+        return self.getValue(forKey: \.cover)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.cover) {
+            self.setValue(forKey: \.cover, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models4BookC5cover18_PersistedPropertyfMp_.swift
+@Transient
+private var _cover: _SwiftDataNoType?
+=== __swiftmacro_6Models4BookC5cover5ModelfMr7_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models4BookC5cover9AttributefMp_.swift
+
+=== __swiftmacro_6Models4BookC5genre18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _genre)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.genre, to: initialValue)
+        _genre = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.genre)
+        return self.getValue(forKey: \.genre)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.genre) {
+            self.setValue(forKey: \.genre, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models4BookC5genre18_PersistedPropertyfMp_.swift
+@Transient
+private var _genre: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Models4BookC5genre5ModelfMr3_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models4BookC5pages18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _pages)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.pages, to: initialValue)
+        _pages = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.pages)
+        return self.getValue(forKey: \.pages)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.pages) {
+            self.setValue(forKey: \.pages, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models4BookC5pages18_PersistedPropertyfMp_.swift
+@Transient
+private var _pages: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Models4BookC5pages5ModelfMr0_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models4BookC5title18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _title)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.title, to: initialValue)
+        _title = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.title)
+        return self.getValue(forKey: \.title)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.title) {
+            self.setValue(forKey: \.title, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models4BookC5title18_PersistedPropertyfMp_.swift
+@Transient
+private var _title: _SwiftDataNoType
+=== __swiftmacro_6Models4BookC5title5ModelfMr_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models4BookC6_added33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models4BookC6_cover33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models4BookC6_genre33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models4BookC6_pages33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models4BookC6_title33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models4BookC6author18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _author)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.author, to: initialValue)
+        _author = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.author)
+        return self.getValue(forKey: \.author)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.author) {
+            self.setValue(forKey: \.author, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models4BookC6author18_PersistedPropertyfMp_.swift
+@Transient
+private var _author: _SwiftDataNoType?
+=== __swiftmacro_6Models4BookC6author5ModelfMr5_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models4BookC6cached5ModelfMr6_.swift
+
+=== __swiftmacro_6Models4BookC6cached9TransientfMp_.swift
+
+=== __swiftmacro_6Models4BookC6rating18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _rating)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.rating, to: initialValue)
+        _rating = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.rating)
+        return self.getValue(forKey: \.rating)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.rating) {
+            self.setValue(forKey: \.rating, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models4BookC6rating18_PersistedPropertyfMp_.swift
+@Transient
+private var _rating: _SwiftDataNoType?
+=== __swiftmacro_6Models4BookC6rating5ModelfMr1_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models4BookC7_author33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models4BookC7_rating33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models4BookC7summary5ModelfMr10_.swift
+
+=== __swiftmacro_6Models4BookC7tagline18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _tagline)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.tagline, to: initialValue)
+        _tagline = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.tagline)
+        return self.getValue(forKey: \.tagline)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.tagline) {
+            self.setValue(forKey: \.tagline, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models4BookC7tagline18_PersistedPropertyfMp_.swift
+@Transient
+private var _tagline: _SwiftDataNoType?
+=== __swiftmacro_6Models4BookC7tagline5ModelfMr8_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models4BookC7tagline9AttributefMp_.swift
+
+=== __swiftmacro_6Models4BookC8_tagline33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models5Shelf5ModelfMe_.swift
+extension Shelf: nonisolated SwiftData.PersistentModel {
+}
+
+extension Shelf: nonisolated Observation.Observable {
+}
+
+@available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Shelf's persistentModelID instead")
+@available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Shelf's persistentModelID instead")
+extension Shelf: Sendable {
+}
+=== __swiftmacro_6Models5Shelf5ModelfMm_.swift
+@Transient
+private var _$backingData: any SwiftData.BackingData<Shelf> = Shelf.createBackingData()
+
+public var persistentBackingData: any SwiftData.BackingData<Shelf> {
+    get {
+        return _$backingData
+    }
+    set {
+        _$backingData = newValue
+    }
+}
+
+class var schemaMetadata: [SwiftData.Schema.PropertyMetadata] {
+  return [
+    SwiftData.Schema.PropertyMetadata(name: "label", keypath: \Shelf.label, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "books", keypath: \Shelf.books, defaultValue: nil, metadata: SwiftData.Schema.Relationship(minimumModelCount: 0, maximumModelCount: 10))
+  ]
+}
+
+required init(backingData: any SwiftData.BackingData<Shelf>) {
+  _label = _SwiftDataNoType()
+  _books = _SwiftDataNoType()
+  self.persistentBackingData = backingData
+}
+
+@Transient private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<_M>(
+    keyPath: KeyPath<Shelf, _M>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<_M, _MR>(
+  keyPath: KeyPath<Shelf, _M>,
+  _ mutation: () throws -> _MR
+) rethrows -> _MR {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+struct _SwiftDataNoType {
+}
+=== __swiftmacro_6Models5ShelfC13_$backingData33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models5ShelfC22_$observationRegistrar33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models5ShelfC4init5ModelfMr1_.swift
+
+=== __swiftmacro_6Models5ShelfC5books12RelationshipfMp_.swift
+
+=== __swiftmacro_6Models5ShelfC5books18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _books)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.books, to: initialValue)
+        _books = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.books)
+        return self.getValue(forKey: \.books)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.books) {
+            self.setValue(forKey: \.books, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models5ShelfC5books18_PersistedPropertyfMp_.swift
+@Transient
+private var _books: _SwiftDataNoType?
+=== __swiftmacro_6Models5ShelfC5books5ModelfMr0_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models5ShelfC5label18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _label)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.label, to: initialValue)
+        _label = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.label)
+        return self.getValue(forKey: \.label)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.label) {
+            self.setValue(forKey: \.label, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models5ShelfC5label18_PersistedPropertyfMp_.swift
+@Transient
+private var _label: _SwiftDataNoType
+=== __swiftmacro_6Models5ShelfC5label5ModelfMr_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models5ShelfC6_books33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models5ShelfC6_label33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models6Author5ModelfMe_.swift
+extension Author: nonisolated SwiftData.PersistentModel {
+}
+
+extension Author: nonisolated Observation.Observable {
+}
+
+@available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Author's persistentModelID instead")
+@available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use Author's persistentModelID instead")
+extension Author: Sendable {
+}
+=== __swiftmacro_6Models6Author5ModelfMm_.swift
+@Transient
+private var _$backingData: any SwiftData.BackingData<Author> = Author.createBackingData()
+
+public var persistentBackingData: any SwiftData.BackingData<Author> {
+    get {
+        return _$backingData
+    }
+    set {
+        _$backingData = newValue
+    }
+}
+
+class var schemaMetadata: [SwiftData.Schema.PropertyMetadata] {
+  return [
+    SwiftData.Schema.PropertyMetadata(name: "name", keypath: \Author.name, defaultValue: nil, metadata: SwiftData.Schema.Attribute(.unique)),
+    SwiftData.Schema.PropertyMetadata(name: "born", keypath: \Author.born, defaultValue: nil, metadata: nil),
+    SwiftData.Schema.PropertyMetadata(name: "books", keypath: \Author.books, defaultValue: [], metadata: SwiftData.Schema.Relationship(deleteRule: .cascade, inverse: \Book.author))
+  ]
+}
+
+init(backingData: any SwiftData.BackingData<Author>) {
+  _name = _SwiftDataNoType()
+  _born = _SwiftDataNoType()
+  _books = _SwiftDataNoType()
+  self.persistentBackingData = backingData
+}
+
+@Transient private let _$observationRegistrar = Observation.ObservationRegistrar()
+
+internal nonisolated func access<_M>(
+    keyPath: KeyPath<Author, _M>
+) {
+  _$observationRegistrar.access(self, keyPath: keyPath)
+}
+
+internal nonisolated func withMutation<_M, _MR>(
+  keyPath: KeyPath<Author, _M>,
+  _ mutation: () throws -> _MR
+) rethrows -> _MR {
+  try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+}
+
+struct _SwiftDataNoType {
+}
+=== __swiftmacro_6Models6AuthorC13_$backingData33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models6AuthorC22_$observationRegistrar33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models6AuthorC4born18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _born)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.born, to: initialValue)
+        _born = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.born)
+        return self.getValue(forKey: \.born)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.born) {
+            self.setValue(forKey: \.born, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models6AuthorC4born18_PersistedPropertyfMp_.swift
+@Transient
+private var _born: _SwiftDataNoType?
+=== __swiftmacro_6Models6AuthorC4born5ModelfMr0_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models6AuthorC4init5ModelfMr2_.swift
+
+=== __swiftmacro_6Models6AuthorC4name18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _name)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.name, to: initialValue)
+        _name = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.name)
+        return self.getValue(forKey: \.name)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.name) {
+            self.setValue(forKey: \.name, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models6AuthorC4name18_PersistedPropertyfMp_.swift
+@Transient
+private var _name: _SwiftDataNoType
+=== __swiftmacro_6Models6AuthorC4name5ModelfMr_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models6AuthorC4name9AttributefMp_.swift
+
+=== __swiftmacro_6Models6AuthorC5_born33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models6AuthorC5_name33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models6AuthorC5books12RelationshipfMp_.swift
+
+=== __swiftmacro_6Models6AuthorC5books18_PersistedPropertyfMa_.swift
+{
+    @storageRestrictions(accesses: _$backingData, initializes: _books)
+    init(initialValue) {
+        _$backingData.setValue(forKey: \.books, to: initialValue)
+        _books = _SwiftDataNoType()
+    }
+    get {
+        _$observationRegistrar.access(self, keyPath: \.books)
+        return self.getValue(forKey: \.books)
+    }
+    set {
+        _$observationRegistrar.withMutation(of: self, keyPath: \.books) {
+            self.setValue(forKey: \.books, to: newValue)
+        }
+    }
+}
+=== __swiftmacro_6Models6AuthorC5books18_PersistedPropertyfMp_.swift
+@Transient
+private var _books: _SwiftDataNoType = _SwiftDataNoType()
+=== __swiftmacro_6Models6AuthorC5books5ModelfMr1_.swift
+@_PersistedProperty
+=== __swiftmacro_6Models6AuthorC6_books33_5B5C4E9DD2991B209D8B55F54D39D273LL9TransientfMp_.swift
+
+=== __swiftmacro_6Models8Importer10ModelActorfMe_.swift
+extension Importer: SwiftData.ModelActor {
+}
+=== __swiftmacro_6Models8Importer10ModelActorfMm_.swift
+nonisolated let modelExecutor: any SwiftData.ModelExecutor
+
+nonisolated let modelContainer: SwiftData.ModelContainer
+
+init(modelContainer: SwiftData.ModelContainer) {
+    let modelContext = ModelContext(modelContainer)
+    self.modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
+    self.modelContainer = modelContainer
+}

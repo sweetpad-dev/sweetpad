@@ -1,0 +1,412 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>%@ has %lld files</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$@ has %2$lld file</string>
+			<key>other</key>
+			<string>%1$@ has %2$lld files</string>
+		</dict>
+	</dict>
+	<key>%lld items</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld item</string>
+			<key>other</key>
+			<string>%lld items</string>
+			<key>zero</key>
+			<string>No items</string>
+		</dict>
+	</dict>
+	<key>%lld photos and %lld videos</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@photos@ and %2$#@videos@</string>
+		<key>photos</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$lld photo</string>
+			<key>other</key>
+			<string>%1$lld photos</string>
+		</dict>
+		<key>videos</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%2$lld video</string>
+			<key>other</key>
+			<string>%2$lld videos</string>
+		</dict>
+	</dict>
+	<key>Count</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d apple</string>
+			<key>other</key>
+			<string>%d apples</string>
+		</dict>
+	</dict>
+	<key>Device</key>
+	<dict>
+		<key>NSStringDeviceSpecificRuleType</key>
+		<dict>
+			<key>iphone</key>
+			<string>Tap</string>
+			<key>mac</key>
+			<string>Click</string>
+		</dict>
+	</dict>
+	<key>Device then plural %lld</key>
+	<dict>
+		<key>NSStringDeviceSpecificRuleType</key>
+		<dict>
+			<key>iphone</key>
+			<dict>
+				<key>NSStringLocalizedFormatKey</key>
+				<string>%#@value@</string>
+				<key>value</key>
+				<dict>
+					<key>NSStringFormatSpecTypeKey</key>
+					<string>NSStringPluralRuleType</string>
+					<key>NSStringFormatValueTypeKey</key>
+					<string>lld</string>
+					<key>one</key>
+					<string>%lld phone</string>
+					<key>other</key>
+					<string>%lld phones</string>
+				</dict>
+			</dict>
+		</dict>
+	</dict>
+	<key>Device without other</key>
+	<dict>
+		<key>NSStringDeviceSpecificRuleType</key>
+		<dict>
+			<key>ipad</key>
+			<string>On iPad</string>
+			<key>iphone</key>
+			<string>On iPhone</string>
+		</dict>
+	</dict>
+	<key>Every device</key>
+	<dict>
+		<key>NSStringDeviceSpecificRuleType</key>
+		<dict>
+			<key>appletv</key>
+			<string>TV</string>
+			<key>applevision</key>
+			<string>Vision</string>
+			<key>applewatch</key>
+			<string>Watch</string>
+			<key>ipad</key>
+			<string>iPad</string>
+			<key>iphone</key>
+			<string>iPhone</string>
+			<key>ipod</key>
+			<string>iPod</string>
+			<key>mac</key>
+			<string>Mac</string>
+		</dict>
+	</dict>
+	<key>Float %f</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>f</string>
+			<key>one</key>
+			<string>%.1f km</string>
+			<key>other</key>
+			<string>%.1f kms</string>
+		</dict>
+	</dict>
+	<key>Manual device</key>
+	<dict>
+		<key>NSStringDeviceSpecificRuleType</key>
+		<dict>
+			<key>mac</key>
+			<string>m</string>
+		</dict>
+	</dict>
+	<key>Manual device plural %lld</key>
+	<dict>
+		<key>NSStringDeviceSpecificRuleType</key>
+		<dict>
+			<key>mac</key>
+			<dict>
+				<key>NSStringLocalizedFormatKey</key>
+				<string>%#@value@</string>
+				<key>value</key>
+				<dict>
+					<key>NSStringFormatSpecTypeKey</key>
+					<string>NSStringPluralRuleType</string>
+					<key>NSStringFormatValueTypeKey</key>
+					<string>lld</string>
+					<key>one</key>
+					<string>%lld m</string>
+					<key>other</key>
+					<string>%lld ms</string>
+				</dict>
+			</dict>
+		</dict>
+	</dict>
+	<key>Manual plural %lld</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld thing</string>
+			<key>other</key>
+			<string>%lld things</string>
+		</dict>
+	</dict>
+	<key>Manual substitution %lld</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$lld x</string>
+			<key>other</key>
+			<string>%1$lld xs</string>
+		</dict>
+	</dict>
+	<key>Manual width</key>
+	<dict>
+		<key>NSStringVariableWidthRuleType</key>
+		<dict>
+			<key>1</key>
+			<string>a</string>
+			<key>20</key>
+			<string>bbb</string>
+		</dict>
+	</dict>
+	<key>Mixed %lld %@</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld file in %@</string>
+			<key>other</key>
+			<string>%lld files in %@</string>
+		</dict>
+	</dict>
+	<key>Only other %lld</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%lld others</string>
+		</dict>
+	</dict>
+	<key>Percent %% then %lld</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>100%% of %lld</string>
+			<key>other</key>
+			<string>100%% of %lld</string>
+		</dict>
+	</dict>
+	<key>Positional %2$lld %1$@</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%2$lld file in %1$@</string>
+			<key>other</key>
+			<string>%2$lld files in %1$@</string>
+		</dict>
+	</dict>
+	<key>Stale plural %lld</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld x</string>
+			<key>other</key>
+			<string>%lld xs</string>
+		</dict>
+	</dict>
+	<key>Sub at %@</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@who@</string>
+		<key>who</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>@</string>
+			<key>one</key>
+			<string>%1$@ person</string>
+			<key>other</key>
+			<string>%1$@ people</string>
+		</dict>
+	</dict>
+	<key>Sub in device %lld</key>
+	<dict>
+		<key>NSStringDeviceSpecificRuleType</key>
+		<dict>
+			<key>iphone</key>
+			<dict>
+				<key>NSStringLocalizedFormatKey</key>
+				<string>%1$#@n@ on phone</string>
+				<key>n</key>
+				<dict>
+					<key>NSStringFormatSpecTypeKey</key>
+					<string>NSStringPluralRuleType</string>
+					<key>NSStringFormatValueTypeKey</key>
+					<string>lld</string>
+					<key>one</key>
+					<string>%1$lld one</string>
+					<key>other</key>
+					<string>%1$lld many</string>
+				</dict>
+			</dict>
+		</dict>
+	</dict>
+	<key>Sub no argNum %lld</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>Got %#@items@ today</string>
+		<key>items</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld item</string>
+			<key>other</key>
+			<string>%lld items (%lld)</string>
+		</dict>
+	</dict>
+	<key>Sub positional %lld %lld</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@b@ then %1$#@a@</string>
+		<key>a</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$lld a</string>
+			<key>other</key>
+			<string>%1$lld as</string>
+		</dict>
+		<key>b</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%2$lld b</string>
+			<key>other</key>
+			<string>%2$lld bs</string>
+		</dict>
+	</dict>
+	<key>Unit and variation</key>
+	<dict>
+		<key>NSStringDeviceSpecificRuleType</key>
+		<dict>
+			<key>mac</key>
+			<string>Mac value</string>
+		</dict>
+	</dict>
+	<key>Width</key>
+	<dict>
+		<key>NSStringVariableWidthRuleType</key>
+		<dict>
+			<key>1</key>
+			<string>W</string>
+			<key>100</key>
+			<string>Very wide text</string>
+			<key>20</key>
+			<string>Wide text</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

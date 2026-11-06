@@ -170,6 +170,14 @@ fn write_element(out: &mut String, e: &Element, depth: usize) {
         push_escaped(out, value);
         out.push('"');
     }
+    if e.children.is_empty() && !e.text.is_empty() {
+        out.push('>');
+        push_escaped(out, &e.text);
+        out.push_str("</");
+        out.push_str(&e.name);
+        out.push_str(">\n");
+        return;
+    }
     out.push_str(">\n");
     if !e.text.is_empty() {
         out.push_str(&indent);
@@ -392,11 +400,19 @@ impl<'a> Parser<'a> {
                     return Err(self.error("expected '>' in closing tag"));
                 }
                 self.pos += 1;
+                // A leaf's text is its value, spaces and all, as in a
+                // plist's <string> or a storyboard label's; around children
+                // it's only the indentation they're laid out with.
+                let text = if children.is_empty() && !text.trim().is_empty() {
+                    text
+                } else {
+                    text.trim().to_string()
+                };
                 return Ok(Element {
                     name,
                     attributes,
                     children,
-                    text: text.trim().to_string(),
+                    text,
                 });
             }
             if self.starts_with(b"<!--") {
@@ -573,6 +589,14 @@ mod tests {
     fn parses_single_quoted_attributes() {
         let e = parse(r"<Scheme version='1.0'/>").unwrap();
         assert_eq!(e.attr("version"), Some("1.0"));
+    }
+
+    #[test]
+    fn keeps_a_leafs_text_as_written() {
+        let e = parse("<a>\n   <s>  two\nlines </s>\n   <b>\n   </b>\n</a>").unwrap();
+        assert_eq!(e.children[0].text, "  two\nlines ");
+        assert_eq!(e.children[1].text, "");
+        assert_eq!(parse(&serialize(&e)).unwrap(), e);
     }
 
     #[test]

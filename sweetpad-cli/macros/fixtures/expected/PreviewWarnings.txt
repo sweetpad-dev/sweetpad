@@ -1,0 +1,209 @@
+=== __swiftmacro_15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX10_0_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX10_0_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWarnings/PreviewWarnings.swift"
+    }
+    static var line: Int {
+        11
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                @State var missing = 1
+                B(x: $missing)
+            }
+        }
+    }
+}
+=== __swiftmacro_15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX15_0_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf0_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX15_0_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf0_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWarnings/PreviewWarnings.swift"
+    }
+    static var line: Int {
+        16
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                Text("").previewLayout(.sizeThatFits).previewDisplayName("x").previewInterfaceOrientation(.landscapeLeft).previewDevice("iPhone 15")
+            }
+        }
+    }
+}
+=== __swiftmacro_15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX19_0_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf1_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX19_0_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf1_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWarnings/PreviewWarnings.swift"
+    }
+    static var line: Int {
+        20
+    }
+    static var column: Int {
+        1
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            struct __P_Previewable_Transform_Wrapper: SwiftUI.View {
+                @State var x = 1
+
+                var body: some SwiftUI.View {
+                    Button("b") {
+                        x += 1
+                    } .onAppear {
+                        x = 2
+                    }
+                }
+            }
+            return __P_Previewable_Transform_Wrapper()
+        }
+    }
+}
+=== __swiftmacro_15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX26_4_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX26_4_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWarnings/PreviewWarnings.swift"
+    }
+    static var line: Int {
+        27
+    }
+    static var column: Int {
+        5
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                Text("1")
+            }
+        }
+    }
+}
+=== __swiftmacro_15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX31_4_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX31_4_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWarnings/PreviewWarnings.swift"
+    }
+    static var line: Int {
+        32
+    }
+    static var column: Int {
+        5
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                Text("2")
+            }
+        }
+    }
+}
+=== __swiftmacro_15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX36_4_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX36_4_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWarnings/PreviewWarnings.swift"
+    }
+    static var line: Int {
+        37
+    }
+    static var column: Int {
+        5
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                Text("3")
+            }
+        }
+    }
+}
+=== __swiftmacro_15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX41_4_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX41_4_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWarnings/PreviewWarnings.swift"
+    }
+    static var line: Int {
+        42
+    }
+    static var column: Int {
+        5
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                Text("4")
+            }
+        }
+    }
+}
+=== __swiftmacro_15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX46_4_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf_.swift
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, visionOS 1.0, watchOS 10.0, *)
+nonisolated struct $s15PreviewWarnings0026PreviewWarningsswift_DsAGgfMX46_4_33_DDFB43C72DCE712F3F316FE0F1034A84Ll0A0fMf_15PreviewRegistryfMu_: DeveloperToolsSupport.PreviewRegistry {
+    static var fileID: String {
+        "PreviewWarnings/PreviewWarnings.swift"
+    }
+    static var line: Int {
+        47
+    }
+    static var column: Int {
+        5
+    }
+
+    @MainActor static func makePreview() throws -> DeveloperToolsSupport.Preview {
+        DeveloperToolsSupport.Preview {
+            func __b_buildView(@SwiftUI.ViewBuilder body: () -> any SwiftUI.View) -> any SwiftUI.View {
+                body()
+            }
+            return __b_buildView {
+                Text("5")
+            }
+        }
+    }
+}
+=== diagnostic
+PreviewWarnings.swift:12:5: warning: '@State' used inline will not work unless tagged with '@Previewable' (from macro 'Preview')
+=== diagnostic
+PreviewWarnings.swift:17:111: warning: previewDevice is ignored in a #Preview macro. Use the device picker at the bottom of the Canvas to change which device type is used for the preview. (from macro 'Preview')
+=== diagnostic
+PreviewWarnings.swift:17:14: warning: previewLayout is ignored in a #Preview macro. Use the `traits` argument of the macro to provide the desired layout, e.g. `.sizeThatFitsLayout. (from macro 'Preview')
+=== diagnostic
+PreviewWarnings.swift:17:43: warning: previewDisplayName is ignored in a #Preview macro. Provide the name to the macro initializer, e.g. `#Preview("preview name")` (from macro 'Preview')
+=== diagnostic
+PreviewWarnings.swift:17:67: warning: previewInterfaceOrientation is ignored in a #Preview macro. Use the `traits` argument of the macro to provide the desired orientation, e.g. `.landscapeLeft`. (from macro 'Preview')

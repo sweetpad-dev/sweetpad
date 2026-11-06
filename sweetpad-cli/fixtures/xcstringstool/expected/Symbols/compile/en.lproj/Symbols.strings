@@ -1,0 +1,402 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>  spaces  around  </key>
+	<string>  spaces  around  </string>
+	<key>!!!</key>
+	<string>!!!</string>
+	<key>123</key>
+	<string>123</string>
+	<key>1st place</key>
+	<string>1st place</string>
+	<key>2x</key>
+	<string>2x</string>
+	<key>50% off</key>
+	<string>50% off</string>
+	<key>A1</key>
+	<string>A1</string>
+	<key>ABC def</key>
+	<string>ABC def</string>
+	<key>ALLCAPS</key>
+	<string>ALLCAPS</string>
+	<key>Any</key>
+	<string>Any</string>
+	<key>Class</key>
+	<string>Class</string>
+	<key>HTTPServerURL</key>
+	<string>HTTPServerURL</string>
+	<key>ID</key>
+	<string>ID</string>
+	<key>Mixed CASE words</key>
+	<string>Mixed CASE words</string>
+	<key>Protocol</key>
+	<string>Protocol</string>
+	<key>Self</key>
+	<string>Self</string>
+	<key>Settings Title</key>
+	<string>Settings Title</string>
+	<key>Straße</key>
+	<string>Straße</string>
+	<key>Type</key>
+	<string>Type</string>
+	<key>UPPER_CASE_KEY</key>
+	<string>UPPER_CASE_KEY</string>
+	<key>XMLParser</key>
+	<string>XMLParser</string>
+	<key>_</key>
+	<string>_</string>
+	<key>__double</key>
+	<string>__double</string>
+	<key>_leading</key>
+	<string>_leading</string>
+	<key>a</key>
+	<string>a</string>
+	<key>a%@b</key>
+	<string>a%@b</string>
+	<key>a-B-c</key>
+	<string>a-B-c</string>
+	<key>a.b</key>
+	<string>a.b</string>
+	<key>a1b2</key>
+	<string>a1b2</string>
+	<key>abc DEF</key>
+	<string>abc DEF</string>
+	<key>abc1def</key>
+	<string>abc1def</string>
+	<key>account.name.on-my-device</key>
+	<string>account.name.on-my-device</string>
+	<key>actor</key>
+	<string>actor</string>
+	<key>any</key>
+	<string>any</string>
+	<key>as</key>
+	<string>as</string>
+	<key>associatedtype</key>
+	<string>associatedtype</string>
+	<key>associativity</key>
+	<string>associativity</string>
+	<key>async</key>
+	<string>async</string>
+	<key>await</key>
+	<string>await</string>
+	<key>borrowing</key>
+	<string>borrowing</string>
+	<key>break</key>
+	<string>break</string>
+	<key>café-crème</key>
+	<string>café-crème</string>
+	<key>camelCaseKey</key>
+	<string>camelCaseKey</string>
+	<key>case</key>
+	<string>case</string>
+	<key>catch</key>
+	<string>catch</string>
+	<key>class</key>
+	<string>class</string>
+	<key>commented</key>
+	<string>commented</string>
+	<key>conflict %@</key>
+	<string>%lld here</string>
+	<key>consume</key>
+	<string>consume</string>
+	<key>consuming</key>
+	<string>consuming</string>
+	<key>continue</key>
+	<string>continue</string>
+	<key>convenience</key>
+	<string>convenience</string>
+	<key>copy</key>
+	<string>copy</string>
+	<key>de only %lld</key>
+	<string>none</string>
+	<key>de substitution %lld</key>
+	<string>starred</string>
+	<key>default</key>
+	<string>default</string>
+	<key>defer</key>
+	<string>defer</string>
+	<key>deinit</key>
+	<string>deinit</string>
+	<key>device key</key>
+	<string>Click %@</string>
+	<key>didSet</key>
+	<string>didSet</string>
+	<key>discard</key>
+	<string>discard</string>
+	<key>do</key>
+	<string>do</string>
+	<key>don't stop</key>
+	<string>don't stop</string>
+	<key>dot.Separated.KEY</key>
+	<string>dot.Separated.KEY</string>
+	<key>duplicate key</key>
+	<string>duplicate key</string>
+	<key>duplicate-key</key>
+	<string>duplicate-key</string>
+	<key>dynamic</key>
+	<string>dynamic</string>
+	<key>each</key>
+	<string>each</string>
+	<key>else</key>
+	<string>else</string>
+	<key>emoji 😀 key</key>
+	<string>emoji 😀 key</string>
+	<key>enum</key>
+	<string>enum</string>
+	<key>extension</key>
+	<string>extension</string>
+	<key>fallthrough</key>
+	<string>fallthrough</string>
+	<key>false</key>
+	<string>false</string>
+	<key>fileprivate</key>
+	<string>fileprivate</string>
+	<key>final</key>
+	<string>final</string>
+	<key>for</key>
+	<string>for</string>
+	<key>func</key>
+	<string>func</string>
+	<key>get</key>
+	<string>get</string>
+	<key>getHTTP</key>
+	<string>getHTTP</string>
+	<key>greeting %@</key>
+	<string>Hello, %@!</string>
+	<key>guard</key>
+	<string>guard</string>
+	<key>hello!world</key>
+	<string>hello!world</string>
+	<key>iOS17Feature</key>
+	<string>iOS17Feature</string>
+	<key>if</key>
+	<string>if</string>
+	<key>import</key>
+	<string>import</string>
+	<key>in</key>
+	<string>in</string>
+	<key>indirect</key>
+	<string>indirect</string>
+	<key>infix</key>
+	<string>infix</string>
+	<key>init</key>
+	<string>init</string>
+	<key>inout</key>
+	<string>inout</string>
+	<key>internal</key>
+	<string>internal</string>
+	<key>is</key>
+	<string>is</string>
+	<key>isolated</key>
+	<string>isolated</string>
+	<key>key %@ differs from value</key>
+	<string>Value has %lld and %@</string>
+	<key>key-with--double</key>
+	<string>key-with--double</string>
+	<key>label vs plain</key>
+	<string>%lld</string>
+	<key>lazy</key>
+	<string>lazy</string>
+	<key>left</key>
+	<string>left</string>
+	<key>let</key>
+	<string>let</string>
+	<key>macro</key>
+	<string>macro</string>
+	<key>multi line comment</key>
+	<string>multi line comment</string>
+	<key>mutating</key>
+	<string>mutating</string>
+	<key>my_HTTP_thing</key>
+	<string>my_HTTP_thing</string>
+	<key>naïve café</key>
+	<string>naïve café</string>
+	<key>new
+line key</key>
+	<string>new
+line key</string>
+	<key>nil</key>
+	<string>nil</string>
+	<key>none</key>
+	<string>none</string>
+	<key>nonisolated</key>
+	<string>nonisolated</string>
+	<key>nonmutating</key>
+	<string>nonmutating</string>
+	<key>open</key>
+	<string>open</string>
+	<key>operator</key>
+	<string>operator</string>
+	<key>optional</key>
+	<string>optional</string>
+	<key>override</key>
+	<string>override</string>
+	<key>over’apostrophe</key>
+	<string>over’apostrophe</string>
+	<key>package</key>
+	<string>package</string>
+	<key>percent 100%%</key>
+	<string>percent 100%%</string>
+	<key>plain value %lld</key>
+	<string>plain</string>
+	<key>positional %2$@ %1$lld</key>
+	<string>positional %2$@ %1$lld</string>
+	<key>postfix</key>
+	<string>postfix</string>
+	<key>precedence</key>
+	<string>precedence</string>
+	<key>precedencegroup</key>
+	<string>precedencegroup</string>
+	<key>prefix</key>
+	<string>prefix</string>
+	<key>private</key>
+	<string>private</string>
+	<key>privateuse</key>
+	<string>privateuse</string>
+	<key>protocol</key>
+	<string>protocol</string>
+	<key>public</key>
+	<string>public</string>
+	<key>quote " and \ backslash</key>
+	<string>quote " and \ backslash</string>
+	<key>repeat</key>
+	<string>repeat</string>
+	<key>repeated %1$@ %1$@</key>
+	<string>repeated %1$@ %1$@</string>
+	<key>required</key>
+	<string>required</string>
+	<key>rethrows</key>
+	<string>rethrows</string>
+	<key>return</key>
+	<string>return</string>
+	<key>right</key>
+	<string>right</string>
+	<key>self</key>
+	<string>self</string>
+	<key>sending</key>
+	<string>sending</string>
+	<key>set</key>
+	<string>set</string>
+	<key>simple</key>
+	<string>simple</string>
+	<key>some</key>
+	<string>some</string>
+	<key>static</key>
+	<string>static</string>
+	<key>struct</key>
+	<string>struct</string>
+	<key>subscript</key>
+	<string>subscript</string>
+	<key>super</key>
+	<string>super</string>
+	<key>switch</key>
+	<string>switch</string>
+	<key>tab	sep</key>
+	<string>tab	sep</string>
+	<key>throw</key>
+	<string>throw</string>
+	<key>throws</key>
+	<string>throws</string>
+	<key>trailing.dot.</key>
+	<string>trailing.dot.</string>
+	<key>trailing_</key>
+	<string>trailing_</string>
+	<key>true</key>
+	<string>true</string>
+	<key>try</key>
+	<string>try</string>
+	<key>type0 %d</key>
+	<string>type0 %d</string>
+	<key>type1 %i</key>
+	<string>type1 %i</string>
+	<key>type10 %g</key>
+	<string>type10 %g</string>
+	<key>type11 %x</key>
+	<string>type11 %x</string>
+	<key>type12 %o</key>
+	<string>type12 %o</string>
+	<key>type13 %@</key>
+	<string>type13 %@</string>
+	<key>type14 %hd</key>
+	<string>type14 %hd</string>
+	<key>type15 %zd</key>
+	<string>type15 %zd</string>
+	<key>type16 %.2f</key>
+	<string>type16 %.2f</string>
+	<key>type17 %5d</key>
+	<string>type17 %5d</string>
+	<key>type18 %-3ld</key>
+	<string>type18 %-3ld</string>
+	<key>type19 %c</key>
+	<string>type19 %c</string>
+	<key>type2 %u</key>
+	<string>type2 %u</string>
+	<key>type20 %s</key>
+	<string>type20 %s</string>
+	<key>type21 %p</key>
+	<string>type21 %p</string>
+	<key>type22 %qd</key>
+	<string>type22 %qd</string>
+	<key>type23 %Lf</key>
+	<string>type23 %Lf</string>
+	<key>type24 %%</key>
+	<string>type24 %%</string>
+	<key>type3 %ld</key>
+	<string>type3 %ld</string>
+	<key>type4 %lu</key>
+	<string>type4 %lu</string>
+	<key>type5 %lld</key>
+	<string>type5 %lld</string>
+	<key>type6 %llu</key>
+	<string>type6 %llu</string>
+	<key>type7 %f</key>
+	<string>type7 %f</string>
+	<key>type8 %lf</key>
+	<string>type8 %lf</string>
+	<key>type9 %e</key>
+	<string>type9 %e</string>
+	<key>typealias</key>
+	<string>typealias</string>
+	<key>uk only value %@</key>
+	<string>uk only value %@</string>
+	<key>unowned</key>
+	<string>unowned</string>
+	<key>userID</key>
+	<string>userID</string>
+	<key>var</key>
+	<string>var</string>
+	<key>version2Beta</key>
+	<string>version2Beta</string>
+	<key>weak</key>
+	<string>weak</string>
+	<key>welcome</key>
+	<string>Welcome, %@! You have %lld messages</string>
+	<key>where</key>
+	<string>where</string>
+	<key>while</key>
+	<string>while</string>
+	<key>willSet</key>
+	<string>willSet</string>
+	<key>with value and comment</key>
+	<string>Value text</string>
+	<key>with_underscore_key</key>
+	<string>with_underscore_key</string>
+	<key>x2</key>
+	<string>x2</string>
+	<key>x³</key>
+	<string>x³</string>
+	<key>½ half</key>
+	<string>½ half</string>
+	<key>ÉCOLE NORMALE</key>
+	<string>ÉCOLE NORMALE</string>
+	<key>Ünïcode Wörds</key>
+	<string>Ünïcode Wörds</string>
+	<key>über</key>
+	<string>über</string>
+	<key>Привіт</key>
+	<string>Привіт</string>
+	<key>€ price</key>
+	<string>€ price</string>
+</dict>
+</plist>

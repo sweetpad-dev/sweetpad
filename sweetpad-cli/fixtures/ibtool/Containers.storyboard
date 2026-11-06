@@ -1,0 +1,65 @@
+<?xml version='1.0' encoding='utf-8'?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="18122" targetRuntime="iOS.CocoaTouch" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="Nav-aa-Vc1">
+  <scenes>
+    <scene sceneID="Nav-aa-Vc1-scene">
+      <objects>
+        <navigationController id="Nav-aa-Vc1" sceneMemberID="viewController">
+          <navigationBar key="navigationBar" id="Nav-aa-Bar">
+            <rect key="frame" x="0" y="0" width="390" height="44" />
+            <autoresizingMask key="autoresizingMask" widthSizable="YES" />
+          </navigationBar>
+          <connections>
+            <segue destination="Tab-aa-Vc1" kind="relationship" relationship="rootViewController" id="Nav-aa-Seg" />
+          </connections>
+        </navigationController>
+        <placeholder id="Nav-aa-Vc1-responder" placeholderIdentifier="IBFirstResponder" sceneMemberID="firstResponder" />
+      </objects>
+    </scene>
+    <scene sceneID="Tab-aa-Vc1-scene">
+      <objects>
+        <tableViewController id="Tab-aa-Vc1" sceneMemberID="viewController" title="Table" clearsSelectionOnViewWillAppear="NO">
+          <tableView key="view" id="Tab-aa-Vw1" style="plain" dataMode="prototypes" rowHeight="44">
+            <rect key="frame" x="0" y="0" width="390" height="844" />
+            <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES" />
+            <connections>
+              <outlet property="dataSource" destination="Tab-aa-Vc1" id="Tab-aa-Out0" />
+              <outlet property="delegate" destination="Tab-aa-Vc1" id="Tab-aa-Out1" />
+            </connections>
+          </tableView>
+          <navigationItem key="navigationItem" title="Table Title" id="Tab-aa-Nvi" />
+        </tableViewController>
+        <placeholder id="Tab-aa-Vc1-responder" placeholderIdentifier="IBFirstResponder" sceneMemberID="firstResponder" />
+      </objects>
+    </scene>
+    <scene sceneID="Col-aa-Vc1-scene">
+      <objects>
+        <collectionViewController id="Col-aa-Vc1" sceneMemberID="viewController" storyboardIdentifier="Collection">
+          <collectionView key="view" id="Col-aa-Vw1">
+            <rect key="frame" x="0" y="0" width="390" height="844" />
+            <collectionViewFlowLayout key="collectionViewLayout" id="Col-aa-Lay" minimumLineSpacing="10" minimumInteritemSpacing="10">
+              <size key="itemSize" width="50" height="50" />
+              <size key="headerReferenceSize" width="0" height="0" />
+              <size key="footerReferenceSize" width="0" height="0" />
+              <inset key="sectionInset" minX="0" minY="0" maxX="0" maxY="0" />
+            </collectionViewFlowLayout>
+            <connections>
+              <outlet property="dataSource" destination="Col-aa-Vc1" id="Col-aa-Out0" />
+              <outlet property="delegate" destination="Col-aa-Vc1" id="Col-aa-Out1" />
+            </connections>
+          </collectionView>
+        </collectionViewController>
+        <placeholder id="Col-aa-Vc1-responder" placeholderIdentifier="IBFirstResponder" sceneMemberID="firstResponder" />
+      </objects>
+    </scene>
+    <scene sceneID="Sim-aa-Vc1-scene">
+      <objects>
+        <viewController id="Sim-aa-Vc1" sceneMemberID="viewController" storyboardIdentifier="PlainID" useStoryboardIdentifierAsRestorationIdentifier="YES" extendedLayoutIncludesOpaqueBars="YES" automaticallyAdjustsScrollViewInsets="NO">
+          <view key="view" id="Sim-aa-Vw1">
+            <rect key="frame" x="0" y="0" width="390" height="844" />
+          </view>
+        </viewController>
+        <placeholder id="Sim-aa-Vc1-responder" placeholderIdentifier="IBFirstResponder" sceneMemberID="firstResponder" />
+      </objects>
+    </scene>
+  </scenes>
+</document>

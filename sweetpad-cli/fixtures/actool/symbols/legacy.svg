@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- An older template, as Sketch exports one, cut down: margins drawn as
+     bars, and outlines drawn through use elements. -->
+<svg width="3300px" height="2200px" viewBox="0 0 3300 2200" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <defs>
+  <path d="M0,0 L60,0 L60,70 L0,70 Z M10,10 L10,60 L50,60 L50,10 Z" id="shape"/>
+ </defs>
+ <g id="Guides" stroke="#27AAE1" stroke-width="0.577" fill="none">
+  <line x1="0" y1="696" x2="2773" y2="696" id="Baseline-S"/>
+  <line x1="0" y1="625.541" x2="2773" y2="625.541" id="Capline-S"/>
+  <line x1="0" y1="1126" x2="2773" y2="1126" id="Baseline-M"/>
+  <line x1="0" y1="1055.54" x2="2773" y2="1055.54" id="Capline-M"/>
+  <line x1="0" y1="1556" x2="2773" y2="1556" id="Baseline-L"/>
+  <line x1="0" y1="1485.54" x2="2773" y2="1485.54" id="Capline-L"/>
+  <rect id="left-margin" fill="#00AEEF" x="1128.3" y="1030.79" width="8.74023" height="119.336"/>
+  <rect id="right-margin" fill="#00AEEF" x="1236.65" y="1030.79" width="8.74023" height="119.336"/>
+ </g>
+ <g id="Symbols" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+  <g id="Regular-S" transform="translate(1150, 626)">
+   <mask id="mask-s" fill="white"><use xlink:href="#shape"/></mask>
+   <use id="Outline-S" fill="#000000" xlink:href="#shape"/>
+  </g>
+  <g id="Regular-M" transform="translate(1140, 1050)">
+   <use fill="#000000" xlink:href="#shape" transform="scale(1.2)"/>
+  </g>
+  <g id="Regular-L" transform="translate(1130, 1470)">
+   <use fill="#000000" xlink:href="#shape" x="2" y="3"/>
+  </g>
+ </g>
+</svg>
