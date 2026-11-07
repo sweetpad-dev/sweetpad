@@ -13,6 +13,23 @@ spec.loader.exec_module(sdk_platforms)
 
 
 class SDKImportTests(unittest.TestCase):
+    def test_imports_versioned_backdeployment_libraries_without_host_tools(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            relative = Path("Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib")
+            source = root / "Xcode.app/Contents" / relative / "swift-6.2/iphonesimulator"
+            source.mkdir(parents=True)
+            (source / "runtime.data").write_bytes(b"Mach-O runtime fixture")
+            (source / "libswiftCompatibilitySpan.dylib").symlink_to("runtime.data")
+            (source / "macOS-only-executable").write_bytes(b"do not import")
+            bundle = root / "bundle"
+            copied = sdk_platforms.copy_swift_runtimes(root / "Xcode.app", bundle)
+            target = bundle / relative / "swift-6.2/iphonesimulator/libswiftCompatibilitySpan.dylib"
+            self.assertEqual(target.read_bytes(), b"Mach-O runtime fixture")
+            self.assertFalse(target.is_symlink())
+            self.assertFalse(target.with_name("macOS-only-executable").exists())
+            self.assertEqual(copied, ["swift-6.2/iphonesimulator/libswiftCompatibilitySpan.dylib"])
+
     def test_repairs_same_size_corruption_and_preserves_sdk_aliases(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

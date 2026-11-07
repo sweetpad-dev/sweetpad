@@ -39,6 +39,7 @@ struct Args {
     inputs: Vec<PathBuf>,
     companion_strings: Vec<(String, PathBuf)>,
     reference_external_strings: bool,
+    auto_activate_custom_fonts: bool,
     flatten: Option<bool>,
     strip: Option<PathBuf>,
     output_format: output::Format,
@@ -117,6 +118,8 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
             }
         } else if name == "--version" {
             parsed.version = true;
+        } else if name == "--auto-activate-custom-fonts" {
+            parsed.auto_activate_custom_fonts = true;
         } else if name == "--reference-external-strings-file" {
             parsed.reference_external_strings = true;
         } else if matches!(name, "--errors" | "--warnings" | "--notices") {
@@ -299,10 +302,30 @@ fn compile(input: &Path, args: &Args) -> Result<(), String> {
     if let Some(path) = &args.partial_info_plist {
         write(
             path,
-            &crate::cli::keyed_archive::write(&crate::cli::keyed_archive::Plist::Dict(Vec::new())),
+            &font_metadata(&document, args.auto_activate_custom_fonts),
         )?;
     }
     Ok(())
+}
+
+/// ibtool adds declared custom-font files only with automatic activation.
+fn font_metadata(document: &sweetpad_lib::xcscheme::Element, active: bool) -> Vec<u8> {
+    use crate::cli::keyed_archive::{Plist, write};
+    let fonts: Vec<Plist> = document
+        .child("customFonts")
+        .filter(|fonts| active && fonts.attr("key") == Some("customFonts"))
+        .into_iter()
+        .flat_map(|fonts| &fonts.children)
+        .filter(|entry| entry.name == "array")
+        .filter_map(|entry| entry.attr("key"))
+        .map(|name| Plist::String(name.into()))
+        .collect();
+    let entries = if fonts.is_empty() {
+        Vec::new()
+    } else {
+        vec![("UIAppFonts".into(), Plist::Array(fonts))]
+    };
+    write(&Plist::Dict(entries))
 }
 
 #[derive(Default)]

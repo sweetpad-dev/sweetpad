@@ -102,6 +102,7 @@ def outcome(stem):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prepare", action="store_true")
+    parser.add_argument("--prepare-only", action="store_true", help="Apply source patches without building; combine with --prepare to clone missing sources")
     parser.add_argument("--summarize", action="store_true", help="Read existing results without building")
     parser.add_argument("--clean", action="store_true")
     parser.add_argument("--host", choices=["both", "xcode", "linux"], default="both")
@@ -123,6 +124,10 @@ def main():
             continue
         result = {"project": project["slug"], "commit": project["commit"]}
         try:
+            if args.prepare_only:
+                prepare(project, args.prepare)
+                print(f"{project['slug']}: sources prepared; install framework dependencies before building", flush=True)
+                continue
             if not args.summarize:
                 root = prepare(project, args.prepare)
                 for host in (["xcode", "linux"] if args.host == "both" else [args.host]):
@@ -138,6 +143,10 @@ def main():
         except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
             result["setupError"] = str(error)
         results.append(result)
+    if args.prepare_only:
+        for result in results:
+            print(f"{result['project']}: {result['setupError']}")
+        return int(bool(results))
     save(args.out / "real-projects.json", results)
     return int(any(r.get("setupError") or not all(r[h]["built"] for h in ["xcode", "linux"]) for r in results))
 

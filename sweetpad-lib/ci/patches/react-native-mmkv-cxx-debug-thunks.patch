@@ -1,0 +1,48 @@
+diff --git a/example/ios/Podfile b/example/ios/Podfile
+index fa041f9..1fbdea3 100644
+--- a/example/ios/Podfile
++++ b/example/ios/Podfile
+@@ -31,5 +31,17 @@ target 'MmkvExample' do
+       :mac_catalyst_enabled => false,
+       # :ccache_enabled => true
+     )
++
++    # The Linux compiler eagerly emits DEBUG-only Swift/C++ thunks and
++    # recursively instantiates Optional bridges. The shim restores DEBUG
++    # after loading the support macros and preserves all generated APIs.
++    installer.pods_project.targets.each do |pod_target|
++      next unless ['NitroModules', 'NitroMmkv'].include?(pod_target.name)
++      pod_target.build_configurations.each do |configuration|
++        paths = configuration.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
++        configuration.build_settings['HEADER_SEARCH_PATHS'] =
++          ['"$(PODS_ROOT)/../SwiftCxxDebugThunks"'] + Array(paths)
++      end
++    end
+   end
+ end
+diff --git a/example/ios/SwiftCxxDebugThunks/swiftToCxx/_SwiftCxxInteroperability.h b/example/ios/SwiftCxxDebugThunks/swiftToCxx/_SwiftCxxInteroperability.h
+new file mode 100644
+index 0000000..6d9803c
+--- /dev/null
++++ b/example/ios/SwiftCxxDebugThunks/swiftToCxx/_SwiftCxxInteroperability.h
+@@ -0,0 +1,20 @@
++// Compatibility workaround for the pinned Linux Swift 6.4.2 compiler.
++// Disable forced emission of unused generic debug thunks, retaining their
++// declarations, definitions, and DEBUG in all application headers.
++#pragma once
++#ifndef __apple_build_version__
++#pragma push_macro("DEBUG")
++#undef DEBUG
++#endif
++#if __has_include_next(<swiftToCxx/_SwiftCxxInteroperability.h>)
++#include_next <swiftToCxx/_SwiftCxxInteroperability.h>
++#elif __has_include(<../../../swift/swiftToCxx/_SwiftCxxInteroperability.h>)
++#include <../../../swift/swiftToCxx/_SwiftCxxInteroperability.h>
++#elif __has_include(<../../../../../lib/swift/swiftToCxx/_SwiftCxxInteroperability.h>)
++#include <../../../../../lib/swift/swiftToCxx/_SwiftCxxInteroperability.h>
++#else
++#error Missing Swift C++ interoperability support header
++#endif
++#ifndef __apple_build_version__
++#pragma pop_macro("DEBUG")
++#endif

@@ -600,3 +600,34 @@ fn proxy_normalization_preserves_connection_destinations() {
     assert_eq!(original, normalized_view(&archives(true, true)));
     assert_ne!(original, normalized_view(&archives(true, false)));
 }
+
+#[test]
+fn activating_custom_fonts_emits_native_bundle_metadata() {
+    // Native ibtool --auto-activate-custom-fonts emits the declared file
+    // even when no view uses it. Without that flag its partial plist is empty.
+    let dir = TempDir::new("sweetpad-ibtool-custom-fonts");
+    let input = dir.join("Fonts.xib");
+    let source = std::fs::read_to_string(fixtures().join("Plain.xib")).unwrap()
+        .replace("<objects>", r#"<customFonts key="customFonts"><array key="Georgia.ttf"><string>Georgia</string></array></customFonts><objects>"#);
+    std::fs::write(&input, source).unwrap();
+    let partial = dir.join("partial.plist");
+    let mut args = Args {
+        compile: Some(dir.join("Fonts.nib")),
+        partial_info_plist: Some(partial.clone()),
+        ..Args::default()
+    };
+    for active in [false, true, false] {
+        args.auto_activate_custom_fonts = active;
+        compile(&input, &args).unwrap();
+        let actual = keyed_archive::read::parse(&std::fs::read(&partial).unwrap());
+        let expected = if active {
+            vec![(
+                "UIAppFonts".into(),
+                Plist::Array(vec![Plist::String("Georgia.ttf".into())]),
+            )]
+        } else {
+            Vec::new()
+        };
+        assert_eq!(actual, Plist::Dict(expected));
+    }
+}

@@ -28,12 +28,13 @@ It does not install every framework dependency.
 | Flutter samples: platform_design | Pass | Pass | Both render the Songs screen |
 | React Native community template | Pass | Pass | Both render the React Native/Hermes welcome screen after the shared scene patch |
 | Ionic conference app: Capacitor | Pass | Pass | Both render the welcome screen |
-| React Native MMKV example | Pass | Fails | Linux Swift/C++ interop fails in the generated NitroModules header |
+| React Native MMKV example | Pass | Pass with explicit fixture patches | Both pass seven storage checks twice, including persistence after relaunch |
 
-The MMKV failure remains open. Swift 6.4.0 and 6.4.2 both fail with recursive
-template instantiation through `Optional` in `NitroModules-Swift.h`.
-The native Apple compiler passes. C++20 and delayed template parsing did not resolve it.
-The smaller React Native app provides a passing control without NitroModules.
+The MMKV fixture uses an explicit support-header shim for Linux Swift 6.4.2.
+The shim suppresses forced emission of unused generic debug thunks, which causes recursive `Optional` instantiation.
+It preserves all generated declarations and definitions, and restores `DEBUG` before application headers load.
+The original native build passes without this workaround. Both final controls use the same patched source tree.
+Both also use a scene delegate because SDK 27 traps on the original application lifecycle.
 
 The first follow-up corpus run built 88 of 129 schemes. The action and platform
 follow-up built 94 of the same 129 schemes with the updated toolchain.
@@ -106,13 +107,24 @@ The storyboard comparison also found an initial scene omitted because it was a c
 That controller now has its own archive and entry-point registration.
 A native golden fixture and a Linux-built UIKit test cover the case.
 
-The stricter real-app reports still show differences, including modern icon rendering,
-sticker resources, optimized model files, library load commands, and small nib details.
-SwiftNIO excludes privacy resources with a host `canImport(Darwin)` manifest condition.
-Those resource bundles are missing in the Linux products. These reports do not establish
-full bundle equivalence or replace runtime checks.
-The larger-app reports use preserved product snapshots. Targeted fixes were verified separately;
-rebuild those apps to refresh their complete bundle reports.
+Fresh clean builds now include SwiftNIO privacy resources, static Icon Composer appearances,
+sticker packs, custom-font metadata, and Swift compatibility runtimes.
+Swiftfin has zero findings in the bundle checker. Both builds launch and remain running.
+Mastodon has seven findings: six optional optimized `.omo` companions and one framework load-command comparison.
+Wikipedia has twelve findings: seven `.omo` companions and five load-command comparisons.
+MMKV has one load-command comparison finding. Its resource inventory and bundle metadata match.
+The checker keeps these differences visible and does not equate them with verified runtime failures.
+
+iOS Icon Composer support includes static light, dark, and tinted appearances, primary PNGs, and icon metadata.
+Native captures verify layer order, appearance sizes, original-color fills, and shared icon/image names.
+All 15 corpus `.icon` sources compile, including system backgrounds and group blend modes.
+The renderer uses static system-background gradients.
+It does not reproduce interactive glass lighting, native bevels, or other material effects.
+Sticker support includes ordered PNG/GIF/JPEG members, accessibility labels, pack metadata, and message-extension icons.
+Animated sticker sequences and localized sticker-pack strings remain unsupported.
+These checks establish the recorded resource contracts, not pixel-identical artwork or full bundle equivalence.
+A final Swiftfin no-op rebuild preserves all 505 bundle files after plist dictionary-order normalization.
+Executable, icon, privacy-resource, and runtime-library hashes remain unchanged.
 
 Local evidence is under `validation/`: `tests/independent-manifests.json`,
 `parity-final/summary.json`, `initial-child-runtime-fixed/summary.json`,
@@ -166,6 +178,31 @@ The affected revision is `afb27fb` from Swiftfin's package resolution.
 Apply it to both controls to keep their package sources equal.
 This patch belongs to the coverage fixture; sweetpad does not edit users' packages.
 
+SwiftNIO's pinned manifests select privacy resources with the host's `canImport(Darwin)` result.
+The explicit dependency patch also accepts `SWEETPAD_APPLE_TARGET=1` during destination manifest evaluation.
+Host macro builds do not receive that variable.
+After package resolution, prepare the separate package checkouts on both hosts:
+
+```bash
+python3 -B sweetpad-lib/ci/linux-dependency-patches.py
+orb -m sweetpad-linux python3 -B "$PWD/sweetpad-lib/ci/linux-dependency-patches.py"
+```
+
+Use `--only mastodon` or `--only swiftfin` to select one project.
+Use `--derived-data PATH` for another package cache and `--check` to validate without writing.
+The helper checks the manifest's exact dependency revisions before applying patches.
+
+The SDK importer now includes versioned Swift back-deployment libraries from the user's Xcode.
+For an existing SDK installation, run this command from the repository root inside the Linux VM:
+
+```bash
+python3 -B sweetpad-lib/ci/linux-sdk-platforms.py \
+  /Applications/Xcode.app "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle" --runtime-only
+```
+
+Swift Build scans the app's Mach-O dependencies and embeds the needed Apple libraries.
+The CLI selects the extracted Apple toolchain and disables obsolete bitcode stripping.
+
 ### Flutter
 
 Use Flutter 3.47.9, revision `c197ca5199`, on both hosts.
@@ -204,6 +241,24 @@ Start Metro on port 8081 from the template directory before the simulator compar
 For the MMKV stress case, use Bun 1.3.14 and `bun install --frozen-lockfile`
 at its repository root. Run its postinstall build, then install the example's Ruby/Pod dependencies.
 The pin uses React Native 0.85.3 and NitroModules 0.35.9.
+Apply the MMKV fixture patches before `bundle exec pod install`.
+For an existing checkout, `linux-projects.py --only react-native-mmkv --prepare-only` applies the patches without building.
+Then run `bundle exec pod install` again inside `example/ios` to regenerate the Pod header-search paths.
+The `SwiftCxxDebugThunks` shim affects only NitroModules and NitroMmkv.
+It leaves Apple's compiler behavior intact and suppresses Linux's debug-only forced thunk emission.
+No generated Swift header rewrite or higher template-depth limit is necessary.
+
+After successful builds and `linux-project-checks.py --only react-native-mmkv`, run:
+
+```bash
+python3 -B sweetpad-lib/ci/mmkv-parity-smoke.py --simulator BOOTED_SIMULATOR_UDID
+```
+
+The probe starts its own Metro server on port 8081 and removes it afterward.
+It exercises storage APIs twice per product, with process termination between launches.
+It retains the existing binaries and records their hashes, runtime results, and screenshots.
+The temporary Metro entry renders the original app after the checks.
+It removes each existing MMKV simulator installation. Use a test simulator.
 
 ### Capacitor
 
@@ -241,7 +296,9 @@ Linux release CI are outside this follow-up.
 
 The final workspace suite passes with `--test-threads=1`, and Clippy passes with warnings denied.
 One parallel temporary-directory cleanup test passed on its isolated retry and in the serial suite.
-Linux CLI units report 778 passed and six ignored native-only checks after the final corpus fixes.
+The resource follow-up reports 792 passing macOS CLI tests and 785 passing Linux CLI tests.
+Linux skips six native-only checks. Clippy passes with warnings denied.
+The bundle comparison suite passes five tests. The SDK importer passes three tests.
 
 The final `@Entry` fixture passes its default-value and assignment preconditions on both hosts.
 A fresh App Intents probe matches native registration metadata after sorting input-type sets
@@ -356,13 +413,13 @@ Ice Cubes' clean native and Linux products both render the Add Account screen.
 Their application identity and 126 common localization files match.
 Startup evidence is in `corpus/_linux-followups/corpus-patch-checks`.
 This does not validate account synchronization or background notifications.
-Ice Cubes still has asset inventory differences, including incomplete modern app icons.
-Xcode emits localized `nlu.appintents` files; Linux currently emits a module-level shortcut language model.
+The modern-icon follow-up rebuilds Ice Cubes on both hosts.
+Its icon file inventory and bundle metadata now match the native control.
+The strict comparison retains 42 findings: 38 localized NLU files, two module-level NLU files, and two Mach-O comparisons.
+Xcode emits localized `nlu.appintents` files. Linux currently emits a module-level shortcut language model.
 Matching registration metadata therefore does not establish localized Siri parity.
 Watch runtime and device checks remain unverified.
 
-MMKV already builds in Xcode. Its Linux `NitroModules-Swift.h` Optional recursion remains open.
-Disabling delayed C++ template parsing does not fix the real app build.
-The original flags also fail with a fresh module cache, excluding stale cached Clang modules as the cause.
-Reduced String/Optional header controls pass on both hosts; they do not reproduce the real failure.
-No generated-header workaround or increased template-depth limit is applied.
+The MMKV reproduction now covers both Swift module import and Objective-C++ object emission.
+Disabling forced debug-thunk emission resolves both stages with the pinned compiler.
+The final clean application builds pass on both hosts. The compiler workaround remains an explicit fixture patch.

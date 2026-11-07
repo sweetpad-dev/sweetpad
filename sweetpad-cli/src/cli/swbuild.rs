@@ -546,6 +546,10 @@ impl Invocation {
             // pkg-config runs on the host, but its headers belong to the
             // destination SDK. Keep host macro builds outside this environment.
             command.env("PKG_CONFIG_SYSROOT_DIR", sysroot);
+            // Package manifests execute on the host. Dependencies that need
+            // destination-specific resources can opt in without changing
+            // their Linux host-tool builds.
+            command.env("SWEETPAD_APPLE_TARGET", "1");
         }
         let output = command
             .stdin(Stdio::null())
@@ -588,6 +592,8 @@ fn scope_darwin_settings(overrides: &mut BTreeMap<String, String>, sdk: &str) {
         "LIBTOOL",
         "CODESIGN",
         "DONT_RUN_SWIFT_STDLIB_TOOL",
+        "SWIFT_STDLIB_TOOL_TOOLCHAINS",
+        "SWIFT_STDLIB_TOOL_STRIP_BITCODE",
         "MODULE_VERIFIER_KIND",
         "GENERATE_INTERMEDIATE_TEXT_BASED_STUBS",
     ] {
@@ -1013,8 +1019,9 @@ impl DarwinSdk {
     ///   what a build here needs on top (see [`toolset`]).
     /// - `LM_SKIP_METADATA_EXTRACTION`: enable the portable App Intents
     ///   registration and language-model processors.
-    /// - `DONT_RUN_SWIFT_STDLIB_TOOL`: its Mach-O reader runs only on macOS,
-    ///   which matters only to an app that back-deploys Swift libraries.
+    /// - `SWIFT_STDLIB_TOOL_STRIP_BITCODE`: current SDK back-deployment
+    ///   runtimes have no embedded bitcode. Keep Swift Build's portable
+    ///   runtime embedding action, without the macOS-only bitcode tool.
     /// - `LIBRARY_SEARCH_PATHS`: the Swift compatibility libraries an older
     ///   deployment target links (`swiftCompatibility56`) are Xcode's, in the
     ///   bundle, and the toolchain here has none.
@@ -1064,7 +1071,14 @@ impl DarwinSdk {
             ),
             ("LM_SKIP_METADATA_EXTRACTION", "NO".to_string()),
             ("GENERATE_INTERMEDIATE_TEXT_BASED_STUBS", "NO".to_string()),
-            ("DONT_RUN_SWIFT_STDLIB_TOOL", "YES".to_string()),
+            ("SWIFT_STDLIB_TOOL_STRIP_BITCODE", "NO".to_string()),
+            (
+                "SWIFT_STDLIB_TOOL_TOOLCHAINS",
+                self.bundle
+                    .join("Developer/Toolchains/XcodeDefault.xctoolchain")
+                    .display()
+                    .to_string(),
+            ),
             ("MODULE_VERIFIER_KIND", "builtin".to_string()),
         ]
         .into_iter()

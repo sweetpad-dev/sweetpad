@@ -1,0 +1,65 @@
+{
+  "partialInfo": {
+    "CFBundleIcons": {
+      "CFBundlePrimaryIcon": {
+        "CFBundleIconFiles": [
+          "Simple60x60"
+        ],
+        "CFBundleIconName": "Simple"
+      }
+    },
+    "CFBundleIcons~ipad": {
+      "CFBundlePrimaryIcon": {
+        "CFBundleIconFiles": [
+          "Simple60x60",
+          "Simple76x76"
+        ],
+        "CFBundleIconName": "Simple"
+      }
+    }
+  },
+  "files": [
+    "Assets.car",
+    "Simple60x60@2x.png",
+    "Simple76x76@2x~ipad.png",
+    "partial.plist"
+  ],
+  "staticIconRenditions": [
+    [
+      1,
+      0,
+      1024,
+      1024
+    ],
+    [
+      1,
+      1,
+      1024,
+      1024
+    ],
+    [
+      1,
+      10,
+      1024,
+      1024
+    ],
+    [
+      2,
+      0,
+      1024,
+      1024
+    ],
+    [
+      2,
+      1,
+      1024,
+      1024
+    ],
+    [
+      2,
+      10,
+      1024,
+      1024
+    ]
+  ]
+}

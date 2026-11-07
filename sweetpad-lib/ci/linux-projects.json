@@ -19,7 +19,16 @@
     "commit": "0dd671674e157dc36ad7c061ced2c4c819d3760f",
     "project": "Mastodon.xcodeproj",
     "scheme": "Mastodon",
-    "linuxDerivedData": "sweetpad-followup-mastodon"
+    "linuxDerivedData": "sweetpad-followup-mastodon",
+    "dependencyPatches": [
+      {
+        "resolvedCheckout": "SourcePackages/checkouts/swift-nio",
+        "commit": "2f58d8ef84438d6517fc78bcea2f8527e3c72936",
+        "patches": [
+          "swift-nio-apple-cross-resources.patch"
+        ]
+      }
+    ]
   },
   {
     "slug": "swiftfin",
@@ -28,6 +37,15 @@
     "project": "Swiftfin.xcodeproj",
     "scheme": "Swiftfin",
     "linuxDerivedData": "sweetpad-followup-swiftfin",
+    "dependencyPatches": [
+      {
+        "resolvedCheckout": "SourcePackages/checkouts/swift-nio",
+        "commit": "0b18836bd8b0162e7e17a995a3fbee20ed8f3b2b",
+        "patches": [
+          "swift-nio-apple-cross-resources.patch"
+        ]
+      }
+    ],
     "xcodeFlags": [
       "-skipMacroValidation",
       "-skipPackagePluginValidation"
@@ -52,7 +70,11 @@
     "workspace": "example/ios/MmkvExample.xcworkspace",
     "scheme": "MmkvExample",
     "framework": "React Native",
-    "linuxDerivedData": "sweetpad-followup-react-native"
+    "linuxDerivedData": "sweetpad-followup-react-native",
+    "patches": [
+      "react-native-mmkv-cxx-debug-thunks.patch",
+      "react-native-mmkv-scene-lifecycle.patch"
+    ]
   },
   {
     "slug": "ionic-conference-app",

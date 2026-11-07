@@ -18,7 +18,8 @@ Test-only schemes use `test build`; the summary records each action.
 Wikipedia, Mastodon, Swiftfin, Flutter platform_design, the React Native template,
 and the Capacitor conference app build on both hosts. All except Wikipedia render
 in the simulator; Wikipedia exits with the same data-store exception in both controls.
-The MMKV example still exposes a Linux Swift/C++ interoperability failure.
+The MMKV example also builds on both hosts with an explicit debug-thunk shim and scene-lifecycle fixture patch.
+Both products pass seven storage checks twice, including persistence across process relaunch.
 Release cleanup remains deferred, and physical-device checks were skipped as requested.
 
 Items marked *(optional)* can wait until a project needs them.
@@ -185,10 +186,19 @@ swift-syntax and diff the expanded Swift text.
 - [x] Fix missing requested-icon validation, canonical locale output names,
       accent/widget color metadata, and an initial storyboard child scene.
 
+- [x] Include SwiftNIO privacy resources with an explicit pinned manifest patch.
+      Destination manifest evaluation opts in without changing host macro builds.
+- [x] Compile static Icon Composer light/dark/tinted appearances, loose primary icons,
+      ordered sticker packs, message-extension icons, and custom-font bundle metadata.
+- [x] Embed Swift back-deployment runtimes from the extracted Apple toolchain.
+- [x] Build MMKV on both hosts with an explicit support-header shim.
+      Seven native storage checks pass twice per product, including persistence after relaunch.
+
 AccountTests has the same 38 keychain failures in native and Linux products.
-The larger bundles still have icon/sticker, privacy-resource, optimized-model,
-and other differences. MMKV C++ interoperability and localized shortcut models
-also remain open. See `ci/LINUX_PROJECTS.md` for the verified scope and evidence.
+Fresh Swiftfin bundles have zero findings in the strict checker.
+Mastodon, Wikipedia, and MMKV retain optimized-model or Mach-O load-command differences.
+Interactive Icon Composer material effects and localized shortcut models remain open.
+See `ci/LINUX_PROJECTS.md` for the verified scope and evidence.
 
 ### Corpus sweep, 2026-11-04
 
@@ -736,15 +746,21 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       icon file names and dimensions
 - [x] macOS app icons: `CFBundleIconName` for the icon in the car, and an
       `.icns` with the four sizes Xcode's actool stores beside it
-- [ ] Icon Composer `.icon` files *(optional)*
+- [x] iOS Icon Composer `.icon` static light/dark/tinted appearances, layer order,
+      primary PNGs, icon metadata, and shared icon/image names
+- [ ] Icon Composer interactive glass lighting and native material effects *(optional)*
+- [ ] Icon Composer on other Apple platforms *(optional)*
 - [x] Data sets (`NSDataAsset`), each file as it is with its type: the one
       its entry names, else its extension's, or the `dyn.` type macOS makes
       up for an extension it doesn't know. `_car-app`'s four data lookups
       match Xcode's build
 - [ ] Fallback values for system colors (black today; UIKit resolves the
       name anyway) *(optional)*
-- [ ] Sticker packs, AR resources, texture sets, sprite atlases, watch
-      complications, launch images *(optional)*
+- [x] Ordered PNG/GIF/JPEG sticker packs, accessibility labels, pack metadata,
+      and message-extension icon files and metadata
+- [ ] Sticker sequences and localized sticker-pack strings *(optional)*
+- [ ] AR resources, texture sets, sprite atlases, watch complications,
+      launch images *(optional)*
 
 ## Build kinds to try
 

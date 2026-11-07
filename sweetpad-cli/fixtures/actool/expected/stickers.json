@@ -1,0 +1,50 @@
+{
+  "partialInfo": {
+    "CFBundleIcons": {
+      "CFBundlePrimaryIcon": {
+        "CFBundleIconFiles": [
+          "MessageIcon60x45",
+          "MessageIcon67x50",
+          "MessageIcon74x55",
+          "MessageIcon27x20",
+          "MessageIcon32x24"
+        ]
+      }
+    },
+    "IMStickerPackPath": "Ordered Pack.stickerpack",
+    "MSMessagesExtensionStoreIconName": "MessageIcon"
+  },
+  "files": [
+    "Assets.car",
+    "MessageIcon27x20@2x.png",
+    "MessageIcon27x20@3x.png",
+    "MessageIcon32x24@2x.png",
+    "MessageIcon32x24@3x.png",
+    "MessageIcon60x45@2x.png",
+    "MessageIcon60x45@3x.png",
+    "MessageIcon67x50@2x.png",
+    "MessageIcon74x55@2x.png",
+    "Ordered Pack.stickerpack/First.png",
+    "Ordered Pack.stickerpack/Info.plist",
+    "Ordered Pack.stickerpack/Second.gif",
+    "partial.plist"
+  ],
+  "packInfo": {
+    "CFBundleShortVersionString": "1.0",
+    "CFBundleIdentifier": "dev.sweetpad.Fixture.sticker-packOrdered-Pack",
+    "IMStickers": [
+      {
+        "IMStickerAccessibilityLabel": "",
+        "IMStickerIdentifier": "Second.gif"
+      },
+      {
+        "IMStickerAccessibilityLabel": "Red square",
+        "IMStickerIdentifier": "First.png"
+      }
+    ],
+    "CFBundleName": "Ordered Pack",
+    "IMStickerPackLayout": "MSStickerSizeClassRegular",
+    "CFBundlePackageType": "BUNDL",
+    "CFBundleVersion": "1"
+  }
+}

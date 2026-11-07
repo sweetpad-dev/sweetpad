@@ -1,0 +1,56 @@
+diff --git a/example/ios/MmkvExample/AppDelegate.swift b/example/ios/MmkvExample/AppDelegate.swift
+index 8b4d97e..bd42b3c 100644
+--- a/example/ios/MmkvExample/AppDelegate.swift
++++ b/example/ios/MmkvExample/AppDelegate.swift
+@@ -21,15 +21,21 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
+     reactNativeDelegate = delegate
+     reactNativeFactory = factory
+ 
+-    window = UIWindow(frame: UIScreen.main.bounds)
++    return true
++  }
++}
+ 
+-    factory.startReactNative(
+-      withModuleName: "MmkvExample",
+-      in: window,
+-      launchOptions: launchOptions
+-    )
++class SceneDelegate: UIResponder, UIWindowSceneDelegate {
++  var window: UIWindow?
+ 
+-    return true
++  func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
++    guard let windowScene = scene as? UIWindowScene,
++      let appDelegate = UIApplication.shared.delegate as? AppDelegate,
++      let factory = appDelegate.reactNativeFactory else { return }
++    let window = UIWindow(windowScene: windowScene)
++    self.window = window
++    appDelegate.window = window
++    factory.startReactNative(withModuleName: "MmkvExample", in: window, launchOptions: nil)
+   }
+ }
+ 
+diff --git a/example/ios/MmkvExample/Info.plist b/example/ios/MmkvExample/Info.plist
+index 517c71a..176fdc7 100644
+--- a/example/ios/MmkvExample/Info.plist
++++ b/example/ios/MmkvExample/Info.plist
+@@ -37,6 +37,18 @@
+ 	<string></string>
+ 	<key>RCTNewArchEnabled</key>
+ 	<true/>
++	<key>UIApplicationSceneManifest</key>
++	<dict>
++		<key>UIApplicationSupportsMultipleScenes</key><false/>
++		<key>UISceneConfigurations</key>
++		<dict>
++			<key>UIWindowSceneSessionRoleApplication</key>
++			<array><dict>
++				<key>UISceneConfigurationName</key><string>Default Configuration</string>
++				<key>UISceneDelegateClassName</key><string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
++			</dict></array>
++		</dict>
++	</dict>
+ 	<key>UILaunchStoryboardName</key>
+ 	<string>LaunchScreen</string>
+ 	<key>UIRequiredDeviceCapabilities</key>

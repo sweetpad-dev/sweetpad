@@ -156,6 +156,32 @@ pub struct Bitmap {
 }
 
 impl Bitmap {
+    /// Straight-alpha RGBA for compositing and standalone icon exports.
+    pub(super) fn rgba(&self) -> Rgba {
+        let mut pixels = Vec::with_capacity(self.bgra.len());
+        for pixel in self.bgra.chunks_exact(4) {
+            let alpha = u32::from(pixel[3]);
+            let channel = |c: u8| {
+                u8::try_from(if alpha == 0 {
+                    0
+                } else {
+                    ((u32::from(c) * 255 + alpha / 2) / alpha).min(255)
+                })
+                .unwrap()
+            };
+            pixels.extend_from_slice(&[
+                channel(pixel[2]),
+                channel(pixel[1]),
+                channel(pixel[0]),
+                pixel[3],
+            ]);
+        }
+        Rgba {
+            width: self.width,
+            height: self.height,
+            pixels,
+        }
+    }
     /// From pixels whose color isn't multiplied by their alpha, like a
     /// PNG's.
     pub fn from_rgba(image: &Rgba) -> Bitmap {
@@ -362,7 +388,16 @@ impl Car {
     }
 
     fn add_facet(&mut self, name: &str, part: Part, symbol: bool) -> Option<u16> {
-        if self.facets.iter().any(|f| f.name == name) {
+        if let Some(facet) = self.facets.iter_mut().find(|f| f.name == name) {
+            // An Icon Composer icon and an imageset may deliberately share a
+            // name. Native CoreUI uses one identifier, led by the image part.
+            if matches!(
+                (facet.part, part),
+                (Part::Icon, Part::Image) | (Part::Image, Part::Icon)
+            ) {
+                facet.part = Part::Image;
+                return Some(facet.identifier);
+            }
             return None;
         }
         let identifier = u16::try_from(self.facets.len() + 1).ok()?;
@@ -786,7 +821,11 @@ impl Car {
     fn kinds(&self) -> Kinds {
         Kinds {
             glyphs: self.facets.iter().any(|f| f.symbol),
-            icons: self.facets.iter().any(|f| f.part == Part::Icon),
+            icons: self.facets.iter().any(|f| f.part == Part::Icon)
+                || self
+                    .renditions
+                    .iter()
+                    .any(|(key, _)| key.part == Part::Icon as u16),
         }
     }
 

@@ -54,7 +54,14 @@ Some things need macOS itself, or an Apple tool that exists only for macOS:
 
 Other limits include advanced mapping expressions, unsupported App Intents schemas,
 distribution IPA export, and some Swift/C++ interoperability cases.
-The React Native MMKV example still fails in its generated NitroModules header on Linux.
+The tested MMKV example needs an explicit fixture shim for Linux Swift's debug-only C++ thunk emission.
+Both products pass storage checks, including persistence after relaunch.
+See `sweetpad-lib/ci/LINUX_PROJECTS.md` for the pinned patch and dependency preparation.
+
+iOS Icon Composer support produces static light, dark, and tinted appearances.
+Interactive glass lighting and native material effects remain unsupported.
+Sticker packs support ordered PNG/GIF/JPEG members and message-extension icons.
+Sticker sequences and localized sticker-pack strings remain unsupported.
 
 A build that needs one of these fails with an error, the same way a broken project would.
 
@@ -71,6 +78,7 @@ x86_64 release. The script installs:
 - the Swift toolchain, checked against swift.org's signing keys;
 - xtool, and the Darwin SDK it extracts from your Xcode;
 - additional tvOS, watchOS, and visionOS SDK data when those platforms exist in your Xcode;
+- Swift back-deployment libraries from your Xcode for apps with older deployment targets;
 - swbuild, Swift Build's command-line driver, built from source with a small patch from sweetpad;
 - the plugin sweetpad uses for Apple's macros;
 - Rust, to build sweetpad itself.

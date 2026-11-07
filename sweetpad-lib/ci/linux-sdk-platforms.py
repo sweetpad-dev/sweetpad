@@ -44,12 +44,36 @@ def copy_tree(source, destination):
         temporary.replace(destination)
 
 
+def copy_swift_runtimes(xcode, bundle):
+    """Import the user's back-deployment dylibs, not host executables."""
+    relative = Path("Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib")
+    source = xcode / "Contents" / relative
+    copied = []
+    for directory in sorted(source.glob("swift-*")):
+        if not directory.is_dir():
+            continue
+        for library in sorted(directory.glob("*/*.dylib")):
+            target = bundle / relative / library.relative_to(source)
+            # Resolve versioned symlinks so the imported library is self-contained.
+            copy_tree(library.resolve(), target)
+            copied.append(str(library.relative_to(source)))
+    return copied
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("xcode", type=Path)
     parser.add_argument("bundle", type=Path)
     parser.add_argument("--metadata-only", action="store_true", help="Update triple mappings after a completed SDK copy")
+    parser.add_argument("--runtime-only", action="store_true", help="Import Swift back-deployment runtimes without copying platform SDKs")
     args = parser.parse_args()
+    if args.metadata_only and args.runtime_only:
+        parser.error("--metadata-only and --runtime-only are mutually exclusive")
+    if not args.metadata_only:
+        copied = copy_swift_runtimes(args.xcode, args.bundle)
+        print(f"Imported {len(copied)} Swift back-deployment libraries", flush=True)
+    if args.runtime_only:
+        return
     source = args.xcode / "Contents/Developer/Platforms"
     destination = args.bundle / "Developer/Platforms"
     for platform in PLATFORMS:

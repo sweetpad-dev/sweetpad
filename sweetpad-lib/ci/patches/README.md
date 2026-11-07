@@ -44,7 +44,18 @@ Native and Linux compilation validate the migrated watch apps.
 Watch runtime and physical-device behavior remain unverified because those runtimes and devices are unavailable.
 
 The `_spm-broken` fixture deliberately references a missing package. It remains an expected failure.
-The separate MMKV Linux C++ interoperability error has no patch here.
+The additional MMKV fixture uses `react-native-mmkv-cxx-debug-thunks.patch`.
+Its support-header shim suppresses forced emission of unused generic debug thunks in Linux Swift 6.4.2.
+The shim preserves generated APIs and restores `DEBUG` before application headers load.
+Apple's compiler retains its original behavior.
+`react-native-mmkv-scene-lifecycle.patch` fixes the shared SDK 27 scene-lifecycle trap.
+Apply these source patches with `linux-projects.py --only react-native-mmkv --prepare-only`.
+Then regenerate the example's Pods with `bundle exec pod install` inside `example/ios`.
+
+`swift-nio-apple-cross-resources.patch` selects privacy resources during Apple destination manifest evaluation.
+Run `linux-dependency-patches.py` after package resolution on each host.
+`linux-projects.json` pins the separate Mastodon and Swiftfin dependency revisions.
+This preparation remains explicit. The build engine never edits package sources.
 
 `react-native-template-scene-lifecycle.patch` and `statefulmacros-linux-foundation.patch`
 belong to the additional real-project suite described in `../LINUX_PROJECTS.md`.
