@@ -236,9 +236,6 @@ impl Signer<'_> {
         let info_bytes = std::fs::read(&info_path)
             .map_err(|e| format!("couldn't read {}: {e}", info_path.display()))?;
         let info = plist::read_info(&info_bytes)?;
-        let executable = plist::string(&info, "CFBundleExecutable")
-            .ok_or_else(|| format!("{} names no CFBundleExecutable", info_path.display()))?
-            .to_string();
         let identifier = match (
             &self.options.identifier,
             plist::string(&info, "CFBundleIdentifier"),
@@ -252,7 +249,18 @@ impl Signer<'_> {
                 ));
             }
         };
-        let resources = resources::code_resources(bundle, &executable)?;
+        let Some(executable) = plist::string(&info, "CFBundleExecutable") else {
+            if bundle.extension().is_some_and(|s| s == "bundle")
+                && plist::string(&info, "CFBundlePackageType") == Some("BNDL")
+            {
+                return self.sign_resource_bundle(bundle, &identifier, &info_bytes);
+            }
+            return Err(format!(
+                "{} names no CFBundleExecutable",
+                info_path.display()
+            ));
+        };
+        let resources = resources::code_resources(bundle, executable)?;
         let folder = bundle.join("_CodeSignature");
         std::fs::create_dir_all(&folder)
             .and_then(|()| std::fs::write(folder.join("CodeResources"), &resources))
@@ -263,6 +271,54 @@ impl Signer<'_> {
             resources: crypto::sha256(&resources),
         };
         self.sign_file(&bundle.join(executable), Some(&binding))
+    }
+
+    /// Resource-only bundles keep detached signature files and hash their
+    /// Info.plist as a single unpaged code slot, as Apple's codesign does.
+    fn sign_resource_bundle(
+        &self,
+        bundle: &Path,
+        identifier: &str,
+        info: &[u8],
+    ) -> Result<(), String> {
+        // Apple's codesign ignores executable entitlements for a bundle
+        // without executable code, even when Swift Build supplies an xcent.
+        let resources = resources::code_resources(bundle, "Info.plist")?;
+        let requirements = blobs::requirements(identifier, self.identity)?;
+        let directory = Directory {
+            identifier,
+            team: self.identity.and_then(Identity::team),
+            flags: self.options.flags
+                | if self.identity.is_none() {
+                    blobs::FLAG_ADHOC
+                } else {
+                    0
+                },
+            exec_segment: (0, 0, 0),
+            special: vec![
+                (blobs::SPECIAL_INFO, crypto::sha256(info)),
+                (blobs::SPECIAL_REQUIREMENTS, crypto::sha256(&requirements)),
+                (blobs::SPECIAL_RESOURCES, crypto::sha256(&resources)),
+            ],
+        }
+        .build_unpaged(info);
+        let signature = self.identity.map_or_else(
+            || Ok(Vec::new()),
+            |identity| cms::sign(identity, &directory, self.time),
+        )?;
+        let folder = bundle.join("_CodeSignature");
+        std::fs::create_dir_all(&folder)
+            .map_err(|e| format!("couldn't create {}: {e}", folder.display()))?;
+        for (name, bytes) in [
+            ("CodeResources", resources),
+            ("CodeRequirements", requirements),
+            ("CodeDirectory", directory),
+            ("CodeSignature", signature),
+        ] {
+            std::fs::write(folder.join(name), bytes)
+                .map_err(|e| format!("couldn't write {}: {e}", folder.join(name).display()))?;
+        }
+        Ok(())
     }
 
     fn sign_file(&self, path: &Path, bundle: Option<&Bundle>) -> Result<(), String> {

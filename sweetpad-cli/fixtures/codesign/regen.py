@@ -91,6 +91,7 @@ def make_inputs(work, sign):
     with open(os.path.join(root, "LldTool"), "wb") as f:
         f.write(lld_tool)
     os.chmod(os.path.join(root, "LldTool"), 0o755)
+    make_resource_input(root)
     compile_c(work, "int main(void) { return 0; }\n", os.path.join(root, "Tool"))
     compile_c(work, "int library(void) { return 7; }\n", os.path.join(root, "Library.dylib"),
               "-dynamiclib", "-install_name", "@rpath/Library.dylib")
@@ -140,6 +141,20 @@ def make_inputs(work, sign):
     sign(extension, "--entitlements", entitlements)
 
 
+def make_resource_input(root):
+    bundle = os.path.join(root, "Resources.bundle")
+    os.makedirs(bundle, exist_ok=True)
+    write_plist(os.path.join(bundle, "Info.plist"), {
+        "CFBundleIdentifier": "dev.sweetpad.resources",
+        "CFBundlePackageType": "BNDL",
+        "CFBundleVersion": "1",
+        # Longer than a Mach-O code page: detached signatures still hash once.
+        "FixturePadding": "resource-only signing " * 900,
+    })
+    with open(os.path.join(bundle, "message.txt"), "w") as output:
+        output.write("resource-v1\n")
+
+
 def make_expected(sign):
     root = os.path.join(HERE, "expected")
     shutil.rmtree(root, ignore_errors=True)
@@ -150,6 +165,11 @@ def make_expected(sign):
     sign(os.path.join(root, "Library.dylib"))
     sign(os.path.join(root, "LldTool"))
     sign(os.path.join(root, "App.app"), "--entitlements", entitlements)
+    sign(os.path.join(root, "Resources.bundle"), "--entitlements", entitlements)
+    resource_adhoc = os.path.join(root, "Resources.adhoc.bundle")
+    shutil.copytree(os.path.join(HERE, "input", "Resources.bundle"), resource_adhoc)
+    run("codesign", "--force", "--sign", "-", "--timestamp=none",
+        "--entitlements", entitlements, "--generate-entitlement-der", resource_adhoc)
     adhoc = os.path.join(root, "Library.adhoc.dylib")
     shutil.copy(os.path.join(HERE, "input", "Library.dylib"), adhoc)
     run("codesign", "--force", "--sign", "-", "--timestamp=none", "--generate-entitlement-der",

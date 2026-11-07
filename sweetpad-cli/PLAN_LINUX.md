@@ -818,12 +818,16 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       included, passes `codesign --verify --deep --strict`. Apple's
       `codesign` signs the same files to the same bytes, apart from the CMS
       signing time
-- [ ] Install and launch that build on a device, signed with a real
-      Apple Development identity
+- [x] Install and launch a Linux-built parity fixture on an iPhone 13 with
+      iOS 27.0.1, signed with an Apple Development identity. All seven
+      app-hosted tests pass with a Linux compilation marker. Apple signature
+      verification passes. Exported executable hashes remain unchanged.
+      This run uses Mac device transport. Device checks for extensions,
+      widgets, and the larger corpus apps remain unverified.
 - [x] Linux device list/install/uninstall/launch/log transport through
       pymobiledevice3. Tested argument construction against version 11.50.0.
-      Physical-device validation was declined; readiness and process control
-      remain unsupported on Linux.
+      Direct Linux physical-device transport remains unverified. Readiness
+      and process control remain unsupported on Linux.
 - [x] Swift Build archives and development IPA export on Linux. A signed
       fixture archive and IPA pass Apple codesign verification. Unsigned IPA
       export, simulator archives, and distribution export are rejected.

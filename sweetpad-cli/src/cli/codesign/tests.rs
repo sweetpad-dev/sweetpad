@@ -203,6 +203,50 @@ fn signs_a_bundle_like_codesign() {
     assert_same_signature(&ours.join("App"), &expected.join("App"), Some(&identity));
 }
 
+#[test]
+fn resource_bundles_match_native_detached_signatures() {
+    let identity = fixture_identity();
+    let dir = TempDir::new("sweetpad-codesign-resources");
+    for (name, identity) in [
+        ("Resources.bundle", Some(&identity)),
+        ("Resources.adhoc.bundle", None),
+    ] {
+        let ours = sign(&dir, name, identity, true);
+        let expected = fixtures().join("expected").join(name);
+        for file in ["CodeDirectory", "CodeRequirements", "CodeResources"] {
+            let relative = Path::new("_CodeSignature").join(file);
+            assert_eq!(
+                std::fs::read(ours.join(&relative)).unwrap(),
+                std::fs::read(expected.join(&relative)).unwrap(),
+                "{name}: {file} differs from Apple's signature"
+            );
+        }
+        let directory = std::fs::read(ours.join("_CodeSignature/CodeDirectory")).unwrap();
+        let cms = std::fs::read(ours.join("_CodeSignature/CodeSignature")).unwrap();
+        if let Some(identity) = identity {
+            verify_cms(&cms, &directory, identity);
+        } else {
+            assert!(cms.is_empty());
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let verify = || {
+                std::process::Command::new("/usr/bin/codesign")
+                    .args(["--verify", "--strict"])
+                    .arg(&ours)
+                    .output()
+                    .unwrap()
+            };
+            assert!(verify().status.success());
+            std::fs::write(ours.join("message.txt"), "tampered").unwrap();
+            assert!(
+                !verify().status.success(),
+                "a changed resource must fail verification"
+            );
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn apples_codesign_verifies_what_it_signs() {

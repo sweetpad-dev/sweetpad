@@ -594,6 +594,7 @@ fn scope_darwin_settings(overrides: &mut BTreeMap<String, String>, sdk: &str) {
         "DONT_RUN_SWIFT_STDLIB_TOOL",
         "SWIFT_STDLIB_TOOL_TOOLCHAINS",
         "SWIFT_STDLIB_TOOL_STRIP_BITCODE",
+        "STRIP_BITCODE_FROM_COPIED_FILES",
         "MODULE_VERIFIER_KIND",
         "GENERATE_INTERMEDIATE_TEXT_BASED_STUBS",
     ] {
@@ -1020,9 +1021,10 @@ impl DarwinSdk {
     ///   what a build here needs on top (see [`toolset`]).
     /// - `LM_SKIP_METADATA_EXTRACTION`: enable the portable App Intents
     ///   registration and language-model processors.
-    /// - `SWIFT_STDLIB_TOOL_STRIP_BITCODE`: current SDK back-deployment
-    ///   runtimes have no embedded bitcode. Keep Swift Build's portable
-    ///   runtime embedding action, without the macOS-only bitcode tool.
+    /// - `SWIFT_STDLIB_TOOL_STRIP_BITCODE` and
+    ///   `STRIP_BITCODE_FROM_COPIED_FILES`: current Apple builds have no
+    ///   embedded bitcode. Keep portable runtime and framework copying
+    ///   without invoking the macOS-only bitcode tool.
     /// - `LIBRARY_SEARCH_PATHS`: the Swift compatibility libraries an older
     ///   deployment target links (`swiftCompatibility56`) are Xcode's, in the
     ///   bundle, and the toolchain here has none.
@@ -1073,6 +1075,7 @@ impl DarwinSdk {
             ("LM_SKIP_METADATA_EXTRACTION", "NO".to_string()),
             ("GENERATE_INTERMEDIATE_TEXT_BASED_STUBS", "NO".to_string()),
             ("SWIFT_STDLIB_TOOL_STRIP_BITCODE", "NO".to_string()),
+            ("STRIP_BITCODE_FROM_COPIED_FILES", "NO".to_string()),
             (
                 "SWIFT_STDLIB_TOOL_TOOLCHAINS",
                 self.bundle

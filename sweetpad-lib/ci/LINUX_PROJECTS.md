@@ -11,7 +11,8 @@ The only failure is intentional. One obsolete extension scheme merged into its w
 The November 7, 2026 run used an arm64 Ubuntu 24.04 OrbStack machine.
 It used Swift 6.4.2, patched Swift Build 6.4.0, and SDKs extracted from Xcode 27.2.
 The native control used Apple Swift 6.4.2 and the same SDK version.
-Simulator checks ran on iOS 26.0 and 27.0. No physical device was used.
+Simulator checks ran on iOS 26.0 and 27.0.
+Later physical-device checks used an iPhone 13 with iOS 27.0.1.
 
 Install the Linux tools with `linux-setup.sh` and build the CLI on both hosts.
 The projects need their own dependencies before the suite can build them.
@@ -136,6 +137,51 @@ Executable, icon, privacy-resource, and runtime-library hashes remain unchanged.
 Local evidence is under `validation/`: `tests/independent-manifests.json`,
 `parity-final/summary.json`, `initial-child-runtime-fixed/summary.json`,
 `mastodon-locales-final/comparison.json`, and `wikipedia-storyboard/`.
+
+## Physical-device validation
+
+The Linux-built `ParityProbe` app passes seven tests on an iPhone 13 with iOS 27.0.1.
+The tests verify the Linux compilation marker, app and package resources, assets,
+storyboard loading, SwiftUI and system bindings, SQLite, and localized shortcut models.
+Apple `codesign --verify --deep --strict` accepts the app and its nested code.
+All four exported executable hashes remain unchanged during testing.
+The app also launches after testing and appears in the device process list.
+
+The build uses an Apple Development identity and a profile for the registered device.
+The `.p12` file and profile stay outside the repository.
+The identity does not require access to the Mac login keychain.
+The device fixture copy removes the simulator fixture's `CODE_SIGNING_ALLOWED=NO` setting.
+SDK defaults then control signing for each target.
+
+The device build exposed two gaps that the simulator checks did not exercise.
+The Linux backend now disables obsolete bitcode stripping when it copies embedded frameworks.
+The signer also supports resource-only `BNDL` bundles with detached signatures.
+Native reference files cover the public test identity, ad-hoc signatures, large Info.plists, and ignored executable entitlements.
+Apple verification accepts the signatures and rejects modified resources.
+
+After the signed Linux fixture build, run this command on the Mac:
+
+```bash
+python3 -B sweetpad-lib/ci/linux-device-checks.py \
+  --device CONNECTED_IPHONE_UDID \
+  --linux-products /home/USER/sweetpad-device-parity/Build/Products \
+  --project /path/to/device-fixture/ParityProbe.xcodeproj \
+  --out /path/to/fresh-device-evidence
+```
+
+The runner exports only the signed app, including its test bundle and runtime frameworks.
+It installs the app with `devicectl` and runs an independent device manifest with `sweetpad test run --xctestrun`.
+The Mac does not recompile these products.
+The runner preserves signature results, executable hashes, test results, and process evidence.
+
+The matched-source bundle comparison retains two debug-symbol differences.
+The test dSYM has a different bundle identifier and an additional XCTest Swift interface.
+The signed Linux products also contain two provisioning profiles that the unsigned native control does not contain.
+App resources and decoded shortcut models match.
+
+This run uses Mac device transport. Direct Linux device transport remains unverified.
+Physical-device checks for extensions, widgets, and the larger corpus apps remain unverified.
+Voice invocation and interactive Icon Composer effects also remain unverified.
 
 ## Run the suite
 
@@ -535,7 +581,8 @@ the native incremental archived-source discrepancy. Both hosts also pass all
 seven final tests on iOS 26 with unchanged executable hashes. Evidence is under `validation/localized-build`,
 `localized-shortcuts-final`, `keychain-tests2`, `linking-matrix`,
 `linking-runtime2`, `fresh-*-preparation.json`, and `ice-cubes-localized-*`.
-Physical-device, voice-invocation, and interactive Icon Composer material checks remain unverified.
+The physical-device parity checks are described in the physical-device validation section.
+Voice-invocation and interactive Icon Composer material checks remain unverified.
 
 Fresh MMKV products also pass seven storage checks twice per host, including persistence after relaunch.
 Use `mmkv-parity-smoke.py --corpus-root` with the fresh source root and `--out` with its build evidence directory.

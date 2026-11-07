@@ -200,6 +200,15 @@ folders Xcode keeps profiles in under `~/Library`, or in the folder
 
 Without an identity, a device build isn't signed. A simulator build needs no identity.
 
+For an existing private key, export the `.p12` file with OpenSSL 3 and AES encryption.
+The macOS system OpenSSL can select 40-bit RC2 encryption, which the Linux signer does not support.
+Device signing includes Swift package bundles that contain resources without an executable.
+
+A Linux-built parity app passed seven tests on an iPhone 13 with iOS 27.0.1.
+The Mac installed the signed app and ran the tests without recompilation.
+The exported executable hashes stayed unchanged.
+See `sweetpad-lib/ci/linux-device-checks.py` for the repeatable device checks.
+
 ## Archives and IPA export
 
 On Linux, `sweetpad archive` uses Swift Build's install action to create an `.xcarchive`.

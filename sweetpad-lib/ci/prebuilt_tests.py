@@ -1,7 +1,8 @@
-"""Write simulator XCTest manifests from explicitly selected built bundles.
+"""Write iOS XCTest manifests from explicitly selected built bundles.
 
 No Xcode build or native manifest is required. This intentionally covers logic
-and app-hosted unit tests; UI tests and test-plan options need a supplied manifest.
+and app-hosted unit tests; device tests require an app host. UI tests and
+test-plan options need a supplied manifest.
 """
 import argparse
 from pathlib import Path
@@ -21,8 +22,11 @@ def manifest(products, bundles, scheme, environment=None):
             raise ValueError("UI tests require a manifest specifying the target application")
         host = next((p for p in bundle.parents if p.suffix == ".app" and p.is_relative_to(products)), None)
         configuration = relative.parts[0]
-        if "iphonesimulator" not in configuration:
-            raise ValueError("only iOS simulator test products are supported")
+        simulator = "iphonesimulator" in configuration
+        if not simulator and "iphoneos" not in configuration:
+            raise ValueError("only iOS test products are supported")
+        if not simulator and not host:
+            raise ValueError("device tests require a signed app host")
         base = "__TESTROOT__/" + configuration
         developer = "__PLATFORMS__/iPhoneSimulator.platform/Developer"
         testing = {
@@ -34,6 +38,10 @@ def manifest(products, bundles, scheme, environment=None):
             "__XPC_DYLD_LIBRARY_PATH": base,
             "XCODE_SCHEME_NAME": scheme,
         }
+        if not simulator:
+            # Device frameworks are embedded in the signed host. Mac SDK paths
+            # are meaningful to simulator dyld only, not to an iPhone process.
+            testing = {"XCODE_SCHEME_NAME": scheme}
         target = {
             "BlueprintName": bundle.stem,
             "ProductModuleName": info["CFBundleExecutable"],
