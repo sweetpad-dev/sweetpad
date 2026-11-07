@@ -1,0 +1,34 @@
+name: PlatformProbe
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+targets:
+  TVProbe:
+    type: application
+    platform: tvOS
+    deploymentTarget: "18.0"
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.tvprobe
+        GENERATE_INFOPLIST_FILE: YES
+  WatchProbe:
+    type: application
+    platform: watchOS
+    deploymentTarget: "11.0"
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.watchprobe
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_WKApplication: YES
+        INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: YES
+  VisionProbe:
+    type: application
+    platform: visionOS
+    deploymentTarget: "2.0"
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.visionprobe
+        GENERATE_INFOPLIST_FILE: YES

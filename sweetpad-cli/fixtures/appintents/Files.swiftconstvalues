@@ -1,0 +1,452 @@
+[
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "FileProbe",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "FileProbe",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "FileProbe",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "FileProbe",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "FileProbe",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ProvidesDialog",
+          "AppIntents.ShowsSnippetView"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "9FileProbe0A11InputIntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ProvidesDialog & AppIntents.ShowsSnippetView",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy9FileProbe0f5InputC0V_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "Files.swift",
+    "kind": "struct",
+    "line": 5,
+    "mangledTypeName": "9FileProbe0A11InputIntentV",
+    "properties": [
+      {
+        "file": "Files.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_images",
+        "line": 11,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.Array<AppIntents.IntentFile>>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Images",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "value": "Images to upload",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Array<AppIntents.IntentFile>>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "supportedContentTypes",
+              "type": "Swift.Array<UniformTypeIdentifiers.UTType>",
+              "value": [
+                {
+                  "value": {
+                    "baseType": "UniformTypeIdentifiers.UTType",
+                    "memberLabel": "image"
+                  },
+                  "valueKind": "MemberReference"
+                },
+                {
+                  "value": {
+                    "baseType": "UniformTypeIdentifiers.UTType",
+                    "memberLabel": "jpeg"
+                  },
+                  "valueKind": "MemberReference"
+                },
+                {
+                  "value": {
+                    "baseType": "UniformTypeIdentifiers.UTType",
+                    "memberLabel": "png"
+                  },
+                  "valueKind": "MemberReference"
+                },
+                {
+                  "value": {
+                    "baseType": "UniformTypeIdentifiers.UTType",
+                    "memberLabel": "gif"
+                  },
+                  "valueKind": "MemberReference"
+                },
+                {
+                  "value": {
+                    "baseType": "UniformTypeIdentifiers.UTType",
+                    "memberLabel": "heic"
+                  },
+                  "valueKind": "MemberReference"
+                }
+              ],
+              "valueKind": "Array"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "value": {
+                "name": "connectToPreviousIntentResult"
+              },
+              "valueKind": "Enum"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.Array<AppIntents.IntentFile>>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Files.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_caption",
+        "line": 14,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Caption",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "value": "What caption?",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Files.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 6,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Upload images",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "Files.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "images",
+        "line": 11,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Images",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "description",
+                "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+                "value": "Images to upload",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "supportedContentTypes",
+                "type": "Swift.Array<UniformTypeIdentifiers.UTType>",
+                "value": [
+                  {
+                    "value": {
+                      "baseType": "UniformTypeIdentifiers.UTType",
+                      "memberLabel": "image"
+                    },
+                    "valueKind": "MemberReference"
+                  },
+                  {
+                    "value": {
+                      "baseType": "UniformTypeIdentifiers.UTType",
+                      "memberLabel": "jpeg"
+                    },
+                    "valueKind": "MemberReference"
+                  },
+                  {
+                    "value": {
+                      "baseType": "UniformTypeIdentifiers.UTType",
+                      "memberLabel": "png"
+                    },
+                    "valueKind": "MemberReference"
+                  },
+                  {
+                    "value": {
+                      "baseType": "UniformTypeIdentifiers.UTType",
+                      "memberLabel": "gif"
+                    },
+                    "valueKind": "MemberReference"
+                  },
+                  {
+                    "value": {
+                      "baseType": "UniformTypeIdentifiers.UTType",
+                      "memberLabel": "heic"
+                    },
+                    "valueKind": "MemberReference"
+                  }
+                ],
+                "valueKind": "Array"
+              },
+              {
+                "label": "inputConnectionBehavior",
+                "type": "AppIntents.InputConnectionBehavior",
+                "value": {
+                  "name": "connectToPreviousIntentResult"
+                },
+                "valueKind": "Enum"
+              }
+            ],
+            "file": "Files.swift",
+            "line": 8,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.Array<AppIntents.IntentFile>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Images",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "value": "Images to upload",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Array<AppIntents.IntentFile>>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "supportedContentTypes",
+              "type": "Swift.Array<UniformTypeIdentifiers.UTType>",
+              "value": [
+                {
+                  "value": {
+                    "baseType": "UniformTypeIdentifiers.UTType",
+                    "memberLabel": "image"
+                  },
+                  "valueKind": "MemberReference"
+                },
+                {
+                  "value": {
+                    "baseType": "UniformTypeIdentifiers.UTType",
+                    "memberLabel": "jpeg"
+                  },
+                  "valueKind": "MemberReference"
+                },
+                {
+                  "value": {
+                    "baseType": "UniformTypeIdentifiers.UTType",
+                    "memberLabel": "png"
+                  },
+                  "valueKind": "MemberReference"
+                },
+                {
+                  "value": {
+                    "baseType": "UniformTypeIdentifiers.UTType",
+                    "memberLabel": "gif"
+                  },
+                  "valueKind": "MemberReference"
+                },
+                {
+                  "value": {
+                    "baseType": "UniformTypeIdentifiers.UTType",
+                    "memberLabel": "heic"
+                  },
+                  "valueKind": "MemberReference"
+                }
+              ],
+              "valueKind": "Array"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "value": {
+                "name": "connectToPreviousIntentResult"
+              },
+              "valueKind": "Enum"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.Array<AppIntents.IntentFile>>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Files.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$images",
+        "line": 11,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.Array<AppIntents.IntentFile>>>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "Files.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "caption",
+        "line": 14,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Caption",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "requestValueDialog",
+                "type": "Swift.Optional<AppIntents.IntentDialog>",
+                "value": "What caption?",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "Files.swift",
+            "line": 13,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Caption",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "value": "What caption?",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Files.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$caption",
+        "line": 14,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      }
+    ],
+    "typeName": "FileProbe.FileInputIntent"
+  }
+]

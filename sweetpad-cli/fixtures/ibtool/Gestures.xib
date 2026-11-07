@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.XIB" version="3.0" toolsVersion="24101" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES">
+<device id="retina6_1" orientation="portrait" appearance="light"/>
+<dependencies><plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="24000"/><capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/></dependencies>
+<objects>
+<placeholder placeholderIdentifier="IBFilesOwner" id="-1" userLabel="File's Owner"/>
+<placeholder placeholderIdentifier="IBFirstResponder" id="-2" customClass="UIResponder"/>
+<view contentMode="scaleToFill" id="view"><rect key="frame" x="0.0" y="0.0" width="414" height="896"/><autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/><gestureRecognizers/>
+<connections><outletCollection property="gestureRecognizers" destination="tap" appends="YES" id="c1"/><outletCollection property="gestureRecognizers" destination="swipe" appends="YES" id="c2"/><outletCollection property="gestureRecognizers" destination="pan" appends="YES" id="c3"/><outletCollection property="gestureRecognizers" destination="long" appends="YES" id="c4"/><outletCollection property="gestureRecognizers" destination="pinch" appends="YES" id="c5"/><outletCollection property="gestureRecognizers" destination="rotation" appends="YES" id="c6"/></connections></view>
+<tapGestureRecognizer id="tap" numberOfTapsRequired="2" numberOfTouchesRequired="2" enabled="NO" cancelsTouchesInView="NO" delaysTouchesBegan="YES" delaysTouchesEnded="NO"><connections><action selector="tapped:" destination="-1" id="a1"/></connections></tapGestureRecognizer>
+<swipeGestureRecognizer id="swipe" direction="up" numberOfTouchesRequired="2"/>
+<panGestureRecognizer id="pan" minimumNumberOfTouches="2" maximumNumberOfTouches="3"/>
+<pongPressGestureRecognizer id="long" minimumPressDuration="1" allowableMovement="20" numberOfTapsRequired="1" numberOfTouchesRequired="2"/>
+<pinchGestureRecognizer id="pinch"/>
+<rotationGestureRecognizer id="rotation"/>
+<tapGestureRecognizer id="tap-default"/><swipeGestureRecognizer id="swipe-default"/><panGestureRecognizer id="pan-default"/><pongPressGestureRecognizer id="long-default"/></objects></document>

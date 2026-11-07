@@ -1,0 +1,15 @@
+diff --git a/buildscripts/VerifyNoBS.swift b/buildscripts/VerifyNoBS.swift
+--- a/buildscripts/VerifyNoBS.swift
++++ b/buildscripts/VerifyNoBS.swift
+@@ -11,7 +11,11 @@
+ //   xcrun -sdk macosx swift buildscripts/VerifyNoBS.swift  --xcode  ${PROJECT_DIR}/${PROJECT_NAME}.xcodeproj/project.pbxproj
+ //
+ 
++#if canImport(Darwin)
+ import Darwin
++#else
++import Glibc
++#endif
+ import Foundation
+ 
+ /// A message with its file name and location

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="24511" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+ <entity name="Record" representedClassName="Record" syncable="YES">
+  <attribute name="key" attributeType="String"/>
+  <attribute name="variant" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+  <compoundIndexes><compoundIndex><index value="key"/><index value="variant"/></compoundIndex><compoundIndex><index value="variant"/><index value="key"/></compoundIndex></compoundIndexes>
+ </entity>
+</model>

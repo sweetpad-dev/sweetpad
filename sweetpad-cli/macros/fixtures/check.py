@@ -9,6 +9,7 @@ Each fixture is its own module. An expansion is keyed by its mangled name,
 which the compiler gives each one from its place in the source, so the
 fixture and the expansions it's recorded with change together.
 """
+import argparse
 import os
 import subprocess
 import sys
@@ -48,7 +49,15 @@ def expansions(fixture, plugin):
 
 
 def main():
-    record = sys.argv[1:] == ["--record"]
+    global HERE, MODULES
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--record", action="store_true")
+    parser.add_argument("--fixtures", default=HERE)
+    parser.add_argument("--modules", default=MODULES)
+    args = parser.parse_args()
+    HERE = os.path.abspath(args.fixtures)
+    MODULES = args.modules
+    record = args.record
     plugin = None
     if not record:
         subprocess.run(["swift", "build", "-c", "release", "--package-path", PACKAGE,
@@ -79,4 +88,5 @@ def main():
     sys.exit(1 if failed else 0)
 
 
-main()
+if __name__ == "__main__":
+    main()

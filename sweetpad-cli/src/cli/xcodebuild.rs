@@ -24,6 +24,8 @@ pub enum BuildAction {
     /// `build-for-testing`: the targets the scheme tests, plus whatever they
     /// depend on, compiled without running a test.
     BuildForTesting,
+    /// Install the scheme's archive targets into an archive's Products folder.
+    Archive,
 }
 
 impl BuildAction {
@@ -31,6 +33,7 @@ impl BuildAction {
         match self {
             Self::Build => "build",
             Self::BuildForTesting => "build-for-testing",
+            Self::Archive => "archive",
         }
     }
 }
@@ -66,6 +69,7 @@ impl From<BuildAction> for Action {
         match action {
             BuildAction::Build => Self::Build,
             BuildAction::BuildForTesting => Self::BuildForTesting,
+            BuildAction::Archive => Self::Archive,
         }
     }
 }
@@ -548,6 +552,8 @@ pub struct TestPlan<'a> {
     pub destination: Option<&'a str>,
     /// `-sdk` override; `None` lets the destination imply it.
     pub sdk: Option<&'a str>,
+    /// Run existing products from this manifest without invoking a build.
+    pub xctestrun: Option<&'a Path>,
     /// `-only-testing:` selectors (Target/Class/method); empty runs everything.
     pub only_testing: &'a [String],
     /// `-skip-testing:` selectors.
@@ -609,15 +615,25 @@ pub struct TestRunOutcome {
 
 impl TestPlan<'_> {
     fn args(&self) -> Vec<String> {
-        let mut args: Vec<String> = vec![
-            "test".into(),
-            "-scheme".into(),
-            self.scheme.into(),
-            "-configuration".into(),
-            self.configuration.into(),
+        let mut args: Vec<String> = if let Some(manifest) = self.xctestrun {
+            vec![
+                "test-without-building".into(),
+                "-xctestrun".into(),
+                manifest.display().to_string(),
+            ]
+        } else {
+            vec![
+                "test".into(),
+                "-scheme".into(),
+                self.scheme.into(),
+                "-configuration".into(),
+                self.configuration.into(),
+            ]
+        };
+        args.extend([
             "-resultBundlePath".into(),
             self.result_bundle.display().to_string(),
-        ];
+        ]);
         if let Some(dest) = self.destination {
             args.push("-destination".into());
             args.push(dest.into());
@@ -639,7 +655,9 @@ impl TestPlan<'_> {
             args.push("-collect-test-diagnostics".into());
             args.push("never".into());
         }
-        args.extend(container_args(self.container));
+        if self.xctestrun.is_none() {
+            args.extend(container_args(self.container));
+        }
         for t in self.only_testing {
             args.push(format!("-only-testing:{t}"));
         }
@@ -3286,6 +3304,7 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
             skip_testing: &skip,
             result_bundle: &bundle,
             sdk: None,
+            xctestrun: None,
             retry_flaky: None,
             coverage: false,
             skip_test_diagnostics: true,
@@ -3310,6 +3329,25 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
                 "-only-testing:AppTests/LoginTests",
                 "-skip-testing:AppTests/FlakyTests/testJitter",
             ]
+        );
+        let manifest = Path::new("/tmp/exported/Tests.xctestrun");
+        let prebuilt = TestPlan {
+            xctestrun: Some(manifest),
+            ..plan
+        };
+        let args = prebuilt.args();
+        assert_eq!(args[0], "test-without-building");
+        assert_eq!(&args[1..3], ["-xctestrun", "/tmp/exported/Tests.xctestrun"]);
+        for flag in ["-project", "-workspace", "-scheme", "-configuration"] {
+            assert!(!args.iter().any(|arg| arg == flag));
+        }
+        assert!(
+            args.iter()
+                .any(|arg| arg == "-only-testing:AppTests/LoginTests")
+        );
+        assert!(
+            args.iter()
+                .any(|arg| arg == "-skip-testing:AppTests/FlakyTests/testJitter")
         );
     }
 

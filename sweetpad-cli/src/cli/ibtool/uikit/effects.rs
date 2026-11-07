@@ -133,11 +133,22 @@ impl Encoder<'_> {
                     )],
                 ),
                 Some("string") => self.graph.string(attribute.attr("value").unwrap_or("")),
+                Some("number") if attribute.child("integer").is_some() => {
+                    let value = attribute
+                        .child("integer")
+                        .and_then(|n| n.attr("value"))
+                        .ok_or("a runtime integer has no value")?
+                        .parse::<i64>()
+                        .map_err(|e| e.to_string())?;
+                    self.graph
+                        .shared("NSNumber", vec![("NS.intval", Value::Int(value))])
+                }
                 Some("number") => self.graph.number(
                     number(attribute, "value")?
                         .or_else(|| {
                             attribute
                                 .child("real")
+                                .or_else(|| attribute.child("integer"))
                                 .and_then(|r| r.attr("value"))
                                 .and_then(|r| r.parse().ok())
                         })
@@ -155,6 +166,21 @@ impl Encoder<'_> {
                         .child("color")
                         .ok_or("a runtime color has no value")?,
                 )?,
+                Some("size") => {
+                    let size = attribute
+                        .child("size")
+                        .ok_or("a runtime size has no value")?;
+                    let width = number(size, "width")?.unwrap_or(0.0);
+                    let height = number(size, "height")?.unwrap_or(0.0);
+                    let text = self.graph.string(&format!("{{{width}, {height}}}"));
+                    self.graph.shared(
+                        "NSValue",
+                        vec![
+                            ("NS.special", Value::Int(2)),
+                            ("NS.sizeval", Value::Object(text)),
+                        ],
+                    )
+                }
                 other => return Err(format!("unsupported runtime attribute type {other:?}")),
             };
             let key = self.graph.string(

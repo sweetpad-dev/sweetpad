@@ -19,7 +19,7 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 mod compile;
-mod format;
+pub(super) mod format;
 mod symbols;
 
 use std::path::{Path, PathBuf};

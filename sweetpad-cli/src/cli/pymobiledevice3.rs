@@ -7,6 +7,176 @@ use std::process::Child;
 
 use crate::cli::{CliError, process};
 
+/// Physical devices visible to usbmuxd, for hosts without CoreDevice.
+pub fn devices() -> Result<Vec<super::devicectl::Device>, CliError> {
+    let output = process::capture_env(
+        BINARY,
+        &["usbmux", "list"],
+        None,
+        &[("NO_COLOR".into(), "1".into())],
+    )?;
+    parse_devices(&output)
+}
+
+fn parse_devices(output: &str) -> Result<Vec<super::devicectl::Device>, CliError> {
+    let values: Vec<serde_json::Value> = serde_json::from_str(output)
+        .map_err(|e| CliError::new(format!("reading pymobiledevice3's device list: {e}")))?;
+    values
+        .iter()
+        .map(|value| {
+            let text = |names: &[&str]| {
+                names
+                    .iter()
+                    .find_map(|n| value[*n].as_str())
+                    .unwrap_or_default()
+                    .to_string()
+            };
+            let udid = text(&["UniqueDeviceID", "Identifier", "UDID"]);
+            if udid.is_empty() {
+                return Err(CliError::new(
+                    "pymobiledevice3 listed a device without an identifier",
+                ));
+            }
+            let product = text(&["ProductType", "PRODUCT"]);
+            let class = text(&["DeviceClass"]);
+            Ok(super::devicectl::Device {
+                identifier: udid.clone(),
+                udid,
+                has_hardware_udid: true,
+                name: text(&["DeviceName", "NAME"]),
+                model: product.clone(),
+                product_type: product,
+                os_version: text(&["ProductVersion", "VERSION"]),
+                device_type: class.clone(),
+                platform: match class.as_str() {
+                    "AppleTV" => "tvOS",
+                    "Watch" => "watchOS",
+                    "RealityDevice" => "visionOS",
+                    _ => "iOS",
+                }
+                .into(),
+                transport: if text(&["ConnectionType"]) == "USB" {
+                    "wired"
+                } else {
+                    "localNetwork"
+                }
+                .into(),
+                connection: "connected".into(),
+                ..super::devicectl::Device::default()
+            })
+        })
+        .collect()
+}
+
+/// Install a signed app or IPA through installation_proxy, including Linux.
+pub fn install(device: &str, app: &str) -> Result<(), CliError> {
+    process::capture(
+        BINARY,
+        &[
+            "apps",
+            "install",
+            "--udid",
+            device,
+            "--developer",
+            "--",
+            app,
+        ],
+        None,
+    )
+    .map(|_| ())
+}
+
+pub fn uninstall(device: &str, bundle: &str) -> Result<(), CliError> {
+    process::capture(
+        BINARY,
+        &["apps", "uninstall", "--udid", device, "--", bundle],
+        None,
+    )
+    .map(|_| ())
+}
+
+/// Start an installed app with the native host transport. Modern
+/// pymobiledevice3 establishes the developer-service tunnel on iOS 17+.
+pub fn launch(
+    device: &str,
+    bundle: &str,
+    args: &[String],
+    env: &[(String, String)],
+    suspended: bool,
+) -> Result<String, CliError> {
+    let args = launch_args(device, bundle, args, env, suspended);
+    process::capture(
+        BINARY,
+        &args.iter().map(String::as_str).collect::<Vec<_>>(),
+        None,
+    )
+}
+
+pub fn launch_console(
+    device: &str,
+    bundle: &str,
+    args: &[String],
+    env: &[(String, String)],
+) -> Result<(), CliError> {
+    let mut args = launch_args(device, bundle, args, env, false);
+    args.insert(args.len() - 1, "--stream".into());
+    process::stream(
+        BINARY,
+        &args.iter().map(String::as_str).collect::<Vec<_>>(),
+        None,
+    )
+}
+
+pub fn spawn_console(
+    device: &str,
+    bundle: &str,
+    args: &[String],
+    env: &[(String, String)],
+) -> Result<Child, CliError> {
+    let mut args = launch_args(device, bundle, args, env, false);
+    args.insert(args.len() - 1, "--stream".into());
+    process::spawn_piped_both_env(
+        BINARY,
+        &args.iter().map(String::as_str).collect::<Vec<_>>(),
+        None,
+        &[],
+    )
+}
+
+fn launch_args(
+    device: &str,
+    bundle: &str,
+    args: &[String],
+    env: &[(String, String)],
+    suspended: bool,
+) -> Vec<String> {
+    let mut command: Vec<String> = ["developer", "dvt", "launch", "--udid", device]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    if suspended {
+        command.push("--suspended".into());
+    }
+    for (key, value) in env {
+        command.extend([
+            "--env".into(),
+            format!(
+                "{}={value}",
+                key.strip_prefix("DEVICECTL_CHILD_").unwrap_or(key)
+            ),
+        ]);
+    }
+    let quote = |word: &str| format!("'{}'", word.replace('\'', "'\"'\"'"));
+    command.push(
+        std::iter::once(bundle)
+            .chain(args.iter().map(String::as_str))
+            .map(quote)
+            .collect::<Vec<_>>()
+            .join(" "),
+    );
+    command
+}
+
 /// The tool's binary name — assumed on `PATH`.
 pub const BINARY: &str = "pymobiledevice3";
 
@@ -125,6 +295,33 @@ fn split_label<'a>(body: &'a str, image: &'a str) -> (&'a str, &'a str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn usbmux_devices_keep_the_hardware_identifier_and_transport() {
+        let devices=parse_devices(r#"[{"UniqueDeviceID":"ABC","DeviceName":"Phone","ProductType":"iPhone14,5","ProductVersion":"27.0","DeviceClass":"iPhone","ConnectionType":"USB"}]"#).unwrap();
+        assert_eq!(devices[0].udid, "ABC");
+        assert_eq!(devices[0].destination(), "platform=iOS,id=ABC");
+        assert_eq!(devices[0].transport, "wired");
+        assert!(parse_devices(r#"[{"DeviceName":"unknown"}]"#).is_err());
+    }
+
+    #[test]
+    fn launch_arguments_round_trip_through_pymobiledevice3s_shlex_parser() {
+        let words = vec!["a b".into(), "it's fine".into(), "--flag".into()];
+        let args = launch_args(
+            "UDID",
+            "dev.test",
+            &words,
+            &[("DEVICECTL_CHILD_MODE".into(), "a=b".into())],
+            true,
+        );
+        assert!(args.windows(2).any(|p| p == ["--env", "MODE=a=b"]));
+        assert!(args.contains(&"--suspended".to_string()));
+        assert_eq!(
+            sweetpad_lib::scheme::split_launch_argument(args.last().unwrap()),
+            ["dev.test", "a b", "it's fine", "--flag"]
+        );
+    }
 
     #[test]
     fn parses_a_labelled_entry_and_strips_the_load_address() {

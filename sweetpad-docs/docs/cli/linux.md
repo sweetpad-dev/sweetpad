@@ -5,8 +5,7 @@ sidebar_label: Building on Linux
 
 # Building on Linux
 
-`sweetpad build` can build an Xcode project on Linux, with no Xcode and no changes to the
-project. There it builds with Swift Build, Apple's open-source build system, against the
+`sweetpad build` can build an Xcode project on Linux. It uses Swift Build, Apple's open-source build system, against the
 Apple SDKs taken from your own copy of Xcode. For the Xcode tools Linux doesn't have, sweetpad
 runs its own replacements.
 
@@ -26,28 +25,42 @@ build sweetpad from source, as described below.
 Most of what an iOS or macOS app is made of builds the way Xcode builds it:
 
 - iOS and macOS apps, with their app extensions and widgets, frameworks and static libraries.
+- tvOS, watchOS, and visionOS simulator builds, including modern standalone SwiftUI apps.
 - Swift packages, local and remote, including packages that ship a binary XCFramework.
 - Asset catalogs, storyboards and XIBs, String Catalogs and `.strings` files, and Core Data
-  models.
-- SwiftData's macros, `#Predicate` and `#Preview`.
+  models and common Core Data mapping models.
+- SwiftData's macros, `#Predicate`, `#Preview`, SwiftUI `@Entry`, and TipKit macros.
+- Package macros built for the Linux host, including Tuist-generated macro tools.
+- Explicit schemes shipped by resolved Git packages, including custom DerivedData locations.
+- App Intents metadata and language models for the supported intent schemas.
 - Run script phases, including scripts that call `xcrun`, `ditto` or `lipo`.
 - Device builds, signed with your development identity (see
   [Signing a device build](#signing-a-device-build)).
+- Development archives and IPA export that preserve the build's signing identity.
+
+The real-project suite includes Mastodon, Swiftfin, Wikipedia, Flutter, React Native, and Capacitor.
+See the repository's `sweetpad-lib/ci/LINUX_PROJECTS.md` for source pins, results, and setup requirements.
+Framework projects need their generated dependencies before compilation.
 
 ## What stays on a Mac
 
 Some things need macOS itself, or an Apple tool that exists only for macOS:
 
-- Running the app in the Simulator, running tests, and installing on a device.
-- watchOS, tvOS and visionOS apps, and Mac Catalyst. The SDKs sweetpad takes from Xcode cover
-  iOS and macOS only.
-- Metal shaders, Core ML model classes, Core Data mapping models, and SceneKit and RealityKit
+- Running the app in the Simulator and executing tests. Linux can compile test products with `sweetpad test build`.
+- Mac Catalyst builds remain unverified.
+- Metal shaders, Core ML model classes, and SceneKit and RealityKit
   assets.
 - Run scripts that need macOS, like a Swift script that imports Darwin.
-- Swift macros that a project builds as a macOS command-line tool, which some generated
-  projects do with macro packages.
+
+Other limits include advanced mapping expressions, unsupported App Intents schemas,
+distribution IPA export, and some Swift/C++ interoperability cases.
+The React Native MMKV example still fails in its generated NitroModules header on Linux.
 
 A build that needs one of these fails with an error, the same way a broken project would.
+
+Current Xcode and Swift Build reject deprecated WatchKit extension products.
+Use a modern single-target watchOS app. The new platform probes verify compilation and linking;
+runtime and device-signing checks for tvOS, watchOS, and visionOS remain unverified.
 
 ## Setting up a Linux machine
 
@@ -57,12 +70,19 @@ x86_64 release. The script installs:
 
 - the Swift toolchain, checked against swift.org's signing keys;
 - xtool, and the Darwin SDK it extracts from your Xcode;
+- additional tvOS, watchOS, and visionOS SDK data when those platforms exist in your Xcode;
 - swbuild, Swift Build's command-line driver, built from source with a small patch from sweetpad;
 - the plugin sweetpad uses for Apple's macros;
 - Rust, to build sweetpad itself.
 
+The current setup pins Swift 6.4.2 and Swift Build 6.4.0 separately.
+It also installs Bash, bubblewrap, rsync, and LLVM's Darwin libtool.
+For script phases, a private mount makes `/bin/sh` use Bash, as macOS scripts expect.
+This does not change the machine's default shell or restrict the script's filesystem access.
+
 Every step is skipped when its result is already there, so you can run the script again after
 an update.
+If Xcode's SDK version changes, rerun with `SWEETPAD_REFRESH_SDK=1` to replace the extracted SDK.
 
 ### On a Mac, in an OrbStack machine
 
@@ -120,6 +140,36 @@ sweetpad build --scheme MyMacApp --destination "generic/platform=macOS"
 
 The product lands in DerivedData, in the same folder Xcode would put it in.
 
+For a test-only scheme, use `sweetpad test build --scheme MyTests`.
+Remote package schemes become available after the project resolves its dependencies.
+Listing schemes reads the existing checkout graph and does not fetch packages.
+
+### Running Linux-built tests
+
+Copy the complete test products directory to a Mac with Xcode. Keep the directory layout
+referenced by the `.xctestrun` manifest. Then run:
+
+```bash
+sweetpad test run --project MyApp.xcodeproj --scheme MyApp \
+  --xctestrun /path/to/Products/prebuilt.xctestrun --on SIMULATOR_UDID
+```
+
+This uses `test-without-building`. The project supplies result history; Xcode loads the
+products named by the manifest. The command does not compile them or replace build diagnostics.
+Test selectors, result bundles, and reports remain available. A selection that runs zero tests fails.
+
+Linux `test build` does not yet emit a manifest. For iOS simulator unit tests, the repository
+helper can generate one from explicitly selected bundles:
+
+```bash
+python3 sweetpad-lib/ci/prebuilt_tests.py --products /path/to/Products --scheme MyApp \
+  Debug-iphonesimulator/MyApp.app/PlugIns/MyAppTests.xctest
+```
+
+The helper supports app-hosted and logic tests. UI tests and custom test-plan options require
+a supplied manifest. The simulator and test runtime still run on macOS.
+For a custom build directory, pass `-derivedDataPath` after `--` or configure it in `sweetpad.toml`.
+
 Build settings after `--` work as they do with xcodebuild, and so do `-derivedDataPath` and
 `-xcconfig`. Flags that only xcodebuild understands are refused with an error, since the build
 doesn't go through xcodebuild.
@@ -141,6 +191,41 @@ folders Xcode keeps profiles in under `~/Library`, or in the folder
 `SWEETPAD_PROVISIONING_PROFILES` names. Copy your profiles from the Mac to either place.
 
 Without an identity, a device build isn't signed. A simulator build needs no identity.
+
+## Archives and IPA export
+
+On Linux, `sweetpad archive` uses Swift Build's install action to create an `.xcarchive`.
+It collects dSYMs for the app and its embedded extensions and frameworks.
+
+```bash
+sweetpad archive --scheme MyApp --destination "generic/platform=iOS" \
+  --export-method debugging --output-file ./artifacts
+```
+
+Development export preserves the identity and provisioning profiles from the build.
+It requires a signed device archive. Distribution methods and custom export options require Xcode.
+Use `--no-export` to create an archive without an IPA.
+
+## Device transport
+
+Linux device discovery, installation, removal, launch, and logs use `pymobiledevice3` on `PATH`.
+The command integration was checked against version 11.50.0.
+Install it in a Python virtual environment and expose its executable on `PATH`.
+USB access also needs `usbmuxd`, a paired device, Developer Mode, and an unlocked device.
+Newer iOS developer services can also need a pymobiledevice3 tunnel.
+
+Physical-device validation remains pending. Linux readiness checks, process inspection,
+and process termination are not implemented. Simulator operations still require a Mac.
+
+## App Intents
+
+The portable processors generate registration metadata, extracted strings, and shortcut language models.
+Supported inputs include primitive parameters, optional and array values, image file inputs,
+value dialogs, dialog/snippet results, enums, basic entities and queries, widget intents, and basic App Shortcuts.
+Dynamic frameworks and embedded extensions keep separate registrations.
+Advanced schemas, static dependency registrations, and unsupported language-model options fail with explicit errors.
+Native metadata comparisons cover the supported forms. Siri behavior on a physical device is not verified.
+Localized shortcut language-model bundles do not yet match Xcode's per-language output.
 
 ## Environment variables
 

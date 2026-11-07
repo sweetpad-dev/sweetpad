@@ -13,12 +13,15 @@ use sweetpad_lib::xcscheme::Element;
 use super::nib::{Graph, Id, Value, doubles};
 use super::{Options, custom_class};
 mod accessibility;
+mod calibrated;
 mod configuration;
 mod controls;
 mod effects;
 mod fonts;
 mod framework_views;
+pub(super) mod gestures;
 mod images;
+mod layout_guides;
 mod lists;
 mod more_views;
 mod navigation;
@@ -47,6 +50,9 @@ pub(super) struct Encoder<'a> {
     /// The `UIViewSafeAreaLayoutGuide` of each view a constraint pins to
     /// its safe area, by the view's id.
     safe_areas: HashMap<String, Id>,
+    scroll_guide_owners: HashMap<String, (String, bool)>,
+    legacy_guide_definitions: HashMap<String, Vec<(String, bool)>>,
+    legacy_guides: HashMap<String, (Vec<Id>, Vec<Id>)>,
     table_labels: HashSet<String>,
     /// What the nib's objects list holds besides its placeholders: each
     /// view, its layout guides and constraints, then its subviews.
@@ -146,9 +152,8 @@ fn view_class(element: &Element) -> Result<&'static str, String> {
         "tabBar" => Ok("UITabBar"),
         "wkWebView" => Ok("WKWebView"),
         "mapView" => Ok("MKMapView"),
-        other => Err(format!(
-            "<{other}> isn't a view SweetPad's ibtool compiles yet"
-        )),
+        other => gestures::class(other)
+            .ok_or_else(|| format!("<{other}> isn't a view SweetPad's ibtool compiles yet")),
     }
 }
 
@@ -294,6 +299,7 @@ impl<'a> Encoder<'a> {
                         destination,
                         property,
                         collection,
+                        yes(connection, "appends"),
                     );
                 } else if connection.name == "outlet" {
                     let property = connection
@@ -416,6 +422,9 @@ impl<'a> Encoder<'a> {
             elements: HashMap::new(),
             guide_owners: HashMap::new(),
             safe_areas: HashMap::new(),
+            scroll_guide_owners: HashMap::new(),
+            legacy_guide_definitions: HashMap::new(),
+            legacy_guides: HashMap::new(),
             table_labels: HashSet::new(),
             objects: Vec::new(),
             key_value_pairs: Vec::new(),
@@ -431,7 +440,9 @@ impl<'a> Encoder<'a> {
     pub fn root_view(&mut self, element: &Element) -> Result<Id, String> {
         self.declare(element)?;
         let view = self.view(element)?;
-        self.document_tint(view, element)?;
+        if gestures::class(&element.name).is_none() {
+            self.document_tint(view, element)?;
+        }
         Ok(view)
     }
 
@@ -473,6 +484,14 @@ impl<'a> Encoder<'a> {
             if guide.attr("key") == Some("safeArea") {
                 self.guide_owners
                     .insert(id_of(guide)?.to_string(), id.clone());
+            } else if matches!(
+                guide.attr("key"),
+                Some("contentLayoutGuide" | "frameLayoutGuide")
+            ) {
+                self.scroll_guide_owners.insert(
+                    id_of(guide)?.to_string(),
+                    (id.clone(), guide.attr("key") == Some("contentLayoutGuide")),
+                );
             }
         }
         let object = self.graph.object(if element.attr("customClass").is_some() {
@@ -480,7 +499,8 @@ impl<'a> Encoder<'a> {
         } else {
             class
         });
-        self.ids.insert(id, object);
+        self.ids.insert(id.clone(), object);
+        self.install_legacy_guides(&id, object);
         self.elements.insert(std::ptr::from_ref(element), object);
         for subview in subviews(element) {
             if element.name == "stackView"
@@ -515,6 +535,7 @@ impl<'a> Encoder<'a> {
         let id = element.attr("id").unwrap_or("<anonymous>");
         for child in &element.children {
             match child.name.as_str() {
+                "gestureRecognizers" if child.children.is_empty() => {}
                 "rect"
                 | "autoresizingMask"
                 | "subviews"
@@ -526,7 +547,9 @@ impl<'a> Encoder<'a> {
                 | "connections"
                 | "state"
                 | "textInputTraits"
+                | "dataDetectorType"
                 | "edgeInsets"
+                | "directionalEdgeInsets"
                 | "inset"
                 | "tableViewCellContentView"
                 | "collectionViewFlowLayout"
@@ -559,6 +582,16 @@ impl<'a> Encoder<'a> {
     }
 
     pub fn view(&mut self, element: &Element) -> Result<Id, String> {
+        let object = self.object_for(element)?;
+        if gestures::class(&element.name).is_some() {
+            self.gesture(element, object)?;
+            self.objects.push(object);
+            return Ok(object);
+        }
+        self.ui_view(element)
+    }
+
+    fn ui_view(&mut self, element: &Element) -> Result<Id, String> {
         let id = element.attr("id").unwrap_or("<anonymous>");
         let object = self.object_for(element)?;
         let previous_trait_root = self.current_trait_root;
@@ -575,24 +608,12 @@ impl<'a> Encoder<'a> {
         }
         Self::validate_view(element)?;
         let [x, y, width, height] = self.view_geometry(element, object)?;
-        let constraints = self.constraint_objects(element)?;
-        let children: Vec<&Element> = subviews(element).collect();
-        let headers: Vec<&Element> = element
-            .children
-            .iter()
-            .filter(|e| matches!(e.attr("key"), Some("tableHeaderView" | "tableFooterView")))
-            .collect();
-        if (!children.is_empty() || !headers.is_empty()) && element.name != "visualEffectView" {
-            let mut views = Vec::new();
-            for child in children.iter().chain(headers.iter()) {
-                views.push(self.object_for(child)?);
-            }
-            if element.name == "tableViewCell" {
-                views.push(self.cell_separator(element, width, height)?);
-            }
-            let array = self.graph.array("NSMutableArray", &views);
-            self.graph.set(object, "UISubviews", array);
+        let mut constraints = self.constraint_objects(element)?;
+        if let Some((_, legacy)) = self.legacy_guides.get(id) {
+            constraints.extend(legacy);
         }
+        let children: Vec<&Element> = subviews(element).collect();
+        self.encode_subviews(element, object, &children, width, height)?;
         if let Some(color) = keyed(element, "color", "backgroundColor") {
             let color = self.color(color)?;
             self.graph.set(object, "UIBackgroundColor", color);
@@ -660,6 +681,39 @@ impl<'a> Encoder<'a> {
         self.trait_variations(element, object)?;
         self.current_trait_root = previous_trait_root;
         Ok(object)
+    }
+
+    fn encode_subviews(
+        &mut self,
+        element: &Element,
+        object: Id,
+        children: &[&Element],
+        width: f64,
+        height: f64,
+    ) -> Result<(), String> {
+        let id = element.attr("id").unwrap_or("<anonymous>");
+        let headers: Vec<&Element> = element
+            .children
+            .iter()
+            .filter(|e| matches!(e.attr("key"), Some("tableHeaderView" | "tableFooterView")))
+            .collect();
+        if (!children.is_empty() || !headers.is_empty() || self.legacy_guides.contains_key(id))
+            && element.name != "visualEffectView"
+        {
+            let mut views = Vec::new();
+            for child in children.iter().chain(headers.iter()) {
+                views.push(self.object_for(child)?);
+            }
+            if let Some((guides, _)) = self.legacy_guides.get(id) {
+                views.extend(guides);
+            }
+            if element.name == "tableViewCell" {
+                views.push(self.cell_separator(element, width, height)?);
+            }
+            let array = self.graph.array("NSMutableArray", &views);
+            self.graph.set(object, "UISubviews", array);
+        }
+        Ok(())
     }
 
     fn view_custom_class(&mut self, element: &Element, object: Id) -> Result<(), String> {
@@ -766,6 +820,37 @@ impl<'a> Encoder<'a> {
 
     /// How a view draws and takes part in layout: the flags and priorities
     /// it has in the document.
+    fn layout_margins(&mut self, element: &Element, object: Id) -> Result<(), String> {
+        if element.name == "navigationBar" && self.document.attr("targetRuntime") != Some("AppleTV")
+        {
+            self.graph
+                .set(object, "UIViewLayoutMargins", doubles(&[0.0; 4]));
+            self.graph
+                .set(object, "UIViewLayoutMarginsAreDirectional", true);
+        }
+        if let Some(margins) = keyed(element, "directionalEdgeInsets", "directionalLayoutMargins") {
+            let mut values = Vec::new();
+            for key in ["top", "leading", "bottom", "trailing"] {
+                values.push(number(margins, key)?.unwrap_or(0.0));
+            }
+            self.graph
+                .set(object, "UIViewLayoutMargins", doubles(&values));
+            self.graph
+                .set(object, "UIViewLayoutMarginsAreDirectional", true);
+        } else if let Some(margins) = keyed(element, "edgeInsets", "layoutMargins") {
+            let mut values = Vec::new();
+            for key in ["top", "left", "bottom", "right"] {
+                values.push(number(margins, key)?.unwrap_or(0.0));
+            }
+            self.graph
+                .set(object, "UIViewLayoutMargins", doubles(&values));
+        } else if matches!(element.name.as_str(), "stackView" | "mapView") {
+            self.graph
+                .set(object, "UIViewLayoutMargins", doubles(&[0.0; 4]));
+        }
+        Ok(())
+    }
+
     fn appearance(&mut self, element: &Element, object: Id) -> Result<(), String> {
         self.graph.set(object, "UIDeepDrawRect", true);
         if yes(element, "pointerInteractionEnabled") || yes(element, "pointerInteraction") {
@@ -821,24 +906,7 @@ impl<'a> Encoder<'a> {
             self.graph
                 .set(object, "UIViewInsetsLayoutMarginsFromSafeArea", 0_i64);
         }
-        if element.name == "navigationBar" && self.document.attr("targetRuntime") != Some("AppleTV")
-        {
-            self.graph
-                .set(object, "UIViewLayoutMargins", doubles(&[0.0; 4]));
-            self.graph
-                .set(object, "UIViewLayoutMarginsAreDirectional", true);
-        }
-        if let Some(margins) = keyed(element, "edgeInsets", "layoutMargins") {
-            let mut values = Vec::new();
-            for key in ["top", "left", "bottom", "right"] {
-                values.push(number(margins, key)?.unwrap_or(0.0));
-            }
-            self.graph
-                .set(object, "UIViewLayoutMargins", doubles(&values));
-        } else if matches!(element.name.as_str(), "stackView" | "mapView") {
-            self.graph
-                .set(object, "UIViewLayoutMargins", doubles(&[0.0; 4]));
-        }
+        self.layout_margins(element, object)?;
         if let Some(tag) = integer(element, "tag")?
             && tag != 0
         {
@@ -945,6 +1013,9 @@ impl<'a> Encoder<'a> {
             .children_named("constraints")
             .flat_map(|list| list.children.iter())
         {
+            if yes(constraint, "placeholder") {
+                continue;
+            }
             let object = self.constraint(constraint, owner)?;
             if constraint.attr("identifier") != Some("UIIBSystemGenerated") {
                 self.objects.push(object);
@@ -1045,6 +1116,9 @@ impl<'a> Encoder<'a> {
     fn item(&mut self, ib_id: &str) -> Result<Id, String> {
         if let Some(&object) = self.ids.get(ib_id) {
             return Ok(object);
+        }
+        if let Some((owner, content)) = self.scroll_guide_owners.get(ib_id).cloned() {
+            return Ok(self.scroll_layout_guide(ib_id, &owner, content));
         }
         let Some(owner) = self.guide_owners.get(ib_id).cloned() else {
             return Err(format!(
@@ -1252,9 +1326,7 @@ impl<'a> Encoder<'a> {
             return Ok(self.system_color(name, fallback));
         }
         if let Some(name) = element.attr("cocoaTouchSystemColor") {
-            return Err(format!(
-                "the system color {name} isn't one SweetPad's ibtool compiles yet"
-            ));
+            return Ok(self.system_color(name, legacy_system_color(Some(name))?));
         }
         if let Some(name) = element.attr("name") {
             let fallback = self
@@ -1274,7 +1346,13 @@ impl<'a> Encoder<'a> {
         if matches!(fallback, Fallback::White(0.0, 0.0)) {
             return Ok(self.system_color("clearColor", fallback));
         }
-        let values = color_values(fallback);
+        let calibrated = element
+            .attr("colorSpace")
+            .is_some_and(|s| s.starts_with("calibrated"))
+            || element
+                .attr("customColorSpace")
+                .is_some_and(|s| s.starts_with("calibrated"));
+        let values = color_values_precision(fallback, !calibrated);
         Ok(self.graph.shared("UIColor", values))
     }
 
@@ -1355,6 +1433,18 @@ fn components(element: &Element) -> Result<Fallback, String> {
             number(element, "white")?.unwrap_or(0.0),
             alpha,
         )),
+        "calibratedWhite" => {
+            let white = number(element, "white")?.unwrap_or(0.0);
+            Ok(Fallback::White(calibrated::gray(white)?, alpha))
+        }
+        "calibratedRGB" => {
+            let [r, g, b] = calibrated::rgb([
+                number(element, "red")?.unwrap_or(0.0),
+                number(element, "green")?.unwrap_or(0.0),
+                number(element, "blue")?.unwrap_or(0.0),
+            ])?;
+            Ok(Fallback::Rgb(r, g, b, alpha))
+        }
         other => Err(format!(
             "the color space {other} isn't one SweetPad's ibtool compiles yet"
         )),
@@ -1367,6 +1457,12 @@ fn legacy_system_color(name: Option<&str>) -> Result<Fallback, String> {
         Some("whiteColor") => Ok(Fallback::White(1.0, 1.0)),
         Some("blackColor" | "darkTextColor") => Ok(Fallback::White(0.0, 1.0)),
         Some("clearColor") => Ok(Fallback::White(0.0, 0.0)),
+        Some("groupTableViewBackgroundColor") => Ok(Fallback::Rgb(
+            242.0 / 255.0,
+            242.0 / 255.0,
+            247.0 / 255.0,
+            1.0,
+        )),
         Some(other) => Err(format!(
             "the system color {other} isn't one SweetPad's ibtool compiles yet"
         )),
@@ -1540,6 +1636,7 @@ fn validate_constraint(element: &Element, id: &str) -> Result<(), String> {
                 | "relation"
                 | "priority"
                 | "identifier"
+                | "userLabel"
                 | "symbolic"
         ) {
             return Err(format!(

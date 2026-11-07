@@ -1,0 +1,12 @@
+--- a/Packages/Timeline/Tests/TimelineTests/MockTimelineStatusFetcher.swift
++++ b/Packages/Timeline/Tests/TimelineTests/MockTimelineStatusFetcher.swift
+@@ -3,7 +3,8 @@
+ 
+ @testable import Timeline
+ 
+-actor MockTimelineStatusFetcher: TimelineStatusFetching {
++@MainActor
++final class MockTimelineStatusFetcher: TimelineStatusFetching {
+   private let firstPage: [Status]
+   private let nextPages: [[Status]]
+   private var nextPageCalls: Int = 0

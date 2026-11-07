@@ -25,13 +25,20 @@ mod codegen;
 mod compile;
 mod model;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use compile::Quiet;
 use model::Model;
+
+/// Version hashes for the model snapshot embedded in a mapping model.
+pub(crate) fn entity_version_hashes(
+    root: &sweetpad_lib::xcscheme::Element,
+) -> Result<Vec<(String, [u8; 32])>, String> {
+    Ok(compile::version_hashes(&model::parse(root)?))
+}
 
 #[derive(Debug)]
 struct Args {

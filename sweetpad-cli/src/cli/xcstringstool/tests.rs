@@ -7,7 +7,15 @@ use super::*;
 use crate::cli::testdir::TempDir;
 
 /// The probe catalogs, by table name.
-const CATALOGS: &[&str] = &["Invalid", "Localizable", "Probe", "Symbols", "my-table"];
+const CATALOGS: &[&str] = &[
+    "Aliases",
+    "Invalid",
+    "Localizable",
+    "Named",
+    "Probe",
+    "Symbols",
+    "my-table",
+];
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/xcstringstool")
@@ -137,6 +145,23 @@ fn compiles_write_what_xcstringstool_writes() {
                     &format!("{table} {mode} {}", file.display()),
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn explicit_language_aliases_keep_the_requested_directory_spelling() {
+    let dir = TempDir::new("xcstrings-alias-filter");
+    for (mode, language) in [("kmr-filter", "kmr-TR"), ("ku-filter", "ku-TR")] {
+        let mut options = args(false);
+        options.languages = vec![language.into()];
+        let out = dir.join(mode);
+        let expected = fixtures().join("expected/Aliases").join(mode);
+        let problems = compile_catalog(&catalog("Aliases"), &options, "Aliases", &out).unwrap();
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(files(&out), files(&expected));
+        for file in files(&expected) {
+            assert_same(&read(&out.join(&file)), &read(&expected.join(&file)), mode);
         }
     }
 }

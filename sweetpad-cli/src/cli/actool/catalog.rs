@@ -207,6 +207,7 @@ fn is_set(extension: &str) -> bool {
             | "imagestack"
             | "launchimage"
             | "stickerpack"
+            | "stickersiconset"
             | "stickersequence"
             | "sticker"
             | "spriteatlas"

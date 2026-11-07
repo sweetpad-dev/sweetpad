@@ -121,7 +121,32 @@ fn canonical(data: &[u8]) -> String {
     canonical_with(data, &BTreeMap::new())
 }
 fn canonical_with(data: &[u8], names: &normalize::Names) -> String {
+    canonical_with_color_precision(data, names, false)
+}
+
+fn canonical_with_color_precision(
+    data: &[u8],
+    names: &normalize::Names,
+    calibrated: bool,
+) -> String {
     let mut objects = read::parse(data);
+    if calibrated {
+        // ICC implementations differ below one thousandth of a channel.
+        // Preserve every archive field and compare converted color channels
+        // at that precision; all other fixture values remain exact.
+        for object in &mut objects {
+            if object.class != "UIColor" {
+                continue;
+            }
+            for (key, value) in &mut object.values {
+                if ["UIWhite", "UIRed", "UIGreen", "UIBlue"].contains(&key.as_str())
+                    && let Read::Float(channel) = value
+                {
+                    *channel = (*channel * 1000.0).round() / 1000.0;
+                }
+            }
+        }
+    }
     normalize::prepare(&mut objects, names);
     let mut out = String::new();
     let mut seen = BTreeMap::new();
@@ -246,6 +271,23 @@ fn files(dir: &Path) -> BTreeMap<String, Vec<u8>> {
         .collect()
 }
 
+fn dump_native_fixture(compiled_name: &str, name: &str) {
+    if let Some(dump) = std::env::var_os("IBTOOL_DUMP") {
+        let expected = fixtures().join("expected").join(compiled_name);
+        if expected.exists() {
+            for (file, bytes) in files(&expected) {
+                if bytes.starts_with(b"NIBArchive") {
+                    std::fs::write(
+                        Path::new(&dump).join(format!("{name}-{file}.native")),
+                        canonical(&bytes),
+                    )
+                    .unwrap();
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn each_document_compiles_as_xcode_compiles_it() {
     let mut failures = Vec::new();
@@ -264,6 +306,7 @@ fn each_document_compiles_as_xcode_compiles_it() {
             }
         );
         let out = TempDir::new("sweetpad-ibtool");
+        dump_native_fixture(&compiled_name, &name);
         let args = Args {
             compilation_directory: Some(out.to_path_buf()),
             module: "App".to_string(),
@@ -320,8 +363,16 @@ fn each_document_compiles_as_xcode_compiles_it() {
             }
             let empty = BTreeMap::new();
             let (got, want) = (
-                canonical_with(data, ours_names.get(file).unwrap_or(&empty)),
-                canonical_with(&xcode[file], xcode_names.get(file).unwrap_or(&empty)),
+                canonical_with_color_precision(
+                    data,
+                    ours_names.get(file).unwrap_or(&empty),
+                    name.starts_with("Calibrated"),
+                ),
+                canonical_with_color_precision(
+                    &xcode[file],
+                    xcode_names.get(file).unwrap_or(&empty),
+                    name.starts_with("Calibrated"),
+                ),
             );
             if let Some(dump) = std::env::var_os("IBTOOL_DUMP") {
                 let dump = Path::new(&dump);

@@ -323,7 +323,11 @@ fn set(ctx: &mut Context, v: Variable, value: &str, scope: Scope) -> CommandResu
     let key = container.key();
     match v {
         Variable::Scheme => {
-            resolve::validate_choice("scheme", value, &resolve::schemes(&container)?)?;
+            resolve::validate_choice(
+                "scheme",
+                value,
+                &resolve::schemes_for_context(ctx, &container)?,
+            )?;
         }
         Variable::Configuration => {
             let candidates = resolve::configurations(&container).unwrap_or_default();
@@ -520,7 +524,7 @@ fn prompt_value(
 ) -> Result<String, CliError> {
     match v {
         Variable::Scheme => {
-            let candidates = resolve::schemes(container)?;
+            let candidates = resolve::schemes_for_context(ctx, container)?;
             resolve::choose(ctx, "scheme", None, &candidates)
         }
         Variable::Configuration => {

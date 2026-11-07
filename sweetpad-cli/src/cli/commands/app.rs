@@ -1294,7 +1294,7 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
 #[allow(clippy::too_many_lines)] // one linear ladder per target mode
 fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
     let mut resolved = resolve::resolve(ctx)?;
-    let schemes = resolve::schemes(&resolved.container)?;
+    let schemes = resolve::schemes_for_context(ctx, &resolved.container)?;
     let scheme = resolve::settle_scheme(ctx, &mut resolved, &schemes, true)?;
     let configuration = resolve::settle_configuration(ctx, &mut resolved, Some(&scheme), true)?;
 
@@ -8996,6 +8996,7 @@ Target 0: (crash) stopped.\n"
             project_toml: std::cell::OnceCell::new(),
             root_toml: std::cell::OnceCell::new(),
             stale_checked: std::cell::OnceCell::new(),
+            derived_data_path: std::cell::RefCell::new(None),
         }
     }
 

@@ -20,12 +20,14 @@
 // own output.
 #![deny(clippy::print_stdout, clippy::print_stderr)]
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use sweetpad_core::xcodebuild_args;
 
 pub mod actool;
+pub mod appintents;
 pub mod buildlog;
 pub mod codesign;
 pub mod config;
@@ -36,6 +38,7 @@ pub mod ibtool;
 pub mod inject;
 pub mod intentbuilderc;
 pub mod keyed_archive;
+pub mod mapc;
 pub mod merge;
 pub mod momc;
 pub mod oslog;
@@ -812,6 +815,9 @@ pub struct Context {
     /// command that resolves more than once (`build --watch` re-resolves per
     /// rebuild) warns a single time.
     stale_checked: std::cell::OnceCell<()>,
+    /// The effective build tail's DerivedData location, used to discover
+    /// remote package schemes before validating the selected scheme.
+    derived_data_path: std::cell::RefCell<Option<PathBuf>>,
 }
 
 impl Context {
@@ -932,6 +938,8 @@ impl Context {
         let (configured, left_out) =
             xcodebuild::for_action(action, &self.project_file(&container).xcodebuild.args, tail);
         let merged = config::effective_xcodebuild_args(&configured, tail).map_err(CliError::new)?;
+        self.derived_data_path
+            .replace(xcodebuild::command_line_settings(&merged.args, &container).derived_data_path);
         if self.out.is_verbose() {
             for note in &left_out {
                 self.out.note(note);
@@ -1078,6 +1086,7 @@ pub fn run(argv: &[String]) -> ExitCode {
         project_toml: std::cell::OnceCell::new(),
         root_toml: std::cell::OnceCell::new(),
         stale_checked: std::cell::OnceCell::new(),
+        derived_data_path: std::cell::RefCell::new(None),
     };
 
     // Bare `sweetpad`: the status view inside a project (the daily "where am

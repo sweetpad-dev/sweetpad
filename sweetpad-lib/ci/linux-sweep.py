@@ -20,7 +20,9 @@ generation, and its result says so. The setting covers every target, so
 the minimums themselves would lower the ones a project sets higher.
 
 Each result is a JSON file under OUT (default corpus/_linux-sweep), one per
-scheme, and a scheme that already has one is skipped unless --force. With
+scheme, and a scheme that already has one is skipped unless --force.
+A scheme with no running build targets is retried with `test build`; the
+record and summary name the selected action. With
 --xcode, each scheme that failed on Linux builds again on the Mac, with
 xcodebuild and without signing, as on Linux, and its result goes beside the
 Linux one. summary.json and
@@ -49,6 +51,22 @@ CORPUS = os.path.join(LIB, "corpus")
 VM = os.environ.get("SWEETPAD_VM", "sweetpad-linux")
 MAC_SWEETPAD = os.path.join(REPO, "target", "debug", "sweetpad")
 TIMEOUT = 60 * 60
+with open(os.path.join(CI, "linux-corpus-patches.json")) as patch_manifest:
+    CORPUS_PATCHES = json.load(patch_manifest)
+
+
+def fixture_policy(path, scheme, key):
+    """Explicit scheme changes made by the pinned compatibility patches."""
+    for entry in CORPUS_PATCHES:
+        for policy in entry.get(key, []):
+            container = os.path.join(CORPUS, entry["checkout"], policy["container"])
+            if path == container and scheme == policy["scheme"]:
+                if key == "retiredSchemes" and os.path.exists(
+                    os.path.join(CORPUS, entry["checkout"], policy["schemeFile"])
+                ):
+                    continue
+                return policy
+    return None
 
 # The destination for each platform a scheme can support, in the order the
 # sweep prefers them.
@@ -84,7 +102,7 @@ def containers():
     """Every container to sweep and its schemes, the small ones first."""
     found = []
     for name in sorted(os.listdir(CORPUS)):
-        if not name.startswith("_"):
+        if not name.startswith("_") or name.startswith(("_linux-sweep", "_linux-followups")):
             continue
         root = os.path.join(CORPUS, name)
         for dirpath, dirnames, _ in os.walk(root):
@@ -102,6 +120,18 @@ def containers():
                 path = os.path.join(CORPUS, sub["project_path"])
                 found.append((slug, path, [s["scheme"] for s in sub["schemes"]]))
     return found
+
+
+def baseline_containers(path):
+    """Repeat the exact container/scheme selection from an earlier summary."""
+    with open(path) as source:
+        rows = json.load(source)
+    grouped = {}
+    for row in rows:
+        schemes = grouped.setdefault((row["slug"], row["container"]), [])
+        if row["scheme"] not in schemes:
+            schemes.append(row["scheme"])
+    return [(slug, path, schemes) for (slug, path), schemes in grouped.items()]
 
 
 def container_flag(path):
@@ -125,6 +155,9 @@ def schemes_of(path):
 def destination(path, scheme):
     """The destination to build `scheme` for: the first platform it
     supports, or iOS Simulator for a package's scheme, which names none."""
+    policy = fixture_policy(path, scheme, "schemeDestinations")
+    if policy:
+        return policy["destination"]
     result = mac_json(["settings", "show", *container_flag(path), "--scheme", scheme,
                        "--key", "SUPPORTED_PLATFORMS"])
     platforms = set()
@@ -144,8 +177,9 @@ def debug_configuration(path):
     return next((n for n in names if n.lower() == "debug"), names[0] if names else "Debug")
 
 
-def build(where, path, scheme, dest, log, settings=()):
-    args = ["build", *container_flag(path), "--scheme", scheme,
+def build(where, path, scheme, dest, log, settings=(), action="build"):
+    args = [*(["test", "build"] if action == "test build" else ["build"]),
+            *container_flag(path), "--scheme", scheme,
             "--configuration", debug_configuration(path),
             "--destination", dest, "--non-interactive", "--no-color"]
     if where == "mac":
@@ -190,15 +224,15 @@ def summarize(out):
     rows.sort(key=lambda r: (r["slug"], r["container"], r["scheme"]))
     with open(os.path.join(out, "summary.json"), "w") as f:
         json.dump(rows, f, indent=2)
-    lines = ["| Project | Container | Scheme | Destination | Raised | Linux | Xcode | First error |",
-             "|---|---|---|---|---|---|---|---|"]
+    lines = ["| Project | Container | Scheme | Action | Destination | Raised | Linux | Xcode | First error |",
+             "|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         linux = r.get("linux") or {}
         xcode = r.get("xcode") or {}
         mark = lambda b: "" if not b else ("pass" if b.get("ok") else "FAIL")
         error = (linux.get("errors") or [""])[0].replace("|", "\\|")[:140]
         lines.append(f"| {r['slug']} | {os.path.relpath(r['container'], CORPUS)} | {r['scheme']} "
-                     f"| {r['destination'] or 'none'} | {'yes' if r.get('raised') else ''} "
+                     f"| {r.get('action', 'build')} | {r['destination'] or 'none'} | {'yes' if r.get('raised') else ''} "
                      f"| {mark(linux)} | {mark(xcode)} | {error} |")
     with open(os.path.join(out, "summary.md"), "w") as f:
         f.write("\n".join(lines) + "\n")
@@ -217,6 +251,10 @@ def say(text):
 def sweep(args, slug, path, schemes):
     """Build `schemes` of the container at `path`, one after another."""
     for scheme in schemes:
+        retired = fixture_policy(path, scheme, "retiredSchemes")
+        if retired:
+            say(f"retired {scheme}: migrated into {retired['replacement']}")
+            continue
         key = f"{slug} {os.path.relpath(path, CORPUS)} {scheme}"
         if args.only not in key:
             continue
@@ -230,21 +268,28 @@ def sweep(args, slug, path, schemes):
         if record is None or args.force:
             dest = destination(path, scheme)
             record = {"slug": slug, "container": path, "scheme": scheme,
-                      "destination": dest, "raised": False, "linux": None, "xcode": None}
+                      "destination": dest, "action": "build", "raised": False, "linux": None, "xcode": None}
             if dest:
                 record["linux"] = build("linux", path, scheme, dest, stem + ".linux.log")
+                if any("builds no targets for this action" in e for e in record["linux"]["errors"]):
+                    record["action"] = "test build"
+                    os.replace(stem + ".linux.log", stem + ".build-only.linux.log")
+                    record["linux"] = build("linux", path, scheme, dest, stem + ".linux.log",
+                                            action=record["action"])
                 if any(TOO_LOW.search(e) for e in record["linux"]["errors"]):
                     record["raised"] = True
                     record["linux"] = build("linux", path, scheme, dest, stem + ".linux.log",
-                                            RAISED_TARGETS)
+                                            RAISED_TARGETS, action=record["action"])
                 linux = record["linux"]
                 say(f"linux  {'pass' if linux['ok'] else 'FAIL'} {linux['seconds']:>6}s  {key}"
                     f"{'  (raised)' if record['raised'] else ''}")
         linux = record.get("linux")
-        if args.xcode and linux and not linux["ok"] and (record.get("xcode") is None or args.force):
+        if (args.xcode and linux and (not linux["ok"] or getattr(args, "xcode_all", False))
+                and (record.get("xcode") is None or args.force)):
             record["xcode"] = build("mac", path, scheme, record["destination"],
                                     stem + ".xcode.log",
-                                    RAISED_TARGETS if record.get("raised") else ())
+                                    RAISED_TARGETS if record.get("raised") else (),
+                                    action=record.get("action", "build"))
             xcode = record["xcode"]
             say(f"xcode  {'pass' if xcode['ok'] else 'FAIL'} {xcode['seconds']:>6}s  {key}")
         with open(stem + ".json", "w") as f:
@@ -257,11 +302,15 @@ def main():
     parser.add_argument("--only", default="")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--xcode", action="store_true")
+    parser.add_argument("--xcode-all", action="store_true", help="Run native controls for passing schemes too")
+    parser.add_argument("--baseline", help="Repeat only the container/scheme rows in this summary JSON")
     parser.add_argument("--jobs", type=int, default=1)
     args = parser.parse_args()
+    args.xcode = args.xcode or args.xcode_all
     os.makedirs(args.out, exist_ok=True)
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
-        futures = [pool.submit(sweep, args, *container) for container in containers()]
+        selected = baseline_containers(args.baseline) if args.baseline else containers()
+        futures = [pool.submit(sweep, args, *container) for container in selected]
         for future in futures:
             future.result()
     summarize(args.out)

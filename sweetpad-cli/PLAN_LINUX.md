@@ -1,7 +1,8 @@
 # Building Xcode projects on Linux
 
-Status on 2026-11-01. All the work is on branch `claude/linux-build-pif`, not
-merged into `main` yet.
+Status on 2026-11-07. The initial Linux engine merged in PR #346.
+Follow-up work is on `codex/linux-build-followups`. See
+[`ci/LINUX_PROJECTS.md`](../sweetpad-lib/ci/LINUX_PROJECTS.md) for current app coverage and limits.
 
 `sweetpad build` has a Swift Build engine, the default where there's no
 Xcode. It translates the workspace into the PIF that Apple's open-source
@@ -9,6 +10,16 @@ Swift Build takes as input, then runs `swbuild` against a Darwin Swift SDK
 that xtool extracts from the user's own Xcode.app. Xcode tools that Linux
 doesn't have are replaced by the sweetpad binary itself, started under the
 tool's name. lld links. Nothing calls Xcode or xcodebuild at build time.
+
+The patched corpus builds 127 of 128 current schemes with Swift 6.4.2 and SDK 27.2.
+Of the original 35 failures, 33 now pass on both hosts. One obsolete watch extension
+scheme merged into its app, and the deliberately missing package remains a negative test.
+Test-only schemes use `test build`; the summary records each action.
+Wikipedia, Mastodon, Swiftfin, Flutter platform_design, the React Native template,
+and the Capacitor conference app build on both hosts. All except Wikipedia render
+in the simulator; Wikipedia exits with the same data-store exception in both controls.
+The MMKV example still exposes a Linux Swift/C++ interoperability failure.
+Release cleanup remains deferred, and physical-device checks were skipped as requested.
 
 Items marked *(optional)* can wait until a project needs them.
 
@@ -40,11 +51,11 @@ Items marked *(optional)* can wait until a project needs them.
       whole (`-force_load`); otherwise a framework made from a package
       target alone links none of its code. `corpus/_alamofire-dynamic`
       (local) embeds `AlamofireDynamic.framework` and passes its checks
-- [ ] SwiftPM: per-test-target products *(optional)*
-- [ ] SwiftPM: a local package's own schemes, which it keeps in its
-      `.swiftpm/xcode` folder: NetNewsWire's `Account` and `Articles` build
-      with Xcode and fail here, since they name no project target
-      *(optional)*
+- [x] SwiftPM: per-test-target products, verified with NetNewsWire AccountTests through `sweetpad test build`
+- [x] Resolved remote package scheme files, including RevenueCatUI. Custom
+      DerivedData paths are honored. Package-root PIF reads preserve the app graph.
+- [x] Local package schemes in `.swiftpm/xcode`: Account and Articles build.
+      The scheme-owning package is a root so its test products are present.
 - [x] SwiftPM: the scheme Xcode makes for a local package's product builds
       the product's target, `<name>-product` in SwiftPM's PIF, when no
       project target has the scheme's name. A product shares no name with a
@@ -66,11 +77,12 @@ Items marked *(optional)* can wait until a project needs them.
       files, which are UTF-16. The patch names the encodings Foundation
       converts on every platform; NetNewsWire's 91 `.strings` files come out
       byte for byte as Xcode's
-- [ ] Macros Tuist builds as macOS tools: its Xcode-project integration of
+- [x] Macros Tuist builds as macOS tools: its Xcode-project integration of
       packages makes a macro target a `tool` with `SDKROOT = macosx`, which
       the targets using it load with `-load-plugin-executable`. That Mach-O
       can't run here, so the macro isn't found (`swift-case-paths` in a
-      Tuist fixture). Build such a tool for the host
+      Tuist fixture). The engine builds reachable tools for the host and
+      rewrites plugin paths. All four Tuist macro schemes build.
 
 ## Apple's macros
 
@@ -86,10 +98,11 @@ iOS SDK:
 | FoundationMacros | `#Predicate`, `#Expression`, `#bundle` | `sweetpad-macros`; the toolchain's copy names `FoundationEssentials`, which the SDK lacks |
 | FoundationModelsMacros | `@Generable`, `@Guide` | xtool |
 | PreviewsMacros | `#Preview`, `@Previewable` | `sweetpad-macros`; xtool's has SwiftUI views only, not UIKit views or view controllers (`KitViewMacro`, `PreviewCommonGroup`) |
-| SwiftUIMacros | `@Entry`, `@Animatable`, `@State` (a macro in the 27 SDK) | xtool. It lacks the helper types `EntryTypeCheckMacro`, `EntryTypeCheckClassMacro`, `SendableEntryDefaultMacro`, `UnsafeEntryDefaultMacro` and `StateTypeMacro`, which Xcode's own `@Entry` and `@State` expand into, but xtool's expansions don't use them |
+| SwiftUIMacros | `@Entry`, `@Animatable`, `@State` | `sweetpad-macros`; licensed OpenAppleMacros implementations with optional-default support |
 | SwiftDataMacros | `@Model`, `@Query`, `@ModelActor`, `@Attribute`, `@Relationship`, `@Transient`, `#Unique`, `#Index` | `sweetpad-macros` |
 | AppIntentsMacros | the schema macros (`@AppIntent(schema:)` and the rest), `@ComputedProperty`, `@DeferredProperty`, `@UnionValue` | missing |
-| TipKitMacros, StateReportingMacros | `#Rule`, `@Parameter`; `@ReportableMetadata` | missing |
+| TipKitMacros | `#Rule`, `@Parameter` | `sweetpad-macros`, native expansion captures |
+| StateReportingMacros | `@ReportableMetadata` | missing |
 
 xtool's server is `darwin.artifactbundle/OpenAppleMacrosServer`; the `.so`
 files beside the plugins are empty placeholders. In the corpus, 5 files use
@@ -109,7 +122,7 @@ swift-syntax and diff the expanded Swift text.
       building one executable, `sweetpad-macros`, which `linux-setup.sh`
       puts on `PATH` (`SWEETPAD_MACROS` overrides it). On a host without
       Xcode, `sweetpad build` adds `-load-plugin-executable
-      <plugin>#FoundationMacros,PreviewsMacros,SwiftDataMacros` to the
+      <plugin>#FoundationMacros,PreviewsMacros,SwiftDataMacros,SwiftUIMacros,TipKitMacros` to the
       toolset, which the
       compiler takes before the SDK's plugin server and the toolchain's own
       plugins. Without the plugin, a build fails only where one of those
@@ -137,10 +150,11 @@ swift-syntax and diff the expanded Swift text.
       `@Entry` leaves out Xcode's `#_SwiftUIEntryTypeCheck`, so a class or
       closure default value builds without Xcode's warning that it
       invalidates dependents on every access
-- [ ] SwiftUIMacros in `sweetpad-macros`, for those two warnings
-      *(optional)*
+- [x] SwiftUIMacros: OpenAppleMacros implementations, including optional `@Entry` defaults.
+      Licenses and source revision are recorded beside the sources.
 - [ ] AppIntentsMacros, the schema macros *(optional)*
-- [ ] TipKitMacros, StateReportingMacros *(optional)*
+- [x] TipKitMacros: typed `@Parameter` defaults and `#Rule`, verified against native expansions.
+- [ ] StateReportingMacros *(optional)*
 
 ## Merging the branch
 
@@ -150,11 +164,31 @@ swift-syntax and diff the expanded Swift text.
 - [x] Kingfisher demo, Alamofire iOS Example and NetNewsWire iOS: Linux and
       Xcode builds, bundle comparisons and simulator navigation tests.
       See the real-app integration result below
-- [ ] Document the engine, the setup script and the stand-ins in
+- [x] Document the engine, the setup script and the stand-ins in
       `CLI_DESIGN.md` and the user docs (run the humanizer)
 - [ ] Decide whether hayro and resvg (7.5 MB, 66 crates) stay in the macOS
       binary, which never uses them
-- [ ] Open the PR to `main` (show the message first)
+- [x] Initial PR #346 merged into `main`. Follow-up changes remain separate.
+
+### Linux products, tests, and incremental checks, 2026-11-07
+
+- [x] Execute Linux-built hosted XCTest, logic XCTest, and Swift Testing on a Mac
+      without recompilation. `test run --xctestrun` preserves the built binaries
+      and previous build diagnostics. Empty test selections fail explicitly.
+- [x] Generate basic iOS simulator unit-test manifests from selected bundles.
+      UI tests and custom test plans still need a supplied manifest.
+- [x] Add app/package source and resource edits, asset/localization changes,
+      renames, deletions, missing-output recovery, no-op hashes, and clean controls.
+      `ci/linux-parity.py` runs both backends and prebuilt runtime checks.
+- [x] Compare nested bundle Info.plists, localizations, App Intents, loose text
+      resources, and Mach-O load commands. Product exports replace old bundles.
+- [x] Fix missing requested-icon validation, canonical locale output names,
+      accent/widget color metadata, and an initial storyboard child scene.
+
+AccountTests has the same 38 keychain failures in native and Linux products.
+The larger bundles still have icon/sticker, privacy-resource, optimized-model,
+and other differences. MMKV C++ interoperability and localized shortcut models
+also remain open. See `ci/LINUX_PROJECTS.md` for the verified scope and evidence.
 
 ### Corpus sweep, 2026-11-04
 
@@ -222,8 +256,8 @@ script's `import Darwin`.
 
 ### Additional real projects
 
-These six projects are planned additions to the corpus. Their Linux builds
-remain unverified. The priority reflects their expected testing value.
+The first three projects now have pinned native and Linux builds. Their bundle
+and simulator results are in `ci/LINUX_PROJECTS.md`. The last three remain planned additions.
 
 | Priority | Project | Coverage to investigate |
 |---|---|---|
@@ -234,8 +268,9 @@ remain unverified. The priority reflects their expected testing value.
 | 5 | [CodeEdit](https://github.com/CodeEditApp/CodeEdit) | Native macOS packaging and dependencies across several repositories |
 | 6 | [WordPress iOS](https://github.com/wordpress-mobile/WordPress-iOS) | Large workspace, modules, dependency setup and API credential configuration |
 
-The first group is Wikipedia, Mastodon and Swiftfin. Firefox, CodeEdit and
-WordPress provide later coverage for more demanding builds.
+The first group is complete, with the shared Wikipedia startup limitation recorded.
+Flutter, React Native, and Capacitor coverage was added in the same follow-up.
+Firefox, CodeEdit, and WordPress remain future coverage.
 
 For each project:
 
@@ -252,8 +287,9 @@ Swift Build names these in its xcspecs. The Swift toolchain has `llvm-ar`,
 `llvm-libtool-darwin` (as `llvm-lib`, the toolset's librarian) in
 `toolset/bin`, which the engine puts on `PATH`.
 
-- [x] `libtool -static`: xtool's toolset already names its
-      `llvm-libtool-darwin` as the librarian
+- [x] `libtool -static`: setup installs LLVM Darwin libtool. The Swift Build
+      patch recognizes its real version banner, including a `libtool` symlink.
+      The static-framework aggregate workspace scheme passes.
 - [x] `dsymutil`: Release (`dwarf-with-dsym`) finds xtool's on `PATH`
 - [x] `copypng`: copies, dropping text chunks for `-strip-PNG-text`. Xcode's
       writes Apple's CgBI PNGs, which UIKit doesn't need
@@ -297,16 +333,18 @@ Swift Build names these in its xcspecs. The Swift toolchain has `llvm-ar`,
 - [ ] `intentbuilderc`: Xcode's private runtime metadata upgrade, localization
       and Siri registration. Compilation currently preserves the source
       `.intentdefinition` and emits a warning about this limit
-- [x] `appintentsmetadataprocessor`, as a no-op: `LM_SKIP_METADATA_EXTRACTION`
-      skips it, so the app builds and runs but its intents don't register
-- [ ] `appintentsmetadataprocessor` for real: `Metadata.appintents` from the
-      compiler's const values, which App Shortcuts, widget configuration
-      intents and intent buttons in widgets need
+- [x] App Intents metadata and NLU processors emit `Metadata.appintents`
+      from compiler const values. Synthetic native captures cover primitive
+      parameters, image file inputs, dialogs/snippets, enums, entities, widget
+      intents, and basic App Shortcuts. Dynamic components keep separate registrations.
+      Advanced schemas and static dependency registration fail explicitly. Siri
+      behavior and physical-device registration remain unverified.
 - [ ] `coremlc`: generate the Swift class from the `.mlmodel`; the compiled
       `.mlmodelc` format is closed, so fail clearly or compile at runtime
       *(optional)*
-- [ ] `mapc`: Core Data mapping models. Tuist's Core Data fixture has one,
-      which Xcode builds *(optional)*
+- [x] `mapc`: transform mappings and direct source-property expressions.
+      Native archive golden and both Tuist Core Data schemes pass. Custom
+      expressions and unsupported mapping kinds fail explicitly.
 - [ ] `TextureAtlas`: SpriteKit `.atlas` to `.atlasc` *(optional)*
 - [ ] SceneKit tools (`scntool`, `copySceneKitAssets`,
       `compileSceneKitShaders`): copy first *(optional)*
@@ -734,9 +772,11 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       asset lookups, the app icon among them. Swift
       Build needs `swift-build-linux.patch` (`linux-setup.sh` applies it)
       to skip registering the app with Launch Services; upstream it
-- [ ] watchOS, tvOS and visionOS apps. The Darwin SDK bundle has none of
-      their platforms, so Alamofire's and Kingfisher's schemes for them fail
-      with "unable to resolve run destination platform" *(optional)*
+- [x] watchOS, tvOS and visionOS simulator builds. Setup imports their SDKs
+      and metadata, including UI-test runner bundles. Alamofire builds for all three;
+      Kingfisher's tvOS demo and modern standalone app probes build. Fixture patches
+      migrate the legacy watch apps; their app and companion workspace schemes build.
+      Runtime and device-signing checks for these platforms remain unverified.
 - [ ] Mac Catalyst *(optional)*
 
 ## Past building
@@ -759,9 +799,14 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       signing time
 - [ ] Install and launch that build on a device, signed with a real
       Apple Development identity
-- [ ] Device install from Linux, through pymobiledevice3 or xtool's
-      installer
-- [ ] Archive and export an IPA *(optional)*
+- [x] Linux device list/install/uninstall/launch/log transport through
+      pymobiledevice3. Tested argument construction against version 11.50.0.
+      Physical-device validation was declined; readiness and process control
+      remain unsupported on Linux.
+- [x] Swift Build archives and development IPA export on Linux. A signed
+      fixture archive and IPA pass Apple codesign verification. Unsigned IPA
+      export, simulator archives, and distribution export are rejected.
+      App, extension, and embedded-framework dSYMs are collected.
 - [ ] Upload with Transporter, which has a Linux build *(optional)*
 
 Running in the simulator stays on a Mac.

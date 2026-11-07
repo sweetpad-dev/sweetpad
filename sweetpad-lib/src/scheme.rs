@@ -26,6 +26,8 @@ use std::path::{Path, PathBuf};
 use crate::resolver::expand_one;
 use crate::xcscheme::{self, Element};
 
+pub mod resolved;
+
 #[derive(Debug, Clone)]
 pub struct Scheme {
     /// Buildables in scheme-declared order. The first entry is what Xcode
@@ -598,7 +600,23 @@ pub fn same_path_ignoring_case(a: &Path, b: &Path) -> bool {
 /// name the container doesn't know). See [`locate_all`] for where it looks.
 #[must_use]
 pub fn locate(container: &Path, name: &str) -> Option<PathBuf> {
+    locate_with_derived_data(container, name, None)
+}
+
+/// Locate a scheme using the build's explicit DerivedData directory, including
+/// scheme files shipped by packages in that directory's resolved graph.
+#[must_use]
+pub fn locate_with_derived_data(
+    container: &Path,
+    name: &str,
+    derived_data: Option<&Path>,
+) -> Option<PathBuf> {
     scheme_containers(container)
+        .chain(
+            resolved::package_dirs(container, derived_data)
+                .iter()
+                .map(|p| crate::workspace::package_scheme_root(p)),
+        )
         .flat_map(|c| scheme_dirs(&c))
         .map(|dir| dir.join(format!("{name}.xcscheme")))
         .find(|p| p.is_file())
@@ -621,6 +639,11 @@ pub fn locate(container: &Path, name: &str) -> Option<PathBuf> {
 #[must_use]
 pub fn locate_all(container: &Path, name: &str) -> Vec<PathBuf> {
     scheme_containers(container)
+        .chain(
+            resolved::package_dirs(container, None)
+                .iter()
+                .map(|p| crate::workspace::package_scheme_root(p)),
+        )
         .flat_map(|c| scheme_dirs(&c))
         .map(|dir| dir.join(format!("{name}.xcscheme")))
         .filter(|p| p.is_file())

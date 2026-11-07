@@ -331,7 +331,20 @@ pub enum SchemeAction {
 /// falls through to its default.
 #[must_use]
 pub fn scheme_configuration(container: &Path, name: &str, action: SchemeAction) -> Option<String> {
-    let parsed = find_scheme(container, name)?;
+    scheme_configuration_in(container, name, action, None)
+}
+
+/// The action configuration, including a remote scheme in an explicitly
+/// selected DerivedData graph.
+#[must_use]
+pub fn scheme_configuration_in(
+    container: &Path,
+    name: &str,
+    action: SchemeAction,
+    derived_data: Option<&Path>,
+) -> Option<String> {
+    let file = sweetpad_lib::scheme::locate_with_derived_data(container, name, derived_data)?;
+    let parsed = sweetpad_lib::scheme::parse_file(&file).ok()?;
     let configuration = match action {
         SchemeAction::Launch => parsed.launch_configuration,
         SchemeAction::Test => parsed.test_action.map(|t| t.configuration),
@@ -591,6 +604,39 @@ mod tests {
         )
         .unwrap();
         project
+    }
+
+    #[test]
+    fn custom_package_graph_supplies_remote_action_configurations() {
+        let dir = crate::scratch::ScratchDir::new("sweetpad-remote-action-config").unwrap();
+        let project = two_app_project(&dir);
+        let derived_data = dir.join("Custom DerivedData");
+        let sources = derived_data.join("SourcePackages");
+        let package = sources.join("checkouts/Remote");
+        let schemes = package.join(".swiftpm/xcode/xcshareddata/xcschemes");
+        std::fs::create_dir_all(&schemes).unwrap();
+        std::fs::write(package.join("Package.swift"), "").unwrap();
+        std::fs::write(sources.join("workspace-state.json"), r#"{"object":{"dependencies":[{"subpath":"Remote","state":{"name":"sourceControlCheckout"}}]}}"#).unwrap();
+        std::fs::write(schemes.join("Remote.xcscheme"), r#"<Scheme><LaunchAction buildConfiguration="Release"/><TestAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release"/></Scheme>"#).unwrap();
+        assert_eq!(
+            scheme_configuration_in(
+                &project,
+                "Remote",
+                SchemeAction::Launch,
+                Some(&derived_data)
+            )
+            .as_deref(),
+            Some("Release")
+        );
+        assert_eq!(
+            scheme_configuration_in(&project, "Remote", SchemeAction::Test, Some(&derived_data))
+                .as_deref(),
+            Some("Debug")
+        );
+        assert_eq!(
+            scheme_configuration(&project, "Remote", SchemeAction::Launch),
+            None
+        );
     }
 
     /// Resolved for real: the Run action's app wins over the app the scheme

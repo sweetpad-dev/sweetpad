@@ -249,11 +249,6 @@ pub(super) fn parse(root: &Element) -> Result<Model, String> {
 
 fn entity(element: &Element) -> Result<Entity, String> {
     let name = text(element, "name").unwrap_or_default();
-    if element.child("compoundIndexes").is_some() {
-        return Err(format!(
-            "{name} has compound indexes, which SweetPad's momc doesn't compile yet; use fetch indexes instead"
-        ));
-    }
     let attributes: Vec<Attribute> = element
         .children_named("attribute")
         .map(|a| attribute(&name, a))
@@ -262,6 +257,27 @@ fn entity(element: &Element) -> Result<Entity, String> {
         .children_named("fetchIndex")
         .map(|index| fetch_index(&name, index))
         .collect::<Result<_, _>>()?;
+    if let Some(compound) = element.child("compoundIndexes") {
+        fetch_indexes.extend(compound.children_named("compoundIndex").enumerate().map(
+            |(i, index)| {
+                FetchIndex {
+                    name: if i == 0 {
+                        "compoundIndex".into()
+                    } else {
+                        format!("compoundIndex{i}")
+                    },
+                    elements: index
+                        .children_named("index")
+                        .filter_map(|property| {
+                            property
+                                .attr("value")
+                                .map(|name| (name.to_string(), 0, true))
+                        })
+                        .collect(),
+                }
+            },
+        ));
+    }
     // An attribute marked indexed gets a fetch index of its own.
     fetch_indexes.extend(attributes.iter().filter(|a| a.indexed).map(|a| FetchIndex {
         name: format!("by{}Index", capitalized(&a.property.name)),

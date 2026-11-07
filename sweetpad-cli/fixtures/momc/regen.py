@@ -13,6 +13,7 @@ Run it on a Mac after an Xcode update and review the diff:
     python3 -I sweetpad-cli/fixtures/momc/regen.py
 """
 
+import argparse
 import glob
 import os
 import re
@@ -41,10 +42,16 @@ def save(path, data):
 
 
 def main():
-    shutil.rmtree(EXPECTED, ignore_errors=True)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--only", default="")
+    args = parser.parse_args()
+    if not args.only:
+        shutil.rmtree(EXPECTED, ignore_errors=True)
     models = sorted(glob.glob(os.path.join(HERE, "*.xcdatamodel")) + glob.glob(os.path.join(HERE, "*.xcdatamodeld")))
     for model in models:
         name = os.path.basename(model)
+        if args.only and args.only not in name:
+            continue
         out = os.path.join(EXPECTED, name)
         with tempfile.TemporaryDirectory() as tmp:
             compiled = os.path.join(tmp, "out")

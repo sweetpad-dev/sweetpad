@@ -1,0 +1,27 @@
+{
+  "source": "DataApp.swift",
+  "tables": {
+    "AppShortcuts": [
+      {
+        "appShortcutMetadata": [
+          {
+            "actionIdentifier": "Greet",
+            "index": 0,
+            "parameterDisplayRepresentations": {},
+            "parameterTypes": {},
+            "title": "Greet"
+          }
+        ],
+        "key": "Greet in ${applicationName}",
+        "location": {
+          "startingColumn": 0,
+          "startingLine": 13
+        },
+        "values": [
+          "Greet in ${applicationName}"
+        ]
+      }
+    ]
+  },
+  "version": 2
+}

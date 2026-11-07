@@ -8,7 +8,7 @@
 //! emits for it join the workspace's PIF ([`add_packages`]). Their GUIDs are
 //! the ones the projects' targets already refer to.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -191,11 +191,144 @@ pub fn add_packages(pif: &mut Vec<Json>, dumped: Vec<Json>, root: &Path) {
         list.extend(projects);
     }
     pif.extend(kept);
+    remap_missing_products(pif);
+}
+
+/// Xcode also resolves products by name when an old package back-reference
+/// names the wrong owner, or when a remote product has no back-reference.
+/// Only an absent GUID and a single matching resolved product permit repair.
+fn remap_missing_products(pif: &mut [Json]) {
+    fn visit(value: &mut Json, products: &HashMap<String, Vec<String>>, present: &HashSet<String>) {
+        match value {
+            Json::String(guid)
+                if guid.starts_with("PACKAGE-PRODUCT:") && !present.contains(guid) =>
+            {
+                if let Some((_, name)) = guid.rsplit_once('.')
+                    && let Some(matches) = products.get(name)
+                    && let [resolved] = matches.as_slice()
+                {
+                    guid.clone_from(resolved);
+                }
+            }
+            Json::Object(fields) => {
+                for value in fields.values_mut() {
+                    visit(value, products, present);
+                }
+            }
+            Json::Array(values) => {
+                for value in values {
+                    visit(value, products, present);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut products: HashMap<String, Vec<String>> = HashMap::new();
+    let mut present = HashSet::new();
+    for target in pif.iter().filter(|o| o["type"] == "target") {
+        let Some(guid) = target["contents"]["guid"]
+            .as_str()
+            .filter(|g| g.starts_with("PACKAGE-PRODUCT:"))
+        else {
+            continue;
+        };
+        present.insert(guid.to_string());
+        if let Some((_, name)) = guid.rsplit_once('.') {
+            products
+                .entry(name.to_string())
+                .or_default()
+                .push(guid.to_string());
+        }
+    }
+    for object in pif {
+        visit(object, &products, &present);
+    }
+}
+
+/// Replace a dependency package with its root-package PIF, which includes
+/// individual test products. Other packages keep the workspace's resolution.
+pub fn add_package_root(pif: &mut Vec<Json>, dumped: &[Json], root: &Path) {
+    let guid = format!(
+        "PACKAGE:{}",
+        spm::identity_from_path(&root.to_string_lossy())
+    );
+    let Some(project) = dumped
+        .iter()
+        .find(|o| o["type"] == "project" && o["contents"]["guid"] == guid)
+    else {
+        return;
+    };
+    let signatures: HashSet<&str> = project["contents"]["targets"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Json::as_str)
+        .collect();
+    let mut selected = vec![json!({"type":"workspace", "contents":{"projects":[]}})];
+    selected.extend(
+        dumped
+            .iter()
+            .filter(|o| {
+                o["contents"]["guid"] == guid
+                    || o["signature"]
+                        .as_str()
+                        .is_some_and(|s| signatures.contains(s))
+            })
+            .cloned(),
+    );
+    let mut root_pif = vec![json!({"type":"workspace", "contents":{"projects":[]}})];
+    // There is no synthetic root in this dump to exclude.
+    add_packages(&mut root_pif, selected, Path::new(""));
+    for object in root_pif.into_iter().skip(1) {
+        let guid = &object["contents"]["guid"];
+        if let Some(index) = pif.iter().position(|o| &o["contents"]["guid"] == guid) {
+            let old = pif[index]["signature"].clone();
+            let new = object["signature"].clone();
+            if object["type"] == "project"
+                && let Some(projects) = pif[0]["contents"]["projects"].as_array_mut()
+            {
+                for signature in projects.iter_mut().filter(|s| **s == old) {
+                    *signature = new.clone();
+                }
+            }
+            pif[index] = object;
+        } else {
+            if object["type"] == "project"
+                && let Some(projects) = pif[0]["contents"]["projects"].as_array_mut()
+            {
+                projects.push(object["signature"].clone());
+            }
+            pif.push(object);
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unresolved_products_use_a_unique_resolved_owner() {
+        let target = |guid: &str| json!({"type":"target","contents":{"guid":guid}});
+        let mut pif = vec![
+            target("PACKAGE-PRODUCT:actual_Shared.Shared"),
+            target("PACKAGE-PRODUCT:left_Ambiguous.Ambiguous"),
+            target("PACKAGE-PRODUCT:right_Ambiguous.Ambiguous"),
+            json!({"type":"target","contents":{"dependencies":[{"guid":"PACKAGE-PRODUCT:stale_Shared.Shared"},{"guid":"PACKAGE-PRODUCT:stale_Ambiguous.Ambiguous"}],"buildPhases":[{"buildFiles":[{"targetReference":"PACKAGE-PRODUCT:stale_Shared.Shared"}]}]}}),
+        ];
+        remap_missing_products(&mut pif);
+        assert_eq!(
+            pif[3]["contents"]["dependencies"][0]["guid"],
+            "PACKAGE-PRODUCT:actual_Shared.Shared"
+        );
+        assert_eq!(
+            pif[3]["contents"]["buildPhases"][0]["buildFiles"][0]["targetReference"],
+            "PACKAGE-PRODUCT:actual_Shared.Shared"
+        );
+        assert_eq!(
+            pif[3]["contents"]["dependencies"][1]["guid"],
+            "PACKAGE-PRODUCT:stale_Ambiguous.Ambiguous"
+        );
+    }
 
     fn remote(location: &str, kind: &str, value: &str, upper: Option<&str>) -> Package {
         Package::Remote {
@@ -266,6 +399,29 @@ mod tests {
             "    dependencies: [\n        .package(path: \"/work/Kit\"),\n        \
              .package(url: \"https://example.com/a/b\", exact: \"1.2.3\"),\n    ]\n)\n"
         ));
+    }
+
+    #[test]
+    fn root_packages_replace_the_project_signature_and_include_test_products() {
+        let project = |signature: &str, targets: Json| json!({"type":"project","signature":signature,"contents":{"guid":"PACKAGE:kit","targets":targets}});
+        let target = |signature: &str, guid: &str| json!({"type":"target","signature":signature,"contents":{"guid":guid}});
+        let mut pif = vec![
+            json!({"type":"workspace","contents":{"projects":["OLD"]}}),
+            project("OLD", json!(["MODULE"])),
+            target("MODULE", "PACKAGE-TARGET:Kit"),
+        ];
+        let dumped = vec![
+            project("ROOT", json!(["MODULE", "TEST"])),
+            target("MODULE", "PACKAGE-TARGET:Kit"),
+            target("TEST", "PACKAGE-PRODUCT:kit_KitTests.KitTests"),
+            json!({"type":"project","signature":"UNRELATED","contents":{"guid":"PACKAGE:other","targets":[]}}),
+        ];
+        add_package_root(&mut pif, &dumped, Path::new("/work/Kit"));
+        add_package_root(&mut pif, &dumped, Path::new("/work/Kit"));
+        assert_eq!(pif[0]["contents"]["projects"], json!(["ROOT"]));
+        assert_eq!(pif.len(), 4);
+        assert_eq!(pif[1]["contents"]["targets"], json!(["MODULE", "TEST"]));
+        assert_eq!(pif[3]["signature"], "TEST");
     }
 
     #[test]

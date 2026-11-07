@@ -143,7 +143,7 @@ fn show(
     let scheme = if target.is_some() {
         None
     } else {
-        let schemes = resolve::schemes(&resolved.container)?;
+        let schemes = resolve::schemes_for_context(ctx, &resolved.container)?;
         Some(resolve::choose(
             ctx,
             "scheme",

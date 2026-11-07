@@ -1,0 +1,37 @@
+=== __swiftmacro_13TipParameters0024TipParametersswift_ynAHffMX8_8_4RulefMf_.swift
+Tips.Rule(Self.$enabled) {
+    PredicateExpressions.build_Equal(
+        lhs: PredicateExpressions.build_Arg($0),
+        rhs: PredicateExpressions.build_Arg(true)
+    )
+}
+=== __swiftmacro_13TipParameters0024TipParametersswift_ynAHffMX9_8_4RulefMf0_.swift
+Tips.Rule(Self.$count) {
+    PredicateExpressions.build_Comparison(
+        lhs: PredicateExpressions.build_Arg($0),
+        rhs: PredicateExpressions.build_Arg(1),
+        op: .greaterThan
+    )
+}
+=== __swiftmacro_13TipParameters07FixtureA0V5count9ParameterfMa_.swift
+{
+    get {
+        $count.wrappedValue
+    }
+    set {
+        $count.wrappedValue = newValue
+    }
+}
+=== __swiftmacro_13TipParameters07FixtureA0V5count9ParameterfMp_.swift
+static nonisolated(unsafe) var $count: Tips.Parameter<Int> = Tips.Parameter(Self.self, "+count", 3)
+=== __swiftmacro_13TipParameters07FixtureA0V7enabled9ParameterfMa_.swift
+{
+    get {
+        $enabled.wrappedValue
+    }
+    set {
+        $enabled.wrappedValue = newValue
+    }
+}
+=== __swiftmacro_13TipParameters07FixtureA0V7enabled9ParameterfMp_.swift
+static nonisolated(unsafe) var $enabled: Tips.Parameter<Bool> = Tips.Parameter(Self.self, "+enabled", false, .transient)

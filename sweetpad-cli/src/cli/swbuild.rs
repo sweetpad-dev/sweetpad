@@ -31,6 +31,8 @@ use crate::cli::resolve::Container;
 use crate::cli::xcodebuild::{self, BuildAction, BuildPlan, CommandPreview};
 use crate::cli::{CliError, ErrorKind, process};
 
+mod host_macros;
+
 /// The engine a build runs on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Engine {
@@ -73,8 +75,8 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
     }
     invocation.write_inputs(plan, out)?;
     let start = Instant::now();
-    let program = invocation.program.to_string_lossy().into_owned();
-    let args: Vec<&str> = invocation.args.iter().map(String::as_str).collect();
+    let (program, arguments) = darwin_shell_command(&invocation)?;
+    let args: Vec<&str> = arguments.iter().map(String::as_str).collect();
     let mut parser = MessageParser::default();
     let mut diagnostics = Vec::new();
     let mut transcript = String::new();
@@ -139,6 +141,46 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
     .context("building the project"))
 }
 
+/// macOS /bin/sh accepts Bash syntax. Keep that contract for scripts that
+/// invoke it explicitly, without changing the Linux machine's system shell.
+fn darwin_shell_command(invocation: &Invocation) -> Result<(String, Vec<String>), CliError> {
+    let program = invocation.program.to_string_lossy().into_owned();
+    if !cfg!(target_os = "linux") {
+        return Ok((program, invocation.args.clone()));
+    }
+    let shell = std::fs::canonicalize("/bin/sh").map_err(|e| CliError::new(e.to_string()))?;
+    let bash = std::fs::canonicalize("/bin/bash").map_err(|e| CliError::new(e.to_string()))?;
+    if shell == bash {
+        return Ok((program, invocation.args.clone()));
+    }
+    if super::darwin_tools::find_program("bwrap").is_none() {
+        return Err(
+            CliError::new("building Xcode scripts on Linux needs 'bubblewrap' and Bash")
+                .kind(ErrorKind::ToolMissing)
+                .tip(Some(
+                    "install them with 'sudo apt-get install bubblewrap bash'".to_string(),
+                )),
+        );
+    }
+    let mut args = vec![
+        "--bind".into(),
+        "/".into(),
+        "/".into(),
+        "--dev-bind".into(),
+        "/dev".into(),
+        "/dev".into(),
+        "--proc".into(),
+        "/proc".into(),
+        "--ro-bind".into(),
+        bash.display().to_string(),
+        shell.display().to_string(),
+        "--".into(),
+        program,
+    ];
+    args.extend(invocation.args.iter().cloned());
+    Ok(("bwrap".into(), args))
+}
+
 /// Everything a `swbuild build` needs: the command, its environment, and the
 /// files it reads.
 struct Invocation {
@@ -163,6 +205,8 @@ struct Invocation {
     /// The plugin for Apple's macros that the Darwin SDK has none for (see
     /// [`macro_plugin`]).
     macros: Option<PathBuf>,
+    /// Destination headers used by pkg-config while resolving package PIFs.
+    package_sysroot: Option<PathBuf>,
 }
 
 /// Settings Xcode's own Swift Build resolves differently from the open-source
@@ -202,7 +246,13 @@ fn toolset(tools: &Path, macros: Option<&Path>) -> String {
 /// `SwiftDataMacros` and has `#Preview` only for SwiftUI views, and the
 /// toolchain's own `FoundationMacros` names `FoundationEssentials` in its
 /// expansions, which the SDK's Foundation doesn't have.
-const MACRO_MODULES: &[&str] = &["FoundationMacros", "PreviewsMacros", "SwiftDataMacros"];
+const MACRO_MODULES: &[&str] = &[
+    "FoundationMacros",
+    "PreviewsMacros",
+    "SwiftDataMacros",
+    "SwiftUIMacros",
+    "TipKitMacros",
+];
 
 /// `sweetpad-macros`, built from `sweetpad-cli/macros`: `SWEETPAD_MACROS`,
 /// else the one on `PATH`. A build without it fails only where a macro of
@@ -290,16 +340,24 @@ impl Invocation {
             .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
             .collect();
         if let (Some(host), Some(toolset)) = (&host, &toolset) {
+            overrides.extend(host.embedded_platform_overrides(&sdk, &destination.arch, toolset));
             overrides.extend(host.overrides(&sdk, &destination.arch, toolset));
         }
         if let Some(tools) = &tools {
+            overrides.insert(
+                "CHMOD".to_string(),
+                tools.join("sweetpad-chmod").display().to_string(),
+            );
             overrides.insert(
                 "ASSETCATALOG_EXEC".to_string(),
                 tools.join("actool").display().to_string(),
             );
         }
         overrides.extend(settings.overrides.iter().cloned());
-        let parameters = parameters(
+        if host.is_some() {
+            scope_darwin_settings(&mut overrides, &sdk);
+        }
+        let mut parameters = parameters(
             plan.configuration,
             &sdk,
             &destination.arch,
@@ -308,12 +366,17 @@ impl Invocation {
             settings.xcconfig.as_deref(),
         );
 
+        if plan.action == BuildAction::Archive {
+            parameters["action"] = json!("install");
+        }
+
         Ok(Self {
             program: swbuild_program()?,
             args: swbuild_args(plan, &parameters_file, &pif),
             cwd: xcodebuild::working_dir(plan.container),
             linker: host.as_ref().map(|h| h.bundle.join("toolset/bin/ld64.lld")),
             macros: host.as_ref().and_then(|_| macro_plugin()),
+            package_sysroot: host.as_ref().map(|h| h.sdk_root(&sdk)).transpose()?,
             env: host
                 .zip(tools.as_deref())
                 .map(|(h, tools)| h.env(tools, DarwinSdk::signs(&sdk)))
@@ -344,7 +407,66 @@ impl Invocation {
         if !packages.is_empty() {
             let dumped = self.package_pif(&packages, out)?;
             sweetpad_lib::workspace_pif::add_packages(&mut pif, dumped, &self.packages);
+            // Dependency packages omit their test products. Treat the package
+            // owning an explicit scheme as a root, as Xcode's integration does.
+            let names = scheme_targets(
+                &self.container,
+                plan.scheme,
+                match plan.action {
+                    BuildAction::Build => BuildFor::Running,
+                    BuildAction::BuildForTesting => BuildFor::Testing,
+                    BuildAction::Archive => BuildFor::Archiving,
+                },
+                Some(&self.locations.folder),
+            )?;
+            let missing: Vec<&String> = names
+                .iter()
+                .filter(|name| pif_target(&pif, name).is_none())
+                .collect();
+            let mut roots = Vec::new();
+            if !missing.is_empty() {
+                roots.extend(scheme_package(
+                    &self.container,
+                    plan.scheme,
+                    &self.locations.folder,
+                ));
+                for package in &packages {
+                    if let sweetpad_lib::workspace_pif::Package::Local(root) = package
+                        && !roots.contains(root)
+                        && let Ok(manifest) = super::swiftpm::manifest_at(root)
+                        && manifest
+                            .targets
+                            .iter()
+                            .any(|t| missing.iter().any(|name| ***name == t.name))
+                    {
+                        roots.push(root.clone());
+                    }
+                }
+            }
+            for root in roots {
+                let dumped = self.dump_package_pif(&root, out)?;
+                sweetpad_lib::workspace_pif::add_package_root(&mut pif, &dumped, &root);
+            }
         }
+        let host_tools = if self.tools.is_some() {
+            host_macros::prepare(
+                &mut pif,
+                &self.locations.intermediates.join("SweetPad/HostTools"),
+                plan.configuration,
+                &scheme_targets(
+                    &self.container,
+                    plan.scheme,
+                    match plan.action {
+                        BuildAction::Build => BuildFor::Running,
+                        BuildAction::BuildForTesting => BuildFor::Testing,
+                        BuildAction::Archive => BuildFor::Archiving,
+                    },
+                    Some(&self.locations.folder),
+                )?,
+            )?
+        } else {
+            std::collections::HashSet::default()
+        };
         let write = |path: &Path, value: &Value| -> Result<(), CliError> {
             if let Some(dir) = path.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| {
@@ -355,7 +477,8 @@ impl Invocation {
             std::fs::write(path, text)
                 .map_err(|e| CliError::new(format!("couldn't write {}: {e}", path.display())))
         };
-        let request = build_request(plan, &self.container, &pif, &self.parameters)?;
+        let mut request = build_request(plan, &self.container, &pif, &self.parameters)?;
+        host_macros::exclude_prebuilt(&mut request, &host_tools);
         write(&self.pif.with_file_name("build-request.json"), &request)?;
         write(&self.pif, &Value::Array(pif))?;
         write(&self.parameters_file, &self.parameters)?;
@@ -384,14 +507,28 @@ impl Invocation {
         if let Ok(resolved) = std::fs::read(resolved_file(&self.container)) {
             write_changed(&self.packages.join("Package.resolved"), &resolved)?;
         }
-        let scratch = self.locations.folder.join("SourcePackages");
+        self.dump_package_pif(&self.packages, out)
+    }
+
+    fn dump_package_pif(&self, root: &Path, out: &Output) -> Result<Vec<Value>, CliError> {
+        // A package promoted to a root has a different dependency graph.
+        // Reusing the app's scratch directory removes the root package from
+        // its workspace-state.json and makes its remote schemes disappear.
+        let scratch = if root == self.packages {
+            self.locations.folder.join("SourcePackages")
+        } else {
+            self.locations
+                .intermediates
+                .join("SweetPad/PackageRoots")
+                .join(sweetpad_lib::derived_data::container_hash(root))
+        };
         // Xcode builds a dynamic library product as a framework in
         // `PackageFrameworks`, which an app embeds; SwiftPM's own builds
         // make a dylib unless asked otherwise.
         let args = [
             "package".as_ref(),
             "--package-path".as_ref(),
-            self.packages.as_os_str(),
+            root.as_os_str(),
             "--scratch-path".as_ref(),
             scratch.as_os_str(),
             "--experimental-build-dylibs-as-frameworks".as_ref(),
@@ -403,9 +540,14 @@ impl Invocation {
             out.use_color_stderr(),
         );
         // A git prompt for credentials would wait unseen behind the spinner.
-        let output = Command::new("swift")
-            .args(args)
-            .env("GIT_TERMINAL_PROMPT", "0")
+        let mut command = Command::new("swift");
+        command.args(args).env("GIT_TERMINAL_PROMPT", "0");
+        if let Some(sysroot) = &self.package_sysroot {
+            // pkg-config runs on the host, but its headers belong to the
+            // destination SDK. Keep host macro builds outside this environment.
+            command.env("PKG_CONFIG_SYSROOT_DIR", sysroot);
+        }
+        let output = command
             .stdin(Stdio::null())
             .output()
             .map_err(|e| process::spawn_error("swift", &e));
@@ -428,6 +570,30 @@ impl Invocation {
                 "couldn't read the PIF SwiftPM printed for the package dependencies: {e}"
             ))
         })
+    }
+}
+
+/// A package's host macro uses the Linux SDK. It must not inherit the app's
+/// Apple architecture, cross linker, or Swift compatibility libraries.
+fn scope_darwin_settings(overrides: &mut BTreeMap<String, String>, sdk: &str) {
+    for name in [
+        "ARCHS",
+        "ONLY_ACTIVE_ARCH",
+        "SWIFT_SDK_TOOLSETS",
+        "SWIFT_RESOURCE_DIR",
+        "CLANG_RESOURCE_DIR",
+        "OTHER_LDFLAGS",
+        "LIBRARY_SEARCH_PATHS",
+        "SYSTEM_HEADER_SEARCH_PATHS",
+        "LIBTOOL",
+        "CODESIGN",
+        "DONT_RUN_SWIFT_STDLIB_TOOL",
+        "MODULE_VERIFIER_KIND",
+        "GENERATE_INTERMEDIATE_TEXT_BASED_STUBS",
+    ] {
+        if let Some(value) = overrides.remove(name) {
+            overrides.insert(format!("{name}[sdk={sdk}*]"), value);
+        }
     }
 }
 
@@ -496,8 +662,11 @@ fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
         "actool",
         "ibtool",
         "momc",
+        "mapc",
         "xcstringstool",
         "intentbuilderc",
+        "appintentsmetadataprocessor",
+        "appintentsnltrainingprocessor",
         "codesign",
         "derq",
         super::codesign::provisioning::TOOL,
@@ -568,21 +737,22 @@ fn refuse_xcodebuild_flags(passthrough: &[String]) -> Result<(), CliError> {
 /// looks them up. A scheme with no file stands for the target of its name.
 /// Building for testing adds what the test action runs, as `xcodebuild
 /// build-for-testing` does: the default test plan's enabled targets, or
-/// without plans the testables that aren't skipped. Entries from Swift
-/// packages are left out, since the targets that use a package build it as a
-/// dependency.
+/// without plans the testables that aren't skipped. Package entries refer
+/// to SwiftPM's products just as project entries refer to project targets.
 fn scheme_targets(
     container: &Path,
     scheme: &str,
     build_for: BuildFor,
+    derived_data: Option<&Path>,
 ) -> Result<Vec<String>, CliError> {
-    let Some(file) = sweetpad_lib::scheme::locate(container, scheme) else {
+    let Some(file) =
+        sweetpad_lib::scheme::locate_with_derived_data(container, scheme, derived_data)
+    else {
         return Ok(vec![scheme.to_string()]);
     };
     let Ok(parsed) = sweetpad_lib::scheme::parse_file(&file) else {
         return Ok(vec![scheme.to_string()]);
     };
-    let in_project = |container: &str| container.trim_end_matches('/').ends_with(".xcodeproj");
     let mut targets: Vec<String> = Vec::new();
     let mut add = |name: &str| {
         if !targets.iter().any(|t| t == name) {
@@ -593,7 +763,6 @@ fn scheme_targets(
         .build_entries
         .iter()
         .filter(|e| e.builds_for(build_for))
-        .filter(|e| in_project(&e.buildable.container))
     {
         add(&entry.buildable.blueprint_name);
     }
@@ -608,13 +777,19 @@ fn scheme_targets(
         if let Some(plan) = plan {
             // `container:` paths are relative to the folder the scheme's
             // project or workspace is in.
-            let base = file
+            let package = file
                 .ancestors()
-                .find(|a| {
-                    a.extension()
-                        .is_some_and(|e| e == "xcodeproj" || e == "xcworkspace")
+                .find(|p| p.file_name().is_some_and(|n| n == ".swiftpm"))
+                .and_then(Path::parent);
+            let base = package
+                .or_else(|| {
+                    file.ancestors()
+                        .find(|a| {
+                            a.extension()
+                                .is_some_and(|e| e == "xcodeproj" || e == "xcworkspace")
+                        })
+                        .and_then(Path::parent)
                 })
-                .and_then(Path::parent)
                 .unwrap_or(Path::new("."));
             let path = base.join(&plan.path);
             let plan_targets = sweetpad_lib::scheme::test_plan_targets(&path).ok_or_else(|| {
@@ -623,29 +798,31 @@ fn scheme_targets(
                     path.display()
                 ))
             })?;
-            for target in plan_targets
-                .iter()
-                .filter(|t| t.enabled && in_project(&t.container))
-            {
+            for target in plan_targets.iter().filter(|t| t.enabled) {
                 add(&target.name);
             }
         } else {
-            for testable in test
-                .testables
-                .iter()
-                .filter(|t| !t.skipped && in_project(&t.buildable.container))
-            {
+            for testable in test.testables.iter().filter(|t| !t.skipped) {
                 add(&testable.buildable.blueprint_name);
             }
         }
     }
     if targets.is_empty() {
         return Err(CliError::new(format!(
-            "scheme '{scheme}' builds no project targets for this action"
+            "scheme '{scheme}' builds no targets for this action"
         ))
         .kind(ErrorKind::TargetResolution));
     }
     Ok(targets)
+}
+
+/// The package whose `.swiftpm/xcode` directory owns an explicit scheme.
+fn scheme_package(container: &Path, scheme: &str, derived_data: &Path) -> Option<PathBuf> {
+    sweetpad_lib::scheme::locate_with_derived_data(container, scheme, Some(derived_data))?
+        .ancestors()
+        .find(|p| p.file_name().is_some_and(|n| n == ".swiftpm"))?
+        .parent()
+        .map(Path::to_path_buf)
 }
 
 /// The console build command disables implicit dependencies by default.
@@ -660,16 +837,21 @@ fn build_request(
     let build_for = match plan.action {
         BuildAction::Build => BuildFor::Running,
         BuildAction::BuildForTesting => BuildFor::Testing,
+        BuildAction::Archive => BuildFor::Archiving,
     };
+    let derived_data = parameters["arenaInfo"]["derivedDataPath"]
+        .as_str()
+        .map(Path::new);
     let mut targets = Vec::new();
-    for name in scheme_targets(container, plan.scheme, build_for)? {
+    for name in scheme_targets(container, plan.scheme, build_for, derived_data)? {
         let target = pif_target(pif, &name).ok_or_else(|| {
             CliError::new(format!("scheme target '{name}' isn't in the workspace PIF"))
         })?;
         targets.push(json!({"guid":target["guid"]}));
     }
-    let scheme = sweetpad_lib::scheme::locate(container, plan.scheme)
-        .and_then(|path| sweetpad_lib::scheme::parse_file(&path).ok());
+    let scheme =
+        sweetpad_lib::scheme::locate_with_derived_data(container, plan.scheme, derived_data)
+            .and_then(|path| sweetpad_lib::scheme::parse_file(&path).ok());
     Ok(json!({
         "parameters":parameters,
         "configuredTargets":targets,
@@ -680,7 +862,7 @@ fn build_request(
         "showNonLoggedProgress":true, "enableIndexBuildArena":false,
         "useLegacyBuildLocations":false,
         "buildCommand":{"command":"build","style":"buildOnly","skipDependencies":false},
-        "schemeCommand":"launch", "containerPath":container,
+        "schemeCommand":if plan.action == BuildAction::Archive { "archive" } else { "launch" }, "containerPath":container,
     }))
 }
 
@@ -773,6 +955,30 @@ struct DarwinSdk {
 }
 
 impl DarwinSdk {
+    fn sdk_root(&self, sdk: &str) -> Result<PathBuf, CliError> {
+        let explicit = Path::new(sdk);
+        if explicit.is_dir() {
+            return Ok(explicit.to_path_buf());
+        }
+        let platforms = self.bundle.join("Developer/Platforms");
+        for platform in std::fs::read_dir(platforms).into_iter().flatten().flatten() {
+            let sdks = platform.path().join("Developer/SDKs");
+            for entry in std::fs::read_dir(sdks).into_iter().flatten().flatten() {
+                if entry
+                    .path()
+                    .file_stem()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(sdk))
+                {
+                    return Ok(entry.path());
+                }
+            }
+        }
+        Err(CliError::new(format!(
+            "no SDK '{sdk}' in {}",
+            self.bundle.display()
+        )))
+    }
+
     /// The bundle a build here needs: none on macOS, where Swift Build finds
     /// Xcode itself, and elsewhere the one at [`darwin_sdk_bundle`].
     fn for_host() -> Result<Option<Self>, CliError> {
@@ -805,8 +1011,8 @@ impl DarwinSdk {
     /// - `SWIFT_SDK_TOOLSETS`: the bundle's linker, which links for Apple
     ///   platforms where the toolchain's own refuses to, and `toolset`, with
     ///   what a build here needs on top (see [`toolset`]).
-    /// - `LM_SKIP_METADATA_EXTRACTION`: App Intents metadata takes an
-    ///   Xcode-only tool.
+    /// - `LM_SKIP_METADATA_EXTRACTION`: enable the portable App Intents
+    ///   registration and language-model processors.
     /// - `DONT_RUN_SWIFT_STDLIB_TOOL`: its Mach-O reader runs only on macOS,
     ///   which matters only to an app that back-deploys Swift libraries.
     /// - `LIBRARY_SEARCH_PATHS`: the Swift compatibility libraries an older
@@ -814,9 +1020,6 @@ impl DarwinSdk {
     ///   bundle, and the toolchain here has none.
     /// - `GENERATE_INTERMEDIATE_TEXT_BASED_STUBS`: a framework's stub comes
     ///   from `tapi`, which is Xcode's; it only sharpens incremental relinks.
-    /// - `STRINGS_FILE_INPUT_ENCODING`: Swift Build detects a `.strings`
-    ///   file's encoding only on macOS, so a file that doesn't name one, like
-    ///   a compiled String Catalog's, is read as UTF-8.
     /// - The Xcode version (see [`xcode_version_settings`]) and, for a
     ///   platform without its `version.plist`, its build as the SDK's, which
     ///   go into the app's Info.plist as `DTXcode`, `DTXcodeBuild` and
@@ -834,12 +1037,22 @@ impl DarwinSdk {
                 "$(SDK_PRODUCT_BUILD_VERSION)".to_string(),
             ));
         }
-        [
+        let mut settings: Vec<(String, String)> = [
             (
                 "LIBRARY_SEARCH_PATHS",
                 format!("$(inherited) {}", swift_libraries.display()),
             ),
+            (
+                "SYSTEM_HEADER_SEARCH_PATHS",
+                format!(
+                    "$(inherited) {}",
+                    self.bundle
+                        .join("Developer/Toolchains/XcodeDefault.xctoolchain/usr/include")
+                        .display()
+                ),
+            ),
             ("ARCHS", arch.to_string()),
+            ("LIBTOOL", "llvm-libtool-darwin".to_string()),
             ("ONLY_ACTIVE_ARCH", "YES".to_string()),
             (
                 "SWIFT_SDK_TOOLSETS",
@@ -849,14 +1062,10 @@ impl DarwinSdk {
                     toolset.display()
                 ),
             ),
-            ("LM_SKIP_METADATA_EXTRACTION", "YES".to_string()),
+            ("LM_SKIP_METADATA_EXTRACTION", "NO".to_string()),
             ("GENERATE_INTERMEDIATE_TEXT_BASED_STUBS", "NO".to_string()),
             ("DONT_RUN_SWIFT_STDLIB_TOOL", "YES".to_string()),
             ("MODULE_VERIFIER_KIND", "builtin".to_string()),
-            (
-                "STRINGS_FILE_INPUT_ENCODING",
-                "$(InputFileTextEncoding:default=utf-8)".to_string(),
-            ),
         ]
         .into_iter()
         .chain(versions)
@@ -866,7 +1075,68 @@ impl DarwinSdk {
             ("CODE_SIGNING_ALLOWED", "NO".to_string())
         }))
         .map(|(k, v)| (k.to_string(), v))
-        .collect()
+        .collect();
+        if [
+            "appletvos",
+            "appletvsimulator",
+            "watchos",
+            "watchsimulator",
+            "xros",
+            "xrsimulator",
+        ]
+        .contains(&sdk.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.'))
+        {
+            let resources = self
+                .bundle
+                .join("Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift");
+            settings.extend([
+                ("SWIFT_RESOURCE_DIR".into(), resources.display().to_string()),
+                (
+                    "CLANG_RESOURCE_DIR".into(),
+                    resources.join("clang").display().to_string(),
+                ),
+                ("OTHER_LDFLAGS".into(), "$(inherited) -fuse-ld=lld".into()),
+            ]);
+        }
+        settings
+    }
+
+    /// Companion apps can build for another Apple SDK in the same request.
+    /// Scope their cross tools too, while leaving Linux host macros untouched.
+    fn embedded_platform_overrides(
+        &self,
+        sdk: &str,
+        arch: &str,
+        toolset: &Path,
+    ) -> BTreeMap<String, String> {
+        let primary = sdk.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
+        let mut result = BTreeMap::new();
+        for platform in [
+            "iphoneos",
+            "iphonesimulator",
+            "macosx",
+            "appletvos",
+            "appletvsimulator",
+            "watchos",
+            "watchsimulator",
+            "xros",
+            "xrsimulator",
+        ] {
+            if platform == primary {
+                continue;
+            }
+            let mut settings = self
+                .overrides(platform, arch, toolset)
+                .into_iter()
+                .collect();
+            scope_darwin_settings(&mut settings, platform);
+            result.extend(
+                settings
+                    .into_iter()
+                    .filter(|(key, _)| key.contains("[sdk=")),
+            );
+        }
+        result
     }
 
     /// Whether a build for `sdk` is signed: one for a device, with an
@@ -1283,29 +1553,66 @@ fn failed_task(description: &str, output: &str) -> Vec<Parsed> {
                 .is_none_or(|(_, message)| !lld_platform_notice(message))
         })
         .collect();
+    if lines.iter().any(|line| line.trim().starts_with("error: ")) {
+        return lines
+            .into_iter()
+            .map(|line| Parsed {
+                raw: line.to_string(),
+                event: match line.trim().strip_prefix("error: ") {
+                    Some(message) => Event::Diagnostic {
+                        kind: DiagKind::Error,
+                        location: None,
+                        message: message.to_string(),
+                    },
+                    None => Event::Other(line.to_string()),
+                },
+            })
+            .collect();
+    }
     let message = if lines.is_empty() {
         format!("{description} failed")
     } else {
-        format!("{description} failed:")
+        format!("{description} failed:\n{}", lines.join("\n"))
     };
-    let mut out = vec![Parsed {
+    vec![Parsed {
         raw: format!("error: {message}"),
         event: Event::Diagnostic {
             kind: DiagKind::Error,
             location: None,
             message,
         },
-    }];
-    out.extend(lines.into_iter().map(|line| Parsed {
-        raw: format!("    {line}"),
-        event: Event::Other(line.to_string()),
-    }));
-    out
+    }]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_shell_output_is_in_json_diagnostics() {
+        let parsed = failed_task("Run script", "/bin/sh: set: Illegal option -o pipefail\n");
+        assert!(
+            matches!(&parsed[0].event, Event::Diagnostic { kind: DiagKind::Error, message, .. }
+            if message.contains("Illegal option -o pipefail"))
+        );
+    }
+
+    #[test]
+    fn failed_tools_preserve_their_own_unlocated_errors_in_json_diagnostics() {
+        let parsed = failed_task(
+            "Extract app intents metadata",
+            "error: appintentsmetadataprocessor: unsupported parameter option\n",
+        );
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(
+            parsed[0].event,
+            Event::Diagnostic {
+                kind: DiagKind::Error,
+                location: None,
+                message: "appintentsmetadataprocessor: unsupported parameter option".into()
+            }
+        );
+    }
 
     fn events(lines: &[&str]) -> Vec<Event> {
         let mut parser = MessageParser::default();
@@ -1375,14 +1682,11 @@ mod tests {
         ]);
         assert_eq!(
             found[1..],
-            [
-                Event::Diagnostic {
-                    kind: DiagKind::Error,
-                    location: None,
-                    message: "Run custom shell script 'Lint' failed:".into(),
-                },
-                Event::Other("lint: 2 problems".into()),
-            ]
+            [Event::Diagnostic {
+                kind: DiagKind::Error,
+                location: None,
+                message: "Run custom shell script 'Lint' failed:\nlint: 2 problems".into(),
+            },]
         );
     }
 
@@ -1441,9 +1745,7 @@ mod tests {
             r#"{"kind":"taskComplete","id":10,"result":"failed","signalled":false}"#,
         ]);
         assert!(
-            found.contains(&Event::Other(
-                "ld64.lld: error: undefined symbol: _foo".into()
-            )),
+            found.iter().any(|e| matches!(e, Event::Diagnostic { message, .. } if message.contains("ld64.lld: error: undefined symbol: _foo"))),
             "{found:?}"
         );
     }
@@ -1457,9 +1759,7 @@ mod tests {
             r#"{"kind":"taskComplete","id":20,"result":"failed","signalled":false}"#,
         ]);
         assert!(
-            found.contains(&Event::Other(
-                "/s/Kit/Package.swift: Kit-product: ld64.lld: error: undefined symbol: _foo".into()
-            )),
+            found.iter().any(|e| matches!(e, Event::Diagnostic { message, .. } if message.contains("/s/Kit/Package.swift: Kit-product: ld64.lld: error: undefined symbol: _foo"))),
             "{found:?}"
         );
     }
@@ -1514,16 +1814,7 @@ mod tests {
             r#"{"kind":"taskOutput","taskID":10,"data":"ld64.lld: warning: This version of lld does not support linking for platform iOS. Proceed at your own risk.\nld64.lld: error: undefined symbol: _foo\n"}"#,
             r#"{"kind":"taskComplete","id":10,"result":"failed"}"#,
         ]);
-        let other: Vec<&Event> = found
-            .iter()
-            .filter(|e| matches!(e, Event::Other(_)))
-            .collect();
-        assert_eq!(
-            other,
-            vec![&Event::Other(
-                "ld64.lld: error: undefined symbol: _foo".into()
-            )]
-        );
+        assert!(found.iter().any(|e| matches!(e, Event::Diagnostic { message, .. } if message.contains("undefined symbol: _foo") && !message.contains("Proceed at your own risk"))));
     }
 
     #[test]
@@ -1611,6 +1902,60 @@ mod tests {
     }
 
     #[test]
+    fn additional_apple_platforms_use_destination_resources_and_lld() {
+        let dir = crate::cli::testdir::TempDir::new("sweetpad-platform-sdk");
+        let sdk = DarwinSdk {
+            bundle: dir.to_path_buf(),
+        };
+        for platform in ["appletvsimulator", "watchsimulator", "xrsimulator"] {
+            let mut settings: BTreeMap<_, _> = sdk
+                .overrides(platform, "arm64", &dir.join("toolset.json"))
+                .into_iter()
+                .collect();
+            assert!(
+                settings["SWIFT_RESOURCE_DIR"].ends_with("XcodeDefault.xctoolchain/usr/lib/swift")
+            );
+            assert!(
+                settings["CLANG_RESOURCE_DIR"]
+                    .ends_with("XcodeDefault.xctoolchain/usr/lib/swift/clang")
+            );
+            assert_eq!(settings["OTHER_LDFLAGS"], "$(inherited) -fuse-ld=lld");
+            scope_darwin_settings(&mut settings, platform);
+            assert!(!settings.contains_key("SWIFT_RESOURCE_DIR"));
+            assert!(settings.contains_key(&format!("SWIFT_RESOURCE_DIR[sdk={platform}*]")));
+        }
+        for platform in ["iphoneos", "iphonesimulator27.2", "macosx"] {
+            assert!(
+                !sdk.overrides(platform, "arm64", &dir.join("toolset.json"))
+                    .iter()
+                    .any(|(k, _)| k == "SWIFT_RESOURCE_DIR")
+            );
+        }
+    }
+
+    #[test]
+    fn an_ios_request_configures_its_watch_companion_without_configuring_host_macros() {
+        let dir = crate::cli::testdir::TempDir::new("sweetpad-companion-sdk");
+        let sdk = DarwinSdk {
+            bundle: dir.to_path_buf(),
+        };
+        let settings = sdk.embedded_platform_overrides(
+            "iphonesimulator27.2",
+            "arm64",
+            &dir.join("toolset.json"),
+        );
+        assert!(settings.keys().all(|key| key.contains("[sdk=")));
+        assert!(!settings.contains_key("ARCHS[sdk=iphonesimulator*]"));
+        assert_eq!(settings["ARCHS[sdk=watchsimulator*]"], "arm64");
+        assert_eq!(
+            settings["OTHER_LDFLAGS[sdk=watchsimulator*]"],
+            "$(inherited) -fuse-ld=lld"
+        );
+        assert!(settings["SWIFT_RESOURCE_DIR[sdk=watchsimulator*]"].ends_with("usr/lib/swift"));
+        assert!(settings.contains_key("SWIFT_SDK_TOOLSETS[sdk=watchsimulator*]"));
+    }
+
+    #[test]
     fn a_scheme_names_a_project_target_then_a_package_product() {
         let target =
             |guid: &str, name: &str| json!({"type":"target","contents":{"guid":guid,"name":name}});
@@ -1668,11 +2013,11 @@ mod tests {
         );
         std::fs::write(schemes.join("App.xcscheme"), scheme(&testables)).unwrap();
         assert_eq!(
-            scheme_targets(&project, "App", BuildFor::Testing).unwrap(),
-            ["App", "AppTests"]
+            scheme_targets(&project, "App", BuildFor::Testing, None).unwrap(),
+            ["App", "AppTests", "KitTests"]
         );
         assert_eq!(
-            scheme_targets(&project, "App", BuildFor::Running).unwrap(),
+            scheme_targets(&project, "App", BuildFor::Running, None).unwrap(),
             ["App"]
         );
 
@@ -1691,7 +2036,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            scheme_targets(&project, "App", BuildFor::Testing).unwrap(),
+            scheme_targets(&project, "App", BuildFor::Testing, None).unwrap(),
             ["App", "UITests"]
         );
     }

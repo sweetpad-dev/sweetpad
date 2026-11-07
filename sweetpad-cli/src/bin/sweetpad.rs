@@ -54,6 +54,9 @@ fn main() -> ExitCode {
     if name == Some(std::ffi::OsStr::new("momc")) {
         return sweetpad_cli::cli::momc::main(&args);
     }
+    if name == Some(std::ffi::OsStr::new("mapc")) {
+        return sweetpad_cli::cli::mapc::main(&args);
+    }
     // Run as `ibtool`, it stands in for Xcode's Interface Builder compiler,
     // which Swift Build also looks up on that `PATH`.
     if name == Some(std::ffi::OsStr::new("ibtool")) {
@@ -61,6 +64,12 @@ fn main() -> ExitCode {
     }
     if name == Some(std::ffi::OsStr::new("intentbuilderc")) {
         return sweetpad_cli::cli::intentbuilderc::main(&args);
+    }
+    if name == Some(std::ffi::OsStr::new("appintentsmetadataprocessor")) {
+        return sweetpad_cli::cli::appintents::main(&args);
+    }
+    if name == Some(std::ffi::OsStr::new("appintentsnltrainingprocessor")) {
+        return sweetpad_cli::cli::appintents::training_main(&args);
     }
     // Run as `codesign`, it signs what a Linux build makes for a device; as
     // `derq`, it writes a target's entitlements in DER; and as

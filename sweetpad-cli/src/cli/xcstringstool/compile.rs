@@ -51,15 +51,39 @@ struct Entry {
 /// Why a string doesn't compile: the variation it's in, if any, and the
 /// message.
 type Failure = (Option<String>, String);
+type PluralNumber = (usize, bool, String);
+
+fn source_number(value: &Value) -> Option<PluralNumber> {
+    if let Some(value) = unit(value) {
+        for (index, token) in format::tokens(value).iter().enumerate() {
+            if token.is_numeric() {
+                return Some((
+                    token.position().unwrap_or(index + 1),
+                    token.position().is_some()
+                        && !matches!(token, Token::Spec { name: Some(_), .. }),
+                    token.value_type(),
+                ));
+            }
+        }
+    }
+    value.as_object()?.values().find_map(|v| match v {
+        Value::Object(_) => source_number(v),
+        _ => None,
+    })
+}
 
 pub fn compile(catalog: &Catalog, options: &Options) -> Compiled {
     let mut compiled = Compiled::default();
-    for language in languages(catalog, options) {
+    for (language, directory) in languages(catalog, options) {
         let mut tables = Tables::default();
         let mut failed = false;
         for (key, entry) in &catalog.strings {
+            if excluded_source_value(catalog, entry, &language, options) {
+                continue;
+            }
+            let fallback = localization(entry, &catalog.source_language).and_then(source_number);
             let result = match localization(entry, &language) {
-                Some(localization) => compile_localization(localization),
+                Some(localization) => compile_localization(localization, fallback.as_ref()),
                 None if gets_key(catalog, key, entry, &language, options) => Ok(Entry {
                     string: Some(key.clone()),
                     dict: None,
@@ -67,7 +91,27 @@ pub fn compile(catalog: &Catalog, options: &Options) -> Compiled {
                 None => continue,
             };
             match result {
-                Ok(compiled) => {
+                Ok(mut compiled) => {
+                    fn unnamed(value: &mut Value) {
+                        match value {
+                            Value::String(s) => *s = format::unnamed(s),
+                            Value::Object(fields) => {
+                                for v in fields.values_mut() {
+                                    unnamed(v);
+                                }
+                            }
+                            Value::Array(values) => {
+                                for v in values {
+                                    unnamed(v);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    compiled.string = compiled.string.map(|s| format::unnamed(&s));
+                    if let Some(value) = &mut compiled.dict {
+                        unnamed(value);
+                    }
                     if let Some(string) = compiled.string {
                         tables.strings.insert(key.clone(), Value::String(string));
                     }
@@ -87,7 +131,7 @@ pub fn compile(catalog: &Catalog, options: &Options) -> Compiled {
             }
         }
         if !failed {
-            compiled.languages.insert(language, tables);
+            compiled.languages.insert(directory, tables);
         }
     }
     compiled
@@ -99,9 +143,12 @@ pub fn compile(catalog: &Catalog, options: &Options) -> Compiled {
 pub fn planned(catalog: &Catalog, options: &Options) -> Vec<(String, bool, bool)> {
     languages(catalog, options)
         .into_iter()
-        .filter_map(|language| {
+        .filter_map(|(language, directory)| {
             let (mut strings, mut dict) = (false, false);
             for (key, entry) in &catalog.strings {
+                if excluded_source_value(catalog, entry, &language, options) {
+                    continue;
+                }
                 let (string, varied) = match localization(entry, &language) {
                     Some(localization) => shape(localization),
                     None => (gets_key(catalog, key, entry, &language, options), false),
@@ -109,14 +156,31 @@ pub fn planned(catalog: &Catalog, options: &Options) -> Vec<(String, bool, bool)
                 strings |= string;
                 dict |= varied;
             }
-            (strings || dict).then_some((language, strings, dict))
+            (strings || dict).then_some((directory, strings, dict))
         })
         .collect()
 }
 
+/// Xcode uses these canonical language identifiers for bundle directories,
+/// while reading translations using the catalog's original identifier.
+fn bundle_language(language: &str) -> String {
+    let (base, suffix) = language.split_once('-').unwrap_or((language, ""));
+    let canonical = match base {
+        "kmr" => "ku",
+        "iw" => "he",
+        "in" => "id",
+        _ => base,
+    };
+    if suffix.is_empty() {
+        canonical.to_string()
+    } else {
+        format!("{canonical}-{suffix}")
+    }
+}
+
 /// The source language and every language a string has a localization in,
 /// narrowed to the ones asked for.
-fn languages(catalog: &Catalog, options: &Options) -> Vec<String> {
+fn languages(catalog: &Catalog, options: &Options) -> Vec<(String, String)> {
     let mut all = vec![catalog.source_language.clone()];
     for entry in catalog.strings.values() {
         if let Some(localizations) = entry.get("localizations").and_then(Value::as_object) {
@@ -125,12 +189,52 @@ fn languages(catalog: &Catalog, options: &Options) -> Vec<String> {
     }
     all.sort();
     all.dedup();
-    all.retain(|l| options.languages.is_empty() || options.languages.contains(l));
-    all
+    if options.languages.is_empty() {
+        return all
+            .into_iter()
+            .map(|l| {
+                let directory = bundle_language(&l);
+                (l, directory)
+            })
+            .collect();
+    }
+    // Explicit filters keep the requested directory spelling. A canonical
+    // filter also finds a translation stored under its alias in the catalog.
+    options
+        .languages
+        .iter()
+        .filter_map(|requested| {
+            all.iter()
+                .find(|l| *l == requested)
+                .or_else(|| {
+                    all.iter()
+                        .find(|l| bundle_language(l) == bundle_language(requested))
+                })
+                .map(|source| (source.clone(), requested.clone()))
+        })
+        .collect()
 }
 
 fn localization<'a>(entry: &'a Value, language: &str) -> Option<&'a Value> {
     entry.get("localizations")?.get(language)
+}
+
+/// An extracted source value with no translation comes from its original
+/// resource (for example Info.plist), rather than a localization override.
+fn excluded_source_value(
+    catalog: &Catalog,
+    entry: &Value,
+    language: &str,
+    options: &Options,
+) -> bool {
+    !options.force_all
+        && language == catalog.source_language
+        && entry.get("extractionState").and_then(Value::as_str) == Some("extracted_with_value")
+        && localization(entry, language)
+            .and_then(|v| v.get("stringUnit"))
+            .and_then(|v| v.get("state"))
+            .and_then(Value::as_str)
+            == Some("new")
 }
 
 /// Whether a string with no localization in `language` goes in with its key
@@ -173,15 +277,18 @@ fn shape(localization: &Value) -> (bool, bool) {
     }
 }
 
-fn compile_localization(localization: &Value) -> Result<Entry, Failure> {
+fn compile_localization(
+    localization: &Value,
+    fallback: Option<&PluralNumber>,
+) -> Result<Entry, Failure> {
     let subs = substitutions(localization);
     if let Some((kind, cases)) = variations(localization) {
         return match kind {
             "plural" => Ok(Entry {
                 string: None,
-                dict: Some(plural(cases, None)?),
+                dict: Some(plural(cases, None, fallback)?),
             }),
-            "device" => device(cases, subs),
+            "device" => device(cases, subs, fallback),
             "width" => Ok(Entry {
                 string: None,
                 dict: Some(json!({ "NSStringVariableWidthRuleType": units(cases) })),
@@ -240,7 +347,11 @@ fn refers(value: &str) -> bool {
 /// is the one numeric specifier its cases share; when that isn't the first
 /// argument, every specifier is given its position so the format key can
 /// name it.
-fn plural(cases: &Map<String, Value>, at: Option<&str>) -> Result<Value, Failure> {
+fn plural(
+    cases: &Map<String, Value>,
+    at: Option<&str>,
+    fallback: Option<&PluralNumber>,
+) -> Result<Value, Failure> {
     let mut values = Vec::new();
     for (case, variant) in cases {
         if variations(variant).is_some() {
@@ -265,7 +376,8 @@ fn plural(cases: &Map<String, Value>, at: Option<&str>) -> Result<Value, Failure
             [(index, token)] => {
                 number.get_or_insert((
                     token.position().unwrap_or(index + 1),
-                    token.position().is_some(),
+                    token.position().is_some()
+                        && !matches!(token, Token::Spec { name: Some(_), .. }),
                     token.value_type(),
                 ));
             }
@@ -277,7 +389,7 @@ fn plural(cases: &Map<String, Value>, at: Option<&str>) -> Result<Value, Failure
             }
         }
     }
-    let Some((position, explicit, value_type)) = number else {
+    let Some((position, explicit, value_type)) = number.or_else(|| fallback.cloned()) else {
         return fail(
             "Plural variation requires referencing the number in the string. To maintain \
              grammatical correctness for strings that do not reference the number of items, use \
@@ -299,7 +411,7 @@ fn plural(cases: &Map<String, Value>, at: Option<&str>) -> Result<Value, Failure
         };
         rule.insert(case.clone(), json!(value));
     }
-    let format_key = if explicit || position > 1 {
+    let format_key = if position > 1 {
         format!("%{position}$#@value@")
     } else {
         "%#@value@".to_string()
@@ -309,7 +421,11 @@ fn plural(cases: &Map<String, Value>, at: Option<&str>) -> Result<Value, Failure
 
 /// A device variation: its `other` case is the plain string, and the rest
 /// go in the `.stringsdict`.
-fn device(cases: &Map<String, Value>, subs: Option<&Map<String, Value>>) -> Result<Entry, Failure> {
+fn device(
+    cases: &Map<String, Value>,
+    subs: Option<&Map<String, Value>>,
+    fallback: Option<&PluralNumber>,
+) -> Result<Entry, Failure> {
     let mut entry = Entry::default();
     let mut rules = Map::new();
     for (device, variant) in cases {
@@ -322,7 +438,7 @@ fn device(cases: &Map<String, Value>, subs: Option<&Map<String, Value>>) -> Resu
             continue;
         }
         let rule = match (variations(variant), unit(variant)) {
-            (Some(("plural", cases)), _) => plural(cases, Some(&at))?,
+            (Some(("plural", cases)), _) => plural(cases, Some(&at), fallback)?,
             (Some(_), _) | (None, None) => continue,
             (None, Some(value)) => match subs {
                 Some(subs) if refers(value) => {

@@ -71,7 +71,7 @@ fn first_difference(actual: &str, expected: &str) -> String {
 /// A keyed archive as a tree that doesn't depend on the order objects
 /// are written in: each dictionary's entries and each set's members
 /// sorted, every object numbered by when a walk in that order meets it.
-fn canonical(data: &[u8]) -> String {
+pub(crate) fn canonical(data: &[u8]) -> String {
     let Plist::Dict(top) = read::parse(data) else {
         panic!("an archive is a dictionary");
     };
@@ -182,7 +182,18 @@ fn walk(
         }
         return;
     }
-    let mut fields: Vec<&(String, Plist)> = object.iter().filter(|(k, _)| k != "$class").collect();
+    // The producer's build number is not part of the runtime model contract.
+    let mut fields: Vec<&(String, Plist)> = object
+        .iter()
+        .filter(|(k, _)| {
+            ![
+                "$class",
+                "CDMCompilerToolVersion",
+                "CDMCompilerXcodeVersion",
+            ]
+            .contains(&k.as_str())
+        })
+        .collect();
     fields.sort_by(|a, b| a.0.cmp(&b.0));
     for (key, value) in fields {
         walk(objects, value, indent + 1, &format!("{key}: "), seen, out);

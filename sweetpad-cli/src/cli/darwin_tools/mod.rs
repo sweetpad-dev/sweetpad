@@ -24,6 +24,7 @@
 mod copypng;
 mod ditto;
 mod embedded_binary;
+mod extract_loc_strings;
 mod ld;
 mod lipo;
 mod strip;
@@ -41,6 +42,8 @@ pub const TOOLS: &[&str] = &[
     "lipo",
     "strip",
     "xcrun",
+    "sweetpad-chmod",
+    "extractLocStrings",
 ];
 
 /// The name of the link to the Darwin SDK's own linker, beside the stand-in
@@ -57,7 +60,24 @@ pub fn main(tool: &str, args: &[String]) -> Option<ExitCode> {
         "ld64.lld" => return Some(ld::main(args)),
         "lipo" => lipo::main(args),
         "strip" => strip::main(args),
+        "extractLocStrings" => extract_loc_strings::main(args),
         "xcrun" => return Some(xcrun::main(args)),
+        "sweetpad-chmod" => {
+            let args: Vec<&str> = args
+                .iter()
+                .filter(|a| a.as_str() != "-H")
+                .map(|a| if a == "-RH" { "-R" } else { a.as_str() })
+                .collect();
+            std::process::Command::new("/bin/chmod")
+                .args(args)
+                .status()
+                .map_err(|e| e.to_string())
+                .and_then(|s| {
+                    s.success()
+                        .then_some(())
+                        .ok_or_else(|| format!("chmod exited with {s}"))
+                })
+        }
         _ => return None,
     };
     Some(match result {
@@ -70,7 +90,7 @@ pub fn main(tool: &str, args: &[String]) -> Option<ExitCode> {
 }
 
 /// The first `name` on `PATH`.
-fn find_program(name: &str) -> Option<PathBuf> {
+pub(super) fn find_program(name: &str) -> Option<PathBuf> {
     std::env::var_os("PATH")
         .iter()
         .flat_map(std::env::split_paths)

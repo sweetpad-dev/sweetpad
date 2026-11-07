@@ -1,0 +1,326 @@
+--- a/Demo/Kingfisher-Demo.xcodeproj/project.pbxproj
++++ b/Demo/Kingfisher-Demo.xcodeproj/project.pbxproj
+@@ -12,7 +12,6 @@
+ 		078DCB512BCFEFB40008114E /* PHPickerResultViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 078DCB502BCFEFB40008114E /* PHPickerResultViewController.swift */; };
+ 		277EAE8D2045B39C00547CD3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 277EAE892045B39C00547CD3 /* Assets.xcassets */; };
+ 		277EAE8E2045B39C00547CD3 /* Interface.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 277EAE8A2045B39C00547CD3 /* Interface.storyboard */; };
+-		277EAE9D2045B4D500547CD3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 277EAE962045B4D500547CD3 /* Assets.xcassets */; };
+ 		277EAEA12045B52800547CD3 /* InterfaceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 277EAE9E2045B52800547CD3 /* InterfaceController.swift */; };
+ 		277EAEA32045B52800547CD3 /* ExtensionDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 277EAEA02045B52800547CD3 /* ExtensionDelegate.swift */; };
+ 		3887E1602B4AD7200062C53C /* GIFHeavyViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3887E15F2B4AD7200062C53C /* GIFHeavyViewController.swift */; };
+@@ -57,7 +56,6 @@
+ 		D12EB84024DDB9E100329EE1 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = D12EB83F24DDB9E000329EE1 /* LaunchScreen.storyboard */; };
+ 		D12F67682CB10AE000AB63AB /* LivePhotoViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12F67672CB10AD900AB63AB /* LivePhotoViewController.swift */; };
+ 		D14799D92E1129A900053537 /* LoadingFailureDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = D14799D82E1129A800053537 /* LoadingFailureDemo.swift */; };
+-		D1679A461C4E78B20020FD12 /* Kingfisher-watchOS-Demo Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D1679A451C4E78B20020FD12 /* Kingfisher-watchOS-Demo Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+ 		D16AAF282D5247CF00E7F764 /* Issue2352View.swift in Sources */ = {isa = PBXBuildFile; fileRef = D16AAF272D5247CA00E7F764 /* Issue2352View.swift */; };
+ 		D16CC3D824E03FEA00F1A515 /* AVAssetImageGeneratorViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D16CC3D724E03FEA00F1A515 /* AVAssetImageGeneratorViewController.swift */; };
+ 		D198F41E25EDC11500C53E0D /* LazyVStackDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = D198F41D25EDC11500C53E0D /* LazyVStackDemo.swift */; };
+@@ -85,16 +83,6 @@
+ 		F39B68D42E33E0D600404B02 /* NetworkMetricsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F39B68D32E33E0D600404B02 /* NetworkMetricsViewController.swift */; };
+ /* End PBXBuildFile section */
+ 
+-/* Begin PBXContainerItemProxy section */
+-		D1679A471C4E78B20020FD12 /* PBXContainerItemProxy */ = {
+-			isa = PBXContainerItemProxy;
+-			containerPortal = D1ED2D031AD2CFA600CFC3EB /* Project object */;
+-			proxyType = 1;
+-			remoteGlobalIDString = D1679A441C4E78B20020FD12;
+-			remoteInfo = "Kingfisher-watchOS-Demo Extension";
+-		};
+-/* End PBXContainerItemProxy section */
+-
+ /* Begin PBXCopyFilesBuildPhase section */
+ 		D12F2EEC1C4E7CF500B8054D /* Embed Frameworks */ = {
+ 			isa = PBXCopyFilesBuildPhase;
+@@ -116,17 +104,6 @@
+ 				4BE855562320F9CF00FE4205 /* Kingfisher.framework in Embed Frameworks */,
+ 			);
+ 			name = "Embed Frameworks";
+-			runOnlyForDeploymentPostprocessing = 0;
+-		};
+-		D1679A571C4E78B20020FD12 /* Embed Foundation Extensions */ = {
+-			isa = PBXCopyFilesBuildPhase;
+-			buildActionMask = 2147483647;
+-			dstPath = "";
+-			dstSubfolderSpec = 13;
+-			files = (
+-				D1679A461C4E78B20020FD12 /* Kingfisher-watchOS-Demo Extension.appex in Embed Foundation Extensions */,
+-			);
+-			name = "Embed Foundation Extensions";
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+ 		D19ADCFC23099ADE00D20B28 /* Embed Frameworks */ = {
+@@ -217,7 +194,6 @@
+ 		D14799D82E1129A800053537 /* LoadingFailureDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingFailureDemo.swift; sourceTree = "<group>"; };
+ 		D16218A4238EAA67004A1C6C /* Kingfisher-Demo.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Kingfisher-Demo.entitlements"; sourceTree = "<group>"; };
+ 		D1679A391C4E78B20020FD12 /* Kingfisher-watchOS-Demo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kingfisher-watchOS-Demo.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+-		D1679A451C4E78B20020FD12 /* Kingfisher-watchOS-Demo Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Kingfisher-watchOS-Demo Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+ 		D16AAF272D5247CA00E7F764 /* Issue2352View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Issue2352View.swift; sourceTree = "<group>"; };
+ 		D16CC3D724E03FEA00F1A515 /* AVAssetImageGeneratorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVAssetImageGeneratorViewController.swift; sourceTree = "<group>"; };
+ 		D198F41D25EDC11500C53E0D /* LazyVStackDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LazyVStackDemo.swift; sourceTree = "<group>"; };
+@@ -256,6 +232,7 @@
+ 			isa = PBXFrameworksBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
++				4BE855612320F9DE00FE4205 /* Kingfisher.framework in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -264,14 +241,6 @@
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 				4BE855552320F9CF00FE4205 /* Kingfisher.framework in Frameworks */,
+-			);
+-			runOnlyForDeploymentPostprocessing = 0;
+-		};
+-		D1679A421C4E78B20020FD12 /* Frameworks */ = {
+-			isa = PBXFrameworksBuildPhase;
+-			buildActionMask = 2147483647;
+-			files = (
+-				4BE855612320F9DE00FE4205 /* Kingfisher.framework in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -452,7 +421,6 @@
+ 				D13F49C21BEDA53F00CE335D /* Kingfisher-tvOS-Demo.app */,
+ 				4B2944551C3D03880088C3E7 /* Kingfisher-macOS-Demo.app */,
+ 				D1679A391C4E78B20020FD12 /* Kingfisher-watchOS-Demo.app */,
+-				D1679A451C4E78B20020FD12 /* Kingfisher-watchOS-Demo Extension.appex */,
+ 			);
+ 			name = Products;
+ 			sourceTree = "<group>";
+@@ -522,37 +490,19 @@
+ 			buildConfigurationList = D1679A581C4E78B20020FD12 /* Build configuration list for PBXNativeTarget "Kingfisher-watchOS-Demo" */;
+ 			buildPhases = (
+ 				D1679A371C4E78B20020FD12 /* Resources */,
+-				D1679A571C4E78B20020FD12 /* Embed Foundation Extensions */,
+ 				60796AE9A717329E55ACCCC7 /* Frameworks */,
+ 				D19ADCFF23099B4300D20B28 /* Embed Frameworks */,
++				D1679A411C4E78B20020FD12 /* Sources */,
++				D12F2EEC1C4E7CF500B8054D /* Embed Frameworks */,
+ 			);
+ 			buildRules = (
+ 			);
+ 			dependencies = (
+-				D1679A481C4E78B20020FD12 /* PBXTargetDependency */,
+ 			);
+ 			name = "Kingfisher-watchOS-Demo";
+ 			productName = "Kingfisher-watchOS-Demo";
+ 			productReference = D1679A391C4E78B20020FD12 /* Kingfisher-watchOS-Demo.app */;
+-			productType = "com.apple.product-type.application.watchapp2";
+-		};
+-		D1679A441C4E78B20020FD12 /* Kingfisher-watchOS-Demo Extension */ = {
+-			isa = PBXNativeTarget;
+-			buildConfigurationList = D1679A541C4E78B20020FD12 /* Build configuration list for PBXNativeTarget "Kingfisher-watchOS-Demo Extension" */;
+-			buildPhases = (
+-				D1679A411C4E78B20020FD12 /* Sources */,
+-				D1679A421C4E78B20020FD12 /* Frameworks */,
+-				D1679A431C4E78B20020FD12 /* Resources */,
+-				D12F2EEC1C4E7CF500B8054D /* Embed Frameworks */,
+-			);
+-			buildRules = (
+-			);
+-			dependencies = (
+-			);
+-			name = "Kingfisher-watchOS-Demo Extension";
+-			productName = "Kingfisher-watchOS-Demo Extension";
+-			productReference = D1679A451C4E78B20020FD12 /* Kingfisher-watchOS-Demo Extension.appex */;
+-			productType = "com.apple.product-type.watchkit2-extension";
++			productType = "com.apple.product-type.application";
+ 		};
+ 		D1ED2D0A1AD2CFA600CFC3EB /* Kingfisher-Demo */ = {
+ 			isa = PBXNativeTarget;
+@@ -626,7 +576,6 @@
+ 				D13F49C11BEDA53F00CE335D /* Kingfisher-tvOS-Demo */,
+ 				4B2944541C3D03880088C3E7 /* Kingfisher-macOS-Demo */,
+ 				D1679A381C4E78B20020FD12 /* Kingfisher-watchOS-Demo */,
+-				D1679A441C4E78B20020FD12 /* Kingfisher-watchOS-Demo Extension */,
+ 			);
+ 		};
+ /* End PBXProject section */
+@@ -659,14 +608,6 @@
+ 			files = (
+ 				277EAE8E2045B39C00547CD3 /* Interface.storyboard in Resources */,
+ 				277EAE8D2045B39C00547CD3 /* Assets.xcassets in Resources */,
+-			);
+-			runOnlyForDeploymentPostprocessing = 0;
+-		};
+-		D1679A431C4E78B20020FD12 /* Resources */ = {
+-			isa = PBXResourcesBuildPhase;
+-			buildActionMask = 2147483647;
+-			files = (
+-				277EAE9D2045B4D500547CD3 /* Assets.xcassets in Resources */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -767,14 +708,6 @@
+ 		};
+ /* End PBXSourcesBuildPhase section */
+ 
+-/* Begin PBXTargetDependency section */
+-		D1679A481C4E78B20020FD12 /* PBXTargetDependency */ = {
+-			isa = PBXTargetDependency;
+-			target = D1679A441C4E78B20020FD12 /* Kingfisher-watchOS-Demo Extension */;
+-			targetProxy = D1679A471C4E78B20020FD12 /* PBXContainerItemProxy */;
+-		};
+-/* End PBXTargetDependency section */
+-
+ /* Begin PBXVariantGroup section */
+ 		277EAE8A2045B39C00547CD3 /* Interface.storyboard */ = {
+ 			isa = PBXVariantGroup;
+@@ -964,13 +897,13 @@
+ 			isa = XCBuildConfiguration;
+ 			buildSettings = {
+ 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
++				CLANG_ENABLE_MODULES = YES;
+ 				CODE_SIGN_IDENTITY = "iPhone Developer";
+ 				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "iPhone Developer";
+ 				CODE_SIGN_STYLE = Automatic;
+ 				DEBUG_INFORMATION_FORMAT = dwarf;
+ 				DEVELOPMENT_TEAM = "";
+ 				GCC_NO_COMMON_BLOCKS = YES;
+-				IBSC_MODULE = Kingfisher_watchOS_Demo_Extension;
+ 				INFOPLIST_FILE = "Demo/Kingfisher-watchOS-Demo/Info.plist";
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+@@ -982,7 +915,10 @@
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+ 				SDKROOT = watchos;
+ 				SKIP_INSTALL = YES;
++				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
++				SWIFT_VERSION = 5.0;
+ 				TARGETED_DEVICE_FAMILY = 4;
++				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+ 			};
+ 			name = Debug;
+ 		};
+@@ -990,13 +926,13 @@
+ 			isa = XCBuildConfiguration;
+ 			buildSettings = {
+ 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
++				CLANG_ENABLE_MODULES = YES;
+ 				CODE_SIGN_IDENTITY = "iPhone Developer";
+ 				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "iPhone Developer";
+ 				CODE_SIGN_STYLE = Automatic;
+ 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+ 				DEVELOPMENT_TEAM = "";
+ 				GCC_NO_COMMON_BLOCKS = YES;
+-				IBSC_MODULE = Kingfisher_watchOS_Demo_Extension;
+ 				INFOPLIST_FILE = "Demo/Kingfisher-watchOS-Demo/Info.plist";
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+@@ -1008,7 +944,11 @@
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+ 				SDKROOT = watchos;
+ 				SKIP_INSTALL = YES;
++				SWIFT_COMPILATION_MODE = wholemodule;
++				SWIFT_OPTIMIZATION_LEVEL = "-O";
++				SWIFT_VERSION = 5.0;
+ 				TARGETED_DEVICE_FAMILY = 4;
++				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+ 			};
+ 			name = Release;
+ 		};
+@@ -1207,15 +1147,6 @@
+ 			defaultConfigurationIsVisible = 0;
+ 			defaultConfigurationName = Release;
+ 		};
+-		D1679A541C4E78B20020FD12 /* Build configuration list for PBXNativeTarget "Kingfisher-watchOS-Demo Extension" */ = {
+-			isa = XCConfigurationList;
+-			buildConfigurations = (
+-				D1679A551C4E78B20020FD12 /* Debug */,
+-				D1679A561C4E78B20020FD12 /* Release */,
+-			);
+-			defaultConfigurationIsVisible = 0;
+-			defaultConfigurationName = Release;
+-		};
+ 		D1679A581C4E78B20020FD12 /* Build configuration list for PBXNativeTarget "Kingfisher-watchOS-Demo" */ = {
+ 			isa = XCConfigurationList;
+ 			buildConfigurations = (
+--- a/Demo/Demo/Kingfisher-watchOS-Demo/Info.plist
++++ b/Demo/Demo/Kingfisher-watchOS-Demo/Info.plist
+@@ -27,9 +27,11 @@
+ 		<string>UIInterfaceOrientationPortrait</string>
+ 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+ 	</array>
++	<key>WKApplication</key>
++	<true/>
++	<key>WKApplicationDelegateClassName</key>
++	<string>$(PRODUCT_MODULE_NAME).ExtensionDelegate</string>
+ 	<key>WKCompanionAppBundleIdentifier</key>
+ 	<string>com.onevcat.Kingfisher-Demo</string>
+-	<key>WKWatchKitApp</key>
+-	<true/>
+ </dict>
+ </plist>
+--- a/Demo/Demo/Kingfisher-watchOS-Demo Extension/ExtensionDelegate.swift
++++ b/Demo/Demo/Kingfisher-watchOS-Demo Extension/ExtensionDelegate.swift
+@@ -26,7 +26,7 @@
+ 
+ import WatchKit
+ 
+-class ExtensionDelegate: NSObject, WKExtensionDelegate {
++class ExtensionDelegate: NSObject, WKApplicationDelegate {
+ 
+     func applicationDidFinishLaunching() {
+         // Perform any final initialization of your application.
+@@ -42,3 +42,11 @@
+     }
+ 
+ }
++
++@main
++enum WatchAppMain {
++    static func main() {
++        _ = WKApplicationMain(CommandLine.argc, CommandLine.unsafeArgv,
++                              NSStringFromClass(ExtensionDelegate.self))
++    }
++}
+--- a/Demo/Demo/Kingfisher-watchOS-Demo/Base.lproj/Interface.storyboard
++++ b/Demo/Demo/Kingfisher-watchOS-Demo/Base.lproj/Interface.storyboard
+@@ -8,7 +8,7 @@
+         <!--1-->
+         <scene sceneID="aou-V4-d1y">
+             <objects>
+-                <controller identifier="1" id="AgC-eL-Hgc" customClass="InterfaceController" customModule="Kingfisher_watchOS_Demo_Extension">
++                <controller identifier="1" id="AgC-eL-Hgc" customClass="InterfaceController" customModule="Kingfisher_watchOS_Demo">
+                     <items>
+                         <imageView width="1" height="1" alignment="left" id="XYV-y3-lIO"/>
+                     </items>
+@@ -23,7 +23,7 @@
+         <!--4-->
+         <scene sceneID="bpA-Kq-j3C">
+             <objects>
+-                <controller identifier="4" id="hfp-j6-MU9" customClass="InterfaceController" customModule="Kingfisher_watchOS_Demo_Extension">
++                <controller identifier="4" id="hfp-j6-MU9" customClass="InterfaceController" customModule="Kingfisher_watchOS_Demo">
+                     <items>
+                         <imageView width="1" height="1" alignment="left" id="S4O-Qk-Mdh"/>
+                     </items>
+@@ -38,7 +38,7 @@
+         <!--5-->
+         <scene sceneID="MeK-gw-Fea">
+             <objects>
+-                <controller identifier="5" id="dHl-VT-6cQ" customClass="InterfaceController" customModule="Kingfisher_watchOS_Demo_Extension">
++                <controller identifier="5" id="dHl-VT-6cQ" customClass="InterfaceController" customModule="Kingfisher_watchOS_Demo">
+                     <items>
+                         <imageView width="1" height="1" alignment="left" id="PPw-mK-qub"/>
+                     </items>
+@@ -52,7 +52,7 @@
+         <!--2-->
+         <scene sceneID="za1-tw-dP5">
+             <objects>
+-                <controller identifier="2" id="aCz-N9-LCn" customClass="InterfaceController" customModule="Kingfisher_watchOS_Demo_Extension">
++                <controller identifier="2" id="aCz-N9-LCn" customClass="InterfaceController" customModule="Kingfisher_watchOS_Demo">
+                     <items>
+                         <imageView width="1" height="1" alignment="left" id="PX0-yX-9kz"/>
+                     </items>
+@@ -67,7 +67,7 @@
+         <!--3-->
+         <scene sceneID="eM7-ZT-bZR">
+             <objects>
+-                <controller identifier="3" id="CSR-cq-bLK" customClass="InterfaceController" customModule="Kingfisher_watchOS_Demo_Extension">
++                <controller identifier="3" id="CSR-cq-bLK" customClass="InterfaceController" customModule="Kingfisher_watchOS_Demo">
+                     <items>
+                         <imageView width="1" height="1" alignment="left" id="WoJ-or-re5"/>
+                     </items>

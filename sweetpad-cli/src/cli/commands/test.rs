@@ -71,6 +71,11 @@ pub struct TestArgs {
     #[arg(long, global = true)]
     pub coverage: bool,
 
+    /// Run prebuilt test products from an .xctestrun file without compiling.
+    /// The project still supplies the test context and result history.
+    #[arg(long, value_name = "FILE", global = true, conflicts_with = "watch")]
+    pub xctestrun: Option<PathBuf>,
+
     /// Print the exact xcodebuild invocation that would run, then exit.
     #[arg(long, global = true)]
     pub show_command: bool,
@@ -120,6 +125,8 @@ pub struct BuildArgs {
     pub retry_flaky: Option<u32>,
     #[arg(long, hide = true)]
     pub coverage: bool,
+    #[arg(long, hide = true)]
+    pub xctestrun: Option<PathBuf>,
 }
 
 /// The run flags that reading the last run back refuses, redeclared hidden on
@@ -146,6 +153,8 @@ pub struct HiddenRunArgs {
     pub coverage: bool,
     #[arg(long, hide = true)]
     pub show_command: bool,
+    #[arg(long, hide = true)]
+    pub xctestrun: Option<PathBuf>,
     #[arg(last = true, hide = true)]
     pub passthrough: Vec<String>,
 }
@@ -208,6 +217,7 @@ struct RunArgs<'a> {
     junit: Option<&'a Path>,
     retry_flaky: Option<u32>,
     coverage: bool,
+    xctestrun: Option<&'a Path>,
     show_command: bool,
     passthrough: &'a [String],
 }
@@ -271,6 +281,7 @@ pub fn run(ctx: &mut Context, args: &TestArgs, action: Option<&Action>) -> Comma
         junit: args.junit.as_deref(),
         retry_flaky: args.retry_flaky,
         coverage: args.coverage,
+        xctestrun: args.xctestrun.as_deref(),
         show_command: args.show_command,
         passthrough: &passthrough,
     };
@@ -313,6 +324,7 @@ fn refuse_run_flags(given: &[&str], why: &str) -> Result<(), CliError> {
 fn flag_twins(args: &TestArgs) -> Vec<(&'static str, &'static str)> {
     [
         ("--coverage", "-enableCodeCoverage", args.coverage),
+        ("--xctestrun", "-xctestrun", args.xctestrun.is_some()),
         (
             "--retry-flaky",
             "-test-iterations",
@@ -371,6 +383,7 @@ fn read_refused_flags(args: &TestArgs, typed: impl Fn(&str) -> bool) -> Vec<&'st
             ("--retry-flaky", args.retry_flaky.is_some()),
             ("--coverage", args.coverage),
             ("--show-command", args.show_command),
+            ("--xctestrun", args.xctestrun.is_some()),
             ("'-- XCODEBUILD_ARGS'", !args.passthrough.is_empty()),
         ]
         .into_iter()
@@ -392,6 +405,7 @@ fn run_only_flags(args: &TestArgs) -> Vec<&'static str> {
         ("--junit", args.junit.is_some()),
         ("--retry-flaky", args.retry_flaky.is_some()),
         ("--coverage", args.coverage),
+        ("--xctestrun", args.xctestrun.is_some()),
     ]
     .into_iter()
     .filter_map(|(flag, given)| given.then_some(flag))
@@ -662,6 +676,26 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     // Tests resolve their own context (testing overrides, falling back to build).
     let mut resolved = resolve::resolve_testing(ctx)?;
 
+    let manifest = args.xctestrun.map(sweetpad_lib::project::absolutize);
+    if let Some(path) = &manifest {
+        if !cfg!(target_os = "macos") {
+            return Err(CliError::new(
+                "running Apple test products needs a Mac with Xcode; copy the products and .xctestrun file to the Mac",
+            ).kind(ErrorKind::ToolMissing));
+        }
+        if !path.is_file() {
+            return Err(CliError::new(format!(
+                "test run file does not exist: {}",
+                path.display()
+            )));
+        }
+        if matches!(resolved.container, resolve::Container::SwiftPackage(_)) {
+            return Err(CliError::new(
+                "--xctestrun needs an Xcode project/workspace test context",
+            ));
+        }
+    }
+
     // Swift packages run tests with the `swift` toolchain — no simulator
     // destination, no `.xcresult` bundle to retain, rerun from, or report on;
     // no `-retry-tests-on-failure` equivalent either.
@@ -746,6 +780,7 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         configuration: &target.configuration,
         destination: Some(&target.destination),
         sdk: resolved.sdk.as_deref(),
+        xctestrun: manifest.as_deref(),
         only_testing: &only,
         skip_testing: args.skip_testing,
         result_bundle: &run_bundle,
@@ -822,7 +857,7 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
     // The run's build step is the project's last build, so it is recorded the
     // way 'build' records its own, for 'build diagnostics' to read back. Tests
     // only run once it succeeds.
-    if outcome.parsed {
+    if outcome.parsed && manifest.is_none() {
         xcodebuild::record_build(
             &resolved.container,
             Some(&target.scheme),
@@ -846,6 +881,23 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         // A device's own reason for failing outranks the list of every error.
         let tip = device.or_else(|| err.tip_text().map(str::to_string));
         return Err(err.tip(tip));
+    }
+    if outcome.passed && summary.as_ref().is_some_and(|s| s.total_test_count == 0) {
+        let evidence = if args.result_bundle.is_some() {
+            let _ = std::fs::remove_dir_all(&final_bundle);
+            if std::fs::rename(&run_bundle, &final_bundle).is_ok() {
+                &final_bundle
+            } else {
+                &run_bundle
+            }
+        } else {
+            &run_bundle
+        };
+        return Err(CliError::new(format!(
+            "no tests ran; check the test selectors and scheme's test plan (result bundle: {})",
+            evidence.display()
+        ))
+        .kind(ErrorKind::BuildFailure));
     }
     // The scratch run is the project's latest real result: promote it to the
     // retained slot.
@@ -2652,6 +2704,8 @@ mod tests {
         // it reads like it would narrow the build and cannot.
         let (args, _) = parse_test(&["build", "--only-testing", "AppTests"]);
         assert_eq!(run_only_flags(&args), ["--only-testing"]);
+        let (args, _) = parse_test(&["build", "--xctestrun", "Tests.xctestrun"]);
+        assert_eq!(run_only_flags(&args), ["--xctestrun"]);
 
         let (args, _) = parse_test(&[
             "build",

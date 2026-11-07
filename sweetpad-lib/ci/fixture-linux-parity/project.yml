@@ -1,0 +1,52 @@
+name: ParityProbe
+options:
+  deploymentTarget:
+    iOS: "18.0"
+packages:
+  ValueKit:
+    path: Packages/ValueKit
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGNING_ALLOWED: NO
+    ENABLE_DEBUG_DYLIB: NO
+    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "1.0"
+targets:
+  ParityProbe:
+    type: application
+    platform: iOS
+    info:
+      path: App/Info.plist
+      properties:
+        ProbeResourceName: $(PROBE_RESOURCE_NAME)
+    sources: [App, Resources]
+    dependencies:
+      - package: ValueKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: Accent
+        ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME: Accent
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        PROBE_RESOURCE_NAME: message
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.ParityProbe
+  ParityProbeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: ParityProbe
+      - package: ValueKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sweetpad.ParityProbeTests
+schemes:
+  ParityProbe:
+    build:
+      targets:
+        ParityProbe: all
+    test:
+      targets: [ParityProbeTests]

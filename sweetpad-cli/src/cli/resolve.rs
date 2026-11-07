@@ -578,12 +578,17 @@ pub fn missing(what: &str) -> CliError {
 /// straight from the manifest (`swift package dump-package`). Shared by every
 /// command that needs to enumerate or pick a scheme.
 pub fn schemes(container: &Container) -> Result<Vec<String>, CliError> {
+    schemes_in(container, None)
+}
+
+fn schemes_in(container: &Container, derived_data: Option<&Path>) -> Result<Vec<String>, CliError> {
     match container {
         Container::Workspace(p) => sweetpad_lib::workspace::open(p)
             .map(|w| {
-                let members = sweetpad_core::package_members::resolve_workspace(
+                let members = sweetpad_core::package_members::resolve_workspace_in(
                     &w,
                     &sweetpad_core::package_members::Toolchain::default(),
+                    derived_data,
                 );
                 w.merged_schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(
                     &members,
@@ -592,9 +597,10 @@ pub fn schemes(container: &Container) -> Result<Vec<String>, CliError> {
             .map_err(|e| CliError::new(format!("failed to read workspace {}: {e}", p.display()))),
         Container::Project(p) => sweetpad_lib::project::open(p)
             .map(|proj| {
-                let members = sweetpad_core::package_members::resolve_project(
+                let members = sweetpad_core::package_members::resolve_project_in(
                     &proj,
                     &sweetpad_core::package_members::Toolchain::default(),
+                    derived_data,
                 );
                 proj.schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(&members))
             })
@@ -603,6 +609,22 @@ pub fn schemes(container: &Container) -> Result<Vec<String>, CliError> {
         // (this drives SPM build/test/run) — no xcodebuild needed.
         Container::SwiftPackage(_) => crate::cli::swiftpm::schemes(container),
     }
+}
+
+/// Scheme candidates from the selected build's package graph, including a
+/// custom DerivedData location from the command tail or project config.
+pub fn schemes_for_context(ctx: &Context, container: &Container) -> Result<Vec<String>, CliError> {
+    schemes_in(container, context_derived_data(ctx, container).as_deref())
+}
+
+fn context_derived_data(ctx: &Context, container: &Container) -> Option<PathBuf> {
+    ctx.derived_data_path.borrow().clone().or_else(|| {
+        crate::cli::xcodebuild::command_line_settings(
+            &ctx.project_file(container).xcodebuild.args,
+            container,
+        )
+        .derived_data_path
+    })
 }
 
 /// The scheme candidates readable from project files alone — everything
@@ -1015,7 +1037,7 @@ fn settle_scheme_and_configuration(
         .as_ref()
         .is_some_and(|s| candidates.iter().any(|c| c == s));
     if !settled_and_known {
-        candidates = schemes(&resolved.container)?;
+        candidates = schemes_for_context(ctx, &resolved.container)?;
     }
     let scheme = settle_scheme(ctx, resolved, &candidates, track)?;
     let configuration = settle_configuration(ctx, resolved, Some(&scheme), track)?;
@@ -1268,15 +1290,19 @@ fn scheme_action(testing: bool) -> SchemeAction {
     }
 }
 
-/// The configuration a scheme's own action builds with, as Xcode does; see
-/// [`sweetpad_core::app_locator::scheme_configuration`].
-#[must_use]
+/// Read action defaults from the same package graph used for scheme validation.
 pub fn scheme_configuration(
+    ctx: &Context,
     container: &Container,
     scheme: &str,
     action: SchemeAction,
 ) -> Option<String> {
-    sweetpad_core::app_locator::scheme_configuration(container.path(), scheme, action)
+    sweetpad_core::app_locator::scheme_configuration_in(
+        container.path(),
+        scheme,
+        action,
+        context_derived_data(ctx, container).as_deref(),
+    )
 }
 
 /// The configuration a build of `scheme` would use without prompting, and its
@@ -1296,7 +1322,7 @@ pub fn effective_configuration(
     }
     if !matches!(container, Container::SwiftPackage(_))
         && let Some(c) =
-            scheme.and_then(|s| scheme_configuration(container, s, scheme_action(testing)))
+            scheme.and_then(|s| scheme_configuration(ctx, container, s, scheme_action(testing)))
     {
         return (Some(c), "scheme");
     }
@@ -1366,9 +1392,9 @@ pub fn settle_configuration(
         let testing_pick = resolved.testing && source == "remembered";
         forget_stale_configuration(ctx, &resolved.container, scheme, &c, testing_pick, track);
     }
-    if let Some(c) = scheme
-        .and_then(|s| scheme_configuration(&resolved.container, s, scheme_action(resolved.testing)))
-    {
+    if let Some(c) = scheme.and_then(|s| {
+        scheme_configuration(ctx, &resolved.container, s, scheme_action(resolved.testing))
+    }) {
         return Ok(c);
     }
     if candidates.is_empty() || candidates.iter().any(|c| c == "Debug") {
@@ -1939,6 +1965,7 @@ mod tests {
             project_toml: std::cell::OnceCell::new(),
             root_toml: std::cell::OnceCell::new(),
             stale_checked: std::cell::OnceCell::new(),
+            derived_data_path: std::cell::RefCell::new(None),
         }
     }
 

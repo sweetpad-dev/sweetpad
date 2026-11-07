@@ -225,6 +225,42 @@ fn compile_args(catalog: &Path, out: &Path, dir: &Path) -> Args {
     Args::parse(&command_line)
 }
 
+#[test]
+fn a_missing_requested_app_icon_fails_but_an_empty_declared_set_is_valid() {
+    let dir = TempDir::new("sweetpad-actool-missing-icon");
+    let catalog = template_catalog(&dir);
+    let args = compile_args(&catalog, &dir.join("out"), &dir);
+    compile::compile(&args).unwrap();
+    std::fs::remove_dir_all(catalog.join("AppIcon.appiconset")).unwrap();
+    let error = compile::compile(&args).unwrap_err();
+    assert!(error.contains("named \"AppIcon\""), "{error}");
+}
+
+#[test]
+fn named_accent_and_widget_colors_supply_bundle_metadata_only_when_declared() {
+    let dir = TempDir::new("sweetpad-actool-color-info");
+    let catalog = template_catalog(&dir);
+    let mut args = compile_args(&catalog, &dir.join("out"), &dir);
+    args.flags.extend([
+        ("--accent-color".into(), Some("AccentColor".into())),
+        (
+            "--widget-background-color".into(),
+            Some("AccentColor".into()),
+        ),
+    ]);
+    compile::compile(&args).unwrap();
+    let info = std::fs::read_to_string(dir.join("partial.plist")).unwrap();
+    assert!(info.contains("<key>NSAccentColorName</key>\n\t<string>AccentColor</string>"));
+    assert!(
+        info.contains("<key>NSWidgetBackgroundColorName</key>\n\t<string>AccentColor</string>")
+    );
+    std::fs::remove_dir_all(catalog.join("AccentColor.colorset")).unwrap();
+    compile::compile(&args).unwrap();
+    let info = std::fs::read_to_string(dir.join("partial.plist")).unwrap();
+    assert!(!info.contains("NSAccentColorName"));
+    assert!(!info.contains("NSWidgetBackgroundColorName"));
+}
+
 fn png_of(width: u32, rgba: [u8; 4]) -> Vec<u8> {
     raster::encode(&raster::Rgba {
         width,

@@ -51,7 +51,7 @@ pub(super) fn main(args: &[String]) -> Result<(), String> {
         && !source.is_dir()
         && !destination.is_dir()
     {
-        return copy(source, destination);
+        return copy_operand(source, destination);
     }
     for source in sources {
         if source.is_dir() {
@@ -60,10 +60,19 @@ pub(super) fn main(args: &[String]) -> Result<(), String> {
             let name = source
                 .file_name()
                 .ok_or_else(|| format!("{} has no file name", source.display()))?;
-            copy(source, &destination.join(name))?;
+            copy_operand(source, &destination.join(name))?;
         }
     }
     Ok(())
+}
+
+/// ditto follows a file link named on its command line. Links encountered
+/// inside a copied directory retain their targets.
+fn copy_operand(source: &Path, destination: &Path) -> Result<(), String> {
+    let source = source
+        .canonicalize()
+        .map_err(|e| format!("can't read {}: {e}", source.display()))?;
+    copy(&source, destination)
 }
 
 /// Copy the contents of the folder `source` into `destination`.
@@ -118,6 +127,26 @@ fn copy(source: &Path, destination: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::cli::testdir::TempDir;
+
+    #[test]
+    fn a_command_line_file_link_copies_its_contents() {
+        let dir = TempDir::new("sweetpad-ditto-link-operand");
+        let source = dir.join("original.modulemap");
+        std::fs::write(&source, "module Fixture {}\n").unwrap();
+        let link = dir.join("public.modulemap");
+        std::os::unix::fs::symlink(&source, &link).unwrap();
+        let destination = dir.join("products/Fixture.modulemap");
+        main(&args(&[&link, &destination])).unwrap();
+        assert!(
+            !std::fs::symlink_metadata(&destination)
+                .unwrap()
+                .is_symlink()
+        );
+        assert_eq!(
+            std::fs::read(destination).unwrap(),
+            std::fs::read(source).unwrap()
+        );
+    }
 
     fn args(list: &[&Path]) -> Vec<String> {
         list.iter().map(|p| p.display().to_string()).collect()

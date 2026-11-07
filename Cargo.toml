@@ -34,6 +34,10 @@ png = "0.18"
 # Gzip, for the image pixels in the actool stand-in's Assets.car; png already
 # depends on it.
 flate2 = "1"
+# App Shortcuts' NLU model uses FlatBuffers; use the standard runtime.
+flatbuffers = "25.12.19"
+# ICC color conversion for calibrated Interface Builder colors (already used by image).
+moxcms = "0.8.1"
 # The actool stand-in draws a catalog's vector images the way Xcode does,
 # into bitmaps: PDFs with hayro, SVGs and symbol templates with resvg (and
 # the usvg and roxmltree it re-exports, and svgtypes, which usvg parses

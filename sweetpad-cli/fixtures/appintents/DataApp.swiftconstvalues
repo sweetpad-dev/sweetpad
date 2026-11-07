@@ -1,0 +1,303 @@
+[
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "DataApp",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "DataApp",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "DataApp",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "DataApp",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "DataApp",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ReturnsValue"
+        ],
+        "opaqueTypeSameTypeRequirements": [
+          {
+            "substitutedMangledTypeName": "SS",
+            "substitutedTypeName": "Swift.String",
+            "typeAliasName": "AppIntents.IntentResult.Value"
+          }
+        ],
+        "substitutedMangledTypeName": "7DataApp5GreetV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ReturnsValue<Swift.String>",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy04DataA05GreetV_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "DataApp.swift",
+    "kind": "struct",
+    "line": 3,
+    "mangledTypeName": "7DataApp5GreetV",
+    "properties": [
+      {
+        "file": "DataApp.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_name",
+        "line": 5,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Name",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "DataApp.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 4,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Greet",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "DataApp.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "name",
+        "line": 5,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Name",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "DataApp.swift",
+            "line": 5,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.String",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Name",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "DataApp.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$name",
+        "line": 5,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.String>",
+        "valueKind": "Runtime"
+      }
+    ],
+    "typeName": "DataApp.Greet"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "DataApp",
+        "protocolName": "AppIntents.AppShortcutsProvider"
+      },
+      {
+        "conformanceDefiningModule": "DataApp",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "DataApp",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "DataApp",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [],
+    "conformances": [
+      "AppIntents.AppShortcutsProvider",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "DataApp.swift",
+    "kind": "struct",
+    "line": 12,
+    "mangledTypeName": "7DataApp9ShortcutsV",
+    "properties": [
+      {
+        "file": "DataApp.swift",
+        "isComputed": "true",
+        "isStatic": "true",
+        "label": "appShortcuts",
+        "line": 13,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Swift.Array<AppIntents.AppShortcut>",
+        "value": {
+          "members": [
+            {
+              "element": {
+                "value": {
+                  "arguments": [
+                    {
+                      "label": "intent",
+                      "type": "DataApp.Greet",
+                      "value": {
+                        "arguments": [],
+                        "type": "DataApp.Greet"
+                      },
+                      "valueKind": "InitCall"
+                    },
+                    {
+                      "label": "phrases",
+                      "type": "Swift.Array<AppIntents.AppShortcutPhrase<DataApp.Greet>>",
+                      "value": [
+                        {
+                          "value": {
+                            "segments": [
+                              {
+                                "value": "Greet in ",
+                                "valueKind": "RawLiteral"
+                              },
+                              {
+                                "value": {
+                                  "name": "applicationName"
+                                },
+                                "valueKind": "Enum"
+                              },
+                              {
+                                "value": "",
+                                "valueKind": "RawLiteral"
+                              }
+                            ]
+                          },
+                          "valueKind": "InterpolatedStringLiteral"
+                        }
+                      ],
+                      "valueKind": "Array"
+                    },
+                    {
+                      "label": "shortTitle",
+                      "type": "Foundation.LocalizedStringResource",
+                      "value": "Greet",
+                      "valueKind": "RawLiteral"
+                    },
+                    {
+                      "label": "systemImageName",
+                      "type": "Swift.String",
+                      "value": "hand.wave",
+                      "valueKind": "RawLiteral"
+                    }
+                  ],
+                  "type": "AppIntents.AppShortcut"
+                },
+                "valueKind": "InitCall"
+              },
+              "kind": "buildExpression"
+            }
+          ],
+          "type": "AppIntents.AppShortcutsBuilder"
+        },
+        "valueKind": "Builder"
+      }
+    ],
+    "typeName": "DataApp.Shortcuts"
+  }
+]

@@ -1,5 +1,5 @@
 diff --git a/Sources/SWBCore/ProjectModel/FileTextEncoding.swift b/Sources/SWBCore/ProjectModel/FileTextEncoding.swift
-index ee43d55..d37c027 100644
+index ee43d55..e7ab69a 100644
 --- a/Sources/SWBCore/ProjectModel/FileTextEncoding.swift
 +++ b/Sources/SWBCore/ProjectModel/FileTextEncoding.swift
 @@ -55,6 +55,21 @@ public extension FileTextEncoding {
@@ -24,6 +24,48 @@ index ee43d55..d37c027 100644
          #endif
          return nil
      }
+@@ -82,6 +97,17 @@ public extension FileTextEncoding {
+             // Always detect ASCII as UTF-8, because we want to prefer Unicode encodings
+             return (convertedString, stringEncoding == .ascii ? FileTextEncoding.utf8 : discoveredEncoding)
+         }
++        #else
++        // Prefer longer marks: UTF-32 LE starts with the UTF-16 LE mark.
++        let encodings: [FileTextEncoding] = [.utf32be, .utf32le, .utf16be, .utf16le, .utf8]
++        if let discovered = encodings.first(where: { bytes.starts(with: $0.byteOrderMark) }) {
++            guard let string = String(bytes.dropFirst(discovered.byteOrderMark.count), encoding: discovered) else { return nil }
++            return (string, discovered)
++        }
++        // Without a byte-order mark, accept only valid UTF-8.
++        if let string = String(bytes, encoding: .utf8) {
++            return (string, .utf8)
++        }
+         #endif
+
+         return nil
+diff --git a/Sources/SWBCore/SpecImplementations/Tools/LinkerTools.swift b/Sources/SWBCore/SpecImplementations/Tools/LinkerTools.swift
+index df54d54..a95f382 100644
+--- a/Sources/SWBCore/SpecImplementations/Tools/LinkerTools.swift
++++ b/Sources/SWBCore/SpecImplementations/Tools/LinkerTools.swift
+@@ -1773,13 +1773,18 @@ public final class LibtoolLinkerSpec : GenericLinkerSpec, SpecIdentifierType, @u
+     }
+
+     static func discoveredCommandLineToolSpecInfo(_ producer: any CommandProducer, _ delegate: any CoreClientTargetDiagnosticProducingDelegate, toolPath: Path) async throws -> DiscoveredLibtoolLinkerToolSpecInfo {
+-        if toolPath.basenameWithoutSuffix == "llvm-lib" || toolPath.basenameWithoutSuffix == "ar" || toolPath.basenameWithoutSuffix.hasSuffix("-ar") {
++        if toolPath.basenameWithoutSuffix.hasPrefix("llvm-libtool-darwin") || toolPath.basenameWithoutSuffix == "llvm-lib" || toolPath.basenameWithoutSuffix == "ar" || toolPath.basenameWithoutSuffix.hasSuffix("-ar") {
+             return DiscoveredLibtoolLinkerToolSpecInfo(toolPath: toolPath, toolVersion: nil)
+         }
+
+         let commandLine = [toolPath.str, producer.isApplePlatform ? "-V" : "--version"]
+         return try await producer.discoveredCommandLineToolSpecInfo(delegate, nil, commandLine, { executionResult in
+             let outputString = String(decoding: executionResult.stdout, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
++            // A symlink named libtool can also point to LLVM's Darwin tool.
++            // Its release version is not an Apple cctools feature version.
++            if producer.isApplePlatform && outputString.contains("LLVM version ") {
++                return DiscoveredLibtoolLinkerToolSpecInfo(toolPath: toolPath, toolVersion: nil)
++            }
+             let regexes: [Regex<(Substring, libtool: Substring)>]
+             if producer.isApplePlatform {
+                 regexes = [#/^Apple Inc\. version .*-(?<libtool>[0-9\.]+)$/#]
 diff --git a/Sources/SWBTaskConstruction/TaskProducers/OtherTaskProducers/GeneratedFilesTaskProducer.swift b/Sources/SWBTaskConstruction/TaskProducers/OtherTaskProducers/GeneratedFilesTaskProducer.swift
 index 17f0d1e..8743508 100644
 --- a/Sources/SWBTaskConstruction/TaskProducers/OtherTaskProducers/GeneratedFilesTaskProducer.swift
@@ -31,14 +73,14 @@ index 17f0d1e..8743508 100644
 @@ -62,7 +62,9 @@ final class GeneratedFilesTaskProducer: PhasedTaskProducer, TaskProducer {
              await appendGeneratedTasks(&tasks) { delegate in
                  await context.productPackagingSpec.constructProductEntitlementsTasks(CommandBuildContext(producer: context, scope: scope, inputs: [FileToBuild(context: context, absolutePath: input)], output: entitlements.output), delegate, entitlementsVariant, fs: context.workspaceContext.fs)
- 
+
 -                delegate.createTask(type: context.productPackagingSpec, ruleInfo: ["ProcessProductPackagingDER", entitlements.output.str, entitlements.outputDer.str], commandLine: ["/usr/bin/derq", "query", "-f", "xml", "-i", entitlements.output.str, "-o", entitlements.outputDer.str, "--raw"], environment: EnvironmentBindings([:]), workingDirectory: context.defaultWorkingDirectory, inputs: [delegate.createNode(entitlements.output)], outputs: [delegate.createNode(entitlements.outputDer)], action: delegate.taskActionCreationDelegate.createDeferredExecutionTaskActionIfRequested(userPreferences: context.userPreferences), execDescription: "Generate DER entitlements", enableSandboxing: context.productPackagingSpec.enableSandboxing)
 +                // derq is in /usr/bin on macOS; elsewhere a stand-in may be on the search path.
 +                let derq = context.executableSearchPaths.lookup(Path("derq"))?.str ?? "/usr/bin/derq"
 +                delegate.createTask(type: context.productPackagingSpec, ruleInfo: ["ProcessProductPackagingDER", entitlements.output.str, entitlements.outputDer.str], commandLine: [derq, "query", "-f", "xml", "-i", entitlements.output.str, "-o", entitlements.outputDer.str, "--raw"], environment: EnvironmentBindings([:]), workingDirectory: context.defaultWorkingDirectory, inputs: [delegate.createNode(entitlements.output)], outputs: [delegate.createNode(entitlements.outputDer)], action: delegate.taskActionCreationDelegate.createDeferredExecutionTaskActionIfRequested(userPreferences: context.userPreferences), execDescription: "Generate DER entitlements", enableSandboxing: context.productPackagingSpec.enableSandboxing)
              }
          }
- 
+
 diff --git a/Sources/SWBTaskExecution/TaskActions/LSRegisterURLTaskAction.swift b/Sources/SWBTaskExecution/TaskActions/LSRegisterURLTaskAction.swift
 index 3acf74a..f3da327 100644
 --- a/Sources/SWBTaskExecution/TaskActions/LSRegisterURLTaskAction.swift
@@ -61,7 +103,7 @@ index 3acf74a..f3da327 100644
 +            outputDelegate.updateResult(.exit(exitStatus: .exit(0), metrics: nil))
 +            return .succeeded
          }
- 
+
          // We don't ever fail if `lsregister` fails, instead we just emit a note.
 diff --git a/Sources/SWBUtil/Architecture.swift b/Sources/SWBUtil/Architecture.swift
 index 8e4c88e..3b5eaa3 100644
@@ -99,65 +141,65 @@ index f081e17..f72b21b 100644
 @@ -594,7 +594,6 @@ public protocol MachOFatHeader {
      var structSize: Int { get }
  }
- 
+
 -#if canImport(Darwin)
- 
+
  extension fat_arch: MachOFatHeader {
      public func offset(byteSwappedIfNeeded swap: Bool) -> UInt64 {
 @@ -626,7 +625,6 @@ extension fat_arch_64: MachOFatHeader {
      }
  }
- 
+
 -#endif
- 
+
  /// Provides a protocol to conform the 32 and 64 bit Mach-O headers together.
  public protocol MachOHeader {
 @@ -644,7 +642,6 @@ public protocol MachOHeader {
      var structSize: Int { get }
  }
- 
+
 -#if canImport(Darwin)
- 
+
  extension mach_header: MachOHeader {
      /// Returns the size, in bytes, of the `mach_header` struct.
 @@ -659,7 +656,6 @@ extension mach_header_64: MachOHeader {
      }
  }
- 
+
 -#endif
- 
+
  // MARK: -
- 
+
 @@ -687,7 +683,6 @@ public extension MachOSegmentLoadCommand {
      }
  }
- 
+
 -#if canImport(Darwin)
- 
+
  extension segment_command: MachOSegmentLoadCommand {
      public var vmaddr64: UInt64 { return UInt64(self.vmaddr) }
 @@ -711,7 +706,6 @@ extension segment_command_64: MachOSegmentLoadCommand {
      }
  }
- 
+
 -#endif
- 
+
  // MARK: - Mach-O section information
- 
+
 @@ -737,7 +731,6 @@ extension MachOSection {
      }
  }
- 
+
 -#if canImport(Darwin)
- 
+
  extension section: MachOSection {
      public var addr64: UInt64 {
 @@ -759,7 +752,6 @@ extension section_64: MachOSection {
      }
  }
- 
+
 -#endif
- 
+
  /// A representation of a Mach-O file. This type supports both thin and fat Mach-O files. In addition, if static archives are encountered, those will be unpacked here as well.
  public final class MachO {
 @@ -901,16 +893,11 @@ public final class MachO {
@@ -167,27 +209,27 @@ index f081e17..f72b21b 100644
 -                #if canImport(Darwin)
                  case MH_MAGIC, MH_CIGAM:
                      self = try .mach_header(reader.peek())
- 
+
                  case MH_MAGIC_64, MH_CIGAM_64:
                      self = try .mach_header_64(reader.peek())
 -                #else
 -                case MH_MAGIC, MH_CIGAM, MH_MAGIC_64, MH_CIGAM_64:
 -                    throw BinaryReaderError.parseError("Mach-O parsing not supported on this platform")
 -                #endif
- 
+
                  case UInt32(bigEndian: StaticArchive.ARMAG1):
                      let magic2: UInt32 = try reader.peek(offset: MemoryLayout<UInt32>.size)
 @@ -925,35 +912,26 @@ public final class MachO {
                  }
              }
- 
+
 -            #if canImport(Darwin)
              case mach_header(mach_header)
              case mach_header_64(mach_header_64)
 -            #endif
          }
- 
- 
+
+
          var headers: [(Slice, any MachOHeader)] {
 -            #if canImport(Darwin)
              switch self.header {
@@ -199,10 +241,10 @@ index f081e17..f72b21b 100644
 -            return []
 -            #endif
          }
- 
+
          public var arch: String {
              precondition(headers.count <= 1, "invalid to call arch when there are multiple headers")
- 
+
 -            #if canImport(Darwin)
              if let (_, header) = headers.only {
                  if let name = Architecture.stringValue(cputype: header.cputype, cpusubtype: header.cpusubtype) {
@@ -210,11 +252,11 @@ index f081e17..f72b21b 100644
                  }
              }
 -            #endif
- 
+
              return "unknown"
          }
 @@ -968,7 +946,6 @@ public final class MachO {
- 
+
          /// Return the names and linkage types of all linked libraries.
          public func linkedLibraries() throws -> [(pathStr: String, linkageType: LinkageType)] {
 -            #if canImport(Darwin)
@@ -229,11 +271,11 @@ index f081e17..f72b21b 100644
 -            throw BinaryReaderError.parseError("Mach-O parsing not supported on this platform")
 -            #endif
          }
- 
+
          /// Return the names of all linked libraries.
 @@ -1021,7 +995,6 @@ public final class MachO {
          }
- 
+
          public func installName() throws -> String? {
 -            #if canImport(Darwin)
              let installNames = try loadCommands().compactMap { (lc: LoadCommand) throws -> String? in
@@ -241,13 +283,13 @@ index f081e17..f72b21b 100644
                  case let .idDylib(cmd):
 @@ -1045,26 +1018,20 @@ public final class MachO {
              }
- 
+
              return installNames.only
 -            #else
 -            throw BinaryReaderError.parseError("Mach-O parsing not supported on this platform")
 -            #endif
          }
- 
+
          // rdar://92212555. Static binary is detected as dynamic instead of an object, causing it to get embedded into the framework
          // A simple fix is to create FileTypes 'object' and other valid, and check when providing slice linkage information.
          public var linkFileType: WrappedFileType {
@@ -260,7 +302,7 @@ index f081e17..f72b21b 100644
 -#endif
              }
          }
- 
+
          public func uuid() throws -> UUID? {
 -            #if canImport(Darwin)
              let uuids = try loadCommands().compactMap { (lc: LoadCommand) throws -> UUID? in
@@ -274,7 +316,7 @@ index f081e17..f72b21b 100644
 -            throw BinaryReaderError.parseError("Mach-O parsing not supported on this platform")
 -            #endif
          }
- 
+
 -        #if canImport(Darwin)
          public struct LoadCommand {
              let reader: BinaryReader
@@ -284,21 +326,21 @@ index f081e17..f72b21b 100644
              }.reduce([], { $0 + $1 })
          }
 -        #endif
- 
+
          public func rpaths() throws -> [String] {
 -            #if canImport(Darwin)
              return try self.loadCommands().compactMap({ (lc: LoadCommand) -> String? in
                  guard case let .rpath(rpath) = lc.value else {
                      return nil
 @@ -1206,12 +1167,8 @@ public final class MachO {
- 
+
                  return String(bytes: data, encoding: .utf8)
              })
 -            #else
 -            throw BinaryReaderError.parseError("Mach-O parsing not supported on this platform")
 -            #endif
          }
- 
+
 -        #if canImport(Darwin)
          public struct Segment {
              let loadCommand: LoadCommand
@@ -308,7 +350,7 @@ index f081e17..f72b21b 100644
              }
          }
 -        #endif
- 
+
          public func buildVersions() throws -> [BuildVersion] {
 -            #if canImport(Darwin)
              return try loadCommands().compactMap { loadCommand in
@@ -322,7 +364,7 @@ index f081e17..f72b21b 100644
 -            throw BinaryReaderError.parseError("Mach-O parsing not supported on this platform")
 -            #endif
          }
- 
+
          public func containsAtomInfo() throws -> Bool {
 -            #if canImport(Darwin)
              return try loadCommands().contains(where: { loadCommand in
@@ -336,7 +378,7 @@ index f081e17..f72b21b 100644
 -            throw BinaryReaderError.parseError("Mach-O parsing not supported on this platform")
 -            #endif
          }
- 
+
 -        #if canImport(Darwin)
          private func sectionsMatching(_ segmentSectionNames: [(segmentName: String, sectionName: String)]) throws -> [(Bool, MachO.Slice.Segment.Section)] {
              let isObject = self.headers.allSatisfy { (slice, header) in return header.filetype == MH_OBJECT }
@@ -346,56 +388,56 @@ index f081e17..f72b21b 100644
              }
          }
 -        #endif
- 
+
          public func swiftABIVersion() throws -> SwiftABIVersion? {
 -            #if canImport(Darwin)
              // The Swift ABI version is in the ObjC image info section, which might be in either the __DATA, __DATA_CONST, or the __OBJC segment.
              let segmentSectionNames = [
                  ("__DATA", "__objc_imageinfo"),
 @@ -1384,13 +1329,9 @@ public final class MachO {
- 
+
              let vers = Int(swiftVersion)
              return vers < 7 ? .unstable(vers) : .stable(vers)
 -            #else
 -            throw BinaryReaderError.parseError("Mach-O parsing not supported on this platform")
 -            #endif
          }
- 
+
          public func simulatedEntitlements() throws -> PropertyListItem? {
 -            #if canImport(Darwin)
              let sections = try sectionsMatching([("__TEXT", "__entitlements")])
- 
+
              // We expect a single section, otherwise we bail
 @@ -1403,13 +1344,9 @@ public final class MachO {
- 
+
              let sectionReader = try reader.seek(by: Int(section.section.offset.byteSwappedIfNeeded(swap)))
              return try PropertyList.fromBytes(sectionReader.read(count: Int(section.section.size64)))
 -            #else
 -            throw BinaryReaderError.parseError("Mach-O parsing not supported on this platform")
 -            #endif
          }
- 
+
          public func simulatedDEREntitlements() throws -> [UInt8]? {
 -            #if canImport(Darwin)
              let sections = try sectionsMatching([("__TEXT", "__ents_der")])
- 
+
              // We expect a single section, otherwise we bail
 @@ -1422,13 +1359,9 @@ public final class MachO {
- 
+
              let sectionReader = try reader.seek(by: Int(section.section.offset.byteSwappedIfNeeded(swap)))
              return try sectionReader.read(count: Int(section.section.size64))
 -            #else
 -            throw BinaryReaderError.parseError("Mach-O parsing not supported on this platform")
 -            #endif
          }
- 
+
          public func remarks() throws -> Data? {
 -            #if canImport(Darwin)
              let sections = try sectionsMatching([("__LLVM", "__remarks")])
- 
+
              // We expect a single section, otherwise we bail
 @@ -1441,9 +1374,6 @@ public final class MachO {
- 
+
              let sectionReader = try reader.seek(by: Int(section.section.offset.byteSwappedIfNeeded(swap)))
              return Data(try sectionReader.read(count: Int(section.section.size64)))
 -            #else
@@ -407,15 +449,15 @@ index f081e17..f72b21b 100644
 @@ -1454,13 +1384,11 @@ extension MachO: Sendable { }
  @available(*, unavailable)
  extension MachO.Slice: Sendable { }
- 
+
 -#if canImport(Darwin)
  @available(*, unavailable)
  extension MachO.Slice.LoadCommand: Sendable { }
- 
+
  @available(*, unavailable)
  extension MachO.Slice.Segment: Sendable { }
 -#endif
- 
+
  fileprivate extension Version {
      init(machOVersion v: UInt32) {
 @@ -1531,7 +1459,6 @@ fileprivate extension Version {
@@ -425,10 +467,10 @@ index f081e17..f72b21b 100644
 -            #if canImport(Darwin.ar)
              // The magic bytes '!<arch>\n' has already been established, so skip past that.
              try self.reader.seek(by: Int(SARMAG))
- 
+
 @@ -1573,9 +1500,6 @@ fileprivate extension Version {
              }
- 
+
              return machOs
 -            #else
 -            throw BinaryReaderError.parseError("Mach-O parsing not supported on this platform")
@@ -439,7 +481,7 @@ index f081e17..f72b21b 100644
 @@ -1592,7 +1516,6 @@ fileprivate extension Version {
  @available(*, unavailable)
  extension StaticArchive: Sendable { }
- 
+
 -#if canImport(Darwin.ar)
  extension ar_hdr {
      public var rawArchiveName: String? {
@@ -449,7 +491,7 @@ index f081e17..f72b21b 100644
      }
  }
 -#endif
- 
+
  extension Array where Element == any MachOFatHeader {
      init(reader: BinaryReader) throws {
 -        #if canImport(Darwin)
@@ -458,14 +500,14 @@ index f081e17..f72b21b 100644
          let nfat_arch = fh.nfat_arch.byteSwappedIfNeeded(swap)
 @@ -1664,9 +1585,6 @@ extension Array where Element == any MachOFatHeader {
          }
- 
+
          self = archs
 -        #else
 -        throw BinaryReaderError.parseError("Mach-O parsing not supported on this platform")
 -        #endif
      }
  }
- 
+
 @@ -1675,7 +1593,6 @@ extension MachO.Slice {
      /// Returns `true` if this slice contains a `__swift5_entry` text section.
      public var containsSwift5EntrySection: Bool {
@@ -483,7 +525,7 @@ index f081e17..f72b21b 100644
 -            #endif
          }
      }
- 
+
 diff --git a/Sources/SWBUtil/MachOStructures.swift b/Sources/SWBUtil/MachOStructures.swift
 new file mode 100644
 index 0000000..5bdb1da
@@ -733,7 +775,7 @@ index bfd26de..e676f86 100644
 --- a/Sources/SwiftBuild/ConsoleCommands/SWBServiceConsoleBuildCommand.swift
 +++ b/Sources/SwiftBuild/ConsoleCommands/SWBServiceConsoleBuildCommand.swift
 @@ -489,6 +489,11 @@ fileprivate func runBuildOperation(startInfo: SwiftBuildMessage.BuildStartedInfo
- 
+
  private final class PlanningOperationDelegate: SWBPlanningOperationDelegate, Sendable {
      public func provisioningTaskInputs(targetGUID: String, provisioningSourceData: SWBProvisioningTaskInputsSourceData) async -> SWBProvisioningTaskInputs {
 +        // Without Xcode to provision a real identity, the tool named here
@@ -747,7 +789,7 @@ index bfd26de..e676f86 100644
 @@ -512,6 +517,90 @@ private final class PlanningOperationDelegate: SWBPlanningOperationDelegate, Sen
      }
  }
- 
+
 +/// The provisioning inputs `tool` gives for a target: the request goes to its
 +/// standard input and the inputs come back on its standard output, each an
 +/// XML property list. The tool reports a signing problem in the inputs'

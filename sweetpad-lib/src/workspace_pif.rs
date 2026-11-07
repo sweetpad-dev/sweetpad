@@ -31,7 +31,7 @@ use crate::xcode_hash::{md5_hex, sha256_base64};
 use crate::xcspec;
 
 mod packages;
-pub use packages::{Package, add_packages, manifest, packages};
+pub use packages::{Package, add_package_root, add_packages, manifest, packages};
 
 /// The PIF `xcodebuild -dumpPIF` prints for a `.xcworkspace` or an
 /// `.xcodeproj`: a workspace object, then each project followed by its

@@ -1,4 +1,6 @@
 out
+# Xcode captures used by the portable Core Data compiler tests.
+!sweetpad-cli/fixtures/momc/expected/*/out/
 dist
 node_modules
 .vscode-test/

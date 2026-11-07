@@ -36,9 +36,37 @@ pub(super) fn compile(args: &Args) -> Result<(), String> {
         remove_previous_outputs(path, &output);
     }
     let catalogs = catalogs(args);
+    if let Some(name) = args.value("--app-icon") {
+        let declared = catalogs.iter().flat_map(Catalog::assets).any(|(_, asset)| {
+            asset.name == name
+                && (asset.kind == Kind::AppIcon
+                    || asset
+                        .dir
+                        .extension()
+                        .is_some_and(|e| e == "brandassets" || e == "stickersiconset"))
+        });
+        if !declared {
+            return Err(format!(
+                "none of the input catalogs contains an app icon set or icon stack named {name:?}"
+            ));
+        }
+    }
     let devices = target_devices(args);
     let mut written = Vec::new();
     let mut info = Map::new();
+    for (flag, key) in [
+        ("--accent-color", "NSAccentColorName"),
+        ("--widget-background-color", "NSWidgetBackgroundColorName"),
+    ] {
+        if let Some(name) = args.value(flag)
+            && catalogs
+                .iter()
+                .flat_map(Catalog::assets)
+                .any(|(_, asset)| asset.kind == Kind::Color && asset.name == name)
+        {
+            info.insert(key.into(), json!(name));
+        }
+    }
 
     let platform = args.value("--platform").unwrap_or_default();
     let icon_name = args.value("--app-icon");
