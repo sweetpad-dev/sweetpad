@@ -1,0 +1,36 @@
+{
+  "name": "React-Core-prebuilt",
+  "version": "0.85.3",
+  "summary": "The core of React Native prebuilt frameworks.",
+  "homepage": "https://reactnative.dev/",
+  "license": "MIT",
+  "authors": "Meta Platforms, Inc. and its affiliates",
+  "platforms": {
+    "ios": "15.1"
+  },
+  "source": {
+    "http": "file://@SOURCE_ROOT@/template/ios/Pods/ReactNativeCore-artifacts/reactnative-core-0.85.3-debug.tar.gz"
+  },
+  "vendored_frameworks": "React.xcframework",
+  "preserve_paths": "**/*.*",
+  "header_mappings_dir": "React.xcframework/Headers",
+  "source_files": "React.xcframework/Headers/**/*.{h,hpp}",
+  "module_name": "React",
+  "module_map": "React.xcframework/Modules/module.modulemap",
+  "public_header_files": "React.xcframework/Headers/**/*.h",
+  "dependencies": {
+    "ReactNativeDependencies": []
+  },
+  "pod_target_xcconfig": {
+    "HEADER_SEARCH_PATHS": [
+      "$(PODS_ROOT)/ReactNativeDependencies"
+    ]
+  },
+  "prepare_command": "CURRENT_PATH=$(pwd)\nXCFRAMEWORK_PATH=\"${CURRENT_PATH}/React.xcframework\"\n\n# Check if XCFRAMEWORK_PATH is empty\nif [ -z \"$XCFRAMEWORK_PATH\" ]; then\n  echo \"ERROR: XCFRAMEWORK_PATH is empty.\"\n  exit 0\nfi\n\nmkdir -p \"${XCFRAMEWORK_PATH}\"\nfind \"$CURRENT_PATH\" -mindepth 1 -maxdepth 1 ! -name \"$(basename \"$XCFRAMEWORK_PATH\")\" -exec mv {} \"$XCFRAMEWORK_PATH\" \\;",
+  "script_phases": {
+    "name": "[RNCore] Replace React Native Core for the right configuration, if needed",
+    "execution_position": "before_compile",
+    "script": "      . \"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\n\n      CONFIG=\"Release\"\n      if echo $GCC_PREPROCESSOR_DEFINITIONS | grep -q \"DEBUG=1\"; then\n        CONFIG=\"Debug\"\n      fi\n\n      \"$NODE_BINARY\" \"$REACT_NATIVE_PATH/scripts/replace-rncore-version.js\" -c \"$CONFIG\" -r \"0.85.3\" -p \"$PODS_ROOT\"\n",
+    "always_out_of_date": "1"
+  }
+}

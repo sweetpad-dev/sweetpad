@@ -38,7 +38,10 @@ if [ "$(uname -s)" = Darwin ]; then
   orb status >/dev/null 2>&1 || orb start
   orb list -q | grep -qx "$VM" || orb create ubuntu:noble "$VM"
   self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+  phrase_export="${XDG_CACHE_HOME:-$HOME/.cache}/sweetpad/sdk-resources/appintents-phrases.json"
+  python3 "$(dirname "$self")/linux-appintents-resources.py" --xcode "$XCODE_APP" --out "$phrase_export"
   exec orb -m "$VM" env XCODE_APP="$XCODE_APP" SWIFT_VERSION="$SWIFT_VERSION" \
+    SWEETPAD_APPINTENTS_RESOURCE_EXPORT="$phrase_export" \
     SWIFT_BUILD_VERSION="$SWIFT_BUILD_VERSION" \
     XTOOL_VERSION="$XTOOL_VERSION" XTOOL_SHA256="$XTOOL_SHA256" \
     SWEETPAD_REFRESH_SDK="${SWEETPAD_REFRESH_SDK:-0}" bash "$self"
@@ -143,6 +146,9 @@ PY
 # xtool's slim SDK includes iOS and macOS. Add the other platforms present
 # in this Xcode so embedded watch products and their SDKs resolve as well.
 python3 "$(dirname "$0")/linux-sdk-platforms.py" "$XCODE_APP" "$BUNDLE"
+if [ -n "${SWEETPAD_APPINTENTS_RESOURCE_EXPORT:-}" ]; then
+  cp "$SWEETPAD_APPINTENTS_RESOURCE_EXPORT" "$BUNDLE/appintents-phrases.json"
+fi
 # xtool leaves out the version files, which an app's Info.plist takes
 # DTXcode, DTXcodeBuild and DTPlatformBuild from. Xcode's own goes beside the
 # bundle's Developer folder, where Xcode.app keeps it, for sweetpad to read;

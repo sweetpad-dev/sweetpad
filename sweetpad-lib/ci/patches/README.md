@@ -30,6 +30,7 @@ The script checks every source revision and accepts patches that are already app
 | Ice Cubes tag editor | Move the warning's computed property outside the view builder, so its use follows a valid declaration. |
 | RevenueCat | Move the private designated initializer into the primary type. This suppresses the conflicting synthesized initializer. |
 | NetNewsWire | Make the outer closure's existing strong capture explicit. Keep the inner weak capture. |
+| NetNewsWire keychain query | Remove return-value and match-limit options from `SecItemDelete`. Both app-hosted controls pass all 92 AccountTests. |
 | Tuist static libraries | Declare the prebuilt C module dependency for ATests and include its Swift module search path. |
 | Alamofire, Kingfisher, Tuist watch apps | Merge extension code, assets, dependencies, and framework embedding into each watch app target. |
 
@@ -59,3 +60,6 @@ This preparation remains explicit. The build engine never edits package sources.
 
 `react-native-template-scene-lifecycle.patch` and `statefulmacros-linux-foundation.patch`
 belong to the additional real-project suite described in `../LINUX_PROJECTS.md`.
+
+The original PIF snapshot tests read pristine pinned sources and reverse recorded project-only patches in temporary generated Tuist containers.
+They retain legacy watch-product coverage without reverting the migrated build corpus.

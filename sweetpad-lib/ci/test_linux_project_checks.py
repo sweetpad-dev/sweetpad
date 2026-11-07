@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Check that product export preserves an exact bundle and keeps failure evidence."""
 import importlib.util
+import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import subprocess
 import plistlib
@@ -15,6 +17,13 @@ spec.loader.exec_module(checks)
 
 
 class ExportTests(unittest.TestCase):
+    def test_concurrent_reports_preserve_each_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "checks.json"
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                list(pool.map(lambda i: checks.save_result(output, str(i), {"value": i}), range(32)))
+            self.assertEqual(json.loads(output.read_text()), {str(i): {"value": i} for i in range(32)})
+
     def local_transport(self, command, **kwargs):
         if command[0] == "orb":
             self.assertEqual(command[:4], ["orb", "-m", "test-vm", "tar"])
@@ -53,6 +62,38 @@ class ExportTests(unittest.TestCase):
 
 
 class ComparisonTests(unittest.TestCase):
+    def shortcut_models(self, native, linux):
+        source = checks.REPO / "sweetpad-cli/fixtures/appintents/DataApp.nlu"
+        data = source.read_bytes()
+        _, fingerprint = checks.bundle_comparison.appintents_model.Model(data).content()
+        for app, marker in [(native, fingerprint), (linux, "a" * len(fingerprint))]:
+            folder = app / "en.lproj/nlu.appintents"
+            folder.mkdir(parents=True)
+            content = data.replace(fingerprint.encode(), marker.encode())
+            (folder / "nlu.lzfse").write_bytes(b"bvx-" + struct.pack("<I", len(content)) + content + b"bvx$")
+            (folder / (marker + ".version")).write_bytes(b"\0")
+
+    def test_shortcut_fingerprints_normalize_only_after_full_phrase_comparison(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            native, linux = self.bundles(Path(tmp), {"CFBundleIdentifier": "example"})
+            self.shortcut_models(native, linux)
+            self.assertTrue(checks.compare(native, linux)["passed"])
+            model = linux / "en.lproj/nlu.appintents/nlu.lzfse"
+            model.write_bytes(model.read_bytes().replace(b"Greet in DataApp", b"Gr33t in DataApp"))
+            result = checks.compare(native, linux)
+            self.assertFalse(result["passed"])
+            self.assertIn("appShortcutModel", {f["kind"] for f in result["findings"]})
+
+    def test_shortcut_marker_must_match_the_model_header(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            native, linux = self.bundles(Path(tmp), {"CFBundleIdentifier": "example"})
+            self.shortcut_models(native, linux)
+            marker, = linux.glob("en.lproj/nlu.appintents/*.version")
+            marker.rename(marker.with_name("wrong.version"))
+            result = checks.compare(native, linux)
+            self.assertFalse(result["passed"])
+            self.assertIn("appShortcutModel", {f["kind"] for f in result["findings"]})
+
     def bundles(self, root, info):
         native, linux = root / "native.app", root / "linux.app"
         for path in [native, linux]:

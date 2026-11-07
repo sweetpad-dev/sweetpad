@@ -6,6 +6,11 @@ from pathlib import Path
 import plistlib
 import struct
 
+import importlib.util
+_spec = importlib.util.spec_from_file_location("appintents_model", Path(__file__).with_name("appintents_model.py"))
+appintents_model = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(appintents_model)
+
 
 def differences(a, b, path=""):
     if type(a) is not type(b):
@@ -131,8 +136,28 @@ def compare(native, linux, read_plist, build_roots=None):
     def files(root):
         return {str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()}
     a, b = files(native), files(linux)
-    common = a & b
     findings = []
+    shortcut_models = []
+    # Fingerprints identify generated content, not files with independent app
+    # resources. Validate each marker against its model before normalizing its
+    # name; compare every decoded locale, intent phrase and negative utterance.
+    for path in sorted(p for p in a & b if Path(p).name == "nlu.lzfse"):
+        try:
+            av, amarker = appintents_model.read(native / path)
+            bv, bmarker = appintents_model.read(linux / path)
+            delta = differences(av, bv)
+            shortcut_models.append({"file": path, "differences": delta})
+            if delta:
+                findings.append({"kind": "appShortcutModel", "file": path, "differences": delta})
+            else:
+                a.remove(str(amarker.relative_to(native)))
+                b.remove(str(bmarker.relative_to(linux)))
+                marker = str(Path(path).parent / "__content_fingerprint__.version")
+                a.add(marker)
+                b.add(marker)
+        except (OSError, ValueError, UnicodeError, struct.error) as error:
+            findings.append({"kind": "appShortcutModel", "file": path, "error": str(error)})
+    common = a & b
     for path in sorted(a ^ b):
         if not ignored_layout(path):
             findings.append({"kind": "missingFile" if path in a else "extraFile", "file": path})
@@ -180,5 +205,5 @@ def compare(native, linux, read_plist, build_roots=None):
             "localizationFilesCompared": len(strings), "differentLocalizations": changed,
             "applicationPropertiesMatch": all(ai.get(k) == bi.get(k) for k in fields),
             "bundleInfoDifferences": plist_differences, "machO": binaries, "appIntents": metadata,
-            "differentTextResources": text_differences, "findings": findings, "passed": not findings,
-            "scope": "File inventory, bundle Info.plists, localization values, load commands, App Intents, and loose text resources. Asset archives require runtime loading checks; code signatures and UUIDs are not compared."}
+            "appShortcutModels": shortcut_models, "differentTextResources": text_differences, "findings": findings, "passed": not findings,
+            "scope": "File inventory, bundle Info.plists, localization values, load commands, App Intents registration, decoded shortcut phrase models with validated content-fingerprint markers, and loose text resources. Asset archives require runtime loading checks; code signatures and UUIDs are not compared."}

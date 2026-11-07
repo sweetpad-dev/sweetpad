@@ -23,8 +23,8 @@ def save(path, value):
     path.write_text(json.dumps(value, indent=2) + "\n")
 
 
-def prepare(project, clone):
-    root = CORPUS / project["slug"]
+def prepare(project, clone, corpus=CORPUS):
+    root = corpus / project["slug"]
     if not root.exists() and clone:
         subprocess.run(["git", "clone", "--no-checkout", project["url"], str(root)], check=True)
         subprocess.run(["git", "-C", str(root), "checkout", project["commit"]], check=True)
@@ -71,7 +71,7 @@ exec "$HOME/sweetpad-target/debug/sweetpad" "${common[@]}" -- -derivedDataPath "
     env = dict(os.environ)
     # The projects treat SwiftLint as optional; a global copy can modify sources.
     env["PATH"] = ":".join(p for p in env.get("PATH", "").split(":") if p != "/opt/homebrew/bin")
-    env["PATH"] = str(args.out / "tools/bin") + ":" + str(args.out / "tools/js/node_modules/.bin") + ":" + env["PATH"]
+    env["PATH"] = str(args.tools_root / "bin") + ":" + str(args.tools_root / "js/node_modules/.bin") + ":" + env["PATH"]
     started = time.time()
     with stem.with_suffix(".json").open("w") as stdout, stem.with_suffix(".stderr").open("w") as stderr:
         try:
@@ -107,29 +107,40 @@ def main():
     parser.add_argument("--clean", action="store_true")
     parser.add_argument("--host", choices=["both", "xcode", "linux"], default="both")
     parser.add_argument("--only", default="")
+    parser.add_argument("--frameworks-only", action="store_true", help="Select only Flutter, React Native, and Capacitor fixtures")
     parser.add_argument("--vm", default=os.environ.get("SWEETPAD_VM", "sweetpad-linux"))
     parser.add_argument("--sweetpad", type=Path, default=REPO / "target/debug/sweetpad")
     parser.add_argument("--developer-dir", type=Path, default=Path(os.environ.get("DEVELOPER_DIR", "/Applications/Xcode-27.0.0.app/Contents/Developer")))
     parser.add_argument("--out", type=Path, default=CORPUS / "_linux-followups")
+    parser.add_argument("--corpus-root", type=Path, default=CORPUS, help="Source root, including fresh prepared checkouts")
+    parser.add_argument("--tools-root", type=Path, default=CORPUS / "_linux-followups/tools", help="Pinned host tools, independent of the evidence output directory")
+    parser.add_argument("--linux-dd-suffix", default="", help="Separate VM build caches for another source root")
     parser.add_argument("--timeout", type=int, default=3600)
     args = parser.parse_args()
     args.out = args.out.resolve()
     args.out.mkdir(parents=True, exist_ok=True)
+    args.corpus_root = args.corpus_root.resolve()
+    args.tools_root = args.tools_root.resolve()
+    if any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in args.linux_dd_suffix):
+        parser.error("--linux-dd-suffix must contain only letters, digits, underscores and hyphens")
     projects = json.loads((CI / "linux-projects.json").read_text())
+    if args.frameworks_only:
+        projects = [p for p in projects if p.get("framework")]
     checks_path = args.out / "project-checks.json"
     checks = json.loads(checks_path.read_text()) if checks_path.exists() else {}
     results = []
     for project in projects:
         if args.only not in project["slug"]:
             continue
+        project["linuxDerivedData"] += args.linux_dd_suffix
         result = {"project": project["slug"], "commit": project["commit"]}
         try:
             if args.prepare_only:
-                prepare(project, args.prepare)
+                prepare(project, args.prepare, args.corpus_root)
                 print(f"{project['slug']}: sources prepared; install framework dependencies before building", flush=True)
                 continue
             if not args.summarize:
-                root = prepare(project, args.prepare)
+                root = prepare(project, args.prepare, args.corpus_root)
                 for host in (["xcode", "linux"] if args.host == "both" else [args.host]):
                     record = build(args, project, root, host)
                     print(f"{project['slug']} {host}: exit {record['exitCode']}", flush=True)

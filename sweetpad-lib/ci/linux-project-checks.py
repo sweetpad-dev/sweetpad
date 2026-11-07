@@ -5,17 +5,22 @@ Uses existing linux-projects.py results. No builds and no physical-device access
 Screenshots and detailed results stay in the ignored corpus output directory.
 """
 import argparse
+import fcntl
 import importlib.util
 import json
 import os
 from pathlib import Path
 import plistlib
+import shutil
 import subprocess
+import sys
 import tempfile
 import time
 
 CI = Path(__file__).resolve().parent
 REPO = CI.parent.parent
+sys.path.insert(0, str(CI))
+import simulator_signing
 spec = importlib.util.spec_from_file_location("bundle_comparison", CI / "bundle_comparison.py")
 bundle_comparison = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bundle_comparison)
@@ -80,11 +85,32 @@ def compare(native, linux, build_roots=None):
     return bundle_comparison.compare(native, linux, plist, build_roots)
 
 
+def save_result(output, slug, result):
+    with output.with_suffix(".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        records = json.loads(output.read_text()) if output.exists() else {}
+        records[slug] = result
+        with tempfile.NamedTemporaryFile(mode="w", dir=output.parent, delete=False) as temporary:
+            json.dump(records, temporary, indent=2)
+            temporary.write("\n")
+        os.replace(temporary.name, output)
+        return records
+
+
 def products_root(product):
     return next((p for p in product.parents if p.name == "Products" and p.parent.name == "Build"), None)
 
 
-def runtime(app, slug, host, args):
+def runtime(app, slug, host, args, entitlements=None):
+    if entitlements:
+        with tempfile.TemporaryDirectory(prefix="sweetpad-simulator-copy-", dir=args.out) as work:
+            copy = Path(work) / app.name
+            shutil.copytree(app, copy, symlinks=True)
+            simulator_signing.sign(copy, entitlements)
+            result = runtime(copy, slug, host, args)
+            result["simulatorEntitlements"] = entitlements
+            result["usedSignedCopy"] = True
+            return result
     env = dict(os.environ, DEVELOPER_DIR=str(args.developer_dir))
     def sim(*words):
         result = run(["xcrun", "simctl", *words], env=env)
@@ -107,6 +133,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=CI.parent / "corpus/_linux-followups")
     parser.add_argument("--only", default="")
+    parser.add_argument("--frameworks-only", action="store_true")
     parser.add_argument("--vm", default="sweetpad-linux")
     parser.add_argument("--simulator", help="UDID of a booted simulator; omit for bundle checks only")
     parser.add_argument("--settle", type=int, default=8)
@@ -116,6 +143,8 @@ def main():
     output = args.out / "project-checks.json"
     records = json.loads(output.read_text()) if output.exists() else {}
     for project in json.loads((CI / "linux-projects.json").read_text()):
+        if args.frameworks_only and not project.get("framework"):
+            continue
         slug = project["slug"]
         if args.only not in slug:
             continue
@@ -127,11 +156,11 @@ def main():
             result["bundleComparison"] = compare(native, linux,
                 {k: v for k, v in {"xcode": products_root(native), "linux": products_root(source)}.items() if v})
             if args.simulator:
-                result["runtime"] = {host: runtime(app, slug, host, args) for host, app in [("xcode", native), ("linux", linux)]}
+                result["runtime"] = {host: runtime(app, slug, host, args, project.get("simulatorEntitlements"))
+                                     for host, app in [("xcode", native), ("linux", linux)]}
         except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
             result["error"] = str(error)
-        records[slug] = result
-        output.write_text(json.dumps(records, indent=2) + "\n")
+        records = save_result(output, slug, result)
         print(slug, "error: " + result["error"] if "error" in result else
               f"{len(result['bundleComparison']['findings'])} differences", flush=True)
     selected = [r for slug, r in records.items() if args.only in slug]

@@ -1,0 +1,16 @@
+diff --git a/Modules/Secrets/Sources/Secrets/CredentialsManager.swift b/Modules/Secrets/Sources/Secrets/CredentialsManager.swift
+index 52d8076f..f12ec68d 100644
+--- a/Modules/Secrets/Sources/Secrets/CredentialsManager.swift
++++ b/Modules/Secrets/Sources/Secrets/CredentialsManager.swift
+@@ -159,10 +159,7 @@ public struct CredentialsManager {
+ 
+ 		var query: [String: Any] = [kSecClass as String: kSecClassInternetPassword,
+ 									kSecAttrAccount as String: username,
+-									kSecAttrServer as String: server,
+-									kSecMatchLimit as String: kSecMatchLimitOne,
+-									kSecReturnAttributes as String: true,
+-									kSecReturnData as String: true]
++									kSecAttrServer as String: server]
+ 
+ 		if type != .basic {
+ 			query[kSecAttrSecurityDomain as String] = type.rawValue

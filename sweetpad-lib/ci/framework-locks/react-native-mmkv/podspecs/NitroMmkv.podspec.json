@@ -1,0 +1,73 @@
+{
+  "name": "NitroMmkv",
+  "version": "4.3.2",
+  "summary": "⚡️ The fastest key/value storage for React Native.",
+  "homepage": "https://github.com/margelo/react-native-mmkv#readme",
+  "license": "MIT",
+  "authors": "Marc Rousavy <me@mrousavy.com> (https://github.com/mrousavy)",
+  "platforms": {
+    "ios": "15.1",
+    "visionos": "1.0",
+    "tvos": "12.0",
+    "osx": "10.14"
+  },
+  "source": {
+    "git": "https://github.com/margelo/react-native-mmkv.git",
+    "tag": "4.3.2"
+  },
+  "source_files": [
+    "ios/**/*.{swift}",
+    "ios/**/*.{m,mm}",
+    "cpp/**/*.{hpp,cpp}",
+    "nitrogen/generated/shared/**/*.{h,hpp,c,cpp,swift}",
+    "nitrogen/generated/ios/**/*.{h,hpp,c,cpp,mm,swift}"
+  ],
+  "compiler_flags": "-x objective-c++  -DRCT_NEW_ARCH_ENABLED=1",
+  "dependencies": {
+    "MMKVCore": [
+      "2.4.2"
+    ],
+    "NitroModules": [],
+    "React-jsi": [],
+    "React-callinvoker": [],
+    "React-Core": [],
+    "React-RCTFabric": [],
+    "ReactCodegen": [],
+    "RCTRequired": [],
+    "RCTTypeSafety": [],
+    "ReactCommon/turbomodule/bridging": [],
+    "ReactCommon/turbomodule/core": [],
+    "React-NativeModulesApple": [],
+    "Yoga": [],
+    "React-Fabric": [],
+    "React-graphics": [],
+    "React-utils": [],
+    "React-featureflags": [],
+    "React-debug": [],
+    "React-ImageManager": [],
+    "React-rendererdebug": [],
+    "React-renderercss": [],
+    "hermes-engine": [],
+    "ReactNativeDependencies": [],
+    "React-Core-prebuilt": []
+  },
+  "pod_target_xcconfig": {
+    "HEADER_SEARCH_PATHS": "[\"${PODS_ROOT}/RCT-Folly\"] \"$(PODS_ROOT)/Headers/Private/Yoga\"",
+    "GCC_PREPROCESSOR_DEFINITIONS": "$(inherited) FOLLY_NO_CONFIG FOLLY_CFG_NO_COROUTINES",
+    "OTHER_CPLUSPLUSFLAGS": "$(inherited) -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DRCT_NEW_ARCH_ENABLED=1  -ivfsoverlay $(PODS_ROOT)/React-Core-prebuilt/React-VFS.yaml",
+    "CLANG_CXX_LANGUAGE_STANDARD": "c++20",
+    "SWIFT_OBJC_INTEROP_MODE": "objcxx",
+    "DEFINES_MODULE": "YES",
+    "SWIFT_INSTALL_OBJC_HEADER": "NO",
+    "OTHER_SWIFT_FLAGS": "$(inherited) -DRCT_NEW_ARCH_ENABLED -Xcc -ivfsoverlay -Xcc $(PODS_ROOT)/React-Core-prebuilt/React-VFS.yaml",
+    "OTHER_CFLAGS": "$(inherited) -ivfsoverlay $(PODS_ROOT)/React-Core-prebuilt/React-VFS.yaml"
+  },
+  "public_header_files": [
+    "nitrogen/generated/shared/**/*.{h,hpp}",
+    "nitrogen/generated/ios/NitroMmkv-Swift-Cxx-Bridge.hpp"
+  ],
+  "private_header_files": [
+    "nitrogen/generated/ios/c++/**/*.{h,hpp}",
+    "nitrogen/generated/shared/**/views/**/*"
+  ]
+}

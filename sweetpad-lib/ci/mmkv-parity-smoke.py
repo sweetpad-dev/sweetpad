@@ -82,12 +82,14 @@ def run(args):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--simulator", required=True)
     parser.add_argument("--out", type=Path, default=CORPUS / "_linux-followups")
+    parser.add_argument("--corpus-root", type=Path, default=CORPUS)
+    parser.add_argument("--tool-bin", type=Path, default=CORPUS / "_linux-followups/tools/js/node_modules/.bin")
     parser.add_argument("--developer-dir", default="/Applications/Xcode.app/Contents/Developer")
     args = parser.parse_args(args)
     args.out = args.out.resolve()
     evidence = args.out / "validation/mmkv-smoke"
     evidence.mkdir(parents=True, exist_ok=True)
-    example = CORPUS / "react-native-mmkv/example"
+    example = args.corpus_root.resolve() / "react-native-mmkv/example"
     pin = next(p["commit"] for p in json.loads((CI / "linux-projects.json").read_text())
                if p["slug"] == "react-native-mmkv")
     actual = subprocess.check_output(["git", "-C", str(example), "rev-parse", "HEAD"], text=True).strip()
@@ -105,7 +107,8 @@ def run(args):
         raise RuntimeError("Port 8081 already has a Metro server")
     reports = evidence / "reports.ndjson"
     reports.write_text("")
-    env = dict(os.environ, DEVELOPER_DIR=args.developer_dir, SWEETPAD_MMKV_REPORTS=str(reports))
+    env = dict(os.environ, DEVELOPER_DIR=args.developer_dir, SWEETPAD_MMKV_REPORTS=str(reports),
+               PATH=str(args.tool_bin.resolve()) + os.pathsep + os.environ["PATH"])
     records = {}
     server = None
     try:

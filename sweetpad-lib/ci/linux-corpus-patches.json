@@ -7,7 +7,7 @@
   {
     "checkout": "netnewswire",
     "commit": "4d1cb6afae1aa7d52c51077f7f40d0d267e8cc4b",
-    "patches": ["netnewswire-linux-script.patch", "netnewswire-swift64-capture.patch"]
+    "patches": ["netnewswire-linux-script.patch", "netnewswire-swift64-capture.patch", "netnewswire-keychain-delete-query.patch"]
   },
   {
     "checkout": "tuist-fixtures",

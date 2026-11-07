@@ -11,7 +11,14 @@
       "scripts/setup_bundle_id",
       "ci"
     ],
-    "setupOutput": "Configurations/OpenSourceDebug.xcconfig"
+    "setupOutput": "Configurations/OpenSourceDebug.xcconfig",
+    "simulatorEntitlements": {
+      "com.apple.security.application-groups": [
+        "group.org.wikimedia.wikipedia",
+        "group.org.wikimedia.wikipedia.alpha",
+        "group.org.wikimedia.wikipedia.beta"
+      ]
+    }
   },
   {
     "slug": "mastodon-ios",
@@ -43,6 +50,13 @@
         "commit": "0b18836bd8b0162e7e17a995a3fbee20ed8f3b2b",
         "patches": [
           "swift-nio-apple-cross-resources.patch"
+        ]
+      },
+      {
+        "resolvedCheckout": "SourcePackages/checkouts/StatefulMacro",
+        "commit": "afb27fb5d49e1ee92097286a712e2f448be28fb2",
+        "patches": [
+          "statefulmacros-linux-foundation.patch"
         ]
       }
     ],

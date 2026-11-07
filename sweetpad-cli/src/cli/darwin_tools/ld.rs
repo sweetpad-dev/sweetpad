@@ -11,6 +11,8 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
+mod autolink;
+
 pub(super) fn main(args: &[String]) -> ExitCode {
     let Some(linker) = next_linker() else {
         eprintln!("error: ld64.lld: no other ld64.lld on PATH; xtool's Darwin SDK has one");
@@ -19,7 +21,7 @@ pub(super) fn main(args: &[String]) -> ExitCode {
     let args = if args.iter().any(|a| a == "-r") {
         args.to_vec()
     } else {
-        match force_load_prelinked(args) {
+        match force_load_prelinked(args).and_then(autolink::prefer_swiftui_umbrella) {
             Ok(args) => args,
             Err(message) => {
                 eprintln!("error: ld64.lld: {message}");

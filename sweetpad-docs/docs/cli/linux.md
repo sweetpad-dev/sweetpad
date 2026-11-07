@@ -233,7 +233,18 @@ value dialogs, dialog/snippet results, enums, basic entities and queries, widget
 Dynamic frameworks and embedded extensions keep separate registrations.
 Advanced schemas, static dependency registrations, and unsupported language-model options fail with explicit errors.
 Native metadata comparisons cover the supported forms. Siri behavior on a physical device is not verified.
-Localized shortcut language-model bundles do not yet match Xcode's per-language output.
+Localized shortcut models use the app's translated names and AppShortcuts string tables.
+The model trainer writes per-language bundles and removes models for deleted shortcuts.
+The catalog validator checks supported AppShortcuts strings and catalogs.
+AssistantIntents catalogs and catalog variations fail explicitly.
+
+Mac execution of `linux-setup.sh` exports system phrase expansions from your Xcode
+into your private Darwin SDK. Existing SDKs can use `ci/linux-appintents-resources.py`
+to refresh `appintents-phrases.json`. Missing localized resources produce a preparation error.
+The export covers 81 locale identifiers; `--locale` adds another project locale.
+
+Ice Cubes' 19 localized models match native decoded contents. Native and Linux
+products launch in the simulator. Voice invocation through Siri remains unverified.
 
 ## Environment variables
 

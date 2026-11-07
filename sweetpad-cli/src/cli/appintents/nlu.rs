@@ -1,22 +1,104 @@
-//! The SSU v1 FlatBuffer used for App Shortcut phrase registration. The
-//! table layout and phrase expansion are checked against Xcode 27 captures.
+//! SSUv1 shortcut models. Native captures verify the decoded phrase content.
 
 use flatbuffers::{FlatBufferBuilder, TableFinishedWIPOffset, WIPOffset};
-use serde_json::Value;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::fmt::Write as _;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-const SCHEMA_ID: &str = "0591b843d1bfa8e989c3a884b4199791";
 type Table = WIPOffset<TableFinishedWIPOffset>;
+
+#[derive(Clone, Deserialize)]
+pub(super) struct Expansions {
+    pub prefixes: Vec<String>,
+    pub negatives: Vec<String>,
+}
+
+impl Expansions {
+    pub fn english() -> Result<Self, String> {
+        Ok(Self {
+            prefixes: vec![String::new(), "hey Siri ".into(), "Siri ".into()],
+            negatives: serde_json::from_str(include_str!(
+                "../../../fixtures/appintents/nlu-negatives.json"
+            ))
+            .map_err(|e| e.to_string())?,
+        })
+    }
+}
+
+#[derive(Serialize)]
+struct Intent {
+    identifier: String,
+    title: String,
+    utterances: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub(super) struct LanguageModel {
+    pub locale: String,
+    intents: Vec<Intent>,
+    negatives: Vec<String>,
+}
+
+impl LanguageModel {
+    pub fn new(
+        locale: &str,
+        app: &str,
+        metadata: &Value,
+        expansions: &Expansions,
+    ) -> Result<Self, String> {
+        let mut intents = Vec::new();
+        for (index, shortcut) in metadata["autoShortcuts"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
+            let action = shortcut["actionIdentifier"]
+                .as_str()
+                .ok_or("shortcut has no action identifier")?;
+            let mut utterances = Vec::new();
+            for phrase in shortcut["phraseTemplates"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|p| p["key"].as_str())
+            {
+                for prefix in &expansions.prefixes {
+                    utterances.push(format!(
+                        "{prefix}{}",
+                        phrase.replace("${applicationName}", app)
+                    ));
+                }
+            }
+            intents.push(Intent {
+                identifier: format!("{action}_{index}"),
+                title: metadata["actions"][action]["title"]["key"]
+                    .as_str()
+                    .or_else(|| shortcut["shortTitle"]["key"].as_str())
+                    .unwrap_or(action)
+                    .into(),
+                utterances,
+            });
+        }
+        Ok(Self {
+            locale: locale.into(),
+            intents,
+            negatives: expansions
+                .negatives
+                .iter()
+                .map(|p| p.replace("${applicationName}", app))
+                .collect(),
+        })
+    }
+}
 
 pub(super) fn write(
     directory: &Path,
     bundle: &str,
-    app: &str,
-    metadata: &Value,
+    language: &LanguageModel,
 ) -> Result<(), String> {
-    let model = model(bundle, app, metadata)?;
+    let (model, fingerprint) = model(bundle, language)?;
     let mut frame = b"bvx-".to_vec();
     frame.extend(
         u32::try_from(model.len())
@@ -25,22 +107,27 @@ pub(super) fn write(
     );
     frame.extend(model);
     frame.extend(b"bvx$");
-    let nlu = directory.join("nlu");
-    std::fs::create_dir_all(&nlu).map_err(|e| e.to_string())?;
-    std::fs::write(nlu.join("nlu.lzfse"), frame).map_err(|e| e.to_string())?;
-    std::fs::write(nlu.join(format!("{SCHEMA_ID}.version")), [0]).map_err(|e| e.to_string())?;
-    std::fs::write(directory.join("root.ssu.yaml"), ssu(bundle, app, metadata)?)
-        .map_err(|e| e.to_string())
+    std::fs::create_dir_all(directory).map_err(|e| e.to_string())?;
+    for entry in std::fs::read_dir(directory).map_err(|e| e.to_string())? {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        if path.extension().is_some_and(|e| e == "version")
+            && path.file_stem().is_none_or(|s| s != fingerprint.as_str())
+        {
+            std::fs::remove_file(path).map_err(|e| e.to_string())?;
+        }
+    }
+    write_if_changed(&directory.join("nlu.lzfse"), &frame)?;
+    write_if_changed(&directory.join(format!("{fingerprint}.version")), &[0])
 }
 
-fn phrases(app: &str, shortcut: &Value) -> Vec<String> {
-    shortcut["phraseTemplates"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|p| p["key"].as_str())
-        .map(|p| p.replace("${applicationName}", app))
-        .collect()
+pub(super) fn write_if_changed(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    if std::fs::read(path).is_ok_and(|previous| previous == bytes) {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(path, bytes).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 fn utterance(builder: &mut FlatBufferBuilder<'_>, text: &str) -> Table {
@@ -54,28 +141,24 @@ fn utterance(builder: &mut FlatBufferBuilder<'_>, text: &str) -> Table {
     builder.end_table(start)
 }
 
-fn model(bundle: &str, app: &str, metadata: &Value) -> Result<Vec<u8>, String> {
+fn model(bundle: &str, language: &LanguageModel) -> Result<(Vec<u8>, String), String> {
+    // This is a producer fingerprint, not a schema identifier. It must change
+    // when phrases change, and must agree with the adjacent .version filename.
+    let content = serde_json::to_vec(&(bundle, language)).map_err(|e| e.to_string())?;
+    let mut fingerprint = String::with_capacity(32);
+    for byte in &sweetpad_lib::xcode_hash::sha256(&content)[..16] {
+        let _ = write!(fingerprint, "{byte:02x}");
+    }
     let mut builder = FlatBufferBuilder::new();
     let mut intents = Vec::new();
-    for (index, shortcut) in metadata["autoShortcuts"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .enumerate()
-    {
-        let mut utterances = Vec::new();
-        for phrase in phrases(app, shortcut) {
-            for prefix in ["", "hey Siri ", "Siri "] {
-                utterances.push(utterance(&mut builder, &format!("{prefix}{phrase}")));
-            }
-        }
+    for intent in &language.intents {
+        let utterances = intent
+            .utterances
+            .iter()
+            .map(|p| utterance(&mut builder, p))
+            .collect::<Vec<_>>();
         let utterances = builder.create_vector(&utterances);
-        let id = builder.create_string(&format!(
-            "{}_{index}",
-            shortcut["actionIdentifier"]
-                .as_str()
-                .ok_or("shortcut has no action identifier")?
-        ));
+        let id = builder.create_string(&intent.identifier);
         let empty = builder.create_string("");
         let start = builder.start_table();
         builder.push_slot_always(4, id);
@@ -83,14 +166,11 @@ fn model(bundle: &str, app: &str, metadata: &Value) -> Result<Vec<u8>, String> {
         builder.push_slot_always(8, utterances);
         intents.push(builder.end_table(start));
     }
-    let templates: Vec<String> = serde_json::from_str(include_str!(
-        "../../../fixtures/appintents/nlu-negatives.json"
-    ))
-    .map_err(|e| e.to_string())?;
-    let negatives: Vec<Table> = templates
+    let negatives = language
+        .negatives
         .iter()
-        .map(|t| utterance(&mut builder, &t.replace("${applicationName}", app)))
-        .collect();
+        .map(|p| utterance(&mut builder, p))
+        .collect::<Vec<_>>();
     let negatives = builder.create_vector(&negatives);
     let intents = builder.create_vector(&intents);
     let bundle = builder.create_string(bundle);
@@ -104,17 +184,12 @@ fn model(bundle: &str, app: &str, metadata: &Value) -> Result<Vec<u8>, String> {
     builder.push_slot_always(6, applications);
     let group = builder.end_table(start);
     let groups = builder.create_vector(&[group]);
-    let locale = builder.create_string("en");
-    let schema = builder.create_string(SCHEMA_ID);
+    let locale = builder.create_string(&language.locale);
+    let fingerprint_string = builder.create_string(&fingerprint);
     let empty = builder.create_string("");
     let version = builder.create_string("1.0");
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
     let start = builder.start_table();
-    builder.push_slot_always(4, schema);
-    builder.push_slot(6, now, 0);
+    builder.push_slot_always(4, fingerprint_string);
     builder.push_slot_always(8, empty);
     builder.push_slot_always(10, version);
     let version = builder.end_table(start);
@@ -125,50 +200,31 @@ fn model(bundle: &str, app: &str, metadata: &Value) -> Result<Vec<u8>, String> {
     builder.push_slot_always(10, groups);
     let root = builder.end_table(start);
     builder.finish(root, None);
-    Ok(builder.finished_data().to_vec())
+    Ok((builder.finished_data().to_vec(), fingerprint))
 }
 
-fn ssu(bundle: &str, app: &str, metadata: &Value) -> Result<String, String> {
-    let quoted = |s: &str| serde_json::to_string(s).map_err(|e| e.to_string());
-    let mut out = format!(
-        "apiVersion: ssu/v1\nnlu:\n  shortcuts:\n    bundleIdentifier: {}\n    intents:\n",
-        quoted(bundle)?
-    );
-    for (index, shortcut) in metadata["autoShortcuts"]
-        .as_array()
+pub(super) fn ssu(bundle: &str, languages: &[LanguageModel]) -> Result<String, String> {
+    let mut intents = Vec::new();
+    for (index, intent) in languages
+        .first()
         .into_iter()
-        .flatten()
+        .flat_map(|l| &l.intents)
         .enumerate()
     {
-        let id = shortcut["actionIdentifier"]
-            .as_str()
-            .ok_or("shortcut has no action identifier")?;
-        let _ = write!(
-            out,
-            "    - metadata:\n        name: {}\n        title: {}\n      corpuses:\n        training:\n        - locale: en\n          utterances:\n",
-            quoted(&format!("{id}_{index}"))?,
-            quoted(shortcut["shortTitle"]["key"].as_str().unwrap_or(id))?
-        );
-        for phrase in shortcut["phraseTemplates"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|p| p["key"].as_str())
-        {
-            let _ = writeln!(
-                out,
-                "          - {}",
-                quoted(&format!(
-                    "{{${{+prefix}} }}{}",
-                    phrase.replace("${applicationName}", "${+applicationName}")
-                ))?
-            );
-        }
+        let training: Vec<_> = languages
+            .iter()
+            .map(|l| json!({"locale": l.locale, "utterances": l.intents[index].utterances}))
+            .collect();
+        intents.push(json!({"metadata": {"name": intent.identifier, "title": intent.title}, "corpuses": {"training": training}}));
     }
-    out.push_str("    - metadata:\n        name: +negative\n      corpuses:\n        training:\n        - locale: en\n          utterances:\n          - '{${+prefix} }${+standardAppShortcutNegatives}'\nvariables:\n- name: +applicationName\n  type: ssu/expansion\n  definitions:\n  - locale: en\n    synomyms:\n");
-    let _ = writeln!(out, "    - {}", quoted(app)?);
-    out.push_str("- name: +prefix\n  type: ssu/expansion\n  definitions:\n  - locale: en\n    synomyms:\n      $ref: ssu://Resources/prefix/en.yaml\n- name: +standardAppShortcutNegatives\n  type: ssu/expansion\n  definitions:\n  - locale: en\n    synomyms:\n      $ref: ssu://Resources/standardAppShortcutNegatives/en.yaml\n");
-    Ok(out)
+    let training: Vec<_> = languages
+        .iter()
+        .map(|l| json!({"locale": l.locale, "utterances": l.negatives}))
+        .collect();
+    intents.push(json!({"metadata": {"name": "+negative"}, "corpuses": {"training": training}}));
+    // JSON is valid YAML and preserves literal localized strings without
+    // interpreting shortcut parameter syntax as YAML substitutions.
+    serde_json::to_string_pretty(&json!({"apiVersion": "ssu/v1", "nlu": {"shortcuts": {"bundleIdentifier": bundle, "intents": intents}}})).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -229,7 +285,10 @@ mod tests {
             "../../../fixtures/appintents/extract.actionsdata"
         ))
         .unwrap();
-        let actual = model("dev.sweetpad.DataApp", "DataApp", &metadata).unwrap();
+        let language =
+            LanguageModel::new("en", "DataApp", &metadata, &Expansions::english().unwrap())
+                .unwrap();
+        let (actual, _) = model("dev.sweetpad.DataApp", &language).unwrap();
         let expected = include_bytes!("../../../fixtures/appintents/DataApp.nlu");
         assert_eq!(content(&actual), content(expected));
     }

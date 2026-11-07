@@ -5,8 +5,10 @@
 mod metadata;
 mod nlu;
 mod training;
+mod validation;
 
 pub use training::main as training_main;
+pub use validation::main as validation_main;
 
 use serde_json::{Value, json};
 use std::collections::BTreeMap;

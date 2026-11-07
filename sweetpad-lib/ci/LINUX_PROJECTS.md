@@ -11,18 +11,18 @@ The only failure is intentional. One obsolete extension scheme merged into its w
 The November 7, 2026 run used an arm64 Ubuntu 24.04 OrbStack machine.
 It used Swift 6.4.2, patched Swift Build 6.4.0, and SDKs extracted from Xcode 27.2.
 The native control used Apple Swift 6.4.2 and the same SDK version.
-Simulator checks ran on iOS 27.0. No physical device was used.
+Simulator checks ran on iOS 26.0 and 27.0. No physical device was used.
 
 Install the Linux tools with `linux-setup.sh` and build the CLI on both hosts.
 The projects need their own dependencies before the suite can build them.
 The suite checks source revisions and applies the listed fixture patches.
-It does not install every framework dependency.
+The separate `linux-project-prepare.py` recipe installs frozen hybrid-framework dependencies on the Mac for both build hosts.
 
 ## Results
 
 | Project | Xcode build | Linux build | Simulator comparison |
 | --- | --- | --- | --- |
-| Wikipedia | Pass | Pass | Both exit in `MWKDataStore.setupLegacyDataStore` with a nil file-URL path |
+| Wikipedia | Pass | Pass | Both launch after restoring their declared app-group entitlements in simulator copies |
 | Mastodon | Pass | Pass | Both render the onboarding screen |
 | Swiftfin | Pass | Pass | Both render the server connection screen |
 | Flutter samples: platform_design | Pass | Pass | Both render the Songs screen |
@@ -44,7 +44,8 @@ The local `AccountTests` scheme passes that action.
 Wikipedia's full build and all 70 XIB/storyboard compiles pass.
 Its 1,040 common localization files match the native bundle.
 Mastodon's final comparison matches all 4,505 common localization files.
-Wikipedia's startup failure also occurs in the native control, so its UI check fails on both hosts.
+Wikipedia's unsigned startup failure also occurred in the native control.
+Its declared app groups now receive ad-hoc signatures in separate simulator copies. Both copies remain running.
 
 The bundle checker compares inventories, all bundle Info.plists, localization values,
 loose text resources, App Intents registration, and Mach-O load commands.
@@ -67,10 +68,15 @@ They do not require a native build or a native manifest template.
 | ToolsAppTests, app-hosted XCTest | 1 pass | Linux app and test executable hashes retained |
 | RSWebTests, logic XCTest | 5 pass | Independent logic-test manifest |
 | TimelineTests, Swift Testing | 8 pass | Independent manifest; Swift Testing executed |
-| AccountTests, logic XCTest | 54 pass, 38 fail | Same 92 tests and exact same 38 failing identifiers |
+| AccountTests, app-hosted XCTest | 92 pass | Both controls use signed copies with an isolated app group |
 
-AccountTests failures report keychain status `-34018` in both builds.
-They remain failures; the suite does not remove the assertions.
+The original unhosted AccountTests products had the same 38 keychain failures on both hosts.
+An app host with an explicit app-group entitlement provides a valid simulator keychain context.
+That exposed a shared `SecItemDelete` query error, status `-50`.
+The fixture patch removes unsupported return and match-limit options from that query.
+All 92 tests now pass on both hosts. Test assertions remain unchanged.
+`linux-keychain-tests.py` preserves source products and signs separate copies.
+It checks source hashes and verifies that signed executable hashes remain unchanged during testing.
 Selecting a nonexistent test now fails explicitly, even when Xcode exits zero.
 
 `fixture-linux-parity` adds a local package, package resources, app resources,
@@ -78,6 +84,7 @@ localized plurals, named image/color assets, App Intents, and a storyboard.
 Its tests verify the compiled origin, values, resource contents, locale lookup,
 asset loading, color metadata, intent registration, and initial scene loading.
 Linux products carry a compilation marker that the tests check at runtime.
+The current fixture adds SwiftUI/CoreLocation/Darwin/SQLite checks and localized shortcut model loading.
 
 Run the comparison on a Mac with a booted simulator:
 
@@ -153,8 +160,8 @@ Results stay in the ignored `corpus/_linux-followups` directory:
 - `real-projects.json`: build results and available bundle/runtime comparisons.
 - `project-checks.json` and `*.png`: bundle comparisons and simulator evidence.
 
-The framework source pins do not make dependency setup hermetic.
-Keep the generated CocoaPods, npm, and Dart lockfiles with a captured run.
+Source pins alone do not make setup hermetic. The fixture recipes also capture missing npm, Ruby, Pod, and Dart locks.
+Receipts record tool versions, applied source patches, and final lock hashes.
 
 ## Dependency preparation
 
@@ -296,9 +303,9 @@ Linux release CI are outside this follow-up.
 
 The final workspace suite passes with `--test-threads=1`, and Clippy passes with warnings denied.
 One parallel temporary-directory cleanup test passed on its isolated retry and in the serial suite.
-The resource follow-up reports 792 passing macOS CLI tests and 785 passing Linux CLI tests.
-Linux skips six native-only checks. Clippy passes with warnings denied.
-The bundle comparison suite passes five tests. The SDK importer passes three tests.
+The follow-up reports 798 passing macOS CLI tests and 791 passing Linux CLI tests.
+Linux skips six native-only checks. Workspace Clippy passes with warnings denied.
+The Python preparation, bundle, and SDK regression suite passes 13 tests.
 
 The final `@Entry` fixture passes its default-value and assignment preconditions on both hosts.
 A fresh App Intents probe matches native registration metadata after sorting input-type sets
@@ -413,13 +420,122 @@ Ice Cubes' clean native and Linux products both render the Add Account screen.
 Their application identity and 126 common localization files match.
 Startup evidence is in `corpus/_linux-followups/corpus-patch-checks`.
 This does not validate account synchronization or background notifications.
-The modern-icon follow-up rebuilds Ice Cubes on both hosts.
-Its icon file inventory and bundle metadata now match the native control.
-The strict comparison retains 42 findings: 38 localized NLU files, two module-level NLU files, and two Mach-O comparisons.
-Xcode emits localized `nlu.appintents` files. Linux currently emits a module-level shortcut language model.
-Matching registration metadata therefore does not establish localized Siri parity.
+The modern-icon and localized-shortcut follow-ups rebuild Ice Cubes on both hosts.
+The final bundle checker has zero findings, down from 42.
+Its 19 localized shortcut models match native locale, bundle, intent phrase, and negative-utterance contents.
+Both products render the Add Account screen. This does not verify voice invocation through Siri.
 Watch runtime and device checks remain unverified.
 
 The MMKV reproduction now covers both Swift module import and Objective-C++ object emission.
 Disabling forced debug-thunk emission resolves both stages with the pinned compiler.
 The final clean application builds pass on both hosts. The compiler workaround remains an explicit fixture patch.
+
+
+## Linker, preparation, runtime, and localized-shortcut follow-up
+
+The linker wrapper now keeps SwiftUI references through the public umbrella when
+object autolink commands list SwiftUICore first. It prepends an empty object with
+an implicit SwiftUI autolink command. Unused frameworks still disappear, and
+explicit weak-framework policy remains intact. The object stays in the user's
+state directory so linker dependency files remain valid.
+
+`linux-linking-checks.py` compares native linking, raw LLD, and the wrapper in
+24 cases. They cover deployment targets 15.0, 17.6, 18.0, and 27.0, both framework
+orders, unused imports, and explicit weak imports. All wrapper cases match Xcode.
+Six prebuilt framework checks pass on iOS 26.0 and 27.0 on both hosts. They exercise
+SwiftUI layout, CoreLocation lookup, Darwin constants, and SQLite queries.
+Apple's download catalog did not provide iOS 17.5, 18.0, or 18.5 for this Xcode.
+Pre-iOS-18 execution remains unverified.
+
+A Mastodon no-op preserves all 4,794 bundle files after plist dictionary-order
+normalization. Executable and resource bytes remain unchanged.
+Wikipedia, Mastodon, and the hybrid fixtures retain reported optional `.omo` or
+library load-command differences. The checker does not suppress those fields.
+
+### Frozen hybrid preparation
+
+Install the pinned Node and Bun tools in a working tool directory:
+
+```bash
+mkdir -p sweetpad-lib/corpus/_linux-followups/tools/js
+cp sweetpad-lib/ci/framework-tools/package*.json sweetpad-lib/corpus/_linux-followups/tools/js/
+npm ci --prefix sweetpad-lib/corpus/_linux-followups/tools/js
+```
+
+Use Ruby compatible with each project's Gemfile and Bundler 4.0.20.
+Install Flutter revision `c197ca5199e9ee5661e865596c9c07294dfab51c` separately.
+Then prepare a fresh tree, with no existing Pods or generated framework files:
+
+```bash
+python3 -B sweetpad-lib/ci/linux-project-prepare.py \
+  --corpus-root sweetpad-lib/corpus/_linux-followups/fresh-sources
+python3 -B sweetpad-lib/ci/linux-projects.py --frameworks-only \
+  --corpus-root sweetpad-lib/corpus/_linux-followups/fresh-sources \
+  --linux-dd-suffix=-fresh \
+  --out sweetpad-lib/corpus/_linux-followups/validation/fresh-builds \
+  --developer-dir /Applications/Xcode.app/Contents/Developer
+```
+
+The recipe uses `npm ci`, frozen Bun and Dart resolution, frozen Bundler resolution,
+and CocoaPods deployment mode. It applies source patches before dependency generation.
+React Native embeds absolute paths in generated Pod specifications. Captured
+specifications replace only the checkout root before computing those checksums.
+Deployment mode still validates the full Pod graph. Changed dependency versions
+or unrelated lock changes fail preparation.
+
+All four fresh hybrid fixtures build on both hosts. Their bundle resources and
+metadata match; one Mach-O comparison remains per fixture. This validates Mac
+preparation followed by Linux compilation. CocoaPods execution on Linux remains untested.
+
+`linux-projects.json` also records Swiftfin's pinned StatefulMacro Foundation patch.
+`linux-dependency-patches.py --check` validates it alongside the NIO patches on each host.
+
+### Localized App Shortcuts
+
+Mac execution of `linux-setup.sh` exports phrase resources from the user's Xcode
+before importing them into the private Darwin SDK. The export stays outside source control.
+For an existing SDK, refresh only these resources:
+
+```bash
+python3 -B sweetpad-lib/ci/linux-appintents-resources.py \
+  --out sweetpad-lib/corpus/_linux-followups/tools/appintents-phrases.json
+orb -m sweetpad-linux bash -lc \
+  'cp "$1" "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle/appintents-phrases.json"' \
+  -- "$PWD/sweetpad-lib/corpus/_linux-followups/tools/appintents-phrases.json"
+```
+
+Add `--locale LANGUAGE` to
+export a project locale beyond the default set. The current export covers 81 locales.
+A missing localized resource export produces an explicit preparation error.
+
+The trainer reads localized app names and compiled AppShortcuts string tables.
+It emits `LOCALE.lproj/nlu.appintents` models and the declared temporary SSU source.
+Fingerprints change with model content, remain stable across no-op training, and
+match their adjacent version markers. Removed shortcuts remove their old models.
+The catalog validator supports AppShortcuts string tables and catalogs. It preserves
+Xcode's structured diagnostics for the eight tested acceptance and rejection cases.
+AssistantIntents catalogs and catalog variations remain explicit unsupported inputs.
+
+`linux-appintents-checks.py` compares all decoded model contents with native controls
+in five locales. It checks translations, app-name changes, no-op hashes, and removal.
+The checker validates model markers before normalizing producer fingerprints.
+It then compares every locale, bundle identifier, intent phrase, and negative example.
+Generation timestamps and phrase order do not establish compatibility.
+
+Native retraining can leave obsolete version markers or models after removal.
+The oracle retains that evidence and also checks a fresh native removal control.
+Xcode's package-only incremental build can also lose the archived SSU source while
+keeping correct runtime models. The incremental runner preserves that discrepancy
+and requires a fresh native control before accepting the Linux product.
+
+The project fixture includes a real localized AppShortcuts catalog and seven
+simulator tests. All 13 phases pass their Linux checks. Linux incremental products
+match a fresh Linux build and the fresh native control. The report preserves
+the native incremental archived-source discrepancy. Both hosts also pass all
+seven final tests on iOS 26 with unchanged executable hashes. Evidence is under `validation/localized-build`,
+`localized-shortcuts-final`, `keychain-tests2`, `linking-matrix`,
+`linking-runtime2`, `fresh-*-preparation.json`, and `ice-cubes-localized-*`.
+Physical-device, voice-invocation, and interactive Icon Composer material checks remain unverified.
+
+Fresh MMKV products also pass seven storage checks twice per host, including persistence after relaunch.
+Use `mmkv-parity-smoke.py --corpus-root` with the fresh source root and `--out` with its build evidence directory.

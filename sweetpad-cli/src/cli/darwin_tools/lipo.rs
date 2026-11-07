@@ -66,7 +66,7 @@ fn arch_name(cputype: u32, cpusubtype: u32) -> String {
         )
 }
 
-fn arch_named(name: &str) -> Result<(u32, u32), String> {
+pub(super) fn arch_named(name: &str) -> Result<(u32, u32), String> {
     ARCHS
         .iter()
         .find(|(n, _, _)| *n == name)

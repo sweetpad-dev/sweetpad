@@ -1,10 +1,43 @@
 import XCTest
 import UIKit
 import ValueKit
+import SwiftUI
+import SQLite3
+import Darwin
 @testable import ParityProbe
 
 final class ParityProbeTests: XCTestCase {
     private var expected: [String: String] { ProcessInfo.processInfo.environment }
+
+    func testLocalizedShortcutModelsArePackaged() throws {
+        for locale in ["en", "fr", "ar", "ku-TR"] {
+            let folder = Bundle.main.bundleURL.appendingPathComponent("\(locale).lproj/nlu.appintents")
+            XCTAssertFalse(try Data(contentsOf: folder.appendingPathComponent("nlu.lzfse")).isEmpty)
+            let markers = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension == "version" }
+            XCTAssertEqual(markers.count, 1)
+            XCTAssertEqual(try Data(contentsOf: XCTUnwrap(markers.first)), Data([0]))
+        }
+    }
+
+    @MainActor
+    func testSystemFrameworkBindingsAndSQLite() throws {
+        let host = UIHostingController(rootView: Text("Linking probe").fixedSize())
+        XCTAssertNotNil(host.view)
+        let location = try XCTUnwrap(dlopen("/System/Library/Frameworks/CoreLocation.framework/CoreLocation", RTLD_LAZY | RTLD_LOCAL))
+        defer { dlclose(location) }
+        let accuracy = try XCTUnwrap(dlsym(location, "kCLLocationAccuracyBest"))
+        XCTAssertEqual(accuracy.assumingMemoryBound(to: Double.self).pointee, -1)
+        XCTAssertEqual(Darwin.noErr, 0)
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(":memory:", &database), SQLITE_OK)
+        defer { sqlite3_close(database) }
+        var statement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(database, "SELECT 6 * 7", -1, &statement, nil), SQLITE_OK)
+        defer { sqlite3_finalize(statement) }
+        XCTAssertEqual(sqlite3_step(statement), SQLITE_ROW)
+        XCTAssertEqual(sqlite3_column_int64(statement, 0), 42)
+    }
 
     @MainActor
     func testCompiledValuesAndOrigin() async {

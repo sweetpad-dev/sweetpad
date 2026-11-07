@@ -71,6 +71,9 @@ fn main() -> ExitCode {
     if name == Some(std::ffi::OsStr::new("appintentsnltrainingprocessor")) {
         return sweetpad_cli::cli::appintents::training_main(&args);
     }
+    if name == Some(std::ffi::OsStr::new("appshortcutstringsprocessor")) {
+        return sweetpad_cli::cli::appintents::validation_main(&args);
+    }
     // Run as `codesign`, it signs what a Linux build makes for a device; as
     // `derq`, it writes a target's entitlements in DER; and as
     // `sweetpad-provisioning`, it answers Swift Build's provisioning

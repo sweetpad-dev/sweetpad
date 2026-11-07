@@ -673,6 +673,7 @@ fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
         "intentbuilderc",
         "appintentsmetadataprocessor",
         "appintentsnltrainingprocessor",
+        "appshortcutstringsprocessor",
         "codesign",
         "derq",
         super::codesign::provisioning::TOOL,

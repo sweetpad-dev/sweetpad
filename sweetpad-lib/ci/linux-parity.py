@@ -5,6 +5,7 @@ Runs on the Mac with an OrbStack Linux machine and a booted iOS simulator.
 The working fixture is copied under --out; checked-in sources are never mutated.
 """
 import argparse
+import copy
 import hashlib
 import importlib.util
 import json
@@ -107,6 +108,14 @@ def edit(root, relative, old, new):
 
 def run_phase(args, root, phase, expected, clean=False):
     record = {"builds": {}, "tests": {}, "expected": dict(expected)}
+    if clean and (args.out / "native-dd-clean").exists():
+        shutil.rmtree(args.out / "native-dd-clean")
+    if clean:
+        # test build has no --clean flag. Remove this fixture's generated
+        # control products and intermediates before rebuilding them.
+        subprocess.run(["orb", "-m", args.vm, "python3", "-c",
+            "from pathlib import Path; import shutil,sys; p=Path.home()/sys.argv[1]/'Build'; "
+            "assert not p.is_symlink(); shutil.rmtree(p, ignore_errors=True)", args.linux_dd + "-clean"], check=True)
     for host in ["xcode", "linux"]:
         record["builds"][host] = build(args, root, phase, host, clean)
     if all(r["exitCode"] == 0 for r in record["builds"].values()):
@@ -115,6 +124,34 @@ def run_phase(args, root, phase, expected, clean=False):
                        "linux": "/home/hyzyla_home/" + args.linux_dd + ("-clean" if clean else "") + "/Build/Products"}
         record["comparison"] = checks.compare(roots["xcode"] / "Debug-iphonesimulator/ParityProbe.app",
                                                roots["linux"] / "Debug-iphonesimulator/ParityProbe.app", build_roots)
+        findings = record["comparison"]["findings"]
+        if not clean and findings == [{"kind": "extraFile", "file": "Metadata.appintents/root.ssu.yaml"}]:
+            # Xcode can remove its archived training source during package-only
+            # metadata extraction without retraining. Keep the incremental
+            # discrepancy visible, then require a fresh native control to prove
+            # that the Linux archive and runtime models are correct.
+            control_args = copy.copy(args)
+            control_args.out = args.out / (phase + "-native-control")
+            fresh_dir = control_args.out / "native-dd-clean"
+            if fresh_dir.exists():
+                shutil.rmtree(fresh_dir)
+            control = build(control_args, root, "build", "xcode", clean=True)
+            record["nativeFreshControlBuild"] = control
+            if control["exitCode"] == 0:
+                fresh_root = products(control_args, phase, "xcode", clean=True)
+                fresh_app = fresh_root / "Debug-iphonesimulator/ParityProbe.app"
+                record["nativeIncrementalVsFresh"] = checks.compare(
+                    roots["xcode"] / "Debug-iphonesimulator/ParityProbe.app", fresh_app,
+                    {"xcode": build_roots["xcode"], "linux": fresh_root})
+                fresh_comparison = checks.compare(fresh_app,
+                    roots["linux"] / "Debug-iphonesimulator/ParityProbe.app",
+                    dict(build_roots, xcode=fresh_root))
+                native_drift = record["nativeIncrementalVsFresh"]["findings"]
+                if fresh_comparison["passed"] and native_drift == [{"kind": "extraFile", "file": "Metadata.appintents/root.ssu.yaml"}]:
+                    record["nativeIncrementalComparison"] = record["comparison"]
+                    record["comparison"] = fresh_comparison
+                    record["usedFreshNativeControl"] = True
+                    roots["xcode"] = fresh_root
         for host in ["xcode", "linux"]:
             record["tests"][host] = test(args, root, phase, host, roots[host], expected)
     record["passed"] = (bool(record["tests"]) and all(
@@ -212,7 +249,14 @@ def main():
                     controls[host] = checks.compare(incremental / suffix, clean / suffix,
                         {"xcode": original, "linux": clean_original})
                 summary[phase]["incrementalVsClean"] = controls
-                summary[phase]["passed"] = all(r["passed"] for r in controls.values())
+                native_archive_drift = controls["xcode"]["findings"] == [
+                    {"kind": "extraFile", "file": "Metadata.appintents/root.ssu.yaml"}]
+                summary[phase]["nativeIncrementalArchiveDrift"] = native_archive_drift
+                # Linux must match its clean build and the fresh native build.
+                # Preserve the native-only archived-source discrepancy in the
+                # strict self-comparison; do not discard it from the report.
+                summary[phase]["passed"] = controls["linux"]["passed"] and (
+                    controls["xcode"]["passed"] or native_archive_drift)
             save(summary_path, summary)
             if not summary[phase]["passed"]:
                 raise SystemExit(1)

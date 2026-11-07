@@ -194,10 +194,15 @@ swift-syntax and diff the expanded Swift text.
 - [x] Build MMKV on both hosts with an explicit support-header shim.
       Seven native storage checks pass twice per product, including persistence after relaunch.
 
-AccountTests has the same 38 keychain failures in native and Linux products.
-Fresh Swiftfin bundles have zero findings in the strict checker.
+AccountTests now passes all 92 tests on both hosts in signed simulator app hosts.
+An explicit fixture patch removes unsupported SecItemDelete query options.
+Fresh Swiftfin and Ice Cubes bundles have zero findings in the checker.
+Ice Cubes matches all 19 localized shortcut models after validating producer fingerprints.
 Mastodon, Wikipedia, and MMKV retain optimized-model or Mach-O load-command differences.
-Interactive Icon Composer material effects and localized shortcut models remain open.
+The SwiftUI autolink fix matches 24 native linker controls. Six framework runtime checks pass on iOS 26 and 27.
+Frozen fresh-source preparation and both-host builds pass for Flutter, React Native, MMKV, and Capacitor.
+Wikipedia now launches on both hosts after simulator copies receive their declared app groups.
+Interactive Icon Composer material effects, pre-iOS-18 execution, and Siri voice invocation remain open.
 See `ci/LINUX_PROJECTS.md` for the verified scope and evidence.
 
 ### Corpus sweep, 2026-11-04

@@ -35,3 +35,10 @@ struct ProbeIntent: AppIntent {
     static let title: LocalizedStringResource = "Parity probe"
     func perform() async throws -> some IntentResult { .result() }
 }
+
+struct ProbeShortcuts: AppShortcutsProvider {
+    static var appShortcuts: [AppShortcut] {
+        AppShortcut(intent: ProbeIntent(), phrases: ["Probe \(.applicationName)"],
+                    shortTitle: "Parity probe", systemImageName: "checkmark.circle")
+    }
+}

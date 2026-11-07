@@ -1,0 +1,29 @@
+{
+  "name": "ReactNativeDependencies",
+  "version": "0.85.3",
+  "summary": "React Native Dependencies",
+  "description": "ReactNativeDependencies is a podspec that contains all the third-party dependencies of React Native.",
+  "homepage": "https://github.com/facebook/react-native",
+  "license": "MIT",
+  "authors": "meta",
+  "platforms": {
+    "ios": "15.1"
+  },
+  "user_target_xcconfig": {
+    "WARNING_CFLAGS": "-Wno-comma -Wno-shorten-64-to-32"
+  },
+  "source": {
+    "http": "file://@SOURCE_ROOT@/template/ios/Pods/ReactNativeDependencies-artifacts/reactnative-dependencies-0.85.3-debug.tar.gz"
+  },
+  "preserve_paths": "**/*.*",
+  "vendored_frameworks": "framework/packages/react-native/ReactNativeDependencies.xcframework",
+  "header_mappings_dir": "Headers",
+  "source_files": "Headers/**/*.{h,hpp}",
+  "prepare_command": "CURRENT_PATH=$(pwd)\nmkdir -p Headers\nXCFRAMEWORK_PATH=$(find \"$CURRENT_PATH\" -type d -name \"ReactNativeDependencies.xcframework\")\nHEADERS_PATH=$(find \"$XCFRAMEWORK_PATH\" -type d -name \"Headers\" | head -n 1)\n\n# Check if XCFRAMEWORK_PATH is empty\nif [ -z \"$XCFRAMEWORK_PATH\" ]; then\n  echo \"ERROR: XCFRAMEWORK_PATH is empty.\"\n  exit 0\nfi\n\n# Check if HEADERS_PATH is empty\nif [ -z \"$HEADERS_PATH\" ]; then\n  echo \"ERROR: HEADERS_PATH is empty.\"\n  exit 0\nfi\n\ncp -R \"$HEADERS_PATH/.\" Headers\nmkdir -p framework/packages/react-native\ncp -R \"$XCFRAMEWORK_PATH/../.\" framework/packages/react-native/\nfind \"$XCFRAMEWORK_PATH/..\" -type f -exec rm {} +\nfind \"$CURRENT_PATH\" -type d -empty -delete",
+  "script_phases": {
+    "name": "[RNDeps] Replace React Native Dependencies for the right configuration, if needed",
+    "execution_position": "before_compile",
+    "script": "      . \"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\n\n      CONFIG=\"Release\"\n      if echo $GCC_PREPROCESSOR_DEFINITIONS | grep -q \"DEBUG=1\"; then\n        CONFIG=\"Debug\"\n      fi\n\n      \"$NODE_BINARY\" \"$REACT_NATIVE_PATH/third-party-podspecs/replace_dependencies_version.js\" -c \"$CONFIG\" -r \"0.85.3\" -p \"$PODS_ROOT\"\n",
+    "always_out_of_date": "1"
+  }
+}
