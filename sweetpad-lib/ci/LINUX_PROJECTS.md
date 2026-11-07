@@ -174,10 +174,86 @@ It installs the app with `devicectl` and runs an independent device manifest wit
 The Mac does not recompile these products.
 The runner preserves signature results, executable hashes, test results, and process evidence.
 
-The matched-source bundle comparison retains two debug-symbol differences.
-The test dSYM has a different bundle identifier and an additional XCTest Swift interface.
-The signed Linux products also contain two provisioning profiles that the unsigned native control does not contain.
-App resources and decoded shortcut models match.
+The matched-source unsigned bundle comparison now has zero findings.
+The dsymutil adapter restores the owning bundle's identifier and version metadata.
+It removes a duplicate SDK Swift interface only when its recorded source is inside the imported SDK and its bytes match.
+Application interfaces remain in the dSYM. The DWARF hash remains unchanged, and LLDB resolves the test source lines.
+Signed products also contain provisioning profiles, which the unsigned native control does not contain.
+
+Seven larger app fixtures also pass two launches on the same iPhone.
+Apple signature verification passes for each complete app. Exported executable hashes remain unchanged.
+Screenshots and process checks confirm startup; a launch command alone does not establish a pass.
+
+| Device fixture | Configuration | Observed result |
+| --- | --- | --- |
+| Wikipedia | Debug | Onboarding text and globe render |
+| Mastodon | Debug | Onboarding screen and artwork render |
+| Swiftfin | Debug | Server connection screen renders |
+| React Native community template | Release | Welcome screen renders with Hermes |
+| Ionic conference app | Release | Welcome screen renders |
+| React Native MMKV | Release | Seven storage checks pass twice; the launch counter and stored string persist |
+| Flutter platform_design | Release | Songs detail screen renders with Linux-generated iOS AOT code |
+
+All fixtures reuse one existing certificate and wildcard development profile.
+No Apple Developer account resources were created or changed.
+Wikipedia and Mastodon use explicit fixture patches for app-local storage and omit their embedded extensions.
+Unsupported capabilities are absent from those copies. Swiftfin omits its WiFi-information entitlement.
+These checks do not validate App Groups, shared keychain access, push, payments, associated domains, extensions, online login, or server playback.
+The original corpus source trees remain intact. Mac device transport performs installation and process checks.
+
+The larger builds exposed three additional signing gaps.
+The signer now supports the requirements inspection used when copying Swift runtime libraries.
+Provisioning leaves Linux host macros unsigned, preventing a Darwin linker flag from reaching their ELF link commands.
+Signing an executable inside its owning bundle now binds that bundle's identifier and resource seal, as Apple's signer does.
+Native reference tests cover these behaviors, including signing through an executable path.
+The fixture tests use temporary public-certificate keychains and preserve the user's login keychain.
+
+React Native fixtures expose shared dependencies through Metro and select the packaged Linux Hermes compiler.
+That compiler is x86_64 and runs through OrbStack's Linux binary translation in this arm64 environment.
+Private CocoaPods support scripts select `codesign` through PATH instead of `/usr/bin/codesign`.
+The original dependencies remain unchanged. Release bundles need no Metro server during device checks.
+
+Flutter's shipped iOS snapshot compiler is a Mac executable.
+OrbStack can run it through its binary-format bridge, which does not establish Linux AOT compilation.
+`linux-flutter-snapshot.py` instead builds the exact Flutter-pinned Dart source for a Linux ARM64 host and iOS ARM64 code generation.
+The recipe builds only `gen_snapshot` in product mode with uncompressed pointers.
+The fixture wrapper selects that ELF compiler through a private mount and preserves the installed Flutter SDK.
+The app uses the unchanged prebuilt Flutter engine. The device run verifies that this engine accepts the generated AOT snapshot.
+Flutter build caches are private to the fixture, so they cannot reuse a Mac-generated application snapshot.
+
+Build the compiler in the Linux VM:
+
+```bash
+python3 sweetpad-lib/ci/linux-flutter-snapshot.py \
+  --flutter-root "$HOME/src/flutter" \
+  --clang-root "$HOME/swift/swift-6.4.2-RELEASE/usr" \
+  --out "$HOME/src/flutter-ios-snapshot" --jobs 4
+```
+
+Prepare the isolated fixtures on the Mac:
+
+```bash
+python3 -B sweetpad-lib/ci/linux-device-projects.py \
+  --existing-profile --team YOUR_TEAM_ID \
+  --flutter-ios-snapshot /home/USER/src/flutter-ios-snapshot/out/SweetpadIOS/gen_snapshot_product \
+  --out /path/to/fresh-device-projects
+```
+
+The generated plan records each source, scheme, configuration, bundle identifier, and Linux setting.
+Build each selected entry on Linux using the existing signing environment described in the CLI guide.
+Then run the device checker on the Mac:
+
+```bash
+python3 -B sweetpad-lib/ci/linux-device-project-checks.py \
+  --plan /path/to/fresh-device-projects/plan.json \
+  --build-result /path/to/signed-build-result.json \
+  --only react-native-mmkv --device CONNECTED_IPHONE_UDID \
+  --out /path/to/fresh-runtime-evidence --screenshots
+```
+
+The MMKV checker also reads only the isolated fixture's storage file and checks its persisted probe reports.
+Current local evidence is under `validation/device-next/summary.json`.
+The compiler receipt, build log, signatures, per-launch process checks, and screenshots remain beside it.
 
 This run uses Mac device transport. Direct Linux device transport remains unverified.
 Physical-device checks for extensions, widgets, and the larger corpus apps remain unverified.

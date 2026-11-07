@@ -41,6 +41,10 @@ Most of what an iOS or macOS app is made of builds the way Xcode builds it:
 The real-project suite includes Mastodon, Swiftfin, Wikipedia, Flutter, React Native, and Capacitor.
 See the repository's `sweetpad-lib/ci/LINUX_PROJECTS.md` for source pins, results, and setup requirements.
 Framework projects need their generated dependencies before compilation.
+All seven larger fixtures pass two launches on an iPhone 13.
+Wikipedia and Mastodon use explicit app-local startup fixtures with omitted extensions and unsupported capabilities.
+The checks reuse an existing wildcard profile and do not validate those capabilities.
+Flutter Release uses a Linux-hosted iOS AOT compiler built from pinned Dart sources; its engine remains a prebuilt dependency.
 
 ## What stays on a Mac
 

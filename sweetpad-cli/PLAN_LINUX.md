@@ -20,7 +20,10 @@ and the Capacitor conference app build on both hosts. All except Wikipedia rende
 in the simulator; Wikipedia exits with the same data-store exception in both controls.
 The MMKV example also builds on both hosts with an explicit debug-thunk shim and scene-lifecycle fixture patch.
 Both products pass seven storage checks twice, including persistence across process relaunch.
-Release cleanup remains deferred, and physical-device checks were skipped as requested.
+Release cleanup remains deferred. Physical-device checks now pass for the seven larger app fixtures.
+Wikipedia and Mastodon use isolated app-local startup fixtures without extensions or unsupported capabilities.
+All checks reuse an existing certificate and wildcard profile. No account resources were created.
+Flutter Release uses an iOS AOT compiler built from pinned Dart sources on Linux.
 
 Items marked *(optional)* can wait until a project needs them.
 
@@ -822,8 +825,10 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       iOS 27.0.1, signed with an Apple Development identity. All seven
       app-hosted tests pass with a Linux compilation marker. Apple signature
       verification passes. Exported executable hashes remain unchanged.
-      This run uses Mac device transport. Device checks for extensions,
-      widgets, and the larger corpus apps remain unverified.
+      This run uses Mac device transport. The seven larger app fixtures also
+      pass two launches each; MMKV passes seven storage checks twice. Limited
+      Wikipedia and Mastodon copies omit extensions and use app-local storage.
+      App Groups, push, payments, widgets and extensions remain unverified on hardware.
 - [x] Linux device list/install/uninstall/launch/log transport through
       pymobiledevice3. Tested argument construction against version 11.50.0.
       Direct Linux physical-device transport remains unverified. Readiness

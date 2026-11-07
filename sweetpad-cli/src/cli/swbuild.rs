@@ -590,6 +590,7 @@ fn scope_darwin_settings(overrides: &mut BTreeMap<String, String>, sdk: &str) {
         "LIBRARY_SEARCH_PATHS",
         "SYSTEM_HEADER_SEARCH_PATHS",
         "LIBTOOL",
+        "DSYMUTIL",
         "CODESIGN",
         "DONT_RUN_SWIFT_STDLIB_TOOL",
         "SWIFT_STDLIB_TOOL_TOOLCHAINS",
@@ -665,6 +666,10 @@ fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
     };
     let exe = std::env::current_exe().map_err(fail)?;
     std::fs::create_dir_all(dir).map_err(fail)?;
+    let dsymutil = linker
+        .and_then(Path::parent)
+        .map(|p| p.join("dsymutil"))
+        .filter(|p| p.is_file());
     let tools = [
         "actool",
         "ibtool",
@@ -682,7 +687,12 @@ fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
     .iter()
     .chain(super::darwin_tools::TOOLS)
     .map(|tool| (*tool, exe.as_path()))
-    .chain(linker.map(|l| (super::darwin_tools::SDK_LINKER, l)));
+    .chain(linker.map(|l| (super::darwin_tools::SDK_LINKER, l)))
+    .chain(
+        dsymutil
+            .as_deref()
+            .map(|p| (super::darwin_tools::SDK_DSYMUTIL, p)),
+    );
     for (name, target) in tools {
         let path = dir.join(name);
         let _ = std::fs::remove_file(&path);
@@ -1063,6 +1073,7 @@ impl DarwinSdk {
             ),
             ("ARCHS", arch.to_string()),
             ("LIBTOOL", "llvm-libtool-darwin".to_string()),
+            ("DSYMUTIL", "dsymutil".to_string()),
             ("ONLY_ACTIVE_ARCH", "YES".to_string()),
             (
                 "SWIFT_SDK_TOOLSETS",

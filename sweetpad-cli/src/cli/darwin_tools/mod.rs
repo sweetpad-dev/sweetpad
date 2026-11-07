@@ -23,6 +23,7 @@
 
 mod copypng;
 mod ditto;
+mod dsymutil;
 mod embedded_binary;
 mod extract_loc_strings;
 mod ld;
@@ -44,11 +45,13 @@ pub const TOOLS: &[&str] = &[
     "xcrun",
     "sweetpad-chmod",
     "extractLocStrings",
+    "dsymutil",
 ];
 
 /// The name of the link to the Darwin SDK's own linker, beside the stand-in
 /// for it, which runs it (see [`ld`]).
 pub const SDK_LINKER: &str = "sdk-ld64.lld";
+pub const SDK_DSYMUTIL: &str = "sdk-dsymutil";
 
 /// Run as `tool`, or `None` when this module doesn't stand in for it.
 #[must_use]
@@ -58,6 +61,7 @@ pub fn main(tool: &str, args: &[String]) -> Option<ExitCode> {
         "ditto" => ditto::main(args),
         "embeddedBinaryValidationUtility" => return Some(embedded_binary::main(args)),
         "ld64.lld" => return Some(ld::main(args)),
+        "dsymutil" => return Some(dsymutil::main(args)),
         "lipo" => lipo::main(args),
         "strip" => strip::main(args),
         "extractLocStrings" => extract_loc_strings::main(args),
