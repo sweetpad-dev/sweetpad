@@ -28,6 +28,25 @@ Flutter Release uses an iOS AOT compiler built from pinned Dart sources on Linux
 The latest iOS 27.2 checks pass four automatic test-plan executions and fresh MMKV, Flutter, and React Native launches.
 Direct Linux Wi-Fi installation, launch, process checks, and startup logs also pass through RemotePairing without a Mac relay.
 
+## ARM64 release gate
+
+The release archive targets Ubuntu 24.04 ARM64 on Apple hardware.
+It contains the CLI, DAP alias, checksums, an installer, a sample app, licenses, and public setup sources.
+Apple SDKs, signing material, and build caches remain private.
+A clean Ubuntu container validates installation without Rust, a developer home, or a source checkout.
+A separate isolated SDK check builds the installed sample from an empty home and fresh DerivedData.
+It exposes only the explicit read-only compiler, build engine, macro binary, and private SDK prerequisites.
+The macro launcher restores Swift runtime lookup after the compiler strips PATH and LD_LIBRARY_PATH.
+
+Pull requests run ARM64 release packaging and the clean-container check on a hosted runner.
+Tag releases publish both macOS and Linux archives only after their packaging jobs pass.
+Manual release runs can select only Linux and invoke the private SDK integration workflow.
+That workflow requires a provisioned Apple-hardware runner and never uploads SDK or signing files.
+A dry run does not publish a release or update Homebrew.
+The release remains experimental. Apple test execution and simulator operation require macOS.
+Distribution export and Linux device debugging remain outside this release.
+Optional `.omo` work and dependency-size cleanup remain deferred.
+
 Items marked *(optional)* can wait until a project needs them.
 
 ## Engine

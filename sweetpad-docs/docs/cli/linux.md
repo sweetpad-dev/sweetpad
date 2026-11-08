@@ -16,8 +16,8 @@ sweetpad build --scheme MyApp --destination "generic/platform=iOS Simulator"
 ```
 
 :::warning
-Linux builds are experimental. The Homebrew release of sweetpad is macOS only, so on Linux you
-build sweetpad from source, as described below.
+Linux builds are experimental. Release archives target Ubuntu 24.04 ARM64 on Apple hardware.
+Homebrew remains macOS only. Other Linux architectures require a source build and remain outside the release support scope.
 :::
 
 ## What builds
@@ -58,9 +58,9 @@ Some things need macOS itself, or an Apple tool that exists only for macOS:
 
 Other limits include advanced mapping expressions, unsupported App Intents schemas,
 distribution IPA export, and some Swift/C++ interoperability cases.
-The tested MMKV example needs an explicit fixture shim for Linux Swift's debug-only C++ thunk emission.
-Both products pass storage checks, including persistence after relaunch.
-See `sweetpad-lib/ci/LINUX_PROJECTS.md` for the pinned patch and dependency preparation.
+The fresh MMKV example builds without its former C++ shim.
+Its device checks pass 14 storage assertions across two launches, including persistence after relaunch.
+See `sweetpad-lib/ci/LINUX_PROJECTS.md` for source pins and dependency preparation.
 
 iOS Icon Composer support produces static light, dark, and tinted appearances.
 Interactive glass lighting and native material effects remain unsupported.
@@ -72,6 +72,47 @@ A build that needs one of these fails with an error, the same way a broken proje
 Current Xcode and Swift Build reject deprecated WatchKit extension products.
 Use a modern single-target watchOS app. The new platform probes verify compilation and linking;
 runtime and device-signing checks for tvOS, watchOS, and visionOS remain unverified.
+
+## Install the ARM64 release archive
+
+Download the `linux-arm64` archive and its `.sha256` file from a [CLI release](https://github.com/sweetpad-dev/sweetpad/releases).
+The archive contains the CLI, an installer, a sample project, and public toolchain setup sources.
+It contains no Apple SDKs, signing material, or build caches.
+
+Install the runtime dependencies:
+
+```bash
+sudo apt-get update
+sudo apt-get install ca-certificates libssl3t64 libgcc-s1
+```
+
+Verify and extract the archive into an empty directory:
+
+```bash
+sha256sum -c sweetpad-cli-VERSION-linux-arm64.tar.gz.sha256
+mkdir sweetpad-install
+tar -xzf sweetpad-cli-VERSION-linux-arm64.tar.gz -C sweetpad-install
+bash sweetpad-install/install.sh
+export PATH="$HOME/.local/bin:$PATH"
+sweetpad --version
+```
+
+The installer accepts `--prefix /absolute/path`. The default prefix is `~/.local`.
+The prebuilt CLI requires no Rust compiler or Sweetpad checkout.
+Apple app compilation requires the separate toolchain and your own Xcode SDKs.
+
+On an ARM64 Linux host, prepare the toolchain from the installed sources:
+
+```bash
+SWEETPAD_SKIP_RUST=1 XCODE_APP=/path/to/Xcode.app \
+  bash "$HOME/.local/share/sweetpad/setup/sweetpad-lib/ci/linux-setup.sh"
+export PATH="$HOME/.local/bin:$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+```
+
+The packaged sources include pinned patches, macro sources, and their licenses.
+The macro launcher loads host Swift libraries through an adjacent toolchain link.
+After a toolchain move, rerun setup to refresh that link.
+A CLI installation alone cannot run an Apple simulator or compile an app without these prerequisites.
 
 ## Setting up a Linux machine
 
@@ -85,7 +126,7 @@ x86_64 release. The script installs:
 - Swift back-deployment libraries from your Xcode for apps with older deployment targets;
 - swbuild, Swift Build's command-line driver, built from source with a small patch from sweetpad;
 - the plugin sweetpad uses for Apple's macros;
-- Rust, to build sweetpad itself.
+- Rust, to build sweetpad itself, unless `SWEETPAD_SKIP_RUST=1`.
 
 The current setup pins Swift 6.4.2 and Swift Build 6.4.0 separately.
 It also installs Bash, bubblewrap, rsync, and LLVM's Darwin libtool.
@@ -124,7 +165,7 @@ Apple's SDK license ties the SDKs to Apple-branded hardware. The script only cop
 the Xcode you point it at; it never downloads or redistributes them.
 :::
 
-### Building sweetpad
+### Building sweetpad from source
 
 The script puts swbuild and the macro plugin in `~/bin`, and sweetpad looks for both on your
 `PATH`. Build sweetpad from the same checkout, inside the Linux machine. In OrbStack, open a
@@ -246,15 +287,39 @@ Use `--no-export` to create an archive without an IPA.
 
 ## Device transport
 
-Linux device discovery, installation, removal, launch, and logs use `pymobiledevice3` on `PATH`.
-The command integration was checked against version 11.50.0.
-Install it in a Python virtual environment and expose its executable on `PATH`.
-USB access also needs `usbmuxd`, a paired device, Developer Mode, and an unlocked device.
-Newer iOS developer services can also need a pymobiledevice3 tunnel.
+Linux supports physical iPhone USB and direct Wi-Fi transport through `pymobiledevice3==11.50.0`.
+Both paths pass discovery, installation, launch, scoped startup logs, stop, uninstall, and reinstallation on an iPhone 13 with iOS 27.2.
+The checks use Linux transport with no Mac relay or app recompilation.
 
-Seven Linux-built app fixtures passed iPhone startup checks through macOS transport.
-Linux USB and tunnel transport remain unverified. Linux readiness checks, process inspection,
-and process termination are not implemented. Simulator operations still require a Mac.
+Create the pinned Python environment:
+
+```bash
+uv venv --python 3.12 "$HOME/.local/share/sweetpad/device-tools"
+uv pip install --python "$HOME/.local/share/sweetpad/device-tools/bin/python" \
+  pymobiledevice3==11.50.0
+export SWEETPAD_DEVICE_PYTHON="$HOME/.local/share/sweetpad/device-tools/bin/python"
+```
+
+USB requires local `usbmuxd`, a trusted and unlocked device, and Developer Mode.
+For an OrbStack VM, attach the selected iPhone with `orb usb attach IPHONE_USB_ID -m sweetpad-linux`.
+Detach it after use. Passthrough gives the Linux VM exclusive USB ownership.
+
+With trusted USB available, create an isolated Wi-Fi record:
+
+```bash
+sweetpad device pair-network IPHONE_UDID \
+  --out "$HOME/.local/share/sweetpad/iphone-network" --json --non-interactive
+export SWEETPAD_DEVICE_NETWORK_CONFIG="$HOME/.local/share/sweetpad/iphone-network/devices.json"
+sweetpad device list --json --non-interactive
+```
+
+The pairing directory contains private credentials. The command preserves existing pairing records and rejects an existing output directory.
+Automatic discovery uses multicast advertisements or the system DNS-SD resolver.
+The validated OrbStack bridge uses DNS-SD because raw LAN multicast does not cross the bridge.
+Both hosts must share a network that permits connections to the phone.
+
+Run `sweetpad help linux-devices` for pairing, explicit network endpoints, app commands, and bounded logs.
+Linux readiness inspection and device debugging remain unsupported. Simulator operations require a Mac.
 
 ## App Intents
 
@@ -281,6 +346,9 @@ products launch in the simulator. Voice invocation through Siri remains unverifi
 
 | Variable                          | What it sets                                                              |
 | --------------------------------- | ------------------------------------------------------------------------- |
+| `SWEETPAD_SKIP_RUST`            | Setup only: `1` skips Rust for the prebuilt CLI.                         |
+| `SWEETPAD_DEVICE_PYTHON`        | Python executable with the pinned modern device adapter.               |
+| `SWEETPAD_DEVICE_NETWORK_CONFIG` | Private JSON configuration for direct Wi-Fi devices.                   |
 | `SWEETPAD_DARWIN_SDK`             | The Darwin SDK to build against, if it isn't where xtool installs it.     |
 | `SWEETPAD_SWBUILD`                | The swbuild to run, in place of the one on `PATH`.                        |
 | `SWEETPAD_MACROS`                 | The macro plugin, in place of the one on `PATH`.                          |
@@ -288,7 +356,7 @@ products launch in the simulator. Voice invocation through Siri remains unverifi
 | `SWEETPAD_CODE_SIGN_P12_PASSWORD` | That file's password.                                                     |
 | `SWEETPAD_PROVISIONING_PROFILES`  | A folder of provisioning profiles, in place of Xcode's folders.           |
 
-`sweetpad help environment` lists them too.
+`sweetpad help environment` lists runtime variables. `SWEETPAD_SKIP_RUST` applies only to the setup script.
 
 ## How it works
 

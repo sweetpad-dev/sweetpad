@@ -1,19 +1,62 @@
 name: Linux Apple SDK integration
 on:
   workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: Optional run with a verified cli-tarball-linux-arm64 artifact
+        type: string
+        default: ''
+      runner_label:
+        description: Label of the provisioned private SDK runner
+        type: string
+        default: sweetpad-linux
+  workflow_call:
+    inputs:
+      artifact_run_id:
+        type: string
+        default: ''
+      runner_label:
+        type: string
+        default: sweetpad-linux
 permissions:
   contents: read
+  actions: read
 jobs:
   hybrid-builds:
     # The Apple SDK stays on a provisioned Apple-hardware Linux runner.
     # Never upload or distribute it as a workflow artifact.
-    runs-on: [self-hosted, Linux, ARM64, sweetpad-linux]
+    runs-on: [self-hosted, Linux, ARM64, '${{ inputs.runner_label }}']
     timeout-minutes: 120
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Download verified ARM64 package
+        if: inputs.artifact_run_id != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: cli-tarball-linux-arm64
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/release-package
+      - name: Validate package with isolated home and private SDK
+        if: inputs.artifact_run_id != ''
+        env:
+          PACKAGE_ROOT: ${{ runner.temp }}/release-package
+        run: |
+          export PATH="$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+          MACROS="$HOME/bin/sweetpad-macros.bin"
+          if [ ! -e "$MACROS" ]; then MACROS="$HOME/bin/sweetpad-macros"; fi
+          python3 sweetpad-cli/ci/check-linux-sdk-install.py \
+            --archive "$(find "$PACKAGE_ROOT" -maxdepth 1 -name '*.tar.gz')" \
+            --out "$RUNNER_TEMP/sdk-package-install" \
+            --swift "$HOME/swift/swift-6.4.2-RELEASE" \
+            --swbuild-products "$HOME/src/swift-build/.build/out/Products/Release-linux-aarch64" \
+            --macros "$(readlink -f "$MACROS")" \
+            --sdk "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle"
       - name: Build CLI
         run: |
           export PATH="$HOME/.cargo/bin:$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
@@ -70,4 +113,7 @@ jobs:
           path: |
             ${{ runner.temp }}/linux-clean/summary.json
             ${{ runner.temp }}/linux-clean/reports/
+            ${{ runner.temp }}/sdk-package-install/summary.json
+            ${{ runner.temp }}/sdk-package-install/work/build.json
+            ${{ runner.temp }}/sdk-package-install/sandbox.stderr
           if-no-files-found: error

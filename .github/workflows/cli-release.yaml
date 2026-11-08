@@ -5,6 +5,20 @@ on:
   # Manual runs build + sign + notarize without publishing, since the release and
   # tap-bump steps below are gated on a tag ref.
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platforms to build without publishing
+        type: choice
+        options: [all, linux-arm64]
+        default: all
+      validate_sdk:
+        description: Validate the ARM64 package with a private Apple SDK runner
+        type: boolean
+        default: false
+      sdk_runner_label:
+        description: Label of the provisioned private SDK runner
+        type: string
+        default: sweetpad-linux
 
 permissions:
   contents: write
@@ -14,7 +28,24 @@ permissions:
 
 name: Release CLI
 jobs:
+  linux-arm64:
+    name: Linux ARM64 release package
+    uses: ./.github/workflows/linux-arm64-package.yaml
+  sdk-validation:
+    name: Private SDK install validation
+    if: github.event_name == 'workflow_dispatch' && inputs.validate_sdk
+    needs: linux-arm64
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/linux-apple-build.yaml
+    with:
+      artifact_run_id: ${{ github.run_id }}
+      runner_label: ${{ inputs.sdk_runner_label }}
   release:
+    if: inputs.platform != 'linux-arm64'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     name: Build, sign, notarize CLI (macOS)
     runs-on: macos-latest
     steps:
@@ -33,6 +64,7 @@ jobs:
         run: rustup show
 
       - name: Resolve version
+        id: version
         # On a cli-v* tag the version is the tag; manual runs get a -dryrun suffix
         # off the crate version and skip publishing.
         run: |
@@ -52,6 +84,7 @@ jobs:
             VERSION="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)-dryrun"
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "TARBALL=sweetpad-cli-$VERSION-macos-universal.tar.gz" >> "$GITHUB_ENV"
           echo "Building sweetpad CLI $VERSION"
 
@@ -119,7 +152,7 @@ jobs:
           tar -C dist -czf "$TARBALL" sweetpad sweetpad-dap
           echo "SHA256=$(shasum -a 256 "$TARBALL" | cut -d' ' -f1)" >> "$GITHUB_ENV"
           tar -tvzf "$TARBALL"
-          shasum -a 256 "$TARBALL"
+          shasum -a 256 "$TARBALL" > "$TARBALL.sha256"
 
       - name: Attest build provenance
         # mise verifies this attestation when it installs from the release;
@@ -136,9 +169,35 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: cli-tarball
-          path: "*.tar.gz"
+          path: |
+            *.tar.gz
+            *.sha256
           if-no-files-found: error
 
+  publish:
+    name: Publish verified macOS and Linux packages
+    needs: [release, linux-arm64]
+    if: startsWith(github.ref, 'refs/tags/cli-v')
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+      TARBALL: sweetpad-cli-${{ needs.release.outputs.version }}-macos-universal.tar.gz
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: cli-tarball*
+          merge-multiple: true
+      - name: Verify all package checksums
+        run: |
+          for checksum in *.sha256; do sha256sum -c "$checksum"; done
+          echo "SHA256=$(sha256sum "$TARBALL" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+      - name: Attest release archives
+        uses: actions/attest@v4
+        with:
+          subject-path: '*.tar.gz'
       - name: Build release notes
         # Commit subjects over the tag range, scoped to the paths the CLI ships
         # from so unrelated monorepo work (docs site, extension) stays out.
@@ -155,6 +214,9 @@ jobs:
             echo 'Or with [mise](https://mise.jdx.dev/):'
             echo
             echo "    mise use -g 'github:sweetpad-dev/sweetpad[version_prefix=cli-v]'"
+            echo
+            echo 'Linux ARM64 (experimental, Ubuntu 24.04): download the linux-arm64 tarball and its .sha256 file, verify it, then run the included install.sh.'
+            echo 'The archive includes public toolchain setup sources. Apple SDKs and signing material are supplied separately.'
             echo
             echo '## Changes'
             echo
@@ -176,7 +238,9 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body_path: ${{ runner.temp }}/notes.md
-          files: "*.tar.gz"
+          files: |
+            *.tar.gz
+            *.sha256
 
       - name: Update Homebrew tap formula
         if: startsWith(github.ref, 'refs/tags/')

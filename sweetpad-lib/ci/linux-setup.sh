@@ -24,6 +24,7 @@
 # Knobs (env): SWEETPAD_VM (OrbStack machine name, default sweetpad-linux),
 # XCODE_APP, SWIFT_VERSION, SWIFT_BUILD_VERSION, XTOOL_VERSION, XTOOL_SHA256,
 # SWEETPAD_REFRESH_SDK=1 (replace a stale slim SDK, with rollback on error).
+# SWEETPAD_SKIP_RUST=1 skips Rust when using the prebuilt CLI package.
 set -euo pipefail
 
 VM="${SWEETPAD_VM:-sweetpad-linux}"
@@ -44,6 +45,7 @@ if [ "$(uname -s)" = Darwin ]; then
     SWEETPAD_APPINTENTS_RESOURCE_EXPORT="$phrase_export" \
     SWIFT_BUILD_VERSION="$SWIFT_BUILD_VERSION" \
     XTOOL_VERSION="$XTOOL_VERSION" XTOOL_SHA256="$XTOOL_SHA256" \
+    SWEETPAD_SKIP_RUST="${SWEETPAD_SKIP_RUST:-0}" \
     SWEETPAD_REFRESH_SDK="${SWEETPAD_REFRESH_SDK:-0}" bash "$self"
 fi
 
@@ -249,14 +251,20 @@ section "sweetpad-macros"
 # apart.
 MACROS="$(cd "$(dirname "$0")/../../sweetpad-cli/macros" && pwd)"
 swift build -c release --package-path "$MACROS" --scratch-path "$HOME/src/sweetpad-macros" --product sweetpad-macros
-ln -sf "$HOME/src/sweetpad-macros/release/sweetpad-macros" "$HOME/bin/sweetpad-macros"
+ln -sf "$HOME/src/sweetpad-macros/release/sweetpad-macros" "$HOME/bin/sweetpad-macros.bin"
+ln -sf "$(command -v swift)" "$HOME/bin/sweetpad-macro-swift"
+# Remove the old executable symlink before installing the launcher.
+rm -f "$HOME/bin/sweetpad-macros"
+install -m 755 "$(dirname "$0")/linux-macro-launcher.sh" "$HOME/bin/sweetpad-macros"
 ls "$HOME/bin/sweetpad-macros"
 
-section "Rust"
-if [ ! -x "$HOME/.cargo/bin/cargo" ]; then
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+if [ "${SWEETPAD_SKIP_RUST:-0}" != 1 ]; then
+  section "Rust"
+  if [ ! -x "$HOME/.cargo/bin/cargo" ]; then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+  fi
+  "$HOME/.cargo/bin/cargo" --version
 fi
-"$HOME/.cargo/bin/cargo" --version
 
 echo
 echo "ready: ci/linux-build.sh builds an Xcode project here"

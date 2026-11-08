@@ -485,8 +485,8 @@ With the newer SDK/toolchain, its iOS targets expose a Swift weak-self capture d
 A fresh native build fails at the same source line with the same diagnostic.
 Earlier SDK 27.0 results must not be presented as an unchanged control for this run.
 
-Release packaging work remains deferred. The macOS dependency-size cleanup and
-Linux release CI are outside this follow-up.
+ARM64 packaging and Linux release CI form the release gate described at the end of this document.
+The macOS dependency-size cleanup remains deferred.
 
 ## Additional validation
 
@@ -761,7 +761,7 @@ All four fresh hybrid Release builds pass. A separate fresh MMKV Debug build als
 The Ubuntu x64 and ARM64 workflow runs library tests, Clippy, formatting, and Python regressions without Apple SDKs.
 The manual `linux-apple-build.yaml` workflow requires a provisioned Apple-hardware Linux runner with its private SDK and Flutter compiler.
 It runs fresh builds, automatic manifest checks, and the dynamic-package export regression.
-Local equivalents pass. No remote workflow run or runner registration forms part of this validation.
+Local equivalents pass. The ARM64 release validation also invokes this workflow through a manually selected private SDK runner.
 
 ### Package evaluation and linker controls
 
@@ -853,3 +853,36 @@ python3 -B sweetpad-lib/ci/linux-test-plan-checks.py --out /path/to/fresh-plan-r
 The manual Linux integration workflow also builds this fixture and validates its generated manifests.
 The local report remains under `corpus/_linux-followups/validation/remaining-2026-11-08`.
 No phone, account resources, or optional `.omo` artifacts form part of this follow-up.
+
+
+## ARM64 release packaging
+
+The archive targets Ubuntu 24.04 ARM64 (glibc 2.39) on Apple hardware.
+It includes a prebuilt CLI, the DAP alias, an installer, a sample app, licenses, and public setup sources.
+The manifest records member hashes, binary and package versions, and the supported baseline.
+A separate SHA-256 file verifies the archive. Apple SDKs and signing material remain excluded.
+
+The public ARM64 workflow compiles an optimized binary and installs its archive in a clean Ubuntu container.
+The container has no compiler, Apple SDK, developer home, or source checkout.
+It validates checksums, installation, CLI and DAP help, scheme discovery, and the missing-toolchain diagnostic.
+The setup sources retain their repository layout, pinned patches, macro licenses, and source pins.
+`SWEETPAD_SKIP_RUST=1` omits Rust installation for a prebuilt CLI.
+
+The private SDK check uses bubblewrap with a fresh home, fresh DerivedData, and no network.
+It exposes the supplied Swift toolchain, Swift Build products, macro executable, and private SDK read-only.
+The installed sample builds into an ARM64 Mach-O app without developer sources, signing files, or app build caches.
+This validates the installed package with explicit toolchain prerequisites. It does not claim a fresh compiler or SDK download.
+
+The isolated build found that Swift gives macro plugins a minimal PATH and removes LD_LIBRARY_PATH.
+The setup script now installs a launcher and an adjacent link to its selected host Swift toolchain.
+The launcher restores runtime lookup before it starts the macro binary.
+The source-free sample exercises SwiftUI Entry and State macros through this launcher.
+
+The release workflow waits for verified macOS and Linux packages before publishing a CLI tag.
+Both archives include SHA-256 sidecars and build-provenance attestations.
+A manual Linux-only dry run skips macOS signing, release publication, and the Homebrew update.
+Its optional private SDK job also runs the frozen hybrid builds, automatic manifests, and package export controls.
+No public pull-request trigger runs code on the private SDK runner.
+
+Local release reports are under `corpus/_linux-followups/validation/release-arm64-2026-11-08`.
+Optional `.omo` artifacts and dependency-size cleanup remain deferred.
