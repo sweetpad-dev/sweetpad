@@ -297,8 +297,11 @@ fn signing_a_bundle_executable_recognizes_its_identifier_and_resources() {
     {
         let native = dir.join("Native.app");
         copy_tree(&fixtures().join("input/App.app"), &native);
+        // Older macOS hosts reserve CMS space even for ad-hoc signatures.
+        // Select our ad-hoc allocation explicitly so this compares the same
+        // headers and hashes on every host, without ignoring signed bytes.
         let result = std::process::Command::new("/usr/bin/codesign")
-            .args(["--force", "--sign", "-"])
+            .args(["--force", "--sign", "-", "--signature-size", "8"])
             .arg(native.join("App"))
             .output()
             .unwrap();
