@@ -10,6 +10,10 @@ output mode, a meaningful exit code, and a way to refuse prompting, which togeth
 hook, a Makefile, a CI job, or an AI coding agent needs to work with an Xcode project without a human
 watching.
 
+Use [GitHub Actions for iOS](./linux/github-actions.md) for Linux iPhone builds and device delivery.
+The [macOS CI guide](./linux/macos-ci.md) covers native Mac jobs and Linux compilation of macOS apps.
+The interface conventions on this page apply to both workflows.
+
 ## Exit codes
 
 Every command exits with a code that says *what kind* of thing went wrong, not just that something
