@@ -293,20 +293,39 @@ fn signing_a_bundle_executable_recognizes_its_identifier_and_resources() {
         "dev.sweetpad.fixture"
     );
     assert!(app.join("_CodeSignature/CodeResources").is_file());
+    // An executable path must use exactly the same bundle context as signing
+    // the bundle directory, including every signed byte and resource hash.
+    let control = sign(&dir.join("bundle-control"), "App.app", None, false);
+    assert_same_signature(&path, &control.join("App"), None);
     #[cfg(target_os = "macos")]
     {
         let native = dir.join("Native.app");
         copy_tree(&fixtures().join("input/App.app"), &native);
-        // Older macOS hosts reserve CMS space even for ad-hoc signatures.
-        // Select our ad-hoc allocation explicitly so this compares the same
-        // headers and hashes on every host, without ignoring signed bytes.
         let result = std::process::Command::new("/usr/bin/codesign")
-            .args(["--force", "--sign", "-", "--signature-size", "8"])
+            .args(["--force", "--sign", "-"])
             .arg(native.join("App"))
             .output()
             .unwrap();
         assert!(result.status.success());
-        assert_same_signature(&path, &native.join("App"), None);
+        // Native signature allocation differs across macOS versions. Keep the
+        // byte comparison above and the fixed native golden tests separate
+        // from this host's verifier and resource-sealing compatibility check.
+        let verified = std::process::Command::new("/usr/bin/codesign")
+            .args(["--verify", "--strict"])
+            .arg(&app)
+            .output()
+            .unwrap();
+        assert!(
+            verified.status.success(),
+            "{}",
+            String::from_utf8_lossy(&verified.stderr)
+        );
+        let native_signature = signature_parts(&std::fs::read(native.join("App")).unwrap());
+        let native_blobs = blobs::superblob(native_signature[0].1.clone());
+        let native_metadata = blobs::read_existing(&native_blobs).unwrap();
+        let metadata = blobs::read_existing(&superblob).unwrap();
+        assert_eq!(metadata.identifier, native_metadata.identifier);
+        assert_eq!(metadata.flags, native_metadata.flags);
         assert_eq!(
             std::fs::read(app.join("_CodeSignature/CodeResources")).unwrap(),
             std::fs::read(native.join("_CodeSignature/CodeResources")).unwrap()
