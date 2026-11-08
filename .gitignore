@@ -13,6 +13,10 @@ out-e2e
 # Rust workspace build output
 /target
 
+# Python helper bytecode
+__pycache__/
+*.pyc
+
 # Swift Package Manager build cache
 /.build/
 

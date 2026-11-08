@@ -309,9 +309,22 @@ python3 sweetpad-lib/ci/linux-device-network-checks.py \
 The port comes from the phone's `_remotepairing._tcp` advertisement. It is not the Lockdown port.
 Classic Wi-Fi AFC and CoreDeviceProxy channels closed during this run. RemotePairing succeeds.
 The VM receives no multicast discovery answers, but hostname resolution supplies a reachable LAN address.
-Automatic multicast discovery and physical USB passthrough remain unverified in this VM.
-The CLI's default Linux adapter still selects usbmux. This direct network check uses the pinned library APIs.
 `validation/phone-2026-11-08/direct-network/summary.json` records the successful network run.
+
+The later CLI run closes the direct transport and automatic discovery gaps.
+`SWEETPAD_DEVICE_PYTHON` selects the pinned modern adapter. `SWEETPAD_DEVICE_NETWORK_CONFIG` selects Wi-Fi explicitly.
+Both Wi-Fi and physical USB pass device listing, prebuilt installation, launch, scoped logs, stop, uninstall, and reinstallation.
+The startup log comes from the launched process. The source executable remains unchanged.
+A configuration with the wrong UDID fails before an app action.
+`device install` skips compilation and signing. `device pair-network` creates an isolated record through already trusted USB.
+
+Automatic discovery requires no configured phone hostname or port.
+It authenticates multicast advertisements or DNS-SD records from the system resolver.
+The VM uses its DNS-SD proxy because raw LAN multicast does not cross its bridge.
+Physical USB passthrough exposes the phone to Linux's kernel and local usbmuxd while Mac USB tools list no phone.
+The USB app checks use no Wi-Fi configuration or host relay.
+Setup and limits are in [`LINUX_DEVICES.md`](../../sweetpad-cli/LINUX_DEVICES.md) and `sweetpad help linux-devices`.
+Reports are under `validation/transport-2026-11-08/`.
 
 ## Run the suite
 

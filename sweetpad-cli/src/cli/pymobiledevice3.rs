@@ -9,6 +9,11 @@ use crate::cli::{CliError, process};
 
 /// Physical devices visible to usbmuxd, for hosts without CoreDevice.
 pub fn devices() -> Result<Vec<super::devicectl::Device>, CliError> {
+    if super::device_network::configured() {
+        return parse_devices(&super::device_network::capture(
+            &serde_json::json!({"action": "list"}),
+        )?);
+    }
     let output = process::capture_env(
         BINARY,
         &["usbmux", "list"],
@@ -62,6 +67,7 @@ fn parse_devices(output: &str) -> Result<Vec<super::devicectl::Device>, CliError
                 }
                 .into(),
                 connection: "connected".into(),
+                pairing: text(&["PairingState"]),
                 ..super::devicectl::Device::default()
             })
         })
@@ -70,6 +76,11 @@ fn parse_devices(output: &str) -> Result<Vec<super::devicectl::Device>, CliError
 
 /// Install a signed app or IPA through installation_proxy, including Linux.
 pub fn install(device: &str, app: &str) -> Result<(), CliError> {
+    if super::device_network::configured() {
+        let mut request = super::device_network::action("install", device);
+        request["app"] = app.into();
+        return super::device_network::capture(&request).map(|_| ());
+    }
     process::capture(
         BINARY,
         &[
@@ -87,6 +98,11 @@ pub fn install(device: &str, app: &str) -> Result<(), CliError> {
 }
 
 pub fn uninstall(device: &str, bundle: &str) -> Result<(), CliError> {
+    if super::device_network::configured() {
+        let mut request = super::device_network::action("uninstall", device);
+        request["bundle"] = bundle.into();
+        return super::device_network::capture(&request).map(|_| ());
+    }
     process::capture(
         BINARY,
         &["apps", "uninstall", "--udid", device, "--", bundle],
@@ -104,6 +120,11 @@ pub fn launch(
     env: &[(String, String)],
     suspended: bool,
 ) -> Result<String, CliError> {
+    if super::device_network::configured() {
+        return super::device_network::capture(&network_launch(
+            "launch", device, bundle, args, env, suspended,
+        ));
+    }
     let args = launch_args(device, bundle, args, env, suspended);
     process::capture(
         BINARY,
@@ -118,6 +139,18 @@ pub fn launch_console(
     args: &[String],
     env: &[(String, String)],
 ) -> Result<(), CliError> {
+    if super::device_network::configured() {
+        let status = super::device_network::command(&network_launch(
+            "console", device, bundle, args, env, false,
+        ))
+        .status()
+        .map_err(|e| CliError::new(format!("starting network device console: {e}")))?;
+        return if status.success() {
+            Ok(())
+        } else {
+            Err(CliError::new("network device console failed"))
+        };
+    }
     let mut args = launch_args(device, bundle, args, env, false);
     args.insert(args.len() - 1, "--stream".into());
     process::stream(
@@ -133,6 +166,11 @@ pub fn spawn_console(
     args: &[String],
     env: &[(String, String)],
 ) -> Result<Child, CliError> {
+    if super::device_network::configured() {
+        return super::device_network::spawn(&network_launch(
+            "console", device, bundle, args, env, false,
+        ));
+    }
     let mut args = launch_args(device, bundle, args, env, false);
     args.insert(args.len() - 1, "--stream".into());
     process::spawn_piped_both_env(
@@ -141,6 +179,26 @@ pub fn spawn_console(
         None,
         &[],
     )
+}
+
+fn network_launch(
+    action: &str,
+    device: &str,
+    bundle: &str,
+    args: &[String],
+    env: &[(String, String)],
+    suspended: bool,
+) -> serde_json::Value {
+    let env: serde_json::Map<String, serde_json::Value> = env
+        .iter()
+        .map(|(k, v)| {
+            (
+                k.strip_prefix("DEVICECTL_CHILD_").unwrap_or(k).to_string(),
+                v.clone().into(),
+            )
+        })
+        .collect();
+    serde_json::json!({"action": action, "device": device, "bundle": bundle, "args": args, "env": env, "suspended": suspended})
 }
 
 fn launch_args(

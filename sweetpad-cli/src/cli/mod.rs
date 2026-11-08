@@ -32,6 +32,7 @@ pub mod buildlog;
 pub mod codesign;
 pub mod config;
 pub mod darwin_tools;
+pub mod device_network;
 pub mod devicectl;
 pub mod exits;
 pub mod ibtool;

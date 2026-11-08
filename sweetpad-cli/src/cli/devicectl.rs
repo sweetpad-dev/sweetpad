@@ -296,6 +296,11 @@ pub fn terminate(device_id: &str, app_dir_name: &str) -> Result<(), CliError> {
             "cannot terminate: the app bundle's name is unknown",
         ));
     }
+    if !cfg!(target_os = "macos") && super::device_network::configured() {
+        let mut request = super::device_network::action("terminate", device_id);
+        request["appDir"] = app_dir_name.into();
+        return super::device_network::capture(&request).map(|_| ());
+    }
     for pid in app_pids(device_id, app_dir_name)? {
         // Best-effort per pid: the process may have exited between the list
         // and the signal, which devicectl reports as a failure.
@@ -336,6 +341,28 @@ fn app_pids(device_id: &str, app_dir_name: &str) -> Result<Vec<i64>, CliError> {
 /// file like [`list`].
 pub fn app_processes(device_id: &str, app_dir_name: &str) -> Result<Vec<AppProcess>, CliError> {
     if !cfg!(target_os = "macos") {
+        if super::device_network::configured() {
+            let mut request = super::device_network::action("processes", device_id);
+            request["appDir"] = app_dir_name.into();
+            let output = super::device_network::capture(&request)?;
+            let values: serde_json::Value = serde_json::from_str(&output)
+                .map_err(|e| CliError::new(format!("reading Linux device processes: {e}")))?;
+            return values
+                .as_array()
+                .ok_or_else(|| CliError::new("device process list is not an array"))?
+                .iter()
+                .map(|p| {
+                    Ok(AppProcess {
+                        pid: p["pid"]
+                            .as_i64()
+                            .ok_or_else(|| CliError::new("device process has no pid"))?,
+                        executable: p["executable"].as_str().unwrap_or_default().into(),
+                        app_path: p["app_path"].as_str().unwrap_or_default().into(),
+                        main: p["main"].as_bool().unwrap_or(false),
+                    })
+                })
+                .collect();
+        }
         return Err(CliError::new(
             "device process inspection and termination currently require macOS; use 'pymobiledevice3 developer dvt' for Linux process control",
         ));

@@ -14,8 +14,24 @@ use crate::cli::{
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
-    /// List the physical devices paired with this Mac.
+    /// List connected physical devices.
     List,
+    /// Create an isolated Wi-Fi pairing record through an already trusted USB connection.
+    /// Requires Python with pymobiledevice3==11.50.0 (SWEETPAD_DEVICE_PYTHON).
+    PairNetwork {
+        /// Hardware UDID of the trusted USB device.
+        device: String,
+        /// New private directory for the record and devices.json. Existing directories are rejected.
+        #[arg(long)]
+        out: std::path::PathBuf,
+    },
+    /// Install an existing signed .app or IPA without compiling or re-signing.
+    Install {
+        app: std::path::PathBuf,
+        /// Device name or UDID. Defaults to the only connected device.
+        #[arg(long, help_heading = crate::cli::TARGET_SELECTION)]
+        device: Option<String>,
+    },
     /// Check that a physical device is ready to build to and run on.
     ///
     /// Connects to the device and reports its pairing, connection, Developer
@@ -48,7 +64,57 @@ fn parse_timeout(value: &str) -> Result<u64, String> {
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     match action {
         Action::List => list(),
+        Action::PairNetwork { device, out } => {
+            let request =
+                serde_json::json!({"action": "pair-network", "device": device, "out": out});
+            let response = crate::cli::device_network::capture(&request)?;
+            let value = serde_json::from_str(&response)
+                .map_err(|e| CliError::new(format!("reading network pairing result: {e}")))?;
+            Ok(Rendered::data(NetworkPairing(value)))
+        }
+        Action::Install { app, device } => {
+            let app = std::fs::canonicalize(app)
+                .map_err(|e| CliError::new(format!("reading app product: {e}")))?;
+            let devices = devicectl::list()?;
+            let selected = resolve_device(ctx, &devices, device.as_deref())?;
+            devicectl::install(&selected.udid, &app.to_string_lossy())?;
+            Ok(Rendered::data(InstallResult {
+                device: selected.udid.clone(),
+                app,
+            }))
+        }
         Action::Info { device, timeout } => info(ctx, device.as_deref(), *timeout),
+    }
+}
+
+struct NetworkPairing(serde_json::Value);
+impl Render for NetworkPairing {
+    fn human(&self, out: &Output) {
+        out.line(&format!(
+            "Wi-Fi pairing ready. Set SWEETPAD_DEVICE_NETWORK_CONFIG={}",
+            self.0["configuration"].as_str().unwrap_or_default()
+        ));
+    }
+    fn json(&self) -> serde_json::Value {
+        self.0.clone()
+    }
+}
+
+struct InstallResult {
+    device: String,
+    app: std::path::PathBuf,
+}
+
+impl Render for InstallResult {
+    fn human(&self, out: &Output) {
+        out.line(&format!(
+            "Installed {} on {}",
+            self.app.display(),
+            self.device
+        ));
+    }
+    fn json(&self) -> serde_json::Value {
+        serde_json::json!({"installed": true, "device": self.device, "app": self.app})
     }
 }
 

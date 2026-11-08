@@ -847,11 +847,15 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       pymobiledevice3. Tested argument construction against version 11.50.0.
       The direct Wi-Fi check now passes hostname resolution, authenticated device
       selection, installation, launch, process checks, and scoped startup logs.
-      `ci/linux-device-network-checks.py` uses RemotePairing and userspace RSD,
-      without a Mac relay. USB can bootstrap the private pairing record.
-      VM multicast discovery and physical USB passthrough remain unverified.
-      The default CLI adapter still uses usbmux. CLI readiness and process control
-      remain unsupported on Linux.
+      The CLI now supports both direct Wi-Fi and physical USB through the
+      pinned Python adapter. Install, launch, scoped logs, stop, uninstall,
+      and reinstall pass on the iPhone without a Mac relay or recompilation.
+      `device pair-network` creates an isolated record through trusted USB.
+      Automatic discovery works through multicast or system DNS-SD. The VM
+      uses DNS-SD because its bridge does not carry raw LAN multicast.
+      OrbStack USB passthrough exposes the phone to local Linux usbmuxd.
+      `help linux-devices` documents setup and bounded logs. CLI readiness
+      inspection and device debugging remain unsupported on Linux.
 - [x] Swift Build archives and development IPA export on Linux. A signed
       fixture archive and IPA pass Apple codesign verification. Unsigned IPA
       export, simulator archives, and distribution export are rejected.
