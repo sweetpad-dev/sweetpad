@@ -170,16 +170,24 @@ This uses `test-without-building`. The project supplies result history; Xcode lo
 products named by the manifest. The command does not compile them or replace build diagnostics.
 Test selectors, result bundles, and reports remain available. A selection that runs zero tests fails.
 
-Linux `test build` does not yet emit a manifest. For iOS simulator unit tests, the repository
-helper can generate one from explicitly selected bundles:
+Linux `test build` automatically writes an `.xctestrun` for iOS app-hosted and logic unit tests.
+JSON output includes `xctestrunPath`. The manifest remains relative to its `Products` directory after export.
+It includes the enabled scheme targets, literal environment values, argument rows, and test filters.
+Quoted arguments retain their quotes for the XCTest launcher.
 
 ```bash
-python3 sweetpad-lib/ci/prebuilt_tests.py --products /path/to/Products --scheme MyApp \
-  Debug-iphonesimulator/MyApp.app/PlugIns/MyAppTests.xctest
+sweetpad test build --project MyApp.xcodeproj --scheme MyApp \
+  --destination 'generic/platform=iOS Simulator' --json --non-interactive \
+  -- -derivedDataPath /path/to/TestBuild
 ```
 
-The helper supports app-hosted and logic tests. UI tests and custom test-plan options require
-a supplied manifest. The simulator and test runtime still run on macOS.
+Copy `/path/to/TestBuild/Build/Products` to the Mac, including the generated manifest.
+Then pass that manifest to `test run --xctestrun`.
+The simulator and test runtime still run on macOS.
+
+UI tests, test plans, locale overrides, and arguments with build-setting expressions require a supplied manifest.
+Unsupported inputs leave the successful build intact and report `xctestrunPath: null` with `xctestrunNote`.
+The repository helper `sweetpad-lib/ci/prebuilt_tests.py` remains available for explicitly selected custom products.
 For a custom build directory, pass `-derivedDataPath` after `--` or configure it in `sweetpad.toml`.
 
 Build settings after `--` work as they do with xcodebuild, and so do `-derivedDataPath` and
@@ -235,7 +243,8 @@ Install it in a Python virtual environment and expose its executable on `PATH`.
 USB access also needs `usbmuxd`, a paired device, Developer Mode, and an unlocked device.
 Newer iOS developer services can also need a pymobiledevice3 tunnel.
 
-Physical-device validation remains pending. Linux readiness checks, process inspection,
+Seven Linux-built app fixtures passed iPhone startup checks through macOS transport.
+Linux USB and tunnel transport remain unverified. Linux readiness checks, process inspection,
 and process termination are not implemented. Simulator operations still require a Mac.
 
 ## App Intents

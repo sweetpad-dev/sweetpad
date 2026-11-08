@@ -35,6 +35,33 @@ on:
 #   python3 sweetpad-lib/scripts/21_mutation_audit.py [--e2e]
 
 jobs:
+  linux:
+    name: Linux · ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Linux build prerequisites
+        run: sudo apt-get update -qq && sudo apt-get install -y libssl-dev pkg-config
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      # Xcode subprocess integration tests run in the macOS job below.
+      - name: Unit tests without Apple SDKs
+        run: cargo test --workspace --lib -- --test-threads=1
+      - name: Python regression checks
+        run: python3 -B -m unittest discover -s sweetpad-lib/ci -p 'test_*.py'
   check:
     name: fmt · clippy · test
     runs-on: macos-latest

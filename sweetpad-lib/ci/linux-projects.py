@@ -26,11 +26,18 @@ def save(path, value):
 def prepare(project, clone, corpus=CORPUS):
     root = corpus / project["slug"]
     if not root.exists() and clone:
-        subprocess.run(["git", "clone", "--no-checkout", project["url"], str(root)], check=True)
+        subprocess.run(["git", "clone", "--filter=blob:none", "--no-checkout", project["url"], str(root)], check=True)
         subprocess.run(["git", "-C", str(root), "checkout", project["commit"]], check=True)
     actual = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
     if actual != project["commit"]:
         raise RuntimeError(f"{root}: expected {project['commit']}, found {actual}")
+    for name in project.get("retiredPatches", []):
+        patch = CI / "patches" / name
+        applied = subprocess.run(["git", "-C", str(root), "apply", "--reverse", "--check", str(patch)], capture_output=True)
+        if applied.returncode == 0:
+            subprocess.run(["git", "-C", str(root), "apply", "--reverse", str(patch)], check=True)
+        elif subprocess.run(["git", "-C", str(root), "apply", "--check", str(patch)], capture_output=True).returncode:
+            raise RuntimeError(f"{root}: retired patch {name} has local conflicts; use a fresh source directory")
     for name in project.get("patches", []):
         patch = CI / "patches" / name
         applied = subprocess.run(["git", "-C", str(root), "apply", "--reverse", "--check", str(patch)], capture_output=True)
@@ -47,8 +54,8 @@ def build(args, project, root, host):
     stem = args.out / f"{slug}-{host}"
     container = "workspace" if "workspace" in project else "project"
     common = ["build", f"--{container}", str(root / project[container]),
-              "--scheme", project["scheme"], "--configuration", "Debug",
-              "--destination", DESTINATION, "--json", "--non-interactive"]
+              "--scheme", project["scheme"], "--configuration", args.configuration,
+              "--destination", args.destination, "--json", "--non-interactive"]
     if args.clean:
         common.append("--clean")
     settings = ["ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "CODE_SIGNING_ALLOWED=NO"]
@@ -67,7 +74,7 @@ exec "$HOME/sweetpad-target/debug/sweetpad" "${common[@]}" -- -derivedDataPath "
 '''
         command = ["orb", "-m", args.vm, "env", f"SWEETPAD_PROJECT_DD={project['linuxDerivedData']}",
                    "bash", "-lc", script, "--", str(len(common)), *common,
-                   *project.get("linuxSettings", [])]
+                   *[v.replace("@SOURCE_ROOT@", str(root)) for v in project.get("linuxSettings", [])]]
     env = dict(os.environ)
     # The projects treat SwiftLint as optional; a global copy can modify sources.
     env["PATH"] = ":".join(p for p in env.get("PATH", "").split(":") if p != "/opt/homebrew/bin")
@@ -101,6 +108,8 @@ def outcome(stem):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--configuration", default="Debug")
+    parser.add_argument("--destination", default=DESTINATION)
     parser.add_argument("--prepare", action="store_true")
     parser.add_argument("--prepare-only", action="store_true", help="Apply source patches without building; combine with --prepare to clone missing sources")
     parser.add_argument("--summarize", action="store_true", help="Read existing results without building")

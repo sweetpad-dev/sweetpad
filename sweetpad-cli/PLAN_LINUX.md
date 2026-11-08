@@ -1,6 +1,6 @@
 # Building Xcode projects on Linux
 
-Status on 2026-11-07. The initial Linux engine merged in PR #346.
+Status on 2026-11-08. The initial Linux engine merged in PR #346.
 Follow-up work is on `codex/linux-build-followups`. See
 [`ci/LINUX_PROJECTS.md`](../sweetpad-lib/ci/LINUX_PROJECTS.md) for current app coverage and limits.
 
@@ -18,7 +18,8 @@ Test-only schemes use `test build`; the summary records each action.
 Wikipedia, Mastodon, Swiftfin, Flutter platform_design, the React Native template,
 and the Capacitor conference app build on both hosts. All except Wikipedia render
 in the simulator; Wikipedia exits with the same data-store exception in both controls.
-The MMKV example also builds on both hosts with an explicit debug-thunk shim and scene-lifecycle fixture patch.
+The MMKV example builds on both hosts with its scene-lifecycle fixture patch.
+The Linux header-merge stage corrects two recursive generic bridge helpers without the former fixture shim.
 Both products pass seven storage checks twice, including persistence across process relaunch.
 Release cleanup remains deferred. Physical-device checks now pass for the seven larger app fixtures.
 Wikipedia and Mastodon use isolated app-local startup fixtures without extensions or unsupported capabilities.
@@ -790,7 +791,7 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       the scheme's testables, as `build-for-testing` does, and leaves the
       testing frameworks out of the host app like Xcode 27. The bundle passes
       under `xcodebuild test-without-building` with Xcode's `.xctestrun`
-- [ ] An `.xctestrun` written by the build, so tests built here run on a Mac
+- [x] An `.xctestrun` written by the build, so tests built here run on a Mac
       without a second build *(optional)*
 - [x] macOS apps: `corpus/_mac-app` (local) matches Xcode's build in all 31
       asset lookups, the app icon among them. Swift

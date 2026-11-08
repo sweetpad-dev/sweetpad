@@ -18,7 +18,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use sweetpad_lib::pbxproj::Value;
+use crate::cli::property_list::{self as plist, Plist};
 
 use super::Senders;
 use crate::cli::output::Output;
@@ -91,39 +91,29 @@ fn addressable(subsystem: &str) -> bool {
 /// What the Info.plist at `plist` sets `Enable-Private-Data` to, by subsystem.
 /// A subsystem it configures without that key isn't in the map.
 fn private_data(plist: &Path) -> Result<BTreeMap<String, bool>, CliError> {
-    // plutil reads either plist format, and writes the binary one the bplist
-    // reader takes; its output is bytes, not text, so it's read raw.
-    let output = std::process::Command::new("plutil")
-        .args(["-convert", "binary1", "-o", "-"])
-        .arg(plist)
-        .output()
-        .map_err(|e| process::spawn_error("plutil", &e))?;
-    if !output.status.success() {
-        return Err(CliError::new(format!(
-            "plutil can't read {}: {}",
-            plist.display(),
-            String::from_utf8_lossy(&output.stderr).trim()
-        )));
-    }
-    let root = sweetpad_lib::bplist::parse(&output.stdout)
+    let bytes = std::fs::read(plist)
+        .map_err(|e| CliError::new(format!("reading {}: {e}", plist.display())))?;
+    let root = plist::read_info(&bytes)
         .map_err(|e| CliError::new(format!("reading {}: {e}", plist.display())))?;
     Ok(read_private_data(&root))
 }
 
 /// [`private_data`] from a parsed Info.plist, where the bplist reader spells
 /// `true` as `YES`.
-fn read_private_data(root: &Value) -> BTreeMap<String, bool> {
-    let Some(preferences) = root.get("OSLogPreferences").and_then(Value::as_dict) else {
+fn read_private_data(root: &Plist) -> BTreeMap<String, bool> {
+    let Some(Plist::Dict(preferences)) = plist::get(root, "OSLogPreferences") else {
         return BTreeMap::new();
     };
     preferences
         .iter()
         .filter_map(|(subsystem, options)| {
-            let value = options
-                .get("DEFAULT-OPTIONS")?
-                .get("Enable-Private-Data")?
-                .as_str()?;
-            Some((subsystem.clone(), value == "YES"))
+            let options = plist::get(options, "DEFAULT-OPTIONS")?;
+            let value = match plist::get(options, "Enable-Private-Data")? {
+                Plist::Bool(value) => *value,
+                Plist::String(value) => value == "YES",
+                _ => return None,
+            };
+            Some((subsystem.clone(), value))
         })
         .collect()
 }

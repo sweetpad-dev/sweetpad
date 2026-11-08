@@ -263,6 +263,7 @@ struct BuildReport {
     /// modes report as `note` beside the `null`: their only account of a
     /// missing product the caller could have fixed.
     product: Result<Option<std::path::PathBuf>, String>,
+    xctestrun: Option<Result<std::path::PathBuf, String>>,
 }
 
 impl Render for BuildReport {
@@ -287,6 +288,16 @@ impl Render for BuildReport {
         }
         if let (Some(note), Some(map)) = (note, data.as_object_mut()) {
             map.insert("note".into(), note.clone().into());
+        }
+        if let Some(manifest) = &self.xctestrun {
+            data["xctestrunPath"] = manifest
+                .as_ref()
+                .ok()
+                .map(|p| p.display().to_string())
+                .into();
+            if let Err(note) = manifest {
+                data["xctestrunNote"] = note.clone().into();
+            }
         }
         data
     }
@@ -406,6 +417,15 @@ fn start(
     }
     .map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
     let product = product_path(ctx, &plan);
+    let xctestrun = (testing && engine == Engine::SwiftBuild).then(|| swbuild::xctestrun(&plan));
+    if let Some(manifest) = &xctestrun {
+        match manifest {
+            Ok(path) => ctx.out.note(&format!("test manifest: {}", path.display())),
+            Err(note) => ctx
+                .out
+                .note(&format!("tests built; no test manifest: {note}")),
+        }
+    }
 
     Ok(Rendered::data(BuildReport {
         scheme: Some(target.scheme),
@@ -413,6 +433,7 @@ fn start(
         destination: Some(target.destination),
         stats,
         product,
+        xctestrun,
     }))
 }
 
@@ -470,6 +491,7 @@ fn build_package(
         // A Swift package builds an executable or a library, never a
         // `.app` bundle.
         product: Ok(None),
+        xctestrun: None,
     }))
 }
 
@@ -507,6 +529,7 @@ mod tests {
             destination: Some("platform=iOS Simulator,id=UDID".to_string()),
             stats: None,
             product: Ok(product_path.map(std::path::PathBuf::from)),
+            xctestrun: None,
         }
     }
 
@@ -573,6 +596,24 @@ mod tests {
         );
         let args = parse_build(&["start", "--on", "booted"]);
         assert_eq!(args.target.on.as_deref(), Some("booted"));
+    }
+
+    #[test]
+    fn a_test_manifest_failure_does_not_misreport_a_successful_build() {
+        let mut report = report(None);
+        report.xctestrun = Some(Err("test plans require a supplied manifest".into()));
+        let data = report.json();
+        assert_eq!(data["built"], true);
+        assert!(data["xctestrunPath"].is_null());
+        assert_eq!(
+            data["xctestrunNote"],
+            "test plans require a supplied manifest"
+        );
+        report.xctestrun = Some(Ok("/dd/Products/Tests.xctestrun".into()));
+        assert_eq!(
+            report.json()["xctestrunPath"],
+            "/dd/Products/Tests.xctestrun"
+        );
     }
 
     #[test]

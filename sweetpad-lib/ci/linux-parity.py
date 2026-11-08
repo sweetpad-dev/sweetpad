@@ -13,6 +13,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import time
+import xml.etree.ElementTree as ET
 
 CI = Path(__file__).resolve().parent
 REPO = CI.parent.parent
@@ -75,10 +76,19 @@ def products(args, phase, host, clean=False):
 
 
 def test(args, root, phase, host, product_root, expected):
-    manifest = prebuilt_tests.write(product_root,
-        [Path("Debug-iphonesimulator/ParityProbe.app/PlugIns/ParityProbeTests.xctest")],
-        "ParityProbe", dict(expected, EXPECTED_ORIGIN="linux" if host == "linux" else "xcode"),
-        name="ParityProbe-parity.xctestrun")
+    environment = dict(expected, EXPECTED_ORIGIN="linux" if host == "linux" else "xcode")
+    if host == "linux":
+        build = json.loads((args.out / phase / "linux-build.json").read_text())["result"]["data"]
+        if not build.get("xctestrunPath"):
+            raise RuntimeError(build.get("xctestrunNote", "Linux test build emitted no manifest"))
+        manifest = product_root / Path(build["xctestrunPath"]).name
+        generated = checks.plist(manifest)
+        targets = generated["TestConfigurations"][0]["TestTargets"]
+        assert len(targets) == 1 and targets[0]["EnvironmentVariables"] == environment
+    else:
+        manifest = prebuilt_tests.write(product_root,
+            [Path("Debug-iphonesimulator/ParityProbe.app/PlugIns/ParityProbeTests.xctest")],
+            "ParityProbe", environment, name="ParityProbe-parity.xctestrun")
     binaries = [p for p in product_root.rglob("*") if p.is_file() and p.name in ["ParityProbe", "ParityProbeTests"]]
     before = {str(p.relative_to(product_root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in binaries}
     command = [str(REPO / "target/debug/sweetpad"), "test", "run", "--project", str(root / "ParityProbe.xcodeproj"),
@@ -117,6 +127,18 @@ def run_phase(args, root, phase, expected, clean=False):
             "from pathlib import Path; import shutil,sys; p=Path.home()/sys.argv[1]/'Build'; "
             "assert not p.is_symlink(); shutil.rmtree(p, ignore_errors=True)", args.linux_dd + "-clean"], check=True)
     for host in ["xcode", "linux"]:
+        if host == "linux":
+            # Test expectations belong in the fixture's scheme. The CLI must
+            # preserve them in its own manifest; never patch that manifest.
+            path = root / "ParityProbe.xcodeproj/xcshareddata/xcschemes/ParityProbe.xcscheme"
+            tree = ET.parse(path)
+            launch = tree.getroot().find("LaunchAction")
+            existing = launch.find("EnvironmentVariables")
+            if existing is not None: launch.remove(existing)
+            environment = ET.SubElement(launch, "EnvironmentVariables")
+            for key, value in sorted(dict(expected, EXPECTED_ORIGIN="linux").items()):
+                ET.SubElement(environment, "EnvironmentVariable", key=key, value=value, isEnabled="YES")
+            tree.write(path, encoding="unicode", xml_declaration=True)
         record["builds"][host] = build(args, root, phase, host, clean)
     if all(r["exitCode"] == 0 for r in record["builds"].values()):
         roots = {host: products(args, phase, host, clean) for host in ["xcode", "linux"]}

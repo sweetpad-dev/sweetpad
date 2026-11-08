@@ -17,6 +17,23 @@ class LockTests(unittest.TestCase):
         self.assertEqual(prepare.portable_pod_lock(first), prepare.portable_pod_lock(moved))
         self.assertNotEqual(prepare.portable_pod_lock(first), prepare.portable_pod_lock(moved.replace("0.85.3", "0.86.0")))
 
+    def test_retiring_the_mmkv_patch_preserves_dependency_lock_protection(self):
+        with tempfile.TemporaryDirectory() as work:
+            root = Path(work)
+            relative = "example/ios/Podfile.lock"
+            current = "PODS:\n  - Example (1.0)\nPODFILE CHECKSUM: ac6e3a3935879b4d187353a98679212e0e3604ce\n"
+            previous = current.replace("ac6e3a3935879b4d187353a98679212e0e3604ce", "11a564a05207900f861412c2399bb85289308955")
+            fixture = root / "ci/framework-locks/react-native-mmkv" / relative
+            fixture.parent.mkdir(parents=True); fixture.write_text(current)
+            checkout = root / "checkout"; target = checkout / relative
+            target.parent.mkdir(parents=True); target.write_text(previous)
+            with patch.object(prepare, "CI", root / "ci"):
+                prepare.frozen_files("react-native-mmkv", checkout)
+                self.assertEqual(target.read_text(),current)
+                target.write_text(previous.replace("Example (1.0)","Example (2.0)"))
+                with self.assertRaisesRegex(RuntimeError, "differs from the captured dependency lock"):
+                    prepare.frozen_files("react-native-mmkv", checkout)
+
     def test_generated_lock_drift_is_rejected(self):
         with tempfile.TemporaryDirectory() as work:
             root = Path(work)

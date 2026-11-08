@@ -1,0 +1,52 @@
+name: Linux Apple SDK integration
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  hybrid-builds:
+    # The Apple SDK stays on a provisioned Apple-hardware Linux runner.
+    # Never upload or distribute it as a workflow artifact.
+    runs-on: [self-hosted, Linux, ARM64, sweetpad-linux]
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build CLI
+        run: |
+          export PATH="$HOME/.cargo/bin:$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+          CARGO_TARGET_DIR="$HOME/sweetpad-target" cargo build --locked -p sweetpad-cli --bin sweetpad
+      - name: Install frozen framework tools
+        run: bash sweetpad-lib/ci/linux-framework-tools.sh
+      - name: Fresh Linux dependency and Release build checks
+        run: python3 -B sweetpad-lib/ci/linux-clean-checks.py --out "$RUNNER_TEMP/linux-clean"
+      - name: Generate manifests for Linux XCTest and Swift Testing products
+        run: |
+          export PATH="$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+          python3 -B sweetpad-lib/ci/linux-exec-audit.py --out "$RUNNER_TEMP/linux-clean/reports/test-build-audit" -- \
+            "$HOME/sweetpad-target/debug/sweetpad" test build \
+            --project "$PWD/sweetpad-lib/ci/fixture-test-manifest/ManifestProbe.xcodeproj" \
+            --scheme ManifestProbe --configuration Debug --destination 'generic/platform=iOS Simulator' \
+            --json --non-interactive -- -derivedDataPath "$RUNNER_TEMP/manifest-products" \
+            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO > "$RUNNER_TEMP/linux-clean/reports/test-build.json"
+          python3 - "$RUNNER_TEMP/linux-clean/reports/test-build.json" <<'PYCODE'
+          import json, pathlib, plistlib, sys
+          result = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          assert result['ok'] and result['data']['built']
+          path = pathlib.Path(result['data']['xctestrunPath'])
+          targets = plistlib.loads(path.read_bytes())['TestConfigurations'][0]['TestTargets']
+          assert {t['BlueprintName'] for t in targets} == {'LogicXCTests', 'LogicSwiftTests'}
+          assert all(t['EnvironmentVariables']['MANIFEST_VALUE'] == 'Linux tests ü' for t in targets)
+          PYCODE
+      - name: Retain public dynamic-package APIs through response files
+        run: python3 -B sweetpad-lib/ci/linux-package-linking-checks.py --worker --out "$RUNNER_TEMP/linux-clean/reports/package-linking"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linux-execution-and-build-reports
+          path: |
+            ${{ runner.temp }}/linux-clean/summary.json
+            ${{ runner.temp }}/linux-clean/reports/
+          if-no-files-found: error

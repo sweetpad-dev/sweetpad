@@ -1,0 +1,22 @@
+diff --git a/lib/BuildSystem/BuildSystem.cpp b/lib/BuildSystem/BuildSystem.cpp
+--- a/lib/BuildSystem/BuildSystem.cpp
++++ b/lib/BuildSystem/BuildSystem.cpp
+@@ -1024,8 +1024,17 @@ public:
+     for (auto it = llvm::sys::fs::directory_iterator(path, ec, /*follow_symlinks */false),
+          end = llvm::sys::fs::directory_iterator(); it != end && !ec;
+          it = it.increment(ec)) {
++      // A producer can remove an entry between readdir and lstat (for
++      // example, a dependency script replacing an extracted framework).
++      auto status = it->status();
++      if (!status) {
++        if (status.getError() == std::errc::no_such_file_or_directory)
++          continue;
++        ec = status.getError();
++        break;
++      }
+       // If this is a symlink to a parent directory, exclude it from results so we don't get stuck in a loop.
+-      if (llvm::sys::fs::is_symlink_file(*it->status())) {
++      if (llvm::sys::fs::is_symlink_file(*status)) {
+         SmallString<256> resolvedPath;
+         if (!llvm::sys::fs::real_path(it->path(), resolvedPath)) {
+           if (path.startswith(resolvedPath)) {

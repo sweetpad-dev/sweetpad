@@ -91,9 +91,7 @@ fn plan_in(
 }
 
 /// Whether the plist asserts `com.apple.security.app-sandbox` = true.
-/// `plutil -extract … raw` reads XML and binary plists alike; a missing key
-/// exits non-zero, which is simply "not sandboxed". The keypath is
-/// dot-separated, so the key's own dots are backslash-escaped.
+/// Read XML and binary plists without invoking a host-specific tool.
 fn sandboxed(plist: &Path) -> Result<bool, String> {
     if !plist.is_file() {
         return Err(format!(
@@ -101,34 +99,14 @@ fn sandboxed(plist: &Path) -> Result<bool, String> {
             plist.display()
         ));
     }
-    let out = std::process::Command::new("plutil")
-        .args([
-            "-extract",
-            r"com\.apple\.security\.app-sandbox",
-            "raw",
-            "-o",
-            "-",
-        ])
-        .arg(plist)
-        .output()
-        .map_err(|e| format!("plutil: {e}"))?;
-    if !out.status.success() {
-        // Distinguish "key absent" (fine) from "unreadable plist" (give up):
-        // probing an unrelated key fails identically only when the file
-        // itself doesn't parse.
-        let readable = std::process::Command::new("plutil")
-            .args(["-lint", "-s"])
-            .arg(plist)
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-        return if readable {
-            Ok(false)
-        } else {
-            Err(format!("{} is not a readable plist", plist.display()))
-        };
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).trim() == "true")
+    let bytes = std::fs::read(plist).map_err(|e| format!("{}: {e}", plist.display()))?;
+    let root = crate::cli::property_list::read_info(&bytes)
+        .map_err(|_| format!("{} is not a readable plist", plist.display()))?;
+    Ok(matches!(
+        crate::cli::property_list::get(&root, "com.apple.security.app-sandbox"),
+        Some(crate::cli::property_list::Plist::Bool(true))
+    ) || matches!(crate::cli::property_list::get(&root, "com.apple.security.app-sandbox"),
+            Some(crate::cli::property_list::Plist::String(value)) if value == "YES"))
 }
 
 /// Write the sandbox-stripped copy of `source` into the hot-reload cache at

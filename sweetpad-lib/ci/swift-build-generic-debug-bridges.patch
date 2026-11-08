@@ -1,0 +1,74 @@
+diff --git a/Sources/SWBTaskExecution/TaskActions/SwiftHeaderToolTaskAction.swift b/Sources/SWBTaskExecution/TaskActions/SwiftHeaderToolTaskAction.swift
+index 92ad9d0..afd4811 100644
+--- a/Sources/SWBTaskExecution/TaskActions/SwiftHeaderToolTaskAction.swift
++++ b/Sources/SWBTaskExecution/TaskActions/SwiftHeaderToolTaskAction.swift
+@@ -12,6 +12,7 @@
+ 
+ public import SWBUtil
+ import SWBLibc
++import Foundation
+ public import SWBCore
+ 
+ public final class SwiftHeaderToolTaskAction: TaskAction {
+@@ -97,6 +98,27 @@ public final class SwiftHeaderToolTaskAction: TaskAction {
+         return "swift-header-tool"
+     }
+ 
++    // Clang in Linux Swift 6.4.2 eagerly instantiates every `used` generic
++    // member. These two Optional bridges construct Optional<Optional<T>>,
++    // recursively instantiating themselves without a bound. Preserve DEBUG,
++    // the API, and every other thunk's attributes. Only these bridge helpers
++    // remain lazily emitted, as inline helpers already are.
++    private func compatibleHeader(_ bytes: ByteString) -> ByteString {
++        #if os(Linux)
++        let source = String(decoding: bytes.bytes, as: UTF8.self)
++        let lines = source.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
++            let line = String(line)
++            guard line.contains("SWIFT_INLINE_THUNK"),
++                  line.contains("swift::Optional<Optional<T_0_0>>& result"),
++                  line.contains("_forceBridgeFromObjectiveCResult(") || line.contains("_conditionallyBridgeFromObjectiveCResult(") else { return line }
++            return line.replacingOccurrences(of: "SWIFT_INLINE_THUNK", with: "SWIFT_INLINE_PRIVATE_HELPER")
++        }
++        return ByteString(encodingAsUTF8: lines.joined(separator: "\n"))
++        #else
++        return bytes
++        #endif
++    }
++
+     override public func performTaskAction(
+         _ task: any ExecutableTask,
+         dynamicExecutionDelegate: any DynamicTaskExecutionDelegate,
+@@ -110,7 +132,7 @@ public final class SwiftHeaderToolTaskAction: TaskAction {
+             // If there's only a single architecture, don't add ifdefs.
+             if options.single {
+                 if let path = options.inputs.values.only {
+-                    _ = try executionDelegate.fs.writeIfChanged(options.output, contents: executionDelegate.fs.read(path))
++                    _ = try executionDelegate.fs.writeIfChanged(options.output, contents: compatibleHeader(executionDelegate.fs.read(path)))
+                     return .succeeded
+                 } else {
+                     outputDelegate.emitError("Multiple architectures are not supported on this target.")
+@@ -163,7 +185,7 @@ public final class SwiftHeaderToolTaskAction: TaskAction {
+                 }
+ 
+                 byteString += ByteString(encodingAsUTF8: "#elif defined(\(macro)) && \(macro)\n")
+-                byteString += try executionDelegate.fs.read(path) + "\n"
++                byteString += try compatibleHeader(executionDelegate.fs.read(path)) + "\n"
+             }
+             byteString += ByteString(encodingAsUTF8: "#else\n")
+             byteString += ByteString(encodingAsUTF8: "#error unsupported Swift architecture\n")
+@@ -179,10 +201,15 @@ public final class SwiftHeaderToolTaskAction: TaskAction {
+     }
+ 
+     public override func serialize<T: Serializer>(to serializer: T) {
++        serializer.beginAggregate(2)
++        // Change the task signature so existing merged headers regenerate.
++        serializer.serialize("optional-generic-debug-bridges-v1")
+         super.serialize(to: serializer)
+     }
+ 
+     public required init(from deserializer: any Deserializer) throws {
++        try deserializer.beginAggregate(2)
++        let _: String = try deserializer.deserialize()
+         try super.init(from: deserializer)
+     }
+ }

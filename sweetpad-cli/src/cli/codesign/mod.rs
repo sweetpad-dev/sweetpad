@@ -25,7 +25,7 @@ mod identity;
 mod inspect;
 mod macho;
 mod pkcs12;
-mod plist;
+use crate::cli::property_list as plist;
 pub mod provisioning;
 mod resources;
 #[cfg(test)]

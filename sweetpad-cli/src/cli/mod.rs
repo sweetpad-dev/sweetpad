@@ -46,6 +46,7 @@ pub mod output;
 pub mod pbxedit;
 pub mod process;
 pub mod progress;
+mod property_list;
 pub mod pymobiledevice3;
 pub mod rawmode;
 pub mod render;

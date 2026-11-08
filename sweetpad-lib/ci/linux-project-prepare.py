@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Prepare pinned hybrid app dependencies on macOS for both build hosts.
+"""Prepare pinned hybrid app dependencies on the current build host.
 
 Use a fresh --corpus-root to verify setup without reusing generated Pods or
-framework configuration. This does not claim that CocoaPods runs on Linux.
+framework configuration. The receipt records the host and frozen dependency graph.
 """
 import argparse
 import hashlib
@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,39 @@ projects = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(projects)
 FLUTTER_PIN = "c197ca5199e9ee5661e865596c9c07294dfab51c"
 RELOCATED_PODS = ("hermes-engine", "React-Core-prebuilt", "ReactNativeDependencies", "NitroMmkv")
+
+
+def flutter_configuration(root, flutter_root):
+    """The checked-in iOS project only needs generated build properties.
+
+    Flutter hides `build ios --config-only` on Linux even though its assemble
+    backend works there. Resolve Dart dependencies normally, then write these
+    path and version inputs explicitly instead of running a macOS CLI.
+    """
+    app = root / "platform_design"
+    # Match the pinned Flutter SDK's IOSDeploymentTargetMigration. The
+    # prebuilt engine already requires iOS 15; this is an explicit fixture
+    # migration, not a change to arbitrary application deployment targets.
+    project = app / "ios/Runner.xcodeproj/project.pbxproj"
+    text = project.read_text()
+    text = text.replace("IPHONEOS_DEPLOYMENT_TARGET = 11.0;", "IPHONEOS_DEPLOYMENT_TARGET = 15.0;")
+    project.write_text(text)
+    framework = app / "ios/Flutter/AppFrameworkInfo.plist"
+    framework.write_text(framework.read_text().replace('  <key>MinimumOSVersion</key>\n  <string>11.0</string>\n', ''))
+    match = re.search(r"(?m)^version:\s*([^\s]+)", (app / "pubspec.yaml").read_text())
+    if not match:
+        raise RuntimeError("Flutter fixture must declare its version")
+    version, _, number = match[1].partition("+")
+    package_config = root / ".dart_tool/package_config.json"
+    if not package_config.is_file():
+        raise RuntimeError("Flutter workspace package configuration is missing")
+    settings = {"FLUTTER_ROOT": str(flutter_root), "FLUTTER_APPLICATION_PATH": str(app),
+                "FLUTTER_TARGET": "lib/main.dart", "FLUTTER_BUILD_DIR": "build",
+                "FLUTTER_BUILD_NAME": version, "FLUTTER_BUILD_NUMBER": number or "1",
+                "PACKAGE_CONFIG": str(package_config), "DART_OBFUSCATION": "false",
+                "TRACK_WIDGET_CREATION": "false", "TREE_SHAKE_ICONS": "false"}
+    generated = app / "ios/Flutter/Generated.xcconfig"
+    generated.write_text("// Generated for the pinned Linux fixture.\n" + "".join(f"{k}={v}\n" for k, v in settings.items()))
 
 
 def portable_pod_lock(text):
@@ -47,7 +81,13 @@ def frozen_files(slug, root):
             if target.exists() and target.read_bytes() != source.read_bytes():
                 original = subprocess.run(["git", "-C", str(root), "show", "HEAD:" + target.relative_to(root).as_posix()], capture_output=True)
                 tracked_original = original.returncode == 0 and original.stdout == target.read_bytes()
-                relocated_lock = target.name == "Podfile.lock" and portable_pod_lock(target.read_text()) == portable_pod_lock(source.read_text())
+                prior = target.read_text()
+                if slug == "react-native-mmkv" and target.name == "Podfile.lock":
+                    # Retiring the exact debug-thunk Podfile patch changes only
+                    # this checksum. Dependency graph/version changes still fail.
+                    prior = prior.replace("PODFILE CHECKSUM: 11a564a05207900f861412c2399bb85289308955",
+                                          "PODFILE CHECKSUM: ac6e3a3935879b4d187353a98679212e0e3604ce")
+                relocated_lock = target.name == "Podfile.lock" and portable_pod_lock(prior) == portable_pod_lock(source.read_text())
                 if not tracked_original and not relocated_lock:
                     raise RuntimeError(f"{target}: differs from the captured dependency lock; use a fresh --corpus-root")
             shutil.copyfile(source, target)
@@ -95,7 +135,11 @@ def prepare(project, args, env):
         flutter = args.flutter_root / "bin/flutter"
         run([flutter, "precache", "--ios"], root, env)
         run([flutter, "pub", "get", "--enforce-lockfile"], root, env)
-        run([flutter, "build", "ios", "--simulator", "--config-only", "--no-codesign"], root / "platform_design", env)
+        if sys.platform == "linux":
+            run([flutter, "pub", "get", "--enforce-lockfile"], root / "platform_design", env)
+            flutter_configuration(root, args.flutter_root)
+        else:
+            run([flutter, "build", "ios", "--simulator", "--config-only", "--no-codesign"], root / "platform_design", env)
     elif framework == "React Native":
         mmkv = project["slug"] == "react-native-mmkv"
         app = root / ("example" if mmkv else "template")
@@ -109,7 +153,23 @@ def prepare(project, args, env):
         run(["bundle", "install"], app, ruby_env)
         lock, digest = relocate_pod_lock(project["slug"], root, app, ruby_env)
         locks[lock] = digest
+        if sys.platform == "linux":
+            # Retain the small adapters so the execution audit can inspect
+            # every executed script after preparation completes.
+            metadata = args.gem_home.resolve() / "metadata-tools"
+            metadata.mkdir(parents=True, exist_ok=True)
+            for tool in ["xcodebuild", "xcode-select", "command"]:
+                path = metadata / tool
+                path.write_text("#!/bin/sh\nexec " + " ".join(map(shlex.quote,
+                    [sys.executable, str(CI / "linux-xcode-metadata.py"), tool])) + ' "$@"\n')
+                path.chmod(0o755)
+            ruby_env = dict(ruby_env, PATH=str(metadata) + os.pathsep + ruby_env["PATH"])
         run(["bundle", "exec", "pod", "install", "--deployment"], app / "ios", ruby_env)
+        if sys.platform == "linux":
+            for script in (app / "ios/Pods/Target Support Files").rglob("*.sh"):
+                text = script.read_text()
+                if "/usr/bin/codesign" in text:
+                    script.write_text(text.replace("/usr/bin/codesign", "codesign"))
         (app / "ios/.xcode.env.local").write_text('export NODE_BINARY=$(command -v node)\n')
     elif framework == "Capacitor":
         run(["npm", "ci", "--no-audit", "--no-fund"], root, dict(env, PUPPETEER_SKIP_DOWNLOAD="1"))
@@ -120,6 +180,7 @@ def prepare(project, args, env):
             raise RuntimeError(f"dependency preparation changed frozen lock {path}")
     return {"commit": project["commit"], "framework": framework, "source": str(root),
             "patches": project.get("patches", []),
+            "retiredPatches": project.get("retiredPatches", []),
             "locks": {str(p.relative_to(root)): digest for p, digest in locks.items()}}
 
 
@@ -132,24 +193,27 @@ def main():
     parser.add_argument("--flutter-root", type=Path, default=projects.CORPUS / "_linux-followups/tools/flutter")
     parser.add_argument("--gem-home", type=Path, default=projects.CORPUS / "_linux-followups/tools/ruby-gems")
     args = parser.parse_args()
-    if sys.platform != "darwin":
-        parser.error("this prepares shared framework sources on macOS; build the prepared projects on Linux")
+    if sys.platform not in ["darwin", "linux"]:
+        parser.error("dependency preparation supports macOS and Linux")
     args.corpus_root = args.corpus_root.resolve()
     args.corpus_root.mkdir(parents=True, exist_ok=True)
     args.flutter_root = args.flutter_root.resolve()
     env = dict(os.environ, PATH=str(args.tool_bin.resolve()) + os.pathsep + os.environ["PATH"])
+    selected = [p for p in json.loads((CI / "linux-projects.json").read_text())
+                if p.get("framework") and args.only in p["slug"]]
+    if not selected:
+        parser.error("no hybrid projects match --only")
+    required = {"node": "v24.22.2"}
+    if any(p["framework"] == "React Native" for p in selected): required["bundle"] = "4.0.20"
+    if any(p["slug"] == "react-native-mmkv" for p in selected): required["bun"] = "1.3.14"
     versions = {}
-    for tool, expected in [("node", "v24.22.2"), ("bun", "1.3.14"), ("bundle", "4.0.20")]:
+    for tool, expected in required.items():
         version = subprocess.check_output([tool, "--version"], text=True, env=env).strip()
         if version.removeprefix("Bundler version ") != expected:
             raise RuntimeError(f"{tool}: expected {expected}, found {version}")
         versions[tool] = version
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    records = {"tools": versions, "projects": {}}
-    selected = [p for p in json.loads((CI / "linux-projects.json").read_text())
-                if p.get("framework") and args.only in p["slug"]]
-    if not selected:
-        parser.error("no hybrid projects match --only")
+    records = {"host": sys.platform, "tools": versions, "projects": {}}
     try:
         for project in selected:
             records["projects"][project["slug"]] = prepare(project, args, env)

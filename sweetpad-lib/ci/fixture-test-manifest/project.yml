@@ -1,0 +1,32 @@
+name: ManifestProbe
+options:
+  bundleIdPrefix: dev.sweetpad.ci
+  deploymentTarget:
+    iOS: '15.0'
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    CODE_SIGNING_ALLOWED: 'NO'
+    GENERATE_INFOPLIST_FILE: 'YES'
+targets:
+  LogicXCTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [XCTest]
+  LogicSwiftTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [SwiftTesting]
+schemes:
+  ManifestProbe:
+    build:
+      targets:
+        LogicXCTests: [test]
+        LogicSwiftTests: [test]
+    test:
+      config: Debug
+      targets: [LogicXCTests, LogicSwiftTests]
+      commandLineArguments:
+        '--value "two words"': true
+      environmentVariables:
+        MANIFEST_VALUE: Linux tests ü

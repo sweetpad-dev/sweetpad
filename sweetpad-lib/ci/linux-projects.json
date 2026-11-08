@@ -34,6 +34,13 @@
         "patches": [
           "swift-nio-apple-cross-resources.patch"
         ]
+      },
+      {
+        "resolvedCheckout": "SourcePackages/checkouts/SQLite.swift",
+        "commit": "4114679379eeb4538638f49ec14e1854dd9cf73c",
+        "patches": [
+          "sqlite-apple-cross-traits.patch"
+        ]
       }
     ]
   },
@@ -86,8 +93,13 @@
     "framework": "React Native",
     "linuxDerivedData": "sweetpad-followup-react-native",
     "patches": [
-      "react-native-mmkv-cxx-debug-thunks.patch",
       "react-native-mmkv-scene-lifecycle.patch"
+    ],
+    "linuxSettings": [
+      "HERMES_CLI_PATH=@SOURCE_ROOT@/node_modules/hermes-compiler/hermesc/linux64-bin/hermesc"
+    ],
+    "retiredPatches": [
+      "react-native-mmkv-cxx-debug-thunks.patch"
     ]
   },
   {
@@ -109,6 +121,9 @@
     "linuxDerivedData": "sweetpad-followup-react-native-template",
     "patches": [
       "react-native-template-scene-lifecycle.patch"
+    ],
+    "linuxSettings": [
+      "HERMES_CLI_PATH=@SOURCE_ROOT@/template/node_modules/hermes-compiler/hermesc/linux64-bin/hermesc"
     ]
   }
 ]

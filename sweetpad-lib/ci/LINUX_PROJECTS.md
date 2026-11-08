@@ -370,7 +370,7 @@ Start Metro on port 8081 from the template directory before the simulator compar
 For the MMKV stress case, use Bun 1.3.14 and `bun install --frozen-lockfile`
 at its repository root. Run its postinstall build, then install the example's Ruby/Pod dependencies.
 The pin uses React Native 0.85.3 and NitroModules 0.35.9.
-Apply the MMKV fixture patches before `bundle exec pod install`.
+Apply the MMKV scene-lifecycle patch before `bundle exec pod install`.
 For an existing checkout, `linux-projects.py --only react-native-mmkv --prepare-only` applies the patches without building.
 Then run `bundle exec pod install` again inside `example/ios` to regenerate the Pod header-search paths.
 The `SwiftCxxDebugThunks` shim affects only NitroModules and NitroMmkv.
@@ -550,7 +550,9 @@ Watch runtime and device checks remain unverified.
 
 The MMKV reproduction now covers both Swift module import and Objective-C++ object emission.
 Disabling forced debug-thunk emission resolves both stages with the pinned compiler.
-The final clean application builds pass on both hosts. The compiler workaround remains an explicit fixture patch.
+The final clean application builds pass on both hosts. The former fixture shim is retired.
+The Linux header-merge stage corrects only the two self-nesting Optional bridge helpers.
+It preserves `DEBUG`, their callable interfaces, and every other thunk's attributes.
 
 
 ## Linker, preparation, runtime, and localized-shortcut follow-up
@@ -606,8 +608,8 @@ Deployment mode still validates the full Pod graph. Changed dependency versions
 or unrelated lock changes fail preparation.
 
 All four fresh hybrid fixtures build on both hosts. Their bundle resources and
-metadata match; one Mach-O comparison remains per fixture. This validates Mac
-preparation followed by Linux compilation. CocoaPods execution on Linux remains untested.
+metadata match apart from the recorded Mach-O differences. Fresh Linux preparation
+also passes for all four fixtures, including CocoaPods. The executable audit records no Mach-O execution attempts.
 
 `linux-projects.json` also records Swiftfin's pinned StatefulMacro Foundation patch.
 `linux-dependency-patches.py --check` validates it alongside the NIO patches on each host.
@@ -662,3 +664,98 @@ Voice-invocation and interactive Icon Composer material checks remain unverified
 
 Fresh MMKV products also pass seven storage checks twice per host, including persistence after relaunch.
 Use `mmkv-parity-smoke.py --corpus-root` with the fresh source root and `--out` with its build evidence directory.
+
+
+## Fresh Linux builds and automatic test manifests (2026-11-08)
+
+`linux-clean-checks.py` prepares frozen dependencies and builds each hybrid fixture from a fresh checkout.
+The default build uses Release, arm64, an unsigned generic iOS destination, and fresh DerivedData.
+`--configuration Debug --destination 'generic/platform=iOS Simulator'` selects simulator controls.
+The runner removes its generated intermediates after each successful build.
+It preserves source checkouts, app products, dependency receipts, and execution reports.
+
+The pinned tool installer provides Node 24.22.2, Bun 1.3.14, Ruby 3.4.8, and Bundler 4.0.20.
+Linux CocoaPods preparation uses metadata-only Xcode adapters and the imported SDK version.
+Unsupported adapter commands fail. Dependency preparation does not invoke Apple executables.
+Linux Flutter preparation includes the same minimum-deployment migration as the pinned Flutter tool on macOS.
+Flutter Release uses its supported local-engine paths and the Linux iOS snapshot compiler.
+
+```bash
+bash sweetpad-lib/ci/linux-framework-tools.sh
+python3 -B sweetpad-lib/ci/linux-clean-checks.py --out /path/to/fresh-output
+```
+
+The execution audit records ELF, script, and Mach-O attempts with `strace`.
+It captures temporary executable headers before SwiftPM removes its manifest binaries.
+Mach-O attempts and uninspectable successful executions fail the audit, even after a successful build.
+This audit evaluates build provenance. It is not a security sandbox and does not change binfmt registration.
+All four fresh hybrid Release builds pass. A separate fresh MMKV Debug build also passes without the retired fixture shim.
+
+The Ubuntu x64 and ARM64 workflow runs library tests, Clippy, formatting, and Python regressions without Apple SDKs.
+The manual `linux-apple-build.yaml` workflow requires a provisioned Apple-hardware Linux runner with its private SDK and Flutter compiler.
+It runs fresh builds, automatic manifest checks, and the dynamic-package export regression.
+Local equivalents pass. No remote workflow run or runner registration forms part of this validation.
+
+### Package evaluation and linker controls
+
+Matched arm64 Release controls cover Wikipedia, Mastodon, Flutter, React Native, MMKV, and Capacitor.
+The checker retains all remaining differences. It does not suppress dylib kinds or versions.
+Several earlier Debug framework loads disappear from Release controls.
+The native compiler emits Objective-C runtime symbol references that the Linux compiler eliminates in React Native.
+Its required-versus-weak runtime load follows those actual references.
+A native weak CoreAudio force-load marker also accounts for an additional optional native load.
+
+Mastodon exposed a destination-trait gap in SQLite.swift at `4114679379eeb4538638f49ec14e1854dd9cf73c`.
+The unpatched manifest selects bundled SQLite on Linux, even for an Apple destination.
+The pinned patch selects `SystemSQLite` only under `SWEETPAD_APPLE_TARGET=1`.
+Host tools retain `SQLiteSwiftCSQLite`. The rebuilt framework uses the same system-library load as Xcode.
+`linux-dependency-patches.py` applies and validates this patch alongside the NIO resource patch.
+
+The linker adapter also handles nested GNU response files before it examines prelinked package archives.
+Transformed commands remain in response files to respect the operating-system argument limit.
+The export regression uses a quoted Unicode archive path and an unused public function with SQLite autolinking.
+The wrapped link matches native exports and library loads. Raw LLD omits that public function.
+This regression covers response files separately from Mastodon's package-trait difference.
+
+```bash
+python3 -B sweetpad-lib/ci/linux-package-linking-checks.py --out /path/to/fresh-export-control
+python3 -B sweetpad-lib/ci/linux-runtime-linking-checks.py --out /path/to/fresh-runtime-controls
+```
+
+The second command records 18 matching controls out of 20.
+Two explicit Swift Darwin reexport controls differ at deployment targets 18 and 27.
+The command returns failure for these differences. They remain visible as a lower-priority linker compatibility limit.
+Remaining app comparisons also retain extra loader rpaths, runtime version fields, and optional optimized `.omo` companions.
+These differences do not establish runtime equivalence on an unavailable older OS.
+
+### MMKV generated-header correction
+
+`swift-build-generic-debug-bridges.patch` changes four generated declarations/definitions for two Optional bridge helpers.
+Those helpers use the existing lazy inline-helper macro, which prevents unbounded generic instantiation.
+Every other debug thunk keeps its original attributes. The generated APIs and application `DEBUG` definitions remain intact.
+The task signature changes so existing merged headers regenerate.
+The old Podfile/header shim remains in the repository only as a retired patch for existing fixture migration.
+The frozen Podfile checksum changes with that removal. Dependency versions remain unchanged.
+
+Fresh Debug and Release Linux builds pass without the fixture shim.
+Native and Linux Debug products each pass seven storage checks twice, including persistence after relaunch.
+Their executable hashes remain unchanged during simulator checks.
+The raw compiler regression remains reproducible with `linux-cxx-interop-checks.py` without an SDK or MMKV checkout.
+The build-stage correction provides compatibility for the pinned compiler. An upstream compiler correction remains open.
+
+The fresh build also exposed an llbuild directory-scan race during Hermes replacement.
+`swift-llbuild-directory-race.patch` handles a removed entry instead of dereferencing a failed filesystem result.
+`linux-setup.sh` installs both build-engine corrections.
+
+### Automatic unit-test manifests
+
+Linux `sweetpad test build` writes a relocatable `.xctestrun` beside the built products.
+JSON output includes `xctestrunPath`. Unsupported inputs include a precise `xctestrunNote` instead.
+The generator selects enabled scheme targets and rejects ambiguous stale product copies.
+It preserves literal environment values, quoted argument rows, and selected/skipped test identifiers.
+UI tests, test plans, locale overrides, and build-setting expressions require a supplied manifest.
+
+All 13 incremental parity phases pass with the CLI-generated Linux manifests, without editing those manifests.
+That includes 91 Linux-built test executions and unchanged test executable hashes.
+The independent fixture also passes two XCTest and two Swift Testing tests with environment and quoted-argument assertions.
+The compiler, simulator, and native-control reports remain under `corpus/_linux-followups/validation`.

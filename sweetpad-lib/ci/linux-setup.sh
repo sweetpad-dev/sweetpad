@@ -60,8 +60,8 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -yqq \
   bash binutils bubblewrap build-essential ca-certificates cpio curl file git gnupg2 libc6-dev \
   libcurl4-openssl-dev libedit2 libgcc-13-dev libncurses-dev libpython3-dev \
-  libsqlite3-dev libssl-dev libstdc++-13-dev libxml2-dev libz3-dev llvm-18 pkg-config \
-  python3 rsync tzdata unzip zip xz-utils zlib1g-dev >/dev/null
+  libsqlite3-dev libssl-dev libstdc++-13-dev libxml2-dev libyaml-dev libz3-dev llvm-18 pkg-config \
+  python3 rsync strace tzdata unzip zip xz-utils zlib1g-dev >/dev/null
 # Swift Build's Darwin archive tasks use Apple's libtool command syntax.
 # LLVM supplies the portable implementation; GNU libtool is a different tool.
 if [ ! -e "$HOME/bin/libtool" ]; then
@@ -217,6 +217,24 @@ if ! git -C "$SWB" apply --reverse --check "$PATCH" 2>/dev/null; then
   git -C "$SWB" apply "$PATCH"
   git -C "$SWB" add --intent-to-add -- $(git -C "$SWB" ls-files --others --exclude-standard -- Sources)
   rm -f "$SWB/.build/release/swbuild"
+fi
+# Correct only the two self-nesting Optional Objective-C bridge helpers in
+# generated C++ headers. Keep DEBUG and all other forced debugger thunks.
+GENERIC_PATCH="$(dirname "$PATCH")/swift-build-generic-debug-bridges.patch"
+if ! git -C "$SWB" apply --reverse --check "$GENERIC_PATCH" 2>/dev/null; then
+  git -C "$SWB" apply --check "$GENERIC_PATCH"
+  git -C "$SWB" apply "$GENERIC_PATCH"
+  rm -f "$SWB/.build/release/swbuild"
+fi
+# Resolve dependencies before patching the pinned llbuild checkout. Its directory
+# iterator must tolerate entries removed by dependency replacement scripts.
+(cd "$SWB" && swift package resolve)
+LLBUILD="$SWB/.build/checkouts/swift-llbuild"
+LLBUILD_PATCH="$(dirname "$PATCH")/swift-llbuild-directory-race.patch"
+if ! git -C "$LLBUILD" apply --reverse --check "$LLBUILD_PATCH" 2>/dev/null; then
+  git -C "$LLBUILD" apply --check "$LLBUILD_PATCH"
+  git -C "$LLBUILD" apply "$LLBUILD_PATCH"
+  (cd "$SWB" && swift build -c release --product swbuild && swift build -c release --product SWBBuildServiceBundle)
 fi
 if [ ! -x "$SWB/.build/release/swbuild" ] || [ ! -x "$SWB/.build/release/SWBBuildServiceBundle" ]; then
   (cd "$SWB" && swift build -c release --product swbuild && swift build -c release --product SWBBuildServiceBundle)

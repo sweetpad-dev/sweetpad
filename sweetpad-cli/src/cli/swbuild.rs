@@ -32,6 +32,7 @@ use crate::cli::xcodebuild::{self, BuildAction, BuildPlan, CommandPreview};
 use crate::cli::{CliError, ErrorKind, process};
 
 mod host_macros;
+mod test_manifest;
 
 /// The engine a build runs on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -62,6 +63,14 @@ pub fn command(plan: &BuildPlan<'_>) -> Result<CommandPreview, CliError> {
         args: invocation.args,
         cwd: invocation.cwd,
     })
+}
+
+/// The test manifest for the products this Swift Build invocation just built.
+/// Kept separate from build statistics so a successful compilation still
+/// reports success when a test option needs a user-supplied manifest.
+pub fn xctestrun(plan: &BuildPlan<'_>) -> Result<PathBuf, String> {
+    let invocation = Invocation::of(plan).map_err(|e| e.to_string())?;
+    test_manifest::write(plan, &invocation)
 }
 
 /// Build `plan` with Swift Build, rendering its progress the way an
