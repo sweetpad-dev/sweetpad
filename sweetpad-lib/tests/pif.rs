@@ -41,12 +41,12 @@ fn lib_dir() -> PathBuf {
 /// Build coverage applies explicit watch migrations in the live corpus. Read
 /// pristine Git archives for these snapshots without reverting those fixtures
 /// or replacing their original native golden coverage.
-struct PristineCorpus(PathBuf);
+struct TemporaryFixture(PathBuf);
 
-impl PristineCorpus {
-    fn new(corpus: &Path) -> Self {
+impl TemporaryFixture {
+    fn empty(prefix: &str) -> Self {
         let root = std::env::temp_dir().join(format!(
-            "sweetpad-pristine-pif-{}-{}",
+            "{prefix}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -54,7 +54,32 @@ impl PristineCorpus {
                 .as_nanos()
         ));
         fs::create_dir_all(&root).unwrap();
-        let pristine = Self(root);
+        Self(root)
+    }
+
+    fn probe() -> Self {
+        // Copy files as a fresh Git checkout does: empty directories do not
+        // survive. Reconstruct the empty group captured in both native dumps
+        // without adding a placeholder resource or mutating the source tree.
+        fn copy_files(from: &Path, to: &Path) {
+            if from.is_dir() {
+                for entry in fs::read_dir(from).unwrap() {
+                    let entry = entry.unwrap();
+                    copy_files(&entry.path(), &to.join(entry.file_name()));
+                }
+            } else {
+                fs::create_dir_all(to.parent().unwrap()).unwrap();
+                fs::copy(from, to).unwrap();
+            }
+        }
+        let fixture = Self::empty("sweetpad-pif-probe");
+        copy_files(&lib_dir().join("ci/fixture-pif-probe"), &fixture.0);
+        fs::create_dir_all(fixture.0.join("Probe/Synced/EmptyDir")).unwrap();
+        fixture
+    }
+
+    fn new(corpus: &Path) -> Self {
+        let pristine = Self::empty("sweetpad-pristine-pif");
         for (repository, subtrees) in [
             ("kingfisher", vec![]),
             ("alamofire", vec![]),
@@ -183,7 +208,7 @@ fn copy_generated_containers(source: &Path, destination: &Path) {
     }
 }
 
-impl Drop for PristineCorpus {
+impl Drop for TemporaryFixture {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
     }
@@ -393,7 +418,8 @@ fn linux_fixture_matches_xcodebuild_dump() {
 /// reference and a workspace in a sibling folder.
 #[test]
 fn probe_fixture_matches_xcodebuild_dump() {
-    let dir = lib_dir().join("ci/fixture-pif-probe");
+    let fixture = TemporaryFixture::probe();
+    let dir = &fixture.0;
     // Xcode's random GUID for a variant group with neither a Base nor an
     // English translation, in the tree and in two targets' build files, and
     // an unnamed build rule's name.
@@ -403,12 +429,7 @@ fn probe_fixture_matches_xcodebuild_dump() {
     ]
     .into_iter()
     .map(|(container, dump, baseline)| {
-        let found = differences(
-            &dir.join(container),
-            &dir.join(dump),
-            "$(FIXTURE_DIR)",
-            &dir,
-        );
+        let found = differences(&dir.join(container), &dir.join(dump), "$(FIXTURE_DIR)", dir);
         (container.to_string(), found, baseline)
     })
     .collect();
@@ -420,7 +441,7 @@ fn corpus_matches_xcodebuild_dumps() {
     // NetNewsWire's "Recovered References" group has a random GUID.
     const BASELINES: &[(&str, usize)] = &[("netnewswire", 2)];
     let corpus = lib_dir().join("corpus");
-    let pristine = PristineCorpus::new(&corpus);
+    let pristine = TemporaryFixture::new(&corpus);
     let dumps = lib_dir().join("fixtures/_pif/xcode-27.0.0");
     let index: HashMap<String, String> =
         serde_json::from_str(&fs::read_to_string(dumps.join("index.json")).unwrap()).unwrap();
