@@ -4658,20 +4658,29 @@ and write registration metadata, strings, and shortcut language models. Unsuppor
 explicitly. Native captures validate the supported forms; device Siri behavior remains unverified.
 Dynamic components retain their own registrations; static dependency registration still fails explicitly.
 File inputs, dialog/snippet capabilities, and enum declaration order match native captures.
-Localized language-model bundles remain incomplete.
+Localized language-model bundles cover the supported schemas. Unsupported catalog variations fail explicitly.
 
 **Archives preserve development signing.** Swift Build's install action produces `.xcarchive`
 products. The CLI writes archive metadata and collects matching app, extension, and framework dSYMs.
 Development IPA export preserves the build's profiles and signature. It rejects unsigned export,
 simulator archives, distribution export, and custom export options.
 
-**Linux device operations use pymobiledevice3.** Discovery, install, uninstall, launch, and logs
-use its CLI transport. Readiness, process inspection, and termination remain unsupported.
-Physical-device validation was skipped at the user's request.
+**Linux device operations use pymobiledevice3.** The pinned Python adapter supports
+trusted USB and direct Wi-Fi. Both transports pass discovery, install, launch, scoped logs,
+stop, uninstall, and reinstallation on an iPhone 13. Automatic discovery uses multicast or
+system DNS-SD. Device readiness inspection and device debugging remain unsupported.
 
-**Linux builds come from source.** The Homebrew release stays a macOS
-binary. `linux-setup.sh` provisions Ubuntu 24.04, an OrbStack machine on a
-Mac or a host of its own, and the guide builds sweetpad with cargo.
+**Linux ARM64 ships an experimental release archive.** The Ubuntu 24.04 package includes
+the CLI, DAP alias, installer, licenses, a sample app, and public setup sources.
+It excludes Apple SDKs and signing material. Homebrew remains macOS only.
+The setup script provisions the separate compiler and private SDK prerequisites.
+`SWEETPAD_SKIP_RUST=1` omits Rust for the packaged CLI.
+Hosted CI validates a clean Ubuntu installation. A manual private SDK job builds the
+installed sample with no source checkout, developer home, network, or app build cache.
+The macro launcher restores runtime lookup from its adjacent host-toolchain link,
+because Swift strips PATH and LD_LIBRARY_PATH before it starts plugins.
+The release workflow publishes both platforms only after packaging checks pass.
+Manual Linux-only dry runs publish nothing.
 
 **Testing.** Unit tests cover the PIF lookups, the build request and
 parameters, `swbuild`'s message parser and each stand-in.
