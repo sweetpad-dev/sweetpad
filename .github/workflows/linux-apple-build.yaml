@@ -40,6 +40,27 @@ jobs:
           assert {t['BlueprintName'] for t in targets} == {'LogicXCTests', 'LogicSwiftTests'}
           assert all(t['EnvironmentVariables']['MANIFEST_VALUE'] == 'Linux tests ü' for t in targets)
           PYCODE
+      - name: Generate mixed UI and logic test-plan manifests
+        run: |
+          export PATH="$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+          "$HOME/sweetpad-target/debug/sweetpad" test build \
+            --project "$PWD/sweetpad-lib/ci/fixture-test-plans/TestPlanProbe.xcodeproj" \
+            --scheme TestPlanProbe --destination 'generic/platform=iOS Simulator' --json --non-interactive \
+            -- -derivedDataPath "$RUNNER_TEMP/plan-products" ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
+            > "$RUNNER_TEMP/linux-clean/reports/test-plan-build.json"
+          python3 - "$RUNNER_TEMP/linux-clean/reports/test-plan-build.json" <<'PYCODE'
+          import json, pathlib, plistlib, sys
+          result = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          assert result['ok'] and result['data']['built']
+          manifest = plistlib.loads(pathlib.Path(result['data']['xctestrunPath']).read_bytes())
+          assert {c['Name'] for c in manifest['TestConfigurations']} == {'French', 'English'}
+          for configuration in manifest['TestConfigurations']:
+              targets = {t['BlueprintName']: t for t in configuration['TestTargets']}
+              assert set(targets) == {'ProbeUITests', 'PlanLogicTests'}
+              assert targets['ProbeUITests']['IsUITestBundle']
+              assert targets['ProbeUITests']['UITargetAppPath'].endswith('/Probe.app')
+              assert all(t['EnvironmentVariables']['PLAN_PRODUCT'] == 'ProbeUITests' for t in targets.values())
+          PYCODE
       - name: Retain public dynamic-package APIs through response files
         run: python3 -B sweetpad-lib/ci/linux-package-linking-checks.py --worker --out "$RUNNER_TEMP/linux-clean/reports/package-linking"
       - uses: actions/upload-artifact@v7

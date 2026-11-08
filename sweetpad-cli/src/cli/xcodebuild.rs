@@ -2227,6 +2227,22 @@ pub fn target_settings(
         .map(|t| t.settings))
 }
 
+/// Settings for a test or UI target that need not appear in BuildAction.
+pub(super) fn test_target_settings(
+    plan: &BuildPlan<'_>,
+    target: &str,
+) -> Result<BTreeMap<String, String>, CliError> {
+    let mut options = settings_options(plan)?;
+    options.scheme = None;
+    options.target = Some(target.to_string());
+    sweetpad_core::build_settings::resolve_build_settings(&options)
+        .map_err(CliError::new)?
+        .into_iter()
+        .find(|t| t.target == target)
+        .map(|t| t.settings)
+        .ok_or_else(|| CliError::new(format!("could not resolve test target '{target}'")))
+}
+
 /// The resolver options [`located`] resolves `plan` with.
 fn settings_options(plan: &BuildPlan<'_>) -> Result<BuildSettingsOptions, CliError> {
     let (project, workspace) = match plan.container {

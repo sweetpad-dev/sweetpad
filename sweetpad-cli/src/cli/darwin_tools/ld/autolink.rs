@@ -2,14 +2,17 @@
 //! Xcode prefers SwiftUI's umbrella even when SwiftUICore appears first.
 //! Keep those references through the public umbrella at older deployment targets.
 
+use std::collections::BTreeSet;
 use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 #[derive(Default)]
 struct Frameworks {
     ui: bool,
     core: bool,
+    libraries: BTreeSet<String>,
+    force_loads: BTreeSet<String>,
     arch: Option<(u32, u32)>,
 }
 
@@ -21,20 +24,6 @@ pub(super) fn prefer_swiftui_umbrella(args: Vec<String>) -> Result<Vec<String>, 
 }
 
 fn prefer(mut args: Vec<String>, cache: &Path) -> Result<Vec<String>, String> {
-    // An explicit weak framework must keep its requested loading policy.
-    if args.windows(2).any(|a| {
-        a[1] == "SwiftUI"
-            && matches!(
-                a[0].as_str(),
-                "-framework"
-                    | "-weak_framework"
-                    | "-lazy_framework"
-                    | "-reexport_framework"
-                    | "-upward_framework"
-            )
-    }) {
-        return Ok(args);
-    }
     let mut found = Frameworks {
         arch: args
             .windows(2)
@@ -69,13 +58,27 @@ fn prefer(mut args: Vec<String>, cache: &Path) -> Result<Vec<String>, String> {
             path if !path.starts_with('-') => inspect(Path::new(path), all_load, &mut found)?,
             _ => {}
         }
-        if found.ui && found.core {
-            let arch = found
-                .arch
-                .ok_or("missing architecture for SwiftUI autolink input")?;
-            args.insert(0, umbrella_input(cache, arch)?.display().to_string());
-            break;
-        }
+    }
+    super::reexports::prefer_direct_runtime(&mut args, &found.libraries, &found.force_loads);
+    // Keep explicitly requested framework policy intact.
+    if found.ui
+        && found.core
+        && !args.windows(2).any(|a| {
+            a[1] == "SwiftUI"
+                && matches!(
+                    a[0].as_str(),
+                    "-framework"
+                        | "-weak_framework"
+                        | "-lazy_framework"
+                        | "-reexport_framework"
+                        | "-upward_framework"
+                )
+        })
+    {
+        let arch = found
+            .arch
+            .ok_or("missing architecture for SwiftUI autolink input")?;
+        args.insert(0, umbrella_input(cache, arch)?.display().to_string());
     }
     Ok(args)
 }
@@ -138,8 +141,9 @@ fn inspect(path: &Path, archives: bool, found: &mut Frameworks) -> Result<(), St
     {
         return Ok(());
     }
-    let mut file = File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let file = File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let size = file.metadata().map_err(|e| e.to_string())?.len();
+    let mut file = BufReader::new(file);
     scan(&mut file, 0, size, archives, found, 0)
         .map_err(|e| format!("reading autolink options in {}: {e}", path.display()))
 }
@@ -152,7 +156,7 @@ fn invalid() -> io::Error {
 }
 
 fn scan(
-    file: &mut File,
+    file: &mut BufReader<File>,
     offset: u64,
     size: u64,
     archives: bool,
@@ -207,7 +211,56 @@ fn scan(
     let mut commands = vec![0; length as usize];
     file.seek(SeekFrom::Start(offset + header_size))?;
     file.read_exact(&mut commands)?;
-    commands_frameworks(&commands, count, found)
+    commands_frameworks(&commands, count, found)?;
+    // Force-load markers are undefined references, not arbitrary strings
+    // or definitions. Only loaded objects (including force-loaded members) count.
+    let mut cursor = 0;
+    for _ in 0..count {
+        let kind = u32::from_le_bytes(commands[cursor..cursor + 4].try_into().unwrap());
+        let length =
+            u32::from_le_bytes(commands[cursor + 4..cursor + 8].try_into().unwrap()) as usize;
+        if kind == 2 && length >= 24 {
+            let word = |at| {
+                u64::from(u32::from_le_bytes(
+                    commands[cursor + at..cursor + at + 4].try_into().unwrap(),
+                ))
+            };
+            let (symbols, count, strings, length) = (word(8), word(12), word(16), word(20));
+            let entry_size = if header_size == 32 { 16 } else { 12 };
+            if count > 2_000_000
+                || length > 64 * 1024 * 1024
+                || symbols + count * entry_size > size
+                || strings + length > size
+            {
+                return Err(invalid());
+            }
+            let mut names = vec![0; usize::try_from(length).map_err(|_| invalid())?];
+            file.seek(SeekFrom::Start(offset + strings))?;
+            file.read_exact(&mut names)?;
+            file.seek(SeekFrom::Start(offset + symbols))?;
+            for _ in 0..count {
+                let mut entry = [0; 16];
+                file.read_exact(&mut entry[..usize::try_from(entry_size).map_err(|_| invalid())?])?;
+                if entry[4] != 1 {
+                    continue;
+                }
+                let at = u32::from_le_bytes(entry[..4].try_into().unwrap()) as usize;
+                let name = names
+                    .get(at..)
+                    .ok_or_else(invalid)?
+                    .split(|b| *b == 0)
+                    .next()
+                    .ok_or_else(invalid)?;
+                if let Ok(name) = std::str::from_utf8(name)
+                    && let Some(library) = name.strip_prefix("__swift_FORCE_LOAD_$_")
+                {
+                    found.force_loads.insert(library.to_string());
+                }
+            }
+        }
+        cursor += length;
+    }
+    Ok(())
 }
 
 fn commands_frameworks(data: &[u8], count: u32, found: &mut Frameworks) -> io::Result<()> {
@@ -230,6 +283,14 @@ fn commands_frameworks(data: &[u8], count: u32, found: &mut Frameworks) -> io::R
             if options.len() != count {
                 return Err(invalid());
             }
+            for option in &options {
+                if let Ok(option) = std::str::from_utf8(option)
+                    && let Some(library) = option.strip_prefix("-l")
+                    && !library.is_empty()
+                {
+                    found.libraries.insert(library.to_string());
+                }
+            }
             for pair in options.windows(2) {
                 if pair[0] == b"-framework" {
                     found.ui |= pair[1] == b"SwiftUI";
@@ -243,7 +304,7 @@ fn commands_frameworks(data: &[u8], count: u32, found: &mut Frameworks) -> io::R
 }
 
 fn archive(
-    file: &mut File,
+    file: &mut BufReader<File>,
     offset: u64,
     size: u64,
     found: &mut Frameworks,
@@ -287,7 +348,7 @@ fn archive(
 }
 
 fn fat(
-    file: &mut File,
+    file: &mut BufReader<File>,
     offset: u64,
     size: u64,
     header: [u8; 8],

@@ -722,9 +722,13 @@ python3 -B sweetpad-lib/ci/linux-package-linking-checks.py --out /path/to/fresh-
 python3 -B sweetpad-lib/ci/linux-runtime-linking-checks.py --out /path/to/fresh-runtime-controls
 ```
 
-The second command records 18 matching controls out of 20.
-Two explicit Swift Darwin reexport controls differ at deployment targets 18 and 27.
-The command returns failure for these differences. They remain visible as a lower-priority linker compatibility limit.
+The second command records 36 matching native/wrapped controls, including the two former explicit Darwin reexport differences.
+Both linkers consume identical objects. Raw LLD results remain separate in the report.
+The expanded controls include explicit weak parents, strong references, unused autolinks, and dead stripping.
+The adapter opens directly autolinked Swift runtimes before their explicit reexporting parents.
+It requires actual undefined force-load markers and matching SDK TBD reexports.
+SDK previous-install-name rules preserve old deployment behavior. Explicit library policies remain intact.
+All 24 existing SwiftUI controls and the dynamic-package export regression also pass.
 Remaining app comparisons also retain extra loader rpaths, runtime version fields, and optional optimized `.omo` companions.
 These differences do not establish runtime equivalence on an unavailable older OS.
 
@@ -747,15 +751,38 @@ The fresh build also exposed an llbuild directory-scan race during Hermes replac
 `swift-llbuild-directory-race.patch` handles a removed entry instead of dereferencing a failed filesystem result.
 `linux-setup.sh` installs both build-engine corrections.
 
-### Automatic unit-test manifests
+### Automatic test manifests
 
 Linux `sweetpad test build` writes a relocatable `.xctestrun` beside the built products.
 JSON output includes `xctestrunPath`. Unsupported inputs include a precise `xctestrunNote` instead.
 The generator selects enabled scheme targets and rejects ambiguous stale product copies.
-It preserves literal environment values, quoted argument rows, and selected/skipped test identifiers.
-UI tests, test plans, locale overrides, and build-setting expressions require a supplied manifest.
+It preserves environment values, quoted argument rows, locale overrides, and selected/skipped test identifiers.
+Build-setting expressions use the declared expansion target.
+UI manifests identify the built XCTRunner app and target application.
+The SDK importer includes iPhoneOS and iPhoneSimulator runner bundles.
+
+Version-1 test plans preserve each named configuration and replace configuration arrays with the native Xcode semantics.
+The default plan supplies the test targets and manifest. `-- -testPlan Smoke` selects another referenced plan.
+Unknown or ambiguous names fail explicitly. Unsupported plan policies produce a manifest note after a successful build.
+Supported fields include environment, arguments, locale, filters, expansion target, parallelization, timeouts, and attachment lifetime.
+Sanitizer policies still require a supplied manifest.
 
 All 13 incremental parity phases pass with the CLI-generated Linux manifests, without editing those manifests.
 That includes 91 Linux-built test executions and unchanged test executable hashes.
 The independent fixture also passes two XCTest and two Swift Testing tests with environment and quoted-argument assertions.
 The compiler, simulator, and native-control reports remain under `corpus/_linux-followups/validation`.
+
+The mixed test-plan fixture includes UI and logic targets, selected/skipped tests, Unicode environment values, and quoted arguments.
+Both Xcode and Linux products pass four executions across French and English configurations.
+Their selected manifest fields match. All app, runner, and test executable hashes remain unchanged during execution.
+The nondefault Smoke plan selects only the logic target and validates a region-only `en_FR` override.
+Linux reads the host locale instead of the unavailable macOS `defaults` command.
+An absent plan name fails explicitly.
+
+```bash
+python3 -B sweetpad-lib/ci/linux-test-plan-checks.py --out /path/to/fresh-plan-report --simulator SIMULATOR_UDID
+```
+
+The manual Linux integration workflow also builds this fixture and validates its generated manifests.
+The local report remains under `corpus/_linux-followups/validation/remaining-2026-11-08`.
+No phone, account resources, or optional `.omo` artifacts form part of this follow-up.

@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 mod autolink;
+mod reexports;
 mod response;
 
 pub(super) fn main(args: &[String]) -> ExitCode {

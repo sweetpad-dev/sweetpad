@@ -427,6 +427,7 @@ impl Invocation {
                     BuildAction::Archive => BuildFor::Archiving,
                 },
                 Some(&self.locations.folder),
+                test_plan_name(plan.passthrough),
             )?;
             let missing: Vec<&String> = names
                 .iter()
@@ -471,6 +472,7 @@ impl Invocation {
                         BuildAction::Archive => BuildFor::Archiving,
                     },
                     Some(&self.locations.folder),
+                    test_plan_name(plan.passthrough),
                 )?,
             )?
         } else {
@@ -737,19 +739,29 @@ fn swbuild_program() -> Result<PathBuf, CliError> {
 }
 
 /// The arguments after `--` that Swift Build can take: build settings
-/// (`KEY=VALUE`), `-derivedDataPath` and `-xcconfig`. Any other flag is
+/// (`KEY=VALUE`), `-derivedDataPath`, `-xcconfig` and `-testPlan`. Other flags are
 /// xcodebuild's own.
 fn refuse_xcodebuild_flags(passthrough: &[String]) -> Result<(), CliError> {
     let mut args = passthrough.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "-testPlan" => {
+                if args
+                    .next()
+                    .is_none_or(|value| value.is_empty() || value.starts_with('-'))
+                {
+                    return Err(
+                        CliError::new("'-testPlan' requires a plan name").kind(ErrorKind::Usage)
+                    );
+                }
+            }
             "-derivedDataPath" | "-xcconfig" => {
                 args.next();
             }
             flag if flag.starts_with('-') => {
                 return Err(CliError::new(format!(
                     "'{flag}' is an xcodebuild flag, and this build runs on Swift Build, which \
-                     takes only build settings ('KEY=VALUE'), '-derivedDataPath' and '-xcconfig' \
+                     takes only build settings ('KEY=VALUE'), '-derivedDataPath', '-xcconfig' and '-testPlan' \
                      after '--'"
                 ))
                 .kind(ErrorKind::Usage));
@@ -758,6 +770,14 @@ fn refuse_xcodebuild_flags(passthrough: &[String]) -> Result<(), CliError> {
         }
     }
     Ok(())
+}
+
+fn test_plan_name(passthrough: &[String]) -> Option<&str> {
+    passthrough
+        .windows(2)
+        .rev()
+        .find(|a| a[0] == "-testPlan")
+        .map(|a| a[1].as_str())
 }
 
 /// The targets a scheme builds for `build_for`, by name, the way Swift Build
@@ -771,15 +791,31 @@ fn scheme_targets(
     scheme: &str,
     build_for: BuildFor,
     derived_data: Option<&Path>,
+    requested_plan: Option<&str>,
 ) -> Result<Vec<String>, CliError> {
+    let explicit_plan = requested_plan.is_some() && build_for == BuildFor::Testing;
+    let missing_plan = || {
+        CliError::new(format!(
+            "scheme '{scheme}' has no test plan named '{}'",
+            requested_plan.unwrap_or_default()
+        ))
+    };
     let Some(file) =
         sweetpad_lib::scheme::locate_with_derived_data(container, scheme, derived_data)
     else {
+        if explicit_plan {
+            return Err(missing_plan());
+        }
         return Ok(vec![scheme.to_string()]);
     };
-    let Ok(parsed) = sweetpad_lib::scheme::parse_file(&file) else {
-        return Ok(vec![scheme.to_string()]);
+    let parsed = match sweetpad_lib::scheme::parse_file(&file) {
+        Ok(parsed) => parsed,
+        Err(error) if explicit_plan => return Err(CliError::new(error.to_string())),
+        Err(_) => return Ok(vec![scheme.to_string()]),
     };
+    if explicit_plan && parsed.test_action.is_none() {
+        return Err(missing_plan());
+    }
     let mut targets: Vec<String> = Vec::new();
     let mut add = |name: &str| {
         if !targets.iter().any(|t| t == name) {
@@ -796,11 +832,8 @@ fn scheme_targets(
     if build_for == BuildFor::Testing
         && let Some(test) = &parsed.test_action
     {
-        let plan = test
-            .test_plans
-            .iter()
-            .find(|p| p.default)
-            .or(test.test_plans.first());
+        let plan = sweetpad_lib::scheme::select_test_plan(&test.test_plans, requested_plan)
+            .map_err(CliError::new)?;
         if let Some(plan) = plan {
             // `container:` paths are relative to the folder the scheme's
             // project or workspace is in.
@@ -870,7 +903,13 @@ fn build_request(
         .as_str()
         .map(Path::new);
     let mut targets = Vec::new();
-    for name in scheme_targets(container, plan.scheme, build_for, derived_data)? {
+    for name in scheme_targets(
+        container,
+        plan.scheme,
+        build_for,
+        derived_data,
+        test_plan_name(plan.passthrough),
+    )? {
         let target = pif_target(pif, &name).ok_or_else(|| {
             CliError::new(format!("scheme target '{name}' isn't in the workspace PIF"))
         })?;
@@ -2017,6 +2056,24 @@ mod tests {
     }
 
     #[test]
+    fn explicit_test_plans_require_an_explicit_scheme_test_action() {
+        let dir = crate::cli::testdir::TempDir::new("missing-test-plan");
+        let project = dir.join("Empty.xcodeproj");
+        std::fs::create_dir_all(&project).unwrap();
+        assert!(scheme_targets(&project, "Empty", BuildFor::Testing, None, Some("Smoke")).is_err());
+        let schemes = project.join("xcshareddata/xcschemes");
+        std::fs::create_dir_all(&schemes).unwrap();
+        std::fs::write(
+            schemes.join("Empty.xcscheme"),
+            "<Scheme><BuildAction/></Scheme>",
+        )
+        .unwrap();
+        assert!(scheme_targets(&project, "Empty", BuildFor::Testing, None, Some("Smoke")).is_err());
+        assert!(refuse_xcodebuild_flags(&["-testPlan".into()]).is_err());
+        assert!(refuse_xcodebuild_flags(&["-testPlan".into(), "Smoke".into()]).is_ok());
+    }
+
+    #[test]
     fn building_for_testing_adds_the_test_plans_targets() {
         let dir = crate::cli::testdir::TempDir::new("sweetpad-swbuild-test-plan");
         let project = dir.join("App.xcodeproj");
@@ -2051,11 +2108,11 @@ mod tests {
         );
         std::fs::write(schemes.join("App.xcscheme"), scheme(&testables)).unwrap();
         assert_eq!(
-            scheme_targets(&project, "App", BuildFor::Testing, None).unwrap(),
+            scheme_targets(&project, "App", BuildFor::Testing, None, None).unwrap(),
             ["App", "AppTests", "KitTests"]
         );
         assert_eq!(
-            scheme_targets(&project, "App", BuildFor::Running, None).unwrap(),
+            scheme_targets(&project, "App", BuildFor::Running, None, None).unwrap(),
             ["App"]
         );
 
@@ -2074,7 +2131,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            scheme_targets(&project, "App", BuildFor::Testing, None).unwrap(),
+            scheme_targets(&project, "App", BuildFor::Testing, None, None).unwrap(),
             ["App", "UITests"]
         );
     }

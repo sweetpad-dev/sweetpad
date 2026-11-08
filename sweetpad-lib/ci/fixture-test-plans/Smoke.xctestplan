@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "configurations": [
+    {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "name": "Smoke",
+      "options": {
+        "environmentVariableEntries": [
+          {
+            "key": "PLAN_VARIANT",
+            "value": "region"
+          },
+          {
+            "key": "PLAN_SHARED",
+            "value": "shared \u00fc"
+          },
+          {
+            "key": "PLAN_PRODUCT",
+            "value": "$(PRODUCT_NAME)"
+          }
+        ],
+        "region": "FR"
+      }
+    }
+  ],
+  "defaultOptions": {
+    "environmentVariableEntries": [
+      {
+        "key": "PLAN_SHARED",
+        "value": "shared \u00fc"
+      },
+      {
+        "key": "PLAN_PRODUCT",
+        "value": "$(PRODUCT_NAME)"
+      }
+    ],
+    "commandLineArgumentEntries": [
+      {
+        "argument": "--value \"two words\""
+      }
+    ],
+    "targetForVariableExpansion": {
+      "containerPath": "container:TestPlanProbe.xcodeproj",
+      "identifier": "CACD73913C795DAB38AFB032",
+      "name": "ProbeUITests"
+    }
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:TestPlanProbe.xcodeproj",
+        "identifier": "1FAC504C08B085D1DEDF66FC",
+        "name": "PlanLogicTests"
+      },
+      "skippedTests": [
+        "PlanLogicTests/testExcluded()"
+      ],
+      "parallelizable": false
+    }
+  ]
+}

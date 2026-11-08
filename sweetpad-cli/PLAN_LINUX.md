@@ -180,8 +180,13 @@ swift-syntax and diff the expanded Swift text.
 - [x] Execute Linux-built hosted XCTest, logic XCTest, and Swift Testing on a Mac
       without recompilation. `test run --xctestrun` preserves the built binaries
       and previous build diagnostics. Empty test selections fail explicitly.
-- [x] Generate basic iOS simulator unit-test manifests from selected bundles.
-      UI tests and custom test plans still need a supplied manifest.
+- [x] Generate relocatable iOS logic, app-hosted unit-test, and UI-test manifests.
+      Version-1 test plans preserve named configurations, locale overrides,
+      selected/skipped identifiers, quoted arguments, and build-setting expressions.
+      `-- -testPlan NAME` selects a referenced plan explicitly.
+      Unsupported plan policies, including sanitizers, require a supplied manifest.
+      Mixed UI/logic plans pass four executions per host on the simulator,
+      with matching selected manifest fields and unchanged executable hashes.
 - [x] Add app/package source and resource edits, asset/localization changes,
       renames, deletions, missing-output recovery, no-op hashes, and clean controls.
       `ci/linux-parity.py` runs both backends and prebuilt runtime checks.
@@ -787,7 +792,7 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       stand-in makes Xcode's checks (bundle ID prefix, matching versions);
       a widget built here registers in the simulator
 - [ ] App Clips
-- [x] Test targets: `test build` adds the default test plan's targets, or
+- [x] Test targets: `test build` adds the selected test plan's targets, or
       the scheme's testables, as `build-for-testing` does, and leaves the
       testing frameworks out of the host app like Xcode 27. The bundle passes
       under `xcodebuild test-without-building` with Xcode's `.xctestrun`

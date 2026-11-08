@@ -1,8 +1,7 @@
-//! Relocatable XCTest manifests for Swift Build's iOS unit-test products.
+//! Relocatable XCTest manifests for Swift Build's iOS test products.
 //!
 //! Selection comes from the scheme, never from every bundle left in Products.
-//! Unsupported test plans/UI tests produce a precise note after a successful
-//! build, rather than silently running a different set of tests.
+//! Unsupported testing policies produce a precise note after a successful build.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -12,7 +11,9 @@ use sweetpad_lib::xcscheme::Element;
 
 use super::{Invocation, pif_target};
 use crate::cli::property_list::{self as plist, Plist};
-use crate::cli::xcodebuild::BuildPlan;
+use crate::cli::xcodebuild::{self, BuildPlan};
+
+mod selection;
 
 fn dict(entries: impl IntoIterator<Item = (impl Into<String>, Plist)>) -> Plist {
     Plist::Dict(entries.into_iter().map(|(k, v)| (k.into(), v)).collect())
@@ -30,6 +31,15 @@ fn read_info(bundle: &Path) -> Result<Plist, String> {
     let path = bundle.join("Info.plist");
     plist::read_info(&std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?)
 }
+fn executable(bundle: &Path) -> Result<String, String> {
+    let info = read_info(bundle)?;
+    let name = plist::string(&info, "CFBundleExecutable").ok_or("bundle has no executable name")?;
+    if !bundle.join(name).is_file() {
+        return Err(format!("{} has no built executable", bundle.display()));
+    }
+    Ok(name.into())
+}
+
 fn test_path(products: &Path, path: &Path) -> Result<String, String> {
     path.strip_prefix(products)
         .map(|p| format!("__TESTROOT__/{}", p.to_string_lossy()))
@@ -42,99 +52,20 @@ fn test_path(products: &Path, path: &Path) -> Result<String, String> {
         })
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Selection {
+    configuration: Option<String>,
+    plan: Option<(String, bool)>,
+    language: Option<String>,
+    region: Option<String>,
+    expansion_target: Option<String>,
+    options: BTreeMap<String, Plist>,
+    target_options: BTreeMap<String, BTreeMap<String, Plist>>,
     names: Vec<String>,
     environment: BTreeMap<String, String>,
     arguments: Vec<String>,
     skipped: BTreeMap<String, Vec<String>>,
     only: BTreeMap<String, Vec<String>>,
-}
-
-fn selection(scheme: &Element) -> Result<Selection, String> {
-    let test = child(scheme, "TestAction").ok_or("scheme has no TestAction")?;
-    if child(test, "TestPlans").is_some_and(|p| !p.children.is_empty()) {
-        return Err("automatic .xctestrun generation does not yet support test plans; supply a manifest to 'test run --xctestrun'".into());
-    }
-    if ["language", "region"]
-        .iter()
-        .any(|key| test.attr(key).is_some_and(|v| !v.is_empty()))
-    {
-        return Err("test language or region overrides require a supplied .xctestrun".into());
-    }
-    let mut result = Selection::default();
-    if let Some(testables) = child(test, "Testables") {
-        for testable in testables
-            .children
-            .iter()
-            .filter(|t| t.name == "TestableReference" && t.attr("skipped") != Some("YES"))
-        {
-            let buildable = child(testable, "BuildableReference")
-                .ok_or("testable has no BuildableReference")?;
-            let name = buildable
-                .attr("BlueprintName")
-                .ok_or("testable has no BlueprintName")?
-                .to_string();
-            for (tag, identifiers) in [
-                ("SkippedTests", &mut result.skipped),
-                ("SelectedTests", &mut result.only),
-            ] {
-                if let Some(tests) = child(testable, tag) {
-                    identifiers.insert(
-                        name.clone(),
-                        tests
-                            .children
-                            .iter()
-                            .filter_map(|e| e.attr("Identifier").map(str::to_string))
-                            .collect(),
-                    );
-                }
-            }
-            result.names.push(name);
-        }
-    }
-    let launch = if test.attr("shouldUseLaunchSchemeArgsEnv") == Some("YES") {
-        child(scheme, "LaunchAction")
-            .ok_or("test action uses missing launch arguments/environment")?
-    } else {
-        test
-    };
-    if let Some(environment) = child(launch, "EnvironmentVariables") {
-        for entry in environment
-            .children
-            .iter()
-            .filter(|e| e.attr("isEnabled") != Some("NO"))
-        {
-            let key = entry
-                .attr("key")
-                .ok_or("test environment variable has no key")?;
-            let value = entry.attr("value").unwrap_or_default();
-            if value.contains("$(") || value.contains("${") {
-                return Err(format!(
-                    "test environment '{key}' needs build-setting expansion; supply an .xctestrun"
-                ));
-            }
-            result.environment.insert(key.into(), value.into());
-        }
-    }
-    if let Some(arguments) = child(launch, "CommandLineArguments") {
-        for entry in arguments
-            .children
-            .iter()
-            .filter(|e| e.attr("isEnabled") != Some("NO"))
-        {
-            let value = entry.attr("argument").unwrap_or_default();
-            if value.contains("$(") || value.contains("${") {
-                return Err(
-                    "test arguments need build-setting expansion; supply an .xctestrun".into(),
-                );
-            }
-            // XCTest parses each scheme row when launching the runner.
-            // Splitting here would make it split a quoted argument twice.
-            result.arguments.push(value.to_string());
-        }
-    }
-    Ok(result)
 }
 
 /// Only the current configuration and selected product basename participate.
@@ -199,38 +130,66 @@ fn testing_environment(base: &str, scheme: &str, simulator: bool) -> BTreeMap<St
     testing
 }
 
-fn target(
+fn ui_options(
     products: &Path,
-    bundle: &Path,
-    name: &str,
+    app: &Path,
+    base: &str,
     scheme: &str,
     simulator: bool,
     selected: &Selection,
 ) -> Result<Plist, String> {
-    let info = read_info(bundle)?;
-    let executable =
-        plist::string(&info, "CFBundleExecutable").ok_or("test bundle has no executable name")?;
-    if !bundle.join(executable).is_file() {
-        return Err(format!("{} has no built executable", bundle.display()));
+    let mut result = dict(std::iter::empty::<(&str, Plist)>());
+    executable(app)?;
+    plist::set(&mut result, "IsUITestBundle", Plist::Bool(true));
+    plist::set(
+        &mut result,
+        "IsXCTRunnerHostedTestBundle",
+        Plist::Bool(true),
+    );
+    plist::set(
+        &mut result,
+        "UITargetAppPath",
+        text(test_path(products, app)?),
+    );
+    plist::set(
+        &mut result,
+        "UITargetAppCommandLineArguments",
+        array(
+            sweetpad_lib::scheme::locale_arguments(
+                selected.language.as_deref(),
+                selected.region.as_deref(),
+                sweetpad_lib::scheme::host_language,
+            )
+            .iter()
+            .map(text),
+        ),
+    );
+    let mut app_env = testing_environment(base, scheme, simulator);
+    for key in ["DYLD_FRAMEWORK_PATH", "DYLD_LIBRARY_PATH"] {
+        if simulator {
+            app_env.insert(key.into(), base.into());
+        }
     }
-    let developer = "__PLATFORMS__/iPhoneSimulator.platform/Developer";
-    let host = bundle
-        .ancestors()
-        .skip(1)
-        .take_while(|p| p.starts_with(products))
-        .find(|p| p.extension().is_some_and(|e| e == "app"));
-    if !simulator && host.is_none() {
-        return Err("device unit tests require an app host".into());
+    app_env.remove("DYLD_INSERT_LIBRARIES");
+    if let Some((plan, _)) = &selected.plan {
+        app_env.insert("XCODE_TEST_PLAN_NAME".into(), plan.clone());
     }
-    let configuration_root = host
-        .unwrap_or(bundle)
-        .parent()
-        .ok_or("test product has no parent")?;
-    let base = test_path(products, configuration_root)?;
-    let mut testing = testing_environment(&base, scheme, simulator);
-    let bundle_path = test_path(products, bundle)?;
-    let mut dependent = vec![text(&bundle_path)];
-    let mut result = dict([
+    plist::set(
+        &mut result,
+        "UITargetAppEnvironmentVariables",
+        dict(app_env.into_iter().map(|(k, v)| (k, text(v)))),
+    );
+    Ok(result)
+}
+
+fn test_options(
+    name: &str,
+    executable: &str,
+    bundle_path: &str,
+    developer: &str,
+    selected: &Selection,
+) -> Plist {
+    dict([
         ("BlueprintName", text(name)),
         ("ProductModuleName", text(executable)),
         ("TestBundlePath", text(bundle_path)),
@@ -253,13 +212,42 @@ fn target(
         ),
         ("SystemAttachmentLifetime", text("deleteOnSuccess")),
         ("UserAttachmentLifetime", text("deleteOnSuccess")),
-    ]);
+    ])
+}
+
+fn target(
+    products: &Path,
+    bundle: &Path,
+    name: &str,
+    scheme: &str,
+    simulator: bool,
+    selected: &Selection,
+    ui_app: Option<&Path>,
+) -> Result<Plist, String> {
+    let executable = executable(bundle)?;
+    let developer = "__PLATFORMS__/iPhoneSimulator.platform/Developer";
+    let host = bundle
+        .ancestors()
+        .skip(1)
+        .take_while(|p| p.starts_with(products))
+        .find(|p| p.extension().is_some_and(|e| e == "app"));
+    if !simulator && host.is_none() {
+        return Err("device unit tests require an app host".into());
+    }
+    let configuration_root = host
+        .unwrap_or(bundle)
+        .parent()
+        .ok_or("test product has no parent")?;
+    let base = test_path(products, configuration_root)?;
+    let mut testing = testing_environment(&base, scheme, simulator);
+    let bundle_path = test_path(products, bundle)?;
+    let mut dependent = vec![text(&bundle_path)];
+    let mut result = test_options(name, &executable, &bundle_path, developer, selected);
     if let Some(host) = host {
         let host_info = read_info(host)?;
         let identifier = plist::string(&host_info, "CFBundleIdentifier")
             .ok_or("test host has no bundle identifier")?;
         dependent.insert(0, text(test_path(products, host)?));
-        plist::set(&mut result, "IsAppHostedTestBundle", Plist::Bool(true));
         plist::set(
             &mut result,
             "TestHostPath",
@@ -274,11 +262,42 @@ fn target(
                 bundle.strip_prefix(host).unwrap().display()
             )),
         );
-        testing.insert(
-            "DYLD_INSERT_LIBRARIES".into(),
-            "__TESTHOST__/Frameworks/libXCTestBundleInject.dylib:/usr/lib/libRPAC.dylib".into(),
-        );
-        testing.insert("XCInjectBundleInto".into(), "unused".into());
+        if let Some(app) = ui_app {
+            dependent.insert(0, text(test_path(products, app)?));
+            if let Plist::Dict(fields) =
+                ui_options(products, app, &base, scheme, simulator, selected)?
+            {
+                for (key, value) in fields {
+                    plist::set(&mut result, &key, value);
+                }
+            }
+            testing.remove("DYLD_INSERT_LIBRARIES");
+        } else {
+            plist::set(&mut result, "IsAppHostedTestBundle", Plist::Bool(true));
+            testing.insert(
+                "DYLD_INSERT_LIBRARIES".into(),
+                "__TESTHOST__/Frameworks/libXCTestBundleInject.dylib:/usr/lib/libRPAC.dylib".into(),
+            );
+            testing.insert("XCInjectBundleInto".into(), "unused".into());
+        }
+    } else if ui_app.is_some() {
+        return Err("UI test bundle has no XCTRunner app host".into());
+    }
+    if let Some(language) = &selected.language {
+        plist::set(&mut result, "TestLanguage", text(language));
+    }
+    if let Some(region) = &selected.region {
+        plist::set(&mut result, "TestRegion", text(region));
+    }
+    for (key, value) in selected
+        .options
+        .iter()
+        .chain(selected.target_options.get(name).into_iter().flatten())
+    {
+        plist::set(&mut result, key, value.clone());
+    }
+    if let Some((plan, _)) = &selected.plan {
+        testing.insert("XCODE_TEST_PLAN_NAME".into(), plan.clone());
     }
     if let Some(skipped) = selected.skipped.get(name) {
         plist::set(
@@ -303,70 +322,193 @@ fn target(
     Ok(result)
 }
 
-pub(super) fn write(plan: &BuildPlan<'_>, invocation: &Invocation) -> Result<PathBuf, String> {
-    let sdk = invocation.parameters["activeRunDestination"]["platform"]
-        .as_str()
-        .unwrap_or_default();
-    let simulator = sdk == "iphonesimulator";
-    if !simulator && sdk != "iphoneos" {
-        return Err("automatic .xctestrun generation currently supports iOS unit tests".into());
-    }
-    let configuration = format!("{}-{sdk}", plan.configuration);
-    let pif: Vec<Value> =
-        serde_json::from_slice(&std::fs::read(&invocation.pif).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
-    let mut selected = if let Some(path) = sweetpad_lib::scheme::locate_with_derived_data(
-        &invocation.container,
-        plan.scheme,
-        Some(&invocation.locations.folder),
-    ) {
-        selection(
-            &sweetpad_lib::xcscheme::parse(
-                &std::fs::read_to_string(path).map_err(|e| e.to_string())?,
-            )
-            .map_err(|e| e.to_string())?,
-        )?
-    } else {
-        Selection {
-            names: vec![plan.scheme.into()],
-            ..Selection::default()
+fn expand_selection(
+    plan: &BuildPlan<'_>,
+    selected: &Selection,
+    name: &str,
+    ui: bool,
+    settings_cache: &mut BTreeMap<String, BTreeMap<String, String>>,
+) -> Result<Selection, String> {
+    let mut expanded = selected.clone();
+    let expansion_name = selected.expansion_target.as_deref().unwrap_or(name);
+    let needs_expansion = selected
+        .environment
+        .values()
+        .chain(selected.arguments.iter())
+        .any(|v| v.contains('$'));
+    for target in [
+        ui.then_some(name),
+        needs_expansion.then_some(expansion_name),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if !settings_cache.contains_key(target) {
+            settings_cache.insert(
+                target.to_string(),
+                xcodebuild::test_target_settings(plan, target).map_err(|e| e.to_string())?,
+            );
         }
-    };
-    selected.names.sort();
-    selected.names.dedup();
-    let products = &invocation.locations.products;
+    }
+    if needs_expansion {
+        let settings = &settings_cache[expansion_name];
+        expanded.environment = selected
+            .environment
+            .iter()
+            .map(|(k, v)| (k.clone(), sweetpad_lib::resolver::expand_one(v, settings)))
+            .collect();
+        expanded.arguments = selected
+            .arguments
+            .iter()
+            .map(|v| sweetpad_lib::resolver::expand_one(v, settings))
+            .collect();
+    }
+    expanded
+        .arguments
+        .extend(sweetpad_lib::scheme::locale_arguments(
+            selected.language.as_deref(),
+            selected.region.as_deref(),
+            sweetpad_lib::scheme::host_language,
+        ));
+    Ok(expanded)
+}
+
+fn selected_targets(
+    plan: &BuildPlan<'_>,
+    pif: &[Value],
+    selected: &Selection,
+    products: &Path,
+    configuration: &str,
+    simulator: bool,
+    settings_cache: &mut BTreeMap<String, BTreeMap<String, String>>,
+) -> Result<Vec<Plist>, String> {
     let mut targets = Vec::new();
     for name in &selected.names {
-        let pif_target = pif_target(&pif, name)
+        let pif_target = pif_target(pif, name)
             .ok_or_else(|| format!("test target '{name}' is absent from the built PIF"))?;
         let kind = pif_target["productTypeIdentifier"]
             .as_str()
             .unwrap_or_default();
-        if kind == "com.apple.product-type.bundle.ui-testing" {
-            return Err(
-                "UI tests require a supplied .xctestrun specifying the target application".into(),
-            );
-        }
-        if kind != "com.apple.product-type.bundle.unit-test" {
-            return Err(format!("'{name}' is not a unit-test product"));
+        let ui = kind == "com.apple.product-type.bundle.ui-testing";
+        if !ui && kind != "com.apple.product-type.bundle.unit-test" {
+            return Err(format!("'{name}' is not a test product"));
         }
         let basename = pif_target["productReference"]["name"]
             .as_str()
             .ok_or("test product has no filename")?;
-        let bundle = locate(products, &configuration, basename)?;
+        let bundle = locate(products, configuration, basename)?;
+        let expanded = expand_selection(plan, selected, name, ui, settings_cache)?;
+        let ui_app = if ui {
+            let app_name = settings_cache[name]
+                .get("TEST_TARGET_NAME")
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| format!("UI test target '{name}' has no TEST_TARGET_NAME"))?;
+            let app_target = super::pif_target(pif, app_name).ok_or_else(|| {
+                format!("UI target application '{app_name}' is absent from the built PIF")
+            })?;
+            let basename = app_target["productReference"]["name"]
+                .as_str()
+                .ok_or("UI target app has no product filename")?;
+            if Path::new(basename).file_name().and_then(|s| s.to_str()) != Some(basename) {
+                return Err("invalid UI app product filename".into());
+            }
+            Some(products.join(configuration).join(basename))
+        } else {
+            None
+        };
         targets.push(target(
             products,
             &bundle,
             name,
             plan.scheme,
             simulator,
-            &selected,
+            &expanded,
+            ui_app.as_deref(),
         )?);
     }
-    if targets.is_empty() {
-        return Err("scheme has no enabled unit-test targets".into());
+    Ok(targets)
+}
+
+fn manifest_path(products: &Path, scheme: &str, configuration: &str) -> PathBuf {
+    // The generated filename must remain a filename even for unusual scheme names.
+    let safe_name: String = scheme
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || matches!(c, '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    products.join(format!("{safe_name}-{configuration}.xctestrun"))
+}
+
+pub(super) fn write(plan: &BuildPlan<'_>, invocation: &Invocation) -> Result<PathBuf, String> {
+    let sdk = invocation.parameters["activeRunDestination"]["platform"]
+        .as_str()
+        .unwrap_or_default();
+    let simulator = sdk == "iphonesimulator";
+    if !simulator && sdk != "iphoneos" {
+        return Err("automatic .xctestrun generation currently supports iOS tests".into());
     }
-    let manifest = dict([
+    let configuration = format!("{}-{sdk}", plan.configuration);
+    let pif: Vec<Value> =
+        serde_json::from_slice(&std::fs::read(&invocation.pif).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    let selections = if let Some(path) = sweetpad_lib::scheme::locate_with_derived_data(
+        &invocation.container,
+        plan.scheme,
+        Some(&invocation.locations.folder),
+    ) {
+        let scheme = sweetpad_lib::xcscheme::parse(
+            &std::fs::read_to_string(&path).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        selection::configurations(&scheme, &path, super::test_plan_name(plan.passthrough))?
+    } else {
+        vec![Selection {
+            names: vec![plan.scheme.into()],
+            ..Selection::default()
+        }]
+    };
+    let plan_metadata = selections.first().and_then(|s| s.plan.clone());
+    let products = &invocation.locations.products;
+    let mut configurations = Vec::new();
+    let mut settings_cache = BTreeMap::new();
+    for mut selected in selections {
+        selected.names.sort();
+        selected.names.dedup();
+        let targets = selected_targets(
+            plan,
+            &pif,
+            &selected,
+            products,
+            &configuration,
+            simulator,
+            &mut settings_cache,
+        )?;
+        if targets.is_empty() {
+            return Err("scheme has no enabled test targets".into());
+        }
+        configurations.push(dict([
+            (
+                "Name",
+                text(
+                    selected
+                        .configuration
+                        .as_deref()
+                        .unwrap_or(plan.configuration),
+                ),
+            ),
+            ("IsEnabled", Plist::Bool(true)),
+            ("TestTargets", array(targets)),
+        ]));
+    }
+    if configurations.is_empty() {
+        return Err("test plan has no configurations".into());
+    }
+    let mut manifest = dict([
         (
             "__xctestrun_metadata__",
             dict([("FormatVersion", Plist::Int(2))]),
@@ -378,28 +520,16 @@ pub(super) fn write(plan: &BuildPlan<'_>, invocation: &Invocation) -> Result<Pat
                 ("SchemeName", text(plan.scheme)),
             ]),
         ),
-        (
-            "TestConfigurations",
-            array([dict([
-                ("Name", text(plan.configuration)),
-                ("IsEnabled", Plist::Bool(true)),
-                ("TestTargets", array(targets)),
-            ])]),
-        ),
+        ("TestConfigurations", array(configurations)),
     ]);
-    // The generated filename must remain a filename even for unusual scheme names.
-    let safe_name: String = plan
-        .scheme
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || matches!(c, '-' | '_') {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    let path = products.join(format!("{safe_name}-{configuration}.xctestrun"));
+    if let Some((name, default)) = plan_metadata {
+        plist::set(
+            &mut manifest,
+            "TestPlan",
+            dict([("Name", text(name)), ("IsDefault", Plist::Bool(default))]),
+        );
+    }
+    let path = manifest_path(products, plan.scheme, &configuration);
     let temporary = path.with_extension(format!("{}.tmp", std::process::id()));
     std::fs::write(&temporary, crate::cli::keyed_archive::write(&manifest))
         .and_then(|()| std::fs::rename(&temporary, &path))
@@ -415,7 +545,7 @@ mod tests {
     #[test]
     fn selection_honors_skipped_targets_launch_environment_and_test_filters() {
         let scheme = sweetpad_lib::xcscheme::parse(r#"<Scheme><TestAction shouldUseLaunchSchemeArgsEnv="YES"><Testables><TestableReference skipped="YES"><BuildableReference BlueprintName="Other"/></TestableReference><TestableReference><BuildableReference BlueprintName="Tests"/><SkippedTests><Test Identifier="Tests/slow"/></SkippedTests><SelectedTests><Test Identifier="Tests/fast"/></SelectedTests></TestableReference></Testables></TestAction><LaunchAction><EnvironmentVariables><EnvironmentVariable key="ON" value="yes"/><EnvironmentVariable key="OFF" value="no" isEnabled="NO"/></EnvironmentVariables><CommandLineArguments><CommandLineArgument argument="--name &quot;two words&quot;"/></CommandLineArguments></LaunchAction></Scheme>"#).unwrap();
-        let selected = selection(&scheme).unwrap();
+        let selected = selection::scheme(&scheme).unwrap();
         assert_eq!(selected.names, ["Tests"]);
         assert_eq!(
             selected.environment,
@@ -424,24 +554,6 @@ mod tests {
         assert_eq!(selected.arguments, [r#"--name "two words""#]);
         assert_eq!(selected.skipped["Tests"], ["Tests/slow"]);
         assert_eq!(selected.only["Tests"], ["Tests/fast"]);
-    }
-
-    #[test]
-    fn unsupported_plans_cannot_silently_drop_options() {
-        let scheme = sweetpad_lib::xcscheme::parse(
-            "<Scheme><TestAction><TestPlans><TestPlanReference/></TestPlans></TestAction></Scheme>",
-        )
-        .unwrap();
-        assert!(selection(&scheme).err().unwrap().contains("test plans"));
-        let localized =
-            sweetpad_lib::xcscheme::parse("<Scheme><TestAction language=\"fr\"/></Scheme>")
-                .unwrap();
-        assert!(
-            selection(&localized)
-                .err()
-                .unwrap()
-                .contains("language or region")
-        );
     }
 
     #[test]

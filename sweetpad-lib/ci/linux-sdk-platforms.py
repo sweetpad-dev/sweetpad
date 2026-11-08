@@ -90,9 +90,9 @@ def main():
     # iOS companion/watch products can also need these stubs in the base SDK.
     for platform in ("iPhoneOS", "iPhoneSimulator"):
         root = source / (platform + ".platform")
-        stubs = root / "Library/Application Support"
-        if stubs.is_dir() and not args.metadata_only:
-            copy_tree(stubs, destination / root.name / "Library/Application Support")
+        for part in ("Library/Application Support", "Developer/Library/Xcode/Agents/XCTRunner.app"):
+            if (root / part).exists() and not args.metadata_only:
+                copy_tree(root / part, destination / root.name / part)
     update_triples(args.bundle)
 
 

@@ -230,6 +230,26 @@ pub struct TestPlanRef {
     pub default: bool,
 }
 
+/// Select the default plan, or a plan named by `-testPlan` (its filename stem).
+/// A missing or ambiguous explicit selection must not fall back to another plan.
+pub fn select_test_plan<'a>(
+    plans: &'a [TestPlanRef],
+    requested: Option<&str>,
+) -> Result<Option<&'a TestPlanRef>, String> {
+    if let Some(name) = requested {
+        let matching: Vec<_> = plans
+            .iter()
+            .filter(|p| Path::new(&p.path).file_stem().and_then(|s| s.to_str()) == Some(name))
+            .collect();
+        return match matching.as_slice() {
+            [plan] => Ok(Some(plan)),
+            [] => Err(format!("scheme has no test plan named '{name}'")),
+            _ => Err(format!("scheme has multiple test plans named '{name}'")),
+        };
+    }
+    Ok(plans.iter().find(|p| p.default).or(plans.first()))
+}
+
 /// A test target a test plan runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestPlanTarget {
@@ -991,26 +1011,11 @@ impl Scheme {
         for row in self.launch_arguments.iter().filter(|a| a.is_enabled) {
             args.extend(split_launch_argument(&expand_one(&row.argument, settings)));
         }
-        let language = self.launch_language.as_deref().filter(|l| !l.is_empty());
-        if let Some(language) = language {
-            args.push("-AppleLanguages".into());
-            args.push(format!("({language})"));
-            args.push("-AppleTextDirection".into());
-            args.push(
-                if is_right_to_left(language) {
-                    "YES"
-                } else {
-                    "NO"
-                }
-                .into(),
-            );
-        }
-        if let Some(region) = self.launch_region.as_deref().filter(|r| !r.is_empty())
-            && let Some(language) = language.map(str::to_string).or_else(host_language)
-        {
-            args.push("-AppleLocale".into());
-            args.push(format!("{language}_{region}"));
-        }
+        args.extend(locale_arguments(
+            self.launch_language.as_deref(),
+            self.launch_region.as_deref(),
+            host_language,
+        ));
 
         let mut env: Vec<(String, String)> = Vec::new();
         for row in self
@@ -1082,6 +1087,46 @@ pub fn split_launch_argument(row: &str) -> Vec<String> {
     words
 }
 
+/// Foundation launch flags for a scheme or test-plan locale override.
+pub fn locale_arguments(
+    language: Option<&str>,
+    region: Option<&str>,
+    host_language: impl FnOnce() -> Option<String>,
+) -> Vec<String> {
+    let mut args = Vec::new();
+    let language = language.filter(|l| !l.is_empty());
+    if let Some(language) = language {
+        args.push("-AppleLanguages".into());
+        args.push(format!("({language})"));
+        args.push("-AppleTextDirection".into());
+        args.push(
+            if is_right_to_left(language) {
+                "YES"
+            } else {
+                "NO"
+            }
+            .into(),
+        );
+    }
+    if let Some(region) = region.filter(|r| !r.is_empty())
+        && let Some(language) = language.map(str::to_string).or_else(host_language)
+    {
+        args.push("-AppleLocale".into());
+        args.push(format!("{language}_{region}"));
+    }
+    args
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn locale_language(locale: &str) -> Option<String> {
+    let language = locale.trim().split(['_', '-', '.', '@']).next()?.trim();
+    match language {
+        "" => None,
+        "C" | "POSIX" => Some("en".into()),
+        value => Some(value.to_string()),
+    }
+}
+
 /// Whether Foundation lays `language` out right to left, which is the
 /// `-AppleTextDirection` Xcode passes with App Language. Mirrors
 /// `NSLocale.characterDirection(forLanguage:)` as `xcodebuild` applies it: a
@@ -1115,17 +1160,29 @@ fn is_right_to_left(language: &str) -> bool {
 
 /// The host's language, which Xcode pairs with a scheme's App Region when the
 /// scheme sets no App Language: the language part of the user's
-/// `AppleLocale` default (`en` for `en_UA`). `None` when it can't be read.
+/// `AppleLocale` default (`en` for `en_UA`). Linux uses LC_ALL, LC_MESSAGES,
+/// then LANG, with English for the C/POSIX locale or an absent locale.
 #[must_use]
 pub fn host_language() -> Option<String> {
-    let out = std::process::Command::new("defaults")
-        .args(["read", "-g", "AppleLocale"])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())?;
-    let locale = String::from_utf8(out.stdout).ok()?;
-    let language = locale.trim().split(['_', '@']).next()?.trim();
-    (!language.is_empty()).then(|| language.to_string())
+    #[cfg(not(target_os = "macos"))]
+    {
+        ["LC_ALL", "LC_MESSAGES", "LANG"]
+            .into_iter()
+            .filter_map(|key| std::env::var(key).ok())
+            .find_map(|value| locale_language(&value))
+            .or_else(|| Some("en".into()))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let out = std::process::Command::new("defaults")
+            .args(["read", "-g", "AppleLocale"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())?;
+        let locale = String::from_utf8(out.stdout).ok()?;
+        let language = locale.trim().split(['_', '@']).next()?.trim();
+        (!language.is_empty()).then(|| language.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -1136,6 +1193,43 @@ mod tests {
 
     fn fixtures_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures")
+    }
+
+    #[test]
+    fn unix_locale_supplies_region_only_test_language() {
+        assert_eq!(locale_language("fr_CA.UTF-8"), Some("fr".into()));
+        assert_eq!(locale_language("de_DE@euro"), Some("de".into()));
+        assert_eq!(locale_language("C.UTF-8"), Some("en".into()));
+        assert_eq!(locale_language("POSIX"), Some("en".into()));
+        assert_eq!(locale_language(""), None);
+    }
+
+    #[test]
+    fn named_test_plans_never_fall_back_to_the_default() {
+        let plans = [
+            TestPlanRef {
+                path: "Tests/All.xctestplan".into(),
+                default: true,
+            },
+            TestPlanRef {
+                path: "Tests/Smoke.xctestplan".into(),
+                default: false,
+            },
+        ];
+        assert_eq!(
+            select_test_plan(&plans, None).unwrap().unwrap().path,
+            "Tests/All.xctestplan"
+        );
+        assert_eq!(
+            select_test_plan(&plans, Some("Smoke"))
+                .unwrap()
+                .unwrap()
+                .path,
+            "Tests/Smoke.xctestplan"
+        );
+        assert!(select_test_plan(&plans, Some("Missing")).is_err());
+        let duplicates = [plans[1].clone(), plans[1].clone()];
+        assert!(select_test_plan(&duplicates, Some("Smoke")).is_err());
     }
 
     #[test]

@@ -170,9 +170,13 @@ This uses `test-without-building`. The project supplies result history; Xcode lo
 products named by the manifest. The command does not compile them or replace build diagnostics.
 Test selectors, result bundles, and reports remain available. A selection that runs zero tests fails.
 
-Linux `test build` automatically writes an `.xctestrun` for iOS app-hosted and logic unit tests.
+Linux `test build` automatically writes an `.xctestrun` for iOS logic tests, app-hosted unit tests, and UI tests.
 JSON output includes `xctestrunPath`. The manifest remains relative to its `Products` directory after export.
-It includes the enabled scheme targets, literal environment values, argument rows, and test filters.
+It includes enabled targets, environment values, quoted argument rows, locale overrides, and selected or skipped test identifiers.
+Build-setting expressions expand against the scheme or test-plan expansion target.
+For a region without a language override, Linux reads `LC_ALL`, `LC_MESSAGES`, then `LANG`.
+An absent locale or the C/POSIX locale uses English.
+UI manifests identify the built runner and target application.
 Quoted arguments retain their quotes for the XCTest launcher.
 
 ```bash
@@ -185,7 +189,12 @@ Copy `/path/to/TestBuild/Build/Products` to the Mac, including the generated man
 Then pass that manifest to `test run --xctestrun`.
 The simulator and test runtime still run on macOS.
 
-UI tests, test plans, locale overrides, and arguments with build-setting expressions require a supplied manifest.
+Version-1 test plans preserve their named configurations. The default plan supplies the test targets and manifest.
+To select another plan, add `-testPlan Smoke` after `--`.
+An unknown plan name fails instead of selecting the default plan.
+Configuration arrays replace the corresponding default arrays, as Xcode does.
+Supported plan fields include arguments, environment, locale, filters, expansion target, parallelization, timeouts, and attachment lifetime.
+Other plan policies, including sanitizer options, require a supplied manifest.
 Unsupported inputs leave the successful build intact and report `xctestrunPath: null` with `xctestrunNote`.
 The repository helper `sweetpad-lib/ci/prebuilt_tests.py` remains available for explicitly selected custom products.
 For a custom build directory, pass `-derivedDataPath` after `--` or configure it in `sweetpad.toml`.
