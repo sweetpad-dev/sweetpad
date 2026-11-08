@@ -54,6 +54,7 @@ def main():
     parser.add_argument("--vm", default="sweetpad-linux")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--screenshots", action="store_true")
+    parser.add_argument("--execution-audit", type=Path, help="Require a successful Linux executable-provenance audit")
     args = parser.parse_args()
     args.out = args.out.resolve()
     args.out.mkdir(parents=True, exist_ok=False)
@@ -61,6 +62,10 @@ def main():
     result = json.loads(args.build_result.read_text())
     if not result.get("ok") or not result.get("data", {}).get("built"):
         raise ValueError("a successful signed Linux build is required")
+    if args.execution_audit:
+        audit = json.loads(args.execution_audit.read_text())
+        if not audit.get("passed") or audit.get("violations"):
+            raise ValueError("the supplied Linux execution audit did not pass")
     app = checks.copy_product(Path(result["data"]["productPath"]), args.out / "product", args.vm)
     info = checks.plist(app / "Info.plist")
     bundle = info["CFBundleIdentifier"]
@@ -111,6 +116,7 @@ def main():
     report = {"project": args.only, "bundleIdentifier": bundle, "passed": unchanged,
               "scope": project.get("deviceValidationScope", "Two startup checks; no online login or backend service tests."),
               "configuration": project["configuration"], "launches": launches,
+              "executionAudit": str(args.execution_audit) if args.execution_audit else None,
               "executablesUnchanged": unchanged, "executableHashes": before,
               "screenshots": args.screenshots, "visualReview": "pending" if args.screenshots else "not captured"}
     (args.out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")

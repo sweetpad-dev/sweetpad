@@ -23,6 +23,22 @@ if header[:6] != b'\x7fELF\x02\x01' or int.from_bytes(header[18:20], 'little') !
     raise SystemExit('The iOS snapshot compiler must be an ARM64 Linux ELF executable')
 PY
 
-exec bwrap --bind / / --dev-bind /dev /dev --proc /proc \
-  --ro-bind "$compiler" "$FLUTTER_ROOT/bin/cache/artifacts/engine/ios-release/gen_snapshot_arm64" \
-  -- /bin/sh "$backend" "$@"
+# Use Flutter's public local-engine interface so execution audits can inspect
+# the actual ELF path without depending on a private mount namespace.
+engine="${PROJECT_TEMP_DIR:?Set PROJECT_TEMP_DIR}/SweetpadFlutterEngine"
+if [[ ! -f "$engine/settings.json" ]]; then
+  python3 "$SRCROOT/SweetpadFlutterLocalEngine.py" --flutter-root "$FLUTTER_ROOT" \
+    --compiler "$compiler" --out "$engine" >/dev/null
+fi
+python3 - "$engine" "$compiler" "$FLUTTER_ROOT" <<'PYCODE'
+import json,sys
+from pathlib import Path
+engine,compiler,flutter=map(Path,sys.argv[1:])
+settings=json.loads((engine/"settings.json").read_text())
+if (engine/"out/ios_release/gen_snapshot_arm64").resolve() != compiler.resolve() or Path(settings["FLUTTER_ROOT"]).resolve() != flutter.resolve():
+    raise SystemExit("Stale Flutter local engine; clear this fixture's DerivedData")
+PYCODE
+export FLUTTER_ENGINE="$engine"
+export LOCAL_ENGINE=ios_release
+export LOCAL_ENGINE_HOST=host_release
+exec /bin/sh "$backend" "$@"

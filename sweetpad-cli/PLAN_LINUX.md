@@ -16,8 +16,8 @@ Of the original 35 failures, 33 now pass on both hosts. One obsolete watch exten
 scheme merged into its app, and the deliberately missing package remains a negative test.
 Test-only schemes use `test build`; the summary records each action.
 Wikipedia, Mastodon, Swiftfin, Flutter platform_design, the React Native template,
-and the Capacitor conference app build on both hosts. All except Wikipedia render
-in the simulator; Wikipedia exits with the same data-store exception in both controls.
+and the Capacitor conference app build on both hosts. All render in the simulator.
+Wikipedia requires its declared app-group entitlements in signed simulator copies.
 The MMKV example builds on both hosts with its scene-lifecycle fixture patch.
 The Linux header-merge stage corrects two recursive generic bridge helpers without the former fixture shim.
 Both products pass seven storage checks twice, including persistence across process relaunch.
@@ -25,6 +25,8 @@ Release cleanup remains deferred. Physical-device checks now pass for the seven 
 Wikipedia and Mastodon use isolated app-local startup fixtures without extensions or unsupported capabilities.
 All checks reuse an existing certificate and wildcard profile. No account resources were created.
 Flutter Release uses an iOS AOT compiler built from pinned Dart sources on Linux.
+The latest iOS 27.2 checks pass four automatic test-plan executions and fresh MMKV, Flutter, and React Native launches.
+Direct Linux Wi-Fi installation, launch, process checks, and startup logs also pass through RemotePairing without a Mac relay.
 
 Items marked *(optional)* can wait until a project needs them.
 
@@ -200,7 +202,8 @@ swift-syntax and diff the expanded Swift text.
 - [x] Compile static Icon Composer light/dark/tinted appearances, loose primary icons,
       ordered sticker packs, message-extension icons, and custom-font bundle metadata.
 - [x] Embed Swift back-deployment runtimes from the extracted Apple toolchain.
-- [x] Build MMKV on both hosts with an explicit support-header shim.
+- [x] Build MMKV on both hosts without the former fixture support-header shim.
+      The Linux header-merge stage corrects the recursive generic bridge helpers.
       Seven native storage checks pass twice per product, including persistence after relaunch.
 
 AccountTests now passes all 92 tests on both hosts in signed simulator app hosts.
@@ -835,10 +838,20 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       pass two launches each; MMKV passes seven storage checks twice. Limited
       Wikipedia and Mastodon copies omit extensions and use app-local storage.
       App Groups, push, payments, widgets and extensions remain unverified on hardware.
+- [x] Execute the unedited automatic Linux test manifest on iOS 27.2.
+      Unit and UI tests pass in both selected test-plan configurations: four executions.
+      Runner signatures pass Apple verification. Exported executables remain unchanged.
+      Fresh unshimmed MMKV, Flutter AOT, and React Native/Hermes Release apps also
+      pass two launches each with successful Linux execution audits.
 - [x] Linux device list/install/uninstall/launch/log transport through
       pymobiledevice3. Tested argument construction against version 11.50.0.
-      Direct Linux physical-device transport remains unverified. Readiness
-      and process control remain unsupported on Linux.
+      The direct Wi-Fi check now passes hostname resolution, authenticated device
+      selection, installation, launch, process checks, and scoped startup logs.
+      `ci/linux-device-network-checks.py` uses RemotePairing and userspace RSD,
+      without a Mac relay. USB can bootstrap the private pairing record.
+      VM multicast discovery and physical USB passthrough remain unverified.
+      The default CLI adapter still uses usbmux. CLI readiness and process control
+      remain unsupported on Linux.
 - [x] Swift Build archives and development IPA export on Linux. A signed
       fixture archive and IPA pass Apple codesign verification. Unsigned IPA
       export, simulator archives, and distribution export are rejected.

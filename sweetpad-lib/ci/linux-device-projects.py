@@ -62,6 +62,7 @@ def configure_flutter(project):
                 str(CORPUS / "flutter-samples"), str(root))
     ios = root / "platform_design/ios"
     shutil.copyfile(CI / "linux-flutter-xcode-backend.sh", ios / "SweetpadFlutterBackend.sh")
+    shutil.copyfile(CI / "linux-flutter-local-engine.py", ios / "SweetpadFlutterLocalEngine.py")
     replace(ios / "Runner.xcodeproj/project.pbxproj",
             '/bin/sh \\"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\\"',
             '/bin/bash \\"$SRCROOT/SweetpadFlutterBackend.sh\\"')
@@ -178,7 +179,9 @@ def set_flutter_compiler(plan, compiler):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    projects = json.loads((CI / "linux-projects.json").read_text())
     parser.add_argument("--team", required=True)
+    parser.add_argument("--only", action="append", choices=[p["slug"] for p in projects], help="Prepare only this fixture; repeatable")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--sweetpad", type=Path, default=REPO / "target/debug/sweetpad")
     parser.add_argument("--existing-profile", action="store_true", required=True, help="Use limited app-local fixtures without new account resources")
@@ -187,14 +190,15 @@ def main():
     args.out = args.out.resolve()
     if args.existing_profile and (args.out / "plan.json").is_file():
         plan = json.loads((args.out / "plan.json").read_text())
-        use_existing_profile(plan, args.sweetpad)
-        set_flutter_compiler(plan, args.flutter_ios_snapshot)
+        selected = dict(plan, projects=[p for p in plan["projects"] if not args.only or p["slug"] in args.only])
+        use_existing_profile(selected, args.sweetpad)
+        set_flutter_compiler(selected, args.flutter_ios_snapshot)
         (args.out / "plan.json").write_text(json.dumps(plan, indent=2) + "\n")
         return
     args.out.mkdir(parents=True, exist_ok=False)
     source = args.out / "sources"
     source.mkdir()
-    projects = json.loads((CI / "linux-projects.json").read_text())
+    projects = [p for p in projects if not args.only or p["slug"] in args.only]
     prefix = "dev.sweetpad.validation." + args.team.lower()
     hybrid = {
         "flutter-samples": ("Runner", prefix + ".flutter"),

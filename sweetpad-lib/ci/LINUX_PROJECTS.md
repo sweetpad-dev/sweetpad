@@ -12,7 +12,8 @@ The November 7, 2026 run used an arm64 Ubuntu 24.04 OrbStack machine.
 It used Swift 6.4.2, patched Swift Build 6.4.0, and SDKs extracted from Xcode 27.2.
 The native control used Apple Swift 6.4.2 and the same SDK version.
 Simulator checks ran on iOS 26.0 and 27.0.
-Later physical-device checks used an iPhone 13 with iOS 27.0.1.
+Initial physical-device checks used an iPhone 13 with iOS 27.0.1.
+The November 8 follow-up used the same phone with iOS 27.2.
 
 Install the Linux tools with `linux-setup.sh` and build the CLI on both hosts.
 The projects need their own dependencies before the suite can build them.
@@ -31,11 +32,9 @@ The separate `linux-project-prepare.py` recipe installs frozen hybrid-framework 
 | Ionic conference app: Capacitor | Pass | Pass | Both render the welcome screen |
 | React Native MMKV example | Pass | Pass with explicit fixture patches | Both pass seven storage checks twice, including persistence after relaunch |
 
-The MMKV fixture uses an explicit support-header shim for Linux Swift 6.4.2.
-The shim suppresses forced emission of unused generic debug thunks, which causes recursive `Optional` instantiation.
-It preserves all generated declarations and definitions, and restores `DEBUG` before application headers load.
-The original native build passes without this workaround. Both final controls use the same patched source tree.
-Both also use a scene delegate because SDK 27 traps on the original application lifecycle.
+The Linux header-merge stage corrects two recursive generic bridge helpers in the generated MMKV support header.
+Fresh builds no longer use the former fixture shim.
+Both controls use a scene delegate because SDK 27 traps on the original application lifecycle.
 
 The first follow-up corpus run built 88 of 129 schemes. The action and platform
 follow-up built 94 of the same 129 schemes with the updated toolchain.
@@ -201,6 +200,23 @@ Unsupported capabilities are absent from those copies. Swiftfin omits its WiFi-i
 These checks do not validate App Groups, shared keychain access, push, payments, associated domains, extensions, online login, or server playback.
 The original corpus source trees remain intact. Mac device transport performs installation and process checks.
 
+The November 8 run rebuilt MMKV, Flutter, and the React Native template from isolated fixture copies.
+All three signed Release apps pass two launches on iOS 27.2, with screenshots and unchanged exported executables.
+MMKV passes all seven storage checks on each launch, including persistence across relaunch, without the former support-header shim.
+Execution audits report no prohibited executables for these three builds.
+The Flutter audit records the Linux ARM64 iOS snapshot compiler. The React Native audits record Linux Hermes compilers.
+`linux-device-project-checks.py --execution-audit` rejects a failed audit before product export or device access.
+
+The same run executes the unedited automatic test manifest from a signed Linux `test build`.
+One unit test and one UI test pass in both the English and French test-plan configurations: four executions.
+Both tests assert a Linux compilation marker. The app, UI runner, and test executable hashes remain unchanged.
+Apple signature verification accepts both exported app bundles. The Mac runs the tests without compilation or re-signing.
+
+Local evidence is under `validation/phone-2026-11-08/`.
+`tests-proof.json` and `tests-xcresult-summary.json` record the test-plan results.
+The final app reports are `runtime-react-native-mmkv/summary.json`, `runtime-react-native-template/summary.json`,
+and `runtime-flutter-samples-verified/summary.json`. Earlier Flutter reports retain the failed provenance audit for comparison.
+
 The larger builds exposed three additional signing gaps.
 The signer now supports the requirements inspection used when copying Swift runtime libraries.
 Provisioning leaves Linux host macros unsigned, preventing a Darwin linker flag from reaching their ELF link commands.
@@ -217,7 +233,9 @@ Flutter's shipped iOS snapshot compiler is a Mac executable.
 OrbStack can run it through its binary-format bridge, which does not establish Linux AOT compilation.
 `linux-flutter-snapshot.py` instead builds the exact Flutter-pinned Dart source for a Linux ARM64 host and iOS ARM64 code generation.
 The recipe builds only `gen_snapshot` in product mode with uncompressed pointers.
-The fixture wrapper selects that ELF compiler through a private mount and preserves the installed Flutter SDK.
+The fixture wrapper selects that ELF compiler through Flutter's public local-engine interface.
+The private engine directory links to cached artifacts and preserves the installed Flutter SDK.
+The execution audit can inspect the actual ELF path without access to a private mount namespace.
 The app uses the unchanged prebuilt Flutter engine. The device run verifies that this engine accepts the generated AOT snapshot.
 Flutter build caches are private to the fixture, so they cannot reuse a Mac-generated application snapshot.
 
@@ -239,6 +257,8 @@ python3 -B sweetpad-lib/ci/linux-device-projects.py \
   --out /path/to/fresh-device-projects
 ```
 
+Add repeatable `--only PROJECT_SLUG` arguments to prepare selected fixtures.
+
 The generated plan records each source, scheme, configuration, bundle identifier, and Linux setting.
 Build each selected entry on Linux using the existing signing environment described in the CLI guide.
 Then run the device checker on the Mac:
@@ -248,16 +268,50 @@ python3 -B sweetpad-lib/ci/linux-device-project-checks.py \
   --plan /path/to/fresh-device-projects/plan.json \
   --build-result /path/to/signed-build-result.json \
   --only react-native-mmkv --device CONNECTED_IPHONE_UDID \
-  --out /path/to/fresh-runtime-evidence --screenshots
+  --out /path/to/fresh-runtime-evidence --screenshots \
+  --execution-audit /path/to/linux-execution-audit/summary.json
 ```
 
 The MMKV checker also reads only the isolated fixture's storage file and checks its persisted probe reports.
-Current local evidence is under `validation/device-next/summary.json`.
+Earlier local evidence is under `validation/device-next/summary.json`.
 The compiler receipt, build log, signatures, per-launch process checks, and screenshots remain beside it.
 
-This run uses Mac device transport. Direct Linux device transport remains unverified.
-Physical-device checks for extensions, widgets, and the larger corpus apps remain unverified.
+The app checks use Mac device transport. The separate direct Linux Wi-Fi check passes as described next.
+Physical-device checks for extensions and widgets remain unverified.
 Voice invocation and interactive Icon Composer effects also remain unverified.
+
+## Direct Linux device transport
+
+The November 8 run also installs and launches a signed Linux app through direct Wi-Fi transport from the VM.
+Linux resolves the iPhone hostname and authenticates its existing trust before installation.
+RemotePairing opens a userspace RSD tunnel. Installation, launch, process checks, and startup logs use that tunnel without a Mac relay.
+The startup marker comes from the launched process, which remains running after five seconds.
+Source executable hashes remain unchanged. The check does not compile or sign products.
+
+`linux-device-network-checks.py` reproduces this check with `pymobiledevice3==11.50.0`.
+The RemotePairing record stays outside the repository and reports.
+An already trusted USB connection can bootstrap that record before the Linux network run.
+Records without `host_identifier` require their source host UUID through `--host-identifier`.
+The validation run used an isolated temporary record and preserved the existing Mac records.
+
+Run the check in Linux with a signed app that emits the supplied startup marker:
+
+```bash
+python3 sweetpad-lib/ci/linux-device-network-checks.py \
+  --host IPHONE_HOSTNAME.local --port REMOTEPAIRING_PORT \
+  --device IPHONE_UDID --pair-record /private/path/remote-record.plist \
+  --host-identifier SOURCE_HOST_UUID \
+  --app /path/to/Probe.app --bundle-id YOUR_PROBE_BUNDLE_ID \
+  --log-marker SWEETPAD_LINUX_DEVICE_TCP_PROBE_READY \
+  --out /path/to/fresh-network-evidence
+```
+
+The port comes from the phone's `_remotepairing._tcp` advertisement. It is not the Lockdown port.
+Classic Wi-Fi AFC and CoreDeviceProxy channels closed during this run. RemotePairing succeeds.
+The VM receives no multicast discovery answers, but hostname resolution supplies a reachable LAN address.
+Automatic multicast discovery and physical USB passthrough remain unverified in this VM.
+The CLI's default Linux adapter still selects usbmux. This direct network check uses the pinned library APIs.
+`validation/phone-2026-11-08/direct-network/summary.json` records the successful network run.
 
 ## Run the suite
 
