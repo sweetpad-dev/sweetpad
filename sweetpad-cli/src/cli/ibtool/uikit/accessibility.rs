@@ -91,6 +91,7 @@ impl Encoder<'_> {
         destination: Id,
         property: &str,
         class: &str,
+        appends: bool,
     ) {
         let key = (source, property.to_string());
         if let Some(&array) = self.outlet_collections.get(&key) {
@@ -108,7 +109,7 @@ impl Encoder<'_> {
         self.graph
             .set(connection, "runtimeCollectionClassName", class);
         self.graph
-            .set(connection, "addsContentToExistingCollection", false);
+            .set(connection, "addsContentToExistingCollection", appends);
         self.outlet_collections.insert(key, array);
         connections.push(connection);
     }

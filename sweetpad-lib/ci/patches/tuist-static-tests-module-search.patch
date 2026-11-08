@@ -1,0 +1,38 @@
+--- a/examples/xcode/generated_ios_app_with_static_libraries/Modules/A/Project.swift
++++ b/examples/xcode/generated_ios_app_with_static_libraries/Modules/A/Project.swift
+@@ -30,6 +30,11 @@
+             sources: "Tests/**",
+             dependencies: [
+                 .target(name: "A"),
++                .library(
++                    path: "../C/prebuilt/C/libC.a",
++                    publicHeaders: "../C/prebuilt/C",
++                    swiftModuleMap: "../C/prebuilt/C/C.swiftmodule"
++                ),
+             ]
+         ),
+     ]
+--- a/examples/xcode/generated_ios_app_with_static_libraries/Modules/A/A.xcodeproj/project.pbxproj
++++ b/examples/xcode/generated_ios_app_with_static_libraries/Modules/A/A.xcodeproj/project.pbxproj
+@@ -446,6 +446,10 @@
+ 					"$(inherited)",
+ 					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+ 				);
++				SWIFT_INCLUDE_PATHS = (
++					"$(inherited)",
++					"$(SRCROOT)/../C/prebuilt/C",
++				);
+ 				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.ATests;
+ 				PRODUCT_NAME = ATests;
+ 				SDKROOT = iphoneos;
+@@ -487,6 +491,10 @@
+ 				OTHER_LDFLAGS = (
+ 					"$(inherited)",
+ 					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
++				);
++				SWIFT_INCLUDE_PATHS = (
++					"$(inherited)",
++					"$(SRCROOT)/../C/prebuilt/C",
+ 				);
+ 				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.ATests;
+ 				PRODUCT_NAME = ATests;

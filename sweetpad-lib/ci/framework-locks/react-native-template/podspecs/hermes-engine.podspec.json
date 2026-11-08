@@ -1,0 +1,71 @@
+{
+  "name": "hermes-engine",
+  "version": "250829098.0.10",
+  "summary": "Hermes is a small and lightweight JavaScript engine optimized for running React Native.",
+  "description": "Hermes is a JavaScript engine optimized for fast start-up of React Native apps. It features ahead-of-time static optimization and compact bytecode.",
+  "homepage": "https://hermesengine.dev",
+  "license": "MIT",
+  "authors": "Facebook",
+  "source": {
+    "http": "https://repo1.maven.org/maven2/com/facebook/hermes/hermes-ios/250829098.0.10/hermes-ios-250829098.0.10-hermes-ios-debug.tar.gz"
+  },
+  "platforms": {
+    "osx": "10.13",
+    "ios": "15.1",
+    "visionos": "1.0",
+    "tvos": "15.1"
+  },
+  "preserve_paths": "**/*.*",
+  "source_files": "",
+  "pod_target_xcconfig": {
+    "CLANG_CXX_LANGUAGE_STANDARD": "c++20",
+    "CLANG_CXX_LIBRARY": "compiler-default",
+    "GCC_WARN_INHIBIT_ALL_WARNINGS": "YES"
+  },
+  "ios": {
+    "vendored_frameworks": "destroot/Library/Frameworks/ios/hermesvm.framework"
+  },
+  "tvos": {
+    "vendored_frameworks": "destroot/Library/Frameworks/tvos/hermesvm.framework"
+  },
+  "osx": {
+    "vendored_frameworks": "destroot/Library/Frameworks/macosx/hermesvm.framework"
+  },
+  "visionos": {
+    "vendored_frameworks": "destroot/Library/Frameworks/xros/hermesvm.framework"
+  },
+  "user_target_xcconfig": {
+    "HERMES_CLI_PATH": "@SOURCE_ROOT@/template/node_modules/hermes-compiler/hermesc/osx-bin/hermesc"
+  },
+  "script_phases": {
+    "name": "[Hermes] Replace Hermes for the right configuration, if needed",
+    "execution_position": "before_compile",
+    "script": "        . \"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\n\n        CONFIG=\"Release\"\n        if echo $GCC_PREPROCESSOR_DEFINITIONS | grep -q \"DEBUG=1\"; then\n          CONFIG=\"Debug\"\n        fi\n\n        \"$NODE_BINARY\" \"$REACT_NATIVE_PATH/sdks/hermes-engine/utils/replace_hermes_version.js\" -c \"$CONFIG\" -r \"250829098.0.10\" -p \"$PODS_ROOT\"\n"
+  },
+  "subspecs": [
+    {
+      "name": "Pre-built",
+      "preserve_paths": [
+        "destroot/bin/*",
+        "**/*.{h,c,cpp}"
+      ],
+      "source_files": [
+        "destroot/include/hermes/**/*.h",
+        "destroot/include/jsi/hermes.h"
+      ],
+      "header_mappings_dir": "destroot/include",
+      "ios": {
+        "vendored_frameworks": "destroot/Library/Frameworks/universal/hermesvm.xcframework"
+      },
+      "visionos": {
+        "vendored_frameworks": "destroot/Library/Frameworks/universal/hermesvm.xcframework"
+      },
+      "tvos": {
+        "vendored_frameworks": "destroot/Library/Frameworks/universal/hermesvm.xcframework"
+      },
+      "osx": {
+        "vendored_frameworks": "destroot/Library/Frameworks/macosx/hermesvm.framework"
+      }
+    }
+  ]
+}

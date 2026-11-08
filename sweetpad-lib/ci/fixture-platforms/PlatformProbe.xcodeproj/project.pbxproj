@@ -1,0 +1,416 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		13F502E547E84E33F2F88323 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE72DA14A13499DF3A2B6B00 /* App.swift */; };
+		7B0C1F3D5C2F3901A0D27BBC /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE72DA14A13499DF3A2B6B00 /* App.swift */; };
+		86E234652FC85BE2F26874D1 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE72DA14A13499DF3A2B6B00 /* App.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		551ADF856AE01F51FAD33731 /* TVProbe.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TVProbe.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AE72DA14A13499DF3A2B6B00 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
+		E9C5D7B5D074B6BAE1374DFD /* WatchProbe.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WatchProbe.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		EE15B0708206082490E6B0EC /* VisionProbe.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VisionProbe.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		160A265D5E02F99B07FCB0C0 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				551ADF856AE01F51FAD33731 /* TVProbe.app */,
+				EE15B0708206082490E6B0EC /* VisionProbe.app */,
+				E9C5D7B5D074B6BAE1374DFD /* WatchProbe.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		48D0480DD247B7C76ABDD2BF = {
+			isa = PBXGroup;
+			children = (
+				A2CDCE32CB4AA7C6C589F3C5 /* Sources */,
+				160A265D5E02F99B07FCB0C0 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A2CDCE32CB4AA7C6C589F3C5 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				AE72DA14A13499DF3A2B6B00 /* App.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		691A9588509737B9051BE41D /* WatchProbe */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 97CA4F7695CDA5090782B36B /* Build configuration list for PBXNativeTarget "WatchProbe" */;
+			buildPhases = (
+				2AE86C8851556FCAEDC95DEE /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WatchProbe;
+			packageProductDependencies = (
+			);
+			productName = WatchProbe;
+			productReference = E9C5D7B5D074B6BAE1374DFD /* WatchProbe.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9A2A4BC74B4CF5D94D0CA2EF /* TVProbe */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 42450954625459FDD1AE4939 /* Build configuration list for PBXNativeTarget "TVProbe" */;
+			buildPhases = (
+				8DBAC63A0F117B13B73FAA2D /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TVProbe;
+			packageProductDependencies = (
+			);
+			productName = TVProbe;
+			productReference = 551ADF856AE01F51FAD33731 /* TVProbe.app */;
+			productType = "com.apple.product-type.application";
+		};
+		BB6C58C2CD4379AD39D13016 /* VisionProbe */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C9C85CCB95279CBD2808C4E0 /* Build configuration list for PBXNativeTarget "VisionProbe" */;
+			buildPhases = (
+				D26BC24437BDE05231F34B56 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VisionProbe;
+			packageProductDependencies = (
+			);
+			productName = VisionProbe;
+			productReference = EE15B0708206082490E6B0EC /* VisionProbe.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		29B4D2F5D233A8EFEE4EA8CC /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 47421B61248A88F898B782AA /* Build configuration list for PBXProject "PlatformProbe" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 48D0480DD247B7C76ABDD2BF;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 160A265D5E02F99B07FCB0C0 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9A2A4BC74B4CF5D94D0CA2EF /* TVProbe */,
+				691A9588509737B9051BE41D /* WatchProbe */,
+				BB6C58C2CD4379AD39D13016 /* VisionProbe */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2AE86C8851556FCAEDC95DEE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7B0C1F3D5C2F3901A0D27BBC /* App.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8DBAC63A0F117B13B73FAA2D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				13F502E547E84E33F2F88323 /* App.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D26BC24437BDE05231F34B56 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				86E234652FC85BE2F26874D1 /* App.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		3217047E831BBA305C0C82D9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.sweetpad.watchprobe;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Release;
+		};
+		588F66DC2D48AD39F92D3F5E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.sweetpad.visionprobe;
+				SDKROOT = xros;
+				TARGETED_DEVICE_FAMILY = 7;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+		8180E98773C1DDC5604C9170 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		9C386D02C3A83677CD9CC433 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
+				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.sweetpad.tvprobe;
+				SDKROOT = appletvos;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 18.0;
+			};
+			name = Debug;
+		};
+		A38B573A0BF912E61448E856 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		B65D2881C99ED2FC33762C1A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
+				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.sweetpad.tvprobe;
+				SDKROOT = appletvos;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 18.0;
+			};
+			name = Release;
+		};
+		B6975BB19BB6DF6427496F68 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.sweetpad.watchprobe;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Debug;
+		};
+		E3BE000F4DC374389BF29FC6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.sweetpad.visionprobe;
+				SDKROOT = xros;
+				TARGETED_DEVICE_FAMILY = 7;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		42450954625459FDD1AE4939 /* Build configuration list for PBXNativeTarget "TVProbe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9C386D02C3A83677CD9CC433 /* Debug */,
+				B65D2881C99ED2FC33762C1A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		47421B61248A88F898B782AA /* Build configuration list for PBXProject "PlatformProbe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A38B573A0BF912E61448E856 /* Debug */,
+				8180E98773C1DDC5604C9170 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		97CA4F7695CDA5090782B36B /* Build configuration list for PBXNativeTarget "WatchProbe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B6975BB19BB6DF6427496F68 /* Debug */,
+				3217047E831BBA305C0C82D9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C9C85CCB95279CBD2808C4E0 /* Build configuration list for PBXNativeTarget "VisionProbe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				588F66DC2D48AD39F92D3F5E /* Debug */,
+				E3BE000F4DC374389BF29FC6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 29B4D2F5D233A8EFEE4EA8CC /* Project object */;
+}

@@ -1294,7 +1294,7 @@ fn run_app(ctx: &mut Context, opts: &RunOpts) -> CommandResult {
 #[allow(clippy::too_many_lines)] // one linear ladder per target mode
 fn plan(ctx: &mut Context, opts: &RunOpts) -> Result<RunPlan, CliError> {
     let mut resolved = resolve::resolve(ctx)?;
-    let schemes = resolve::schemes(&resolved.container)?;
+    let schemes = resolve::schemes_for_context(ctx, &resolved.container)?;
     let scheme = resolve::settle_scheme(ctx, &mut resolved, &schemes, true)?;
     let configuration = resolve::settle_configuration(ctx, &mut resolved, Some(&scheme), true)?;
 
@@ -4322,7 +4322,7 @@ fn start_logs(
     let (source, marker) = match &plan.target {
         Target::Simulator(udid) => (LogSource::Simulator(udid), Some(log_stream_marker())),
         Target::Mac => (LogSource::Mac, None),
-        Target::Device(_) => return start_device_logs(ctx, &app, filter),
+        Target::Device(id) => return start_device_logs(ctx, id, &app, filter),
         Target::SpmRun(_) => return None,
     };
     let mut child = spawn_logs(&source, &app, "debug", marker.as_deref(), senders).ok()?;
@@ -4344,7 +4344,24 @@ fn start_logs(
 /// this is where `os_log`/`Logger` output comes from. Augments the console; returns
 /// `None` with an install hint when `pymobiledevice3` is absent, so the run keeps
 /// its console output.
-fn start_device_logs(ctx: &Context, app: &AppBundle, filter: &Arc<AtomicU8>) -> Option<LogStream> {
+fn start_device_logs(
+    ctx: &Context,
+    device: &str,
+    app: &AppBundle,
+    filter: &Arc<AtomicU8>,
+) -> Option<LogStream> {
+    if !cfg!(target_os = "macos") && crate::cli::device_network::configured() {
+        let mut request = network_log_request(device, app, "debug", &LogFilterArgs::default());
+        request["readyEvent"] = false.into();
+        let mut child = crate::cli::device_network::spawn(&request).ok()?;
+        render_logs(&mut child, ctx.out.use_color(), Arc::clone(filter), None);
+        let reap_slot = crate::cli::signals::register_child(child.id());
+        return Some(LogStream {
+            child,
+            marker: None,
+            reap_slot,
+        });
+    }
     if !pymobiledevice3::is_available() {
         ctx.out.alert(&format!(
             "{} not found — device os_log won't be streamed (the console still shows stdout/stderr).",
@@ -5243,6 +5260,21 @@ fn simple_logs(
     stage_target: &StageTargetArgs,
     filters: &LogFilterArgs,
 ) -> CommandResult {
+    if !cfg!(target_os = "macos")
+        && crate::cli::device_network::configured()
+        && let Some(last) = matching_last_launch(ctx, stage_target)
+        && last.kind == "device"
+        && !filters.exits
+        && let Some(id) = last.destination_id.as_deref()
+    {
+        let app = AppBundle {
+            path: std::path::PathBuf::from(&last.app_path),
+            bundle_id: last.bundle_identifier,
+            executable: std::path::PathBuf::from(last.executable_name.unwrap_or_default()),
+        };
+        stream_network_device_logs(ctx, id, &app, filters)?;
+        return Ok(Rendered::Streamed);
+    }
     // The simulator fast path serves a recorded simulator launch that the
     // targeting flags, `--mac` and `--device` included, agree with.
     if let Some(last) = matching_last_launch(ctx, stage_target)
@@ -5293,6 +5325,11 @@ fn simple_logs(
                 "app logs --exits isn't supported for a physical device; it reads launchd's \
                  exit records from a simulator's or this Mac's unified log",
             ));
+        }
+        Target::Device(id)
+            if !cfg!(target_os = "macos") && crate::cli::device_network::configured() =>
+        {
+            stream_network_device_logs(ctx, id, &app, filters)?;
         }
         Target::Device(_) => {
             return Err(CliError::new(
@@ -7459,6 +7496,95 @@ fn stream_logs(
     }
 }
 
+/// Device logs share the renderer and bounded-follow semantics with host logs.
+fn network_log_request(
+    device: &str,
+    app: &AppBundle,
+    level: &str,
+    filters: &LogFilterArgs,
+) -> serde_json::Value {
+    serde_json::json!({"action": "logs", "device": device, "bundle": app.bundle_id,
+        "executable": process_name(app), "level": level,
+        "subsystem": filters.subsystem, "category": filters.category})
+}
+
+#[allow(clippy::print_stdout)] // app logs emits an NDJSON stream
+fn stream_network_device_logs(
+    ctx: &Context,
+    device: &str,
+    app: &AppBundle,
+    filters: &LogFilterArgs,
+) -> CliResult {
+    if filters.last.is_some() || filters.predicate.is_some() || filters.source == LogChannel::Stdout
+    {
+        return Err(CliError::new(
+            "Linux device logs support live os_log with --level, --subsystem, --category, --until and --timeout; --last, --predicate and --source stdout are unavailable",
+        ));
+    }
+    let request = network_log_request(
+        device,
+        app,
+        filters.level.as_deref().unwrap_or(log_level(&ctx.out)),
+        filters,
+    );
+    let mut child = crate::cli::device_network::spawn(&request)?;
+    let pid = child.id();
+    let hit = Arc::new(AtomicBool::new(false));
+    let stop = Arc::new(AtomicBool::new(false));
+    let expired = Arc::new(AtomicBool::new(false));
+    let watch = filters.until.as_deref().map(|text| UntilWatch {
+        text: text.to_string(),
+        hit: Arc::clone(&hit),
+        stream_pid: Some(pid),
+    });
+    if let Some(duration) = filters.timeout {
+        let stop = Arc::clone(&stop);
+        let expired = Arc::clone(&expired);
+        std::thread::spawn(move || {
+            if expire(duration, &stop) {
+                expired.store(true, Ordering::Relaxed);
+                process::terminate(pid);
+            }
+        });
+    }
+    let slot = crate::cli::signals::register_child(pid);
+    crate::cli::signals::set_forward_child(pid);
+    let json = ctx.out.is_json() || ctx.out.is_ndjson();
+    if let Some(stdout) = child.stdout.take() {
+        process::read_lines_lossy(stdout, &mut |line| {
+            let value: serde_json::Value = serde_json::from_str(line).unwrap_or_default();
+            if value.get("eventMessage").is_none() {
+                if json && value["event"] == "device_logs_ready" {
+                    println!("{line}");
+                }
+                return;
+            }
+            emit_log_line(line, ctx.out.use_color(), json);
+            if let Some(watch) = &watch
+                && let Some(rendered) = oslog::render_ndjson_line(line, false)
+            {
+                watch.sees(&rendered.text);
+            }
+        });
+    }
+    crate::cli::signals::clear_forward_child();
+    crate::cli::signals::unregister_child(slot);
+    stop.store(true, Ordering::Relaxed);
+    let status = child.wait();
+    if crate::cli::signals::take_forwarded() {
+        return Ok(());
+    }
+    if !hit.load(Ordering::Relaxed)
+        && !expired.load(Ordering::Relaxed)
+        && !status.is_ok_and(|status| status.success())
+    {
+        return Err(CliError::new(
+            "Linux device log stream failed before its deadline",
+        ));
+    }
+    until_result(ctx, filters, &hit, filters.timeout)
+}
+
 /// `--source stdout`: the captured file is the only source, so the tail owns
 /// this thread and a `--until` match simply returns from it. A deadline raises
 /// the same `stop` the tail already watches.
@@ -8996,6 +9122,7 @@ Target 0: (crash) stopped.\n"
             project_toml: std::cell::OnceCell::new(),
             root_toml: std::cell::OnceCell::new(),
             stale_checked: std::cell::OnceCell::new(),
+            derived_data_path: std::cell::RefCell::new(None),
         }
     }
 

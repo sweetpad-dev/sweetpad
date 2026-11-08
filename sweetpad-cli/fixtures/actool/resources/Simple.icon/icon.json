@@ -1,0 +1,36 @@
+{
+  "fill": {
+    "solid": "srgb:0.1,0.3,0.7,1"
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "name": "Mark",
+          "image-name": "Mark.svg",
+          "glass": false
+        },
+        {
+          "name": "Backing",
+          "image-name": "Backing.svg",
+          "glass": false
+        }
+      ]
+    },
+    {
+      "layers": [
+        {
+          "name": "Bottom",
+          "image-name": "Bottom.svg",
+          "glass": false
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared",
+    "circles": [
+      "watchOS"
+    ]
+  }
+}

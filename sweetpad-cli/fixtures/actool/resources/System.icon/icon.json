@@ -1,0 +1,42 @@
+{
+  "fill-specializations": [
+    {
+      "value": "system-light"
+    },
+    {
+      "appearance": "dark",
+      "value": "system-dark"
+    }
+  ],
+  "groups": [
+    {
+      "blend-mode": "multiply",
+      "opacity": 0.8,
+      "layers": [
+        {
+          "name": "Mark",
+          "image-name": "Mark.svg",
+          "glass": false,
+          "fill-specializations": [
+            {
+              "value": "none"
+            },
+            {
+              "appearance": "dark",
+              "value": "automatic"
+            }
+          ],
+          "blend-mode-specializations": [
+            {
+              "appearance": "dark",
+              "value": "lighten"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

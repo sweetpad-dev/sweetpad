@@ -161,6 +161,9 @@ fn gather() -> Result<Vec<Dest>, crate::cli::CliError> {
         specifier: "platform=macOS".to_string(),
         device: None,
     }];
+    if !cfg!(target_os = "macos") {
+        dests.clear();
+    }
 
     // Simulators are the common case; surface failure to enumerate them.
     for s in simctl::list()? {

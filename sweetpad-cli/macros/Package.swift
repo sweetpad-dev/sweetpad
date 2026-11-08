@@ -25,6 +25,29 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "TipKitMacros",
+            dependencies: [
+                "FoundationMacros",
+                .product(name: "SwiftSyntax", package: "swift-syntax"),
+                .product(name: "SwiftSyntaxBuilder", package: "swift-syntax"),
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+            ]
+        ),
+        .target(
+            name: "OpenAppleMacrosBase",
+            dependencies: [
+                .product(name: "SwiftSyntax", package: "swift-syntax"),
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+                .product(name: "_SwiftCompilerPluginMessageHandling", package: "swift-syntax"),
+            ],
+            exclude: ["LICENSE.md"]
+        ),
+        .target(
+            name: "SwiftUIMacros",
+            dependencies: ["OpenAppleMacrosBase", .product(name: "SwiftDiagnostics", package: "swift-syntax")],
+            exclude: ["LICENSE.md", "README.md"]
+        ),
+        .target(
             name: "SwiftDataMacros",
             dependencies: [
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
@@ -59,6 +82,8 @@ let package = Package(
                 "FoundationMacros",
                 "PreviewsMacros",
                 "SwiftDataMacros",
+                "SwiftUIMacros",
+                "TipKitMacros",
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
             ]
         ),

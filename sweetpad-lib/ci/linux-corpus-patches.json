@@ -1,0 +1,47 @@
+[
+  {
+    "checkout": "ice-cubes",
+    "commit": "99484408ca50d28f01363af45e3697c24bad412d",
+    "patches": ["ice-cubes-sdk27-document.patch", "ice-cubes-swift64-nonisolated-values.patch", "ice-cubes-env-test-scheme.patch", "ice-cubes-timeline-test-isolation.patch", "ice-cubes-tag-warning-property.patch"]
+  },
+  {
+    "checkout": "netnewswire",
+    "commit": "4d1cb6afae1aa7d52c51077f7f40d0d267e8cc4b",
+    "patches": ["netnewswire-linux-script.patch", "netnewswire-swift64-capture.patch", "netnewswire-keychain-delete-query.patch"]
+  },
+  {
+    "checkout": "tuist-fixtures",
+    "commit": "a5c5bbf867ba2dfc9d2ca5ec198e9ddbf1b0e963",
+    "patches": ["tuist-static-tests-module-search.patch", "tuist-single-target-watch.patch"],
+    "retiredSchemes": [
+      {
+        "container": "examples/xcode/generated_ios_app_with_watchapp2/App.xcworkspace",
+        "scheme": "WatchAppExtension",
+        "schemeFile": "examples/xcode/generated_ios_app_with_watchapp2/App.xcodeproj/xcshareddata/xcschemes/WatchAppExtension.xcscheme",
+        "replacement": "WatchApp"
+      }
+    ]
+  },
+  {
+    "checkout": "alamofire",
+    "commit": "7595cbcf59809f9977c5f6378500de2ad73b7ddb",
+    "patches": ["alamofire-single-target-watch.patch"],
+    "schemeDestinations": [
+      {
+        "container": "Alamofire.xcworkspace",
+        "scheme": "watchOS Example WatchKit App",
+        "destination": "generic/platform=watchOS Simulator"
+      }
+    ]
+  },
+  {
+    "checkout": "kingfisher",
+    "commit": "cf8be20d07654570554c8a8a4952bc8a5766a8b0",
+    "patches": ["kingfisher-single-target-watch.patch"]
+  },
+  {
+    "resolvedCheckout": "SourcePackages/checkouts/purchases-ios-spm",
+    "commit": "21e33549780659771085e252093305d12c3b067d",
+    "patches": ["revenuecat-swift64-memberwise-init.patch"]
+  }
+]

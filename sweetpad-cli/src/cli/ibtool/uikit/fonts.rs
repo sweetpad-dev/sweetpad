@@ -50,6 +50,7 @@ impl Encoder<'_> {
         let (name, traits, point_size, archive_size) = if let Some(style) = style {
             let (name, traits, size) = match style {
                 "UICTFontTextStyleBody" => (".SFUI-Regular", 0, 14.0),
+                "UICTFontTextStyleCallout" => (".SFUI-Regular", 0, 13.0),
                 "UICTFontTextStyleHeadline" => (".SFUI-Semibold", 2, 14.0),
                 "UICTFontTextStyleCaption1" | "UICTFontTextStyleCaption2" => {
                     (".SFUI-Regular", 0, 11.0)

@@ -1,0 +1,26 @@
+--- a/IceCubesApp/App/Tabs/TagGroup/EditTagGroupView.swift
++++ b/IceCubesApp/App/Tabs/TagGroup/EditTagGroupView.swift
+@@ -254,14 +254,15 @@
+       }
+     }
+ 
+-    var warningText: LocalizedStringKey {
+-      if tags.contains(newTag) {
+-        return "add-tag-groups.edit.tags.field.warning.duplicated-tag"
+-      } else if case let .invalid(description) = tagsValidationStatus {
+-        return description
+-      }
+-      return ""
+-    }
++  }
++
++  private var warningText: LocalizedStringKey {
++    if tags.contains(newTag) {
++      return "add-tag-groups.edit.tags.field.warning.duplicated-tag"
++    } else if case let .invalid(description) = tagsValidationStatus {
++      return description
++    }
++    return ""
+   }
+ 
+   private func addNewTagTextField() -> some View {

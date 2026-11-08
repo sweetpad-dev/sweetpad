@@ -25,6 +25,9 @@ const STEP_TIMEOUT: Duration = Duration::from_secs(120);
 /// iPad) and a numeric-aware name sort. Unavailable devices are dropped (they
 /// can't be booted/targeted).
 pub fn list() -> Result<Vec<Simulator>, CliError> {
+    if !cfg!(target_os = "macos") {
+        return Ok(Vec::new());
+    }
     let raw = process::capture("xcrun", &["simctl", "list", "--json", "devices"], None)?;
     sweetpad_core::devices::simctl::parse_list(&raw).map_err(CliError::new)
 }

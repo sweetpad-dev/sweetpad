@@ -11,6 +11,7 @@ review the diff:
     python3 -I sweetpad-cli/fixtures/xcstringstool/regen.py
 """
 
+import argparse
 import glob
 import os
 import shutil
@@ -38,16 +39,24 @@ def save(path, text):
 
 
 def main():
-    shutil.rmtree(EXPECTED, ignore_errors=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--only", default="")
+    args = parser.parse_args()
     for catalog in sorted(glob.glob(os.path.join(HERE, "*.xcstrings"))):
         name = os.path.splitext(os.path.basename(catalog))[0]
+        if args.only not in name:
+            continue
         out = os.path.join(EXPECTED, name)
+        shutil.rmtree(out, ignore_errors=True)
         with tempfile.TemporaryDirectory() as tmp:
             tmp = os.path.realpath(tmp)
             shutil.copy(catalog, tmp)
             source = os.path.join(tmp, os.path.basename(catalog))
             modes = [("compile", [])]
-            if name == "Probe":
+            if name == "Aliases":
+                modes.extend([("kmr-filter", ["--language", "kmr-TR"]),
+                              ("ku-filter", ["--language", "ku-TR"])])
+            if name in ("Probe", "Named"):
                 modes.append(("forced", ["--force-build-all-strings"]))
             for mode, flags in modes:
                 dest = os.path.join(tmp, mode)

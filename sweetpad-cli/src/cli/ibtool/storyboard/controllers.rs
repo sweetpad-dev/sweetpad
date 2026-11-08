@@ -21,6 +21,7 @@ fn class(element: &Element) -> Result<&'static str, String> {
         "collectionViewController" => Ok("UICollectionViewController"),
         "splitViewController" => Ok("UISplitViewController"),
         "tabBarController" => Ok("UITabBarController"),
+        "pageViewController" => Ok("UIPageViewController"),
         other => Err(format!("unsupported controller <{other}>")),
     }
 }
@@ -264,6 +265,7 @@ pub(super) fn compile(document: &Element, options: &Options<'_>) -> Result<Compi
                 order.push(element);
             } else if !matches!(element.name.as_str(), "placeholder" | "exit")
                 && !matches!(element.name.as_str(), "view" | "imageView" | "label")
+                && super::super::uikit::gestures::class(&element.name).is_none()
             {
                 return Err(format!("unsupported scene object <{}>", element.name));
             }
@@ -298,6 +300,7 @@ pub(super) fn compile(document: &Element, options: &Options<'_>) -> Result<Compi
         if child_ids.contains(controller_id)
             && controller.attr("storyboardIdentifier").is_none()
             && !segue_targets.contains(controller_id)
+            && document.attr("initialViewController") != Some(controller_id)
         {
             continue;
         }
@@ -391,6 +394,7 @@ fn view_nib(
                 .insert(id(view)?.to_string(), [0.0, 0.0, width, height]);
         }
     }
+    encoder.register_controller_guides(controller, view);
     let root_view = encoder.root_view(view)?;
     if document.attr("useSafeAreas") == Some("YES")
         && view.name == "view"
@@ -454,7 +458,12 @@ fn controller_nib(
     let storyboard = proxy(&mut encoder.graph, "UIStoryboardPlaceholder");
     placeholders.insert(id(root)?, storyboard);
     top.extend([owner, responder, storyboard]);
-    let wrapped = declare_controllers(&mut encoder, &group, controllers)?;
+    let wrapped = declare_controllers(
+        &mut encoder,
+        &group,
+        controllers,
+        document.attr("initialViewController"),
+    )?;
     let root_object = encoder.lookup(id(root)?).unwrap();
     let bars = navigation_bars(&mut encoder, &group)?;
     let nav_items = navigation_items(&mut encoder, &group, &bars)?;
@@ -487,6 +496,7 @@ fn controller_nib(
         controller_flags(&mut encoder, controller, object);
         controller_relationships(&mut encoder, controller, object, &bars, &nav_items)?;
         split_properties(&mut encoder, controller, object)?;
+        page_properties(&mut encoder, controller, object)?;
         controller_class(
             &mut encoder,
             controller,
@@ -506,10 +516,58 @@ fn controller_nib(
     Ok(finish_controller(encoder, top, root_object, &connections))
 }
 
+fn page_properties(
+    encoder: &mut Encoder<'_>,
+    controller: &Element,
+    object: Id,
+) -> Result<(), String> {
+    if controller.name != "pageViewController" {
+        return Ok(());
+    }
+    for (attribute, key, choices, default) in [
+        (
+            "transitionStyle",
+            "UITransitionStyle",
+            &["pageCurl", "scroll"][..],
+            0_i64,
+        ),
+        (
+            "navigationOrientation",
+            "UINavigationOrientation",
+            &["horizontal", "vertical"][..],
+            0,
+        ),
+        (
+            "spineLocation",
+            "UISpineLocation",
+            &["none", "min", "mid", "max"][..],
+            2,
+        ),
+    ] {
+        let value = match controller.attr(attribute) {
+            Some(value) => i64::try_from(
+                choices
+                    .iter()
+                    .position(|c| *c == value)
+                    .ok_or_else(|| format!("unsupported page controller {attribute}={value}"))?,
+            )
+            .unwrap(),
+            None => default,
+        };
+        encoder.graph.set(object, key, value);
+    }
+    encoder.graph.set(object, "UIPageSpacing", 0_i64);
+    if controller.attr("doubleSided") == Some("YES") {
+        encoder.graph.set(object, "UIDoubleSided", true);
+    }
+    Ok(())
+}
+
 fn declare_controllers(
     encoder: &mut Encoder<'_>,
     group: &[&Element],
     controllers: &HashMap<&str, &Element>,
+    initial: Option<&str>,
 ) -> Result<HashSet<String>, String> {
     let mut wrapped = HashSet::new();
     for controller in group {
@@ -517,7 +575,8 @@ fn declare_controllers(
         let wrap = !controllers
             .values()
             .any(|parent| children(parent).any(|child| child == controller_id))
-            || controller.attr("customClass").is_some();
+            || controller.attr("customClass").is_some()
+            || initial == Some(controller_id);
         let object = encoder
             .graph
             .object(if controller.name == "viewControllerPlaceholder" {

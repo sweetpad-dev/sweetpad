@@ -224,6 +224,29 @@ impl Encoder<'_> {
 
     fn text_view(&mut self, element: &Element, object: Id) -> Result<(), String> {
         self.scroll_view(element, object);
+        if let Some(detectors) = element.child("dataDetectorType") {
+            let flags = [
+                ("phoneNumber", 1_i64),
+                ("link", 2),
+                ("address", 4),
+                ("calendarEvent", 8),
+                ("shipmentTrackingNumber", 16),
+                ("flightNumber", 32),
+                ("lookupSuggestion", 64),
+                ("money", 128),
+                ("physicalValue", 256),
+            ];
+            let value = if yes(detectors, "all") {
+                -1
+            } else {
+                flags
+                    .into_iter()
+                    .filter(|(name, _)| yes(detectors, name))
+                    .map(|(_, flag)| flag)
+                    .sum()
+            };
+            self.graph.set(object, "UIDataDetectorTypes", value);
+        }
         let text = element.attr("text").unwrap_or("");
         let string = self.text(element, "text", text);
         self.graph.set(object, "UIText", string);

@@ -1,0 +1,71 @@
+{
+  "sourceLanguage": "en",
+  "version": "1.0",
+  "strings": {
+    "hello": {
+      "extractionState": "manual",
+      "localizations": {
+        "kmr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kmr"
+          }
+        },
+        "kmr-TR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kmr-TR"
+          }
+        },
+        "kmr-Latn-TR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kmr-Latn-TR"
+          }
+        },
+        "iw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iw"
+          }
+        },
+        "iw-IL": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iw-IL"
+          }
+        },
+        "in": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "in"
+          }
+        },
+        "in-ID": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "in-ID"
+          }
+        },
+        "mo": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "zh-Hans"
+          }
+        },
+        "en-GB": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "en-GB"
+          }
+        }
+      }
+    }
+  }
+}

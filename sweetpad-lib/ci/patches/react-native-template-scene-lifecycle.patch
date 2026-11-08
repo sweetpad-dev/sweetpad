@@ -1,0 +1,66 @@
+diff --git a/template/ios/HelloWorld/AppDelegate.swift b/template/ios/HelloWorld/AppDelegate.swift
+index 0d3565b..4d4f9f0 100644
+--- a/template/ios/HelloWorld/AppDelegate.swift
++++ b/template/ios/HelloWorld/AppDelegate.swift
+@@ -21,15 +21,21 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
+     reactNativeDelegate = delegate
+     reactNativeFactory = factory
+ 
+-    window = UIWindow(frame: UIScreen.main.bounds)
++    return true
++  }
++}
+ 
+-    factory.startReactNative(
+-      withModuleName: "HelloWorld",
+-      in: window,
+-      launchOptions: launchOptions
+-    )
++class SceneDelegate: UIResponder, UIWindowSceneDelegate {
++  var window: UIWindow?
+ 
+-    return true
++  func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
++    guard let windowScene = scene as? UIWindowScene,
++      let appDelegate = UIApplication.shared.delegate as? AppDelegate,
++      let factory = appDelegate.reactNativeFactory else { return }
++    let window = UIWindow(windowScene: windowScene)
++    self.window = window
++    appDelegate.window = window
++    factory.startReactNative(withModuleName: "HelloWorld", in: window, launchOptions: nil)
+   }
+ }
+ 
+diff --git a/template/ios/HelloWorld/Info.plist b/template/ios/HelloWorld/Info.plist
+index bbc7a45..6fc8703 100644
+--- a/template/ios/HelloWorld/Info.plist
++++ b/template/ios/HelloWorld/Info.plist
+@@ -28,7 +28,6 @@
+ 	<true/>
+ 	<key>NSAppTransportSecurity</key>
+ 	<dict>
+-	  <!-- Do not change NSAllowsArbitraryLoads to true, or you will risk app rejection! -->
+ 		<key>NSAllowsArbitraryLoads</key>
+ 		<false/>
+ 		<key>NSAllowsLocalNetworking</key>
+@@ -36,6 +35,20 @@
+ 	</dict>
+ 	<key>NSLocationWhenInUseUsageDescription</key>
+ 	<string></string>
++	<key>RCTNewArchEnabled</key>
++	<true/>
++	<key>UIApplicationSceneManifest</key>
++	<dict>
++		<key>UIApplicationSupportsMultipleScenes</key><false/>
++		<key>UISceneConfigurations</key>
++		<dict>
++			<key>UIWindowSceneSessionRoleApplication</key>
++			<array><dict>
++				<key>UISceneConfigurationName</key><string>Default Configuration</string>
++				<key>UISceneDelegateClassName</key><string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
++			</dict></array>
++		</dict>
++	</dict>
+ 	<key>UILaunchStoryboardName</key>
+ 	<string>LaunchScreen</string>
+ 	<key>UIRequiredDeviceCapabilities</key>

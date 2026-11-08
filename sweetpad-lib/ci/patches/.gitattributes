@@ -1,0 +1,2 @@
+# Unified-patch context preserves the source's original whitespace.
+*.patch -whitespace

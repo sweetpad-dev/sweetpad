@@ -11,20 +11,20 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
+mod autolink;
+mod reexports;
+mod response;
+
 pub(super) fn main(args: &[String]) -> ExitCode {
     let Some(linker) = next_linker() else {
         eprintln!("error: ld64.lld: no other ld64.lld on PATH; xtool's Darwin SDK has one");
         return ExitCode::FAILURE;
     };
-    let args = if args.iter().any(|a| a == "-r") {
-        args.to_vec()
-    } else {
-        match force_load_prelinked(args) {
-            Ok(args) => args,
-            Err(message) => {
-                eprintln!("error: ld64.lld: {message}");
-                return ExitCode::FAILURE;
-            }
+    let args = match prepare(args) {
+        Ok(args) => args,
+        Err(message) => {
+            eprintln!("error: ld64.lld: {message}");
+            return ExitCode::FAILURE;
         }
     };
     match Command::new(&linker).args(&args).status() {
@@ -39,6 +39,16 @@ pub(super) fn main(args: &[String]) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn prepare(args: &[String]) -> Result<Vec<String>, String> {
+    let expanded = response::expand(args)?;
+    if expanded.iter().any(|a| a == "-r") {
+        return Ok(args.to_vec());
+    }
+    let transformed =
+        force_load_prelinked(&expanded).and_then(autolink::prefer_swiftui_umbrella)?;
+    response::forward(args, &expanded, transformed)
 }
 
 /// The Darwin SDK's `ld64.lld`: the one the engine links beside this one,

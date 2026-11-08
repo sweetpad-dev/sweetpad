@@ -23,7 +23,9 @@
 
 mod copypng;
 mod ditto;
+mod dsymutil;
 mod embedded_binary;
+mod extract_loc_strings;
 mod ld;
 mod lipo;
 mod strip;
@@ -41,11 +43,15 @@ pub const TOOLS: &[&str] = &[
     "lipo",
     "strip",
     "xcrun",
+    "sweetpad-chmod",
+    "extractLocStrings",
+    "dsymutil",
 ];
 
 /// The name of the link to the Darwin SDK's own linker, beside the stand-in
 /// for it, which runs it (see [`ld`]).
 pub const SDK_LINKER: &str = "sdk-ld64.lld";
+pub const SDK_DSYMUTIL: &str = "sdk-dsymutil";
 
 /// Run as `tool`, or `None` when this module doesn't stand in for it.
 #[must_use]
@@ -55,9 +61,27 @@ pub fn main(tool: &str, args: &[String]) -> Option<ExitCode> {
         "ditto" => ditto::main(args),
         "embeddedBinaryValidationUtility" => return Some(embedded_binary::main(args)),
         "ld64.lld" => return Some(ld::main(args)),
+        "dsymutil" => return Some(dsymutil::main(args)),
         "lipo" => lipo::main(args),
         "strip" => strip::main(args),
+        "extractLocStrings" => extract_loc_strings::main(args),
         "xcrun" => return Some(xcrun::main(args)),
+        "sweetpad-chmod" => {
+            let args: Vec<&str> = args
+                .iter()
+                .filter(|a| a.as_str() != "-H")
+                .map(|a| if a == "-RH" { "-R" } else { a.as_str() })
+                .collect();
+            std::process::Command::new("/bin/chmod")
+                .args(args)
+                .status()
+                .map_err(|e| e.to_string())
+                .and_then(|s| {
+                    s.success()
+                        .then_some(())
+                        .ok_or_else(|| format!("chmod exited with {s}"))
+                })
+        }
         _ => return None,
     };
     Some(match result {
@@ -70,7 +94,7 @@ pub fn main(tool: &str, args: &[String]) -> Option<ExitCode> {
 }
 
 /// The first `name` on `PATH`.
-fn find_program(name: &str) -> Option<PathBuf> {
+pub(super) fn find_program(name: &str) -> Option<PathBuf> {
     std::env::var_os("PATH")
         .iter()
         .flat_map(std::env::split_paths)

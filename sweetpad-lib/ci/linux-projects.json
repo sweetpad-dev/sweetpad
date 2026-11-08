@@ -1,0 +1,129 @@
+[
+  {
+    "slug": "wikipedia-ios",
+    "url": "https://github.com/wikimedia/wikipedia-ios.git",
+    "commit": "df61688dab26991111e4578248413a647e5891a8",
+    "project": "Wikipedia.xcodeproj",
+    "scheme": "Wikipedia",
+    "linuxDerivedData": "sweetpad-followup-wikipedia",
+    "setup": [
+      "bash",
+      "scripts/setup_bundle_id",
+      "ci"
+    ],
+    "setupOutput": "Configurations/OpenSourceDebug.xcconfig",
+    "simulatorEntitlements": {
+      "com.apple.security.application-groups": [
+        "group.org.wikimedia.wikipedia",
+        "group.org.wikimedia.wikipedia.alpha",
+        "group.org.wikimedia.wikipedia.beta"
+      ]
+    }
+  },
+  {
+    "slug": "mastodon-ios",
+    "url": "https://github.com/mastodon/mastodon-ios.git",
+    "commit": "0dd671674e157dc36ad7c061ced2c4c819d3760f",
+    "project": "Mastodon.xcodeproj",
+    "scheme": "Mastodon",
+    "linuxDerivedData": "sweetpad-followup-mastodon",
+    "dependencyPatches": [
+      {
+        "resolvedCheckout": "SourcePackages/checkouts/swift-nio",
+        "commit": "2f58d8ef84438d6517fc78bcea2f8527e3c72936",
+        "patches": [
+          "swift-nio-apple-cross-resources.patch"
+        ]
+      },
+      {
+        "resolvedCheckout": "SourcePackages/checkouts/SQLite.swift",
+        "commit": "4114679379eeb4538638f49ec14e1854dd9cf73c",
+        "patches": [
+          "sqlite-apple-cross-traits.patch"
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "swiftfin",
+    "url": "https://github.com/jellyfin/Swiftfin.git",
+    "commit": "a6a3ca689fcf98803e41f090ac91cb0524e6e10e",
+    "project": "Swiftfin.xcodeproj",
+    "scheme": "Swiftfin",
+    "linuxDerivedData": "sweetpad-followup-swiftfin",
+    "dependencyPatches": [
+      {
+        "resolvedCheckout": "SourcePackages/checkouts/swift-nio",
+        "commit": "0b18836bd8b0162e7e17a995a3fbee20ed8f3b2b",
+        "patches": [
+          "swift-nio-apple-cross-resources.patch"
+        ]
+      },
+      {
+        "resolvedCheckout": "SourcePackages/checkouts/StatefulMacro",
+        "commit": "afb27fb5d49e1ee92097286a712e2f448be28fb2",
+        "patches": [
+          "statefulmacros-linux-foundation.patch"
+        ]
+      }
+    ],
+    "xcodeFlags": [
+      "-skipMacroValidation",
+      "-skipPackagePluginValidation"
+    ]
+  },
+  {
+    "slug": "flutter-samples",
+    "url": "https://github.com/flutter/samples.git",
+    "commit": "9df2cac15cc3d28a51aace018ad822387d30ac72",
+    "project": "platform_design/ios/Runner.xcodeproj",
+    "scheme": "Runner",
+    "framework": "Flutter",
+    "linuxDerivedData": "sweetpad-followup-flutter",
+    "linuxSettings": [
+      "FLUTTER_ROOT=@HOME@/src/flutter"
+    ]
+  },
+  {
+    "slug": "react-native-mmkv",
+    "url": "https://github.com/margelo/react-native-mmkv.git",
+    "commit": "ca5acf0ca9acc5cd1b75c486be6adad40c488047",
+    "workspace": "example/ios/MmkvExample.xcworkspace",
+    "scheme": "MmkvExample",
+    "framework": "React Native",
+    "linuxDerivedData": "sweetpad-followup-react-native",
+    "patches": [
+      "react-native-mmkv-scene-lifecycle.patch"
+    ],
+    "linuxSettings": [
+      "HERMES_CLI_PATH=@SOURCE_ROOT@/node_modules/hermes-compiler/hermesc/linux64-bin/hermesc"
+    ],
+    "retiredPatches": [
+      "react-native-mmkv-cxx-debug-thunks.patch"
+    ]
+  },
+  {
+    "slug": "ionic-conference-app",
+    "url": "https://github.com/ionic-team/ionic-conference-app.git",
+    "commit": "58a38e940cde31f63cc7d25ad73dd028b7f883e6",
+    "project": "ios/App/App.xcodeproj",
+    "scheme": "App",
+    "framework": "Capacitor",
+    "linuxDerivedData": "sweetpad-followup-capacitor"
+  },
+  {
+    "slug": "react-native-template",
+    "url": "https://github.com/react-native-community/template.git",
+    "commit": "eaa0c4dd44eeda8b5614451157cf9a43f7891bb1",
+    "workspace": "template/ios/HelloWorld.xcworkspace",
+    "scheme": "HelloWorld",
+    "framework": "React Native",
+    "linuxDerivedData": "sweetpad-followup-react-native-template",
+    "patches": [
+      "react-native-template-scene-lifecycle.patch"
+    ],
+    "linuxSettings": [
+      "HERMES_CLI_PATH=@SOURCE_ROOT@/template/node_modules/hermes-compiler/hermesc/linux64-bin/hermesc"
+    ]
+  }
+]

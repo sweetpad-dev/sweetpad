@@ -21,13 +21,30 @@ fn declarations(source: &str) -> String {
 }
 #[test]
 fn generated_intent_declarations_match_xcode() {
-    let root =
-        sweetpad_lib::xcscheme::parse_file(&fixtures().join("Intents.intentdefinition")).unwrap();
-    let sources = swift::generate(root.child("dict").unwrap()).unwrap();
-    assert_eq!(sources.len(), 1);
-    for (name, source) in sources {
-        let expected = std::fs::read_to_string(fixtures().join("expected").join(name)).unwrap();
-        assert_eq!(declarations(&source), declarations(&expected));
+    for fixture in ["Intents.intentdefinition", "Rich.intentdefinition"] {
+        let root = sweetpad_lib::xcscheme::parse_file(&fixtures().join(fixture)).unwrap();
+        let sources = swift::generate(root.child("dict").unwrap()).unwrap();
+        assert_eq!(
+            sources.len(),
+            if fixture.starts_with("Rich") { 4 } else { 1 }
+        );
+        for (name, source) in sources {
+            let expected =
+                std::fs::read_to_string(fixtures().join("expected").join(&name)).unwrap();
+            let (actual, expected) = (declarations(&source), declarations(&expected));
+            if actual != expected {
+                let at = actual
+                    .bytes()
+                    .zip(expected.bytes())
+                    .position(|(a, b)| a != b)
+                    .unwrap_or(actual.len().min(expected.len()));
+                panic!(
+                    "{fixture}/{name} differs at byte {at}:\nactual: {}\nexpected: {}",
+                    &actual[at.saturating_sub(50)..actual.len().min(at + 300)],
+                    &expected[at.saturating_sub(50)..expected.len().min(at + 300)]
+                );
+            }
+        }
     }
 }
 #[test]

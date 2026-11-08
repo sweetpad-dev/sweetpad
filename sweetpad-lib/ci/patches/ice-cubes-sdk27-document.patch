@@ -1,0 +1,20 @@
+--- a/Packages/Models/Sources/Models/Alias/HTMLString.swift
++++ b/Packages/Models/Sources/Models/Alias/HTMLString.swift
+@@ -52,7 +52,7 @@
+ 
+       asMarkdown = ""
+       do {
+-        let document: Document = try SwiftSoup.parse(htmlValue)
++        let document: SwiftSoup.Document = try SwiftSoup.parse(htmlValue)
+         var listCounters: [Int] = []
+         handleNode(node: document, listCounters: &listCounters)
+ 
+@@ -136,7 +136,7 @@
+     try container.encode(hadTrailingTags, forKey: .hadTrailingTags)
+   }
+ 
+-  private mutating func removeTrailingTags(doc: Document) {
++  private mutating func removeTrailingTags(doc: SwiftSoup.Document) {
+     // Fast bail-outs
+     if !asMarkdown.contains("#") { return }
+ 

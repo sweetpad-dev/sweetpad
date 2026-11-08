@@ -14,6 +14,8 @@ use crate::cli::{
     CliError, CommandResult, Context, ErrorKind, Render, Rendered, buildlog, process, xcodebuild,
 };
 
+mod portable;
+
 /// The export method — ExportOptions.plist `method` values (Xcode 15+ names).
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum ExportMethod {
@@ -48,6 +50,10 @@ impl ExportMethod {
 pub struct ArchiveArgs {
     #[command(flatten)]
     pub target: crate::cli::BuildTargetArgs,
+
+    /// Build with xcodebuild or Swift Build (the default on Linux).
+    #[arg(long, value_enum)]
+    pub engine: Option<crate::cli::swbuild::Engine>,
 
     /// Output directory for the .xcarchive and exported .ipa
     /// (default: ./build).
@@ -119,11 +125,31 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
         ));
     }
 
-    let schemes = resolve::schemes(&resolved.container)?;
+    let schemes = resolve::schemes_for_context(ctx, &resolved.container)?;
     let scheme = resolve::settle_scheme(ctx, &mut resolved, &schemes, !args.show_command)?;
     let configuration = archive_configuration(ctx, &resolved, &scheme)?;
     let destination = archive_destination(ctx, &resolved, &scheme, &configuration)?;
 
+    run_resolved(
+        ctx,
+        args,
+        &resolved,
+        &scheme,
+        configuration,
+        destination,
+        &passthrough,
+    )
+}
+
+fn run_resolved(
+    ctx: &Context,
+    args: &ArchiveArgs,
+    resolved: &resolve::Resolved,
+    scheme: &str,
+    configuration: String,
+    destination: String,
+    passthrough: &[String],
+) -> CommandResult {
     // A relative output dir must mean the same directory for the CLI's own
     // writes (create_dir_all, the generated plist) and for xcodebuild, which
     // runs from the container's parent — absolutize once against the CLI cwd,
@@ -133,10 +159,26 @@ pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
     );
     let archive_path = out_dir.join(format!("{scheme}.xcarchive"));
 
+    if args
+        .engine
+        .unwrap_or_else(crate::cli::swbuild::Engine::for_host)
+        == crate::cli::swbuild::Engine::SwiftBuild
+    {
+        return portable::run(
+            ctx,
+            args,
+            resolved,
+            scheme,
+            &configuration,
+            &destination,
+            &out_dir,
+        );
+    }
+
     let mut archive_args: Vec<String> = vec![
         "archive".into(),
         "-scheme".into(),
-        scheme.clone(),
+        scheme.to_string(),
         "-configuration".into(),
         configuration,
         "-destination".into(),
@@ -237,6 +279,7 @@ fn archive_configuration(
         .or(pf)
         .or_else(|| {
             resolve::scheme_configuration(
+                ctx,
                 &resolved.container,
                 scheme,
                 resolve::SchemeAction::Archive,

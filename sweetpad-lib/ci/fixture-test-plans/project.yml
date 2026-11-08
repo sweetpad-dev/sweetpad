@@ -1,0 +1,42 @@
+name: TestPlanProbe
+options:
+  bundleIdPrefix: dev.sweetpad.ci
+  deploymentTarget:
+    iOS: '18.0'
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    CODE_SIGNING_ALLOWED: 'NO'
+    GENERATE_INFOPLIST_FILE: 'YES'
+    ENABLE_DEBUG_DYLIB: 'NO'
+targets:
+  Probe:
+    type: application
+    platform: iOS
+    sources: [App]
+    settings:
+      base:
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+  PlanLogicTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Logic]
+  ProbeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: Probe
+    settings:
+      base:
+        TEST_TARGET_NAME: Probe
+schemes:
+  TestPlanProbe:
+    build:
+      targets:
+        Probe: all
+    test:
+      testPlans:
+        - path: Probe.xctestplan
+          defaultPlan: true
+        - path: Smoke.xctestplan

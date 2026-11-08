@@ -185,7 +185,26 @@ fn run(request: &Request, folders: &[PathBuf]) -> Result<ExitCode, Failure> {
         println!("xcrun: note: {}", words.join(" "));
     }
     let mut command = Command::new(&program);
-    command.args(args);
+    let clang = ["clang", "clang++", "cc", "c++"].contains(&tool.as_str());
+    let cross_args = if clang && !cfg!(target_os = "macos") {
+        darwin_clang_args(args).map_err(Failure::new)?
+    } else {
+        None
+    };
+    if let Some(args) = cross_args {
+        command.args(&args);
+        if !args
+            .iter()
+            .any(|a| ["-c", "-E", "-S", "-fsyntax-only"].contains(&a.as_str()))
+            && let Some(xcrun) = super::find_program("xcrun")
+            && let Some(folder) = xcrun.parent()
+        {
+            command.arg("-fuse-ld=lld");
+            command.arg(format!("--ld-path={}", folder.join("ld64.lld").display()));
+        }
+    } else {
+        command.args(args);
+    }
     match sdkroot {
         Some(Some(path)) => {
             command.env("SDKROOT", path);
@@ -200,6 +219,56 @@ fn run(request: &Request, folders: &[PathBuf]) -> Result<ExitCode, Failure> {
         program.display(),
         exec(&mut command)
     )))
+}
+
+/// Apple's Clang infers an Apple target from these deployment flags. A
+/// Linux Clang needs an explicit triple as well as the SDK's sysroot.
+fn darwin_clang_args(args: &[String]) -> Result<Option<Vec<String>>, String> {
+    if args
+        .iter()
+        .any(|a| a == "-target" || a.starts_with("--target="))
+    {
+        return Ok(None);
+    }
+    let minimum = args.iter().find_map(|arg| {
+        [
+            ("-miphonesimulator-version-min=", "ios", "-simulator"),
+            ("-mios-simulator-version-min=", "ios", "-simulator"),
+            ("-miphoneos-version-min=", "ios", ""),
+            ("-mmacosx-version-min=", "macosx", ""),
+            ("-mtvos-simulator-version-min=", "tvos", "-simulator"),
+            ("-mtvos-version-min=", "tvos", ""),
+        ]
+        .into_iter()
+        .find_map(|(prefix, os, suffix)| {
+            arg.strip_prefix(prefix)
+                .map(|version| (arg, os, suffix, version))
+        })
+    });
+    let Some((flag, os, suffix, version)) = minimum else {
+        return Ok(None);
+    };
+    let arches: Vec<_> = args
+        .windows(2)
+        .filter(|a| a[0] == "-arch")
+        .map(|a| &a[1])
+        .collect();
+    if arches.len() != 1 {
+        return Err("cross-compiling with 'xcrun clang' needs exactly one '-arch'".into());
+    }
+    let mut out = vec![format!(
+        "--target={}-apple-{os}{version}{suffix}",
+        arches[0]
+    )];
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        if arg == "-arch" {
+            args.next();
+        } else if arg != flag {
+            out.push(arg.clone());
+        }
+    }
+    Ok(Some(out))
 }
 
 /// Replace this process with `command`, returning only when that fails.
@@ -435,6 +504,51 @@ mod tests {
             }
         }
         folder
+    }
+
+    #[test]
+    fn apple_deployment_flags_select_the_darwin_clang_target() {
+        let args = strings(&[
+            "-dynamiclib",
+            "-arch",
+            "arm64",
+            "-miphonesimulator-version-min=15.0",
+            "-isysroot",
+            "/SDK with spaces",
+            "source.c",
+            "-o",
+            "output.dylib",
+        ]);
+        assert_eq!(
+            darwin_clang_args(&args).unwrap().unwrap(),
+            strings(&[
+                "--target=arm64-apple-ios15.0-simulator",
+                "-dynamiclib",
+                "-isysroot",
+                "/SDK with spaces",
+                "source.c",
+                "-o",
+                "output.dylib",
+            ])
+        );
+        assert!(
+            darwin_clang_args(&strings(&[
+                "-arch",
+                "arm64",
+                "-arch",
+                "x86_64",
+                "-miphoneos-version-min=15.0",
+            ]))
+            .is_err()
+        );
+        assert!(
+            darwin_clang_args(&strings(&[
+                "--target=arm64-apple-ios15.0",
+                "-miphoneos-version-min=15.0",
+            ]))
+            .unwrap()
+            .is_none()
+        );
     }
 
     #[test]

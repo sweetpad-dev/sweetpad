@@ -80,7 +80,7 @@ fn render(value: &Value, indent: usize, out: &mut String, typed: bool) {
     }
 }
 
-fn escape(text: &str) -> String {
+pub(crate) fn escape(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

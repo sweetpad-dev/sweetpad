@@ -810,6 +810,15 @@ sweetpad bsp init [--output-file PATH]  write buildServer.json for sourcekit-lsp
 sweetpad completions <shell>          clap_complete-generated scripts
 ```
 
+`test run --xctestrun FILE` runs prebuilt Apple test products on a Mac using
+`test-without-building`. The manifest replaces build selection in the Xcode
+command: project, workspace, scheme, and configuration flags are omitted.
+The project still supplies the retained test context and result history.
+Selectors, reports, and result bundles work as usual. A prebuilt run leaves
+build diagnostics intact; `test build`, watch mode, and result read-back verbs
+refuse the flag. A readable result with zero tests fails instead of reporting
+success.
+
 `app run` gains the full session experience:
 
 - **`--device` / `--device-id <id>`** — build + install + launch on a physical
@@ -4585,7 +4594,8 @@ the stand-ins at the CLI's version, with nothing more to install. Where the
 corpus can check, a stand-in's output is Xcode's byte for byte: asset
 catalogs, nibs, String Catalogs, Core Data models, signatures. What a
 stand-in doesn't do fails with an error that names it. The stand-ins are
-`actool`, `ibtool`, `momc`, `xcstringstool`, `intentbuilderc`, `codesign`,
+`actool`, `ibtool`, `momc`, `mapc`, `xcstringstool`, `intentbuilderc`, `extractLocStrings`,
+the App Intents metadata and language-model processors, `codesign`,
 `derq`, the provisioning tool, `copypng`, `ditto`, `lipo`, `strip`,
 `embeddedBinaryValidationUtility`, `ld64.lld` and `xcrun`.
 
@@ -4598,12 +4608,13 @@ other `-sdk`, as `xcrun` does, and leaves the script's alone without one.
 `--find` and the `--show-sdk-*` queries answer from the Darwin SDK.
 
 **Swift Build is patched, as little as it can be.** `linux-setup.sh` builds
-`swbuild` at the toolchain's tag with `ci/swift-build-linux.patch`. Each
+Swift 6.4.2 with Swift Build 6.4.0 and `ci/swift-build-linux.patch`. Each
 change is one an upstream pull request could take: a failed `lsregister`
 start is a note, as a failed run already is; provisioning requests go to the
 tool `SWEETPAD_PROVISIONING` names; `derq` is looked up on the search path;
 the Mach-O reader has its structures on every platform; and text encodings
-are found by name without CoreFoundation.
+are found by name without CoreFoundation, including Unicode byte-order marks.
+LLVM's Darwin libtool is recognized without treating its LLVM version as a cctools version.
 
 **Signing has no keychain.** The identity is a `.p12` file
 (`SWEETPAD_CODE_SIGN_P12`, its password in `SWEETPAD_CODE_SIGN_P12_PASSWORD`),
@@ -4615,12 +4626,61 @@ device build signs; a simulator build keeps the linker's ad hoc signature.
 **Apple's macros come from `sweetpad-macros`.** The Darwin SDK's plugin
 server has no `SwiftDataMacros`, has `#Preview` only for SwiftUI views, and
 its `FoundationMacros` expands to `FoundationEssentials`, which the SDK
-doesn't have. `sweetpad-cli/macros` builds one plugin for all three, which
+doesn't have. `sweetpad-cli/macros` builds one plugin for these modules, SwiftUI `@Entry`, and TipKit, which
 the toolset loads.
 
-**Linux builds come from source.** The Homebrew release stays a macOS
-binary. `linux-setup.sh` provisions Ubuntu 24.04, an OrbStack machine on a
-Mac or a host of its own, and the guide builds sweetpad with cargo.
+**Package macros run on the host.** Local-package schemes include their own test products.
+Tuist-generated macro executables are built with SwiftPM's native build system.
+Their consumers use the resulting host executable. Aggregate workspace schemes exclude those
+prebuilt tools from the Darwin build request. Destination-only SDK settings do not leak into host builds.
+
+**Resolved Git packages expose explicit schemes.** The scheme reader follows the selected
+DerivedData `SourcePackages/workspace-state.json` and reads checkout scheme files.
+It honors a custom DerivedData path and does not fetch packages while listing.
+Package-root PIF reads have separate scratch directories so they preserve the app's graph.
+Already-present package targets need no second root read.
+
+**Additional Apple platforms use their own SDKs.** Setup imports tvOS, watchOS, and visionOS
+SDK data, testing frameworks, platform metadata, and companion stubs from the user's Xcode.
+It registers their Swift SDK target triples. SDK-scoped resource directories and
+LLD driver selection keep Linux modules out of Apple builds. Cross-tool settings also
+cover companion targets that use another Apple SDK in the same request.
+Modern standalone simulator apps and the migrated corpus watch apps build on both hosts.
+Runtime and device-signing checks remain unverified for the additional platforms.
+
+**Script phases use Bash in a private mount.** Bubblewrap maps the real `/bin/sh` target to Bash
+for the build process. The host's shell configuration is unchanged. SDK C++ headers come from
+its Xcode toolchain. `xcrun clang` translates Apple deployment flags into a Darwin target
+and selects the SDK linker when linking.
+
+**App Intents produce real metadata.** The portable processors consume Swift constant values
+and write registration metadata, strings, and shortcut language models. Unsupported schemas fail
+explicitly. Native captures validate the supported forms; device Siri behavior remains unverified.
+Dynamic components retain their own registrations; static dependency registration still fails explicitly.
+File inputs, dialog/snippet capabilities, and enum declaration order match native captures.
+Localized language-model bundles cover the supported schemas. Unsupported catalog variations fail explicitly.
+
+**Archives preserve development signing.** Swift Build's install action produces `.xcarchive`
+products. The CLI writes archive metadata and collects matching app, extension, and framework dSYMs.
+Development IPA export preserves the build's profiles and signature. It rejects unsigned export,
+simulator archives, distribution export, and custom export options.
+
+**Linux device operations use pymobiledevice3.** The pinned Python adapter supports
+trusted USB and direct Wi-Fi. Both transports pass discovery, install, launch, scoped logs,
+stop, uninstall, and reinstallation on an iPhone 13. Automatic discovery uses multicast or
+system DNS-SD. Device readiness inspection and device debugging remain unsupported.
+
+**Linux ARM64 ships an experimental release archive.** The Ubuntu 24.04 package includes
+the CLI, DAP alias, installer, licenses, a sample app, and public setup sources.
+It excludes Apple SDKs and signing material. Homebrew remains macOS only.
+The setup script provisions the separate compiler and private SDK prerequisites.
+`SWEETPAD_SKIP_RUST=1` omits Rust for the packaged CLI.
+Hosted CI validates a clean Ubuntu installation. A manual private SDK job builds the
+installed sample with no source checkout, developer home, network, or app build cache.
+The macro launcher restores runtime lookup from its adjacent host-toolchain link,
+because Swift strips PATH and LD_LIBRARY_PATH before it starts plugins.
+The release workflow publishes both platforms only after packaging checks pass.
+Manual Linux-only dry runs publish nothing.
 
 **Testing.** Unit tests cover the PIF lookups, the build request and
 parameters, `swbuild`'s message parser and each stand-in.
@@ -4628,6 +4688,9 @@ parameters, `swbuild`'s message parser and each stand-in.
 that checks its inputs. `ci/linux-build.sh` builds a fixture end to end in
 the VM, and `ci/linux-sweep.py` builds every scheme of the corpus on Linux,
 and with Xcode where Linux fails.
+`ci/linux-projects.py` adds pinned real apps, including Flutter, React Native, and Capacitor.
+`ci/linux-project-checks.py` compares bundles and checks both products in a Mac simulator.
+`ci/LINUX_PROJECTS.md` records setup, results, fixture patches, and the remaining MMKV interop gap.
 
 ## 10. Testing
 

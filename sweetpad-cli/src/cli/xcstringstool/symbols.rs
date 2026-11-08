@@ -387,14 +387,14 @@ fn collect(
                     spec,
                 }
             }
-            Token::Spec { position, .. } => {
+            Token::Spec { position, name, .. } => {
                 let position = position.unwrap_or(index + 1);
                 if found.iter().any(|a| a.position == position) {
                     continue;
                 }
                 Argument {
                     position,
-                    label: None,
+                    label: name.map(camel_case),
                     spec: token.unpositioned(),
                     swift_type: swift_type(&token.value_type())
                         .ok_or_else(|| unsupported(&token.unpositioned()))?,

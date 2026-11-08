@@ -22,9 +22,10 @@ mod cms;
 mod crypto;
 mod der;
 mod identity;
+mod inspect;
 mod macho;
 mod pkcs12;
-mod plist;
+use crate::cli::property_list as plist;
 pub mod provisioning;
 mod resources;
 #[cfg(test)]
@@ -94,6 +95,8 @@ pub fn derq_main(args: &[String]) -> ExitCode {
 /// What a `codesign` command line asks for.
 #[derive(Default)]
 struct Options {
+    display: bool,
+    requirements: Option<String>,
     identity: String,
     identifier: Option<String>,
     entitlements: Option<PathBuf>,
@@ -115,6 +118,18 @@ fn parse(args: &[String]) -> Result<Options, String> {
             _ => (arg.as_str(), None),
         };
         match flag {
+            "--" => {
+                let path = args.next().ok_or("no path after '--'")?;
+                if options.path.replace(PathBuf::from(path)).is_some() || args.next().is_some() {
+                    return Err("only one path at a time is signed".to_string());
+                }
+                break;
+            }
+            "-d" | "--display" => options.display = true,
+            "-r-" => options.requirements = Some("-".to_string()),
+            "-r" | "--requirements" => {
+                options.requirements = Some(inline.map_or_else(|| value(flag, &mut args), Ok)?);
+            }
             "-f" | "--force" | "-v" | "--verbose" => {}
             "-s" | "--sign" => {
                 options.identity = inline.map_or_else(|| value(flag, &mut args), Ok)?;
@@ -166,7 +181,13 @@ fn parse(args: &[String]) -> Result<Options, String> {
             _ => return Err(format!("unsupported option '{arg}'")),
         }
     }
-    if options.identity.is_empty() {
+    if options.display {
+        if !options.identity.is_empty() || options.requirements.as_deref() != Some("-") {
+            return Err("only '--display --requirements -' inspection is supported".to_string());
+        }
+    } else if options.requirements.is_some() {
+        return Err("custom signing requirements aren't supported".to_string());
+    } else if options.identity.is_empty() {
         return Err("no identity given with '--sign'".to_string());
     }
     Ok(options)
@@ -175,6 +196,9 @@ fn parse(args: &[String]) -> Result<Options, String> {
 fn run(args: &[String]) -> Result<(), String> {
     let options = parse(args)?;
     let path = options.path.clone().ok_or("no path to sign")?;
+    if options.display {
+        return inspect::display(&path);
+    }
     let identity = if options.identity == "-" {
         None
     } else {
@@ -205,9 +229,27 @@ fn run(args: &[String]) -> Result<(), String> {
     };
     if path.is_dir() {
         signer.sign_bundle(&path)
+    } else if let Some(bundle) = executable_bundle(&path) {
+        // Flutter signs Framework.framework/Framework directly. Apple's tool
+        // still recognizes its owning bundle, identifier and resource seal.
+        signer.sign_bundle(bundle)
     } else {
         signer.sign_file(&path, None)
     }
+}
+
+fn executable_bundle(executable: &Path) -> Option<&Path> {
+    let parent = executable.parent()?;
+    if !["app", "appex", "framework", "xctest", "bundle"]
+        .iter()
+        .any(|extension| parent.extension().is_some_and(|e| e == *extension))
+    {
+        return None;
+    }
+    let info = std::fs::read(parent.join("Info.plist")).ok()?;
+    let info = plist::read_info(&info).ok()?;
+    (executable.file_name()?.to_str()? == plist::string(&info, "CFBundleExecutable")?)
+        .then_some(parent)
 }
 
 /// What an executable's signature binds besides its code: the bundle's
@@ -236,9 +278,6 @@ impl Signer<'_> {
         let info_bytes = std::fs::read(&info_path)
             .map_err(|e| format!("couldn't read {}: {e}", info_path.display()))?;
         let info = plist::read_info(&info_bytes)?;
-        let executable = plist::string(&info, "CFBundleExecutable")
-            .ok_or_else(|| format!("{} names no CFBundleExecutable", info_path.display()))?
-            .to_string();
         let identifier = match (
             &self.options.identifier,
             plist::string(&info, "CFBundleIdentifier"),
@@ -252,7 +291,18 @@ impl Signer<'_> {
                 ));
             }
         };
-        let resources = resources::code_resources(bundle, &executable)?;
+        let Some(executable) = plist::string(&info, "CFBundleExecutable") else {
+            if bundle.extension().is_some_and(|s| s == "bundle")
+                && plist::string(&info, "CFBundlePackageType") == Some("BNDL")
+            {
+                return self.sign_resource_bundle(bundle, &identifier, &info_bytes);
+            }
+            return Err(format!(
+                "{} names no CFBundleExecutable",
+                info_path.display()
+            ));
+        };
+        let resources = resources::code_resources(bundle, executable)?;
         let folder = bundle.join("_CodeSignature");
         std::fs::create_dir_all(&folder)
             .and_then(|()| std::fs::write(folder.join("CodeResources"), &resources))
@@ -263,6 +313,54 @@ impl Signer<'_> {
             resources: crypto::sha256(&resources),
         };
         self.sign_file(&bundle.join(executable), Some(&binding))
+    }
+
+    /// Resource-only bundles keep detached signature files and hash their
+    /// Info.plist as a single unpaged code slot, as Apple's codesign does.
+    fn sign_resource_bundle(
+        &self,
+        bundle: &Path,
+        identifier: &str,
+        info: &[u8],
+    ) -> Result<(), String> {
+        // Apple's codesign ignores executable entitlements for a bundle
+        // without executable code, even when Swift Build supplies an xcent.
+        let resources = resources::code_resources(bundle, "Info.plist")?;
+        let requirements = blobs::requirements(identifier, self.identity)?;
+        let directory = Directory {
+            identifier,
+            team: self.identity.and_then(Identity::team),
+            flags: self.options.flags
+                | if self.identity.is_none() {
+                    blobs::FLAG_ADHOC
+                } else {
+                    0
+                },
+            exec_segment: (0, 0, 0),
+            special: vec![
+                (blobs::SPECIAL_INFO, crypto::sha256(info)),
+                (blobs::SPECIAL_REQUIREMENTS, crypto::sha256(&requirements)),
+                (blobs::SPECIAL_RESOURCES, crypto::sha256(&resources)),
+            ],
+        }
+        .build_unpaged(info);
+        let signature = self.identity.map_or_else(
+            || Ok(Vec::new()),
+            |identity| cms::sign(identity, &directory, self.time),
+        )?;
+        let folder = bundle.join("_CodeSignature");
+        std::fs::create_dir_all(&folder)
+            .map_err(|e| format!("couldn't create {}: {e}", folder.display()))?;
+        for (name, bytes) in [
+            ("CodeResources", resources),
+            ("CodeRequirements", requirements),
+            ("CodeDirectory", directory),
+            ("CodeSignature", signature),
+        ] {
+            std::fs::write(folder.join(name), bytes)
+                .map_err(|e| format!("couldn't write {}: {e}", folder.join(name).display()))?;
+        }
+        Ok(())
     }
 
     fn sign_file(&self, path: &Path, bundle: Option<&Bundle>) -> Result<(), String> {

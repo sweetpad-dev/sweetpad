@@ -58,7 +58,7 @@ impl Render for SchemeList {
 /// (flag > config > remembered state) is marked.
 fn list(ctx: &mut Context) -> CommandResult {
     let resolved = resolve::resolve(ctx)?;
-    let schemes = resolve::schemes(&resolved.container)?;
+    let schemes = resolve::schemes_for_context(ctx, &resolved.container)?;
     let selected = resolved.scheme.clone();
     let entries = schemes
         .into_iter()

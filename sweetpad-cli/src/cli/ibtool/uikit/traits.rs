@@ -51,6 +51,66 @@ impl Encoder<'_> {
         ))
     }
 
+    fn stack_trait_attribute(
+        &mut self,
+        element: &Element,
+        variation: &Element,
+        object: Id,
+        attribute: &str,
+    ) -> Result<(Value, Value), String> {
+        let (key, values): (&str, &[(&str, i64)]) = match attribute {
+            "distribution" => (
+                "UIStackViewDistribution",
+                &[
+                    ("fill", 0),
+                    ("fillEqually", 1),
+                    ("fillProportionally", 2),
+                    ("equalSpacing", 3),
+                    ("equalCentering", 4),
+                ],
+            ),
+            "axis" => ("UIStackViewAxis", &[("horizontal", 0), ("vertical", 1)]),
+            "alignment" => (
+                "UIStackViewAlignment",
+                &[
+                    ("fill", 0),
+                    ("leading", 1),
+                    ("top", 1),
+                    ("firstBaseline", 2),
+                    ("center", 3),
+                    ("trailing", 4),
+                    ("bottom", 4),
+                    ("lastBaseline", 5),
+                ],
+            ),
+            "spacing" => ("UIStackViewSpacing", &[]),
+            other => return Err(format!("unsupported stack variation attribute {other}")),
+        };
+        if element.name != "stackView" {
+            return Err(format!(
+                "unsupported variation attribute {attribute} on {}",
+                element.name
+            ));
+        }
+        let base = self.graph.value(object, key).unwrap_or(Value::Int(0));
+        let value = if attribute == "spacing" {
+            Value::Double(super::number(variation, attribute)?.unwrap_or(0.0))
+        } else {
+            Value::Int(super::controls::enumeration(
+                variation, attribute, values, 0,
+            )?)
+        };
+        let boxed = |graph: &mut super::Graph, value: Value| {
+            let key = if matches!(value, Value::Double(_) | Value::Float(_)) {
+                "NS.dblval"
+            } else {
+                "NS.intval"
+            };
+            Value::Object(graph.shared("NSNumber", vec![(key, value)]))
+        };
+        Ok((boxed(&mut self.graph, base), boxed(&mut self.graph, value)))
+    }
+
     pub(super) fn constraint_variations(
         &mut self,
         element: &Element,
@@ -131,6 +191,15 @@ impl Encoder<'_> {
                         let value = self.boxed_boolean(value == "YES");
                         attributes
                             .entry("hidden")
+                            .or_insert_with(|| (base, Vec::new()))
+                            .1
+                            .push((condition, value));
+                    }
+                    "axis" | "alignment" | "distribution" | "spacing" => {
+                        let (base, value) =
+                            self.stack_trait_attribute(element, variation, object, attribute)?;
+                        attributes
+                            .entry(attribute)
                             .or_insert_with(|| (base, Vec::new()))
                             .1
                             .push((condition, value));

@@ -1,0 +1,10 @@
+import Foundation
+let a = WMFLocalizedString("alpha", value: "A value", comment: "A comment")
+let b = WMFLocalizedString("beta", comment: "B comment")
+let c = WMFLocalizedString("quote", value: "\"Hello\"\nWorld", comment: "Quote")
+let d = WMFLocalizedString("placeholders", value: "%@ and %d", comment: "Placeholders")
+let e = WMFLocalizedString("alpha", value: "A value", comment: "Second comment")
+let f = WMFLocalizedString("custom-table", tableName: "Other", value: "Other value", comment: "Other table")
+// WMFLocalizedString("comment", value: "Ignored", comment: "Ignored")
+let g = WMFLocalizedString(dynamicKey, comment: "Ignored")
+let single = WMFLocalizedString("single", value: "One %@", comment: "Single placeholder")

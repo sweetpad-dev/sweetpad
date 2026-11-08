@@ -16,7 +16,7 @@ use serde_json::{Map, Value, json};
 use super::car::{
     Appearance, Bitmap, Car, ColorSpace, Family, Glyph, Part, Rendering, Source, Variant,
 };
-use super::catalog::{Asset, Catalog, Kind};
+use super::catalog::{Asset, Catalog, Kind, qualified_name};
 use super::photo::Photo;
 use super::uti;
 use super::vector::{Drawing, Format};
@@ -36,23 +36,83 @@ pub(super) fn compile(args: &Args) -> Result<(), String> {
         remove_previous_outputs(path, &output);
     }
     let catalogs = catalogs(args);
+    if let Some(name) = args.value("--app-icon") {
+        let declared = catalogs.iter().flat_map(Catalog::assets).any(|(_, asset)| {
+            asset.name == name
+                && (asset.kind == Kind::AppIcon
+                    || asset
+                        .dir
+                        .extension()
+                        .is_some_and(|e| e == "brandassets" || e == "stickersiconset"))
+        });
+        if !declared {
+            return Err(format!(
+                "none of the input catalogs contains an app icon set or icon stack named {name:?}"
+            ));
+        }
+    }
     let devices = target_devices(args);
     let mut written = Vec::new();
     let mut info = Map::new();
+    for (flag, key) in [
+        ("--accent-color", "NSAccentColorName"),
+        ("--widget-background-color", "NSWidgetBackgroundColorName"),
+    ] {
+        if let Some(name) = args.value(flag)
+            && catalogs
+                .iter()
+                .flat_map(Catalog::assets)
+                .any(|(chain, asset)| {
+                    asset.kind == Kind::Color
+                        && asset.has_content
+                        && qualified_name(&chain, asset) == name
+                })
+        {
+            info.insert(key.into(), json!(name));
+        }
+    }
 
     let platform = args.value("--platform").unwrap_or_default();
     let icon_name = args.value("--app-icon");
     let alternates = alternate_icons(&catalogs, icon_name, args);
+    let mut car = Car::new(
+        if platform == "macosx" {
+            Family::Mac
+        } else {
+            Family::Ios
+        },
+        platform_name(platform),
+        args.value("--minimum-deployment-target")
+            .unwrap_or_default(),
+    );
+    let mut compiled = HashSet::new();
+    let modern = super::modern::compile(
+        &catalogs,
+        icon_name,
+        platform,
+        &output,
+        &mut written,
+        &mut car,
+        &mut compiled,
+    )?;
     let icon_written = icon_name.is_some_and(|name| {
         let Some(set) = app_icon(&catalogs, name) else {
             return false;
         };
         match platform {
             "iphoneos" | "iphonesimulator" => {
-                let mut ok = write_ios_icon(set, name, &output, &mut written);
-                if ok && args.value("--standalone-icon-behavior") == Some("all") {
-                    ok = write_all_ios_icons(set, name, &output, &mut written);
+                if modern.contains(name) {
+                    info.extend(ios_icon_info(name, &devices));
+                    return true;
                 }
+                if set.dir.extension().is_some_and(|e| e == "stickersiconset") {
+                    return super::stickers::icon(set, name, &output, &mut written, &mut info);
+                }
+                let ok = if args.value("--standalone-icon-behavior") == Some("all") {
+                    write_all_ios_icons(set, name, &output, &mut written)
+                } else {
+                    write_ios_icon(set, name, &output, &mut written)
+                };
                 if ok {
                     info.extend(ios_icon_info(name, &devices));
                 }
@@ -68,24 +128,17 @@ pub(super) fn compile(args: &Args) -> Result<(), String> {
             _ => false,
         }
     });
-    let mut car = Car::new(
-        if platform == "macosx" {
-            Family::Mac
-        } else {
-            Family::Ios
-        },
-        platform_name(platform),
-        args.value("--minimum-deployment-target")
-            .unwrap_or_default(),
-    );
-    let mut compiled = HashSet::new();
     let icon_in_car = icon_name.is_some_and(|name| {
-        app_icon(&catalogs, name)
-            .is_some_and(|set| add_app_icon(&mut car, name, set, &devices, platform, &mut compiled))
+        modern.contains(name)
+            || app_icon(&catalogs, name).is_some_and(|set| {
+                add_app_icon(&mut car, name, set, &devices, platform, &mut compiled)
+            })
     });
     let mut alternates_in_car = Vec::new();
     for name in &alternates {
-        if let Some(set) = app_icon(&catalogs, name)
+        if modern.contains(*name) {
+            alternates_in_car.push(*name);
+        } else if let Some(set) = app_icon(&catalogs, name)
             && add_app_icon(&mut car, name, set, &devices, platform, &mut compiled)
         {
             alternates_in_car.push(*name);
@@ -107,6 +160,14 @@ pub(super) fn compile(args: &Args) -> Result<(), String> {
     for catalog in &catalogs {
         add_assets(catalog, &mut car, &devices, platform, &mut compiled);
     }
+    super::stickers::compile(
+        &catalogs,
+        args,
+        &output,
+        &mut written,
+        &mut info,
+        &mut compiled,
+    )?;
     if !car.is_empty() {
         let path = output.join("Assets.car");
         write(&path, &car.write(0))?;
@@ -410,10 +471,19 @@ fn write_ios_icon(set: &Asset, name: &str, output: &Path, written: &mut Vec<Path
 }
 
 /// Extensions request every standalone icon, including legacy notification
-/// sizes. A universal single-size icon also retains its 1024-point image;
-/// classic ios-marketing slots remain in Assets.car.
+/// sizes. Unscaled universal icons use the generated phone and tablet
+/// files; explicit slots retain their declared sizes. Marketing slots
+/// remain in Assets.car.
 fn write_all_ios_icons(set: &Asset, name: &str, output: &Path, written: &mut Vec<PathBuf>) -> bool {
+    let single_size =
+        |entry: &super::catalog::Entry| entry.idiom == "universal" && entry.scale.is_none();
+    if set.entries.iter().any(single_size) && !write_ios_icon(set, name, output, written) {
+        return false;
+    }
     for entry in &set.entries {
+        if single_size(entry) {
+            continue;
+        }
         let Some(source) = entry
             .filename
             .as_ref()
@@ -546,12 +616,7 @@ fn add_assets<'a>(
         if !asset.has_content {
             continue;
         }
-        let name: String = chain
-            .iter()
-            .filter(|f| f.namespace)
-            .map(|f| format!("{}/", f.name))
-            .chain([asset.name.clone()])
-            .collect();
+        let name = qualified_name(&chain, asset);
         let added = match asset.kind {
             Kind::Color => add_color(car, &name, asset, devices, platform),
             Kind::Image if asset.symbol => add_symbol(car, &name, asset, devices, platform),
@@ -994,9 +1059,8 @@ impl Report {
                 Kind::Color if !done => report.colors += 1,
                 Kind::Image if !done => report.images += 1,
                 // actool leaves out the icon sets no option names.
-                Kind::Data if !done => report.other += 1,
-                Kind::AppIcon | Kind::Color | Kind::Image | Kind::Data => {}
-                Kind::Other => report.other += 1,
+                Kind::Data | Kind::Other if !done => report.other += 1,
+                Kind::AppIcon | Kind::Color | Kind::Image | Kind::Data | Kind::Other => {}
             }
         }
         report
@@ -1076,7 +1140,14 @@ fn remove_previous_outputs(dependencies: &Path, output: &Path) {
         };
         let path = PathBuf::from(String::from_utf8_lossy(path).into_owned());
         if opcode == 0x40 && path.starts_with(output) {
-            let _ = std::fs::remove_file(path);
+            let _ = std::fs::remove_file(&path);
+            let mut parent = path.parent();
+            while let Some(dir) = parent.filter(|p| *p != output && p.starts_with(output)) {
+                if std::fs::remove_dir(dir).is_err() {
+                    break;
+                }
+                parent = dir.parent();
+            }
         }
     }
 }

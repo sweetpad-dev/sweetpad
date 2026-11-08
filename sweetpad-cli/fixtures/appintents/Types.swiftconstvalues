@@ -1,0 +1,2110 @@
+[
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.Equatable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.Hashable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.RawRepresentable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.AppEnum"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.AppValue"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.StaticDisplayRepresentable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.TypeDisplayRepresentable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents._IntentValue"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.CaseDisplayRepresentable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Foundation.CustomLocalizedStringResourceConvertible"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.CaseIterable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "substitutedMangledTypeName": "SS",
+        "substitutedTypeName": "Swift.String",
+        "typeAliasName": "RawValue"
+      },
+      {
+        "substitutedMangledTypeName": "13MetadataProbe12SampleChoiceO",
+        "substitutedTypeName": "MetadataProbe.SampleChoice",
+        "typeAliasName": "ValueType"
+      },
+      {
+        "substitutedMangledTypeName": "13MetadataProbe12SampleChoiceO",
+        "substitutedTypeName": "MetadataProbe.SampleChoice",
+        "typeAliasName": "UnwrappedType"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ResolverSpecification"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A4EnumPAAE28defaultResolverSpecificationQrvpZQOy13MetadataProbe12SampleChoiceO_Qo_",
+        "substitutedTypeName": "some AppIntents.ResolverSpecification",
+        "typeAliasName": "Specification"
+      },
+      {
+        "substitutedMangledTypeName": "Say13MetadataProbe12SampleChoiceOG",
+        "substitutedTypeName": "Swift.Array<MetadataProbe.SampleChoice>",
+        "typeAliasName": "AllCases"
+      }
+    ],
+    "cases": [
+      {
+        "name": "first",
+        "rawValue": "first"
+      },
+      {
+        "name": "second",
+        "rawValue": "second"
+      }
+    ],
+    "conformances": [
+      "Swift.Equatable",
+      "Swift.Hashable",
+      "Swift.RawRepresentable",
+      "AppIntents.AppEnum",
+      "AppIntents.AppValue",
+      "AppIntents.StaticDisplayRepresentable",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents.TypeDisplayRepresentable",
+      "AppIntents._IntentValue",
+      "Swift.Sendable",
+      "AppIntents.CaseDisplayRepresentable",
+      "Swift.SendableMetatype",
+      "Foundation.CustomLocalizedStringResourceConvertible",
+      "Swift.CaseIterable",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "Types.swift",
+    "kind": "enum",
+    "line": 4,
+    "mangledTypeName": "13MetadataProbe12SampleChoiceO",
+    "properties": [
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "typeDisplayRepresentation",
+        "line": 6,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.TypeDisplayRepresentation",
+        "value": "Choice",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "caseDisplayRepresentations",
+        "line": 7,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Swift.Dictionary<MetadataProbe.SampleChoice, AppIntents.DisplayRepresentation>",
+        "value": [
+          {
+            "key": {
+              "value": {
+                "name": "second"
+              },
+              "valueKind": "Enum"
+            },
+            "value": {
+              "value": "Second",
+              "valueKind": "RawLiteral"
+            }
+          },
+          {
+            "key": {
+              "value": {
+                "name": "first"
+              },
+              "valueKind": "Enum"
+            },
+            "value": {
+              "value": {
+                "arguments": [
+                  {
+                    "label": "title",
+                    "type": "Foundation.LocalizedStringResource",
+                    "value": "First",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "subtitle",
+                    "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+                    "value": "First choice",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "image",
+                    "type": "Swift.Optional<AppIntents.DisplayRepresentation.Image>",
+                    "value": {
+                      "arguments": [
+                        {
+                          "label": "systemName",
+                          "type": "Swift.String",
+                          "value": "1.circle",
+                          "valueKind": "RawLiteral"
+                        },
+                        {
+                          "label": "isTemplate",
+                          "type": "Swift.Optional<Swift.Bool>",
+                          "valueKind": "NilLiteral"
+                        }
+                      ],
+                      "type": "AppIntents.DisplayRepresentation.Image"
+                    },
+                    "valueKind": "InitCall"
+                  }
+                ],
+                "type": "AppIntents.DisplayRepresentation"
+              },
+              "valueKind": "InitCall"
+            }
+          }
+        ],
+        "valueKind": "Dictionary"
+      },
+      {
+        "isComputed": "true",
+        "isStatic": "true",
+        "label": "allCases",
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Swift.Array<MetadataProbe.SampleChoice>",
+        "value": [
+          {
+            "value": {
+              "name": "first"
+            },
+            "valueKind": "Enum"
+          },
+          {
+            "value": {
+              "name": "second"
+            },
+            "valueKind": "Enum"
+          }
+        ],
+        "valueKind": "Array"
+      },
+      {
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "rawValue",
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Swift.String",
+        "valueKind": "Runtime"
+      }
+    ],
+    "typeName": "MetadataProbe.SampleChoice"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.AppEntity"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.AppValue"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.DisplayRepresentable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.Identifiable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.TypeDisplayRepresentable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents._IntentValue"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.InstanceDisplayRepresentable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Foundation.CustomLocalizedStringResourceConvertible"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "substitutedMangledTypeName": "13MetadataProbe11SampleQueryV",
+        "substitutedTypeName": "MetadataProbe.SampleQuery",
+        "typeAliasName": "DefaultQuery"
+      },
+      {
+        "substitutedMangledTypeName": "SS",
+        "substitutedTypeName": "Swift.String",
+        "typeAliasName": "ID"
+      },
+      {
+        "substitutedMangledTypeName": "13MetadataProbe12SampleEntityV",
+        "substitutedTypeName": "MetadataProbe.SampleEntity",
+        "typeAliasName": "ValueType"
+      },
+      {
+        "substitutedMangledTypeName": "13MetadataProbe12SampleEntityV",
+        "substitutedTypeName": "MetadataProbe.SampleEntity",
+        "typeAliasName": "UnwrappedType"
+      },
+      {
+        "substitutedMangledTypeName": "10AppIntents26EmptyResolverSpecificationVy13MetadataProbe12SampleEntityVG",
+        "substitutedTypeName": "AppIntents.EmptyResolverSpecification<MetadataProbe.SampleEntity>",
+        "typeAliasName": "Specification"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppEntity",
+      "AppIntents.AppValue",
+      "AppIntents.DisplayRepresentable",
+      "Swift.Identifiable",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents.TypeDisplayRepresentable",
+      "AppIntents._IntentValue",
+      "Swift.Sendable",
+      "AppIntents.InstanceDisplayRepresentable",
+      "Swift.SendableMetatype",
+      "Foundation.CustomLocalizedStringResourceConvertible"
+    ],
+    "file": "Types.swift",
+    "kind": "struct",
+    "line": 13,
+    "mangledTypeName": "13MetadataProbe12SampleEntityV",
+    "properties": [
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "id",
+        "line": 14,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Swift.String",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_name",
+        "line": 15,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.EntityProperty<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Name",
+              "valueKind": "RawLiteral"
+            }
+          ],
+          "type": "AppIntents.EntityProperty<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "name",
+        "line": 15,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Name",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "Types.swift",
+            "line": 15,
+            "type": "AppIntents.EntityProperty"
+          }
+        ],
+        "type": "Swift.String",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Name",
+              "valueKind": "RawLiteral"
+            }
+          ],
+          "type": "AppIntents.EntityProperty<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$name",
+        "line": 15,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.EntityProperty<Swift.String>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "typeDisplayRepresentation",
+        "line": 16,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.TypeDisplayRepresentation",
+        "value": "Item",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "defaultQuery",
+        "line": 17,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "MetadataProbe.SampleQuery",
+        "value": {
+          "arguments": [],
+          "type": "MetadataProbe.SampleQuery"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "displayRepresentation",
+        "line": 18,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.DisplayRepresentation",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Item",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "subtitle",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "image",
+              "type": "Swift.Optional<AppIntents.DisplayRepresentation.Image>",
+              "valueKind": "NilLiteral"
+            }
+          ],
+          "type": "AppIntents.DisplayRepresentation"
+        },
+        "valueKind": "InitCall"
+      }
+    ],
+    "typeName": "MetadataProbe.SampleEntity"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.EntityQuery"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.DynamicOptionsProvider"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "substitutedMangledTypeName": "13MetadataProbe12SampleEntityV",
+        "substitutedTypeName": "MetadataProbe.SampleEntity",
+        "typeAliasName": "Entity"
+      },
+      {
+        "substitutedMangledTypeName": "Say13MetadataProbe12SampleEntityVG",
+        "substitutedTypeName": "Swift.Array<MetadataProbe.SampleEntity>",
+        "typeAliasName": "Result"
+      },
+      {
+        "substitutedMangledTypeName": "Say13MetadataProbe12SampleEntityVG",
+        "substitutedTypeName": "Swift.Array<MetadataProbe.SampleEntity>",
+        "typeAliasName": "Result"
+      },
+      {
+        "substitutedMangledTypeName": "13MetadataProbe12SampleEntityV",
+        "substitutedTypeName": "MetadataProbe.SampleEntity",
+        "typeAliasName": "DefaultValue"
+      }
+    ],
+    "conformances": [
+      "AppIntents.EntityQuery",
+      "AppIntents.DynamicOptionsProvider",
+      "AppIntents.PersistentlyIdentifiable",
+      "Swift.Sendable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "Types.swift",
+    "kind": "struct",
+    "line": 21,
+    "mangledTypeName": "13MetadataProbe11SampleQueryV",
+    "properties": [],
+    "typeName": "MetadataProbe.SampleQuery"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "13MetadataProbe11TypesIntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy13MetadataProbe05TypesC0V_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "Types.swift",
+    "kind": "struct",
+    "line": 25,
+    "mangledTypeName": "13MetadataProbe11TypesIntentV",
+    "properties": [
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_text",
+        "line": 30,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Text",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_count",
+        "line": 31,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Int>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Count",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Int>",
+              "value": "3",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "controlStyle",
+              "type": "AppIntents.IntentParameter<Swift.Int>.IntControlStyle",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "inclusiveRange",
+              "type": "Swift.Optional<(lowerBound: Swift.Int, upperBound: Swift.Int)>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Int>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_enabled",
+        "line": 32,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Bool>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Enabled",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Bool>",
+              "value": "true",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "displayName",
+              "type": "Swift.Optional<Swift.Bool.IntentDisplayName>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Bool>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_amount",
+        "line": 33,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Double>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Amount",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Double>",
+              "value": "1.5",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "controlStyle",
+              "type": "AppIntents.IntentParameter<Swift.Double>.DoubleControlStyle",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "inclusiveRange",
+              "type": "Swift.Optional<(lowerBound: Swift.Double, upperBound: Swift.Double)>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Double>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_url",
+        "line": 34,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Foundation.URL>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "URL",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Foundation.URL>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Foundation.URL>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_date",
+        "line": 35,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Foundation.Date>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Date",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "kind",
+              "type": "AppIntents.IntentParameter<Foundation.Date>.DateKind",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Foundation.Date>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_strings",
+        "line": 36,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Array<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Strings",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Array<Swift.String>>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Array<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_choice",
+        "line": 37,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<MetadataProbe.SampleChoice>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Choice",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<MetadataProbe.SampleChoice>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestDisambiguationDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "supportedValues",
+              "type": "Swift.Array<MetadataProbe.SampleChoice>",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<MetadataProbe.SampleChoice>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_item",
+        "line": 38,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<MetadataProbe.SampleEntity>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Item",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<MetadataProbe.SampleEntity>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestDisambiguationDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<MetadataProbe.SampleEntity>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 26,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Types",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "description",
+        "line": 27,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentDescription",
+        "value": "Metadata type coverage",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "openAppWhenRun",
+        "line": 28,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Swift.Bool",
+        "value": "true",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "text",
+        "line": 30,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Text",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "Types.swift",
+            "line": 30,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Text",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$text",
+        "line": 30,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "count",
+        "line": 31,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Count",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "default",
+                "type": "Swift.Optional<Swift.Int>",
+                "value": "3",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "Types.swift",
+            "line": 31,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Int",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Count",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Int>",
+              "value": "3",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "controlStyle",
+              "type": "AppIntents.IntentParameter<Swift.Int>.IntControlStyle",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "inclusiveRange",
+              "type": "Swift.Optional<(lowerBound: Swift.Int, upperBound: Swift.Int)>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Int>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$count",
+        "line": 31,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Int>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "enabled",
+        "line": 32,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Enabled",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "default",
+                "type": "Swift.Optional<Swift.Bool>",
+                "value": "true",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "Types.swift",
+            "line": 32,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Bool",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Enabled",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Bool>",
+              "value": "true",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "displayName",
+              "type": "Swift.Optional<Swift.Bool.IntentDisplayName>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Bool>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$enabled",
+        "line": 32,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Bool>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "amount",
+        "line": 33,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Amount",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "default",
+                "type": "Swift.Optional<Swift.Double>",
+                "value": "1.5",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "Types.swift",
+            "line": 33,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Double",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Amount",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Double>",
+              "value": "1.5",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "controlStyle",
+              "type": "AppIntents.IntentParameter<Swift.Double>.DoubleControlStyle",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "inclusiveRange",
+              "type": "Swift.Optional<(lowerBound: Swift.Double, upperBound: Swift.Double)>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Double>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$amount",
+        "line": 33,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Double>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "url",
+        "line": 34,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "URL",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "Types.swift",
+            "line": 34,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Foundation.URL",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "URL",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Foundation.URL>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Foundation.URL>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$url",
+        "line": 34,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Foundation.URL>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "date",
+        "line": 35,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Date",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "Types.swift",
+            "line": 35,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Foundation.Date",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Date",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "kind",
+              "type": "AppIntents.IntentParameter<Foundation.Date>.DateKind",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Foundation.Date>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$date",
+        "line": 35,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Foundation.Date>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "strings",
+        "line": 36,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Strings",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "Types.swift",
+            "line": 36,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Array<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Strings",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Array<Swift.String>>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Array<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$strings",
+        "line": 36,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Array<Swift.String>>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "choice",
+        "line": 37,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Choice",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "Types.swift",
+            "line": 37,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "MetadataProbe.SampleChoice",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Choice",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<MetadataProbe.SampleChoice>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestDisambiguationDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "supportedValues",
+              "type": "Swift.Array<MetadataProbe.SampleChoice>",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<MetadataProbe.SampleChoice>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$choice",
+        "line": 37,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<MetadataProbe.SampleChoice>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "item",
+        "line": 38,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Item",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "Types.swift",
+            "line": 38,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<MetadataProbe.SampleEntity>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Item",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<MetadataProbe.SampleEntity>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestDisambiguationDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<MetadataProbe.SampleEntity>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$item",
+        "line": 38,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<MetadataProbe.SampleEntity>>",
+        "valueKind": "Runtime"
+      }
+    ],
+    "typeName": "MetadataProbe.TypesIntent"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.WidgetConfigurationIntent"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "substitutedMangledTypeName": "s5NeverO",
+        "substitutedTypeName": "Swift.Never",
+        "typeAliasName": "NeverResult"
+      },
+      {
+        "substitutedMangledTypeName": "s5NeverO",
+        "substitutedTypeName": "Swift.Never",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy13MetadataProbe013ConfigurationC0V_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.WidgetConfigurationIntent",
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "Types.swift",
+    "kind": "struct",
+    "line": 43,
+    "mangledTypeName": "13MetadataProbe19ConfigurationIntentV",
+    "properties": [
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_choice",
+        "line": 45,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<MetadataProbe.SampleChoice>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Choice",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<MetadataProbe.SampleChoice>",
+              "value": {
+                "name": "first"
+              },
+              "valueKind": "Enum"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestDisambiguationDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "supportedValues",
+              "type": "Swift.Array<MetadataProbe.SampleChoice>",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<MetadataProbe.SampleChoice>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 44,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Configuration",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "choice",
+        "line": 45,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Choice",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "default",
+                "type": "Swift.Optional<MetadataProbe.SampleChoice>",
+                "value": {
+                  "name": "first"
+                },
+                "valueKind": "Enum"
+              }
+            ],
+            "file": "Types.swift",
+            "line": 45,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "MetadataProbe.SampleChoice",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Choice",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<MetadataProbe.SampleChoice>",
+              "value": {
+                "name": "first"
+              },
+              "valueKind": "Enum"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestDisambiguationDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "supportedValues",
+              "type": "Swift.Array<MetadataProbe.SampleChoice>",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<MetadataProbe.SampleChoice>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$choice",
+        "line": 45,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<MetadataProbe.SampleChoice>",
+        "valueKind": "Runtime"
+      }
+    ],
+    "typeName": "MetadataProbe.ConfigurationIntent"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "13MetadataProbe19AuthenticatedIntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy13MetadataProbe013AuthenticatedC0V_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "Types.swift",
+    "kind": "struct",
+    "line": 48,
+    "mangledTypeName": "13MetadataProbe19AuthenticatedIntentV",
+    "properties": [
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 49,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Authenticated",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "authenticationPolicy",
+        "line": 50,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentAuthenticationPolicy",
+        "value": {
+          "name": "requiresAuthentication"
+        },
+        "valueKind": "Enum"
+      }
+    ],
+    "typeName": "MetadataProbe.AuthenticatedIntent"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "MetadataProbe",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "13MetadataProbe25LocalAuthenticationIntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy13MetadataProbe019LocalAuthenticationC0V_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "Types.swift",
+    "kind": "struct",
+    "line": 54,
+    "mangledTypeName": "13MetadataProbe25LocalAuthenticationIntentV",
+    "properties": [
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 55,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Local authentication",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "Types.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "authenticationPolicy",
+        "line": 56,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentAuthenticationPolicy",
+        "value": {
+          "name": "requiresLocalDeviceAuthentication"
+        },
+        "valueKind": "Enum"
+      }
+    ],
+    "typeName": "MetadataProbe.LocalAuthenticationIntent"
+  }
+]

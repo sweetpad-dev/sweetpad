@@ -1,0 +1,1 @@
+This resource must disappear when removed from the project.

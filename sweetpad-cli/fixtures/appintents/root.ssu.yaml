@@ -1,0 +1,39 @@
+apiVersion: ssu/v1
+nlu:
+  shortcuts:
+    bundleIdentifier: dev.sweetpad.DataApp
+    intents:
+    - metadata:
+        name: Greet_0
+        title: Greet
+      corpuses:
+        training:
+        - locale: en
+          utterances:
+          - '{${+prefix} }Greet in ${+applicationName}'
+    - metadata:
+        name: +negative
+      corpuses:
+        training:
+        - locale: en
+          utterances:
+          - '{${+prefix} }${+standardAppShortcutNegatives}'
+variables:
+- name: +applicationName
+  type: ssu/expansion
+  definitions:
+  - locale: en
+    synomyms:
+    - DataApp
+- name: +prefix
+  type: ssu/expansion
+  definitions:
+  - locale: en
+    synomyms:
+      $ref: ssu://Resources/prefix/en.yaml
+- name: +standardAppShortcutNegatives
+  type: ssu/expansion
+  definitions:
+  - locale: en
+    synomyms:
+      $ref: ssu://Resources/standardAppShortcutNegatives/en.yaml

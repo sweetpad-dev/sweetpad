@@ -1,0 +1,11 @@
+--- a/iOS/MainTimeline/MainTimelineModernViewController.swift
++++ b/iOS/MainTimeline/MainTimelineModernViewController.swift
+@@ -387,7 +387,7 @@
+ 
+ 		var snapshot = dataSource.snapshot()
+ 		snapshot.reloadItems(articles)
+-		DispatchQueue.main.asyncAfter(wallDeadline: .now() + 0.0, execute: {
++		DispatchQueue.main.asyncAfter(wallDeadline: .now() + 0.0, execute: { [self] in
+ 			guard let dataSource = self.dataSource else {
+ 				return
+ 			}

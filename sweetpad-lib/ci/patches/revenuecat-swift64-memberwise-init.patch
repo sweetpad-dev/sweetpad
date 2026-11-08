@@ -1,0 +1,27 @@
+--- a/Sources/Paywalls/PaywallColor.swift
++++ b/Sources/Paywalls/PaywallColor.swift
+@@ -45,6 +45,12 @@
+     // Only available from iOS 13
+     fileprivate var _underlyingColor: (any Sendable)?
+ 
++    /// "Designated" initializer
++    private init(stringRepresentation: String, underlyingColor: (any Sendable)?) {
++        self.stringRepresentation = stringRepresentation
++        self._underlyingColor = underlyingColor
++    }
++
+ }
+ 
+ // MARK: - Public constructors
+@@ -120,11 +126,6 @@
+ 
+     #endif
+ 
+-    /// "Designated" initializer
+-    private init(stringRepresentation: String, underlyingColor: (any Sendable)?) {
+-        self.stringRepresentation = stringRepresentation
+-        self._underlyingColor = underlyingColor
+-    }
+ 
+ }
+ 

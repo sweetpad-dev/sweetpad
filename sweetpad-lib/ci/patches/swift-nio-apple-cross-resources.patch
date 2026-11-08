@@ -1,0 +1,14 @@
+diff --git a/Package.swift b/Package.swift
+--- a/Package.swift
++++ b/Package.swift
+@@ -38,7 +38,9 @@
+ #if canImport(Darwin)
+ let includePrivacyManifest = true
+ #else
+-let includePrivacyManifest = false
++// The manifest runs on the host even when its products target an Apple SDK.
++// Sweetpad sets this only while evaluating the destination package graph.
++let includePrivacyManifest = Context.environment["SWEETPAD_APPLE_TARGET"] == "1"
+ #endif
+ 
+ let package = Package(

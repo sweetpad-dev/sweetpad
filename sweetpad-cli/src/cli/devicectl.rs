@@ -29,6 +29,9 @@ fn temp_file(stem: &str, extension: &str) -> PathBuf {
 
 /// Enumerate the physical devices paired with this Mac.
 pub fn list() -> Result<Vec<Device>, CliError> {
+    if !cfg!(target_os = "macos") {
+        return super::pymobiledevice3::devices();
+    }
     let tmp = temp_file("devices", "json");
 
     let ok = process::run(
@@ -69,6 +72,11 @@ pub const MIN_TIMEOUT_SECS: u64 = 5;
 /// returns the best it has); an error means devicectl itself failed or had to
 /// be killed.
 pub fn details(udid: &str, timeout: Duration) -> Result<Details, CliError> {
+    if !cfg!(target_os = "macos") {
+        return Err(CliError::new(
+            "device readiness checks currently require macOS; use 'pymobiledevice3 lockdown info' to inspect a Linux-connected device",
+        ));
+    }
     let json = temp_file("details", "json");
     let log = temp_file("details", "log");
     let seconds = timeout.as_secs().max(MIN_TIMEOUT_SECS).to_string();
@@ -110,6 +118,9 @@ pub fn details(udid: &str, timeout: Duration) -> Result<Details, CliError> {
 /// have its developer services started or its apps launched.
 #[must_use]
 pub fn locked(udid: &str, timeout: Duration) -> Option<bool> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
     let json = temp_file("lock-state", "json");
     let seconds = timeout.as_secs().max(MIN_TIMEOUT_SECS).to_string();
     let finished = process::run_quiet_within(
@@ -141,6 +152,9 @@ pub fn locked(udid: &str, timeout: Duration) -> Option<bool> {
 /// the caller's step line — and in `--json` mode it would interleave with the
 /// envelope on the same stream and break the consumer's parse.
 pub fn install(device_id: &str, app_path: &str) -> Result<(), CliError> {
+    if !cfg!(target_os = "macos") {
+        return super::pymobiledevice3::install(device_id, app_path);
+    }
     process::capture(
         "xcrun",
         &[
@@ -166,6 +180,9 @@ pub fn launch(
     env: &[(String, String)],
     wait_for_debugger: bool,
 ) -> Result<String, CliError> {
+    if !cfg!(target_os = "macos") {
+        return super::pymobiledevice3::launch(device_id, bundle_id, args, env, wait_for_debugger);
+    }
     let mut cmd_args: Vec<&str> = vec![
         "devicectl",
         "device",
@@ -192,6 +209,9 @@ pub fn launch_console(
     args: &[String],
     env: &[(String, String)],
 ) -> Result<(), CliError> {
+    if !cfg!(target_os = "macos") {
+        return super::pymobiledevice3::launch_console(device_id, bundle_id, args, env);
+    }
     let mut cmd_args = console_args(device_id, bundle_id);
     push_app_args(&mut cmd_args, args);
     process::stream_env("xcrun", &cmd_args, None, env)
@@ -233,6 +253,9 @@ pub fn spawn_console(
     args: &[String],
     env: &[(String, String)],
 ) -> Result<std::process::Child, CliError> {
+    if !cfg!(target_os = "macos") {
+        return super::pymobiledevice3::spawn_console(device_id, bundle_id, args, env);
+    }
     let mut cmd_args = console_args(device_id, bundle_id);
     push_app_args(&mut cmd_args, args);
     process::spawn_piped_both_env("xcrun", &cmd_args, None, env)
@@ -242,6 +265,9 @@ pub fn spawn_console(
 /// [`install`] — keep `devicectl`'s progress chatter off the stream the
 /// `--json` envelope goes to.
 pub fn uninstall(device_id: &str, bundle_id: &str) -> Result<(), CliError> {
+    if !cfg!(target_os = "macos") {
+        return super::pymobiledevice3::uninstall(device_id, bundle_id);
+    }
     process::capture(
         "xcrun",
         &[
@@ -269,6 +295,11 @@ pub fn terminate(device_id: &str, app_dir_name: &str) -> Result<(), CliError> {
         return Err(CliError::new(
             "cannot terminate: the app bundle's name is unknown",
         ));
+    }
+    if !cfg!(target_os = "macos") && super::device_network::configured() {
+        let mut request = super::device_network::action("terminate", device_id);
+        request["appDir"] = app_dir_name.into();
+        return super::device_network::capture(&request).map(|_| ());
     }
     for pid in app_pids(device_id, app_dir_name)? {
         // Best-effort per pid: the process may have exited between the list
@@ -309,6 +340,33 @@ fn app_pids(device_id: &str, app_dir_name: &str) -> Result<Vec<i64>, CliError> {
 /// `devicectl device info processes` routes through a `--json-output` temp
 /// file like [`list`].
 pub fn app_processes(device_id: &str, app_dir_name: &str) -> Result<Vec<AppProcess>, CliError> {
+    if !cfg!(target_os = "macos") {
+        if super::device_network::configured() {
+            let mut request = super::device_network::action("processes", device_id);
+            request["appDir"] = app_dir_name.into();
+            let output = super::device_network::capture(&request)?;
+            let values: serde_json::Value = serde_json::from_str(&output)
+                .map_err(|e| CliError::new(format!("reading Linux device processes: {e}")))?;
+            return values
+                .as_array()
+                .ok_or_else(|| CliError::new("device process list is not an array"))?
+                .iter()
+                .map(|p| {
+                    Ok(AppProcess {
+                        pid: p["pid"]
+                            .as_i64()
+                            .ok_or_else(|| CliError::new("device process has no pid"))?,
+                        executable: p["executable"].as_str().unwrap_or_default().into(),
+                        app_path: p["app_path"].as_str().unwrap_or_default().into(),
+                        main: p["main"].as_bool().unwrap_or(false),
+                    })
+                })
+                .collect();
+        }
+        return Err(CliError::new(
+            "device process inspection and termination currently require macOS; use 'pymobiledevice3 developer dvt' for Linux process control",
+        ));
+    }
     let tmp = temp_file("processes", "json");
     let ok = process::run(
         "xcrun",

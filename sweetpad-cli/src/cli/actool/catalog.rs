@@ -97,6 +97,15 @@ pub enum Kind {
     Other,
 }
 
+pub(super) fn qualified_name(chain: &[&Folder], asset: &Asset) -> String {
+    chain
+        .iter()
+        .filter(|f| f.namespace)
+        .map(|f| format!("{}/", f.name))
+        .chain([asset.name.clone()])
+        .collect()
+}
+
 impl Catalog {
     pub fn read(path: &Path) -> Catalog {
         let root = if path.extension().is_some_and(|e| e == "icon") {
@@ -207,6 +216,7 @@ fn is_set(extension: &str) -> bool {
             | "imagestack"
             | "launchimage"
             | "stickerpack"
+            | "stickersiconset"
             | "stickersequence"
             | "sticker"
             | "spriteatlas"
@@ -266,7 +276,7 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
                 .collect();
             (Kind::Color, idioms(&colors), Vec::new(), has)
         }
-        "imageset" | "symbolset" | "appiconset" => {
+        "imageset" | "symbolset" | "appiconset" | "stickersiconset" => {
             let key = if extension == "symbolset" {
                 "symbols"
             } else {
@@ -274,7 +284,7 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
             };
             let images = entries(key);
             let has = images.iter().any(|e| e.get("filename").is_some());
-            let kind = if extension == "appiconset" {
+            let kind = if matches!(extension, "appiconset" | "stickersiconset") {
                 Kind::AppIcon
             } else {
                 Kind::Image

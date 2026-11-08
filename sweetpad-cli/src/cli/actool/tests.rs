@@ -225,6 +225,68 @@ fn compile_args(catalog: &Path, out: &Path, dir: &Path) -> Args {
     Args::parse(&command_line)
 }
 
+#[test]
+fn a_missing_requested_app_icon_fails_but_an_empty_declared_set_is_valid() {
+    let dir = TempDir::new("sweetpad-actool-missing-icon");
+    let catalog = template_catalog(&dir);
+    let args = compile_args(&catalog, &dir.join("out"), &dir);
+    compile::compile(&args).unwrap();
+    std::fs::remove_dir_all(catalog.join("AppIcon.appiconset")).unwrap();
+    let error = compile::compile(&args).unwrap_err();
+    assert!(error.contains("named \"AppIcon\""), "{error}");
+}
+
+#[test]
+fn named_accent_and_widget_colors_supply_bundle_metadata_only_when_declared() {
+    let dir = TempDir::new("sweetpad-actool-color-info");
+    let catalog = template_catalog(&dir);
+    let mut args = compile_args(&catalog, &dir.join("out"), &dir);
+    args.flags.extend([
+        ("--accent-color".into(), Some("AccentColor".into())),
+        (
+            "--widget-background-color".into(),
+            Some("AccentColor".into()),
+        ),
+    ]);
+    compile::compile(&args).unwrap();
+    assert!(
+        !std::fs::read_to_string(dir.join("partial.plist"))
+            .unwrap()
+            .contains("NSAccentColorName")
+    );
+    write_json(
+        &catalog.join("AccentColor.colorset/Contents.json"),
+        &json!({"colors": [{
+            "idiom": "universal", "color": {"color-space": "srgb", "components": {
+                "red": "0.25", "green": "0.50", "blue": "0.75", "alpha": "1.0"
+            }}
+        }]}),
+    );
+    compile::compile(&args).unwrap();
+    let info = std::fs::read_to_string(dir.join("partial.plist")).unwrap();
+    assert!(info.contains("<key>NSAccentColorName</key>\n\t<string>AccentColor</string>"));
+    assert!(
+        info.contains("<key>NSWidgetBackgroundColorName</key>\n\t<string>AccentColor</string>")
+    );
+    std::fs::remove_dir_all(catalog.join("AccentColor.colorset")).unwrap();
+    write_json(
+        &catalog.join("Scoped/Contents.json"),
+        &json!({"properties": {"provides-namespace": true}}),
+    );
+    write_json(
+        &catalog.join("Scoped/AccentColor.colorset/Contents.json"),
+        &json!({"colors": [{
+            "idiom": "universal", "color": {"color-space": "srgb", "components": {
+                "red": "0.25", "green": "0.50", "blue": "0.75", "alpha": "1.0"
+            }}
+        }]}),
+    );
+    compile::compile(&args).unwrap();
+    let info = std::fs::read_to_string(dir.join("partial.plist")).unwrap();
+    assert!(!info.contains("NSAccentColorName"));
+    assert!(!info.contains("NSWidgetBackgroundColorName"));
+}
+
 fn png_of(width: u32, rgba: [u8; 4]) -> Vec<u8> {
     raster::encode(&raster::Rgba {
         width,
@@ -237,6 +299,217 @@ fn png_of(width: u32, rgba: [u8; 4]) -> Vec<u8> {
 fn pixel_size(path: &Path) -> (u32, u32) {
     let image = raster::decode(&std::fs::read(path).unwrap()).unwrap();
     (image.width, image.height)
+}
+
+fn copy_resource_fixture(source: &Path, destination: &Path) {
+    if source.is_dir() {
+        std::fs::create_dir_all(destination).unwrap();
+        for entry in std::fs::read_dir(source).unwrap() {
+            let entry = entry.unwrap();
+            copy_resource_fixture(&entry.path(), &destination.join(entry.file_name()));
+        }
+    } else {
+        std::fs::copy(source, destination).unwrap();
+    }
+}
+
+fn resources() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/actool/resources")
+}
+
+#[test]
+fn sticker_metadata_order_and_files_match_native_actool_and_deleted_members_disappear() {
+    let dir = TempDir::new("sweetpad-stickers");
+    let catalog = dir.join("Stickers.xcassets");
+    copy_resource_fixture(&resources().join("Stickers.xcassets"), &catalog);
+    let out = dir.join("out");
+    let mut args = compile_args(&catalog, &out, &dir);
+    for (key, value) in &mut args.flags {
+        if key == "--app-icon" {
+            *value = Some("MessageIcon".into());
+        }
+        if key == "--output-partial-info-plist" {
+            *value = Some(out.join("partial.plist").display().to_string());
+        }
+    }
+    args.flags.extend([
+        ("--include-sticker-content".into(), None),
+        ("--stickers-icon-role".into(), Some("extension".into())),
+        (
+            "--sticker-pack-identifier-prefix".into(),
+            Some("dev.sweetpad.Fixture.sticker-pack".into()),
+        ),
+        (
+            "--bundle-identifier".into(),
+            Some("dev.sweetpad.Fixture".into()),
+        ),
+    ]);
+    compile::compile(&args).unwrap();
+    let expected: Value = serde_json::from_str(&fixture("expected/stickers.json")).unwrap();
+    for (path, key) in [
+        ("partial.plist", "partialInfo"),
+        ("Ordered Pack.stickerpack/Info.plist", "packInfo"),
+    ] {
+        assert_same(
+            &std::fs::read_to_string(out.join(path)).unwrap(),
+            &xml_plist::of(&expected[key]),
+            path,
+        );
+    }
+    let mut files: Vec<_> = walk(&out)
+        .into_iter()
+        .map(|p| p.strip_prefix(&out).unwrap().display().to_string())
+        .collect();
+    files.sort();
+    assert_eq!(json!(files), expected["files"]);
+    for (input, output) in [
+        ("First.sticker/source.png", "First.png"),
+        ("Second.sticker/animated.gif", "Second.gif"),
+    ] {
+        assert_eq!(
+            std::fs::read(catalog.join("Ordered Pack.stickerpack").join(input)).unwrap(),
+            std::fs::read(out.join("Ordered Pack.stickerpack").join(output)).unwrap()
+        );
+    }
+    let pack = catalog.join("Ordered Pack.stickerpack");
+    let mut contents: Value =
+        serde_json::from_slice(&std::fs::read(pack.join("Contents.json")).unwrap()).unwrap();
+    contents["stickers"].as_array_mut().unwrap().pop();
+    write_json(&pack.join("Contents.json"), &contents);
+    std::fs::remove_dir_all(pack.join("First.sticker")).unwrap();
+    compile::compile(&args).unwrap();
+    assert!(!out.join("Ordered Pack.stickerpack/First.png").exists());
+    assert!(out.join("Ordered Pack.stickerpack/Second.gif").is_file());
+}
+
+#[test]
+fn modern_icons_match_native_metadata_appearance_sizes_and_layer_order() {
+    let dir = TempDir::new("sweetpad-modern-icon");
+    let out = dir.join("out");
+    let mut args = compile_args(&resources().join("Simple.icon"), &out, &dir);
+    args.inputs.push(resources().join("Shared.xcassets"));
+    for (key, value) in &mut args.flags {
+        if key == "--app-icon" {
+            *value = Some("Simple".into());
+        }
+        if key == "--output-partial-info-plist" {
+            *value = Some(out.join("partial.plist").display().to_string());
+        }
+    }
+    compile::compile(&args).unwrap();
+    let expected: Value = serde_json::from_str(&fixture("expected/modern.json")).unwrap();
+    assert_same(
+        &std::fs::read_to_string(out.join("partial.plist")).unwrap(),
+        &xml_plist::of(&expected["partialInfo"]),
+        "modern icon metadata",
+    );
+    let mut icons: Vec<_> = renditions(&out.join("Assets.car"))
+        .into_iter()
+        .filter(|(key, _, _)| key[&2] == 220)
+        .map(|(key, _, (w, h))| (key[&15], key[&7], w, h))
+        .collect();
+    icons.sort_unstable();
+    assert_eq!(json!(icons), expected["staticIconRenditions"]);
+    let records = renditions(&out.join("Assets.car"));
+    let icon_id = records.iter().find(|(key, _, _)| key[&2] == 220).unwrap().0[&17];
+    assert!(
+        records
+            .iter()
+            .any(|(key, _, _)| key[&2] == 181 && key[&17] == icon_id),
+        "same-named icon and imageset must remain available under one native identifier"
+    );
+    let reference = raster::decode(
+        &std::fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/actool/expected/modern-light.png"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let actual = raster::decode(&std::fs::read(out.join("Simple60x60@2x.png")).unwrap()).unwrap();
+    assert_eq!(
+        (actual.width, actual.height),
+        (reference.width, reference.height)
+    );
+    let center = ((actual.height / 2 * actual.width + actual.width / 2) * 4) as usize;
+    let dominant = |pixels: &[u8]| (0..3).max_by_key(|i| pixels[center + i]).unwrap();
+    assert_eq!(
+        dominant(&actual.pixels),
+        dominant(&reference.pixels),
+        "frontmost layer must match native ordering"
+    );
+    // Native still emits both icon idioms and loose PNGs for an iPhone-only
+    // target. Only CFBundleIconName follows the requested device family.
+    args.flags
+        .retain(|(flag, value)| !(flag == "--target-device" && value.as_deref() == Some("ipad")));
+    compile::compile(&args).unwrap();
+    assert!(out.join("Simple76x76@2x~ipad.png").is_file());
+    let mut phone_info = expected["partialInfo"].clone();
+    phone_info["CFBundleIcons~ipad"]["CFBundlePrimaryIcon"]
+        .as_object_mut()
+        .unwrap()
+        .remove("CFBundleIconName");
+    assert_same(
+        &std::fs::read_to_string(out.join("partial.plist")).unwrap(),
+        &xml_plist::of(&phone_info),
+        "iPhone-only modern icon metadata",
+    );
+    // A .icon input remains an icon asset even when it is not the primary
+    // icon, as in Mastodon's action and intent extensions.
+    args.flags.retain(|(flag, _)| flag != "--app-icon");
+    compile::compile(&args).unwrap();
+    assert_eq!(
+        renditions(&out.join("Assets.car"))
+            .into_iter()
+            .filter(|(key, _, _)| key[&2] == 220)
+            .count(),
+        6
+    );
+    assert!(!out.join("Simple60x60@2x.png").exists());
+    assert!(
+        std::fs::read_to_string(out.join("partial.plist"))
+            .unwrap()
+            .contains("<dict/>")
+    );
+}
+
+#[test]
+fn modern_system_fills_preserve_original_layers_and_supply_all_appearances() {
+    let dir = TempDir::new("sweetpad-modern-system-fill");
+    let out = dir.join("out");
+    let mut args = compile_args(&resources().join("System.icon"), &out, &dir);
+    for (key, value) in &mut args.flags {
+        if key == "--app-icon" {
+            *value = Some("System".into());
+        }
+    }
+    compile::compile(&args).unwrap();
+    let expected: Value = serde_json::from_str(&fixture("expected/system.json")).unwrap();
+    assert_same(
+        &std::fs::read_to_string(dir.join("partial.plist")).unwrap(),
+        &xml_plist::of(&expected["partialInfo"]),
+        "system icon metadata",
+    );
+    let mut icons: Vec<_> = renditions(&out.join("Assets.car"))
+        .into_iter()
+        .filter(|(key, _, _)| key[&2] == 220)
+        .map(|(key, _, (w, h))| (key[&15], key[&7], w, h))
+        .collect();
+    icons.sort_unstable();
+    assert_eq!(json!(icons), expected["staticIconRenditions"]);
+    // Native "none"/"automatic" layer fills retain the original artwork.
+    // A transparent replacement would leave only the gray system background.
+    for path in [
+        out.join("System60x60@2x.png"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/actool/expected/system-light.png"),
+    ] {
+        let image = raster::decode(&std::fs::read(path).unwrap()).unwrap();
+        let at = ((image.height / 2 * image.width + image.width / 2) * 4) as usize;
+        assert!(
+            u16::from(image.pixels[at]) > u16::from(image.pixels[at + 2]) + 50,
+            "original red artwork: {:?}",
+            &image.pixels[at..at + 4]
+        );
+    }
 }
 
 #[test]
@@ -926,4 +1199,33 @@ fn extensions_keep_all_standalone_icon_sizes() {
     assert!(out.join("AppIcon60x60@2x.png").is_file());
     assert!(out.join("AppIcon76x76@2x~ipad.png").is_file());
     assert!(!out.join("AppIcon1024x1024.png").exists());
+
+    // Native actool generates only the phone/tablet files for an unscaled
+    // universal 1024 icon, even with --standalone-icon-behavior all.
+    write_json(
+        &set.join("Contents.json"),
+        &json!({"images":[{
+            "filename":"store.png", "idiom":"universal", "platform":"ios", "size":"1024x1024"
+        }]}),
+    );
+    let universal = dir.join("universal");
+    args.flags.retain(|(name, _)| name != "--compile");
+    args.flags.push((
+        "--compile".into(),
+        Some(universal.to_string_lossy().into_owned()),
+    ));
+    compile::compile(&args).unwrap();
+    let mut files: Vec<_> = std::fs::read_dir(&universal)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    files.sort();
+    assert_eq!(
+        files,
+        [
+            "AppIcon60x60@2x.png",
+            "AppIcon76x76@2x~ipad.png",
+            "Assets.car"
+        ]
+    );
 }

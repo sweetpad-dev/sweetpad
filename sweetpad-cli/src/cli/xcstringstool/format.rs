@@ -16,6 +16,7 @@ pub enum Token<'a> {
     Spec {
         range: Range<usize>,
         position: Option<usize>,
+        name: Option<&'a str>,
         options: &'a str,
         length: &'a str,
         conversion: char,
@@ -92,6 +93,15 @@ pub fn tokens(text: &str) -> Vec<Token<'_>> {
             position = text[j..digits].parse().ok();
             j = digits + 1;
         }
+        let name = if bytes.get(j) == Some(&b'(')
+            && let Some(end) = text[j + 1..].find(')')
+        {
+            let start = j + 1;
+            j = start + end + 1;
+            Some(&text[start..start + end])
+        } else {
+            None
+        };
         if bytes[j..].starts_with(b"#@")
             && let Some(end) = bytes[j + 2..].iter().position(|b| *b == b'@')
         {
@@ -133,6 +143,7 @@ pub fn tokens(text: &str) -> Vec<Token<'_>> {
                 out.push(Token::Spec {
                     range: start..j + 1,
                     position,
+                    name,
                     options,
                     length: &text[length_start..j],
                     conversion: *c as char,
@@ -142,6 +153,29 @@ pub fn tokens(text: &str) -> Vec<Token<'_>> {
             _ => i = start + 1,
         }
     }
+    out
+}
+
+/// Runtime printf strings omit the catalog's named-argument annotations.
+pub fn unnamed(text: &str) -> String {
+    let mut out = String::new();
+    let mut last = 0;
+    for token in tokens(text) {
+        let range = token.range();
+        out.push_str(&text[last..range.start]);
+        if matches!(token, Token::Spec { name: Some(_), .. }) {
+            let plain = token.unpositioned();
+            if let Some(position) = token.position() {
+                let _ = write!(out, "%{position}${}", &plain[1..]);
+            } else {
+                out.push_str(&plain);
+            }
+        } else {
+            out.push_str(&text[range.clone()]);
+        }
+        last = range.end;
+    }
+    out.push_str(&text[last..]);
     out
 }
 

@@ -1,4 +1,4 @@
-//! XML property lists, read into and written from [`Plist`], laid out the
+//! Portable property-list reading and XML writing, laid out the
 //! way Core Foundation writes them, which matters where a signature hashes
 //! the file: `CodeResources` and the CDHashes list in the CMS signature.
 //! Dates read as their text.

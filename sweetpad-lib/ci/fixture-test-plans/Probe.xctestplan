@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "configurations": [
+    {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "name": "French",
+      "options": {
+        "environmentVariableEntries": [
+          {
+            "key": "PLAN_VARIANT",
+            "value": "first"
+          },
+          {
+            "key": "PLAN_SHARED",
+            "value": "shared \u00fc"
+          },
+          {
+            "key": "PLAN_PRODUCT",
+            "value": "$(PRODUCT_NAME)"
+          }
+        ],
+        "language": "fr",
+        "region": "FR"
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "name": "English",
+      "options": {
+        "environmentVariableEntries": [
+          {
+            "key": "PLAN_VARIANT",
+            "value": "second"
+          },
+          {
+            "key": "PLAN_SHARED",
+            "value": "shared \u00fc"
+          },
+          {
+            "key": "PLAN_PRODUCT",
+            "value": "$(PRODUCT_NAME)"
+          }
+        ],
+        "language": "en",
+        "region": "US"
+      }
+    }
+  ],
+  "defaultOptions": {
+    "environmentVariableEntries": [
+      {
+        "key": "PLAN_SHARED",
+        "value": "shared \u00fc"
+      },
+      {
+        "key": "PLAN_PRODUCT",
+        "value": "$(PRODUCT_NAME)"
+      }
+    ],
+    "commandLineArgumentEntries": [
+      {
+        "argument": "--value \"two words\""
+      }
+    ],
+    "targetForVariableExpansion": {
+      "containerPath": "container:TestPlanProbe.xcodeproj",
+      "identifier": "CACD73913C795DAB38AFB032",
+      "name": "ProbeUITests"
+    }
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:TestPlanProbe.xcodeproj",
+        "identifier": "CACD73913C795DAB38AFB032",
+        "name": "ProbeUITests"
+      },
+      "selectedTests": [
+        "ProbeUITests/testTap()"
+      ],
+      "parallelizable": false
+    },
+    {
+      "target": {
+        "containerPath": "container:TestPlanProbe.xcodeproj",
+        "identifier": "1FAC504C08B085D1DEDF66FC",
+        "name": "PlanLogicTests"
+      },
+      "skippedTests": [
+        "PlanLogicTests/testExcluded()"
+      ],
+      "parallelizable": false
+    }
+  ]
+}

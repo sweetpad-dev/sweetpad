@@ -348,7 +348,8 @@ impl Encoder<'_> {
 
     pub(super) fn text_field(&mut self, element: &Element, object: Id) -> Result<(), String> {
         self.control(element, object)?;
-        let font = self.font(keyed(element, "fontDescription", "fontDescription"))?;
+        let font =
+            self.font_with_default(keyed(element, "fontDescription", "fontDescription"), 12.0)?;
         self.graph.set(object, "UIFont", font);
         for (key, archive) in [("placeholder", "UIPlaceholder"), ("text", "UIText")] {
             if let Some(text) = element.attr(key) {
@@ -506,6 +507,7 @@ impl Encoder<'_> {
             &[
                 ("default", 0),
                 ("ASCIICapable", 1),
+                ("alphabet", 1),
                 ("numbersAndPunctuation", 2),
                 ("URL", 3),
                 ("numberPad", 4),
@@ -677,7 +679,8 @@ impl Encoder<'_> {
             "UIStackViewLayoutMarginsRelative",
             (yes(element, "layoutMarginsRelativeArrangement")
                 || yes(element, "layoutMarginsRelative"))
-                && keyed(element, "edgeInsets", "layoutMargins").is_some(),
+                && keyed(element, "edgeInsets", "layoutMargins").is_some()
+                || keyed(element, "directionalEdgeInsets", "directionalLayoutMargins").is_some(),
         );
         Ok(())
     }

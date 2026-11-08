@@ -23,7 +23,7 @@ send one, and don't bring it up.
 
 The user can turn them back on with 'sweetpad feedback on'.";
 
-const TOPICS: [Topic; 6] = [
+const TOPICS: [Topic; 7] = [
     Topic {
         name: "config",
         summary: "the config file: location, keys, per-project overrides",
@@ -173,7 +173,15 @@ Linux builds (Swift Build, where there is no Xcode):
                             that file's password
   SWEETPAD_PROVISIONING_PROFILES
                             a folder of provisioning profiles, in place of
-                            Xcode's folders",
+                            Xcode's folders
+
+Linux device services (see 'help linux-devices'):
+
+  SWEETPAD_DEVICE_PYTHON    Python with pymobiledevice3==11.50.0; selects
+                            modern USB transport unless a network config is set
+  SWEETPAD_DEVICE_NETWORK_CONFIG
+                            private devices.json from 'device pair-network';
+                            selects direct Wi-Fi with automatic discovery",
     },
     Topic {
         name: "exit-codes",
@@ -358,6 +366,11 @@ Mac's architecture. It adds no IP address, user name, host name or path.
 
 The user can turn reports off with 'sweetpad feedback off'.",
     },
+    Topic {
+        name: "linux-devices",
+        summary: "Linux USB, direct Wi-Fi, pairing, and automatic discovery",
+        body: include_str!("../../../LINUX_DEVICES.md"),
+    },
 ];
 
 /// The topic listing / body payload.
@@ -443,7 +456,8 @@ mod tests {
                 "exit-codes",
                 "destinations",
                 "hot-reload",
-                "feedback"
+                "feedback",
+                "linux-devices"
             ]
         );
     }

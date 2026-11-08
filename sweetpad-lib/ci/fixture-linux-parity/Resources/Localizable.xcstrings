@@ -1,0 +1,28 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "hello": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Hello"}},
+        "fr": {"stringUnit": {"state": "translated", "value": "Bonjour"}},
+        "ar": {"stringUnit": {"state": "translated", "value": "مرحبا"}},
+        "kmr-TR": {"stringUnit": {"state": "translated", "value": "Silav"}}
+      }
+    },
+    "items": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"variations": {"plural": {
+          "one": {"stringUnit": {"state": "translated", "value": "%lld item"}},
+          "other": {"stringUnit": {"state": "translated", "value": "%lld items"}}
+        }}},
+        "fr": {"variations": {"plural": {
+          "one": {"stringUnit": {"state": "translated", "value": "%lld article"}},
+          "other": {"stringUnit": {"state": "translated", "value": "%lld articles"}}
+        }}}
+      }
+    }
+  },
+  "version": "1.0"
+}

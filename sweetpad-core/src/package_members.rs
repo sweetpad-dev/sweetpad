@@ -1,4 +1,4 @@
-//! What the local SwiftPM packages around an Xcode container contribute:
+//! What the SwiftPM packages around an Xcode container contribute:
 //! scheme and target names.
 //!
 //! `sweetpad_lib` reports which directories are packages
@@ -56,10 +56,9 @@
 //! `xcodebuild` does not synthesize it for a package inside a container, so
 //! listing it here would offer a scheme `xcodebuild` then rejects.
 //!
-//! Not modeled: a *remote* package's scheme files. `xcodebuild` lists those
-//! too (ice-cubes gets `RevenueCatUI` from the RevenueCat checkout's
-//! container), but they live in a `SourcePackages` checkout under DerivedData
-//! that only a resolved build knows the path to.
+//! Resolved remote packages contribute their explicit scheme files from the
+//! recorded SourcePackages graph. Listing them reads no remote manifests and
+//! never fetches dependencies. Unrelated/stale checkout directories are ignored.
 //!
 //! **Targets include test targets** in every case, unlike schemes: a target
 //! list exists to drive `-only-testing:`, where a test target is the point.
@@ -160,7 +159,7 @@ pub enum PackageRole {
     Dependency,
 }
 
-/// What one local package contributes to the container that reached it.
+/// What one local package or resolved remote checkout contributes to its container.
 #[derive(Debug, Clone)]
 pub struct PackageMember {
     /// The package directory, canonicalized so the same package reached two
@@ -171,7 +170,8 @@ pub struct PackageMember {
     /// Scheme names — the package's scheme files and products, plus its test
     /// targets where those count (see the module docs).
     pub schemes: Vec<String>,
-    /// Every target the manifest declares, test targets included.
+    /// Every local manifest target, test targets included. Remote scheme-file
+    /// entries keep this empty: remote targets are not project-owned targets.
     pub targets: Vec<String>,
 }
 
@@ -482,6 +482,16 @@ pub fn resolve(roots: &[(PathBuf, PackageRole)], toolchain: &Toolchain) -> Vec<P
 /// those reach through `.package(path:)`.
 #[must_use]
 pub fn resolve_workspace(ws: &Workspace, toolchain: &Toolchain) -> Vec<PackageMember> {
+    resolve_workspace_in(ws, toolchain, None)
+}
+
+/// Resolve package members using the selected build's DerivedData graph.
+#[must_use]
+pub fn resolve_workspace_in(
+    ws: &Workspace,
+    toolchain: &Toolchain,
+    derived_data: Option<&Path>,
+) -> Vec<PackageMember> {
     let mut roots: Vec<(PathBuf, PackageRole)> = ws
         .package_refs
         .iter()
@@ -492,7 +502,9 @@ pub fn resolve_workspace(ws: &Workspace, toolchain: &Toolchain) -> Vec<PackageMe
             .into_iter()
             .map(|p| (p, PackageRole::Dependency)),
     );
-    resolve(&roots, toolchain)
+    let mut members = resolve(&roots, toolchain);
+    members.extend(resolved_remote_members(&ws.path, derived_data));
+    members
 }
 
 /// Every local package a standalone `.xcodeproj` draws schemes and targets
@@ -501,12 +513,45 @@ pub fn resolve_workspace(ws: &Workspace, toolchain: &Toolchain) -> Vec<PackageMe
 /// test-target schemes.
 #[must_use]
 pub fn resolve_project(project: &Project, toolchain: &Toolchain) -> Vec<PackageMember> {
+    resolve_project_in(project, toolchain, None)
+}
+
+/// Resolve package members using the selected build's DerivedData graph.
+#[must_use]
+pub fn resolve_project_in(
+    project: &Project,
+    toolchain: &Toolchain,
+    derived_data: Option<&Path>,
+) -> Vec<PackageMember> {
     let roots: Vec<(PathBuf, PackageRole)> = project
         .package_refs
         .iter()
         .map(|p| (p.clone(), PackageRole::Dependency))
         .collect();
-    resolve(&roots, toolchain)
+    let mut members = resolve(&roots, toolchain);
+    members.extend(resolved_remote_members(&project.path, derived_data));
+    members
+}
+
+/// Only explicit remote scheme files are exposed by Xcode, rather than every
+/// dependency product. The graph lives in the selected build's SourcePackages.
+#[must_use]
+pub fn resolved_remote_members(
+    container: &Path,
+    derived_data: Option<&Path>,
+) -> Vec<PackageMember> {
+    sweetpad_lib::scheme::resolved::package_dirs(container, derived_data)
+        .into_iter()
+        .filter_map(|path| {
+            let schemes = sweetpad_lib::scheme::container_schemes(&package_scheme_root(&path));
+            (!schemes.is_empty()).then_some(PackageMember {
+                path,
+                role: PackageRole::Dependency,
+                schemes,
+                targets: Vec::new(),
+            })
+        })
+        .collect()
 }
 
 /// The `(path, schemes)` pairs
@@ -538,7 +583,8 @@ pub struct PackageNames {
     /// Its `.swiftpm/xcode` scheme files and the schemes its manifest
     /// synthesizes (see the module docs), sorted like `xcodebuild -list`.
     pub schemes: Vec<String>,
-    /// Every target the manifest declares, test targets included.
+    /// Every local manifest target, test targets included. Remote scheme-file
+    /// entries keep this empty: remote targets are not project-owned targets.
     pub targets: Vec<String>,
 }
 

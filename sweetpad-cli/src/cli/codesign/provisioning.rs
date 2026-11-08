@@ -81,7 +81,10 @@ pub(super) fn answer(
     let name = text("signingCertificateIdentifier");
     let bundle = text("bundleIdentifier");
     let destination = text("entitlementsDestination");
-    if name.is_empty() {
+    // A device build also resolves host macro targets. A command-line Apple
+    // identity must not give their ELF executables an expanded signing identity:
+    // Swift Build would then pass Darwin's -no_adhoc_codesign to the host linker.
+    if name.is_empty() || text("sdkRoot").starts_with("linux") {
         return Ok(Plist::Dict(Vec::new()));
     }
     let mut entitlements = Plist::Dict(dict("productTypeEntitlements"));

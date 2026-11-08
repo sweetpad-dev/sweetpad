@@ -1,0 +1,14 @@
+diff --git a/Package.swift b/Package.swift
+--- a/Package.swift
++++ b/Package.swift
+@@ -37,7 +37,9 @@ let testTarget: Target = .testTarget(
+ 
+ let defaultTraits: Set<String>
+ #if os(Linux)
+-defaultTraits = ["SQLiteSwiftCSQLite"]
++// The manifest executes on Linux even when the products use an Apple SDK.
++// Preserve bundled SQLite for host tools and use the system library for apps.
++defaultTraits = Context.environment["SWEETPAD_APPLE_TARGET"] == "1" ? ["SystemSQLite"] : ["SQLiteSwiftCSQLite"]
+ #else
+ defaultTraits = ["SystemSQLite"]
+ #endif

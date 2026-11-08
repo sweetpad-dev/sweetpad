@@ -16,6 +16,92 @@ fn fixture_identity() -> Identity {
     Identity::from_p12(&data, "sweetpad-test", true).unwrap()
 }
 
+/// Apple's verifier needs the self-signed fixture certificate in an explicit
+/// keychain. Import only its public certificate, and keep login keys untouched.
+#[cfg(target_os = "macos")]
+struct NativeVerifier {
+    _lock: std::sync::MutexGuard<'static, ()>,
+    dir: TempDir,
+    search: Vec<String>,
+}
+
+#[cfg(target_os = "macos")]
+impl NativeVerifier {
+    fn new() -> Self {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let lock = LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let listing = std::process::Command::new("security")
+            .args(["list-keychains", "-d", "user"])
+            .output()
+            .unwrap();
+        assert!(listing.status.success());
+        let search = String::from_utf8(listing.stdout)
+            .unwrap()
+            .lines()
+            .map(|s| s.trim().trim_matches('"').to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let verifier = Self {
+            _lock: lock,
+            dir: TempDir::new("sweetpad-public-verification"),
+            search,
+        };
+        let certificate = verifier.dir.join("fixture.cer");
+        std::fs::write(&certificate, fixture_identity().certificate.der).unwrap();
+        let keychain = verifier.dir.join("fixture.keychain-db");
+        for args in [
+            vec!["create-keychain", "-p", "fixture"],
+            vec!["unlock-keychain", "-p", "fixture"],
+        ] {
+            assert!(
+                std::process::Command::new("security")
+                    .args(args)
+                    .arg(&keychain)
+                    .output()
+                    .unwrap()
+                    .status
+                    .success()
+            );
+        }
+        let imported = std::process::Command::new("security")
+            .arg("import")
+            .arg(certificate)
+            .arg("-k")
+            .arg(&keychain)
+            .output()
+            .unwrap();
+        assert!(imported.status.success());
+        verifier
+    }
+
+    fn verify(&self, path: &Path, deep: bool) -> std::process::Output {
+        let mut command = std::process::Command::new("/usr/bin/codesign");
+        command
+            .args(["--verify", "--strict", "--keychain"])
+            .arg(self.dir.join("fixture.keychain-db"));
+        if deep {
+            command.arg("--deep");
+        }
+        command.arg(path).output().unwrap()
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for NativeVerifier {
+    fn drop(&mut self) {
+        let _ = std::process::Command::new("security")
+            .arg("delete-keychain")
+            .arg(self.dir.join("fixture.keychain-db"))
+            .output();
+        let _ = std::process::Command::new("security")
+            .args(["list-keychains", "-d", "user", "-s"])
+            .args(&self.search)
+            .output();
+    }
+}
+
 fn copy_tree(from: &Path, to: &Path) {
     if from.is_dir() {
         std::fs::create_dir_all(to).unwrap();
@@ -185,6 +271,139 @@ fn signs_ad_hoc_like_codesign() {
 }
 
 #[test]
+fn signing_a_bundle_executable_recognizes_its_identifier_and_resources() {
+    let dir = TempDir::new("sweetpad-codesign-executable-path");
+    let app = dir.join("App.app");
+    copy_tree(&fixtures().join("input/App.app"), &app);
+    let path = app.join("App");
+    assert_eq!(executable_bundle(&path), Some(app.as_path()));
+    assert!(executable_bundle(&app.join("App.debug.dylib")).is_none());
+    run(&[
+        "--force".into(),
+        "--sign".into(),
+        "-".into(),
+        "--".into(),
+        path.to_string_lossy().into_owned(),
+    ])
+    .unwrap();
+    let signature = signature_parts(&std::fs::read(&path).unwrap());
+    let superblob = blobs::superblob(signature[0].1.clone());
+    assert_eq!(
+        blobs::read_existing(&superblob).unwrap().identifier,
+        "dev.sweetpad.fixture"
+    );
+    assert!(app.join("_CodeSignature/CodeResources").is_file());
+    // An executable path must use exactly the same bundle context as signing
+    // the bundle directory, including every signed byte and resource hash.
+    let control = sign(&dir.join("bundle-control"), "App.app", None, false);
+    assert_same_signature(&path, &control.join("App"), None);
+    #[cfg(target_os = "macos")]
+    {
+        let native = dir.join("Native.app");
+        copy_tree(&fixtures().join("input/App.app"), &native);
+        let result = std::process::Command::new("/usr/bin/codesign")
+            .args(["--force", "--sign", "-"])
+            .arg(native.join("App"))
+            .output()
+            .unwrap();
+        assert!(result.status.success());
+        // Native signature allocation differs across macOS versions. Keep the
+        // byte comparison above and the fixed native golden tests separate
+        // from this host's verifier and resource-sealing compatibility check.
+        let verified = std::process::Command::new("/usr/bin/codesign")
+            .args(["--verify", "--strict"])
+            .arg(&app)
+            .output()
+            .unwrap();
+        assert!(
+            verified.status.success(),
+            "{}",
+            String::from_utf8_lossy(&verified.stderr)
+        );
+        let native_signature = signature_parts(&std::fs::read(native.join("App")).unwrap());
+        let native_blobs = blobs::superblob(native_signature[0].1.clone());
+        let native_metadata = blobs::read_existing(&native_blobs).unwrap();
+        let metadata = blobs::read_existing(&superblob).unwrap();
+        assert_eq!(metadata.identifier, native_metadata.identifier);
+        assert_eq!(metadata.flags, native_metadata.flags);
+        assert_eq!(
+            std::fs::read(app.join("_CodeSignature/CodeResources")).unwrap(),
+            std::fs::read(native.join("_CodeSignature/CodeResources")).unwrap()
+        );
+    }
+}
+
+#[test]
+fn requirements_probe_reads_signed_and_adhoc_libraries_without_a_key() {
+    for (name, expected) in [
+        (
+            "Library.dylib",
+            "designated => identifier Library and certificate root = H\"8c4aecd312ff94abf07792060ef65967ad32c203\"\n",
+        ),
+        (
+            "Library.adhoc.dylib",
+            "# designated => cdhash H\"cdea7e0d39a2d6918711a99726d1d84504ae6bac\"\n",
+        ),
+    ] {
+        let data = std::fs::read(fixtures().join("expected").join(name)).unwrap();
+        assert_eq!(inspect::requirements(&data).unwrap(), expected);
+        assert_eq!(
+            std::fs::read(fixtures().join("expected").join(name)).unwrap(),
+            data
+        );
+    }
+    let unsigned = std::fs::read(fixtures().join("input/Library.dylib")).unwrap();
+    assert!(inspect::requirements(&unsigned).is_err());
+    let options = parse(&["-r-".into(), "--display".into(), "Library.dylib".into()]).unwrap();
+    assert!(options.display && options.identity.is_empty());
+    assert!(parse(&["--sign".into(), "-".into(), "-r-".into()]).is_err());
+    let dir = TempDir::new("sweetpad-requirements-apple");
+    let signed = sign(&dir, "Tool", Some(&apple_issued_fixture()), false);
+    let data = std::fs::read(signed).unwrap();
+    assert_eq!(
+        inspect::requirements(&data).unwrap(),
+        "designated => identifier Tool and anchor apple generic and certificate leaf[subject.CN] = \"Apple Development: Sweetpad Fixture (TESTTEAM01)\" and certificate 1[field.1.2.840.113635.100.6.2.1] /* exists */\n"
+    );
+    for length in [0, 4, 31, data.len() / 2] {
+        assert!(inspect::requirements(&data[..length]).is_err());
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn requirements_probe_matches_apple_for_existing_signatures() {
+    for name in ["Library.dylib", "Library.adhoc.dylib", "App.app/App"] {
+        let path = fixtures().join("expected").join(name);
+        let native = std::process::Command::new("/usr/bin/codesign")
+            .args(["-r-", "--display"])
+            .arg(&path)
+            .output()
+            .unwrap();
+        assert!(native.status.success());
+        assert_eq!(
+            inspect::requirements(&std::fs::read(path).unwrap())
+                .unwrap()
+                .as_bytes(),
+            native.stdout
+        );
+    }
+    let dir = TempDir::new("sweetpad-requirements-native");
+    let path = sign(&dir, "Tool", Some(&apple_issued_fixture()), false);
+    let native = std::process::Command::new("/usr/bin/codesign")
+        .args(["-r-", "--display"])
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert!(native.status.success());
+    assert_eq!(
+        inspect::requirements(&std::fs::read(path).unwrap())
+            .unwrap()
+            .as_bytes(),
+        native.stdout
+    );
+}
+
+#[test]
 fn signs_a_bundle_like_codesign() {
     let identity = fixture_identity();
     let dir = TempDir::new("sweetpad-codesign-bundle");
@@ -203,6 +422,51 @@ fn signs_a_bundle_like_codesign() {
     assert_same_signature(&ours.join("App"), &expected.join("App"), Some(&identity));
 }
 
+#[test]
+fn resource_bundles_match_native_detached_signatures() {
+    let identity = fixture_identity();
+    let dir = TempDir::new("sweetpad-codesign-resources");
+    #[cfg(target_os = "macos")]
+    let verifier = NativeVerifier::new();
+    for (name, identity) in [
+        ("Resources.bundle", Some(&identity)),
+        ("Resources.adhoc.bundle", None),
+    ] {
+        let ours = sign(&dir, name, identity, true);
+        let expected = fixtures().join("expected").join(name);
+        for file in ["CodeDirectory", "CodeRequirements", "CodeResources"] {
+            let relative = Path::new("_CodeSignature").join(file);
+            assert_eq!(
+                std::fs::read(ours.join(&relative)).unwrap(),
+                std::fs::read(expected.join(&relative)).unwrap(),
+                "{name}: {file} differs from Apple's signature"
+            );
+        }
+        let directory = std::fs::read(ours.join("_CodeSignature/CodeDirectory")).unwrap();
+        let cms = std::fs::read(ours.join("_CodeSignature/CodeSignature")).unwrap();
+        if let Some(identity) = identity {
+            verify_cms(&cms, &directory, identity);
+        } else {
+            assert!(cms.is_empty());
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let verify = || verifier.verify(&ours, false);
+            let result = verify();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            std::fs::write(ours.join("message.txt"), "tampered").unwrap();
+            assert!(
+                !verify().status.success(),
+                "a changed resource must fail verification"
+            );
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn apples_codesign_verifies_what_it_signs() {
@@ -210,13 +474,15 @@ fn apples_codesign_verifies_what_it_signs() {
     let dir = TempDir::new("sweetpad-codesign-verify");
     let app = sign(&dir, "App.app", Some(&identity), true);
     let tool = sign(&dir, "Tool", Some(&identity), false);
+    let verifier = NativeVerifier::new();
     for path in [app, tool] {
-        let status = std::process::Command::new("/usr/bin/codesign")
-            .args(["--verify", "--deep", "--strict"])
-            .arg(&path)
-            .status()
-            .unwrap();
-        assert!(status.success(), "codesign rejects {}", path.display());
+        let result = verifier.verify(&path, true);
+        assert!(
+            result.status.success(),
+            "codesign rejects {}: {}",
+            path.display(),
+            String::from_utf8_lossy(&result.stderr)
+        );
     }
 }
 
@@ -333,6 +599,18 @@ fn provision(request: &Plist) -> Result<Plist, String> {
     provisioning::answer(request, &[fixtures().join("profiles")], || {
         Ok(Some(apple_issued_fixture()))
     })
+}
+
+#[test]
+fn device_signing_does_not_provision_linux_host_macros() {
+    for sdk in ["linux", "linux6.4"] {
+        let request = request(&[("sdkRoot", Plist::String(sdk.into()))]);
+        let inputs = provisioning::answer(&request, &[], || {
+            panic!("host macros must not load the Apple identity")
+        })
+        .unwrap();
+        assert_eq!(inputs, Plist::Dict(Vec::new()));
+    }
 }
 
 #[test]

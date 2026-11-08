@@ -1,0 +1,495 @@
+--- a/examples/xcode/generated_ios_app_with_watchapp2/App.xcodeproj/project.pbxproj
++++ b/examples/xcode/generated_ios_app_with_watchapp2/App.xcodeproj/project.pbxproj
+@@ -17,8 +17,6 @@
+ 		7FD0A61A6D854714F8987DEE /* Interface.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 8FF49C6AD685455571256913 /* Interface.storyboard */; };
+ 		D70749F97081A54DA30C9246 /* InterfaceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A1615A739A46FF4C7B27CB3 /* InterfaceController.swift */; };
+ 		EEF17B25A73E625851DBB85E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB4930C904EF9EFDA189981D /* Assets.xcassets */; };
+-		FB6DAF540D47D3416E7D94C8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 69BB72743E26C3E324909579 /* Assets.xcassets */; };
+-		FDD942F1090AF96965D7003E /* WatchAppExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 926DDE4EF63692E9F49B81B5 /* WatchAppExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+ /* End PBXBuildFile section */
+ 
+ /* Begin PBXContainerItemProxy section */
+@@ -29,13 +27,6 @@
+ 			remoteGlobalIDString = 606934868152F0D0C13285AE;
+ 			remoteInfo = WatchApp;
+ 		};
+-		D143F80ECC9BDF7EAD069F2C /* PBXContainerItemProxy */ = {
+-			isa = PBXContainerItemProxy;
+-			containerPortal = 6B590BF25178DC7D824D09CE /* Project object */;
+-			proxyType = 1;
+-			remoteGlobalIDString = 204DEE9C54CED33A670A2628;
+-			remoteInfo = WatchAppExtension;
+-		};
+ 		FB69DC6CDE182B9F2724BE95 /* PBXContainerItemProxy */ = {
+ 			isa = PBXContainerItemProxy;
+ 			containerPortal = 6B590BF25178DC7D824D09CE /* Project object */;
+@@ -95,16 +86,6 @@
+ 			files = (
+ 			);
+ 			name = "Embed Frameworks";
+-			runOnlyForDeploymentPostprocessing = 0;
+-		};
+-		F55C4EA72FC4E7CD579A4644 /* Embed Foundation Extensions */ = {
+-			isa = PBXCopyFilesBuildPhase;
+-			buildActionMask = 2147483647;
+-			dstSubfolderSpec = 13;
+-			files = (
+-				FDD942F1090AF96965D7003E /* WatchAppExtension.appex in Embed Foundation Extensions */,
+-			);
+-			name = "Embed Foundation Extensions";
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+ /* End PBXCopyFilesBuildPhase section */
+@@ -121,7 +102,6 @@
+ 		7210F22777D23AD1713BCADE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+ 		77978B0885F2F5D6DFAB3FAA /* ExtensionDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionDelegate.swift; sourceTree = "<group>"; };
+ 		8EACC58862E608B4E269D943 /* WatchAppExtension-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "WatchAppExtension-Info.plist"; sourceTree = "<group>"; };
+-		926DDE4EF63692E9F49B81B5 /* WatchAppExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WatchAppExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+ 		930F38C156D654373C87E001 /* TuistAssets+WatchAppExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TuistAssets+WatchAppExtension.swift"; sourceTree = "<group>"; };
+ 		9A4FC2FFDE00CBE1DEF9759A /* LibraryA */ = {isa = PBXFileReference; lastKnownFileType = folder; name = LibraryA; path = Packages/LibraryA; sourceTree = "<group>"; };
+ 		B15C6B10F50CCC1026C24680 /* WatchAppUITests-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "WatchAppUITests-Info.plist"; sourceTree = "<group>"; };
+@@ -130,14 +110,6 @@
+ /* End PBXFileReference section */
+ 
+ /* Begin PBXFrameworksBuildPhase section */
+-		177F971789E49E8F5DCB2760 /* Frameworks */ = {
+-			isa = PBXFrameworksBuildPhase;
+-			buildActionMask = 2147483647;
+-			files = (
+-				10D6323E222DA3C77CA796C9 /* LibraryA in Frameworks */,
+-			);
+-			runOnlyForDeploymentPostprocessing = 0;
+-		};
+ 		BC0DC3536DED64E0E8C9923E /* Frameworks */ = {
+ 			isa = PBXFrameworksBuildPhase;
+ 			buildActionMask = 2147483647;
+@@ -157,6 +129,7 @@
+ 			isa = PBXFrameworksBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
++				10D6323E222DA3C77CA796C9 /* LibraryA in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -260,7 +233,6 @@
+ 			children = (
+ 				571E08A9083FD4334E4B7D06 /* App.app */,
+ 				2A3B07624F7B6DE270912788 /* WatchApp.app */,
+-				926DDE4EF63692E9F49B81B5 /* WatchAppExtension.appex */,
+ 				5511B0F01A050EFD7983CFC6 /* WatchAppUITests.xctest */,
+ 			);
+ 			name = Products;
+@@ -269,27 +241,6 @@
+ /* End PBXGroup section */
+ 
+ /* Begin PBXNativeTarget section */
+-		204DEE9C54CED33A670A2628 /* WatchAppExtension */ = {
+-			isa = PBXNativeTarget;
+-			buildConfigurationList = 53A8FE12E4C27B7152662929 /* Build configuration list for PBXNativeTarget "WatchAppExtension" */;
+-			buildPhases = (
+-				01947D317FA30FFF4A598085 /* Sources */,
+-				02F26B9DB0730B9EC13C37D6 /* Resources */,
+-				177F971789E49E8F5DCB2760 /* Frameworks */,
+-				486B4543F5F75DE9936AAF7B /* Embed Frameworks */,
+-			);
+-			buildRules = (
+-			);
+-			dependencies = (
+-			);
+-			name = WatchAppExtension;
+-			packageProductDependencies = (
+-				F4640A8C6D55D250B28FCBC8 /* LibraryA */,
+-			);
+-			productName = WatchAppExtension;
+-			productReference = 926DDE4EF63692E9F49B81B5 /* WatchAppExtension.appex */;
+-			productType = "com.apple.product-type.watchkit2-extension";
+-		};
+ 		3DDC34AE922B76B9D95DED22 /* WatchAppUITests */ = {
+ 			isa = PBXNativeTarget;
+ 			buildConfigurationList = 58EF16BEFBECBFD5B4D92FCB /* Build configuration list for PBXNativeTarget "WatchAppUITests" */;
+@@ -305,8 +256,6 @@
+ 				3D47331386BAA7C8F5FEB57B /* PBXTargetDependency */,
+ 			);
+ 			name = WatchAppUITests;
+-			packageProductDependencies = (
+-			);
+ 			productName = WatchAppUITests;
+ 			productReference = 5511B0F01A050EFD7983CFC6 /* WatchAppUITests.xctest */;
+ 			productType = "com.apple.product-type.bundle.ui-testing";
+@@ -316,21 +265,22 @@
+ 			buildConfigurationList = 5153912391B5ECEE7554B19B /* Build configuration list for PBXNativeTarget "WatchApp" */;
+ 			buildPhases = (
+ 				3C2E6EABEB89C7CEF2D509FE /* Resources */,
+-				F55C4EA72FC4E7CD579A4644 /* Embed Foundation Extensions */,
+ 				C96F73252D5D27493893DC5F /* Frameworks */,
+ 				8F93263AAD4BD926B6588D2C /* Embed Frameworks */,
++				01947D317FA30FFF4A598085 /* Sources */,
++				486B4543F5F75DE9936AAF7B /* Embed Frameworks */,
+ 			);
+ 			buildRules = (
+ 			);
+ 			dependencies = (
+-				5E8040661BBB91C5F37E79E8 /* PBXTargetDependency */,
+ 			);
+ 			name = WatchApp;
+ 			packageProductDependencies = (
++				F4640A8C6D55D250B28FCBC8 /* LibraryA */,
+ 			);
+ 			productName = WatchApp;
+ 			productReference = 2A3B07624F7B6DE270912788 /* WatchApp.app */;
+-			productType = "com.apple.product-type.application.watchapp2";
++			productType = "com.apple.product-type.application";
+ 		};
+ 		93E9E330FC2CE7458D9C925F /* App */ = {
+ 			isa = PBXNativeTarget;
+@@ -378,7 +328,7 @@
+ 			);
+ 			mainGroup = 4102E3E068508DD683953C7D;
+ 			packageReferences = (
+-				D43281E860C8FD21416B14A6 /* XCLocalSwiftPackageReference "Packages/LibraryA" */,
++				D43281E860C8FD21416B14A6 /* XCLocalSwiftPackageReference "LibraryA" */,
+ 			);
+ 			productRefGroup = E9C3DB3EC6D7655028A9C0D3 /* Products */;
+ 			projectDirPath = "";
+@@ -386,21 +336,12 @@
+ 			targets = (
+ 				93E9E330FC2CE7458D9C925F /* App */,
+ 				606934868152F0D0C13285AE /* WatchApp */,
+-				204DEE9C54CED33A670A2628 /* WatchAppExtension */,
+ 				3DDC34AE922B76B9D95DED22 /* WatchAppUITests */,
+ 			);
+ 		};
+ /* End PBXProject section */
+ 
+ /* Begin PBXResourcesBuildPhase section */
+-		02F26B9DB0730B9EC13C37D6 /* Resources */ = {
+-			isa = PBXResourcesBuildPhase;
+-			buildActionMask = 2147483647;
+-			files = (
+-				FB6DAF540D47D3416E7D94C8 /* Assets.xcassets in Resources */,
+-			);
+-			runOnlyForDeploymentPostprocessing = 0;
+-		};
+ 		37BFF6A8CB5CC7FA21AD3FA3 /* Resources */ = {
+ 			isa = PBXResourcesBuildPhase;
+ 			buildActionMask = 2147483647;
+@@ -462,12 +403,6 @@
+ 			target = 606934868152F0D0C13285AE /* WatchApp */;
+ 			targetProxy = FB69DC6CDE182B9F2724BE95 /* PBXContainerItemProxy */;
+ 		};
+-		5E8040661BBB91C5F37E79E8 /* PBXTargetDependency */ = {
+-			isa = PBXTargetDependency;
+-			name = WatchAppExtension;
+-			target = 204DEE9C54CED33A670A2628 /* WatchAppExtension */;
+-			targetProxy = D143F80ECC9BDF7EAD069F2C /* PBXContainerItemProxy */;
+-		};
+ 		BDAABDD7BAA4378B84FB5546 /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+ 			name = WatchApp;
+@@ -494,11 +429,14 @@
+ 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+ 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+ 				ENABLE_PREVIEWS = YES;
+-				IBSC_MODULE = WatchAppExtension;
+ 				INFOPLIST_FILE = "Derived/InfoPlists/WatchApp-Info.plist";
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
++				);
++				OTHER_LDFLAGS = (
++					"$(inherited)",
++					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+ 				);
+ 				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.App.watchkitapp;
+ 				PRODUCT_NAME = WatchApp;
+@@ -508,6 +446,7 @@
+ 				SWIFT_OPTIMIZATION_LEVEL = "-O";
+ 				SWIFT_VERSION = 5.0;
+ 				TARGETED_DEVICE_FAMILY = 4;
++				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+ 			};
+ 			name = Release;
+ 		};
+@@ -545,10 +484,7 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.App.watchkitapp.uitests;
+ 				PRODUCT_NAME = WatchAppUITests;
+ 				SDKROOT = watchos;
+-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
+-					"$(inherited)",
+-					DEBUG,
+-				);
++				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+ 				SWIFT_COMPILATION_MODE = singlefile;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+ 				SWIFT_VERSION = 5.0;
+@@ -579,10 +515,7 @@
+ 				SUPPORTS_MACCATALYST = NO;
+ 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+ 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
+-					"$(inherited)",
+-					DEBUG,
+-				);
++				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+ 				SWIFT_COMPILATION_MODE = singlefile;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+ 				SWIFT_VERSION = 5.0;
+@@ -596,24 +529,25 @@
+ 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+ 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+ 				ENABLE_PREVIEWS = YES;
+-				IBSC_MODULE = WatchAppExtension;
+ 				INFOPLIST_FILE = "Derived/InfoPlists/WatchApp-Info.plist";
+ 				LD_RUNPATH_SEARCH_PATHS = (
+ 					"$(inherited)",
+ 					"@executable_path/Frameworks",
++				);
++				OTHER_LDFLAGS = (
++					"$(inherited)",
++					"-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+ 				);
+ 				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.App.watchkitapp;
+ 				PRODUCT_NAME = WatchApp;
+ 				SDKROOT = watchos;
+ 				SKIP_INSTALL = YES;
+-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
+-					"$(inherited)",
+-					DEBUG,
+-				);
++				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+ 				SWIFT_COMPILATION_MODE = singlefile;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+ 				SWIFT_VERSION = 5.0;
+ 				TARGETED_DEVICE_FAMILY = 4;
++				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+ 			};
+ 			name = Debug;
+ 		};
+@@ -686,10 +620,7 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = dev.tuist.App.watchkitapp.watchkitextension;
+ 				PRODUCT_NAME = WatchAppExtension;
+ 				SDKROOT = watchos;
+-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
+-					"$(inherited)",
+-					DEBUG,
+-				);
++				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+ 				SWIFT_COMPILATION_MODE = singlefile;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+ 				SWIFT_VERSION = 5.0;
+@@ -816,15 +747,6 @@
+ 			defaultConfigurationIsVisible = 0;
+ 			defaultConfigurationName = Release;
+ 		};
+-		53A8FE12E4C27B7152662929 /* Build configuration list for PBXNativeTarget "WatchAppExtension" */ = {
+-			isa = XCConfigurationList;
+-			buildConfigurations = (
+-				AD6877B4124BC22D6E30A26C /* Debug */,
+-				120F627DE7A7F299301AFFE6 /* Release */,
+-			);
+-			defaultConfigurationIsVisible = 0;
+-			defaultConfigurationName = Release;
+-		};
+ 		58EF16BEFBECBFD5B4D92FCB /* Build configuration list for PBXNativeTarget "WatchAppUITests" */ = {
+ 			isa = XCConfigurationList;
+ 			buildConfigurations = (
+@@ -855,7 +777,7 @@
+ /* End XCConfigurationList section */
+ 
+ /* Begin XCLocalSwiftPackageReference section */
+-		D43281E860C8FD21416B14A6 /* XCLocalSwiftPackageReference "Packages/LibraryA" */ = {
++		D43281E860C8FD21416B14A6 /* XCLocalSwiftPackageReference "LibraryA" */ = {
+ 			isa = XCLocalSwiftPackageReference;
+ 			relativePath = Packages/LibraryA;
+ 		};
+--- a/examples/xcode/generated_ios_app_with_watchapp2/Derived/InfoPlists/WatchApp-Info.plist
++++ b/examples/xcode/generated_ios_app_with_watchapp2/Derived/InfoPlists/WatchApp-Info.plist
+@@ -25,9 +25,11 @@
+ 		<string>UIInterfaceOrientationPortrait</string>
+ 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+ 	</array>
++	<key>WKApplication</key>
++	<true/>
++	<key>WKApplicationDelegateClassName</key>
++	<string>$(PRODUCT_MODULE_NAME).ExtensionDelegate</string>
+ 	<key>WKCompanionAppBundleIdentifier</key>
+ 	<string>dev.tuist.App</string>
+-	<key>WKWatchKitApp</key>
+-	<true/>
+ </dict>
+ </plist>
+--- a/examples/xcode/generated_ios_app_with_watchapp2/WatchAppExtension/ExtensionDelegate.swift
++++ b/examples/xcode/generated_ios_app_with_watchapp2/WatchAppExtension/ExtensionDelegate.swift
+@@ -1,7 +1,7 @@
+ import LibraryA
+ import WatchKit
+ 
+-class ExtensionDelegate: NSObject, WKExtensionDelegate {
++class ExtensionDelegate: NSObject, WKApplicationDelegate {
+     private let libraryClass = LibraryAClass()
+ 
+     func applicationDidFinishLaunching() {
+@@ -55,3 +55,11 @@
+         }
+     }
+ }
++
++@main
++enum WatchAppMain {
++    static func main() {
++        _ = WKApplicationMain(CommandLine.argc, CommandLine.unsafeArgv,
++                              NSStringFromClass(ExtensionDelegate.self))
++    }
++}
+--- a/examples/xcode/generated_ios_app_with_watchapp2/App.xcodeproj/xcshareddata/xcschemes/WatchAppExtension.xcscheme
++++ /dev/null
+@@ -1,93 +0,0 @@
+-<?xml version="1.0" encoding="UTF-8"?>
+-<Scheme
+-   LastUpgradeVersion = "1010"
+-   version = "1.3">
+-   <BuildAction
+-      parallelizeBuildables = "YES"
+-      buildImplicitDependencies = "YES">
+-      <BuildActionEntries>
+-         <BuildActionEntry
+-            buildForTesting = "YES"
+-            buildForRunning = "YES"
+-            buildForProfiling = "YES"
+-            buildForArchiving = "YES"
+-            buildForAnalyzing = "YES">
+-            <BuildableReference
+-               BuildableIdentifier = "primary"
+-               BlueprintIdentifier = "204DEE9C54CED33A670A2628"
+-               BuildableName = "WatchAppExtension.appex"
+-               BlueprintName = "WatchAppExtension"
+-               ReferencedContainer = "container:App.xcodeproj">
+-            </BuildableReference>
+-         </BuildActionEntry>
+-         <BuildActionEntry
+-            buildForTesting = "YES"
+-            buildForRunning = "YES"
+-            buildForProfiling = "YES"
+-            buildForArchiving = "YES"
+-            buildForAnalyzing = "YES">
+-            <BuildableReference
+-               BuildableIdentifier = "primary"
+-               BlueprintIdentifier = "606934868152F0D0C13285AE"
+-               BuildableName = "WatchApp.app"
+-               BlueprintName = "WatchApp"
+-               ReferencedContainer = "container:App.xcodeproj">
+-            </BuildableReference>
+-         </BuildActionEntry>
+-      </BuildActionEntries>
+-   </BuildAction>
+-   <TestAction
+-      buildConfiguration = "Debug"
+-      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+-      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+-      shouldUseLaunchSchemeArgsEnv = "YES"
+-      disableMainThreadChecker = "YES">
+-      <Testables>
+-      </Testables>
+-   </TestAction>
+-   <LaunchAction
+-      buildConfiguration = "Debug"
+-      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+-      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+-      launchStyle = "0"
+-      useCustomWorkingDirectory = "NO"
+-      ignoresPersistentStateOnLaunch = "NO"
+-      debugDocumentVersioning = "YES"
+-      debugServiceExtension = "internal"
+-      allowLocationSimulation = "YES">
+-      <BuildableProductRunnable
+-         runnableDebuggingMode = "0">
+-         <BuildableReference
+-            BuildableIdentifier = "primary"
+-            BlueprintIdentifier = "606934868152F0D0C13285AE"
+-            BuildableName = "WatchApp.app"
+-            BlueprintName = "WatchApp"
+-            ReferencedContainer = "container:App.xcodeproj">
+-         </BuildableReference>
+-      </BuildableProductRunnable>
+-   </LaunchAction>
+-   <ProfileAction
+-      buildConfiguration = "Release"
+-      shouldUseLaunchSchemeArgsEnv = "YES"
+-      savedToolIdentifier = ""
+-      useCustomWorkingDirectory = "NO"
+-      debugDocumentVersioning = "YES">
+-      <BuildableProductRunnable
+-         runnableDebuggingMode = "0">
+-         <BuildableReference
+-            BuildableIdentifier = "primary"
+-            BlueprintIdentifier = "606934868152F0D0C13285AE"
+-            BuildableName = "WatchApp.app"
+-            BlueprintName = "WatchApp"
+-            ReferencedContainer = "container:App.xcodeproj">
+-         </BuildableReference>
+-      </BuildableProductRunnable>
+-   </ProfileAction>
+-   <AnalyzeAction
+-      buildConfiguration = "Debug">
+-   </AnalyzeAction>
+-   <ArchiveAction
+-      buildConfiguration = "Release"
+-      revealArchiveInOrganizer = "YES">
+-   </ArchiveAction>
+-</Scheme>
+--- a/examples/xcode/generated_ios_app_with_watchapp2/App.xcworkspace/xcshareddata/xcschemes/App-Workspace.xcscheme
++++ b/examples/xcode/generated_ios_app_with_watchapp2/App.xcworkspace/xcshareddata/xcschemes/App-Workspace.xcscheme
+@@ -31,20 +31,6 @@
+                BlueprintIdentifier = "606934868152F0D0C13285AE"
+                BuildableName = "WatchApp.app"
+                BlueprintName = "WatchApp"
+-               ReferencedContainer = "container:App.xcodeproj">
+-            </BuildableReference>
+-         </BuildActionEntry>
+-         <BuildActionEntry
+-            buildForTesting = "YES"
+-            buildForRunning = "YES"
+-            buildForProfiling = "YES"
+-            buildForArchiving = "YES"
+-            buildForAnalyzing = "YES">
+-            <BuildableReference
+-               BuildableIdentifier = "primary"
+-               BlueprintIdentifier = "204DEE9C54CED33A670A2628"
+-               BuildableName = "WatchAppExtension.appex"
+-               BlueprintName = "WatchAppExtension"
+                ReferencedContainer = "container:App.xcodeproj">
+             </BuildableReference>
+          </BuildActionEntry>
+--- a/examples/xcode/generated_ios_app_with_watchapp2/Project.swift
++++ b/examples/xcode/generated_ios_app_with_watchapp2/Project.swift
+@@ -27,24 +27,16 @@
+         .target(
+             name: "WatchApp",
+             destinations: [.appleWatch],
+-            product: .watch2App,
++            product: .app,
+             bundleId: "dev.tuist.App.watchkitapp",
+-            infoPlist: .default,
+-            resources: "WatchApp/**",
+-            dependencies: [
+-                .target(name: "WatchAppExtension"),
+-            ]
+-        ),
+-        .target(
+-            name: "WatchAppExtension",
+-            destinations: [.appleWatch],
+-            product: .watch2Extension,
+-            bundleId: "dev.tuist.App.watchkitapp.watchkitextension",
++            deploymentTargets: .watchOS("11.0"),
+             infoPlist: .extendingDefault(with: [
+-                "CFBundleDisplayName": "WatchApp Extension",
++                "WKApplication": true,
++                "WKCompanionAppBundleIdentifier": "dev.tuist.App",
++                "WKApplicationDelegateClassName": "$(PRODUCT_MODULE_NAME).ExtensionDelegate",
+             ]),
+             sources: ["WatchAppExtension/**"],
+-            resources: ["WatchAppExtension/**/*.xcassets"],
++            resources: ["WatchApp/**", "WatchAppExtension/**/*.xcassets"],
+             dependencies: [
+                 .package(product: "LibraryA"),
+             ]

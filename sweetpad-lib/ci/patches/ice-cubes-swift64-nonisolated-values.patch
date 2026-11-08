@@ -1,0 +1,33 @@
+--- a/Packages/DesignSystem/Sources/DesignSystem/AccountExt.swift
++++ b/Packages/DesignSystem/Sources/DesignSystem/AccountExt.swift
+@@ -9,7 +9,7 @@
+     let value: Substring
+   }
+ 
+-  public var safeDisplayName: String {
++  nonisolated public var safeDisplayName: String {
+     if let displayName, !displayName.isEmpty {
+       return displayName
+     }
+--- a/Packages/Notifications/Sources/Notifications/Models/NotificationTypeExt.swift
++++ b/Packages/Notifications/Sources/Notifications/Models/NotificationTypeExt.swift
+@@ -28,7 +28,7 @@
+     }
+   }
+ 
+-  public func notificationKey() -> String {
++  nonisolated public func notificationKey() -> String {
+     switch self {
+     case .status:
+       "notifications.label.status.push"
+--- a/IceCubesApp/App/Report/ReportView.swift
++++ b/IceCubesApp/App/Report/ReportView.swift
+@@ -15,7 +15,7 @@
+   @State private var commentText: String = ""
+   @State private var isSendingReport: Bool = false
+ 
+-  struct ReportSent: Decodable {
++  nonisolated struct ReportSent: Decodable, Sendable {
+     let id: String
+   }
+ 

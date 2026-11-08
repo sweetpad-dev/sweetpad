@@ -1,0 +1,119 @@
+name: Linux Apple SDK integration
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: Optional run with a verified cli-tarball-linux-arm64 artifact
+        type: string
+        default: ''
+      runner_label:
+        description: Label of the provisioned private SDK runner
+        type: string
+        default: sweetpad-linux
+  workflow_call:
+    inputs:
+      artifact_run_id:
+        type: string
+        default: ''
+      runner_label:
+        type: string
+        default: sweetpad-linux
+permissions:
+  contents: read
+  actions: read
+jobs:
+  hybrid-builds:
+    # The Apple SDK stays on a provisioned Apple-hardware Linux runner.
+    # Never upload or distribute it as a workflow artifact.
+    runs-on: [self-hosted, Linux, ARM64, '${{ inputs.runner_label }}']
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Download verified ARM64 package
+        if: inputs.artifact_run_id != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: cli-tarball-linux-arm64
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/release-package
+      - name: Validate package with isolated home and private SDK
+        if: inputs.artifact_run_id != ''
+        env:
+          PACKAGE_ROOT: ${{ runner.temp }}/release-package
+        run: |
+          export PATH="$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+          MACROS="$HOME/bin/sweetpad-macros.bin"
+          if [ ! -e "$MACROS" ]; then MACROS="$HOME/bin/sweetpad-macros"; fi
+          python3 sweetpad-cli/ci/check-linux-sdk-install.py \
+            --archive "$(find "$PACKAGE_ROOT" -maxdepth 1 -name '*.tar.gz')" \
+            --out "$RUNNER_TEMP/sdk-package-install" \
+            --swift "$HOME/swift/swift-6.4.2-RELEASE" \
+            --swbuild-products "$HOME/src/swift-build/.build/out/Products/Release-linux-aarch64" \
+            --macros "$(readlink -f "$MACROS")" \
+            --sdk "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle"
+      - name: Build CLI
+        run: |
+          export PATH="$HOME/.cargo/bin:$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+          CARGO_TARGET_DIR="$HOME/sweetpad-target" cargo build --locked -p sweetpad-cli --bin sweetpad
+      - name: Install frozen framework tools
+        run: bash sweetpad-lib/ci/linux-framework-tools.sh
+      - name: Fresh Linux dependency and Release build checks
+        run: python3 -B sweetpad-lib/ci/linux-clean-checks.py --out "$RUNNER_TEMP/linux-clean"
+      - name: Generate manifests for Linux XCTest and Swift Testing products
+        run: |
+          export PATH="$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+          python3 -B sweetpad-lib/ci/linux-exec-audit.py --out "$RUNNER_TEMP/linux-clean/reports/test-build-audit" -- \
+            "$HOME/sweetpad-target/debug/sweetpad" test build \
+            --project "$PWD/sweetpad-lib/ci/fixture-test-manifest/ManifestProbe.xcodeproj" \
+            --scheme ManifestProbe --configuration Debug --destination 'generic/platform=iOS Simulator' \
+            --json --non-interactive -- -derivedDataPath "$RUNNER_TEMP/manifest-products" \
+            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO > "$RUNNER_TEMP/linux-clean/reports/test-build.json"
+          python3 - "$RUNNER_TEMP/linux-clean/reports/test-build.json" <<'PYCODE'
+          import json, pathlib, plistlib, sys
+          result = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          assert result['ok'] and result['data']['built']
+          path = pathlib.Path(result['data']['xctestrunPath'])
+          targets = plistlib.loads(path.read_bytes())['TestConfigurations'][0]['TestTargets']
+          assert {t['BlueprintName'] for t in targets} == {'LogicXCTests', 'LogicSwiftTests'}
+          assert all(t['EnvironmentVariables']['MANIFEST_VALUE'] == 'Linux tests ü' for t in targets)
+          PYCODE
+      - name: Generate mixed UI and logic test-plan manifests
+        run: |
+          export PATH="$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+          "$HOME/sweetpad-target/debug/sweetpad" test build \
+            --project "$PWD/sweetpad-lib/ci/fixture-test-plans/TestPlanProbe.xcodeproj" \
+            --scheme TestPlanProbe --destination 'generic/platform=iOS Simulator' --json --non-interactive \
+            -- -derivedDataPath "$RUNNER_TEMP/plan-products" ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
+            > "$RUNNER_TEMP/linux-clean/reports/test-plan-build.json"
+          python3 - "$RUNNER_TEMP/linux-clean/reports/test-plan-build.json" <<'PYCODE'
+          import json, pathlib, plistlib, sys
+          result = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          assert result['ok'] and result['data']['built']
+          manifest = plistlib.loads(pathlib.Path(result['data']['xctestrunPath']).read_bytes())
+          assert {c['Name'] for c in manifest['TestConfigurations']} == {'French', 'English'}
+          for configuration in manifest['TestConfigurations']:
+              targets = {t['BlueprintName']: t for t in configuration['TestTargets']}
+              assert set(targets) == {'ProbeUITests', 'PlanLogicTests'}
+              assert targets['ProbeUITests']['IsUITestBundle']
+              assert targets['ProbeUITests']['UITargetAppPath'].endswith('/Probe.app')
+              assert all(t['EnvironmentVariables']['PLAN_PRODUCT'] == 'ProbeUITests' for t in targets.values())
+          PYCODE
+      - name: Retain public dynamic-package APIs through response files
+        run: python3 -B sweetpad-lib/ci/linux-package-linking-checks.py --worker --out "$RUNNER_TEMP/linux-clean/reports/package-linking"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linux-execution-and-build-reports
+          path: |
+            ${{ runner.temp }}/linux-clean/summary.json
+            ${{ runner.temp }}/linux-clean/reports/
+            ${{ runner.temp }}/sdk-package-install/summary.json
+            ${{ runner.temp }}/sdk-package-install/work/build.json
+            ${{ runner.temp }}/sdk-package-install/sandbox.stderr
+          if-no-files-found: error

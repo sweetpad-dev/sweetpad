@@ -27,6 +27,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use serde_json::Value;
 use sweetpad_lib::project::standardize;
@@ -34,6 +35,183 @@ use sweetpad_lib::workspace_pif::pif;
 
 fn lib_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+/// The recorded legacy-watch dumps describe the pinned upstream projects.
+/// Build coverage applies explicit watch migrations in the live corpus. Read
+/// pristine Git archives for these snapshots without reverting those fixtures
+/// or replacing their original native golden coverage.
+struct TemporaryFixture(PathBuf);
+
+impl TemporaryFixture {
+    fn empty(prefix: &str) -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "{prefix}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        Self(root)
+    }
+
+    fn probe() -> Self {
+        // Copy files as a fresh Git checkout does: empty directories do not
+        // survive. Reconstruct the empty group captured in both native dumps
+        // without adding a placeholder resource or mutating the source tree.
+        fn copy_files(from: &Path, to: &Path) {
+            if from.is_dir() {
+                for entry in fs::read_dir(from).unwrap() {
+                    let entry = entry.unwrap();
+                    copy_files(&entry.path(), &to.join(entry.file_name()));
+                }
+            } else {
+                fs::create_dir_all(to.parent().unwrap()).unwrap();
+                fs::copy(from, to).unwrap();
+            }
+        }
+        let fixture = Self::empty("sweetpad-pif-probe");
+        copy_files(&lib_dir().join("ci/fixture-pif-probe"), &fixture.0);
+        fs::create_dir_all(fixture.0.join("Probe/Synced/EmptyDir")).unwrap();
+        fixture
+    }
+
+    fn new(corpus: &Path) -> Self {
+        let pristine = Self::empty("sweetpad-pristine-pif");
+        for (repository, subtrees) in [
+            ("kingfisher", vec![]),
+            ("alamofire", vec![]),
+            (
+                "tuist-fixtures",
+                vec![
+                    "examples/xcode/generated_ios_app_with_watchapp2",
+                    "examples/xcode/generated_ios_app_with_static_libraries",
+                ],
+            ),
+        ] {
+            let source = corpus.join(repository);
+            if !source.join(".git").exists() {
+                continue;
+            }
+            let destination = pristine.0.join(repository);
+            fs::create_dir_all(&destination).unwrap();
+            let mut command = Command::new("git");
+            command
+                .arg("-C")
+                .arg(&source)
+                .args(["archive", "--format=tar", "HEAD"]);
+            command.args(&subtrees);
+            let mut archive = command.stdout(Stdio::piped()).spawn().unwrap();
+            let status = Command::new("tar")
+                .args(["-x", "-C"])
+                .arg(&destination)
+                .stdin(archive.stdout.take().unwrap())
+                .status()
+                .unwrap();
+            assert!(
+                archive.wait().unwrap().success() && status.success(),
+                "could not read pinned {repository} sources"
+            );
+            // Tuist's generated project containers are ignored by Git. Copy
+            // those containers, then undo only their recorded fixture patches.
+            for subtree in subtrees {
+                copy_generated_containers(&source.join(subtree), &destination.join(subtree));
+            }
+            if repository == "tuist-fixtures" {
+                for patch in [
+                    "tuist-single-target-watch.patch",
+                    "tuist-static-tests-module-search.patch",
+                ] {
+                    restore_project_metadata(&destination, patch);
+                }
+            }
+        }
+        pristine
+    }
+}
+
+fn restore_project_metadata(destination: &Path, patch: &str) {
+    let patch_path = lib_dir().join("ci/patches").join(patch);
+    let text = fs::read_to_string(&patch_path).unwrap();
+    if !text
+        .lines()
+        .filter_map(|line| line.strip_prefix("+++ b/"))
+        .filter(|path| path.ends_with(".pbxproj"))
+        .any(|path| destination.join(path).is_file())
+    {
+        return;
+    }
+    let run = |flags: &[&str]| {
+        Command::new("git")
+            .arg("-C")
+            .arg(destination)
+            .args(["apply", "--include=*.pbxproj"])
+            .args(flags)
+            .arg(&patch_path)
+            .output()
+            .unwrap()
+            .status
+            .success()
+    };
+    if run(&["--reverse", "--check"]) {
+        assert!(
+            run(&["--reverse"]),
+            "could not restore original generated project metadata"
+        );
+    } else {
+        assert!(
+            run(&["--check"]),
+            "generated project does not match the original or recorded patch: {patch}"
+        );
+    }
+}
+
+fn copy_generated_containers(source: &Path, destination: &Path) {
+    if !source.is_dir() {
+        return;
+    }
+    for entry in fs::read_dir(source).unwrap() {
+        let path = entry.unwrap().path();
+        let target = destination.join(path.file_name().unwrap());
+        if path.file_name().is_some_and(|s| s == "Derived") && !target.exists() {
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            assert!(
+                Command::new("cp")
+                    .arg("-R")
+                    .arg(&path)
+                    .arg(target)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        } else if path
+            .extension()
+            .is_some_and(|s| s == "xcodeproj" || s == "xcworkspace")
+        {
+            if !target.exists() {
+                fs::create_dir_all(target.parent().unwrap()).unwrap();
+                assert!(
+                    Command::new("cp")
+                        .arg("-R")
+                        .arg(&path)
+                        .arg(target)
+                        .status()
+                        .unwrap()
+                        .success()
+                );
+            }
+        } else if path.is_dir() && !path.file_name().unwrap().to_string_lossy().starts_with('.') {
+            copy_generated_containers(&path, &target);
+        }
+    }
+}
+
+impl Drop for TemporaryFixture {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
 }
 
 /// Every difference between the emitted PIF for `container` and the dump,
@@ -240,7 +418,8 @@ fn linux_fixture_matches_xcodebuild_dump() {
 /// reference and a workspace in a sibling folder.
 #[test]
 fn probe_fixture_matches_xcodebuild_dump() {
-    let dir = lib_dir().join("ci/fixture-pif-probe");
+    let fixture = TemporaryFixture::probe();
+    let dir = &fixture.0;
     // Xcode's random GUID for a variant group with neither a Base nor an
     // English translation, in the tree and in two targets' build files, and
     // an unnamed build rule's name.
@@ -250,12 +429,7 @@ fn probe_fixture_matches_xcodebuild_dump() {
     ]
     .into_iter()
     .map(|(container, dump, baseline)| {
-        let found = differences(
-            &dir.join(container),
-            &dir.join(dump),
-            "$(FIXTURE_DIR)",
-            &dir,
-        );
+        let found = differences(&dir.join(container), &dir.join(dump), "$(FIXTURE_DIR)", dir);
         (container.to_string(), found, baseline)
     })
     .collect();
@@ -267,12 +441,22 @@ fn corpus_matches_xcodebuild_dumps() {
     // NetNewsWire's "Recovered References" group has a random GUID.
     const BASELINES: &[(&str, usize)] = &[("netnewswire", 2)];
     let corpus = lib_dir().join("corpus");
+    let pristine = TemporaryFixture::new(&corpus);
     let dumps = lib_dir().join("fixtures/_pif/xcode-27.0.0");
     let index: HashMap<String, String> =
         serde_json::from_str(&fs::read_to_string(dumps.join("index.json")).unwrap()).unwrap();
     let mut cases = Vec::new();
     for (name, container) in &index {
-        let container = corpus.join(container);
+        let root = if (name.starts_with("kingfisher-")
+            || name.starts_with("alamofire-")
+            || name.starts_with("tuist-"))
+            && pristine.0.join(container).exists()
+        {
+            &pristine.0
+        } else {
+            &corpus
+        };
+        let container = root.join(container);
         if !container.exists() {
             continue;
         }
@@ -284,7 +468,7 @@ fn corpus_matches_xcodebuild_dumps() {
             &container,
             &dumps.join(format!("{name}.json")),
             "$(CORPUS)",
-            &corpus,
+            root,
         );
         cases.push((name.clone(), found, baseline));
     }
