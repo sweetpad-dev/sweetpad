@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use clap::{Args, Subcommand};
+use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cli::{CliError, CommandResult, Context, ErrorKind, Render, Rendered, output::Output};
@@ -41,9 +42,66 @@ pub struct ImportArgs {
 
 pub(super) struct Report(pub Value);
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct Toolchain {
+    pub swift: String,
+    pub swift_build: String,
+    pub xtool: String,
+    pub xtool_sha256: String,
+}
+
+pub(super) fn toolchain() -> &'static Toolchain {
+    static PINS: std::sync::LazyLock<Toolchain> = std::sync::LazyLock::new(|| {
+        serde_json::from_str(include_str!(
+            "../../../../sweetpad-lib/ci/linux-toolchain.json"
+        ))
+        .expect("the bundled Linux toolchain requirements must be valid")
+    });
+    &PINS
+}
+
 impl Render for Report {
     fn human(&self, out: &Output) {
-        out.line(&serde_json::to_string_pretty(&self.0).unwrap_or_default());
+        let data = &self.0;
+        out.line(if data["dryRun"] == true {
+            "SDK export plan"
+        } else if data["configured"] == true {
+            "Ubuntu setup complete"
+        } else if data["reused"] == true {
+            "SDK already imported"
+        } else if data.get("archive").is_some() {
+            "SDK export complete"
+        } else {
+            "SDK import complete"
+        });
+        for (key, label) in [
+            ("archive", "Archive"),
+            ("sdkPath", "SDK"),
+            ("environmentFile", "Environment file"),
+            ("xcodeVersion", "Xcode version"),
+            ("xcodeBuild", "Xcode build"),
+            ("sha256", "SHA-256"),
+        ] {
+            if let Some(value) = data[key].as_str() {
+                out.line(&format!("{label}: {value}"));
+            }
+        }
+        for (key, label) in [
+            ("unpackedBytes", "Input size"),
+            ("requiredFreeBytes", "Required free space"),
+            ("archiveBytes", "Archive size"),
+        ] {
+            if let Some(value) = data[key].as_u64() {
+                out.line(&format!("{label}: {value} bytes"));
+            }
+        }
+        if data["sampleBuild"]["built"] == true {
+            out.line("Sample build passed");
+        }
+        if let Some(next) = data["nextStep"].as_str() {
+            out.note(next);
+        }
     }
     fn json(&self) -> Value {
         self.0.clone()
@@ -82,6 +140,10 @@ impl Drop for Helpers {
 }
 
 const HELPER_FILES: &[(&str, &[u8])] = &[
+    (
+        "sweetpad-lib/ci/linux-toolchain.json",
+        include_bytes!("../../../../sweetpad-lib/ci/linux-toolchain.json"),
+    ),
     (
         "sweetpad-lib/ci/linux-sdk.py",
         include_bytes!("../../../../sweetpad-lib/ci/linux-sdk.py"),

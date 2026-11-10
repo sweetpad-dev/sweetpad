@@ -4550,10 +4550,17 @@ alone.
 
 **The engine follows the host.** `Engine::for_host` picks xcodebuild on
 macOS and Swift Build everywhere else, so the same command line builds on
-both. A hidden `--engine swift-build` (`SWEETPAD_ENGINE`) runs Swift Build on
-a Mac too, which is how a build is checked against xcodebuild's; it stays
-hidden because nothing else needs it. `build --show-command` prints the
+both. `--engine swift-build` (`SWEETPAD_ENGINE`) runs Swift Build on
+a Mac too, which is how a build is checked against xcodebuild's. `build --show-command` prints the
 `swbuild` command line.
+
+SDK setup uses `sdk export` on a Mac and `setup --sdk` on Ubuntu ARM64.
+Export contains private Apple inputs and localized App Intents resources, without signing identities.
+Import verifies checksums and stages the SDK before replacement. It adds the Linux compiler's Clang resource headers.
+Setup discovers installed, extracted-archive, mise, or explicit source layouts and builds a sample to validate the result.
+Linux doctor uses the engine's macro lookup, checks SDK and compiler tools, and separates optional capabilities from required prerequisites.
+Generated shell configuration preserves an existing CI-selected CLI.
+Swift Build's dependency revisions are frozen in the shipped `swift-build-Package.resolved`.
 
 **Swift Build gets a PIF and a build request, never a target name.**
 `sweetpad-lib`'s emitter translates the workspace into Swift Build's PIF,
@@ -4690,7 +4697,7 @@ the VM, and `ci/linux-sweep.py` builds every scheme of the corpus on Linux,
 and with Xcode where Linux fails.
 `ci/linux-projects.py` adds pinned real apps, including Flutter, React Native, and Capacitor.
 `ci/linux-project-checks.py` compares bundles and checks both products in a Mac simulator.
-`ci/LINUX_PROJECTS.md` records setup, results, fixture patches, and the remaining MMKV interop gap.
+`ci/LINUX_PROJECTS.md` records setup, results, and fixture patches. The generated-header correction closes the validated MMKV interop case without its former shim.
 
 ## 10. Testing
 

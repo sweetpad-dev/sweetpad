@@ -266,13 +266,15 @@ pub fn is_available() -> bool {
 /// Spawn `pymobiledevice3 syslog live --label --process-name <exe>` with stdout
 /// piped for the renderer. `--no-color` (a top-level option, before the subcommand)
 /// keeps the parser's input clean; `--label` appends `[subsystem][category]`.
-pub fn spawn(exe: &str) -> Result<Child, CliError> {
+pub fn spawn(device: &str, exe: &str) -> Result<Child, CliError> {
     process::spawn_piped(
         BINARY,
         &[
             "--no-color",
             "syslog",
             "live",
+            "--udid",
+            device,
             "--label",
             "--process-name",
             exe,

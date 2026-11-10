@@ -180,7 +180,12 @@ fn gather() -> Result<Vec<Dest>, crate::cli::CliError> {
     }
 
     // Devices are best-effort: no devices (or no devicectl) just means none.
-    for d in devicectl::list().unwrap_or_default() {
+    let devices = if cfg!(target_os = "macos") {
+        devicectl::list().unwrap_or_default()
+    } else {
+        devicectl::list()?
+    };
+    for d in devices {
         dests.push(Dest {
             kind: "device",
             name: d.name.clone(),

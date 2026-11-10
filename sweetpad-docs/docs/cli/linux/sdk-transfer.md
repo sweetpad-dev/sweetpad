@@ -82,6 +82,8 @@ Source this file in each new shell or from your shell configuration.
 In CI, source it in each build step.
 
 Setup reuses existing tools. Import of the same archive reuses the completed SDK.
+Swift Build uses the shipped dependency lockfile. New tool versions or incompatible caches use a separate source directory.
+Setup preserves existing source checkouts and local edits.
 A different archive requires explicit replacement:
 
 ```bash
@@ -113,6 +115,7 @@ Use `--env-file /absolute/path` to write a separate environment file for a CI ru
 Linux doctor checks the host, Swift version, Swift Build, macro plugin, SDK inputs, target SDKs, linker, and disk space.
 It reports optional development signing and iPhone adapter configuration separately.
 It does not require Xcode, `xcodebuild`, or Simulator on Linux.
+Missing localized App Intents phrase resources produce a warning, because ordinary app compilation does not require them.
 Use `--target macos` for macOS app builds.
 
 The command exits with a nonzero status when required tools are missing.

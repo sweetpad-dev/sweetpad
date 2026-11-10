@@ -4,15 +4,21 @@ The CLI supports physical iPhones through local Linux USB or direct Wi-Fi.
 Both paths use userspace RSD tunnels and require `pymobiledevice3==11.50.0`.
 App operations authenticate the device UDID before installation, launch, or termination.
 They do not require a Mac relay or access to its login keychain.
+Discovery checks devices independently. An unreachable device produces a warning when another device is available.
+If every configured device fails, the command reports those failures instead of returning an empty list.
+
+`SWEETPAD_DEVICE_DISCOVERY_TIMEOUT` sets the per-device discovery timeout (default: 30 seconds).
+`SWEETPAD_DEVICE_TIMEOUT` sets the timeout for finite actions such as installation (default: 180 seconds).
+Both values must be positive numbers of at most 3600 seconds.
+Live logs and console streams retain their streaming behavior. Use the CLI's bounded log options for automation.
 
 ## Python setup
 
 Create a private Python environment and install the pinned dependency:
 
 ```bash
-uv venv --python 3.12 "$HOME/.local/share/sweetpad/device-tools"
-uv pip install --python "$HOME/.local/share/sweetpad/device-tools/bin/python" \
-  pymobiledevice3==11.50.0
+python3 -m venv "$HOME/.local/share/sweetpad/device-tools"
+"$HOME/.local/share/sweetpad/device-tools/bin/python" -m pip install pymobiledevice3==11.50.0
 export SWEETPAD_DEVICE_PYTHON="$HOME/.local/share/sweetpad/device-tools/bin/python"
 ```
 
@@ -123,4 +129,4 @@ Automatic Wi-Fi discovery succeeds without a configured phone hostname or port.
 The VM uses the DNS-SD fallback because raw LAN multicast does not cross its bridge.
 USB checks use physical passthrough and local Linux `usbmuxd`, with no network configuration or host relay.
 
-Local reports are under `sweetpad-lib/corpus/_linux-followups/validation/transport-2026-11-08/`.
+The validation reports remain private and are not part of the installed CLI package.

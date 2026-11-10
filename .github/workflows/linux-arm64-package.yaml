@@ -1,5 +1,16 @@
 name: Linux ARM64 package
 on:
+  push:
+    branches: [main]
+    paths:
+      - "sweetpad-cli/**"
+      - "sweetpad-core/**"
+      - "sweetpad-lib/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/linux-arm64-package.yaml"
+      - ".github/workflows/cli-release.yaml"
   pull_request:
     paths:
       - "sweetpad-cli/**"
@@ -34,6 +45,8 @@ jobs:
       - name: Validate SDK archive safety and bootstrap syntax
         run: |
           python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_sdk.py
+          python3 -m unittest discover -s sweetpad-cli/ci -p test_linux_package.py
+          python3 -m unittest discover -s sweetpad-cli/ci -p test_device_discovery.py
           bash -n sweetpad-lib/ci/linux-setup.sh
       - uses: Swatinem/rust-cache@v2
       - name: Build ARM64 release CLI

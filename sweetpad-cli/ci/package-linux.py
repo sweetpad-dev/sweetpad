@@ -15,11 +15,13 @@ REPO = Path(__file__).resolve().parents[2]
 BOOTSTRAP = [
     "sweetpad-lib/ci/linux-setup.sh",
     "sweetpad-lib/ci/linux-sdk.py",
+    "sweetpad-lib/ci/linux-toolchain.json",
     "sweetpad-lib/ci/linux-macro-launcher.sh",
     "sweetpad-lib/ci/linux-sdk-platforms.py",
     "sweetpad-lib/ci/linux-appintents-resources.py",
     "sweetpad-lib/ci/appintents_model.py",
     "sweetpad-lib/ci/swift-build-linux.patch",
+    "sweetpad-lib/ci/swift-build-Package.resolved",
     "sweetpad-lib/ci/swift-build-generic-debug-bridges.patch",
     "sweetpad-lib/ci/swift-llbuild-directory-race.patch",
     "sweetpad-cli/macros/Package.swift",
@@ -60,8 +62,7 @@ def package(binary, version, out, repo=REPO):
         raise ValueError("invalid package version")
     validate_elf(binary)
     binary_version = subprocess.check_output([str(binary.resolve()), "--version"], text=True).strip()
-    expected = version.removesuffix("-dryrun")
-    if not (binary_version == f"sweetpad {expected}" or binary_version.startswith(f"sweetpad {expected}-dev+")):
+    if not valid_binary_version(binary_version, version):
         raise ValueError(f"binary version {binary_version!r} differs from package version {version!r}")
     files = {"sweetpad": binary, **source_files(repo)}
     receipt = {"packageVersion": version, "binaryVersion": binary_version,
@@ -90,6 +91,11 @@ def package(binary, version, out, repo=REPO):
     checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
     archive.with_suffix(archive.suffix + ".sha256").write_text(f"{checksum}  {archive.name}\n")
     return {"archive": str(archive), "sha256": checksum, **receipt}
+
+
+def valid_binary_version(binary_version, version):
+    expected = version.removesuffix("-dryrun")
+    return binary_version == f"sweetpad {expected}" or (version.endswith("-dryrun") and binary_version.startswith(f"sweetpad {expected}-dev+"))
 
 
 if __name__ == "__main__":

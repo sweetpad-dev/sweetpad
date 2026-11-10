@@ -32,6 +32,7 @@ use crate::cli::xcodebuild::{self, BuildAction, BuildPlan, CommandPreview};
 use crate::cli::{CliError, ErrorKind, process};
 
 mod host_macros;
+pub(crate) mod scheme_actions;
 mod test_manifest;
 
 /// The engine a build runs on.
@@ -43,6 +44,18 @@ pub enum Engine {
 }
 
 impl Engine {
+    /// Commands without an --engine flag still honor the shared environment selection.
+    pub fn selected() -> Result<Self, CliError> {
+        match std::env::var("SWEETPAD_ENGINE") {
+            Ok(value) => <Self as clap::ValueEnum>::from_str(&value, false).map_err(|error| {
+                CliError::new(format!("SWEETPAD_ENGINE: {error}")).kind(ErrorKind::Usage)
+            }),
+            Err(std::env::VarError::NotPresent) => Ok(Self::for_host()),
+            Err(error) => {
+                Err(CliError::new(format!("SWEETPAD_ENGINE: {error}")).kind(ErrorKind::Usage))
+            }
+        }
+    }
     /// `xcodebuild` on macOS, and Swift Build where there is no Xcode.
     #[must_use]
     pub fn for_host() -> Self {
@@ -65,6 +78,25 @@ pub fn command(plan: &BuildPlan<'_>) -> Result<CommandPreview, CliError> {
     })
 }
 
+/// Remove this container's generated products without loading its SDK.
+pub fn clean(container: &Container, passthrough: &[String]) -> Result<(), CliError> {
+    let settings = xcodebuild::command_line_settings(passthrough, container);
+    let locations = derived_data::resolve(
+        &ContainerKey::of(container.path()),
+        &std::env::var("HOME").unwrap_or_default(),
+        settings.derived_data_path.as_deref(),
+        true,
+    );
+    for path in [&locations.products, &locations.intermediates] {
+        match std::fs::remove_dir_all(path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(CliError::new(format!("clean {}: {error}", path.display()))),
+        }
+    }
+    Ok(())
+}
+
 /// The test manifest for the products this Swift Build invocation just built.
 /// Kept separate from build statistics so a successful compilation still
 /// reports success when a test option needs a user-supplied manifest.
@@ -79,9 +111,10 @@ pub fn xctestrun(plan: &BuildPlan<'_>) -> Result<PathBuf, String> {
 pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildStats>, CliError> {
     let invocation = Invocation::of(plan)?;
     if plan.clean {
-        let _ = std::fs::remove_dir_all(&invocation.locations.products);
-        let _ = std::fs::remove_dir_all(&invocation.locations.intermediates);
+        clean(plan.container, plan.passthrough)?;
     }
+    let actions = scheme_actions::Actions::load(plan, &invocation)?;
+    scheme_actions::build(actions.as_ref(), false, plan, &invocation, out)?;
     invocation.write_inputs(plan, out)?;
     let start = Instant::now();
     let (program, arguments) = darwin_shell_command(&invocation)?;
@@ -126,18 +159,17 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
     }
     xcodebuild::record_build(plan.container, Some(plan.scheme), ok, &diagnostics);
     if ok {
+        scheme_actions::build(actions.as_ref(), true, plan, &invocation, out)?;
         return Ok(Some(buildlog::BuildStats::tally(
             &diagnostics,
             start.elapsed(),
         )));
     }
-    let detail = if out.is_json() {
-        let log = xcodebuild::project_artifact(plan.container, "-build.log");
-        xcodebuild::record_failure_transcript(&log, &transcript)
-            .map_or_else(String::new, |p| format!("; full log: {}", p.display()))
-    } else {
-        String::new()
-    };
+    let log = xcodebuild::project_artifact(plan.container, "-build.log");
+    let recorded = xcodebuild::record_failure_transcript(&log, &transcript);
+    let detail = recorded
+        .as_ref()
+        .map_or_else(String::new, |p| format!("; full log: {}", p.display()));
     Err(xcodebuild::tool_failure(
         "swbuild",
         &invocation.args,
@@ -147,7 +179,8 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
         !Output::streams_share_a_file(),
         &detail,
     )
-    .context("building the project"))
+    .context("building the project")
+    .tip(recorded.map(|p| format!("read full build log: {}", p.display()))))
 }
 
 /// macOS /bin/sh accepts Bash syntax. Keep that contract for scripts that
@@ -172,6 +205,7 @@ fn darwin_shell_command(invocation: &Invocation) -> Result<(String, Vec<String>)
         );
     }
     let mut args = vec![
+        "--die-with-parent".into(),
         "--bind".into(),
         "/".into(),
         "/".into(),
@@ -266,7 +300,7 @@ const MACRO_MODULES: &[&str] = &[
 /// `sweetpad-macros`, built from `sweetpad-cli/macros`: `SWEETPAD_MACROS`,
 /// else the one on `PATH`. A build without it fails only where a macro of
 /// [`MACRO_MODULES`] is used, with the compiler naming the module.
-fn macro_plugin() -> Option<PathBuf> {
+pub(crate) fn macro_plugin() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("SWEETPAD_MACROS") {
         return Some(PathBuf::from(path));
     }
@@ -309,7 +343,7 @@ impl Invocation {
         };
         if plan.hot {
             return Err(CliError::new(
-                "hot reload needs an xcodebuild build; pass '--engine xcodebuild'",
+                "hot reload needs an xcodebuild build; select SWEETPAD_ENGINE=xcodebuild",
             )
             .kind(ErrorKind::Usage));
         }
@@ -760,7 +794,7 @@ fn refuse_xcodebuild_flags(passthrough: &[String]) -> Result<(), CliError> {
             }
             flag if flag.starts_with('-') => {
                 return Err(CliError::new(format!(
-                    "'{flag}' is an xcodebuild flag, and this build runs on Swift Build, which \
+                    "'{flag}' is an xcodebuild flag from passthrough arguments or sweetpad.toml's [xcodebuild].args; this build runs on Swift Build, which \
                      takes only build settings ('KEY=VALUE'), '-derivedDataPath', '-xcconfig' and '-testPlan' \
                      after '--'"
                 ))
@@ -1143,6 +1177,8 @@ impl DarwinSdk {
                     .to_string(),
             ),
             ("MODULE_VERIFIER_KIND", "builtin".to_string()),
+            // Apple sandbox profiles require sandbox-exec, which Linux cannot run.
+            ("DISABLE_TASK_SANDBOXING", "YES".to_string()),
         ]
         .into_iter()
         .chain(versions)

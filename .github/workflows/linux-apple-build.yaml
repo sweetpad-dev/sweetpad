@@ -34,6 +34,14 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Read pinned compiler version
+        run: |
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import json
+          from pathlib import Path
+          pins = json.loads(Path('sweetpad-lib/ci/linux-toolchain.json').read_text())
+          print('SWEETPAD_SWIFT_VERSION=' + pins['swift'])
+          PY
       - name: Download verified ARM64 package
         if: inputs.artifact_run_id != ''
         uses: actions/download-artifact@v8
@@ -47,27 +55,33 @@ jobs:
         env:
           PACKAGE_ROOT: ${{ runner.temp }}/release-package
         run: |
-          export PATH="$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+          export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
           MACROS="$HOME/bin/sweetpad-macros.bin"
           if [ ! -e "$MACROS" ]; then MACROS="$HOME/bin/sweetpad-macros"; fi
           python3 sweetpad-cli/ci/check-linux-sdk-install.py \
             --archive "$(find "$PACKAGE_ROOT" -maxdepth 1 -name '*.tar.gz')" \
             --out "$RUNNER_TEMP/sdk-package-install" \
-            --swift "$HOME/swift/swift-6.4.2-RELEASE" \
-            --swbuild-products "$HOME/src/swift-build/.build/out/Products/Release-linux-aarch64" \
+            --swift "$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE" \
+            --swbuild-products "$(dirname "$(readlink -f "$HOME/bin/swbuild")")" \
             --macros "$(readlink -f "$MACROS")" \
             --sdk "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle"
       - name: Build CLI
         run: |
-          export PATH="$HOME/.cargo/bin:$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+          export PATH="$HOME/.cargo/bin:$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
           CARGO_TARGET_DIR="$HOME/sweetpad-target" cargo build --locked -p sweetpad-cli --bin sweetpad
       - name: Install frozen framework tools
         run: bash sweetpad-lib/ci/linux-framework-tools.sh
+      - name: Check script, clean, and Linux app routing regressions
+        run: |
+          export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
+          python3 sweetpad-cli/ci/check-linux-gaps.py \
+            --binary "$HOME/sweetpad-target/debug/sweetpad" \
+            --out "$RUNNER_TEMP/linux-gaps"
       - name: Fresh Linux dependency and Release build checks
         run: python3 -B sweetpad-lib/ci/linux-clean-checks.py --out "$RUNNER_TEMP/linux-clean"
       - name: Generate manifests for Linux XCTest and Swift Testing products
         run: |
-          export PATH="$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+          export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
           python3 -B sweetpad-lib/ci/linux-exec-audit.py --out "$RUNNER_TEMP/linux-clean/reports/test-build-audit" -- \
             "$HOME/sweetpad-target/debug/sweetpad" test build \
             --project "$PWD/sweetpad-lib/ci/fixture-test-manifest/ManifestProbe.xcodeproj" \
@@ -85,7 +99,7 @@ jobs:
           PYCODE
       - name: Generate mixed UI and logic test-plan manifests
         run: |
-          export PATH="$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+          export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
           "$HOME/sweetpad-target/debug/sweetpad" test build \
             --project "$PWD/sweetpad-lib/ci/fixture-test-plans/TestPlanProbe.xcodeproj" \
             --scheme TestPlanProbe --destination 'generic/platform=iOS Simulator' --json --non-interactive \
@@ -111,6 +125,10 @@ jobs:
         with:
           name: linux-execution-and-build-reports
           path: |
+            ${{ runner.temp }}/linux-gaps/summary.json
+            ${{ runner.temp }}/linux-gaps/*.stdout
+            ${{ runner.temp }}/linux-gaps/*.stderr
+            ${{ runner.temp }}/linux-gaps/scheme-actions.ndjson
             ${{ runner.temp }}/linux-clean/summary.json
             ${{ runner.temp }}/linux-clean/reports/
             ${{ runner.temp }}/sdk-package-install/summary.json

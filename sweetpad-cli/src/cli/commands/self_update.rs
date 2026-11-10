@@ -1,6 +1,6 @@
 //! `sweetpad self-update` — upgrade the binary. Homebrew installs run
 //! `brew upgrade sweetpad`, mise installs are told the `mise upgrade` to run,
-//! and anything else gets pointed at the tap.
+//! and manual Linux installs use the verified release archive.
 
 use std::path::Path;
 
@@ -33,7 +33,8 @@ pub fn run(ctx: &mut Context) -> CommandResult {
     // `/Cellar/` covers resolved keg paths everywhere (incl. Linuxbrew);
     // `/opt/homebrew/` is the Apple-silicon prefix. A bare `/homebrew/` would
     // also match unrelated checkouts like ~/dev/homebrew-tools/.
-    let brewed = path.contains("/Cellar/") || path.contains("/opt/homebrew/");
+    let brewed =
+        cfg!(target_os = "macos") && (path.contains("/Cellar/") || path.contains("/opt/homebrew/"));
     if brewed {
         ctx.out.note("updating via Homebrew…");
         // brew always writes `==> …` progress to stdout — captured under the
@@ -67,6 +68,12 @@ pub fn run(ctx: &mut Context) -> CommandResult {
             ),
         }));
     }
+    if !cfg!(target_os = "macos") {
+        return Ok(Rendered::data(UpdateReport {
+            method: "manual",
+            note: linux_update_note(&path),
+        }));
+    }
     Ok(Rendered::data(UpdateReport {
         method: "manual",
         note: format!(
@@ -75,6 +82,12 @@ pub fn run(ctx: &mut Context) -> CommandResult {
              latest cli-v* release"
         ),
     }))
+}
+
+fn linux_update_note(path: &str) -> String {
+    format!(
+        "this sweetpad ({path}) was installed manually. Download the Linux ARM64 archive and its checksum from https://github.com/sweetpad-dev/sweetpad/releases, verify it with sha256sum -c, then run install.sh with the same --prefix. This preserves your private SDK and signing files."
+    )
 }
 
 /// The mise tool identifier `exe` was installed as, such as
@@ -98,6 +111,14 @@ fn mise_tool(exe: &Path) -> Option<String> {
 mod tests {
     use super::*;
     use crate::cli::testdir::TempDir;
+
+    #[test]
+    fn linux_update_uses_the_linux_package_instead_of_homebrew() {
+        let note = linux_update_note("/example/bin/sweetpad");
+        assert!(note.contains("Linux ARM64"));
+        assert!(note.contains("--prefix"));
+        assert!(!note.contains("brew install"));
+    }
 
     #[test]
     fn mise_tool_reads_the_backend_beside_the_versions() {

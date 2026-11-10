@@ -909,7 +909,11 @@ pub fn resolve_on(
     if let Some(s) = sims.iter().find(|s| s.udid.eq_ignore_ascii_case(reference)) {
         return Ok(sim_target(s));
     }
-    let devices = crate::cli::devicectl::list().unwrap_or_default();
+    let devices = if cfg!(target_os = "macos") {
+        crate::cli::devicectl::list().unwrap_or_default()
+    } else {
+        crate::cli::devicectl::list()?
+    };
     if let Some(d) = devices
         .iter()
         .find(|d| d.udid.eq_ignore_ascii_case(reference))
@@ -1056,25 +1060,14 @@ pub fn build_target_without_devices(
     let (scheme, configuration) = settle_scheme_and_configuration(ctx, resolved, track)?;
     reject_on_destination_conflict(ctx)?;
     let destination = if let Some(reference) = ctx.targeting.on.clone() {
-        if !on_is_mac(ctx, &resolved.container.key(), &reference) {
-            return Err(CliError::new(
-                "'--on' names a simulator or device, and Swift Build doesn't look those up; \
-                 pass '--destination' instead, like 'generic/platform=iOS'",
-            )
-            .kind(ErrorKind::Usage));
-        }
-        OnTarget::Mac.specifier()
+        resolve_on(ctx, &resolved.container.key(), &reference, &[])?.specifier()
     } else if let Some(destination) = resolved.destination.clone() {
         destination
-    } else if SupportedPlatforms::resolve(resolved.container.path(), &scheme, &configuration)
-        .as_ref()
-        .is_some_and(SupportedPlatforms::is_mac_only)
-    {
-        "platform=macOS".to_string()
     } else {
-        ctx.out
-            .note("targeting any iOS device ('--destination' picks another platform)");
-        "generic/platform=iOS".to_string()
+        SupportedPlatforms::resolve(resolved.container.path(), &scheme, &configuration)
+            .and_then(|p| p.generic_destination())
+            .unwrap_or("generic/platform=iOS")
+            .to_string()
     };
     Ok(BuildTarget {
         scheme,
@@ -1738,6 +1731,9 @@ pub fn pick_destination_for(
 ) -> Result<String, CliError> {
     let key = resolved.container.key();
     let platforms = SupportedPlatforms::resolve(resolved.container.path(), scheme, configuration);
+    if !cfg!(target_os = "macos") {
+        return pick_linux_destination(ctx, platforms.as_ref());
+    }
     if platforms
         .as_ref()
         .is_some_and(SupportedPlatforms::is_mac_only)
@@ -1774,6 +1770,9 @@ pub fn pick_destination(
     track: bool,
     platforms: Option<&SupportedPlatforms>,
 ) -> Result<String, CliError> {
+    if !cfg!(target_os = "macos") {
+        return pick_linux_destination(ctx, platforms);
+    }
     let filtered: Vec<&crate::cli::simctl::Simulator> = sims
         .iter()
         .filter(|s| platforms.is_none_or(|p| p.allows_simulator(&s.os)))
@@ -1815,6 +1814,29 @@ pub fn pick_destination(
         let _ = ctx.state.save();
     }
     Ok(sim.destination())
+}
+
+fn pick_linux_destination(
+    ctx: &Context,
+    platforms: Option<&SupportedPlatforms>,
+) -> Result<String, CliError> {
+    let devices: Vec<_> = crate::cli::devicectl::list()?
+        .into_iter()
+        .filter(|d| platforms.is_none_or(|p| p.allows_device(d.platform_label())))
+        .collect();
+    if devices.is_empty() {
+        return Err(CliError::new("No matching physical device is available on Linux. Connect and pair an iPhone, or use 'sweetpad build' for a generic destination. Apple simulator and macOS runtimes require a Mac.").kind(ErrorKind::TargetResolution));
+    }
+    let labels: Vec<_> = devices
+        .iter()
+        .map(|d| format!("{} ({}, {})", d.name, d.platform_label(), d.udid))
+        .collect();
+    let chosen = choose(ctx, "destination", None, &labels)?;
+    let index = labels
+        .iter()
+        .position(|l| l == &chosen)
+        .ok_or_else(|| CliError::new("device destination not found"))?;
+    Ok(devices[index].destination())
 }
 
 /// Record a freshly-picked simulator into the project's recents (unique by

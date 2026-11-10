@@ -3,7 +3,9 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import shutil
+import subprocess
 from pathlib import Path
 import tarfile
 import tempfile
@@ -142,6 +144,23 @@ class SDKTests(unittest.TestCase):
         with patch.object(sdk.subprocess, "check_output", return_value=json.dumps({"compilerVersion": "Swift version 6.3.4"})):
             with self.assertRaisesRegex(ValueError, "requires Swift 6.4.2"):
                 sdk.copy_host_clang_headers(self.root / "sdk", shutil.copytree)
+
+    @unittest.skipUnless(os.uname().sysname == 'Linux', 'Ubuntu bootstrap uses the Linux shell')
+    def test_root_bootstrap_does_not_require_sudo(self):
+        script=Path(__file__).with_name('linux-setup.sh').read_text()
+        sudo=script[script.index('SUDO=()'):script.index('TAG="swift-')]
+        apt=script.split('section "apt packages"',1)[1].split('# Swift Build',1)[0]
+        tools=self.root/'tools'; tools.mkdir()
+        log=self.root/'apt.log'
+        for name,body in {
+            'id':'echo 0',
+            'sudo':'exit 99',
+            'apt-get':'test "$DEBIAN_FRONTEND" = noninteractive || exit 2\nprintf "%s\\n" "$1" >> "$APT_FIXTURE_LOG"',
+        }.items():
+            path=tools/name; path.write_text('#!/bin/sh\n'+body+'\n'); path.chmod(0o755)
+        env=dict(os.environ,PATH=f'{tools}:/usr/bin:/bin',APT_FIXTURE_LOG=str(log))
+        subprocess.run(['bash','-euc',sudo+apt],env=env,check=True,capture_output=True,text=True)
+        self.assertEqual(log.read_text().splitlines(),['update','install'])
 
 
 if __name__ == "__main__":

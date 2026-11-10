@@ -111,6 +111,61 @@ impl SupportedPlatforms {
     pub fn is_mac_only(&self) -> bool {
         self.allows_mac() && !self.0.iter().any(|t| t.ends_with("simulator"))
     }
+
+    /// Prefer an authored Apple platform when no concrete destination is selected.
+    #[must_use]
+    pub fn generic_destination(&self) -> Option<&'static str> {
+        for (device, simulator, generic, generic_simulator) in [
+            (
+                "iphoneos",
+                "iphonesimulator",
+                "generic/platform=iOS",
+                "generic/platform=iOS Simulator",
+            ),
+            (
+                "appletvos",
+                "appletvsimulator",
+                "generic/platform=tvOS",
+                "generic/platform=tvOS Simulator",
+            ),
+            (
+                "watchos",
+                "watchsimulator",
+                "generic/platform=watchOS",
+                "generic/platform=watchOS Simulator",
+            ),
+            (
+                "xros",
+                "xrsimulator",
+                "generic/platform=visionOS",
+                "generic/platform=visionOS Simulator",
+            ),
+        ] {
+            if self.0.contains(device) {
+                return Some(generic);
+            }
+            if self.0.contains(simulator) {
+                return Some(generic_simulator);
+            }
+        }
+        if self.0.contains("macosx") {
+            return Some("platform=macOS");
+        }
+        None
+    }
+
+    /// Whether a connected Apple device matches these authored platform tokens.
+    #[must_use]
+    pub fn allows_device(&self, platform: &str) -> bool {
+        let sdk = match platform {
+            "iOS" => "iphoneos",
+            "watchOS" => "watchos",
+            "tvOS" => "appletvos",
+            "visionOS" | "xrOS" => "xros",
+            _ => return true,
+        };
+        self.0.contains(sdk)
+    }
 }
 
 /// The target names `scheme` builds, or `None` when there is no scheme file to
@@ -139,6 +194,37 @@ fn scheme_build_targets(container: &Path, scheme: &str) -> Option<BTreeSet<Strin
 mod tests {
     use super::*;
     use crate::scratch::ScratchDir;
+
+    #[test]
+    fn generic_destinations_follow_non_ios_schemes() {
+        for (tokens, destination) in [
+            (
+                &["appletvos", "appletvsimulator"][..],
+                "generic/platform=tvOS",
+            ),
+            (
+                &["watchos", "watchsimulator"][..],
+                "generic/platform=watchOS",
+            ),
+            (&["xros", "xrsimulator"][..], "generic/platform=visionOS"),
+            (&["macosx"][..], "platform=macOS"),
+        ] {
+            assert_eq!(
+                SupportedPlatforms::from_tokens(tokens).generic_destination(),
+                Some(destination)
+            );
+        }
+        assert_eq!(
+            SupportedPlatforms::from_tokens(&["iphoneos", "macosx"]).generic_destination(),
+            Some("generic/platform=iOS")
+        );
+        assert_eq!(
+            SupportedPlatforms::from_tokens(&["watchsimulator"]).generic_destination(),
+            Some("generic/platform=watchOS Simulator")
+        );
+        assert!(SupportedPlatforms::from_tokens(&["iphoneos"]).allows_device("iOS"));
+        assert!(!SupportedPlatforms::from_tokens(&["macosx"]).allows_device("iOS"));
+    }
 
     #[test]
     fn mac_only_targets_are_recognised_for_archive() {

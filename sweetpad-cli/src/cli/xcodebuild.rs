@@ -2243,6 +2243,65 @@ pub(super) fn test_target_settings(
         .ok_or_else(|| CliError::new(format!("could not resolve test target '{target}'")))
 }
 
+/// A scheme script's selected target, scoped to its owning project. Build
+/// locations still belong to the invocation's workspace, not that project.
+pub(super) fn scheme_action_settings(
+    plan: &BuildPlan<'_>,
+    project: PathBuf,
+    target: &str,
+    locations: &sweetpad_lib::derived_data::Locations,
+    sdk_root: Option<&Path>,
+) -> Result<BTreeMap<String, String>, CliError> {
+    let mut options = settings_options(plan)?;
+    options.project = Some(project);
+    options.workspace = None;
+    options.scheme = None;
+    options.target = Some(target.to_string());
+    options.derived_data_path = Some(locations.folder.clone());
+    options.overrides.extend([
+        ("SYMROOT".into(), locations.products.display().to_string()),
+        (
+            "OBJROOT".into(),
+            locations.intermediates.display().to_string(),
+        ),
+    ]);
+    if let Some(sdk) = sdk_root {
+        let platform = sdk
+            .ancestors()
+            .nth(3)
+            .ok_or_else(|| CliError::new("SDK has no platform directory"))?;
+        let developer = platform
+            .ancestors()
+            .nth(2)
+            .ok_or_else(|| CliError::new("SDK has no developer directory"))?;
+        options.overrides.extend([
+            ("SDKROOT".into(), sdk.display().to_string()),
+            ("SDK_DIR".into(), sdk.display().to_string()),
+            ("PLATFORM_DIR".into(), platform.display().to_string()),
+            ("DEVELOPER_DIR".into(), developer.display().to_string()),
+        ]);
+    }
+    let mut settings = sweetpad_core::build_settings::resolve_build_settings(&options)
+        .map_err(CliError::new)?
+        .into_iter()
+        .find(|t| t.target == target)
+        .map(|t| t.settings)
+        .ok_or_else(|| {
+            CliError::new(format!("could not resolve scheme action target '{target}'"))
+        })?;
+    // Xcode exports the SDK's canonical name to scheme actions, while target
+    // build phases receive its absolute path.
+    let canonical = sdk_root
+        .and_then(|sdk| std::fs::read(sdk.join("SDKSettings.json")).ok())
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|value| value["CanonicalName"].as_str().map(str::to_string))
+        .or_else(|| settings.get("SDK_NAME").cloned());
+    if let Some(canonical) = canonical {
+        settings.insert("SDKROOT".into(), canonical);
+    }
+    Ok(settings)
+}
+
 /// The resolver options [`located`] resolves `plan` with.
 fn settings_options(plan: &BuildPlan<'_>) -> Result<BuildSettingsOptions, CliError> {
     let (project, workspace) = match plan.container {

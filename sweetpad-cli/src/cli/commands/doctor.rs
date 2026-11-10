@@ -22,8 +22,8 @@ pub enum Target {
 #[derive(Debug, Args)]
 pub struct DoctorArgs {
     /// Apple platform to diagnose on Linux.
-    #[arg(long, value_enum, default_value = "ios")]
-    pub target: Target,
+    #[arg(long, value_enum)]
+    pub target: Option<Target>,
 }
 
 /// One diagnostic line.
@@ -55,8 +55,14 @@ impl Status {
 
 pub fn run(_ctx: &mut Context, args: &DoctorArgs) -> CommandResult {
     let checks = if cfg!(target_os = "linux") {
-        gather_linux(args.target)
+        gather_linux(args.target.unwrap_or_default())
     } else {
+        if args.target.is_some() {
+            return Err(crate::cli::CliError::new(
+                "doctor --target selects Linux SDK diagnostics; omit --target on macOS",
+            )
+            .kind(crate::cli::ErrorKind::Usage));
+        }
         gather()
     };
     let (ok, warn, fail) = summarize(&checks);
@@ -97,7 +103,6 @@ fn linux_check(
 }
 
 fn gather_linux(target: Target) -> Vec<Check> {
-    use super::sdk::home;
     let setup = "run sweetpad setup --sdk /path/to/apple-sdk.tar.gz, then source ~/.config/sweetpad/linux-env.sh";
     let mut checks = Vec::new();
     let os = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
@@ -120,7 +125,7 @@ fn gather_linux(target: Target) -> Vec<Check> {
         first_line(probe("swift", &["--version"])).unwrap_or_else(|| "swift missing".into());
     checks.push(linux_check(
         "swift",
-        swift.contains("Swift version 6.4.2"),
+        swift.contains(&format!("Swift version {}", super::sdk::toolchain().swift)),
         swift,
         false,
         setup,
@@ -144,10 +149,25 @@ fn gather_linux(target: Target) -> Vec<Check> {
         false,
         setup,
     ));
-    let macros = std::env::var_os("SWEETPAD_MACROS").map_or_else(
-        || home().join("bin/sweetpad-macros"),
-        std::path::PathBuf::from,
-    );
+    let service = resolved_program(&swbuild)
+        .and_then(|p| p.parent().map(|d| d.join("SWBBuildServiceBundle")));
+    checks.push(linux_check(
+        "Swift Build service",
+        service.as_ref().is_some_and(|p| p.is_file()),
+        service.map_or_else(
+            || "build service location unavailable".into(),
+            |p| p.display().to_string(),
+        ),
+        false,
+        setup,
+    ));
+    checks.push(tool_check(
+        "Darwin libtool",
+        first_line(probe("llvm-libtool-darwin", &["--version"])),
+        Status::Fail,
+        Some("rerun sweetpad setup to install llvm-libtool-darwin"),
+    ));
+    let macros = crate::cli::swbuild::macro_plugin().unwrap_or_default();
     checks.push(linux_check(
         "Macro plugin",
         macros.is_file()
@@ -167,15 +187,31 @@ fn gather_linux(target: Target) -> Vec<Check> {
     checks
 }
 
+fn resolved_program(program: &str) -> Option<std::path::PathBuf> {
+    let direct = std::path::Path::new(program);
+    if direct.components().count() > 1 {
+        return direct.canonicalize().ok();
+    }
+    std::env::var_os("PATH")
+        .iter()
+        .flat_map(std::env::split_paths)
+        .map(|dir| dir.join(program))
+        .find(|p| p.is_file())
+        .and_then(|p| p.canonicalize().ok())
+}
+
 fn gather_linux_sdk(target: Target, setup: &'static str) -> Vec<Check> {
     use super::sdk::default_sdk;
-    let mut checks = Vec::new();
     let sdk = default_sdk();
+    gather_sdk_at(target, setup, &sdk)
+}
+
+fn gather_sdk_at(target: Target, setup: &'static str, sdk: &std::path::Path) -> Vec<Check> {
+    let mut checks = Vec::new();
     let paths = [
         "swift-sdk.json",
         "toolset-swb.json",
         "version.plist",
-        "appintents-phrases.json",
         "Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/swift/bridging",
         "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h",
         "toolset/bin/ld64.lld",
@@ -197,6 +233,9 @@ fn gather_linux_sdk(target: Target, setup: &'static str) -> Vec<Check> {
         false,
         setup,
     ));
+    checks.push(linux_check("Localized App Intents", sdk.join("appintents-phrases.json").is_file(),
+        "Localized shortcut phrase resources".into(), true,
+        "export SDK resources on your Mac with sweetpad sdk export; only localized shortcut training needs these resources"));
     let metadata = std::fs::read(sdk.join("swift-sdk.json"))
         .ok()
         .and_then(|data| serde_json::from_slice::<serde_json::Value>(&data).ok());
@@ -221,8 +260,9 @@ fn gather_linux_sdk(target: Target, setup: &'static str) -> Vec<Check> {
         let receipt: serde_json::Value = serde_json::from_slice(&data).unwrap_or_default();
         checks.push(linux_check(
             "SDK toolchain compatibility",
-            receipt["toolchain"]["swift"] == "6.4.2"
-                && receipt["toolchain"]["swiftBuild"] == "6.4.0",
+            receipt["toolchain"]["swift"].as_str() == Some(super::sdk::toolchain().swift.as_str())
+                && receipt["toolchain"]["swiftBuild"].as_str()
+                    == Some(super::sdk::toolchain().swift_build.as_str()),
             format!(
                 "Xcode {}; Swift {}; Swift Build {}",
                 receipt["xcodeVersion"],
@@ -248,6 +288,12 @@ fn gather_linux_sdk(target: Target, setup: &'static str) -> Vec<Check> {
 fn gather_linux_optional(target: Target) -> Vec<Check> {
     use super::sdk::home;
     let mut checks = Vec::new();
+    checks.push(tool_check(
+        "IPA export (zip)",
+        first_line(probe("zip", &["-v"])),
+        Status::Warn,
+        Some("install zip to export development IPAs"),
+    ));
     let free = probe("df", &["-Pk", &home().to_string_lossy()]).and_then(|s| {
         s.lines()
             .last()?
@@ -273,6 +319,14 @@ fn gather_linux_optional(target: Target) -> Vec<Check> {
         "free at least 10 GiB for app builds; toolchain setup can require more",
     ));
     if matches!(target, Target::Ios) {
+        let usb = resolved_program("usbmuxd");
+        checks.push(linux_check(
+            "iPhone USB service",
+            usb.is_some(),
+            usb.map_or_else(|| "usbmuxd unavailable".into(), |p| p.display().to_string()),
+            true,
+            "install usbmuxd for direct USB connections; Wi-Fi transport does not require it",
+        ));
         let identity = std::env::var_os("SWEETPAD_CODE_SIGN_P12").map(std::path::PathBuf::from);
         let configured = identity.as_ref().is_some_and(|p| p.is_file())
             && std::env::var_os("SWEETPAD_CODE_SIGN_P12_PASSWORD").is_some();
@@ -554,6 +608,54 @@ fn symbol(status: Status, color: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_sdk_without_localized_phrases_gets_a_warning() {
+        let root = crate::cli::testdir::TempDir::new("doctor-legacy-sdk");
+        for name in [
+            "swift-sdk.json",
+            "toolset-swb.json",
+            "version.plist",
+            "toolset/bin/ld64.lld",
+            "toolset/bin/llvm-lib",
+            "Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/swift/bridging",
+            "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h",
+        ] {
+            let path = root.join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "{}").unwrap();
+        }
+        let checks = gather_sdk_at(Target::Ios, "setup hint", &root.join(""));
+        assert_eq!(
+            checks
+                .iter()
+                .find(|c| c.name == "Darwin SDK")
+                .unwrap()
+                .status,
+            Status::Ok
+        );
+        assert_eq!(
+            checks
+                .iter()
+                .find(|c| c.name == "Localized App Intents")
+                .unwrap()
+                .status,
+            Status::Warn
+        );
+        std::fs::remove_file(root.join(
+            "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h",
+        ))
+        .unwrap();
+        let missing = gather_sdk_at(Target::Ios, "setup hint", &root.join(""));
+        assert_eq!(
+            missing
+                .iter()
+                .find(|c| c.name == "Darwin SDK")
+                .unwrap()
+                .status,
+            Status::Fail
+        );
+    }
 
     #[test]
     fn counts_only_available_runtimes() {

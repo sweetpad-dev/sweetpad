@@ -126,35 +126,41 @@ pub fn run(ctx: &mut Context, purge: bool) -> CommandResult {
             let scheme = resolve::settle_scheme(ctx, &mut resolved, &schemes, true)?;
             let configuration =
                 resolve::settle_configuration(ctx, &mut resolved, Some(&scheme), true)?;
-            let args = xcodebuild_clean_args(ctx, &resolved.container, scheme, configuration)?;
-            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            let cwd = xcodebuild::working_dir(&resolved.container);
-            let ok = if ctx.out.is_json() || ctx.out.is_ndjson() {
-                let run = process::run_captured("xcodebuild", &arg_refs, cwd.as_deref())?;
-                if !run.success {
-                    return Err(CliError::new(format!(
-                        "xcodebuild clean exited with a non-zero status:\n{}",
-                        run.tail
-                    ))
-                    .context("cleaning the project"));
-                }
-                true
+            if crate::cli::swbuild::Engine::selected()? == crate::cli::swbuild::Engine::SwiftBuild {
+                let passthrough = ctx.xcodebuild_args(xcodebuild::Action::Clean, &[])?;
+                crate::cli::swbuild::clean(&resolved.container, &passthrough)?;
+                "Swift Build artifacts"
             } else {
-                buildlog::run(
-                    "xcodebuild",
-                    &arg_refs,
-                    cwd.as_deref(),
-                    &ctx.out,
-                    "Cleaning",
-                )?
-            };
-            if !ok {
-                return Err(
-                    CliError::new("xcodebuild clean exited with a non-zero status")
-                        .context("cleaning the project"),
-                );
+                let args = xcodebuild_clean_args(ctx, &resolved.container, scheme, configuration)?;
+                let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+                let cwd = xcodebuild::working_dir(&resolved.container);
+                let ok = if ctx.out.is_json() || ctx.out.is_ndjson() {
+                    let run = process::run_captured("xcodebuild", &arg_refs, cwd.as_deref())?;
+                    if !run.success {
+                        return Err(CliError::new(format!(
+                            "xcodebuild clean exited with a non-zero status:\n{}",
+                            run.tail
+                        ))
+                        .context("cleaning the project"));
+                    }
+                    true
+                } else {
+                    buildlog::run(
+                        "xcodebuild",
+                        &arg_refs,
+                        cwd.as_deref(),
+                        &ctx.out,
+                        "Cleaning",
+                    )?
+                };
+                if !ok {
+                    return Err(
+                        CliError::new("xcodebuild clean exited with a non-zero status")
+                            .context("cleaning the project"),
+                    );
+                }
+                "xcodebuild clean"
             }
-            "xcodebuild clean"
         }
     };
 

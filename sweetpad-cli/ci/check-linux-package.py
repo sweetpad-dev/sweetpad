@@ -42,6 +42,13 @@ def check(archive, out):
 
     prefix = home / ".local"
     invoke("install", ["/bin/bash", extracted / "install.sh", "--prefix", prefix])
+    resources = prefix / "share/sweetpad"
+    for directory in ("setup", "licenses", "examples"):
+        (resources / directory / "obsolete-file").write_text("from an older installation")
+    (resources / "unrelated-file").write_text("preserve")
+    invoke("reinstall", ["/bin/bash", extracted / "install.sh", "--prefix", prefix])
+    assert not list(resources.rglob("obsolete-file"))
+    assert (resources / "unrelated-file").read_text() == "preserve"
     binary = prefix / "bin/sweetpad"
     assert hashlib.sha256(binary.read_bytes()).hexdigest() == manifest["files"]["sweetpad"]
     assert invoke("version", [binary, "--version"]).stdout.strip() == manifest["binaryVersion"]
@@ -50,6 +57,12 @@ def check(archive, out):
     invoke("sdk-export-help", [binary, "sdk", "export", "--help"])
     invoke("sdk-import-help", [binary, "sdk", "import", "--help"])
     invoke("setup-help", [binary, "setup", "--help"])
+    invalid_sdk=out / "invalid-sdk.tar.gz"
+    invalid_sdk.write_bytes(b"not an SDK archive")
+    invalid_sdk.with_name(invalid_sdk.name + ".sha256").write_text(f"{hashlib.sha256(invalid_sdk.read_bytes()).hexdigest()}  {invalid_sdk.name}\n")
+    raw_setup=invoke("raw-setup-source-discovery", [extracted / "sweetpad", "setup", "--sdk", invalid_sdk, "--json"], success=False)
+    raw_error=json.loads(raw_setup.stderr)["error"]
+    assert "gzip" in raw_error["message"] and raw_error["diagnostics"][0]["stage"] == "bootstrap"
     doctor = json.loads(invoke("linux-doctor-missing-tools", [binary, "doctor", "--target", "ios", "--json"], success=False).stdout)
     assert doctor["ok"] and doctor["data"]["summary"]["problems"] > 0
     assert not any(c["name"] in ("Xcode", "xcodebuild", "Simulator runtimes") for c in doctor["data"]["checks"])

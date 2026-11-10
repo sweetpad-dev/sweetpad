@@ -16,7 +16,8 @@ import tarfile
 import tempfile
 
 CI = Path(__file__).resolve().parent
-VERSIONS = {"swift": "6.4.2", "swiftBuild": "6.4.0", "xtool": "1.21.0"}
+PINS = json.loads((CI / "linux-toolchain.json").read_text())
+VERSIONS = {key: PINS[key] for key in ("swift", "swiftBuild", "xtool")}
 BASE_PLATFORMS = ("iPhoneOS", "iPhoneSimulator", "MacOSX")
 EXTRA_PLATFORMS = ("AppleTVOS", "AppleTVSimulator", "WatchOS", "WatchSimulator", "XROS", "XRSimulator")
 
@@ -295,7 +296,7 @@ def import_locked(args):
     if destination.exists() and receipt.get("archiveSha256") == checksum and not args.replace and all((destination / p).is_file() for p in required):
         return {"sdkPath": str(destination), "archiveSha256": checksum, "reused": True}
     if destination.exists() and not args.replace:
-        raise ValueError("SDK destination already exists; use --replace to replace it after a successful import")
+        raise ValueError("SDK destination already exists; use --replace with sdk import, or --replace-sdk with setup, to replace it after a successful import")
     xtool = args.xtool or shutil.which("xtool") or str(Path.home() / "bin/xtool")
     if subprocess.check_output([xtool, "--version"], text=True).strip() != "xtool " + VERSIONS["xtool"]:
         raise ValueError("SDK import requires xtool " + VERSIONS["xtool"] + "; run sweetpad setup --sdk ARCHIVE")

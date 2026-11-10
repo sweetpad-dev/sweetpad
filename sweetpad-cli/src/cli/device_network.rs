@@ -31,6 +31,10 @@ pub fn capture(request: &Value) -> Result<String, CliError> {
             String::from_utf8_lossy(&output.stderr).trim().to_string(),
         ));
     }
+    if !output.stderr.is_empty() {
+        use std::io::Write;
+        let _ = std::io::stderr().write_all(&output.stderr);
+    }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
