@@ -67,8 +67,14 @@ macros. Mach-O headers confirm ARM64 and the correct iOS/iOS Simulator platforms
 The device build used the default target architecture, without an ARCHS override.
 Both package architectures pass clean install and wrong-host rejection checks.
 Evidence: `corpus/_linux-followups/validation/issue-349/` (gitignored).
-SDK data was reused read-only with x64 host tools; a complete fresh x64 SDK import
-and compiler download/bootstrap was not repeated. No physical device was used.
+A full fresh x64 bootstrap also passes in an isolated Ubuntu 24.04 machine.
+Its initial home has no Swift, xtool, Swift Build, SDK, or source caches. Setup
+PGP-verifies the compiler download, imports a new SDK (`reused: false`), and
+builds the driver and macro plugin from source. Doctor reports zero required
+problems. A setup rerun keeps the same driver and SDK receipt; a subsequent SDK
+import reports reuse. Independent ARM64 iPhone and simulator builds pass without
+changing Ubuntu's Dash shell. No signing material or physical device was used.
+Fresh evidence: `corpus/_linux-followups/validation/fresh-x64-bootstrap-2026-11-11/`.
 
 The existing Flutter AOT and full hybrid-app validation remains ARM64-specific.
 The x64 private CI path covers package installation, core app builds, test manifests,
@@ -98,7 +104,7 @@ they do not establish physical-device execution for these changes.
 - [x] S06: Consolidate tool version requirements across bootstrap, export, doctor, and packaging (`commands/setup.rs`, `linux-sdk.py`, `ci/linux-setup.sh`).
 - [x] S07: Document Python before setup and replace raw JSON in SDK human output (`ci/linux-release-README.md`, `commands/sdk.rs`).
 - [x] S08: Upgrade an existing pinned Swift Build checkout without losing local edits; pin its package dependencies (`ci/linux-setup.sh`, Swift Build `Package.swift`).
-- [ ] S09: Validate the complete setup on a fresh host, separately from reusing preinstalled compiler tools (`ci/check-linux-sdk-install.py`). Isolated package compilation passes with an empty home and read-only toolchain/SDK mounts. A full first bootstrap with no preinstalled compiler remains unverified.
+- [x] S09: Validate the complete setup on a fresh host, separately from reusing preinstalled compiler tools. Full fresh Ubuntu 24.04 x64 bootstrap passes, including compiler download/signature, new SDK import, cold driver/macro builds, doctor, setup reuse, and ARM64 app builds. See the fresh x64 evidence above; `ci/check-linux-sdk-install.py` retains the separate package-build isolation check.
 - [ ] S10: Validate `doctor --target` behavior on macOS, signing credentials, and provisioning contents (`commands/doctor.rs`). Explicit --target on macOS now fails with a usage error; credential and profile contents remain open.
 
 ### Build engine and command routing
