@@ -86,7 +86,7 @@ pub fn run(ctx: &mut Context) -> CommandResult {
 
 fn linux_update_note(path: &str) -> String {
     format!(
-        "this sweetpad ({path}) was installed manually. Download the Linux ARM64 archive and its checksum from https://github.com/sweetpad-dev/sweetpad/releases, verify it with sha256sum -c, then run install.sh with the same --prefix. This preserves your private SDK and signing files."
+        "this sweetpad ({path}) was installed manually. Download the Linux archive for your host architecture (linux-arm64 or linux-x64) and its checksum from https://github.com/sweetpad-dev/sweetpad/releases, verify it with sha256sum -c, then run install.sh with the same --prefix. This preserves your private SDK and signing files."
     )
 }
 
@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn linux_update_uses_the_linux_package_instead_of_homebrew() {
         let note = linux_update_note("/example/bin/sweetpad");
-        assert!(note.contains("Linux ARM64"));
+        assert!(note.contains("linux-x64"));
         assert!(note.contains("--prefix"));
         assert!(!note.contains("brew install"));
     }

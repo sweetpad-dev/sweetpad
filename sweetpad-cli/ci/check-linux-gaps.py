@@ -7,6 +7,7 @@ contacts, installs on, or launches anything on an actual phone.
 import argparse
 import json
 import os
+import platform
 import re
 from pathlib import Path
 import shutil
@@ -39,7 +40,7 @@ def check(binary, out):
             raise AssertionError(f"{name}: exit {result.returncode}; see {out / (name + '.stderr')}")
         return json.loads(result.stdout if success else result.stderr)
 
-    build = ["build", *common, "--destination", "generic/platform=iOS Simulator", "--", "ARCHS=arm64", "CODE_SIGNING_ALLOWED=NO"]
+    build = ["build", *common, "--destination", "generic/platform=iOS Simulator,arch=arm64", "--", "ARCHS=arm64", "CODE_SIGNING_ALLOWED=NO"]
     built=invoke("script-build", build)["data"]
     assert built["built"]
     def rows():
@@ -152,7 +153,7 @@ else: raise RuntimeError('Unexpected fixture action: '+request['action'])
     missing_target = invoke("missing-scheme-action-target", build, False)
     assert "references missing target" in missing_target["error"]["message"]
     assert not trace.exists()
-    summary = {"passed": True, "compilation": "real Linux ARM64", "transport": "local fixture, no hardware",
+    summary = {"passed": True, "compilation": f"real Linux {platform.machine()} host", "targetArchitecture": "arm64", "transport": "local fixture, no hardware",
                "checks": ["sandboxed project script", "generated scheme source", "scheme action environment/order/failures", "archive actions", "clean", "purge", "configuration flag error", "discovery error",
                           "Linux picker", "app install engine", "run engine", "build --on device name"]}
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")

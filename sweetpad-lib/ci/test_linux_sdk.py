@@ -145,6 +145,17 @@ class SDKTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "requires Swift 6.4.2"):
                 sdk.copy_host_clang_headers(self.root / "sdk", shutil.copytree)
 
+    def test_legacy_sdk_reuse_checks_linker_host_not_target_architecture(self):
+        bundle = self.root / "installed"
+        linker = bundle / "toolset/bin/orig/ld64.lld"
+        linker.parent.mkdir(parents=True)
+        for machine, expected in [(183, "aarch64"), (62, "x86_64")]:
+            header = bytearray(20)
+            header[:6] = b"\x7fELF\x02\x01"
+            header[18:20] = machine.to_bytes(2, "little")
+            linker.write_bytes(header)
+            self.assertEqual(sdk.sdk_host_architecture(bundle), expected)
+
     @unittest.skipUnless(os.uname().sysname == 'Linux', 'Ubuntu bootstrap uses the Linux shell')
     def test_root_bootstrap_does_not_require_sudo(self):
         script=Path(__file__).with_name('linux-setup.sh').read_text()

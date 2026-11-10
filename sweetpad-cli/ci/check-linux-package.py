@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install and exercise an ARM64 tarball with an empty HOME and no Apple SDK."""
+"""Install and exercise a Linux tarball with an empty HOME and no Apple SDK."""
 import argparse
 import hashlib
 import json
@@ -12,8 +12,8 @@ import tarfile
 
 
 def check(archive, out):
-    if platform.system() != "Linux" or platform.machine() != "aarch64":
-        raise ValueError("run this check in Ubuntu 24.04 ARM64")
+    if platform.system() != "Linux" or platform.machine() not in ("aarch64", "x86_64"):
+        raise ValueError("run this check in Ubuntu 24.04 ARM64 or x86_64")
     out = out.resolve()
     out.mkdir(parents=True, exist_ok=False)
     expected = archive.with_suffix(archive.suffix + ".sha256").read_text().split()
@@ -25,7 +25,7 @@ def check(archive, out):
     with tarfile.open(archive) as source:
         source.extractall(extracted, filter="data")
     manifest = json.loads((extracted / "manifest.json").read_text())
-    assert manifest["platform"] == "linux-arm64" and manifest["appleSdkIncluded"] is False
+    assert manifest["platform"] == {"aarch64":"linux-arm64", "x86_64":"linux-x64"}[platform.machine()] and manifest["appleSdkIncluded"] is False
     for name, digest in manifest["files"].items():
         assert hashlib.sha256((extracted / name).read_bytes()).hexdigest() == digest, name
     assert (extracted / "sweetpad-dap").is_symlink() and os.readlink(extracted / "sweetpad-dap") == "sweetpad"
@@ -49,8 +49,17 @@ def check(archive, out):
     invoke("reinstall", ["/bin/bash", extracted / "install.sh", "--prefix", prefix])
     assert not list(resources.rglob("obsolete-file"))
     assert (resources / "unrelated-file").read_text() == "preserve"
+    manifest_path = extracted / "manifest.json"
+    original_manifest = manifest_path.read_text()
+    mismatched = dict(manifest, platform="linux-x64" if manifest["platform"] == "linux-arm64" else "linux-arm64")
+    manifest_path.write_text(json.dumps(mismatched))
+    mismatch = invoke("wrong-host-architecture", ["/bin/bash", extracted / "install.sh", "--prefix", prefix], success=False)
+    assert "does not match host" in mismatch.stderr
+    manifest_path.write_text(original_manifest)
     binary = prefix / "bin/sweetpad"
     assert hashlib.sha256(binary.read_bytes()).hexdigest() == manifest["files"]["sweetpad"]
+    header = binary.read_bytes()[:20]
+    assert int.from_bytes(header[18:20], "little") == {"aarch64": 183, "x86_64": 62}[platform.machine()]
     assert invoke("version", [binary, "--version"]).stdout.strip() == manifest["binaryVersion"]
     assert "sweetpad dap" in invoke("dap-alias", [prefix / "bin/sweetpad-dap", "--help"]).stdout
     invoke("help", [binary, "--help"])

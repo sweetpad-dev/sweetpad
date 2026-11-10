@@ -12,7 +12,7 @@ use crate::cli::{CliError, CommandResult, Context, ErrorKind, Render, Rendered, 
 pub enum Action {
     /// Export private SDK inputs from your Xcode. Contains no signing keys.
     Export(ExportArgs),
-    /// Verify and import an export on ARM64 Linux. Requires pinned xtool.
+    /// Verify and import an export on ARM64 or x86_64 Linux. Requires pinned xtool.
     Import(ImportArgs),
 }
 
@@ -48,7 +48,7 @@ pub(super) struct Toolchain {
     pub swift: String,
     pub swift_build: String,
     pub xtool: String,
-    pub xtool_sha256: String,
+    pub xtool_sha256: std::collections::BTreeMap<String, String>,
 }
 
 pub(super) fn toolchain() -> &'static Toolchain {

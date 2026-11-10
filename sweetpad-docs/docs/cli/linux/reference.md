@@ -4,7 +4,25 @@ sidebar_label: Support and configuration
 
 # Linux support and configuration
 
-The released archive targets Ubuntu 24.04 ARM64.
+Release 0.1.18 provides an Ubuntu 24.04 ARM64 archive.
+Current source builds also support Ubuntu 24.04 x86_64. The x64 package is prepared for the next release.
+
+## Host and target architectures
+
+| Linux host | Package suffix | iPhone target |
+| --- | --- | --- |
+| ARM64 (`aarch64`) | `linux-arm64` | ARM64 (`arm64-apple-ios`) |
+| x86_64 (`amd64`) | `linux-x64` | ARM64 (`arm64-apple-ios`) |
+
+The CLI, Swift compiler, Swift Build service, macro plugins, and SDK tools must match the Linux host.
+The build destination selects the app platform and target architecture.
+For example, `--destination 'generic/platform=iOS'` selects an ARM64 iPhone build on either host.
+Simulator and macOS destinations default to the host architecture. An explicit destination `arch=` selects another supported architecture.
+
+The same private SDK export can supply Apple files to both hosts.
+SDK import installs host tools for the importing machine. An installed SDK bundle contains host executables and needs replacement after a host-architecture change.
+Flutter AOT and React Native keep the additional host-tool requirements in their respective guides.
+
 The validated setup uses an Apple-hardware Linux VM, Swift 6.4.2, Swift Build 6.4.0, and SDK data from Xcode.
 
 ## Platform coverage

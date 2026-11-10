@@ -50,6 +50,30 @@ Optional `.omo` work and dependency-size cleanup remain deferred.
 
 Items marked *(optional)* can wait until a project needs them.
 
+## Linux x64 host support, issue #349
+
+- [x] Commit the previous audit fixes (`0f88efc5`).
+- [x] Add `linux-x64` packaging and matching-host install checks alongside ARM64.
+- [x] Accept x86_64 in setup, SDK import, and doctor; pin the x64 xtool checksum.
+- [x] Record SDK host architecture and detect incompatible tools before reuse.
+- [x] Add both host architectures to release packaging and private SDK CI selection.
+- [x] Validate ARM64 iPhone and simulator output with the x64 compiler, driver, CLI, and macro plugin.
+- [x] Finish the x64 clean-install and regression evidence; keep 0.1.18 documentation accurate until a new release.
+
+Validation used x86_64 Ubuntu 24.04 under container emulation on Apple hardware,
+Swift 6.4.2, Swift Build 6.4.0, and the pinned x64 Darwin tools. The packaged x64 CLI
+built ARM64 iPhone and simulator apps with zero warnings/errors, including `@Entry`
+macros. Mach-O headers confirm ARM64 and the correct iOS/iOS Simulator platforms.
+The device build used the default target architecture, without an ARCHS override.
+Both package architectures pass clean install and wrong-host rejection checks.
+Evidence: `corpus/_linux-followups/validation/issue-349/` (gitignored).
+SDK data was reused read-only with x64 host tools; a complete fresh x64 SDK import
+and compiler download/bootstrap was not repeated. No physical device was used.
+
+The existing Flutter AOT and full hybrid-app validation remains ARM64-specific.
+The x64 private CI path covers package installation, core app builds, test manifests,
+and package linking; it does not imply full hybrid-framework runtime coverage.
+
 ## Follow-up audit, 2026-11-10
 
 The handoff identified these candidates by reading code. An unchecked item is not a reproduced runtime failure.

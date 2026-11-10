@@ -28,9 +28,10 @@ pub struct SetupArgs {
 }
 
 pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
-    if !cfg!(target_os = "linux") || !cfg!(target_arch = "aarch64") {
+    if !cfg!(target_os = "linux") || !cfg!(any(target_arch = "aarch64", target_arch = "x86_64")) {
         return Err(
-            CliError::new("sweetpad setup requires Ubuntu 24.04 ARM64").kind(ErrorKind::Usage)
+            CliError::new("sweetpad setup requires Ubuntu 24.04 ARM64 or x86_64")
+                .kind(ErrorKind::Usage),
         );
     }
     let archive = args
@@ -53,7 +54,7 @@ pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
         .arg(script).env("SWEETPAD_SKIP_RUST", "1")
         .env("SWIFT_VERSION", &pins.swift).env("SWIFT_BUILD_VERSION", &pins.swift_build)
         .env("XTOOL_VERSION", &pins.xtool)
-        .env("XTOOL_SHA256", &pins.xtool_sha256)
+        .env("XTOOL_SHA256", &pins.xtool_sha256[std::env::consts::ARCH])
         .env("SWEETPAD_NONINTERACTIVE", if ctx.out.is_interactive() { "0" } else { "1" })
         .env("SWEETPAD_SDK_ARCHIVE", archive).env("SWEETPAD_DARWIN_SDK", &destination)
         .env("SWEETPAD_REFRESH_SDK", if args.replace_sdk { "1" } else { "0" })
@@ -184,7 +185,7 @@ fn validate_sample(
             "--scheme",
             "LinuxApp",
             "--destination",
-            "generic/platform=iOS Simulator",
+            "generic/platform=iOS",
             "--json",
             "--non-interactive",
             "--",

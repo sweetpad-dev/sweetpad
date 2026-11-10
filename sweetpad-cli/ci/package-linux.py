@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package the Linux ARM64 CLI and public toolchain bootstrap sources only."""
+"""Package the Linux CLI and public toolchain bootstrap sources only."""
 import argparse
 import gzip
 import hashlib
@@ -34,8 +34,9 @@ BOOTSTRAP = [
 def validate_elf(path):
     with Path(path).open("rb") as source:
         header = source.read(20)
-    if header[:6] != b"\x7fELF\x02\x01" or int.from_bytes(header[18:20], "little") != 183:
-        raise ValueError("the release binary must be a little-endian ARM64 ELF executable")
+    if header[:6] != b"\x7fELF\x02\x01" or int.from_bytes(header[18:20], "little") not in (62, 183):
+        raise ValueError("the release binary must be a little-endian ARM64 or x86_64 ELF executable")
+    return "arm64" if int.from_bytes(header[18:20], "little") == 183 else "x64"
 
 
 def source_files(repo):
@@ -60,17 +61,17 @@ def source_files(repo):
 def package(binary, version, out, repo=REPO):
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?", version):
         raise ValueError("invalid package version")
-    validate_elf(binary)
+    arch = validate_elf(binary)
     binary_version = subprocess.check_output([str(binary.resolve()), "--version"], text=True).strip()
     if not valid_binary_version(binary_version, version):
         raise ValueError(f"binary version {binary_version!r} differs from package version {version!r}")
     files = {"sweetpad": binary, **source_files(repo)}
     receipt = {"packageVersion": version, "binaryVersion": binary_version,
-               "platform": "linux-arm64", "baseline": "Ubuntu 24.04 / glibc 2.39",
+               "platform": "linux-" + arch, "baseline": "Ubuntu 24.04 / glibc 2.39",
                "experimental": True, "appleSdkIncluded": False,
                "files": {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in sorted(files.items())}}
     out.mkdir(parents=True, exist_ok=True)
-    archive = out / f"sweetpad-cli-{version}-linux-arm64.tar.gz"
+    archive = out / f"sweetpad-cli-{version}-linux-{arch}.tar.gz"
     epoch = int(os.environ.get("SOURCE_DATE_EPOCH", "0"))
     with archive.open("xb") as raw, gzip.GzipFile(fileobj=raw, mode="wb", filename="", mtime=0) as compressed:
         with tarfile.open(fileobj=compressed, mode="w") as tar:

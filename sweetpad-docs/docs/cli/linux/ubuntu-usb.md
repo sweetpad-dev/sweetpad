@@ -4,7 +4,9 @@ sidebar_label: Ubuntu and USB setup
 
 # Ubuntu setup and an iPhone over USB
 
-This guide starts with Ubuntu 24.04 ARM64 and ends with a signed app on an iPhone.
+This guide starts with Ubuntu 24.04 and ends with a signed app on an iPhone.
+Release 0.1.18 supplies ARM64 packages. Current source builds also support x86_64 hosts with ARM64 iPhone targets.
+The `linux-x64` archive is prepared for the next release. The download example uses the released ARM64 package.
 Use a Linux VM on Apple hardware for the validated setup.
 
 You need your Xcode SDKs, an Apple Development identity, a provisioning profile, and a USB connection to the phone.

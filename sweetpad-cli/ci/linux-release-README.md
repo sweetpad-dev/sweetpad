@@ -1,6 +1,6 @@
-# Sweetpad for Linux ARM64
+# Sweetpad for Linux
 
-This experimental package supports Ubuntu 24.04 ARM64 (glibc 2.39).
+This experimental package supports Ubuntu 24.04 ARM64 and x86_64 (glibc 2.39).
 It contains the CLI and public toolchain setup sources, including pinned patches and macro sources.
 It does not contain Apple SDKs, Xcode, signing identities, provisioning profiles, or build caches.
 
@@ -13,7 +13,10 @@ sudo apt-get update
 sudo apt-get install ca-certificates libssl3t64 libgcc-s1 python3
 ```
 
-Verify the downloaded archive before extraction:
+Select `linux-arm64` for an ARM64 host, or `linux-x64` for an x86_64 host.
+The package architecture selects the tools that run on Linux. An iPhone build targets ARM64 on either host.
+
+Verify the downloaded archive before extraction (the example uses ARM64):
 
 ```bash
 sha256sum -c sweetpad-cli-VERSION-linux-arm64.tar.gz.sha256
@@ -56,14 +59,15 @@ App signing requires your development identity and profiles, configured separate
 
 ## Support scope
 
-The validated environment is Ubuntu 24.04 ARM64 in OrbStack on Apple hardware.
+The ARM64 validation environment uses Ubuntu 24.04 in OrbStack on Apple hardware.
+The x64 cross-compilation checks use an x86_64 Ubuntu container on the same hardware.
 Core compilation, resources, development signing, and physical iPhone USB/Wi-Fi transport pass validation.
-The packaged CLI also passes installation in a clean Ubuntu 24.04 ARM64 container.
+The packaged CLI also passes installation in a clean Ubuntu 24.04 containers for both host architectures.
 Simulator operation and Apple test execution still require a Mac with Xcode.
 Distribution IPA export, Linux device debugging, and device readiness inspection remain unsupported.
 Flutter AOT requires the separately built Linux ARM64 iOS snapshot compiler.
 The tested React Native Hermes compiler requires OrbStack's x86 translation in this ARM64 environment.
-Other Linux architectures and distributions are not release targets yet.
+Other Linux architectures, including 32-bit x86, and other distributions are not release targets yet.
 
 Run `sweetpad help linux-devices` for pairing and bounded logs.
 See the [Linux guide](https://sweetpad.hyzyla.dev/docs/cli/linux) for build setup and current limitations.

@@ -11,8 +11,8 @@ Apple test execution still runs on a Mac with Xcode.
 
 | Job | Runner |
 | --- | --- |
-| Run the CLI without Apple SDKs | A hosted Ubuntu 24.04 ARM64 runner. |
-| Compile an iOS app on Linux | A provisioned Linux ARM64 runner with your private SDK and compiler toolchain. |
+| Run the CLI without Apple SDKs | A hosted Ubuntu 24.04 runner for the package architecture. |
+| Compile an iOS app on Linux | A provisioned ARM64 or x86_64 Linux runner with your private SDK and matching host tools. |
 | Run iOS Simulator tests | A Mac with Xcode and a compatible simulator runtime. |
 | Install on an iPhone | A trusted USB or paired Wi-Fi connection from the selected host. |
 
@@ -25,6 +25,14 @@ Current source builds also provide [SDK export and setup commands](sdk-transfer.
 With those commands, source `$HOME/.config/sweetpad/linux-env.sh` in each build step and run `sweetpad doctor --target ios` before compilation.
 Its user needs the Linux Swift toolchain, Swift Build, macro plugin, and extracted SDK on the documented paths.
 The example uses the custom runner label `sweetpad-linux`.
+
+### x86_64 runners
+
+Current source builds support the `X64` self-hosted runner label and ARM64 iPhone targets.
+The x64 archive is prepared for the next release. The example that follows keeps the released 0.1.18 ARM64 archive.
+After an x64 package release, select `linux-x64` and use `runs-on: [self-hosted, Linux, X64, sweetpad-linux]`.
+Keep the iPhone destination and `ARCHS=arm64` settings unchanged.
+An SDK imported on ARM64 contains ARM64 host tools. Import the private export on the x64 runner to select x64 tools.
 
 ## Build and retain iPhone products
 

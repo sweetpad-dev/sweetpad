@@ -27,13 +27,19 @@
 # SWEETPAD_SKIP_RUST=1 skips Rust when using the prebuilt CLI package.
 set -euo pipefail
 
+XTOOL_SHA256_OVERRIDE="${XTOOL_SHA256:-}"
 VM="${SWEETPAD_VM:-sweetpad-linux}"
 XCODE_APP="${XCODE_APP:-/Applications/Xcode.app}"
-requirements="$(python3 - "$(dirname "$0")/linux-toolchain.json" <<'PY'
+requirements="$(python3 - "$(dirname "$0")/linux-toolchain.json" "$(uname -m)" <<'PY'
 import json, sys
 with open(sys.argv[1]) as source:
     pins = json.load(source)
-print(*(pins[key] for key in ("swift", "swiftBuild", "xtool", "xtoolSha256")))
+arch = sys.argv[2]
+# A Mac only forwards the pins; its OrbStack guest selects its own host tools.
+arch = {"arm64": "aarch64"}.get(arch, arch)
+if arch not in pins["xtoolSha256"]:
+    raise SystemExit("setup supports ARM64 and x86_64 hosts")
+print(*(pins[key] for key in ("swift", "swiftBuild", "xtool")), pins["xtoolSha256"][arch])
 PY
 )"
 read -r pinned_swift pinned_swb pinned_xtool pinned_xtool_sha <<< "$requirements"
@@ -52,7 +58,7 @@ if [ "$(uname -s)" = Darwin ]; then
   exec orb -m "$VM" env XCODE_APP="$XCODE_APP" SWIFT_VERSION="$SWIFT_VERSION" \
     SWEETPAD_APPINTENTS_RESOURCE_EXPORT="$phrase_export" \
     SWIFT_BUILD_VERSION="$SWIFT_BUILD_VERSION" \
-    XTOOL_VERSION="$XTOOL_VERSION" XTOOL_SHA256="$XTOOL_SHA256" \
+    XTOOL_VERSION="$XTOOL_VERSION" XTOOL_SHA256="$XTOOL_SHA256_OVERRIDE" \
     SWEETPAD_SKIP_RUST="${SWEETPAD_SKIP_RUST:-0}" \
     SWEETPAD_REFRESH_SDK="${SWEETPAD_REFRESH_SDK:-0}" bash "$self"
 fi
@@ -60,8 +66,8 @@ fi
 ARCH="$(uname -m)"
 if [ -n "${SWEETPAD_SDK_ARCHIVE:-}" ]; then
   . /etc/os-release
-  [ "$ARCH" = aarch64 ] && [ "$ID" = ubuntu ] && [ "$VERSION_ID" = 24.04 ] || {
-    echo 'error: archive setup requires Ubuntu 24.04 ARM64' >&2; exit 1;
+  [[ "$ARCH" = aarch64 || "$ARCH" = x86_64 ]] && [ "$ID" = ubuntu ] && [ "$VERSION_ID" = 24.04 ] || {
+    echo 'error: archive setup requires Ubuntu 24.04 ARM64 or x86_64' >&2; exit 1;
   }
   python3 "$(dirname "$0")/linux-sdk.py" inspect --archive "$SWEETPAD_SDK_ARCHIVE"
 fi
@@ -115,7 +121,7 @@ if [ "$("$HOME/bin/xtool" --version 2>/dev/null)" != "xtool $XTOOL_VERSION" ]; t
   image="$DOWNLOADS/xtool-$XTOOL_VERSION-$ARCH.AppImage"
   curl -fL -sS -o "$image" \
     "https://github.com/xtool-org/xtool/releases/download/$XTOOL_VERSION/xtool-$ARCH.AppImage"
-  # The default digest is the aarch64 AppImage's; another arch passes its own.
+  # The manifest pins a separate AppImage checksum for each host architecture.
   echo "$XTOOL_SHA256  $image" | sha256sum -c -
   chmod +x "$image"
   # Extracting sidesteps FUSE, which an OrbStack machine doesn't have.

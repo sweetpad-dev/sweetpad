@@ -6,6 +6,10 @@ on:
         description: Optional run with a verified cli-tarball-linux-arm64 artifact
         type: string
         default: ''
+      package_arch:
+        description: Package host architecture (arm64 or x64)
+        type: string
+        default: arm64
       runner_label:
         description: Label of the provisioned private SDK runner
         type: string
@@ -15,6 +19,9 @@ on:
       artifact_run_id:
         type: string
         default: ''
+      package_arch:
+        type: string
+        default: arm64
       runner_label:
         type: string
         default: sweetpad-linux
@@ -25,7 +32,7 @@ jobs:
   hybrid-builds:
     # The Apple SDK stays on a provisioned Apple-hardware Linux runner.
     # Never upload or distribute it as a workflow artifact.
-    runs-on: [self-hosted, Linux, ARM64, '${{ inputs.runner_label }}']
+    runs-on: [self-hosted, Linux, "${{ inputs.package_arch == 'x64' && 'X64' || 'ARM64' }}", '${{ inputs.runner_label }}']
     timeout-minutes: 120
     env:
       CARGO_INCREMENTAL: "0"
@@ -46,7 +53,7 @@ jobs:
         if: inputs.artifact_run_id != ''
         uses: actions/download-artifact@v8
         with:
-          name: cli-tarball-linux-arm64
+          name: cli-tarball-linux-${{ inputs.package_arch }}
           run-id: ${{ inputs.artifact_run_id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/release-package
@@ -70,6 +77,7 @@ jobs:
           export PATH="$HOME/.cargo/bin:$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
           CARGO_TARGET_DIR="$HOME/sweetpad-target" cargo build --locked -p sweetpad-cli --bin sweetpad
       - name: Install frozen framework tools
+        if: inputs.package_arch == 'arm64'
         run: bash sweetpad-lib/ci/linux-framework-tools.sh
       - name: Check script, clean, and Linux app routing regressions
         run: |
@@ -78,6 +86,7 @@ jobs:
             --binary "$HOME/sweetpad-target/debug/sweetpad" \
             --out "$RUNNER_TEMP/linux-gaps"
       - name: Fresh Linux dependency and Release build checks
+        if: inputs.package_arch == 'arm64'
         run: python3 -B sweetpad-lib/ci/linux-clean-checks.py --out "$RUNNER_TEMP/linux-clean"
       - name: Generate manifests for Linux XCTest and Swift Testing products
         run: |

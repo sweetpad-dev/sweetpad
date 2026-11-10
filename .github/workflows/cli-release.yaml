@@ -9,12 +9,17 @@ on:
       platform:
         description: Platforms to build without publishing
         type: choice
-        options: [all, linux-arm64]
+        options: [all, linux]
         default: all
       validate_sdk:
-        description: Validate the ARM64 package with a private Apple SDK runner
+        description: Validate the Linux package with a private Apple SDK runner
         type: boolean
         default: false
+      sdk_package_arch:
+        description: Host architecture of the private SDK runner
+        type: choice
+        options: [arm64, x64]
+        default: arm64
       sdk_runner_label:
         description: Label of the provisioned private SDK runner
         type: string
@@ -28,13 +33,13 @@ permissions:
 
 name: Release CLI
 jobs:
-  linux-arm64:
-    name: Linux ARM64 release package
+  linux:
+    name: Linux release packages
     uses: ./.github/workflows/linux-arm64-package.yaml
   sdk-validation:
     name: Private SDK install validation
     if: github.event_name == 'workflow_dispatch' && inputs.validate_sdk
-    needs: linux-arm64
+    needs: linux
     permissions:
       contents: read
       actions: read
@@ -42,8 +47,9 @@ jobs:
     with:
       artifact_run_id: ${{ github.run_id }}
       runner_label: ${{ inputs.sdk_runner_label }}
+      package_arch: ${{ inputs.sdk_package_arch }}
   release:
-    if: inputs.platform != 'linux-arm64'
+    if: inputs.platform != 'linux' && inputs.platform != 'linux-arm64'
     outputs:
       version: ${{ steps.version.outputs.version }}
     name: Build, sign, notarize CLI (macOS)
@@ -176,7 +182,7 @@ jobs:
 
   publish:
     name: Publish verified macOS and Linux packages
-    needs: [release, linux-arm64]
+    needs: [release, linux]
     if: startsWith(github.ref, 'refs/tags/cli-v')
     runs-on: ubuntu-24.04
     env:
@@ -215,7 +221,7 @@ jobs:
             echo
             echo "    mise use -g 'github:sweetpad-dev/sweetpad[version_prefix=cli-v]'"
             echo
-            echo 'Linux ARM64 (experimental, Ubuntu 24.04): download the linux-arm64 tarball and its .sha256 file, verify it, then run the included install.sh.'
+            echo 'Linux ARM64 and x64 (experimental, Ubuntu 24.04): download the linux-arm64 or linux-x64 tarball for your host and its .sha256 file, verify it, then run the included install.sh.'
             echo 'The archive includes public toolchain setup sources. Apple SDKs and signing material are supplied separately.'
             echo
             echo '## Changes'

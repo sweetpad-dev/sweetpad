@@ -37,6 +37,7 @@ Listing schemes reads existing checkouts; it does not fetch packages.
 
 The compiler runs on Linux and emits code for the selected Apple destination.
 For an iPhone, that destination uses the iOS device SDK and ARM64 code.
+An x86_64 Linux host can build that ARM64 product. Host executables, including compiler plugins, use the Linux host architecture.
 LLD links the objects into Mach-O executables and libraries.
 
 The compiler toolchain and Apple SDK have different jobs.

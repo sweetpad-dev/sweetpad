@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 from pathlib import Path
 import shutil
 import subprocess
@@ -53,8 +54,8 @@ test ! -e /root
 test ! -e /work/home/.cache
 cp -R "$HOME/.local/share/sweetpad/examples/LinuxApp" /work/Example
 sweetpad build --project /work/Example/LinuxApp.xcodeproj --scheme LinuxApp \
-  --destination 'generic/platform=iOS Simulator' --json --non-interactive -- \
-  -derivedDataPath /work/DerivedData ARCHS=arm64 CODE_SIGNING_ALLOWED=NO > /work/build.json
+  --destination 'generic/platform=iOS' --json --non-interactive -- \
+  -derivedDataPath /work/DerivedData CODE_SIGNING_ALLOWED=NO > /work/build.json
 '''
     result = subprocess.run([*command, "/bin/bash", "-c", script], capture_output=True, text=True, timeout=600)
     (out / "sandbox.stdout").write_text(result.stdout)
@@ -69,7 +70,7 @@ sweetpad build --project /work/Example/LinuxApp.xcodeproj --scheme LinuxApp \
     assert "Mach-O" in description and "arm64" in description
     installed = work / "home/.local/bin/sweetpad"
     assert hashlib.sha256(installed.read_bytes()).hexdigest() == manifest["files"]["sweetpad"]
-    report = {"passed": True, "freshHome": True, "sourceCheckoutVisible": False,
+    report = {"passed": True, "hostArchitecture": platform.machine(), "targetArchitecture": "arm64", "targetPlatform": "iOS device", "freshHome": True, "sourceCheckoutVisible": False,
               "developerHomeVisible": False, "networkAvailable": False, "appBuildCacheReused": False,
               "toolchainsReadOnly": True, "sdkReadOnly": True, "signingMaterialAvailable": False,
               "installedBinarySha256": manifest["files"]["sweetpad"],

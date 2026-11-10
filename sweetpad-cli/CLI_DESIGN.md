@@ -4554,7 +4554,7 @@ both. `--engine swift-build` (`SWEETPAD_ENGINE`) runs Swift Build on
 a Mac too, which is how a build is checked against xcodebuild's. `build --show-command` prints the
 `swbuild` command line.
 
-SDK setup uses `sdk export` on a Mac and `setup --sdk` on Ubuntu ARM64.
+SDK setup uses `sdk export` on a Mac and `setup --sdk` on Ubuntu ARM64 or x86_64.
 Export contains private Apple inputs and localized App Intents resources, without signing identities.
 Import verifies checksums and stages the SDK before replacement. It adds the Linux compiler's Clang resource headers.
 Setup discovers installed, extracted-archive, mise, or explicit source layouts and builds a sample to validate the result.
@@ -4756,3 +4756,15 @@ quiet. `parse_line` is pure and unit-tested without Xcode.
   (`--device`/`--mac` don't apply; library packages have nothing to run).
 - Whether the extension actually adopts the CLI as its engine.
 - (Declined for now: `tools` resource, `config`/`state` subcommands.)
+
+### Linux x64 packages (issue #349)
+
+Linux packages select the host architecture from the ELF header: ARM64 uses
+`linux-arm64`, and x86_64 uses `linux-x64`. Setup selects the matching Swift
+compiler and pinned xtool checksum. SDK receipts record the host architecture
+so a transferred SDK cannot silently reuse another host's tools.
+
+iPhone device destinations use ARM64 independently of the Linux host.
+Swift Build and compiler macros run on the host. CI builds both packages and
+checks installation on matching Ubuntu 24.04 runners. Private SDK integration
+can select either host architecture without publishing SDK data.

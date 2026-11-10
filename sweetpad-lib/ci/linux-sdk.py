@@ -268,8 +268,8 @@ def supplement(xcode, bundle, phrases):
 
 
 def import_sdk(args):
-    if platform.system() != "Linux" or platform.machine() != "aarch64":
-        raise ValueError("SDK import requires Ubuntu 24.04 ARM64")
+    if platform.system() != "Linux" or platform.machine() not in ("aarch64", "x86_64"):
+        raise ValueError("SDK import requires Ubuntu 24.04 ARM64 or x86_64")
     import fcntl
     destination = args.destination.absolute()
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -279,6 +279,20 @@ def import_sdk(args):
         except BlockingIOError:
             raise ValueError(f"Another SDK import is active for {destination}") from None
         return import_locked(args)
+
+
+def sdk_host_architecture(bundle):
+    # xtool wraps the linker in a shell script. Older receipts omit the host;
+    # inspect the actual ELF behind the wrapper before reusing those SDKs.
+    for relative in ("toolset/bin/orig/ld64.lld", "toolset/bin/ld64.lld"):
+        try:
+            with (bundle / relative).open("rb") as source:
+                header = source.read(20)
+        except OSError:
+            continue
+        if header[:6] == b"\x7fELF\x02\x01":
+            return {62: "x86_64", 183: "aarch64"}.get(int.from_bytes(header[18:20], "little"))
+    return None
 
 
 def import_locked(args):
@@ -293,7 +307,7 @@ def import_locked(args):
     receipt = json.loads(receipt_path.read_text()) if receipt_path.is_file() else {}
     required = ("swift-sdk.json", "toolset-swb.json", "toolset/bin/ld64.lld", "appintents-phrases.json", "version.plist",
                 "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h")
-    if destination.exists() and receipt.get("archiveSha256") == checksum and not args.replace and all((destination / p).is_file() for p in required):
+    if destination.exists() and receipt.get("archiveSha256") == checksum and receipt.get("hostArchitecture", sdk_host_architecture(destination)) == platform.machine() and not args.replace and all((destination / p).is_file() for p in required):
         return {"sdkPath": str(destination), "archiveSha256": checksum, "reused": True}
     if destination.exists() and not args.replace:
         raise ValueError("SDK destination already exists; use --replace with sdk import, or --replace-sdk with setup, to replace it after a successful import")
@@ -309,7 +323,7 @@ def import_locked(args):
         bundle = work / "darwin.xtoolsdk"
         supplement(work / "Xcode.app", bundle, work / "appintents-phrases.json")
         receipt = {"archiveSha256": checksum, "xcodeBuild": manifest["xcodeBuild"],
-                   "xcodeVersion": manifest["xcodeVersion"], "toolchain": VERSIONS}
+                   "xcodeVersion": manifest["xcodeVersion"], "toolchain": VERSIONS, "hostArchitecture": platform.machine()}
         (bundle / "sweetpad-sdk.json").write_text(json.dumps(receipt, indent=2) + "\n")
         backup = work / "previous-sdk"
         if destination.exists():

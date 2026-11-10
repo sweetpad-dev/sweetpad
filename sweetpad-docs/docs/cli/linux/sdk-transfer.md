@@ -17,7 +17,7 @@ export PATH="$PWD/target/release:$PATH"
 
 This source build requires Rust. The complete Linux release package supplies the CLI and public setup sources without Rust.
 
-This flow transfers the required Apple files from your Mac to Ubuntu 24.04 ARM64.
+This flow transfers the required Apple files from your Mac to Ubuntu 24.04 ARM64 or x86_64.
 Use a Linux VM on Apple hardware under [Apple's Xcode agreement](https://www.apple.com/legal/sla/docs/xcode.pdf).
 Keep the SDK archive private. It contains Apple SDK data and contains no signing identities or provisioning profiles.
 
@@ -61,7 +61,7 @@ Do not publish the archive as a public CI artifact.
 ## Configure Ubuntu
 
 Install the complete Linux CLI package or use a current source build before this step.
-Run setup on Ubuntu 24.04 ARM64:
+Run setup on Ubuntu 24.04 ARM64 or x86_64:
 
 ```bash
 sweetpad setup --sdk "$HOME/apple-sdk.tar.gz" --json --non-interactive

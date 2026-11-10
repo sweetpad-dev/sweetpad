@@ -10,8 +10,16 @@ if [[ $# != 0 ]]; then
   prefix="$2"
 fi
 [[ "$prefix" == /* ]] || { echo 'The installation prefix must be absolute.' >&2; exit 2; }
-[[ $(uname -s) == Linux && $(uname -m) == aarch64 ]] || { echo 'This package requires ARM64 Linux.' >&2; exit 1; }
+[[ $(uname -s) == Linux ]] || { echo 'This package requires Linux.' >&2; exit 1; }
 source_dir="$(cd "$(dirname "$0")" && pwd)"
+python3 - "$source_dir/manifest.json" "$(uname -m)" <<'PYTHON'
+import json,sys
+expected = {"aarch64": "linux-arm64", "x86_64": "linux-x64"}.get(sys.argv[2])
+with open(sys.argv[1]) as source:
+    actual = json.load(source)["platform"]
+if actual != expected:
+    raise SystemExit(f"Package architecture {actual} does not match host {sys.argv[2]}")
+PYTHON
 mkdir -p "$prefix/bin" "$prefix/share/sweetpad"
 stage="$(mktemp -d "$prefix/share/sweetpad/.install.XXXXXX")"
 trap 'rm -rf "$stage"' EXIT
