@@ -40,6 +40,12 @@ Installing the CLI requires no Rust compiler or SweetPad checkout.
 
 ## Prepare the Apple toolchain
 
+The [SDK export and setup guide](sdk-transfer.md) provides convenience commands in current source builds.
+It exports the required Apple files on your Mac and imports them on Ubuntu without copying all of Xcode.
+These commands are not included in CLI 0.1.18.
+
+### Manual toolchain setup
+
 Provide your own Xcode copy at a path visible to Ubuntu.
 The examples use Apple hardware; obtain and use SDK files under [Apple's Xcode agreement](https://www.apple.com/legal/sla/docs/xcode.pdf).
 

@@ -162,7 +162,7 @@ Debug adapter ('sweetpad dap'):
 
 Linux builds (Swift Build, where there is no Xcode):
 
-  SWEETPAD_DARWIN_SDK       the Darwin SDK bundle 'xtool sdk install' made
+  SWEETPAD_DARWIN_SDK       the Darwin SDK bundle 'sweetpad setup' imported
                             (default ~/.swiftpm/swift-sdks/darwin.artifactbundle)
   SWEETPAD_SWBUILD          the swbuild to run, in place of the one on PATH
   SWEETPAD_MACROS           the sweetpad-macros plugin, in place of the one

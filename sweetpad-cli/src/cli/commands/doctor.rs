@@ -5,11 +5,26 @@
 //! ok / warning / problem with a remediation hint. A missing *required* tool is
 //! a hard failure (non-zero exit); optional tools only warn.
 
+use clap::{Args, ValueEnum};
 use std::process::{Command, Stdio};
 
 use crate::cli::output::Output;
 use crate::cli::swiftpm;
 use crate::cli::{CommandResult, Context, Render, Rendered};
+
+#[derive(Debug, Clone, Copy, ValueEnum, Default)]
+pub enum Target {
+    #[default]
+    Ios,
+    Macos,
+}
+
+#[derive(Debug, Args)]
+pub struct DoctorArgs {
+    /// Apple platform to diagnose on Linux.
+    #[arg(long, value_enum, default_value = "ios")]
+    pub target: Target,
+}
 
 /// One diagnostic line.
 struct Check {
@@ -38,8 +53,12 @@ impl Status {
     }
 }
 
-pub fn run(_ctx: &mut Context) -> CommandResult {
-    let checks = gather();
+pub fn run(_ctx: &mut Context, args: &DoctorArgs) -> CommandResult {
+    let checks = if cfg!(target_os = "linux") {
+        gather_linux(args.target)
+    } else {
+        gather()
+    };
     let (ok, warn, fail) = summarize(&checks);
     let report = DoctorReport {
         checks,
@@ -54,6 +73,240 @@ pub fn run(_ctx: &mut Context) -> CommandResult {
     } else {
         Ok(Rendered::data(report))
     }
+}
+
+fn linux_check(
+    name: &'static str,
+    ok: bool,
+    detail: String,
+    optional: bool,
+    hint: &'static str,
+) -> Check {
+    Check {
+        name,
+        status: if ok {
+            Status::Ok
+        } else if optional {
+            Status::Warn
+        } else {
+            Status::Fail
+        },
+        detail,
+        hint: (!ok).then_some(hint),
+    }
+}
+
+fn gather_linux(target: Target) -> Vec<Check> {
+    use super::sdk::home;
+    let setup = "run sweetpad setup --sdk /path/to/apple-sdk.tar.gz, then source ~/.config/sweetpad/linux-env.sh";
+    let mut checks = Vec::new();
+    let os = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+    checks.push(linux_check(
+        "Linux host",
+        cfg!(target_arch = "aarch64")
+            && os.lines().any(|s| s == "ID=ubuntu")
+            && os.lines().any(|s| s == "VERSION_ID=\"24.04\""),
+        format!(
+            "{}; {}",
+            std::env::consts::ARCH,
+            os.lines()
+                .find(|s| s.starts_with("PRETTY_NAME="))
+                .unwrap_or("unknown distribution")
+        ),
+        false,
+        "use Ubuntu 24.04 ARM64",
+    ));
+    let swift =
+        first_line(probe("swift", &["--version"])).unwrap_or_else(|| "swift missing".into());
+    checks.push(linux_check(
+        "swift",
+        swift.contains("Swift version 6.4.2"),
+        swift,
+        false,
+        setup,
+    ));
+    let swbuild = std::env::var("SWEETPAD_SWBUILD").unwrap_or_else(|_| "swbuild".into());
+    let driver = Command::new(&swbuild)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    checks.push(linux_check(
+        "Swift Build",
+        driver,
+        if driver {
+            format!("{swbuild} starts successfully")
+        } else {
+            "swbuild missing or cannot start".into()
+        },
+        false,
+        setup,
+    ));
+    let macros = std::env::var_os("SWEETPAD_MACROS").map_or_else(
+        || home().join("bin/sweetpad-macros"),
+        std::path::PathBuf::from,
+    );
+    checks.push(linux_check(
+        "Macro plugin",
+        macros.is_file()
+            && Command::new(&macros)
+                .arg("--help")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success()),
+        macros.display().to_string(),
+        false,
+        setup,
+    ));
+    checks.extend(gather_linux_sdk(target, setup));
+    checks.extend(gather_linux_optional(target));
+    checks
+}
+
+fn gather_linux_sdk(target: Target, setup: &'static str) -> Vec<Check> {
+    use super::sdk::default_sdk;
+    let mut checks = Vec::new();
+    let sdk = default_sdk();
+    let paths = [
+        "swift-sdk.json",
+        "toolset-swb.json",
+        "version.plist",
+        "appintents-phrases.json",
+        "Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/swift/bridging",
+        "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h",
+        "toolset/bin/ld64.lld",
+        "toolset/bin/llvm-lib",
+    ];
+    let missing: Vec<_> = paths
+        .iter()
+        .filter(|p| !sdk.join(p).exists())
+        .copied()
+        .collect();
+    checks.push(linux_check(
+        "Darwin SDK",
+        missing.is_empty(),
+        if missing.is_empty() {
+            sdk.display().to_string()
+        } else {
+            format!("{}; missing: {}", sdk.display(), missing.join(", "))
+        },
+        false,
+        setup,
+    ));
+    let metadata = std::fs::read(sdk.join("swift-sdk.json"))
+        .ok()
+        .and_then(|data| serde_json::from_slice::<serde_json::Value>(&data).ok());
+    let triples: &[&str] = match target {
+        Target::Ios => &["arm64-apple-ios", "arm64-apple-ios-simulator"],
+        Target::Macos => &["arm64-apple-macosx"],
+    };
+    for &triple in triples {
+        let root = metadata
+            .as_ref()
+            .and_then(|m| m["targetTriples"][triple]["sdkRootPath"].as_str());
+        let exists = root.is_some_and(|p| sdk.join(p).join("SDKSettings.json").is_file());
+        checks.push(linux_check(
+            triple,
+            exists,
+            root.unwrap_or("missing target metadata").to_string(),
+            false,
+            setup,
+        ));
+    }
+    if let Ok(data) = std::fs::read(sdk.join("sweetpad-sdk.json")) {
+        let receipt: serde_json::Value = serde_json::from_slice(&data).unwrap_or_default();
+        checks.push(linux_check(
+            "SDK toolchain compatibility",
+            receipt["toolchain"]["swift"] == "6.4.2"
+                && receipt["toolchain"]["swiftBuild"] == "6.4.0",
+            format!(
+                "Xcode {}; Swift {}; Swift Build {}",
+                receipt["xcodeVersion"],
+                receipt["toolchain"]["swift"],
+                receipt["toolchain"]["swiftBuild"]
+            ),
+            false,
+            setup,
+        ));
+    }
+    let linker = sdk.join("toolset/bin/ld64.lld");
+    let linker_version = linker.to_str().and_then(|p| probe(p, &["--version"]));
+    checks.push(linux_check(
+        "Darwin linker",
+        linker_version.is_some(),
+        first_line(linker_version).unwrap_or_else(|| "cannot start linker".into()),
+        false,
+        setup,
+    ));
+    checks
+}
+
+fn gather_linux_optional(target: Target) -> Vec<Check> {
+    use super::sdk::home;
+    let mut checks = Vec::new();
+    let free = probe("df", &["-Pk", &home().to_string_lossy()]).and_then(|s| {
+        s.lines()
+            .last()?
+            .split_whitespace()
+            .nth(3)?
+            .parse::<u64>()
+            .ok()
+    });
+    checks.push(linux_check(
+        "Free disk space",
+        free.is_some_and(|n| n >= 10 * 1024 * 1024),
+        free.map_or_else(
+            || "could not measure free space".into(),
+            |n| {
+                format!(
+                    "{}.{} GiB available",
+                    n / 1_048_576,
+                    (n % 1_048_576) * 10 / 1_048_576
+                )
+            },
+        ),
+        true,
+        "free at least 10 GiB for app builds; toolchain setup can require more",
+    ));
+    if matches!(target, Target::Ios) {
+        let identity = std::env::var_os("SWEETPAD_CODE_SIGN_P12").map(std::path::PathBuf::from);
+        let configured = identity.as_ref().is_some_and(|p| p.is_file())
+            && std::env::var_os("SWEETPAD_CODE_SIGN_P12_PASSWORD").is_some();
+        checks.push(linux_check("Development signing", configured, if configured { "identity file and password configured" } else { "identity file or password not configured (unsigned builds remain available)" }.into(), true,
+            "set SWEETPAD_CODE_SIGN_P12, SWEETPAD_CODE_SIGN_P12_PASSWORD and matching provisioning profiles for iPhone installation"));
+        let profiles = crate::cli::codesign::provisioning::profile_folders()
+            .iter()
+            .any(|dir| {
+                std::fs::read_dir(dir)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .any(|entry| {
+                        let path = entry.path();
+                        path.is_file()
+                            && path
+                                .extension()
+                                .is_some_and(|e| e == "mobileprovision" || e == "provisionprofile")
+                    })
+            });
+        checks.push(linux_check("Provisioning profiles", profiles, if profiles { "profile files found; bundle and entitlement matching happens during signing" } else { "no provisioning profiles found (unsigned builds remain available)" }.into(), true,
+            "set SWEETPAD_PROVISIONING_PROFILES to a directory containing matching development profiles"));
+        let python = std::env::var("SWEETPAD_DEVICE_PYTHON").unwrap_or_else(|_| "python3".into());
+        let adapter = probe(
+            &python,
+            &[
+                "-c",
+                "import importlib.metadata; print(importlib.metadata.version('pymobiledevice3'))",
+            ],
+        );
+        checks.push(linux_check("iPhone adapter", adapter.as_deref() == Some("11.50.0"), adapter.unwrap_or_else(|| "pymobiledevice3 unavailable (not required for compilation)".into()), true,
+            "install pymobiledevice3==11.50.0 in a virtual environment and set SWEETPAD_DEVICE_PYTHON"));
+    }
+    checks
 }
 
 /// The toolchain report: the checks plus tallies. Renders as glyph lines and a

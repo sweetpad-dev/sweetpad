@@ -24,6 +24,7 @@ These guides follow the path from a fresh machine to a running iPhone app:
 | Guide | What you will do |
 | --- | --- |
 | [How it works](linux/how-it-works.md) | Understand the compiler, SDK, resource tools, and device transport. |
+| [SDK export and setup](linux/sdk-transfer.md) | Export private Apple files, configure Ubuntu, and diagnose the Linux toolchain. |
 | [Ubuntu and USB setup](linux/ubuntu-usb.md) | Install the CLI and toolchain, pair an iPhone, and launch an app through USB. |
 | [Signing, tests, and archives](linux/signing-and-testing.md) | Configure development signing and run Linux-built test products on a Mac. |
 | [GitHub Actions for iOS](linux/github-actions.md) | Build iPhone products on a provisioned Linux runner and retain usable artifacts. |

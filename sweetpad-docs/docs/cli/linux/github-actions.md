@@ -21,6 +21,8 @@ Use SDK files under [Apple's Xcode agreement](https://www.apple.com/legal/sla/do
 A hosted Ubuntu runner supplies neither your licensed SDK environment nor a connected iPhone.
 
 Provision the app-build runner using [Ubuntu setup](ubuntu-usb.md).
+Current source builds also provide [SDK export and setup commands](sdk-transfer.md).
+With those commands, source `$HOME/.config/sweetpad/linux-env.sh` in each build step and run `sweetpad doctor --target ios` before compilation.
 Its user needs the Linux Swift toolchain, Swift Build, macro plugin, and extracted SDK on the documented paths.
 The example uses the custom runner label `sweetpad-linux`.
 

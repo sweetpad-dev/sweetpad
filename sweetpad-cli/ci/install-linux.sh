@@ -20,4 +20,4 @@ for file in README.md LINUX_DEVICES.md LICENSE.md manifest.json; do
 done
 cp -R "$source_dir/setup" "$source_dir/licenses" "$source_dir/examples" "$prefix/share/sweetpad/"
 printf 'Installed %s\n' "$prefix/bin/sweetpad"
-printf 'Toolchain setup: SWEETPAD_SKIP_RUST=1 XCODE_APP=/path/to/Xcode.app bash %q\n' "$prefix/share/sweetpad/setup/sweetpad-lib/ci/linux-setup.sh"
+printf 'Toolchain setup: %q setup --sdk /path/to/apple-sdk.tar.gz\n' "$prefix/bin/sweetpad"

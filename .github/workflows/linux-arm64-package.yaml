@@ -31,6 +31,10 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y libssl-dev pkg-config
       - name: Install pinned Rust
         run: rustup show
+      - name: Validate SDK archive safety and bootstrap syntax
+        run: |
+          python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_sdk.py
+          bash -n sweetpad-lib/ci/linux-setup.sh
       - uses: Swatinem/rust-cache@v2
       - name: Build ARM64 release CLI
         run: cargo build --release --locked -p sweetpad-cli --bin sweetpad -j 4

@@ -1059,8 +1059,8 @@ impl DarwinSdk {
             ))
             .kind(ErrorKind::ToolMissing)
             .tip(Some(
-                "make one from an Xcode.app with 'xtool sdk install', or point \
-                 SWEETPAD_DARWIN_SDK at one"
+                "export SDK files on your Mac with 'sweetpad sdk export', then run \
+                 'sweetpad setup --sdk ARCHIVE' on Ubuntu, or point SWEETPAD_DARWIN_SDK at an installed SDK"
                     .to_string(),
             )));
         }

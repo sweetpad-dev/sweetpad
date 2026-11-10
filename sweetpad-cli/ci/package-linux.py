@@ -14,6 +14,7 @@ import tarfile
 REPO = Path(__file__).resolve().parents[2]
 BOOTSTRAP = [
     "sweetpad-lib/ci/linux-setup.sh",
+    "sweetpad-lib/ci/linux-sdk.py",
     "sweetpad-lib/ci/linux-macro-launcher.sh",
     "sweetpad-lib/ci/linux-sdk-platforms.py",
     "sweetpad-lib/ci/linux-appintents-resources.py",

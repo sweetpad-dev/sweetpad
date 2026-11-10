@@ -55,7 +55,7 @@ pub fn main(_args: &[String]) -> ExitCode {
 }
 
 /// The folders profiles are looked up in.
-fn profile_folders() -> Vec<PathBuf> {
+pub(crate) fn profile_folders() -> Vec<PathBuf> {
     if let Some(folder) = std::env::var_os(PROFILES_VARIABLE).filter(|f| !f.is_empty()) {
         return vec![PathBuf::from(folder)];
     }

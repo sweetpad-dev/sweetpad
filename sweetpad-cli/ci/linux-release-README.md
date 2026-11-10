@@ -29,17 +29,28 @@ The `sweetpad-dap` alias and the setup sources install with the CLI.
 
 ## Prepare the Apple build toolchain
 
-Provide your own Xcode copy, then run the installed setup script:
+On your Mac, export the required files from your Xcode with a CLI version that includes SDK export:
 
 ```bash
-SWEETPAD_SKIP_RUST=1 XCODE_APP=/path/to/Xcode.app \
-  bash "$HOME/.local/share/sweetpad/setup/sweetpad-lib/ci/linux-setup.sh"
-export PATH="$HOME/.local/bin:$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+sweetpad sdk export --xcode /Applications/Xcode.app \
+  --output-file "$HOME/apple-sdk.tar.gz" --json --non-interactive
+scp "$HOME/apple-sdk.tar.gz" "$HOME/apple-sdk.tar.gz.sha256" ubuntu:~/
+```
+
+On Ubuntu, import the archive and install the pinned tools:
+
+```bash
+sweetpad setup --sdk "$HOME/apple-sdk.tar.gz" --json --non-interactive
+source "$HOME/.config/sweetpad/linux-env.sh"
+sweetpad doctor --target ios --json --non-interactive
 sweetpad build --project MyApp.xcodeproj --scheme MyApp \
   --destination 'generic/platform=iOS Simulator' --json --non-interactive
 ```
 
-The setup script downloads the pinned public Linux tools and imports SDK files from your Xcode copy.
+Setup downloads the pinned public Linux tools, imports SDK files, and builds the sample app.
+It requires sudo access for system packages. Use `sudo -v` first if your account requires a password.
+An unchanged archive reuses the installed SDK. A different archive requires `--replace-sdk`.
+The original setup script also accepts a visible Xcode copy through `XCODE_APP`.
 The SDK stays private. The prebuilt CLI requires no Rust installation or Sweetpad source checkout.
 App signing requires your development identity and profiles, configured separately.
 

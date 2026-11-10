@@ -50,6 +50,15 @@ if [ "$(uname -s)" = Darwin ]; then
 fi
 
 ARCH="$(uname -m)"
+if [ -n "${SWEETPAD_SDK_ARCHIVE:-}" ]; then
+  . /etc/os-release
+  [ "$ARCH" = aarch64 ] && [ "$ID" = ubuntu ] && [ "$VERSION_ID" = 24.04 ] || {
+    echo 'error: archive setup requires Ubuntu 24.04 ARM64' >&2; exit 1;
+  }
+  python3 "$(dirname "$0")/linux-sdk.py" inspect --archive "$SWEETPAD_SDK_ARCHIVE"
+fi
+SUDO=(sudo)
+if [ "${SWEETPAD_NONINTERACTIVE:-0}" = 1 ]; then SUDO+=(--non-interactive); fi
 TAG="swift-$SWIFT_VERSION-RELEASE"
 SWIFT_DIR="$HOME/swift/$TAG"
 DOWNLOADS="$HOME/downloads"
@@ -58,8 +67,8 @@ mkdir -p "$DOWNLOADS" "$HOME/swift" "$HOME/src" "$HOME/bin"
 section() { echo; echo "==== $* ===="; }
 
 section "apt packages"
-sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -yqq \
+"${SUDO[@]}" DEBIAN_FRONTEND=noninteractive apt-get update -qq
+"${SUDO[@]}" DEBIAN_FRONTEND=noninteractive apt-get install -yqq \
   bash binutils bubblewrap build-essential ca-certificates cpio curl file git gnupg2 libc6-dev \
   libcurl4-openssl-dev libedit2 libgcc-13-dev libncurses-dev libpython3-dev \
   libsqlite3-dev libssl-dev libstdc++-13-dev libxml2-dev libyaml-dev libz3-dev llvm-18 pkg-config \
@@ -106,7 +115,12 @@ fi
 xtool --version
 
 section "Darwin SDK from $XCODE_APP"
-BUNDLE="$HOME/.swiftpm/swift-sdks/darwin.artifactbundle"
+BUNDLE="${SWEETPAD_DARWIN_SDK:-$HOME/.swiftpm/swift-sdks/darwin.artifactbundle}"
+if [ -n "${SWEETPAD_SDK_ARCHIVE:-}" ]; then
+  import_args=(import --archive "$SWEETPAD_SDK_ARCHIVE" --destination "$BUNDLE" --xtool "$HOME/bin/xtool")
+  [ "${SWEETPAD_REFRESH_SDK:-0}" != 1 ] || import_args+=(--replace)
+  python3 "$(dirname "$0")/linux-sdk.py" "${import_args[@]}"
+else
 if [ "${SWEETPAD_REFRESH_SDK:-0}" = 1 ] && [ -d "$BUNDLE" ]; then
   backup="$(mktemp -d "$DOWNLOADS/sweetpad-sdk-backup.XXXXXX")"
   mv "$BUNDLE" "$backup/bundle"
@@ -184,6 +198,7 @@ if [ -d "$source" ]; then
   mkdir -p "$destination"
   tar -C "$source" -cf - . | tar -C "$destination" -xf -
 fi
+fi # SDK archive or visible Xcode.app
 
 SWB_TAG="swift-$SWIFT_BUILD_VERSION-RELEASE"
 section "swbuild ($SWB_TAG)"
@@ -236,10 +251,10 @@ LLBUILD_PATCH="$(dirname "$PATCH")/swift-llbuild-directory-race.patch"
 if ! git -C "$LLBUILD" apply --reverse --check "$LLBUILD_PATCH" 2>/dev/null; then
   git -C "$LLBUILD" apply --check "$LLBUILD_PATCH"
   git -C "$LLBUILD" apply "$LLBUILD_PATCH"
-  (cd "$SWB" && swift build -c release --product swbuild && swift build -c release --product SWBBuildServiceBundle)
+  (cd "$SWB" && swift build --jobs "${SWEETPAD_SETUP_JOBS:-4}" -c release --product swbuild && swift build --jobs "${SWEETPAD_SETUP_JOBS:-4}" -c release --product SWBBuildServiceBundle)
 fi
 if [ ! -x "$SWB/.build/release/swbuild" ] || [ ! -x "$SWB/.build/release/SWBBuildServiceBundle" ]; then
-  (cd "$SWB" && swift build -c release --product swbuild && swift build -c release --product SWBBuildServiceBundle)
+  (cd "$SWB" && swift build --jobs "${SWEETPAD_SETUP_JOBS:-4}" -c release --product swbuild && swift build --jobs "${SWEETPAD_SETUP_JOBS:-4}" -c release --product SWBBuildServiceBundle)
 fi
 # sweetpad looks swbuild up on PATH; it finds its service bundle through the
 # link.
@@ -250,7 +265,7 @@ section "sweetpad-macros"
 # Built outside the checkout, which the Mac shares, so the two builds keep
 # apart.
 MACROS="$(cd "$(dirname "$0")/../../sweetpad-cli/macros" && pwd)"
-swift build -c release --package-path "$MACROS" --scratch-path "$HOME/src/sweetpad-macros" --product sweetpad-macros
+swift build --jobs "${SWEETPAD_SETUP_JOBS:-4}" -c release --package-path "$MACROS" --scratch-path "$HOME/src/sweetpad-macros" --product sweetpad-macros
 ln -sf "$HOME/src/sweetpad-macros/release/sweetpad-macros" "$HOME/bin/sweetpad-macros.bin"
 ln -sf "$(command -v swift)" "$HOME/bin/sweetpad-macro-swift"
 # Remove the old executable symlink before installing the launcher.

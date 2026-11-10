@@ -102,6 +102,9 @@ The export is SDK data and stays outside your source repository and public artif
 
 ## Environment variables
 
+For export, import, setup, and Linux diagnostics, see [SDK export and setup](sdk-transfer.md).
+Those convenience commands require a current source build until the next CLI release.
+
 | Variable | Purpose |
 | --- | --- |
 | `SWEETPAD_DARWIN_SDK` | Select another extracted Darwin SDK bundle. |
@@ -114,6 +117,7 @@ The export is SDK data and stays outside your source repository and public artif
 | `SWEETPAD_DEVICE_NETWORK_CONFIG` | Select a private Wi-Fi device configuration. |
 | `SWEETPAD_SKIP_RUST` | Setup only: use `1` to omit Rust for the prebuilt CLI. |
 | `SWEETPAD_REFRESH_SDK` | Setup only: use `1` to refresh an existing SDK extraction. |
+| `SWEETPAD_SDK_ARCHIVE` | Setup script only: import a private archive instead of reading an Xcode directory. |
 
 Run `sweetpad help environment` for runtime variables.
 The two setup controls apply to the setup script.

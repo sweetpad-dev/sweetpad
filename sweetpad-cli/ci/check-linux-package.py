@@ -47,6 +47,12 @@ def check(archive, out):
     assert invoke("version", [binary, "--version"]).stdout.strip() == manifest["binaryVersion"]
     assert "sweetpad dap" in invoke("dap-alias", [prefix / "bin/sweetpad-dap", "--help"]).stdout
     invoke("help", [binary, "--help"])
+    invoke("sdk-export-help", [binary, "sdk", "export", "--help"])
+    invoke("sdk-import-help", [binary, "sdk", "import", "--help"])
+    invoke("setup-help", [binary, "setup", "--help"])
+    doctor = json.loads(invoke("linux-doctor-missing-tools", [binary, "doctor", "--target", "ios", "--json"], success=False).stdout)
+    assert doctor["ok"] and doctor["data"]["summary"]["problems"] > 0
+    assert not any(c["name"] in ("Xcode", "xcodebuild", "Simulator runtimes") for c in doctor["data"]["checks"])
     value = json.loads(invoke("device-guide", [binary, "help", "linux-devices", "--json"]).stdout)
     assert value["ok"]
     project = prefix / "share/sweetpad/examples/LinuxApp/LinuxApp.xcodeproj"
