@@ -3,13 +3,14 @@ on:
   workflow_dispatch:
     inputs:
       artifact_run_id:
-        description: Optional run with a verified cli-tarball-linux-arm64 artifact
+        description: Optional run with verified Linux package artifacts
         type: string
         default: ''
       package_arch:
-        description: Package host architecture (arm64 or x64)
-        type: string
-        default: arm64
+        description: Package host architectures
+        type: choice
+        options: [both, arm64, x64]
+        default: both
       runner_label:
         description: Label of the provisioned private SDK runner
         type: string
@@ -21,7 +22,7 @@ on:
         default: ''
       package_arch:
         type: string
-        default: arm64
+        default: both
       runner_label:
         type: string
         default: sweetpad-linux
@@ -30,9 +31,14 @@ permissions:
   actions: read
 jobs:
   hybrid-builds:
+    name: ${{ matrix.arch }} iOS builds with private SDK
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(inputs.package_arch == 'both' && '["arm64","x64"]' || format('["{0}"]', inputs.package_arch)) }}
     # The Apple SDK stays on a provisioned Apple-hardware Linux runner.
     # Never upload or distribute it as a workflow artifact.
-    runs-on: [self-hosted, Linux, "${{ inputs.package_arch == 'x64' && 'X64' || 'ARM64' }}", '${{ inputs.runner_label }}']
+    runs-on: [self-hosted, Linux, "${{ matrix.arch == 'x64' && 'X64' || 'ARM64' }}", '${{ inputs.runner_label }}']
     timeout-minutes: 120
     env:
       CARGO_INCREMENTAL: "0"
@@ -49,11 +55,11 @@ jobs:
           pins = json.loads(Path('sweetpad-lib/ci/linux-toolchain.json').read_text())
           print('SWEETPAD_SWIFT_VERSION=' + pins['swift'])
           PY
-      - name: Download verified ARM64 package
+      - name: Download verified Linux package
         if: inputs.artifact_run_id != ''
         uses: actions/download-artifact@v8
         with:
-          name: cli-tarball-linux-${{ inputs.package_arch }}
+          name: cli-tarball-linux-${{ matrix.arch }}
           run-id: ${{ inputs.artifact_run_id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/release-package
@@ -77,7 +83,7 @@ jobs:
           export PATH="$HOME/.cargo/bin:$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
           CARGO_TARGET_DIR="$HOME/sweetpad-target" cargo build --locked -p sweetpad-cli --bin sweetpad
       - name: Install frozen framework tools
-        if: inputs.package_arch == 'arm64'
+        if: matrix.arch == 'arm64'
         run: bash sweetpad-lib/ci/linux-framework-tools.sh
       - name: Check script, clean, and Linux app routing regressions
         run: |
@@ -86,15 +92,16 @@ jobs:
             --binary "$HOME/sweetpad-target/debug/sweetpad" \
             --out "$RUNNER_TEMP/linux-gaps"
       - name: Fresh Linux dependency and Release build checks
-        if: inputs.package_arch == 'arm64'
+        if: matrix.arch == 'arm64'
         run: python3 -B sweetpad-lib/ci/linux-clean-checks.py --out "$RUNNER_TEMP/linux-clean"
       - name: Generate manifests for Linux XCTest and Swift Testing products
         run: |
           export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
+          mkdir -p "$RUNNER_TEMP/linux-clean/reports"
           python3 -B sweetpad-lib/ci/linux-exec-audit.py --out "$RUNNER_TEMP/linux-clean/reports/test-build-audit" -- \
             "$HOME/sweetpad-target/debug/sweetpad" test build \
             --project "$PWD/sweetpad-lib/ci/fixture-test-manifest/ManifestProbe.xcodeproj" \
-            --scheme ManifestProbe --configuration Debug --destination 'generic/platform=iOS Simulator' \
+            --scheme ManifestProbe --configuration Debug --destination 'generic/platform=iOS Simulator,arch=arm64' \
             --json --non-interactive -- -derivedDataPath "$RUNNER_TEMP/manifest-products" \
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO > "$RUNNER_TEMP/linux-clean/reports/test-build.json"
           python3 - "$RUNNER_TEMP/linux-clean/reports/test-build.json" <<'PYCODE'
@@ -111,7 +118,7 @@ jobs:
           export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
           "$HOME/sweetpad-target/debug/sweetpad" test build \
             --project "$PWD/sweetpad-lib/ci/fixture-test-plans/TestPlanProbe.xcodeproj" \
-            --scheme TestPlanProbe --destination 'generic/platform=iOS Simulator' --json --non-interactive \
+            --scheme TestPlanProbe --destination 'generic/platform=iOS Simulator,arch=arm64' --json --non-interactive \
             -- -derivedDataPath "$RUNNER_TEMP/plan-products" ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
             > "$RUNNER_TEMP/linux-clean/reports/test-plan-build.json"
           python3 - "$RUNNER_TEMP/linux-clean/reports/test-plan-build.json" <<'PYCODE'
@@ -132,7 +139,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: linux-execution-and-build-reports
+          name: linux-execution-and-build-reports-${{ matrix.arch }}
           path: |
             ${{ runner.temp }}/linux-gaps/summary.json
             ${{ runner.temp }}/linux-gaps/*.stdout

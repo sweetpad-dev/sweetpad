@@ -26,6 +26,18 @@ With those commands, source `$HOME/.config/sweetpad/linux-env.sh` in each build 
 Its user needs the Linux Swift toolchain, Swift Build, macro plugin, and extracted SDK on the documented paths.
 The example uses the custom runner label `sweetpad-linux`.
 
+### Repository validation workflows
+
+The `Linux packages` workflow builds release CLI archives on both `ubuntu-24.04` (x64) and `ubuntu-24.04-arm`.
+It runs on relevant pull requests and main pushes. Each job verifies installation in a clean Ubuntu container.
+The library workflow also runs Rust tests and clippy on both hosts.
+
+The `Linux Apple SDK integration` workflow supports `both`, `arm64`, or `x64` host selections.
+Its default selection runs both host jobs. Each job requires a registered self-hosted runner with the corresponding `ARM64` or `X64` label.
+Those runners also need the configured custom label and a private SDK with matching host tools.
+The workflow stays manual to keep private SDK runners separate from public pull-request execution.
+Full hybrid-framework checks run on ARM64; both hosts run the core build and test-manifest checks.
+
 ### x86_64 runners
 
 Current source builds support the `X64` self-hosted runner label and ARM64 iPhone targets.
