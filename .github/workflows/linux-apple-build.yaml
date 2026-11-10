@@ -7,10 +7,9 @@ on:
         type: string
         default: ''
       package_arch:
-        description: Package host architectures
-        type: choice
-        options: [both, arm64, x64]
-        default: both
+        description: Package host architecture (arm64 or x64)
+        type: string
+        default: arm64
       runner_label:
         description: Label of the provisioned private SDK runner
         type: string
@@ -22,7 +21,7 @@ on:
         default: ''
       package_arch:
         type: string
-        default: both
+        default: arm64
       runner_label:
         type: string
         default: sweetpad-linux
@@ -31,14 +30,9 @@ permissions:
   actions: read
 jobs:
   hybrid-builds:
-    name: ${{ matrix.arch }} iOS builds with private SDK
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: ${{ fromJSON(inputs.package_arch == 'both' && '["arm64","x64"]' || format('["{0}"]', inputs.package_arch)) }}
     # The Apple SDK stays on a provisioned Apple-hardware Linux runner.
     # Never upload or distribute it as a workflow artifact.
-    runs-on: [self-hosted, Linux, "${{ matrix.arch == 'x64' && 'X64' || 'ARM64' }}", '${{ inputs.runner_label }}']
+    runs-on: [self-hosted, Linux, "${{ inputs.package_arch == 'x64' && 'X64' || 'ARM64' }}", '${{ inputs.runner_label }}']
     timeout-minutes: 120
     env:
       CARGO_INCREMENTAL: "0"
@@ -59,7 +53,7 @@ jobs:
         if: inputs.artifact_run_id != ''
         uses: actions/download-artifact@v8
         with:
-          name: cli-tarball-linux-${{ matrix.arch }}
+          name: cli-tarball-linux-${{ inputs.package_arch }}
           run-id: ${{ inputs.artifact_run_id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/release-package
@@ -83,7 +77,7 @@ jobs:
           export PATH="$HOME/.cargo/bin:$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
           CARGO_TARGET_DIR="$HOME/sweetpad-target" cargo build --locked -p sweetpad-cli --bin sweetpad
       - name: Install frozen framework tools
-        if: matrix.arch == 'arm64'
+        if: inputs.package_arch == 'arm64'
         run: bash sweetpad-lib/ci/linux-framework-tools.sh
       - name: Check script, clean, and Linux app routing regressions
         run: |
@@ -92,7 +86,7 @@ jobs:
             --binary "$HOME/sweetpad-target/debug/sweetpad" \
             --out "$RUNNER_TEMP/linux-gaps"
       - name: Fresh Linux dependency and Release build checks
-        if: matrix.arch == 'arm64'
+        if: inputs.package_arch == 'arm64'
         run: python3 -B sweetpad-lib/ci/linux-clean-checks.py --out "$RUNNER_TEMP/linux-clean"
       - name: Generate manifests for Linux XCTest and Swift Testing products
         run: |
@@ -139,7 +133,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: linux-execution-and-build-reports-${{ matrix.arch }}
+          name: linux-execution-and-build-reports
           path: |
             ${{ runner.temp }}/linux-gaps/summary.json
             ${{ runner.temp }}/linux-gaps/*.stdout

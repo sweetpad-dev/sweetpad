@@ -32,11 +32,8 @@ The `Linux packages` workflow builds release CLI archives on both `ubuntu-24.04`
 It runs on relevant pull requests and main pushes. Each job verifies installation in a clean Ubuntu container.
 The library workflow also runs Rust tests and clippy on both hosts.
 
-The `Linux Apple SDK integration` workflow supports `both`, `arm64`, or `x64` host selections.
-Its default selection runs both host jobs. Each job requires a registered self-hosted runner with the corresponding `ARM64` or `X64` label.
-Those runners also need the configured custom label and a private SDK with matching host tools.
-The workflow stays manual to keep private SDK runners separate from public pull-request execution.
-Full hybrid-framework checks run on ARM64; both hosts run the core build and test-manifest checks.
+SDK-dependent app checks stay in the existing manually dispatched `Linux Apple SDK integration` workflow.
+They require a provisioned self-hosted SDK runner and do not run on public pull requests.
 
 ### x86_64 runners
 

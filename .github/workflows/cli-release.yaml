@@ -16,10 +16,10 @@ on:
         type: boolean
         default: false
       sdk_package_arch:
-        description: Host architectures for private SDK checks
+        description: Host architecture of the private SDK runner
         type: choice
-        options: [both, arm64, x64]
-        default: both
+        options: [arm64, x64]
+        default: arm64
       sdk_runner_label:
         description: Label of the provisioned private SDK runner
         type: string
