@@ -5,7 +5,7 @@ sidebar_label: Ubuntu and USB setup
 # Ubuntu setup and an iPhone over USB
 
 This guide starts with Ubuntu 24.04 and ends with a signed app on an iPhone.
-Release 0.1.20 supplies ARM64 and x64 packages. Both packages can build ARM64 iPhone apps.
+Release 0.1.21 supplies ARM64 and x64 packages. Both packages can build ARM64 iPhone apps.
 Use a Linux VM on Apple hardware for the validated setup.
 
 You need your Xcode SDKs, an Apple Development identity, a provisioning profile, and a USB connection to the phone.
@@ -52,7 +52,7 @@ An OrbStack machine can see the Mac's files at the same paths.
 The repository setup script can create and provision the Ubuntu machine from macOS:
 
 ```bash
-git clone --branch cli-v0.1.20 --depth 1 https://github.com/sweetpad-dev/sweetpad.git
+git clone --branch cli-v0.1.21 --depth 1 https://github.com/sweetpad-dev/sweetpad.git
 cd sweetpad
 SWEETPAD_SKIP_RUST=1 bash sweetpad-lib/ci/linux-setup.sh
 orb -m sweetpad-linux
