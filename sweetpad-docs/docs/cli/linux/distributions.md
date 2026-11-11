@@ -66,12 +66,17 @@ sweetpad setup --sdk "$HOME/apple-sdk.tar.gz" --skip-system-packages
 
 This option still downloads and checks the pinned tools, imports the SDK, and builds the sample.
 It does not skip toolchain validation.
-On other distributions, setup warns and tries the Ubuntu 24.04 Swift archive with your existing dependencies.
+On other distributions, setup warns, skips automatic package installation, and tries the Ubuntu 24.04 Swift archive with your existing dependencies.
 Missing or incompatible libraries still cause setup to fail with diagnostics.
 
 For an incompatible host, run the build tools in an Ubuntu or Debian container.
 The [GHCR image](install.md#ghcr-container-image) supplies the CLI for your build image.
 Keep Apple SDKs and signing files private.
+
+Ubuntu and Debian builds use bubblewrap to give Xcode scripts Bash at `/bin/sh`.
+Docker must allow mount namespaces. The private validation containers use `--cap-add SYS_ADMIN --security-opt seccomp=unconfined`.
+If your container service forbids these permissions, use a Linux VM.
+`sweetpad doctor` checks this shell mapping and reports namespace restrictions before app compilation.
 
 ## Validation coverage
 

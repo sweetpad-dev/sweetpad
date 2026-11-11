@@ -185,13 +185,11 @@ fn validate_sample(
         .env("PATH", path)
         .env("SWEETPAD_DARWIN_SDK", sdk)
         .stdin(Stdio::null())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .output()
         .map_err(|e| CliError::new(format!("start setup sample build: {e}")))?;
     if !result.status.success() {
-        return Err(CliError::new(
-            "Setup installed the tools, but the sample build failed. Review the diagnostics and run sweetpad doctor --target ios.",
-        ));
+        return Err(sample_build_error(&result.stdout, &result.stderr));
     }
     let report: serde_json::Value = serde_json::from_slice(&result.stdout)
         .map_err(|e| CliError::new(format!("read sample build report: {e}")))?;
@@ -203,10 +201,49 @@ fn validate_sample(
     Ok(report["data"].clone())
 }
 
+fn sample_build_error(stdout: &[u8], stderr: &[u8]) -> CliError {
+    // CLI error envelopes go to stderr; successful reports go to stdout.
+    let report = serde_json::from_slice::<serde_json::Value>(stdout)
+        .or_else(|_| serde_json::from_slice(stderr))
+        .unwrap_or_else(|_| {
+            json!({
+                "stdout": String::from_utf8_lossy(&stdout[stdout.len().saturating_sub(16_384)..]),
+                "stderr": String::from_utf8_lossy(&stderr[stderr.len().saturating_sub(16_384)..])
+            })
+        });
+    let reason = report["error"]["message"].as_str().unwrap_or(
+        "the child build returned no structured error; run sweetpad doctor --target ios",
+    );
+    let tip = report["error"]["tip"].as_str().map(str::to_owned);
+    CliError::new(format!("Setup sample build failed: {reason}"))
+        .kind(ErrorKind::BuildFailure)
+        .tip(tip)
+        .diagnostics(vec![json!({"stage": "sampleBuild", "report": report})])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cli::testdir::TempDir;
+
+    #[test]
+    fn failed_sample_retains_the_child_error_and_log_hint() {
+        let report = json!({"ok": false, "error": {
+            "message": "swbuild exited; full log: /tmp/sample-build.log",
+            "tip": "read full build log: /tmp/sample-build.log",
+            "diagnostics": [{"message": "bwrap: Creating new namespace failed"}]
+        }});
+        let error = sample_build_error(b"", &serde_json::to_vec(&report).unwrap());
+        assert!(error.to_string().contains("/tmp/sample-build.log"));
+        assert_eq!(error.error_kind(), ErrorKind::BuildFailure);
+        assert_eq!(
+            error.tip_text(),
+            Some("read full build log: /tmp/sample-build.log")
+        );
+        assert_eq!(error.json()["diagnostics"][0]["report"], report);
+        assert!(sample_build_error(b"", b"non-JSON child failure").json()["diagnostics"][0]["report"]["stderr"]
+            .as_str().unwrap().contains("non-JSON child failure"));
+    }
 
     #[test]
     fn machine_setup_errors_retain_the_migration_flag_and_stage() {

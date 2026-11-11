@@ -35,8 +35,7 @@ sweetpad_linux_host() {
       return 1
       ;;
     *)
-      echo "warning: automatic package installation is not configured for $SWEETPAD_HOST_NAME. Install the host dependencies and use --skip-system-packages, or use an Ubuntu/Debian container." >&2
-      if [ "${SWEETPAD_SKIP_SYSTEM_PACKAGES:-0}" != 1 ]; then return 1; fi
+      echo "warning: $SWEETPAD_HOST_NAME is untested. Using existing system packages; install Bash, Python 3, a C/C++ build toolchain, LLVM, bubblewrap, and Swift's runtime dependencies with your package manager." >&2
       echo 'warning: trying the signed Ubuntu 24.04 Swift toolchain on this untested distribution' >&2
       ;;
   esac
@@ -50,7 +49,7 @@ sweetpad_linux_host() {
 
 sweetpad_install_host_packages() {
   local -a privilege=()
-  if [ "${SWEETPAD_SKIP_SYSTEM_PACKAGES:-0}" != 1 ]; then
+  if [ "${SWEETPAD_SKIP_SYSTEM_PACKAGES:-0}" != 1 ] && [ -n "$SWEETPAD_PACKAGE_MANAGER" ]; then
     if [ "$(id -u)" != 0 ]; then
       command -v sudo >/dev/null || { echo 'error: install sudo or use --skip-system-packages' >&2; return 1; }
       privilege=(sudo)

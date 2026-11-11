@@ -47,11 +47,12 @@ class LinuxHostTests(unittest.TestCase):
         self.assertIn("libxml2-legacy", result.stdout.split())
         self.assertNotEqual(self.plan("ID=arch", "aarch64").returncode, 0)
 
-    def test_unknown_distribution_needs_explicit_manual_packages(self):
+    def test_unknown_distribution_warns_and_uses_existing_packages(self):
         for release in ["ID=fedora\nVERSION_ID=45", "", "ID=ubuntu\nVERSION_ID=22.04"]:
             result = self.plan(release)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("--skip-system-packages", result.stderr)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.splitlines()[:2], ["", "ubuntu24.04"])
+            self.assertIn("Using existing system packages", result.stderr)
             manual = self.plan(release, skip=True)
             self.assertEqual(manual.returncode, 0, manual.stderr)
             self.assertEqual(manual.stdout.splitlines()[:2], ["", "ubuntu24.04"])

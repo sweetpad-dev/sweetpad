@@ -107,6 +107,7 @@ fn gather_linux(target: Target) -> Vec<Check> {
     let mut checks = Vec::new();
     let os = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
     checks.push(linux_host(std::env::consts::ARCH, &os));
+    checks.push(linux_shell());
     let swift =
         first_line(probe("swift", &["--version"])).unwrap_or_else(|| "swift missing".into());
     checks.push(linux_check(
@@ -171,6 +172,37 @@ fn gather_linux(target: Target) -> Vec<Check> {
     checks.extend(gather_linux_sdk(target, setup));
     checks.extend(gather_linux_optional(target));
     checks
+}
+
+fn linux_shell() -> Check {
+    let result = crate::cli::swbuild::darwin_shell_command(
+        std::path::Path::new("/bin/sh"),
+        &["-c".into(), "[[ -n \"${BASH_VERSION:-}\" ]]".into()],
+    )
+    .and_then(|(program, args)| {
+        Command::new(program)
+            .args(args)
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|e| crate::cli::CliError::new(e.to_string()))
+    });
+    let (ok, detail) = match result {
+        Ok(output) if output.status.success() => {
+            (true, "Xcode scripts can use Bash through /bin/sh".into())
+        }
+        Ok(output) => (
+            false,
+            String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        ),
+        Err(error) => (false, error.to_string()),
+    };
+    linux_check(
+        "Darwin shell",
+        ok,
+        detail,
+        false,
+        "install Bash and bubblewrap; containers must allow mount namespaces (SYS_ADMIN and an appropriate seccomp policy), or use a Linux VM",
+    )
 }
 
 fn linux_host(arch: &str, os_release: &str) -> Check {

@@ -117,7 +117,7 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
     scheme_actions::build(actions.as_ref(), false, plan, &invocation, out)?;
     invocation.write_inputs(plan, out)?;
     let start = Instant::now();
-    let (program, arguments) = darwin_shell_command(&invocation)?;
+    let (program, arguments) = darwin_shell_command(&invocation.program, &invocation.args)?;
     let args: Vec<&str> = arguments.iter().map(String::as_str).collect();
     let mut parser = MessageParser::default();
     let mut diagnostics = Vec::new();
@@ -185,22 +185,26 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
 
 /// macOS /bin/sh accepts Bash syntax. Keep that contract for scripts that
 /// invoke it explicitly, without changing the Linux machine's system shell.
-fn darwin_shell_command(invocation: &Invocation) -> Result<(String, Vec<String>), CliError> {
-    let program = invocation.program.to_string_lossy().into_owned();
+pub(crate) fn darwin_shell_command(
+    program: &Path,
+    arguments: &[String],
+) -> Result<(String, Vec<String>), CliError> {
+    let program = program.to_string_lossy().into_owned();
     if !cfg!(target_os = "linux") {
-        return Ok((program, invocation.args.clone()));
+        return Ok((program, arguments.to_vec()));
     }
     let shell = std::fs::canonicalize("/bin/sh").map_err(|e| CliError::new(e.to_string()))?;
     let bash = std::fs::canonicalize("/bin/bash").map_err(|e| CliError::new(e.to_string()))?;
     if shell == bash {
-        return Ok((program, invocation.args.clone()));
+        return Ok((program, arguments.to_vec()));
     }
     if super::darwin_tools::find_program("bwrap").is_none() {
         return Err(
             CliError::new("building Xcode scripts on Linux needs 'bubblewrap' and Bash")
                 .kind(ErrorKind::ToolMissing)
                 .tip(Some(
-                    "install them with 'sudo apt-get install bubblewrap bash'".to_string(),
+                    "install Bash and bubblewrap with your distribution's package manager"
+                        .to_string(),
                 )),
         );
     }
@@ -220,7 +224,7 @@ fn darwin_shell_command(invocation: &Invocation) -> Result<(String, Vec<String>)
         "--".into(),
         program,
     ];
-    args.extend(invocation.args.iter().cloned());
+    args.extend(arguments.iter().cloned());
     Ok(("bwrap".into(), args))
 }
 
