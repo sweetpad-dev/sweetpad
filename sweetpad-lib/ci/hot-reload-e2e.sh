@@ -35,11 +35,39 @@ test -f "$SRC" || fail "fixture source missing: $SRC (run xcodegen generate firs
 echo "  client: ${SWEETPAD_HOTRELOAD_DYLIB:-<bundled into the CLI>}"
 
 section "pick + boot a simulator"
-DEST=$(python3 -c "import json,subprocess;d=json.loads(subprocess.check_output(['$BIN','destination','list','--json']))['data']['destinations'];print(next(x['destination'] for x in d if x['kind']=='simulator' and x['os']=='iOS'))")
+TEMPLATE=$(python3 -c "import json,subprocess;d=json.loads(subprocess.check_output(['$BIN','destination','list','--json']))['data']['destinations'];print(next(x['destination'] for x in d if x['kind']=='simulator' and x['os']=='iOS'))")
+# Use a simulator owned by this run, as smoke.sh does. The runner's shared
+# template can finish bootstatus but then stall on its first app installation.
+# Prefer a shut-down clone of the same model/runtime; create one if all of that
+# runtime's devices are in use, without stopping somebody else's simulator.
+SOURCE=$(python3 - "${TEMPLATE##*id=}" <<'PY'
+import json, subprocess, sys
+devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "-j"]))["devices"]
+listed = [(runtime, device) for runtime, entries in devices.items() for device in entries]
+template = next((pair for pair in listed if pair[1]["udid"] == sys.argv[1]), None)
+if template is None:
+    sys.exit(f"simulator {sys.argv[1]} is not in 'simctl list devices'")
+runtime, model = template[0], template[1]["deviceTypeIdentifier"]
+idle = [d for r, d in listed if r == runtime and d.get("isAvailable") and d["state"] == "Shutdown"]
+idle.sort(key=lambda d: d["deviceTypeIdentifier"] != model)
+print(f"clone {idle[0]['udid']}" if idle else f"create {model} {runtime}")
+PY
+)
+case "$SOURCE" in
+  clone\ *) UDID=$(xcrun simctl clone "${SOURCE#clone }" "sweetpad-hot-reload-$$") ;;
+  *) read -r _ SIM_TYPE SIM_RUNTIME <<<"$SOURCE"
+     UDID=$(xcrun simctl create "sweetpad-hot-reload-$$" "$SIM_TYPE" "$SIM_RUNTIME") ;;
+esac
+cleanup() {
+  perl -e 'alarm shift; exec @ARGV' 30 xcrun simctl shutdown "$UDID" >/dev/null 2>&1 || true
+  perl -e 'alarm shift; exec @ARGV' 30 xcrun simctl delete "$UDID" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+DEST="platform=iOS Simulator,id=$UDID"
 echo "  $DEST"
-UDID="${DEST##*id=}"
-xcrun simctl boot "$UDID" 2>/dev/null || true
-xcrun simctl bootstatus "$UDID" -b || true
+xcrun simctl boot "$UDID"
+perl -e 'alarm shift; exec @ARGV' 600 xcrun simctl bootstatus "$UDID" -b \
+  || fail "simulator $UDID failed to boot (10-minute timeout)"
 
 # `app run --hot --hot-selfcheck` exits 0 only on a confirmed `.injected` whose
 # new code demonstrably ran (nonce observed in the unified log).
@@ -126,6 +154,7 @@ echo "  ✓ --keep-sandbox reproduces the preflight refusal"
 rm "$ENT"
 
 section "teardown"
-xcrun simctl shutdown "$UDID" 2>/dev/null || true
+cleanup
+trap - EXIT
 echo
 echo "==== hot reload e2e passed (simulator + macOS, resolver + buildlog) ===="
