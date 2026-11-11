@@ -1,4 +1,4 @@
-//! Ubuntu bootstrap over the public setup sources embedded in the CLI.
+//! Linux bootstrap over the public setup sources embedded in the CLI.
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -13,6 +13,9 @@ pub struct SetupArgs {
     /// Private SDK archive exported on a Mac, with its .sha256 file.
     #[arg(long = "sdk")]
     pub sdk_archive: PathBuf,
+    /// Use existing host packages instead of installing them with APT or pacman.
+    #[arg(long)]
+    pub skip_system_packages: bool,
     /// Destination for the extracted SDK.
     #[arg(long)]
     pub sdk_path: Option<PathBuf>,
@@ -30,8 +33,7 @@ pub struct SetupArgs {
 pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
     if !cfg!(target_os = "linux") || !cfg!(any(target_arch = "aarch64", target_arch = "x86_64")) {
         return Err(
-            CliError::new("sweetpad setup requires Ubuntu 24.04 ARM64 or x86_64")
-                .kind(ErrorKind::Usage),
+            CliError::new("sweetpad setup requires ARM64 or x86_64 Linux").kind(ErrorKind::Usage),
         );
     }
     let archive = args
@@ -53,6 +55,7 @@ pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
     let mut bootstrap = Command::new("python3");
     bootstrap.args(["-c", "import subprocess,sys; sys.exit(subprocess.call(['bash',sys.argv[1]],stdout=sys.stderr))"])
         .arg(script).env("SWEETPAD_SKIP_RUST", "1")
+        .env("SWEETPAD_SKIP_SYSTEM_PACKAGES", if args.skip_system_packages { "1" } else { "0" })
         .env("SWIFT_VERSION", &pins.swift).env("SWIFT_BUILD_VERSION", &pins.swift_build)
         .env("XTOOL_VERSION", &pins.xtool)
         .env("XTOOL_SHA256", &pins.xtool_sha256[std::env::consts::ARCH])
@@ -82,7 +85,7 @@ pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
 fn run_bootstrap(command: &mut Command, machine: bool) -> Result<(), CliError> {
     let missing = |error| {
         CliError::new(format!(
-            "start Ubuntu setup: {error}; install python3 before running setup"
+            "start Linux setup: {error}; install python3 before running setup"
         ))
         .kind(ErrorKind::ToolMissing)
     };
@@ -97,7 +100,7 @@ fn run_bootstrap(command: &mut Command, machine: bool) -> Result<(), CliError> {
         }
     } else if !command.status().map_err(missing)?.success() {
         return Err(CliError::new(
-            "Ubuntu setup failed. Review the diagnostics and rerun the same command.",
+            "Linux setup failed. Review the diagnostics and rerun the same command.",
         ));
     }
     Ok(())
@@ -112,8 +115,8 @@ fn bootstrap_error(stderr: &str) -> CliError {
             .and_then(|value| value["error"].as_str().map(str::to_string))
     });
     CliError::new(reason.map_or_else(
-        || "Ubuntu setup failed. Review the bootstrap diagnostics.".into(),
-        |reason| format!("Ubuntu setup failed: {reason}"),
+        || "Linux setup failed. Review the bootstrap diagnostics.".into(),
+        |reason| format!("Linux setup failed: {reason}"),
     ))
     .diagnostics(vec![json!({"stage":"bootstrap","message":tail})])
 }

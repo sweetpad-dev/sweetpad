@@ -1,5 +1,6 @@
 # Public bootstrap inputs embedded into the standalone CLI.
 sweetpad-lib/ci/linux-setup.sh
+sweetpad-lib/ci/linux-host-tools.sh
 sweetpad-lib/ci/linux-sdk.py
 sweetpad-lib/ci/linux-toolchain.json
 sweetpad-lib/ci/linux-macro-launcher.sh

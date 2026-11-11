@@ -54,6 +54,7 @@ const sidebars: SidebarsConfig = {
         'cli/linux/how-it-works',
         'cli/linux/install',
         'cli/linux/sdk-transfer',
+        'cli/linux/distributions',
         'cli/linux/ubuntu-usb',
         'cli/linux/signing-and-testing',
         'cli/linux/github-actions',

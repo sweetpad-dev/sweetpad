@@ -106,21 +106,7 @@ fn gather_linux(target: Target) -> Vec<Check> {
     let setup = "run sweetpad setup --sdk /path/to/apple-sdk.tar.gz, then source ~/.config/sweetpad/linux-env.sh";
     let mut checks = Vec::new();
     let os = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
-    checks.push(linux_check(
-        "Linux host",
-        cfg!(any(target_arch = "aarch64", target_arch = "x86_64"))
-            && os.lines().any(|s| s == "ID=ubuntu")
-            && os.lines().any(|s| s == "VERSION_ID=\"24.04\""),
-        format!(
-            "{}; {}",
-            std::env::consts::ARCH,
-            os.lines()
-                .find(|s| s.starts_with("PRETTY_NAME="))
-                .unwrap_or("unknown distribution")
-        ),
-        false,
-        "use Ubuntu 24.04 ARM64 or x86_64",
-    ));
+    checks.push(linux_host(std::env::consts::ARCH, &os));
     let swift =
         first_line(probe("swift", &["--version"])).unwrap_or_else(|| "swift missing".into());
     checks.push(linux_check(
@@ -185,6 +171,45 @@ fn gather_linux(target: Target) -> Vec<Check> {
     checks.extend(gather_linux_sdk(target, setup));
     checks.extend(gather_linux_optional(target));
     checks
+}
+
+fn linux_host(arch: &str, os_release: &str) -> Check {
+    let field = |key| {
+        os_release.lines().find_map(|line| {
+            let (name, value) = line.split_once('=')?;
+            (name == key).then(|| value.trim_matches(['\"', '\'']))
+        })
+    };
+    let id = field("ID").unwrap_or_default();
+    let version = field("VERSION_ID").unwrap_or_default();
+    let compatible_arch = matches!(arch, "aarch64" | "x86_64");
+    let configured = matches!((id, version), ("ubuntu", "24.04") | ("debian", "12" | "13"))
+        || (id == "arch" && arch == "x86_64");
+    let status = if !compatible_arch {
+        Status::Fail
+    } else if configured {
+        Status::Ok
+    } else {
+        Status::Warn
+    };
+    Check {
+        name: "Linux host",
+        status,
+        detail: format!(
+            "{arch}; {}",
+            field("PRETTY_NAME").unwrap_or("unknown distribution")
+        ),
+        hint: match status {
+            Status::Fail => Some("use an ARM64 or x86_64 Linux host"),
+            Status::Warn if id == "alpine" => Some(
+                "the CLI runs on Alpine; use an Ubuntu or Debian container for the glibc-based Apple build tools",
+            ),
+            Status::Warn => Some(
+                "this distribution is untested; check the tool diagnostics below and install host dependencies manually",
+            ),
+            Status::Ok => None,
+        },
+    }
 }
 
 fn resolved_program(program: &str) -> Option<std::path::PathBuf> {
@@ -642,6 +667,31 @@ fn symbol(status: Status, color: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn distribution_name_never_rejects_a_compatible_architecture() {
+        for os in [
+            "ID=ubuntu\nVERSION_ID=24.04",
+            "ID=debian\nVERSION_ID=\"12\"",
+            "ID=debian\nVERSION_ID=13",
+            "ID=arch",
+        ] {
+            assert_eq!(linux_host("x86_64", os).status, Status::Ok, "{os}");
+        }
+        for os in ["ID=fedora", "ID=alpine", "ID=arch", ""] {
+            assert_eq!(linux_host("aarch64", os).status, Status::Warn, "{os}");
+        }
+        assert_eq!(
+            linux_host("riscv64", "ID=ubuntu\nVERSION_ID=24.04").status,
+            Status::Fail
+        );
+        assert!(
+            linux_host("x86_64", "ID=alpine")
+                .hint
+                .unwrap()
+                .contains("container")
+        );
+    }
 
     #[test]
     fn doctor_rejects_sdk_tools_for_another_host_architecture() {
