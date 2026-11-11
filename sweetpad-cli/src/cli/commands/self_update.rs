@@ -68,7 +68,21 @@ pub fn run(ctx: &mut Context) -> CommandResult {
             ),
         }));
     }
+    if let Some(project) = packslip_project(&exe) {
+        return Ok(Rendered::data(UpdateReport {
+            method: "packslip",
+            note: format!(
+                "this sweetpad was installed by Packslip; upgrade with 'packslip install {project}'"
+            ),
+        }));
+    }
     if !cfg!(target_os = "macos") {
+        if debian_owned(&exe) {
+            return Ok(Rendered::data(UpdateReport {
+                method: "apt",
+                note: "this sweetpad belongs to the sweetpad Debian package; upgrade with 'sudo apt update && sudo apt install --only-upgrade sweetpad', or install the next verified .deb with 'sudo apt install ./sweetpad_VERSION_ARCH.deb'".into(),
+            }));
+        }
         return Ok(Rendered::data(UpdateReport {
             method: "manual",
             note: linux_update_note(&path),
@@ -86,8 +100,30 @@ pub fn run(ctx: &mut Context) -> CommandResult {
 
 fn linux_update_note(path: &str) -> String {
     format!(
-        "this sweetpad ({path}) was installed manually. Download the Linux archive for your host architecture (linux-arm64 or linux-x64) and its checksum from https://github.com/sweetpad-dev/sweetpad/releases, verify it with sha256sum -c, then run install.sh with the same --prefix. This preserves your private SDK and signing files."
+        "this sweetpad ({path}) was installed manually. Download the Linux archive for your host architecture (linux-arm64 or linux-x64) and its checksum from https://github.com/sweetpad-dev/sweetpad/releases, verify it with sha256sum -c, then replace this executable. The binary includes its setup files. Your private SDK and signing files stay in their separate locations."
     )
+}
+
+fn debian_owned(exe: &Path) -> bool {
+    let Some(path) = exe.to_str() else {
+        return false;
+    };
+    process::run_captured("dpkg-query", &["-S", path], None).is_ok_and(|run| {
+        run.success
+            && run.combined.lines().any(|line| {
+                line.strip_prefix("sweetpad: ") == Some(path)
+                    || line.strip_prefix("sweetpad:amd64: ") == Some(path)
+                    || line.strip_prefix("sweetpad:arm64: ") == Some(path)
+            })
+    })
+}
+
+fn packslip_project(exe: &Path) -> Option<String> {
+    exe.ancestors().skip(1).take(3).find_map(|dir| {
+        let text = std::fs::read_to_string(dir.join(".packslip-owned.json")).ok()?;
+        let project: String = serde_json::from_str(&text).ok()?;
+        (project == "github.com/sweetpad-dev/sweetpad/tools/cli").then_some(project)
+    })
 }
 
 /// The mise tool identifier `exe` was installed as, such as
@@ -116,7 +152,8 @@ mod tests {
     fn linux_update_uses_the_linux_package_instead_of_homebrew() {
         let note = linux_update_note("/example/bin/sweetpad");
         assert!(note.contains("linux-x64"));
-        assert!(note.contains("--prefix"));
+        assert!(note.contains("replace this executable"));
+        assert!(!note.contains("install.sh"));
         assert!(!note.contains("brew install"));
     }
 
@@ -146,5 +183,18 @@ mod tests {
         let dir = TempDir::new("sweetpad-self-update-plain");
         std::fs::create_dir_all(dir.join("bin")).unwrap();
         assert_eq!(mise_tool(&dir.join("bin/sweetpad")), None);
+    }
+
+    #[test]
+    fn packslip_upgrade_identifies_the_cli_subproject() {
+        let dir = TempDir::new("sweetpad-self-update-packslip");
+        let marker = dir.join(".packslip-owned.json");
+        std::fs::write(&marker, "\"github.com/sweetpad-dev/sweetpad/tools/cli\"").unwrap();
+        assert_eq!(
+            packslip_project(&dir.join("sweetpad")).as_deref(),
+            Some("github.com/sweetpad-dev/sweetpad/tools/cli")
+        );
+        std::fs::write(marker, "\"github.com/other/project\"").unwrap();
+        assert_eq!(packslip_project(&dir.join("sweetpad")), None);
     }
 }

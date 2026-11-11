@@ -1,0 +1,11 @@
+# Native build environment; use --platform for the Linux host architecture.
+ARG RUST_VERSION=1.94.0
+FROM rust:${RUST_VERSION}-slim-bookworm
+ARG RUST_VERSION
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+      musl-tools cmake ninja-build perl pkg-config python3 binutils file \
+      dpkg-dev apt-utils gnupg ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
+RUN rustup target add "$(uname -m)-unknown-linux-musl"
+ENV CARGO_INCREMENTAL=0 RUSTUP_TOOLCHAIN=${RUST_VERSION}
+WORKDIR /src

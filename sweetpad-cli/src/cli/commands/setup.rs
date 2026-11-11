@@ -1,4 +1,4 @@
-//! Ubuntu bootstrap over the public setup sources shipped in the release.
+//! Ubuntu bootstrap over the public setup sources embedded in the CLI.
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -19,7 +19,7 @@ pub struct SetupArgs {
     /// Replace a different SDK after successful import.
     #[arg(long)]
     pub replace_sdk: bool,
-    /// Public setup source root (default: installed release resources).
+    /// Override the embedded public setup sources with this source root.
     #[arg(long)]
     pub setup_dir: Option<PathBuf>,
     /// Generated shell environment file (default: ~/.config/sweetpad/linux-env.sh).
@@ -38,12 +38,13 @@ pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
         .sdk_archive
         .canonicalize()
         .map_err(|e| CliError::new(format!("read SDK archive: {e}")))?;
-    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-    let executable = std::env::current_exe().map_err(|e| CliError::new(e.to_string()))?;
-    let root = setup_root(args.setup_dir.as_deref(), &executable, &source)?;
+    let root = setup_root(args.setup_dir.as_deref())?;
     let script = root.join("sweetpad-lib/ci/linux-setup.sh");
     if !script.is_file() {
-        return Err(CliError::new("Setup sources are missing. Install the complete Linux release package, or pass --setup-dir SOURCE_ROOT").kind(ErrorKind::ToolMissing));
+        return Err(
+            CliError::new("Setup sources are missing from the selected source root")
+                .kind(ErrorKind::ToolMissing),
+        );
     }
     let destination = std::path::absolute(args.sdk_path.clone().unwrap_or_else(default_sdk))
         .map_err(|e| CliError::new(format!("resolve SDK destination: {e}")))?;
@@ -117,35 +118,20 @@ fn bootstrap_error(stderr: &str) -> CliError {
     .diagnostics(vec![json!({"stage":"bootstrap","message":tail})])
 }
 
-fn setup_root(
-    explicit: Option<&std::path::Path>,
-    executable: &std::path::Path,
-    source: &std::path::Path,
-) -> Result<PathBuf, CliError> {
+fn setup_root(explicit: Option<&std::path::Path>) -> Result<PathBuf, CliError> {
     let valid = |p: &std::path::Path| {
         p.join("sweetpad-lib/ci/linux-setup.sh").is_file()
             && p.join("sweetpad-lib/ci/linux-sdk.py").is_file()
             && p.join("sweetpad-lib/ci/linux-toolchain.json").is_file()
             && p.join("sweetpad-cli/macros/Package.swift").is_file()
     };
-    let mut candidates = Vec::new();
     if let Some(path) = explicit {
-        candidates.push(path.to_path_buf());
-    } else {
-        if let Some(dir) = executable.parent() {
-            if let Some(prefix) = dir.parent() {
-                candidates.push(prefix.join("share/sweetpad/setup"));
-            }
-            candidates.push(dir.join("setup"));
-            if let Some(prefix) = dir.parent() {
-                candidates.push(prefix.join("setup"));
-            }
-        }
-        candidates.push(source.to_path_buf());
+        return valid(path).then(|| path.to_path_buf()).ok_or_else(|| {
+            CliError::new("The --setup-dir source root is missing public setup files.")
+                .kind(ErrorKind::ToolMissing)
+        });
     }
-    candidates.into_iter().find(|p| valid(p)).ok_or_else(|| CliError::new(
-        "Public setup sources are missing or incomplete. Install the complete Linux archive, or pass --setup-dir SOURCE_ROOT."
-    ).kind(ErrorKind::ToolMissing))
+    Ok(crate::cli::embedded::root()?.join("setup"))
 }
 
 fn environment_contents(sdk: &std::path::Path) -> String {
@@ -243,34 +229,17 @@ mod tests {
     }
 
     #[test]
-    fn sources_follow_prefix_archive_and_mise_layouts() {
-        for layout in ["share/sweetpad/setup", "bin/setup", "setup"] {
-            let dir = TempDir::new("setup-layout");
-            let expected = dir.join(layout);
-            sources(&expected);
-            assert_eq!(
-                setup_root(None, &dir.join("bin/sweetpad"), &dir.join("missing-source")).unwrap(),
-                expected
-            );
-        }
+    fn explicit_public_sources_are_supported() {
+        let dir = TempDir::new("setup-source-override");
+        sources(&dir);
+        assert_eq!(setup_root(Some(&dir)).unwrap(), dir.join(""));
     }
 
     #[test]
     fn explicit_incomplete_source_never_falls_back() {
         let dir = TempDir::new("setup-source");
         sources(&dir.join("source"));
-        assert!(
-            setup_root(
-                Some(&dir.join("missing")),
-                &dir.join("sweetpad"),
-                &dir.join("source")
-            )
-            .is_err()
-        );
-        assert_eq!(
-            setup_root(None, &dir.join("sweetpad"), &dir.join("source")).unwrap(),
-            dir.join("source")
-        );
+        assert!(setup_root(Some(&dir.join("missing"))).is_err());
     }
 
     #[test]

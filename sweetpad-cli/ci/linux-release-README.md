@@ -1,16 +1,17 @@
 # Sweetpad for Linux
 
-This experimental package supports Ubuntu 24.04 ARM64 and x86_64 (glibc 2.39).
-It contains the CLI and public toolchain setup sources, including pinned patches and macro sources.
+This package contains a statically linked Linux CLI for ARM64 or x86_64.
+The executable embeds the public setup sources, pinned patches, macros, and sample project.
+Apple build toolchain setup targets Ubuntu 24.04. The CLI itself needs no glibc or OpenSSL shared libraries.
 It does not contain Apple SDKs, Xcode, signing identities, provisioning profiles, or build caches.
 
 ## Install the CLI
 
-Install the runtime dependencies:
+Install CA certificates for HTTPS and Python/Bash for SDK preparation:
 
 ```bash
 sudo apt-get update
-sudo apt-get install ca-certificates libssl3t64 libgcc-s1 python3
+sudo apt-get install ca-certificates python3 bash
 ```
 
 Select `linux-arm64` for an ARM64 host, or `linux-x64` for an x86_64 host.
@@ -22,13 +23,32 @@ Verify the downloaded archive before extraction (the example uses ARM64):
 sha256sum -c sweetpad-cli-VERSION-linux-arm64.tar.gz.sha256
 tar -xzf sweetpad-cli-VERSION-linux-arm64.tar.gz -C /path/to/empty-directory
 cd /path/to/empty-directory
-bash install.sh
+install -Dm755 sweetpad "$HOME/.local/bin/sweetpad"
+ln -sfn sweetpad "$HOME/.local/bin/sweetpad-dap"
 export PATH="$HOME/.local/bin:$PATH"
 sweetpad --version
 ```
 
-`--prefix /absolute/path` selects another installation directory. Installation requires no compiler or root access.
-The `sweetpad-dap` alias and the setup sources install with the CLI.
+Installation requires no compiler, root access, or Sweetpad installation script.
+You can copy the executable into another directory on PATH.
+The CLI materializes its embedded setup files in its content-addressed user cache when needed.
+
+## Package managers and containers
+
+The release also provides native `amd64` and `arm64` Debian packages.
+Install the matching local package with `sudo apt install ./sweetpad_VERSION_ARCH.deb`.
+The signed APT feed supplies normal APT upgrades.
+
+Signed Packslip metadata identifies the CLI separately from the editor extension:
+
+```bash
+packslip install github.com/sweetpad-dev/sweetpad/tools/cli
+mise use -g packslip:github.com/sweetpad-dev/sweetpad/tools/cli
+```
+
+GHCR supplies a multi-platform CLI image at `ghcr.io/sweetpad-dev/sweetpad`.
+It contains the static executable and CA certificates. Docker builds can copy `/usr/local/bin/sweetpad` into their own image.
+Swift, Swift Build, and the private SDK remain separate build-environment requirements.
 
 ## Prepare the Apple build toolchain
 
@@ -53,7 +73,6 @@ sweetpad build --project MyApp.xcodeproj --scheme MyApp \
 Setup downloads the pinned public Linux tools, imports SDK files, and builds the sample app.
 It requires sudo access for system packages, or an existing root shell. Use `sudo -v` first if your account requires a password.
 An unchanged archive reuses the installed SDK. A different archive requires `--replace-sdk`.
-The original setup script also accepts a visible Xcode copy through `XCODE_APP`.
 The SDK stays private. The prebuilt CLI requires no Rust installation or Sweetpad source checkout.
 App signing requires your development identity and profiles, configured separately.
 
@@ -62,26 +81,27 @@ App signing requires your development identity and profiles, configured separate
 The ARM64 validation environment uses Ubuntu 24.04 in OrbStack on Apple hardware.
 The x64 cross-compilation checks use an x86_64 Ubuntu container on the same hardware.
 Core compilation, resources, development signing, and physical iPhone USB/Wi-Fi transport pass validation.
-The packaged CLI also passes installation in a clean Ubuntu 24.04 containers for both host architectures.
+The standalone CLI passes installation in clean containers for both host architectures.
 Simulator operation and Apple test execution still require a Mac with Xcode.
 Distribution IPA export, Linux device debugging, and device readiness inspection remain unsupported.
 Flutter AOT requires the separately built Linux ARM64 iOS snapshot compiler.
 The tested React Native Hermes compiler requires OrbStack's x86 translation in this ARM64 environment.
-Other Linux architectures, including 32-bit x86, and other distributions are not release targets yet.
+Other Linux architectures, including 32-bit x86, are not release targets.
+Apple toolchain setup on other distributions remains unverified.
 
 Run `sweetpad help linux-devices` for pairing and bounded logs.
 See the [Linux guide](https://sweetpad.hyzyla.dev/docs/cli/linux) for build setup and current limitations.
 
 ## Upgrade or remove the CLI
 
-Rerun `install.sh` to upgrade. It replaces the bundled setup sources, licenses, and example app,
-including files removed from the new package. Keep your app source outside the installed example directory.
+Use the package manager that installed the CLI to upgrade or remove it.
+For manual installations, verify the next archive and replace the executable.
+Its embedded setup files move with the binary, so an upgrade cannot retain older helper sources.
 
 For the default prefix, remove the CLI with:
 
 ```bash
 rm -f "$HOME/.local/bin/sweetpad" "$HOME/.local/bin/sweetpad-dap"
-rm -rf "$HOME/.local/share/sweetpad"
 ```
 
 The compiler, private SDK, signing files, and user configuration remain in their separate locations.

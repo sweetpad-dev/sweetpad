@@ -203,7 +203,9 @@ jobs:
       - name: Attest release archives
         uses: actions/attest@v4
         with:
-          subject-path: '*.tar.gz'
+          subject-path: |
+            *.tar.gz
+            *.deb
       - name: Build release notes
         # Commit subjects over the tag range, scoped to the paths the CLI ships
         # from so unrelated monorepo work (docs site, extension) stays out.
@@ -219,10 +221,10 @@ jobs:
             echo
             echo 'Or with [mise](https://mise.jdx.dev/):'
             echo
-            echo "    mise use -g 'github:sweetpad-dev/sweetpad[version_prefix=cli-v]'"
+            echo '    mise use -g packslip:github.com/sweetpad-dev/sweetpad/tools/cli'
             echo
-            echo 'Linux ARM64 and x64 (experimental, Ubuntu 24.04): download the linux-arm64 or linux-x64 tarball for your host and its .sha256 file, verify it, then run the included install.sh.'
-            echo 'The archive includes public toolchain setup sources. Apple SDKs and signing material are supplied separately.'
+            echo 'Linux ARM64 and x64: static tarballs, native .deb packages, signed APT updates, and a multi-platform CLI image.'
+            echo '[Linux installation guide](https://sweetpad.hyzyla.dev/docs/cli/linux/install). Apple SDKs and signing material are supplied separately.'
             echo
             echo '## Changes'
             echo
@@ -246,6 +248,7 @@ jobs:
           body_path: ${{ runner.temp }}/notes.md
           files: |
             *.tar.gz
+            *.deb
             *.sha256
 
       - name: Update Homebrew tap formula
@@ -273,3 +276,18 @@ jobs:
           git -C "$RUNNER_TEMP/tap" commit -m "sweetpad ${VERSION}"
           git -C "$RUNNER_TEMP/tap" push
           rm -f ~/.ssh/tap_key
+
+  distribute:
+    name: Publish Linux distribution channels
+    needs: [publish, release]
+    if: startsWith(github.ref, 'refs/tags/cli-v')
+    permissions:
+      contents: write
+      packages: write
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/cli-distribute.yaml
+    with:
+      release_tag: ${{ github.ref_name }}
+    secrets:
+      SWEETPAD_APT_SIGNING_KEY: ${{ secrets.SWEETPAD_APT_SIGNING_KEY }}

@@ -26,7 +26,6 @@ serde.workspace = true
 toml.workspace = true
 toml_edit.workspace = true
 libc.workspace = true
-minreq.workspace = true
 png.workspace = true
 flate2.workspace = true
 flatbuffers.workspace = true
@@ -38,6 +37,12 @@ rsa.workspace = true
 des.workspace = true
 aes.workspace = true
 unicode-normalization.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+minreq = { workspace = true, features = ["https-rustls-probe"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+minreq = { workspace = true, features = ["https-native-tls"] }
 
 [lints]
 workspace = true

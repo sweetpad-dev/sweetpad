@@ -5,7 +5,7 @@ sidebar_label: Ubuntu and USB setup
 # Ubuntu setup and an iPhone over USB
 
 This guide starts with Ubuntu 24.04 and ends with a signed app on an iPhone.
-Release 0.1.19 supplies ARM64 and x64 packages. Both packages can build ARM64 iPhone apps.
+Release 0.1.20 supplies ARM64 and x64 packages. Both packages can build ARM64 iPhone apps.
 Use a Linux VM on Apple hardware for the validated setup.
 
 You need your Xcode SDKs, an Apple Development identity, a provisioning profile, and a USB connection to the phone.
@@ -13,38 +13,14 @@ Allocate space for Xcode, extracted SDKs, compiler tools, dependencies, and buil
 
 ## Install the release
 
-Install the runtime and setup utilities:
+Follow [Install the CLI](install.md) to select APT, a local Debian package, Packslip, Mise, or a standalone tarball.
+Then install USB and setup utilities:
 
 ```bash
 sudo apt-get update
-sudo apt-get install ca-certificates curl libssl3t64 libgcc-s1 python3-venv usbmuxd
-```
-
-The download commands select the package for the Linux host.
-
-Download and verify the CLI archive:
-
-```bash
-CLI_VERSION=0.1.19
-case "$(uname -m)" in
-  aarch64|arm64) CLI_ARCH=arm64 ;;
-  x86_64|amd64) CLI_ARCH=x64 ;;
-  *) echo "Unsupported Linux host architecture" >&2; exit 1 ;;
-esac
-mkdir -p "$HOME/downloads/sweetpad-$CLI_VERSION"
-cd "$HOME/downloads/sweetpad-$CLI_VERSION"
-curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz"
-curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz.sha256"
-sha256sum -c "sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz.sha256"
-tar -xzf "sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz"
-bash install.sh
-export PATH="$HOME/.local/bin:$PATH"
+sudo apt-get install ca-certificates curl python3-venv usbmuxd
 sweetpad --version
 ```
-
-The installer defaults to your local user prefix. It also accepts `--prefix /absolute/path`.
-The archive includes a sample project and public toolchain setup sources.
-Installing the CLI requires no Rust compiler or SweetPad checkout.
 
 ## Prepare the Apple toolchain
 
@@ -53,20 +29,19 @@ These commands export the required Apple files on your Mac and import them on Ub
 
 ### Manual toolchain setup
 
-Provide your own Xcode copy at a path visible to Ubuntu.
+Export an SDK archive from your own Xcode copy on a Mac, as described in the SDK export guide.
 The examples use Apple hardware; obtain and use SDK files under [Apple's Xcode agreement](https://www.apple.com/legal/sla/docs/xcode.pdf).
 
-Run the installed setup script:
+Copy the exported archive and its checksum to Ubuntu, then run setup:
 
 ```bash
-SWEETPAD_SKIP_RUST=1 XCODE_APP=/path/to/Xcode.app \
-  bash "$HOME/.local/share/sweetpad/setup/sweetpad-lib/ci/linux-setup.sh"
-export PATH="$HOME/.local/bin:$HOME/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$PATH"
+sweetpad setup --sdk "$HOME/apple-sdk.tar.gz" --json --non-interactive
+source "$HOME/.config/sweetpad/linux-env.sh"
 ```
 
-The script installs the pinned Swift toolchain, Swift Build, macro plugin, and supporting Linux tools.
-It imports SDK data from the Xcode copy that you supply.
-Existing setup results can be reused. `SWEETPAD_REFRESH_SDK=1` refreshes a stale extracted SDK.
+Setup installs the pinned Swift toolchain, Swift Build, macro plugin, and supporting Linux tools.
+It imports the SDK data from your private archive.
+Use `--replace-sdk` when you intentionally replace an existing SDK installation.
 
 Persist the PATH entries in your shell configuration after setup.
 Keep the Linux Swift toolchain ahead of other Swift installations.
@@ -77,7 +52,7 @@ An OrbStack machine can see the Mac's files at the same paths.
 The repository setup script can create and provision the Ubuntu machine from macOS:
 
 ```bash
-git clone --branch cli-v0.1.19 --depth 1 https://github.com/sweetpad-dev/sweetpad.git
+git clone --branch cli-v0.1.20 --depth 1 https://github.com/sweetpad-dev/sweetpad.git
 cd sweetpad
 SWEETPAD_SKIP_RUST=1 bash sweetpad-lib/ci/linux-setup.sh
 orb -m sweetpad-linux
@@ -88,11 +63,12 @@ Mac execution of the setup script also exports localized App Intents resources i
 
 ## Build without a phone
 
-Use the packaged sample to confirm the compiler and SDK setup:
+Generate a sample project to confirm the compiler and SDK setup:
 
 ```bash
+sweetpad project new LinuxApp --bundle-id dev.example.LinuxApp --no-git
 sweetpad build \
-  --project "$HOME/.local/share/sweetpad/examples/LinuxApp/LinuxApp.xcodeproj" \
+  --project LinuxApp/LinuxApp.xcodeproj \
   --scheme LinuxApp --destination 'generic/platform=iOS Simulator' \
   --json --non-interactive \
   -- -derivedDataPath "$HOME/builds/LinuxApp" ARCHS=arm64 CODE_SIGNING_ALLOWED=NO

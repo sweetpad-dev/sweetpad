@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import subprocess
+import struct
 import tarfile
 import tempfile
 import unittest
@@ -59,7 +60,13 @@ class LinuxReleaseContracts(unittest.TestCase):
             root = Path(directory)
             binary = root / "sweetpad"
             for machine, arch in [(183, "arm64"), (62, "x64")]:
-                binary.write_bytes(b"\x7fELF\x02\x01" + b"\0" * 12 + machine.to_bytes(2, "little"))
+                data = bytearray(120)
+                data[:6] = b"\x7fELF\x02\x01"
+                data[18:20] = machine.to_bytes(2, "little")
+                struct.pack_into("<Q", data, 32, 64)
+                struct.pack_into("<HH", data, 54, 56, 1)
+                struct.pack_into("<I", data, 64, 1)
+                binary.write_bytes(data)
                 with patch.object(package.subprocess, "check_output", return_value="sweetpad 1.2.3\n"):
                     first = package.package(binary, "1.2.3", root / arch / "first")
                     second = package.package(binary, "1.2.3", root / arch / "second")
@@ -68,10 +75,11 @@ class LinuxReleaseContracts(unittest.TestCase):
                 self.assertTrue(first["archive"].endswith(f"linux-{arch}.tar.gz"))
                 with tarfile.open(first["archive"]) as archive:
                     names = set(archive.getnames())
-                    self.assertIn("install.sh", names)
-                    self.assertIn("setup/sweetpad-cli/macros/Package.resolved", names)
-                    self.assertIn("setup/sweetpad-cli/macros/Sources/FoundationMacros/LICENSE.md", names)
-                    self.assertIn("examples/LinuxApp/LinuxApp.xcodeproj/project.pbxproj", names)
+                    self.assertNotIn("install.sh", names)
+                    self.assertFalse(any(n.startswith(("setup/", "examples/")) for n in names))
+                    self.assertIn("licenses/macros/FoundationMacros/LICENSE.md", names)
+                    self.assertEqual(first["linkage"], "static")
+                    self.assertTrue(first["embeddedSetup"])
                     self.assertTrue(archive.getmember("sweetpad-dap").issym())
                     self.assertEqual(archive.getmember("sweetpad-dap").linkname, "sweetpad")
                     self.assertFalse(any(n.endswith((".p12", ".cer", ".mobileprovision", ".omo")) or ".sdk/" in n for n in names))

@@ -2,6 +2,7 @@
 """Install and exercise a Linux tarball with an empty HOME and no Apple SDK."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -41,25 +42,29 @@ def check(archive, out):
         return result
 
     prefix = home / ".local"
-    invoke("install", ["/bin/bash", extracted / "install.sh", "--prefix", prefix])
-    resources = prefix / "share/sweetpad"
-    for directory in ("setup", "licenses", "examples"):
-        (resources / directory / "obsolete-file").write_text("from an older installation")
-    (resources / "unrelated-file").write_text("preserve")
-    invoke("reinstall", ["/bin/bash", extracted / "install.sh", "--prefix", prefix])
-    assert not list(resources.rglob("obsolete-file"))
-    assert (resources / "unrelated-file").read_text() == "preserve"
-    manifest_path = extracted / "manifest.json"
-    original_manifest = manifest_path.read_text()
-    mismatched = dict(manifest, platform="linux-x64" if manifest["platform"] == "linux-arm64" else "linux-arm64")
-    manifest_path.write_text(json.dumps(mismatched))
-    mismatch = invoke("wrong-host-architecture", ["/bin/bash", extracted / "install.sh", "--prefix", prefix], success=False)
-    assert "does not match host" in mismatch.stderr
-    manifest_path.write_text(original_manifest)
+    assert manifest["linkage"] == "static" and manifest["embeddedSetup"]
+    assert not (extracted / "install.sh").exists()
+    assert not (extracted / "setup").exists()
+    (prefix / "bin").mkdir(parents=True)
+    private = home / ".swiftpm/swift-sdks/private-marker"
+    private.parent.mkdir(parents=True)
+    private.write_text("preserve SDK state")
+    # A single copied executable must work without its archive or a checkout.
+    shutil.copyfile(extracted / "sweetpad", prefix / "bin/sweetpad")
+    (prefix / "bin/sweetpad").chmod(0o755)
+    (prefix / "bin/sweetpad-dap").symlink_to("sweetpad")
+    shutil.copyfile(extracted / "sweetpad", prefix / "bin/sweetpad.new")
+    (prefix / "bin/sweetpad.new").chmod(0o755)
+    os.replace(prefix / "bin/sweetpad.new", prefix / "bin/sweetpad")
+    assert private.read_text() == "preserve SDK state"
     binary = prefix / "bin/sweetpad"
     assert hashlib.sha256(binary.read_bytes()).hexdigest() == manifest["files"]["sweetpad"]
     header = binary.read_bytes()[:20]
     assert int.from_bytes(header[18:20], "little") == {"aarch64": 183, "x86_64": 62}[platform.machine()]
+    spec = importlib.util.spec_from_file_location("package", Path(__file__).with_name("package-linux.py"))
+    package = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(package)
+    package.validate_static(binary)
     assert invoke("version", [binary, "--version"]).stdout.strip() == manifest["binaryVersion"]
     assert "sweetpad dap" in invoke("dap-alias", [prefix / "bin/sweetpad-dap", "--help"]).stdout
     invoke("help", [binary, "--help"])
@@ -72,27 +77,30 @@ def check(archive, out):
     raw_setup=invoke("raw-setup-source-discovery", [extracted / "sweetpad", "setup", "--sdk", invalid_sdk, "--json"], success=False)
     raw_error=json.loads(raw_setup.stderr)["error"]
     assert "gzip" in raw_error["message"] and raw_error["diagnostics"][0]["stage"] == "bootstrap"
+    installed_setup=invoke("standalone-setup-source-discovery", [binary, "setup", "--sdk", invalid_sdk, "--json"], success=False)
+    assert "gzip" in json.loads(installed_setup.stderr)["error"]["message"]
     doctor = json.loads(invoke("linux-doctor-missing-tools", [binary, "doctor", "--target", "ios", "--json"], success=False).stdout)
     assert doctor["ok"] and doctor["data"]["summary"]["problems"] > 0
     assert not any(c["name"] in ("Xcode", "xcodebuild", "Simulator runtimes") for c in doctor["data"]["checks"])
     value = json.loads(invoke("device-guide", [binary, "help", "linux-devices", "--json"]).stdout)
     assert value["ok"]
-    project = prefix / "share/sweetpad/examples/LinuxApp/LinuxApp.xcodeproj"
+    invoke("new-project", [binary, "project", "new", "LinuxApp", "--bundle-id", "dev.sweetpad.distribution", "--no-git", "--json"])
+    project = out / "LinuxApp/LinuxApp.xcodeproj"
     value = json.loads(invoke("schemes", [binary, "scheme", "list", "--project", project, "--json"]).stdout)
     assert value["ok"] and "LinuxApp" in json.dumps(value["data"])
     result = invoke("missing-toolchain", [binary, "build", "--project", project, "--scheme", "LinuxApp",
                     "--destination", "generic/platform=iOS Simulator", "--json"], success=False)
     error = json.loads(result.stderr)
     assert error["ok"] is False and any(s in error["error"]["message"].lower() for s in ["sdk", "swift", "swbuild"])
-    setup = prefix / "share/sweetpad/setup/sweetpad-lib/ci/linux-setup.sh"
+    setup = next((home / ".cache/sweetpad/distribution").glob("*/setup/sweetpad-lib/ci/linux-setup.sh"))
     invoke("setup-syntax", ["/bin/bash", "-n", setup])
     assert (setup.parents[2] / "sweetpad-cli/macros/Package.resolved").is_file()
     assert shutil.which("swift", path=env["PATH"]) is None
     report = {"passed": True, "archiveSha256": expected[0], "binarySha256": manifest["files"]["sweetpad"],
               "binaryVersion": manifest["binaryVersion"], "emptyHome": True, "developerEnvironmentInherited": False,
               "sdkAvailable": False, "sourceCheckoutRequired": False, "installedPrefix": str(prefix),
-              "checks": ["checksum", "manifest hashes", "install", "version", "DAP alias", "help", "device guide",
-                         "project schemes", "missing-toolchain diagnostic", "bundled setup syntax"]}
+              "checks": ["checksum", "manifest hashes", "single-binary install", "static linkage", "version", "DAP alias", "help", "device guide",
+                         "embedded setup files", "project schemes", "missing-toolchain diagnostic", "bundled setup syntax", "SDK state preserved"]}
     (out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 

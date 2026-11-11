@@ -29,7 +29,8 @@ The example uses the custom runner label `sweetpad-linux`.
 ### Repository validation workflows
 
 The `Linux packages` workflow builds release CLI archives on both `ubuntu-24.04` (x64) and `ubuntu-24.04-arm`.
-It runs on relevant pull requests and main pushes. Each job verifies installation in a clean Ubuntu container.
+It runs on relevant pull requests and main pushes. Each job checks static linkage, embedded setup, HTTPS, and clean installation.
+Debian and signed APT checks cover installation, upgrades, removal, and rejection of modified repository metadata.
 The library workflow also runs Rust tests and clippy on both hosts.
 
 SDK-dependent app checks stay in the existing manually dispatched `Linux Apple SDK integration` workflow.
@@ -37,10 +38,13 @@ They require a provisioned self-hosted SDK runner and do not run on public pull 
 
 ### x86_64 runners
 
-CLI 0.1.19 provides ARM64 and x64 archives. The example uses the ARM64 archive.
+CLI 0.1.20 provides static ARM64 and x64 archives, Debian packages, and a CLI container image. The example uses the ARM64 archive.
 For an x86_64 runner, select `linux-x64` and use `runs-on: [self-hosted, Linux, X64, sweetpad-linux]`.
 Keep the iPhone destination and `ARCHS=arm64` settings unchanged.
 An SDK imported on ARM64 contains ARM64 host tools. Import the private export on the x64 runner to select x64 tools.
+
+See [Install the CLI](install.md) for Packslip/Mise version pins and copying the CLI from GHCR into a build image.
+The GHCR image contains the CLI and CA certificates; your build image supplies the compiler tools and private SDK.
 
 ## Build and retain iPhone products
 
@@ -68,14 +72,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CLI_VERSION=0.1.19
+          CLI_VERSION=0.1.20
           mkdir "$RUNNER_TEMP/cli"
           cd "$RUNNER_TEMP/cli"
           curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz"
           curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz.sha256"
           sha256sum -c "sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz.sha256"
           tar -xzf "sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz"
-          bash install.sh --prefix "$RUNNER_TEMP/sweetpad"
+          install -Dm755 sweetpad "$RUNNER_TEMP/sweetpad/bin/sweetpad"
+          ln -s sweetpad "$RUNNER_TEMP/sweetpad/bin/sweetpad-dap"
           echo "$RUNNER_TEMP/sweetpad/bin" >> "$GITHUB_PATH"
           echo "$HOME/bin" >> "$GITHUB_PATH"
           echo "$HOME/swift/swift-6.4.2-RELEASE/usr/bin" >> "$GITHUB_PATH"

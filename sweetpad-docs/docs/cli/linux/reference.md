@@ -4,7 +4,9 @@ sidebar_label: Support and configuration
 
 # Linux support and configuration
 
-Release 0.1.19 provides Ubuntu 24.04 archives for ARM64 and x86_64 hosts.
+Release 0.1.20 provides static ARM64 and x86_64 packages, signed APT updates, Packslip metadata, and a CLI container image.
+See [Install the CLI](install.md) for installation and upgrades.
+Apple toolchain setup targets Ubuntu 24.04.
 
 ## Host and target architectures
 
@@ -97,22 +99,9 @@ AssistantIntents catalogs and catalog variations remain unsupported.
 
 ### Localized phrase resources
 
-Mac execution of toolchain setup exports the system phrase resources into the private SDK.
-For an independently prepared Ubuntu host, export those resources on the Mac using the setup sources from the archive:
-
-```bash
-python3 /path/to/sweetpad-install/setup/sweetpad-lib/ci/linux-appintents-resources.py \
-  --xcode /Applications/Xcode.app --out /path/to/appintents-phrases.json
-```
-
-Transfer the export privately, then provide it to Linux setup:
-
-```bash
-SWEETPAD_SKIP_RUST=1 \
-  SWEETPAD_APPINTENTS_RESOURCE_EXPORT=/path/to/appintents-phrases.json \
-  XCODE_APP=/path/to/Xcode.app \
-  bash "$HOME/.local/share/sweetpad/setup/sweetpad-lib/ci/linux-setup.sh"
-```
+`sweetpad sdk export` runs on your Mac and includes the system phrase resources in the private SDK archive.
+Transfer that archive and its checksum privately, then run `sweetpad setup --sdk /path/to/apple-sdk.tar.gz` on Ubuntu.
+See [SDK export and setup](sdk-transfer.md) for the complete commands.
 
 Missing localized resources produce a preparation error.
 The export is SDK data and stays outside your source repository and public artifacts.

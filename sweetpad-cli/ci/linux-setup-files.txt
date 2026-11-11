@@ -1,0 +1,16 @@
+# Public bootstrap inputs embedded into the standalone CLI.
+sweetpad-lib/ci/linux-setup.sh
+sweetpad-lib/ci/linux-sdk.py
+sweetpad-lib/ci/linux-toolchain.json
+sweetpad-lib/ci/linux-macro-launcher.sh
+sweetpad-lib/ci/linux-sdk-platforms.py
+sweetpad-lib/ci/linux-appintents-resources.py
+sweetpad-lib/ci/appintents_model.py
+sweetpad-lib/ci/swift-build-linux.patch
+sweetpad-lib/ci/swift-build-Package.resolved
+sweetpad-lib/ci/swift-build-generic-debug-bridges.patch
+sweetpad-lib/ci/swift-llbuild-directory-race.patch
+sweetpad-cli/macros/Package.swift
+sweetpad-cli/macros/Package.resolved
+sweetpad-cli/fixtures/appintents/extract.actionsdata
+sweetpad-cli/fixtures/appintents/version.json

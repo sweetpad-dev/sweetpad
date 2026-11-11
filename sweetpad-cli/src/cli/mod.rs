@@ -34,6 +34,7 @@ pub mod config;
 pub mod darwin_tools;
 pub mod device_network;
 pub mod devicectl;
+pub(crate) mod embedded;
 pub mod exits;
 pub mod ibtool;
 pub mod inject;
