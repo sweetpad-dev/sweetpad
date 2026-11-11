@@ -147,3 +147,55 @@ jobs:
     steps:
       - uses: actions/deploy-pages@v4
         id: deployment
+
+  verify-public:
+    name: Verify public ${{ matrix.arch }} installations
+    needs: [packslip, container, deploy-apt]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+            docker_arch: amd64
+            packslip_sha256: dd7e1e07c9b84f76bbe66603b325d8fb8738aad36da2fb91e3dd6296c32eb873
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            docker_arch: arm64
+            packslip_sha256: 918d82e42fe483e727ae7cb55e46a2a1886ec673731054a57a930789398a69c0
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release_tag }}
+      - name: Verify the consumer tool
+        run: |
+          mkdir -p "$RUNNER_TEMP/public-tools" "$RUNNER_TEMP/public-check" "$RUNNER_TEMP/anonymous-docker"
+          TOOL="packslip-v1.11.3-linux-${{ matrix.arch }}"
+          gh release download v1.11.3 --repo jdx/packslip --pattern "$TOOL" --dir "$RUNNER_TEMP/public-tools"
+          printf '%s  %s\n' '${{ matrix.packslip_sha256 }}' "$RUNNER_TEMP/public-tools/$TOOL" | sha256sum -c
+          gh attestation verify "$RUNNER_TEMP/public-tools/$TOOL" --repo jdx/packslip
+          chmod +x "$RUNNER_TEMP/public-tools/$TOOL"
+      - name: Install from public APT and Packslip endpoints
+        run: |
+          docker run --rm --platform linux/${{ matrix.docker_arch }} \
+            -e "CLI_VERSION=${RELEASE_TAG#cli-v}" \
+            -v "$RUNNER_TEMP/public-tools:/tools:ro" \
+            -v "$PWD/sweetpad-cli/ci:/validation/sweetpad-cli/ci:ro" \
+            -v "$RUNNER_TEMP/public-check:/reports" ubuntu:24.04 \
+            bash /validation/sweetpad-cli/ci/check-public-distribution.sh
+      - name: Pull the CLI image without credentials
+        run: |
+          docker --config "$RUNNER_TEMP/anonymous-docker" run --rm --platform linux/${{ matrix.docker_arch }} "ghcr.io/sweetpad-dev/sweetpad:${RELEASE_TAG#cli-v}" --version
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: public-${{ matrix.arch }}-install-report
+          path: ${{ runner.temp }}/public-check
+          if-no-files-found: warn

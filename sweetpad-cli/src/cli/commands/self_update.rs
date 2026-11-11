@@ -119,10 +119,15 @@ fn debian_owned(exe: &Path) -> bool {
 }
 
 fn packslip_project(exe: &Path) -> Option<String> {
+    const PROJECT: &str = "github.com/sweetpad-dev/sweetpad/tools/cli";
+    // Packslip owns GitHub installations by immutable repository ID and the
+    // first 16 hex digits of SHA256("tools/cli"), rather than their display name.
+    // Keep the display-name marker for older installations.
+    const OWNER: &str = "github-744211969-8442da31a8ec6dd3";
     exe.ancestors().skip(1).take(3).find_map(|dir| {
         let text = std::fs::read_to_string(dir.join(".packslip-owned.json")).ok()?;
-        let project: String = serde_json::from_str(&text).ok()?;
-        (project == "github.com/sweetpad-dev/sweetpad/tools/cli").then_some(project)
+        let owner: String = serde_json::from_str(&text).ok()?;
+        matches!(owner.as_str(), PROJECT | OWNER).then(|| PROJECT.to_string())
     })
 }
 
@@ -189,12 +194,23 @@ mod tests {
     fn packslip_upgrade_identifies_the_cli_subproject() {
         let dir = TempDir::new("sweetpad-self-update-packslip");
         let marker = dir.join(".packslip-owned.json");
-        std::fs::write(&marker, "\"github.com/sweetpad-dev/sweetpad/tools/cli\"").unwrap();
-        assert_eq!(
-            packslip_project(&dir.join("sweetpad")).as_deref(),
-            Some("github.com/sweetpad-dev/sweetpad/tools/cli")
-        );
-        std::fs::write(marker, "\"github.com/other/project\"").unwrap();
-        assert_eq!(packslip_project(&dir.join("sweetpad")), None);
+        for owner in [
+            "github.com/sweetpad-dev/sweetpad/tools/cli",
+            "github-744211969-8442da31a8ec6dd3",
+        ] {
+            std::fs::write(&marker, serde_json::to_string(owner).unwrap()).unwrap();
+            assert_eq!(
+                packslip_project(&dir.join("sweetpad")).as_deref(),
+                Some("github.com/sweetpad-dev/sweetpad/tools/cli")
+            );
+        }
+        for other in [
+            "github.com/other/project",
+            "github-1-8442da31a8ec6dd3",
+            "github-744211969-e3b0c44298fc1c14",
+        ] {
+            std::fs::write(&marker, serde_json::to_string(other).unwrap()).unwrap();
+            assert_eq!(packslip_project(&dir.join("sweetpad")), None);
+        }
     }
 }

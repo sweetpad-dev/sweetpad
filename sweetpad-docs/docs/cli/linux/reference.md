@@ -4,7 +4,7 @@ sidebar_label: Support and configuration
 
 # Linux support and configuration
 
-Release 0.1.20 provides static ARM64 and x86_64 packages, signed APT updates, Packslip metadata, and a CLI container image.
+Release 0.1.21 provides static ARM64 and x86_64 packages, signed APT updates, Packslip metadata, and a CLI container image.
 See [Install the CLI](install.md) for installation and upgrades.
 Apple toolchain setup targets Ubuntu 24.04.
 
