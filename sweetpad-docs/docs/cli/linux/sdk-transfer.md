@@ -4,18 +4,12 @@ sidebar_label: SDK export and setup
 
 # Export Apple SDK files and configure Ubuntu
 
-These convenience commands are unreleased. CLI 0.1.18 does not include them.
-Use a current source build until the next CLI release.
-The [Ubuntu guide](ubuntu-usb.md#manual-toolchain-setup) retains the setup script for CLI 0.1.18.
+Install CLI 0.1.19 or later on each host.
+The [CLI installation guide](../getting-started.md) covers macOS.
+The [Ubuntu guide](ubuntu-usb.md#install-the-release) covers Linux.
 
-From a current source checkout, build the CLI on each host:
-
-```bash
-cargo build --release --locked -p sweetpad-cli --bin sweetpad
-export PATH="$PWD/target/release:$PATH"
-```
-
-This source build requires Rust. The complete Linux release package supplies the CLI and public setup sources without Rust.
+The complete Linux package supplies the CLI and public setup sources without Rust.
+For manual toolchain setup, use the [setup script](ubuntu-usb.md#manual-toolchain-setup).
 
 This flow transfers the required Apple files from your Mac to Ubuntu 24.04 ARM64 or x86_64.
 Use a Linux VM on Apple hardware under [Apple's Xcode agreement](https://www.apple.com/legal/sla/docs/xcode.pdf).

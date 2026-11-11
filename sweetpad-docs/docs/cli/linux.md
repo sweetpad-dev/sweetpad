@@ -13,7 +13,8 @@ sweetpad build --project MyApp.xcodeproj --scheme MyApp \
 ```
 
 :::warning Experimental
-Release 0.1.18 targets Ubuntu 24.04 ARM64. Current source builds add x86_64 hosts, including ARM64 iPhone cross-compilation. The validated setup uses Linux in a VM on Apple hardware.
+Release 0.1.19 targets Ubuntu 24.04 ARM64 and x86_64 hosts. Both hosts can build ARM64 iPhone apps.
+The validated setup uses Linux in a VM on Apple hardware.
 Apple SDKs and signing credentials come from your own development environment.
 :::
 

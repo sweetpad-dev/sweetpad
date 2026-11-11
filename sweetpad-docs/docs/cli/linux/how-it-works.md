@@ -73,8 +73,7 @@ Run-script phases execute on Linux.
 Apple's `sandbox-exec` profiles do not apply. Scripts use the Linux build environment.
 The build supplies compatible tools for common Xcode script operations, but a script that depends on macOS still needs adaptation.
 
-Current source builds also run shell pre-actions and post-actions in the scheme's Build action.
-This support is newer than the 0.1.18 release.
+CLI 0.1.19 runs shell pre-actions and post-actions in the scheme's Build action.
 Build pre-actions run before project translation, so they can generate source files.
 Post-actions run only after a successful build. Archive actions run around archive assembly, after the build stage.
 A script can use build settings from its selected project target.

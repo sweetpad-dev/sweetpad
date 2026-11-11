@@ -4,8 +4,7 @@ sidebar_label: Support and configuration
 
 # Linux support and configuration
 
-Release 0.1.18 provides an Ubuntu 24.04 ARM64 archive.
-Current source builds also support Ubuntu 24.04 x86_64. The x64 package is prepared for the next release.
+Release 0.1.19 provides Ubuntu 24.04 archives for ARM64 and x86_64 hosts.
 
 ## Host and target architectures
 
@@ -121,7 +120,7 @@ The export is SDK data and stays outside your source repository and public artif
 ## Environment variables
 
 For export, import, setup, and Linux diagnostics, see [SDK export and setup](sdk-transfer.md).
-Those convenience commands require a current source build until the next CLI release.
+Those convenience commands require CLI 0.1.19 or later.
 
 | Variable | Purpose |
 | --- | --- |

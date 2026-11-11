@@ -5,8 +5,7 @@ sidebar_label: Ubuntu and USB setup
 # Ubuntu setup and an iPhone over USB
 
 This guide starts with Ubuntu 24.04 and ends with a signed app on an iPhone.
-Release 0.1.18 supplies ARM64 packages. Current source builds also support x86_64 hosts with ARM64 iPhone targets.
-The `linux-x64` archive is prepared for the next release. The download example uses the released ARM64 package.
+Release 0.1.19 supplies ARM64 and x64 packages. Both packages can build ARM64 iPhone apps.
 Use a Linux VM on Apple hardware for the validated setup.
 
 You need your Xcode SDKs, an Apple Development identity, a provisioning profile, and a USB connection to the phone.
@@ -21,16 +20,23 @@ sudo apt-get update
 sudo apt-get install ca-certificates curl libssl3t64 libgcc-s1 python3-venv usbmuxd
 ```
 
+The download commands select the package for the Linux host.
+
 Download and verify the CLI archive:
 
 ```bash
-CLI_VERSION=0.1.18
+CLI_VERSION=0.1.19
+case "$(uname -m)" in
+  aarch64|arm64) CLI_ARCH=arm64 ;;
+  x86_64|amd64) CLI_ARCH=x64 ;;
+  *) echo "Unsupported Linux host architecture" >&2; exit 1 ;;
+esac
 mkdir -p "$HOME/downloads/sweetpad-$CLI_VERSION"
 cd "$HOME/downloads/sweetpad-$CLI_VERSION"
-curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz"
-curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz.sha256"
-sha256sum -c "sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz.sha256"
-tar -xzf "sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz"
+curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz"
+curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz.sha256"
+sha256sum -c "sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz.sha256"
+tar -xzf "sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz"
 bash install.sh
 export PATH="$HOME/.local/bin:$PATH"
 sweetpad --version
@@ -42,9 +48,8 @@ Installing the CLI requires no Rust compiler or SweetPad checkout.
 
 ## Prepare the Apple toolchain
 
-The [SDK export and setup guide](sdk-transfer.md) provides convenience commands in current source builds.
-It exports the required Apple files on your Mac and imports them on Ubuntu without copying all of Xcode.
-These commands are not included in CLI 0.1.18.
+The [SDK export and setup guide](sdk-transfer.md) covers the convenience commands in CLI 0.1.19 and later.
+These commands export the required Apple files on your Mac and import them on Ubuntu without a complete Xcode copy.
 
 ### Manual toolchain setup
 
@@ -72,7 +77,7 @@ An OrbStack machine can see the Mac's files at the same paths.
 The repository setup script can create and provision the Ubuntu machine from macOS:
 
 ```bash
-git clone --branch cli-v0.1.18 --depth 1 https://github.com/sweetpad-dev/sweetpad.git
+git clone --branch cli-v0.1.19 --depth 1 https://github.com/sweetpad-dev/sweetpad.git
 cd sweetpad
 SWEETPAD_SKIP_RUST=1 bash sweetpad-lib/ci/linux-setup.sh
 orb -m sweetpad-linux

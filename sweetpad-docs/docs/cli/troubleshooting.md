@@ -10,7 +10,7 @@ Two commands answer most "why isn't this working" questions, and they answer dif
 
 ## Is my toolchain OK?
 
-On Ubuntu ARM64, current source builds provide `sweetpad doctor --target ios` and `--target macos`.
+On Ubuntu ARM64 or x86_64, CLI 0.1.19 and later provide `sweetpad doctor --target ios` and `--target macos`.
 The Linux report checks compiler tools, SDK data, and optional device services.
 It does not require Xcode on the Linux host. See [Linux setup](linux/sdk-transfer.md).
 Missing localized App Intents phrase resources are a warning and affect localized shortcut training.

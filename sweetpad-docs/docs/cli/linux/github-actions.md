@@ -21,7 +21,7 @@ Use SDK files under [Apple's Xcode agreement](https://www.apple.com/legal/sla/do
 A hosted Ubuntu runner supplies neither your licensed SDK environment nor a connected iPhone.
 
 Provision the app-build runner using [Ubuntu setup](ubuntu-usb.md).
-Current source builds also provide [SDK export and setup commands](sdk-transfer.md).
+CLI 0.1.19 and later provide [SDK export and setup commands](sdk-transfer.md).
 With those commands, source `$HOME/.config/sweetpad/linux-env.sh` in each build step and run `sweetpad doctor --target ios` before compilation.
 Its user needs the Linux Swift toolchain, Swift Build, macro plugin, and extracted SDK on the documented paths.
 The example uses the custom runner label `sweetpad-linux`.
@@ -37,9 +37,8 @@ They require a provisioned self-hosted SDK runner and do not run on public pull 
 
 ### x86_64 runners
 
-Current source builds support the `X64` self-hosted runner label and ARM64 iPhone targets.
-The x64 archive is prepared for the next release. The example that follows keeps the released 0.1.18 ARM64 archive.
-After an x64 package release, select `linux-x64` and use `runs-on: [self-hosted, Linux, X64, sweetpad-linux]`.
+CLI 0.1.19 provides ARM64 and x64 archives. The example uses the ARM64 archive.
+For an x86_64 runner, select `linux-x64` and use `runs-on: [self-hosted, Linux, X64, sweetpad-linux]`.
 Keep the iPhone destination and `ARCHS=arm64` settings unchanged.
 An SDK imported on ARM64 contains ARM64 host tools. Import the private export on the x64 runner to select x64 tools.
 
@@ -69,7 +68,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CLI_VERSION=0.1.18
+          CLI_VERSION=0.1.19
           mkdir "$RUNNER_TEMP/cli"
           cd "$RUNNER_TEMP/cli"
           curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz"

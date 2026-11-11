@@ -30,16 +30,16 @@ feedback reports.
 | `sweetpad format`   | Format Swift sources (`--check` to verify only; `--tool swiftlint` to lint). Alias: `fmt`. |
 | `sweetpad devices`  | List everything runnable (macOS, simulators, connected devices), most-used first. |
 | `sweetpad status`   | Show the effective build context and where each value comes from.                 |
-| `sweetpad doctor`   | Diagnose the host toolchain. Linux source builds support `--target ios` or `--target macos`. |
+| `sweetpad doctor`   | Diagnose the host toolchain. On Linux, select `--target ios` or `--target macos`. |
 
-### Linux setup (after CLI 0.1.18)
+### Linux setup
 
-These commands require a current source build until the next CLI release.
+These commands require CLI 0.1.19 or later.
 
 | Command | What it does |
 | --- | --- |
 | `sweetpad sdk export --output-file PATH` | Export private Apple SDK inputs on a Mac. |
-| `sweetpad sdk import ARCHIVE` | Import verified SDK inputs on Ubuntu ARM64. |
+| `sweetpad sdk import ARCHIVE` | Import verified SDK inputs on Ubuntu ARM64 or x86_64. |
 | `sweetpad setup --sdk ARCHIVE` | Install the pinned tools, import the SDK, and build the sample. |
 | `sweetpad device install PATH --device UDID` | Install an existing signed app or IPA. |
 | `sweetpad device pair-network UDID --out PATH` | Create private Wi-Fi pairing configuration with trusted USB available. |

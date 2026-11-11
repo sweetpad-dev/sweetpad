@@ -25,7 +25,7 @@ It captures dependency locks and applies the same scene-lifecycle compatibility 
 Get the matching helper sources:
 
 ```bash
-git clone --branch cli-v0.1.18 --depth 1 https://github.com/sweetpad-dev/sweetpad.git "$HOME/src/sweetpad"
+git clone --branch cli-v0.1.19 --depth 1 https://github.com/sweetpad-dev/sweetpad.git "$HOME/src/sweetpad"
 cd "$HOME/src/sweetpad"
 bash sweetpad-lib/ci/linux-framework-tools.sh
 source "$HOME/.cache/sweetpad/framework-tools/env.sh"
