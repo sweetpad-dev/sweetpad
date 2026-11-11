@@ -7,7 +7,7 @@ sidebar_label: Get started
 
 The `sweetpad` command-line tool builds, runs, and tests your Xcode apps from the terminal, with no editor
 needed. This page covers the native Mac workflow with Xcode.
-For iPhone builds on Ubuntu, start with [Linux setup and USB](./linux/ubuntu-usb.md).
+For iPhone builds on Ubuntu, start with [Linux installation](./linux/install.md) and [USB setup](./linux/ubuntu-usb.md).
 
 ## 1. Install
 
@@ -20,7 +20,7 @@ brew install sweetpad-dev/tap/sweetpad
 Or with [mise](https://mise.jdx.dev/):
 
 ```bash
-mise use -g 'github:sweetpad-dev/sweetpad[version_prefix=cli-v]'
+mise use -g packslip:github.com/sweetpad-dev/sweetpad/tools/cli
 ```
 
 Check that it worked:

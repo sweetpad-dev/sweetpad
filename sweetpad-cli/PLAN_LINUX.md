@@ -152,7 +152,7 @@ they do not establish physical-device execution for these changes.
 
 - [ ] P01: Run ARM64 packaging on main pushes and define private SDK validation for tag releases (`linux-arm64-package.yaml`, `cli-release.yaml`). Main pushes now run package checks; private SDK tag-release gating remains open.
 - [x] P02: Give Linux self-update instructions that do not require the macOS-only Homebrew formula (`commands/self_update.rs`).
-- [x] P03: Replace installed setup resources without stale files; describe PATH setup and removal (`ci/install-linux.sh`).
+- [x] P03: Replace setup resources without stale files; embed them in the standalone CLI and describe native package upgrades, PATH setup, and removal.
 - [x] P04: Reject development-stamped binaries in actual tag-release packages (`ci/package-linux.py`).
 - [x] T01: Correct archive --output-file in the main reference and add setup/sdk/device/doctor commands (`docs/cli/reference.md`).
 - [x] T02: Mark setup convenience commands as newer than 0.1.18 and preserve the released manual setup route (`docs/cli/linux/sdk-transfer.md`, `docs/cli/linux/ubuntu-usb.md`, `880b692d`).

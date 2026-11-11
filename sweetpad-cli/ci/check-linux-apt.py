@@ -55,6 +55,12 @@ def inside(args):
         shutil.rmtree(site)
         updated.rename(site)
         run("apt-get", "update", "-o", "APT::Update::Error-Mode=any")
+        payload = site / "pool/main/s/sweetpad" / next(args.upgrade_dir.glob("*.deb")).name
+        original = payload.read_bytes()
+        payload.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+        failure = run("apt-get", "install", "-y", "sweetpad", success=False)
+        assert failure.returncode != 0 and "hash sum mismatch" in (failure.stdout + failure.stderr).lower(), commands[-1]
+        payload.write_bytes(original)
         run("apt-get", "install", "-y", "sweetpad")
         second = run("dpkg-query", "-W", "-f=${Version}", "sweetpad").stdout
         run("dpkg", "--compare-versions", second, "gt", first)
@@ -64,7 +70,8 @@ def inside(args):
         assert failure.returncode != 0 and "signature" in (failure.stdout + failure.stderr).lower(), commands[-1]
         assert sentinel.read_text() == "private state"
         report = {"passed": True, "installedVersion": first, "upgradedVersion": second,
-                  "alteredMetadataRejected": True, "privateStatePreserved": True}
+                  "alteredMetadataRejected": True, "alteredPackageRejected": True,
+                  "privateStatePreserved": True}
         (args.out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
         print(json.dumps(report, indent=2))
 
@@ -84,5 +91,5 @@ if __name__ == "__main__":
                         "-v", f"{args.package_dir.resolve()}:/packages:ro",
                         "-v", f"{args.upgrade_dir.resolve()}:/upgrade:ro",
                         "-v", f"{args.out.parent.resolve()}:/reports", "ubuntu:24.04", "bash", "-euc",
-                        "apt-get update -qq\nDEBIAN_FRONTEND=noninteractive apt-get install -yqq python3 ca-certificates gnupg dpkg-dev\n"
+                        "apt-get update -qq\nDEBIAN_FRONTEND=noninteractive apt-get install -yqq --no-install-recommends python3 ca-certificates gnupg dpkg-dev\n"
                         f"python3 /validation/sweetpad-cli/ci/check-linux-apt.py --inside --package-dir /packages --upgrade-dir /upgrade --out /reports/{args.out.name}"], check=True)

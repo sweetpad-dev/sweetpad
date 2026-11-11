@@ -127,8 +127,13 @@ def debian_package(binary, version, out, revision=1, repo=REPO):
             path.chmod(0o644)
         control = stage / "DEBIAN"
         control.mkdir()
+        installed_kib = sum(
+            max(1, (path.lstat().st_size + 1023) // 1024) if path.is_file() else 1
+            for path in stage.rglob("*") if control not in path.parents and path != control
+        )
         (control / "control").write_text(
             f"Package: sweetpad\nVersion: {deb_version}\nArchitecture: {arch}\n"
+            f"Installed-Size: {installed_kib}\n"
             "Maintainer: Yevhenii Hyzyla <hyzyla@gmail.com>\nSection: devel\nPriority: optional\n"
             "Depends: ca-certificates, python3, bash\n"
             "Homepage: https://sweetpad.hyzyla.dev\n"
