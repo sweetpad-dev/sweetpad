@@ -1,0 +1,149 @@
+name: Distribute CLI
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        type: string
+        required: true
+    secrets:
+      SWEETPAD_APT_SIGNING_KEY:
+        required: true
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published stable CLI release (cli-vX.Y.Z)
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  packslip:
+    name: Sign Packslip release metadata
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release_tag }}
+      - name: Verify published release packages
+        run: |
+          python3 sweetpad-cli/ci/collect-release-packages.py --tag "$RELEASE_TAG" --out release-packages
+          echo "VERSION=${RELEASE_TAG#cli-v}" >> "$GITHUB_ENV"
+          echo "REVISION=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          python3 sweetpad-cli/ci/packslip-manifest.py --directory release-packages --version "${RELEASE_TAG#cli-v}" --out release.toml
+      - uses: jdx/packslip@44e50e5f64551234b4a382d991bd7f7f7d021d06 # v1.11.3
+        with:
+          project: github.com/sweetpad-dev/sweetpad/tools/cli
+          version: ${{ env.VERSION }}
+          tag: ${{ inputs.release_tag }}
+          commit: ${{ env.REVISION }}
+          artifacts: release-packages/*.tar.gz
+          manifest: release.toml
+          attest: link
+
+  container:
+    name: Publish multi-platform CLI image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release_tag }}
+      - name: Verify published release packages
+        run: python3 sweetpad-cli/ci/collect-release-packages.py --tag "$RELEASE_TAG" --out release-packages
+      - name: Prepare static executables
+        run: |
+          set -euo pipefail
+          mkdir -p image/linux-amd64 image/linux-arm64
+          tar -xzf "release-packages/sweetpad-cli-${RELEASE_TAG#cli-v}-linux-x64.tar.gz" -C image/linux-amd64 sweetpad sweetpad-dap
+          tar -xzf "release-packages/sweetpad-cli-${RELEASE_TAG#cli-v}-linux-arm64.tar.gz" -C image/linux-arm64 sweetpad sweetpad-dap
+          cp sweetpad-cli/ci/Dockerfile.cli image/Dockerfile
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker buildx create --use
+      - name: Publish CLI image
+        run: |
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            --build-arg "VERSION=${RELEASE_TAG#cli-v}" --build-arg "REVISION=$(git rev-parse HEAD)" \
+            --tag "ghcr.io/sweetpad-dev/sweetpad:${RELEASE_TAG#cli-v}" \
+            --tag ghcr.io/sweetpad-dev/sweetpad:latest --provenance=mode=max --sbom=true --push image
+      - name: Smoke-test published image
+        run: docker run --rm "ghcr.io/sweetpad-dev/sweetpad:${RELEASE_TAG#cli-v}" --version
+      - name: Remove registry credentials
+        if: always()
+        run: docker logout ghcr.io
+
+  apt:
+    name: Sign APT repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release_tag }}
+      - name: Verify published packages and retain recent versions
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y dpkg-dev gnupg
+          python3 sweetpad-cli/ci/collect-release-packages.py --tag "$RELEASE_TAG" --out release-packages --history 10
+      - name: Import dedicated APT signing key
+        env:
+          APT_SIGNING_KEY: ${{ secrets.SWEETPAD_APT_SIGNING_KEY }}
+          GNUPGHOME: ${{ runner.temp }}/apt-keyring
+        run: |
+          install -d -m700 "$GNUPGHOME"
+          printf '%s' "$APT_SIGNING_KEY" | gpg --batch --import
+          EXPECTED="$(cat sweetpad-cli/ci/apt/signing-key.fingerprint)"
+          ACTUAL="$(gpg --batch --with-colons --list-secret-keys | awk -F: '/^fpr:/ {print $10; exit}')"
+          test "$ACTUAL" = "$EXPECTED"
+      - name: Build signed repository
+        env:
+          GNUPGHOME: ${{ runner.temp }}/apt-keyring
+        run: |
+          python3 sweetpad-cli/ci/build-apt-repository.py --packages release-packages --out site/apt \
+            --public-key sweetpad-cli/ci/apt/sweetpad-archive-keyring.asc \
+            --signing-key "$(cat sweetpad-cli/ci/apt/signing-key.fingerprint)"
+          touch site/.nojekyll
+          cp site/apt/index.html site/index.html
+          gpg --export "$(cat sweetpad-cli/ci/apt/signing-key.fingerprint)" > "$RUNNER_TEMP/apt-public.gpg"
+          gpgv --keyring "$RUNNER_TEMP/apt-public.gpg" site/apt/dists/stable/InRelease
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - name: Remove signing key
+        if: always()
+        env:
+          GNUPGHOME: ${{ runner.temp }}/apt-keyring
+        run: |
+          gpgconf --kill gpg-agent || true
+          rm -rf "$GNUPGHOME"
+
+  deploy-apt:
+    name: Publish signed APT feed
+    needs: apt
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: sweetpad-apt-pages
+      cancel-in-progress: false
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}apt/
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment

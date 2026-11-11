@@ -625,19 +625,10 @@ fn sha256(data: &[u8]) -> [u8; 32] {
     digest
 }
 
-/// SHA-256 from OpenSSL's libcrypto, which the TLS stack already links off
-/// macOS.
+/// Reuse the portable digest implementation so Linux needs no libcrypto.
 #[cfg(not(target_os = "macos"))]
 fn sha256(data: &[u8]) -> [u8; 32] {
-    #[link(name = "crypto")]
-    unsafe extern "C" {
-        fn SHA256(data: *const u8, len: usize, md: *mut u8) -> *mut u8;
-    }
-    let mut digest = [0u8; 32];
-    // Safety: `data` is `data.len()` readable bytes and `digest` the 32 bytes
-    // SHA256 writes.
-    unsafe { SHA256(data.as_ptr(), data.len(), digest.as_mut_ptr()) };
-    digest
+    sweetpad_lib::xcode_hash::sha256(data)
 }
 
 /// 32 hex digits with a UUID v4's version digit (`4`) and variant digit
@@ -825,7 +816,12 @@ fn send_error(error: &minreq::Error, host: &str, proxy: Option<&SendProxy>) -> C
         (minreq::Error::AddressNotFound, _) => {
             format!("can't reach {host}{via}: its address didn't resolve")
         }
+        #[cfg(not(target_os = "linux"))]
         (minreq::Error::NativeTlsCreateConnection(e), _) => {
+            format!("the secure connection to {host}{via} failed: {e}")
+        }
+        #[cfg(target_os = "linux")]
+        (minreq::Error::RustlsCreateConnection(e), _) => {
             format!("the secure connection to {host}{via} failed: {e}")
         }
         (minreq::Error::InvalidProxyCreds, Some(p)) if p.has_credentials => format!(
@@ -1001,6 +997,19 @@ impl Render for Status {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "public HTTPS probe; explicitly enabled by Linux distribution CI"]
+    fn static_https_uses_host_certificate_store() {
+        // Read-only request: this never submits feedback or user information.
+        let response = minreq::get("https://api.github.com/repos/sweetpad-dev/sweetpad")
+            .with_header("User-Agent", "sweetpad-distribution-validation")
+            .with_timeout(30)
+            .send()
+            .expect("static TLS must validate GitHub using the host CA store");
+        assert!((200..500).contains(&response.status_code));
+    }
 
     const ENTRY: &str = "\
 ## 2026-09-27T10:00Z · bug · medium

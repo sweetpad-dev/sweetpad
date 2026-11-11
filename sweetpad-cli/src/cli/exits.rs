@@ -975,7 +975,7 @@ pub fn signal_name(signal: i32) -> String {
 /// launchd's.
 fn log_timestamp(epoch: f64) -> String {
     let at = Duration::try_from_secs_f64(epoch).unwrap_or_default();
-    let t: libc::time_t = i64::try_from(at.as_secs()).unwrap_or(i64::MAX);
+    let t = i64::try_from(at.as_secs()).unwrap_or(i64::MAX);
     // SAFETY: `localtime_r` fills the caller-owned `tm` from `t`; the reentrant
     // form, since exits are recorded from session threads.
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };

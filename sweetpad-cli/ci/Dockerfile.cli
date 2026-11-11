@@ -1,0 +1,19 @@
+# Only the static CLI and public CA certificates. Apple SDKs are never included.
+FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS certificates
+RUN apt-get update -qq && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+FROM scratch
+ARG TARGETARCH
+ARG VERSION
+ARG REVISION
+LABEL org.opencontainers.image.source="https://github.com/sweetpad-dev/sweetpad" \
+      org.opencontainers.image.title="Sweetpad CLI" \
+      org.opencontainers.image.description="Static Sweetpad CLI; Apple SDKs and build toolchains supplied separately" \
+      org.opencontainers.image.version=$VERSION \
+      org.opencontainers.image.revision=$REVISION
+COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY linux-${TARGETARCH}/ /usr/local/bin/
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/sweetpad"]
+CMD ["--help"]

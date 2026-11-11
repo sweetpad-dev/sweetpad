@@ -69,11 +69,9 @@ toml = "0.8"
 # tree), for the one config write: `feedback off|on` keeps the rest of the
 # user's config.toml, comments included.
 toml_edit = "0.22"
-# `feedback submit`'s one HTTPS POST. native-tls is Security.framework on
-# macOS, which keeps this to minreq plus the Security/CoreFoundation bindings
-# and their tempfile dependency. `proxy` adds only `base64`, for a proxy's
-# Basic credentials.
-minreq = { version = "3", features = ["https-native-tls", "proxy"] }
+# Platform TLS is selected by the CLI: native trust on macOS and Windows,
+# Rustls with the host certificate store on Linux for static musl builds.
+minreq = { version = "3", features = ["proxy"] }
 # N-API addon only (sweetpad-vscode/native).
 napi = { version = "3", default-features = false, features = ["napi8"] }
 napi-derive = "3"

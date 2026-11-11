@@ -349,7 +349,7 @@ pub fn now_clock() -> String {
 /// `localtime_r`, so the stamp honors the machine's timezone the way the
 /// simulator's os_log timestamps already do.
 fn local_hms(epoch_secs: u64) -> (u32, u32, u32) {
-    let t: libc::time_t = i64::try_from(epoch_secs).unwrap_or(i64::MAX);
+    let t = i64::try_from(epoch_secs).unwrap_or(i64::MAX);
     // SAFETY: `localtime_r` fills the caller-owned `tm` from `t` — the reentrant,
     // thread-safe form (console lines render on detached threads). We read only the
     // always-in-range clock fields, so `unsigned_abs` can't lose information.

@@ -36,7 +36,7 @@ def check(args):
                 "--ro-bind", str(args.swift.resolve()), "/opt/swift",
                 "--ro-bind", str(args.swbuild_products.resolve()), "/opt/swbuild",
                 "--ro-bind", str(args.macros.resolve()), "/opt/bin/sweetpad-macros.bin",
-                "--ro-bind", str(unpacked / "setup/sweetpad-lib/ci/linux-macro-launcher.sh"),
+                "--ro-bind", str(Path(__file__).resolve().parents[2] / "sweetpad-lib/ci/linux-macro-launcher.sh"),
                 "/opt/bin/sweetpad-macros",
                 "--symlink", "../swift/usr/bin/swift", "/opt/bin/sweetpad-macro-swift",
                 "--ro-bind", str(args.sdk.resolve()), "/opt/darwin-sdk",
@@ -47,12 +47,15 @@ def check(args):
                 "--setenv", "LANG", "C.UTF-8", "--setenv", "NO_COLOR", "1"]
     script = '''set -eu
 mkdir -p "$HOME"
-bash /package/install.sh --prefix "$HOME/.local" > /work/install.stdout
+mkdir -p "$HOME/.local/bin"
+cp /package/sweetpad "$HOME/.local/bin/sweetpad"
+ln -s sweetpad "$HOME/.local/bin/sweetpad-dap"
 test ! -e /Users
 test ! -e /home
 test ! -e /root
 test ! -e /work/home/.cache
-cp -R "$HOME/.local/share/sweetpad/examples/LinuxApp" /work/Example
+sweetpad project new LinuxApp --bundle-id dev.sweetpad.distribution --no-git --json > /work/project.json
+mv /work/LinuxApp /work/Example
 sweetpad build --project /work/Example/LinuxApp.xcodeproj --scheme LinuxApp \
   --destination 'generic/platform=iOS' --json --non-interactive -- \
   -derivedDataPath /work/DerivedData CODE_SIGNING_ALLOWED=NO > /work/build.json

@@ -1,9 +1,93 @@
-use std::{env, fs, path::Path, process::Command};
+use std::{env, fmt::Write as _, fs, path::Path, process::Command};
 
 fn main() {
     embed_injection_client();
+    embed_setup_resources();
     emit_lib_dir();
     emit_version();
+}
+
+/// Keep the full public bootstrap and sample in the executable. Release
+/// installers only need to place the binary and command alias on PATH.
+fn embed_setup_resources() {
+    let manifest = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let repo = Path::new(&manifest).parent().unwrap();
+    let list = repo.join("sweetpad-cli/ci/linux-setup-files.txt");
+    println!("cargo:rerun-if-changed={}", list.display());
+    let mut files = Vec::new();
+    for line in fs::read_to_string(&list)
+        .expect("read public setup file list")
+        .lines()
+    {
+        let line = line.trim();
+        if !line.is_empty() && !line.starts_with('#') {
+            files.push((format!("setup/{line}"), repo.join(line)));
+        }
+    }
+    collect_resources(
+        repo,
+        &repo.join("sweetpad-cli/macros/Sources"),
+        "setup",
+        &["swift", "md"],
+        &mut files,
+    );
+    let sample = repo.join("sweetpad-lib/ci/fixture-linux");
+    collect_resources(
+        &sample,
+        &sample,
+        "examples/LinuxApp",
+        &["swift", "pbxproj", "xcscheme", "xcworkspacedata"],
+        &mut files,
+    );
+    files.sort();
+    files.dedup();
+    let mut code = String::from("const FILES: &[(&str, &[u8])] = &[\n");
+    for (name, source) in files {
+        assert!(
+            source.symlink_metadata().unwrap().file_type().is_file(),
+            "public setup inputs must be regular files: {}",
+            source.display()
+        );
+        println!("cargo:rerun-if-changed={}", source.display());
+        let source = source
+            .to_str()
+            .expect("public resource paths must be UTF-8");
+        writeln!(code, "({name:?}, include_bytes!({source:?})),").unwrap();
+    }
+    code.push_str("];\n");
+    fs::write(
+        Path::new(&env::var("OUT_DIR").unwrap()).join("setup-resources.rs"),
+        code,
+    )
+    .expect("write embedded setup resource table");
+}
+
+fn collect_resources(
+    root: &Path,
+    directory: &Path,
+    prefix: &str,
+    extensions: &[&str],
+    files: &mut Vec<(String, std::path::PathBuf)>,
+) {
+    println!("cargo:rerun-if-changed={}", directory.display());
+    for entry in fs::read_dir(directory).expect("read public resource directory") {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        let kind = entry.file_type().unwrap();
+        if kind.is_dir() {
+            collect_resources(root, &path, prefix, extensions, files);
+        } else if kind.is_file()
+            && path
+                .extension()
+                .and_then(|s| s.to_str())
+                .is_some_and(|s| extensions.contains(&s))
+        {
+            files.push((
+                format!("{prefix}/{}", path.strip_prefix(root).unwrap().display()),
+                path,
+            ));
+        }
+    }
 }
 
 /// Stamp the version the binary reports.
