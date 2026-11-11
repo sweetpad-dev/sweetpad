@@ -48,8 +48,7 @@ sweetpad_linux_host() {
   [ "$arch" != aarch64 ] || SWEETPAD_SWIFT_PLATFORM+=-aarch64
 }
 
-sweetpad_install_host_tools() {
-  sweetpad_linux_host
+sweetpad_install_host_packages() {
   local -a privilege=()
   if [ "${SWEETPAD_SKIP_SYSTEM_PACKAGES:-0}" != 1 ]; then
     if [ "$(id -u)" != 0 ]; then
@@ -72,6 +71,11 @@ sweetpad_install_host_tools() {
         ;;
     esac
   fi
+}
+
+sweetpad_install_host_tools() {
+  sweetpad_linux_host
+  sweetpad_install_host_packages
   mkdir -p "$HOME/bin" "$HOME/swift" "$HOME/downloads"
   local libtool=
   for candidate in /usr/bin/llvm-libtool-darwin /usr/bin/llvm-libtool-darwin-*; do

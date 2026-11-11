@@ -156,11 +156,9 @@ class SDKTests(unittest.TestCase):
             linker.write_bytes(header)
             self.assertEqual(sdk.sdk_host_architecture(bundle), expected)
 
-    @unittest.skipUnless(os.uname().sysname == 'Linux', 'Ubuntu bootstrap uses the Linux shell')
+    @unittest.skipUnless(os.uname().sysname == 'Linux', 'Host bootstrap uses the Linux shell')
     def test_root_bootstrap_does_not_require_sudo(self):
-        script=Path(__file__).with_name('linux-setup.sh').read_text()
-        sudo=script[script.index('SUDO=()'):script.index('TAG="swift-')]
-        apt=script.split('section "apt packages"',1)[1].split('# Swift Build',1)[0]
+        helper = Path(__file__).with_name('linux-host-tools.sh')
         tools=self.root/'tools'; tools.mkdir()
         log=self.root/'apt.log'
         for name,body in {
@@ -170,7 +168,10 @@ class SDKTests(unittest.TestCase):
         }.items():
             path=tools/name; path.write_text('#!/bin/sh\n'+body+'\n'); path.chmod(0o755)
         env=dict(os.environ,PATH=f'{tools}:/usr/bin:/bin',APT_FIXTURE_LOG=str(log))
-        subprocess.run(['bash','-euc',sudo+apt],env=env,check=True,capture_output=True,text=True)
+        subprocess.run(['bash', '-euc',
+                        'source "$1"; SWEETPAD_PACKAGE_MANAGER=apt; SWEETPAD_HOST_NAME=fixture; '
+                        'SWEETPAD_HOST_PACKAGES=(fixture-package); sweetpad_install_host_packages',
+                        'bootstrap-test', str(helper)], env=env, check=True, capture_output=True, text=True)
         self.assertEqual(log.read_text().splitlines(),['update','install'])
 
 
