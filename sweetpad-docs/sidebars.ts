@@ -52,6 +52,7 @@ const sidebars: SidebarsConfig = {
       link: { type: 'doc', id: 'cli/linux' },
       items: [
         'cli/linux/how-it-works',
+        'cli/linux/sdk-transfer',
         'cli/linux/ubuntu-usb',
         'cli/linux/signing-and-testing',
         'cli/linux/github-actions',

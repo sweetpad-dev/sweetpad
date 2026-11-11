@@ -49,7 +49,7 @@ class LinuxReleaseContracts(unittest.TestCase):
     def test_wrong_platform_binaries_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             binary = Path(directory) / "sweetpad"
-            for data in [b"\xcf\xfa\xed\xfe" + b"\0" * 16, b"\x7fELF\x02\x01" + b"\0" * 12 + b"\x3e\x00"]:
+            for data in [b"\xcf\xfa\xed\xfe" + b"\0" * 16, b"\x7fELF\x02\x01" + b"\0" * 12 + b"\x03\x00"]:
                 binary.write_bytes(data)
                 with self.assertRaises(ValueError):
                     package.validate_elf(binary)
@@ -58,20 +58,23 @@ class LinuxReleaseContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             binary = root / "sweetpad"
-            binary.write_bytes(b"\x7fELF\x02\x01" + b"\0" * 12 + b"\xb7\x00")
-            with patch.object(package.subprocess, "check_output", return_value="sweetpad 1.2.3\n"):
-                first = package.package(binary, "1.2.3", root / "first")
-                second = package.package(binary, "1.2.3", root / "second")
-            self.assertEqual(first["sha256"], second["sha256"])
-            with tarfile.open(first["archive"]) as archive:
-                names = set(archive.getnames())
-                self.assertIn("install.sh", names)
-                self.assertIn("setup/sweetpad-cli/macros/Package.resolved", names)
-                self.assertIn("setup/sweetpad-cli/macros/Sources/FoundationMacros/LICENSE.md", names)
-                self.assertIn("examples/LinuxApp/LinuxApp.xcodeproj/project.pbxproj", names)
-                self.assertTrue(archive.getmember("sweetpad-dap").issym())
-                self.assertEqual(archive.getmember("sweetpad-dap").linkname, "sweetpad")
-                self.assertFalse(any(n.endswith((".p12", ".cer", ".mobileprovision", ".omo")) or ".sdk/" in n for n in names))
+            for machine, arch in [(183, "arm64"), (62, "x64")]:
+                binary.write_bytes(b"\x7fELF\x02\x01" + b"\0" * 12 + machine.to_bytes(2, "little"))
+                with patch.object(package.subprocess, "check_output", return_value="sweetpad 1.2.3\n"):
+                    first = package.package(binary, "1.2.3", root / arch / "first")
+                    second = package.package(binary, "1.2.3", root / arch / "second")
+                self.assertEqual(first["sha256"], second["sha256"])
+                self.assertEqual(first["platform"], f"linux-{arch}")
+                self.assertTrue(first["archive"].endswith(f"linux-{arch}.tar.gz"))
+                with tarfile.open(first["archive"]) as archive:
+                    names = set(archive.getnames())
+                    self.assertIn("install.sh", names)
+                    self.assertIn("setup/sweetpad-cli/macros/Package.resolved", names)
+                    self.assertIn("setup/sweetpad-cli/macros/Sources/FoundationMacros/LICENSE.md", names)
+                    self.assertIn("examples/LinuxApp/LinuxApp.xcodeproj/project.pbxproj", names)
+                    self.assertTrue(archive.getmember("sweetpad-dap").issym())
+                    self.assertEqual(archive.getmember("sweetpad-dap").linkname, "sweetpad")
+                    self.assertFalse(any(n.endswith((".p12", ".cer", ".mobileprovision", ".omo")) or ".sdk/" in n for n in names))
 
 
 if __name__ == "__main__":

@@ -4,7 +4,25 @@ sidebar_label: Support and configuration
 
 # Linux support and configuration
 
-The released archive targets Ubuntu 24.04 ARM64.
+Release 0.1.18 provides an Ubuntu 24.04 ARM64 archive.
+Current source builds also support Ubuntu 24.04 x86_64. The x64 package is prepared for the next release.
+
+## Host and target architectures
+
+| Linux host | Package suffix | iPhone target |
+| --- | --- | --- |
+| ARM64 (`aarch64`) | `linux-arm64` | ARM64 (`arm64-apple-ios`) |
+| x86_64 (`amd64`) | `linux-x64` | ARM64 (`arm64-apple-ios`) |
+
+The CLI, Swift compiler, Swift Build service, macro plugins, and SDK tools must match the Linux host.
+The build destination selects the app platform and target architecture.
+For example, `--destination 'generic/platform=iOS'` selects an ARM64 iPhone build on either host.
+Simulator and macOS destinations default to the host architecture. An explicit destination `arch=` selects another supported architecture.
+
+The same private SDK export can supply Apple files to both hosts.
+SDK import installs host tools for the importing machine. An installed SDK bundle contains host executables and needs replacement after a host-architecture change.
+Flutter AOT and React Native keep the additional host-tool requirements in their respective guides.
+
 The validated setup uses an Apple-hardware Linux VM, Swift 6.4.2, Swift Build 6.4.0, and SDK data from Xcode.
 
 ## Platform coverage
@@ -102,6 +120,9 @@ The export is SDK data and stays outside your source repository and public artif
 
 ## Environment variables
 
+For export, import, setup, and Linux diagnostics, see [SDK export and setup](sdk-transfer.md).
+Those convenience commands require a current source build until the next CLI release.
+
 | Variable | Purpose |
 | --- | --- |
 | `SWEETPAD_DARWIN_SDK` | Select another extracted Darwin SDK bundle. |
@@ -111,9 +132,18 @@ The export is SDK data and stays outside your source repository and public artif
 | `SWEETPAD_CODE_SIGN_P12_PASSWORD` | Supply that identity's password. |
 | `SWEETPAD_PROVISIONING_PROFILES` | Select a directory of matching profiles. |
 | `SWEETPAD_DEVICE_PYTHON` | Select Python with the pinned modern device adapter. |
+| `SWEETPAD_DEVICE_TIMEOUT` | Set the finite device-action timeout in seconds (default: 180, maximum: 3600). |
+| `SWEETPAD_DEVICE_DISCOVERY_TIMEOUT` | Set each device's discovery timeout in seconds (default: 30, maximum: 3600). |
 | `SWEETPAD_DEVICE_NETWORK_CONFIG` | Select a private Wi-Fi device configuration. |
 | `SWEETPAD_SKIP_RUST` | Setup only: use `1` to omit Rust for the prebuilt CLI. |
 | `SWEETPAD_REFRESH_SDK` | Setup only: use `1` to refresh an existing SDK extraction. |
+| `SWEETPAD_SDK_ARCHIVE` | Setup script only: import a private archive instead of reading an Xcode directory. |
+| `SWEETPAD_ENGINE` | Select `swift-build` or `xcodebuild` for build commands. |
+| `SWEETPAD_SETUP_JOBS` | Limit concurrent setup compiler jobs (default: 4). |
+| `SWEETPAD_VM` | Select the OrbStack machine for Mac execution of the setup script. |
+| `XCODE_APP` | Select the Xcode directory for the manual setup script. |
+| `SWEETPAD_APPINTENTS_RESOURCE_EXPORT` | Supply the private localized phrase export during manual setup. |
+| `SWEETPAD_NONINTERACTIVE` | Disable interactive prompts. Setup also prevents sudo password prompts. |
 
 Run `sweetpad help environment` for runtime variables.
 The two setup controls apply to the setup script.

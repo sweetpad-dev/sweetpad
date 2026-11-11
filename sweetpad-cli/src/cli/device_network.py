@@ -8,6 +8,7 @@ import asyncio
 from contextlib import asynccontextmanager, AsyncExitStack
 from importlib.metadata import version
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import plistlib
@@ -306,6 +307,40 @@ async def perform(rsd, request):
             raise ValueError("unknown network device action")
 
 
+def configured_timeout(value, name):
+    timeout = float(value)
+    if not math.isfinite(timeout) or not 0 < timeout <= 3600:
+        raise ValueError(f"{name} must be greater than zero and at most 3600 seconds")
+    return timeout
+
+
+def action_timeout(request, environment):
+    if request["action"] in ("console", "logs"):
+        return None
+    return configured_timeout(request.get("timeoutSeconds", environment.get("SWEETPAD_DEVICE_TIMEOUT", "180")), "SWEETPAD_DEVICE_TIMEOUT")
+
+
+async def discover_devices(configured, timeout):
+    async def one(profile):
+        async def read():
+            async with connection(profile) as rsd:
+                return device_values(rsd, "USB" if profile.get("usb") else "Network")
+        try:
+            return await asyncio.wait_for(read(), timeout), None
+        except Exception as error:
+            reason = f"discovery timed out after {timeout:g}s" if isinstance(error, asyncio.TimeoutError) else f"{type(error).__name__}: {error}"
+            return None, f"{profile['udid']}: {reason}"
+
+    rows = await asyncio.gather(*(one(profile) for profile in configured))
+    result = [value for value, _ in rows if value is not None]
+    errors = [error for _, error in rows if error is not None]
+    if errors and not result:
+        raise RuntimeError("No configured device could be reached: " + "; ".join(errors))
+    for error in errors:
+        print("warning: skipping device " + error, file=sys.stderr)
+    return result
+
+
 async def main(request):
     if version("pymobiledevice3") != "11.50.0":
         raise ValueError("device transport requires pymobiledevice3==11.50.0 in SWEETPAD_DEVICE_PYTHON")
@@ -318,11 +353,8 @@ async def main(request):
         configured = [{"udid": d.serial, "usb": True} for d in await list_devices()
                       if d.connection_type == "USB"]
     if request["action"] == "list":
-        result = []
-        for profile in configured:
-            async with connection(profile) as rsd:
-                result.append(device_values(rsd, "USB" if profile.get("usb") else "Network"))
-        return result
+        timeout = configured_timeout(os.environ.get("SWEETPAD_DEVICE_DISCOVERY_TIMEOUT", "30"), "SWEETPAD_DEVICE_DISCOVERY_TIMEOUT")
+        return await discover_devices(configured, timeout)
     profile = next((p for p in configured if p["udid"] == request["device"]), None)
     if profile is None:
         raise ValueError("device is absent from SWEETPAD_DEVICE_NETWORK_CONFIG")
@@ -330,15 +362,24 @@ async def main(request):
         return await perform(rsd, request)
 
 
-if __name__ == "__main__":
-    request = json.loads(sys.argv[1])
+def run_request(request):
     try:
-        timeout = None if request["action"] in ("console", "logs") else 180
+        timeout = action_timeout(request, os.environ)
         result = asyncio.run(asyncio.wait_for(main(request), timeout))
         if result is not None:
             print(json.dumps(result), flush=True)
     except (KeyboardInterrupt, BrokenPipeError):
         pass
+    except asyncio.TimeoutError:
+        device = f" for {request['device']}" if request.get("device") else ""
+        duration = f" after {timeout:g}s" if timeout is not None else ""
+        hint = "; check connectivity or increase SWEETPAD_DEVICE_TIMEOUT" if timeout is not None else "; check connectivity"
+        print(f"Linux device {request['action']}{device} timed out{duration}{hint}", file=sys.stderr)
+        sys.exit(1)
     except Exception as exc:
         print(f"Linux device {request['action']}: {type(exc).__name__}: {exc}", file=sys.stderr)
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    run_request(json.loads(sys.argv[1]))

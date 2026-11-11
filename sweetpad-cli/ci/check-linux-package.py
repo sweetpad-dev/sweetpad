@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install and exercise an ARM64 tarball with an empty HOME and no Apple SDK."""
+"""Install and exercise a Linux tarball with an empty HOME and no Apple SDK."""
 import argparse
 import hashlib
 import json
@@ -12,8 +12,8 @@ import tarfile
 
 
 def check(archive, out):
-    if platform.system() != "Linux" or platform.machine() != "aarch64":
-        raise ValueError("run this check in Ubuntu 24.04 ARM64")
+    if platform.system() != "Linux" or platform.machine() not in ("aarch64", "x86_64"):
+        raise ValueError("run this check in Ubuntu 24.04 ARM64 or x86_64")
     out = out.resolve()
     out.mkdir(parents=True, exist_ok=False)
     expected = archive.with_suffix(archive.suffix + ".sha256").read_text().split()
@@ -25,7 +25,7 @@ def check(archive, out):
     with tarfile.open(archive) as source:
         source.extractall(extracted, filter="data")
     manifest = json.loads((extracted / "manifest.json").read_text())
-    assert manifest["platform"] == "linux-arm64" and manifest["appleSdkIncluded"] is False
+    assert manifest["platform"] == {"aarch64":"linux-arm64", "x86_64":"linux-x64"}[platform.machine()] and manifest["appleSdkIncluded"] is False
     for name, digest in manifest["files"].items():
         assert hashlib.sha256((extracted / name).read_bytes()).hexdigest() == digest, name
     assert (extracted / "sweetpad-dap").is_symlink() and os.readlink(extracted / "sweetpad-dap") == "sweetpad"
@@ -42,11 +42,39 @@ def check(archive, out):
 
     prefix = home / ".local"
     invoke("install", ["/bin/bash", extracted / "install.sh", "--prefix", prefix])
+    resources = prefix / "share/sweetpad"
+    for directory in ("setup", "licenses", "examples"):
+        (resources / directory / "obsolete-file").write_text("from an older installation")
+    (resources / "unrelated-file").write_text("preserve")
+    invoke("reinstall", ["/bin/bash", extracted / "install.sh", "--prefix", prefix])
+    assert not list(resources.rglob("obsolete-file"))
+    assert (resources / "unrelated-file").read_text() == "preserve"
+    manifest_path = extracted / "manifest.json"
+    original_manifest = manifest_path.read_text()
+    mismatched = dict(manifest, platform="linux-x64" if manifest["platform"] == "linux-arm64" else "linux-arm64")
+    manifest_path.write_text(json.dumps(mismatched))
+    mismatch = invoke("wrong-host-architecture", ["/bin/bash", extracted / "install.sh", "--prefix", prefix], success=False)
+    assert "does not match host" in mismatch.stderr
+    manifest_path.write_text(original_manifest)
     binary = prefix / "bin/sweetpad"
     assert hashlib.sha256(binary.read_bytes()).hexdigest() == manifest["files"]["sweetpad"]
+    header = binary.read_bytes()[:20]
+    assert int.from_bytes(header[18:20], "little") == {"aarch64": 183, "x86_64": 62}[platform.machine()]
     assert invoke("version", [binary, "--version"]).stdout.strip() == manifest["binaryVersion"]
     assert "sweetpad dap" in invoke("dap-alias", [prefix / "bin/sweetpad-dap", "--help"]).stdout
     invoke("help", [binary, "--help"])
+    invoke("sdk-export-help", [binary, "sdk", "export", "--help"])
+    invoke("sdk-import-help", [binary, "sdk", "import", "--help"])
+    invoke("setup-help", [binary, "setup", "--help"])
+    invalid_sdk=out / "invalid-sdk.tar.gz"
+    invalid_sdk.write_bytes(b"not an SDK archive")
+    invalid_sdk.with_name(invalid_sdk.name + ".sha256").write_text(f"{hashlib.sha256(invalid_sdk.read_bytes()).hexdigest()}  {invalid_sdk.name}\n")
+    raw_setup=invoke("raw-setup-source-discovery", [extracted / "sweetpad", "setup", "--sdk", invalid_sdk, "--json"], success=False)
+    raw_error=json.loads(raw_setup.stderr)["error"]
+    assert "gzip" in raw_error["message"] and raw_error["diagnostics"][0]["stage"] == "bootstrap"
+    doctor = json.loads(invoke("linux-doctor-missing-tools", [binary, "doctor", "--target", "ios", "--json"], success=False).stdout)
+    assert doctor["ok"] and doctor["data"]["summary"]["problems"] > 0
+    assert not any(c["name"] in ("Xcode", "xcodebuild", "Simulator runtimes") for c in doctor["data"]["checks"])
     value = json.loads(invoke("device-guide", [binary, "help", "linux-devices", "--json"]).stdout)
     assert value["ok"]
     project = prefix / "share/sweetpad/examples/LinuxApp/LinuxApp.xcodeproj"

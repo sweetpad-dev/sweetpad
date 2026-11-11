@@ -1,5 +1,16 @@
-name: Linux ARM64 package
+name: Linux packages
 on:
+  push:
+    branches: [main]
+    paths:
+      - "sweetpad-cli/**"
+      - "sweetpad-core/**"
+      - "sweetpad-lib/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/linux-arm64-package.yaml"
+      - ".github/workflows/cli-release.yaml"
   pull_request:
     paths:
       - "sweetpad-cli/**"
@@ -16,8 +27,18 @@ permissions:
   contents: read
 jobs:
   package:
-    name: ARM64 archive and clean Ubuntu install
-    runs-on: ubuntu-24.04-arm
+    name: ${{ matrix.arch }} archive and clean Ubuntu install
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            docker_arch: arm64
+          - arch: x64
+            runner: ubuntu-24.04
+            docker_arch: amd64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
       CARGO_INCREMENTAL: "0"
@@ -31,18 +52,29 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y libssl-dev pkg-config
       - name: Install pinned Rust
         run: rustup show
+      - name: Validate SDK archive safety and bootstrap syntax
+        run: |
+          python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_sdk.py
+          python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_release.py
+          python3 -m unittest discover -s sweetpad-cli/ci -p test_linux_package.py
+          python3 -m unittest discover -s sweetpad-cli/ci -p test_device_discovery.py
+          bash -n sweetpad-lib/ci/linux-setup.sh
       - uses: Swatinem/rust-cache@v2
-      - name: Build ARM64 release CLI
+      - name: Check host setup and SDK diagnostics
+        run: |
+          cargo test --locked -p sweetpad-cli --lib cli::commands::setup::tests
+          cargo test --locked -p sweetpad-cli --lib cli::commands::doctor::tests
+      - name: Build Linux release CLI
         run: cargo build --release --locked -p sweetpad-cli --bin sweetpad -j 4
       - name: Package public sources and binary
         run: |
           VERSION="$(python3 sweetpad-cli/ci/release-version.py)"
           export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
           python3 sweetpad-cli/ci/package-linux.py --binary target/release/sweetpad --version "$VERSION" --out dist
-      - name: Install in a clean Ubuntu 24.04 ARM64 container
+      - name: Install in a clean Ubuntu 24.04 container
         run: |
           mkdir -p "$RUNNER_TEMP/package-smoke"
-          docker run --rm --platform linux/arm64 \
+          docker run --rm --platform linux/${{ matrix.docker_arch }} \
             -v "$PWD/dist:/artifacts:ro" \
             -v "$PWD/sweetpad-cli/ci/check-linux-package.py:/check.py:ro" \
             -v "$RUNNER_TEMP/package-smoke:/reports" ubuntu:24.04 bash -euc '
@@ -54,13 +86,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: linux-arm64-install-report
+          name: linux-${{ matrix.arch }}-install-report
           path: ${{ runner.temp }}/package-smoke/install/*.json
           if-no-files-found: warn
       - name: Upload verified release package
         uses: actions/upload-artifact@v7
         with:
-          name: cli-tarball-linux-arm64
+          name: cli-tarball-linux-${{ matrix.arch }}
           path: |
             dist/*.tar.gz
             dist/*.sha256

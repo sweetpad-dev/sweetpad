@@ -83,7 +83,9 @@ pub(super) fn run(
     }
     swbuild::run(&plan, &ctx.out).map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
     let app = archived_app(&archive)?;
+    swbuild::scheme_actions::archive(false, &archive, &plan, &ctx.out)?;
     finish_archive(&archive, &app, scheme, &plan)?;
+    swbuild::scheme_actions::archive(true, &archive, &plan, &ctx.out)?;
     let ipa_dir = if args.no_export {
         None
     } else {

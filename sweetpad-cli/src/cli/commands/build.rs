@@ -41,7 +41,7 @@ pub struct StartArgs {
     /// The build engine: 'xcodebuild', or 'swift-build' for Apple's
     /// open-source Swift Build. Defaults to xcodebuild on macOS and Swift
     /// Build elsewhere.
-    #[arg(long, global = true, hide = true, value_enum, env = "SWEETPAD_ENGINE")]
+    #[arg(long, global = true, value_enum, env = "SWEETPAD_ENGINE")]
     pub engine: Option<Engine>,
 
     /// Extra arguments passed to xcodebuild verbatim (after '--'), e.g.

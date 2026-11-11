@@ -13,7 +13,7 @@ sweetpad build --project MyApp.xcodeproj --scheme MyApp \
 ```
 
 :::warning Experimental
-The release target is Ubuntu 24.04 ARM64. The validated setup uses Linux in a VM on Apple hardware.
+Release 0.1.18 targets Ubuntu 24.04 ARM64. Current source builds add x86_64 hosts, including ARM64 iPhone cross-compilation. The validated setup uses Linux in a VM on Apple hardware.
 Apple SDKs and signing credentials come from your own development environment.
 :::
 
@@ -24,6 +24,7 @@ These guides follow the path from a fresh machine to a running iPhone app:
 | Guide | What you will do |
 | --- | --- |
 | [How it works](linux/how-it-works.md) | Understand the compiler, SDK, resource tools, and device transport. |
+| [SDK export and setup](linux/sdk-transfer.md) | Export private Apple files, configure Ubuntu, and diagnose the Linux toolchain. |
 | [Ubuntu and USB setup](linux/ubuntu-usb.md) | Install the CLI and toolchain, pair an iPhone, and launch an app through USB. |
 | [Signing, tests, and archives](linux/signing-and-testing.md) | Configure development signing and run Linux-built test products on a Mac. |
 | [GitHub Actions for iOS](linux/github-actions.md) | Build iPhone products on a provisioned Linux runner and retain usable artifacts. |

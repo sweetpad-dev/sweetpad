@@ -26,11 +26,25 @@ feedback reports.
 | `sweetpad build`    | Compile the resolved scheme. `--watch` rebuilds on every Swift save; `--clean` first cleans. |
 | `sweetpad test`     | Run the tests. Supports `--only-testing`, `--skip-testing`, `--failed`, `--retry-flaky`, `--coverage`, `--junit`, `--watch`. `sweetpad test build` compiles them without running. |
 | `sweetpad clean`    | Clean build artifacts; `--purge` also deletes DerivedData.                        |
-| `sweetpad archive`  | Archive and export an `.ipa` (`--export-method`, `--output`).                     |
+| `sweetpad archive`  | Archive and export an `.ipa` (`--export-method`, `--output-file`).                |
 | `sweetpad format`   | Format Swift sources (`--check` to verify only; `--tool swiftlint` to lint). Alias: `fmt`. |
 | `sweetpad devices`  | List everything runnable (macOS, simulators, connected devices), most-used first. |
 | `sweetpad status`   | Show the effective build context and where each value comes from.                 |
-| `sweetpad doctor`   | Diagnose the local Xcode/Swift toolchain.                                          |
+| `sweetpad doctor`   | Diagnose the host toolchain. Linux source builds support `--target ios` or `--target macos`. |
+
+### Linux setup (after CLI 0.1.18)
+
+These commands require a current source build until the next CLI release.
+
+| Command | What it does |
+| --- | --- |
+| `sweetpad sdk export --output-file PATH` | Export private Apple SDK inputs on a Mac. |
+| `sweetpad sdk import ARCHIVE` | Import verified SDK inputs on Ubuntu ARM64. |
+| `sweetpad setup --sdk ARCHIVE` | Install the pinned tools, import the SDK, and build the sample. |
+| `sweetpad device install PATH --device UDID` | Install an existing signed app or IPA. |
+| `sweetpad device pair-network UDID --out PATH` | Create private Wi-Fi pairing configuration with trusted USB available. |
+
+See [SDK export and setup](linux/sdk-transfer.md) and [Ubuntu USB setup](linux/ubuntu-usb.md).
 
 ### Project inspection
 
@@ -69,6 +83,10 @@ feedback reports.
 
 Anything after `--` goes to `xcodebuild` verbatim: its own flags, or `KEY=VALUE` build-setting
 overrides:
+
+For Swift Build, use build settings, `-derivedDataPath`, `-xcconfig`, or `-testPlan`.
+Xcode-only flags in either the command or `[xcodebuild].args` in `sweetpad.toml` require removal or a Mac build.
+Select an engine with `build --engine swift-build` or `SWEETPAD_ENGINE=swift-build`.
 
 ```bash
 # xcodebuild flags

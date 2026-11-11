@@ -1,0 +1,56 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Scheme version="1.3">
+  <BuildAction buildImplicitDependencies="YES" parallelizeBuildables="YES">
+    <PreActions>
+      <ExecutionAction ActionType="Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+        <ActionContent title="BuildAction.PreActions" scriptText="set -eu&#10;python3 - &lt;&lt;'PYTHON'&#10;import json,os&#10;from pathlib import Path&#10;log=os.environ.get('GAP_ACTION_LOG')&#10;if log:&#10; with open(log,'a') as f:&#10;  f.write(json.dumps({'phase':'BuildAction.PreActions','cwd':os.getcwd(),'environment':{k:os.environ.get(k) for k in ['SRCROOT','PROJECT_DIR','CONFIGURATION','SDKROOT','PLATFORM_DIR','DEVELOPER_DIR','BUILT_PRODUCTS_DIR','TARGET_NAME','ARCHIVE_PATH','ARCHIVE_DSYMS_PATH','ARCHIVE_PRODUCTS_PATH']}})+'\n')&#10;PYTHON&#10;exit_code=&quot;${GAP_PRE_EXIT:-0}&quot;&#10;[ &quot;$exit_code&quot; = 0 ] || exit &quot;$exit_code&quot;&#10;printf 'let schemeGeneratedValue = &quot;scheme-pre-ok&quot;\n' &gt; &quot;$SRCROOT/LinuxApp/ScriptGenerated.swift&quot;&#10;">
+          <EnvironmentBuildable>
+            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A50000000000000000000001" BuildableName="LinuxApp.app" BlueprintName="LinuxApp" ReferencedContainer="container:LinuxApp.xcodeproj" />
+          </EnvironmentBuildable>
+        </ActionContent>
+      </ExecutionAction>
+      <ExecutionAction ActionType="Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+        <ActionContent title="BuildAction.PreActions.NoEnvironment" scriptText="set -eu&#10;python3 - &lt;&lt;'PYTHON'&#10;import json,os&#10;from pathlib import Path&#10;log=os.environ.get('GAP_ACTION_LOG')&#10;if log:&#10; with open(log,'a') as f:&#10;  f.write(json.dumps({'phase':'BuildAction.PreActions.NoEnvironment','cwd':os.getcwd(),'environment':{k:os.environ.get(k) for k in ['SRCROOT','PROJECT_DIR','CONFIGURATION','SDKROOT','PLATFORM_DIR','DEVELOPER_DIR','BUILT_PRODUCTS_DIR','TARGET_NAME','ARCHIVE_PATH','ARCHIVE_DSYMS_PATH','ARCHIVE_PRODUCTS_PATH']}})+'\n')&#10;PYTHON&#10;" />
+      </ExecutionAction>
+    </PreActions>
+    <PostActions>
+      <ExecutionAction ActionType="Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+        <ActionContent title="BuildAction.PostActions" scriptText="set -eu&#10;python3 - &lt;&lt;'PYTHON'&#10;import json,os&#10;from pathlib import Path&#10;log=os.environ.get('GAP_ACTION_LOG')&#10;if log:&#10; with open(log,'a') as f:&#10;  f.write(json.dumps({'phase':'BuildAction.PostActions','cwd':os.getcwd(),'environment':{k:os.environ.get(k) for k in ['SRCROOT','PROJECT_DIR','CONFIGURATION','SDKROOT','PLATFORM_DIR','DEVELOPER_DIR','BUILT_PRODUCTS_DIR','TARGET_NAME','ARCHIVE_PATH','ARCHIVE_DSYMS_PATH','ARCHIVE_PRODUCTS_PATH']}})+'\n')&#10;PYTHON&#10;exit &quot;${GAP_POST_EXIT:-0}&quot;&#10;">
+          <EnvironmentBuildable>
+            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A50000000000000000000001" BuildableName="LinuxApp.app" BlueprintName="LinuxApp" ReferencedContainer="container:LinuxApp.xcodeproj" />
+          </EnvironmentBuildable>
+        </ActionContent>
+      </ExecutionAction>
+    </PostActions>
+    <BuildActionEntries>
+      <BuildActionEntry buildForRunning="YES" buildForTesting="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">
+        <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A50000000000000000000001" BuildableName="LinuxApp.app" BlueprintName="LinuxApp" ReferencedContainer="container:LinuxApp.xcodeproj" />
+      </BuildActionEntry>
+    </BuildActionEntries>
+  </BuildAction>
+  <LaunchAction buildConfiguration="Debug">
+    <BuildableProductRunnable>
+      <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A50000000000000000000001" BuildableName="LinuxApp.app" BlueprintName="LinuxApp" ReferencedContainer="container:LinuxApp.xcodeproj" />
+    </BuildableProductRunnable>
+  </LaunchAction>
+  <ArchiveAction buildConfiguration="Release">
+    <PreActions>
+      <ExecutionAction ActionType="Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+        <ActionContent title="ArchiveAction.PreActions" scriptText="set -eu&#10;python3 - &lt;&lt;'PYTHON'&#10;import json,os&#10;from pathlib import Path&#10;log=os.environ.get('GAP_ACTION_LOG')&#10;if log:&#10; with open(log,'a') as f:&#10;  f.write(json.dumps({'phase':'ArchiveAction.PreActions','cwd':os.getcwd(),'environment':{k:os.environ.get(k) for k in ['SRCROOT','PROJECT_DIR','CONFIGURATION','SDKROOT','PLATFORM_DIR','DEVELOPER_DIR','BUILT_PRODUCTS_DIR','TARGET_NAME','ARCHIVE_PATH','ARCHIVE_DSYMS_PATH','ARCHIVE_PRODUCTS_PATH']}})+'\n')&#10;PYTHON&#10;">
+          <EnvironmentBuildable>
+            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A50000000000000000000001" BuildableName="LinuxApp.app" BlueprintName="LinuxApp" ReferencedContainer="container:LinuxApp.xcodeproj" />
+          </EnvironmentBuildable>
+        </ActionContent>
+      </ExecutionAction>
+    </PreActions>
+    <PostActions>
+      <ExecutionAction ActionType="Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+        <ActionContent title="ArchiveAction.PostActions" scriptText="set -eu&#10;python3 - &lt;&lt;'PYTHON'&#10;import json,os&#10;from pathlib import Path&#10;log=os.environ.get('GAP_ACTION_LOG')&#10;if log:&#10; with open(log,'a') as f:&#10;  f.write(json.dumps({'phase':'ArchiveAction.PostActions','cwd':os.getcwd(),'environment':{k:os.environ.get(k) for k in ['SRCROOT','PROJECT_DIR','CONFIGURATION','SDKROOT','PLATFORM_DIR','DEVELOPER_DIR','BUILT_PRODUCTS_DIR','TARGET_NAME','ARCHIVE_PATH','ARCHIVE_DSYMS_PATH','ARCHIVE_PRODUCTS_PATH']}})+'\n')&#10;PYTHON&#10;">
+          <EnvironmentBuildable>
+            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A50000000000000000000001" BuildableName="LinuxApp.app" BlueprintName="LinuxApp" ReferencedContainer="container:LinuxApp.xcodeproj" />
+          </EnvironmentBuildable>
+        </ActionContent>
+      </ExecutionAction>
+    </PostActions>
+  </ArchiveAction>
+</Scheme>

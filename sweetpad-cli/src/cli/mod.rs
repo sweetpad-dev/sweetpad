@@ -766,8 +766,15 @@ pub enum Resource {
         #[command(subcommand)]
         action: commands::hot::Action,
     },
-    /// Diagnose the local Xcode/Swift toolchain.
-    Doctor,
+    /// Export and import private Apple SDK files.
+    Sdk {
+        #[command(subcommand)]
+        action: commands::sdk::Action,
+    },
+    /// Install the pinned Ubuntu ARM64 toolchain and import private SDK files.
+    Setup(commands::setup::SetupArgs),
+    /// Diagnose the local Apple build toolchain.
+    Doctor(commands::doctor::DoctorArgs),
     /// Show the effective build context — what would build, and where each
     /// value comes from (flag/env/config/remembered/default).
     Status {
@@ -1175,7 +1182,9 @@ pub fn run(argv: &[String]) -> ExitCode {
             commands::open::run(&mut ctx, what)
         }
         Resource::Hot { action } => commands::hot::run(&mut ctx, &action),
-        Resource::Doctor => commands::doctor::run(&mut ctx),
+        Resource::Sdk { action } => commands::sdk::run(&mut ctx, &action),
+        Resource::Setup(setup_args) => commands::setup::run(&mut ctx, &setup_args),
+        Resource::Doctor(doctor_args) => commands::doctor::run(&mut ctx, &doctor_args),
         Resource::Status { target } => {
             ctx.targeting = target.into();
             commands::status::run(&mut ctx)

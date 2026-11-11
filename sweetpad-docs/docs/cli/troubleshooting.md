@@ -10,6 +10,13 @@ Two commands answer most "why isn't this working" questions, and they answer dif
 
 ## Is my toolchain OK?
 
+On Ubuntu ARM64, current source builds provide `sweetpad doctor --target ios` and `--target macos`.
+The Linux report checks compiler tools, SDK data, and optional device services.
+It does not require Xcode on the Linux host. See [Linux setup](linux/sdk-transfer.md).
+Missing localized App Intents phrase resources are a warning and affect localized shortcut training.
+
+On macOS:
+
 ```console
 $ sweetpad doctor
 [ok] Xcode  /Applications/Xcode-26.5.0.app/Contents/Developer
@@ -55,7 +62,7 @@ When compilation succeeds but the result is stale (an asset that didn't update, 
 take, a build that fails only after a branch switch), the artifacts are usually the problem:
 
 ```bash
-sweetpad clean            # xcodebuild clean
+sweetpad clean            # clean with the host's build engine
 sweetpad clean --purge    # and delete this project's DerivedData
 ```
 

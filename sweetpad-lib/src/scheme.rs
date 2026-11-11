@@ -12,8 +12,8 @@
 //! Run action's arguments, environment and app language into what the app is
 //! launched with.
 //!
-//! What's NOT modeled (yet, deliberately): pre/post actions, test plans,
-//! custom working directory, debugger / launcher identifiers. Add these
+//! What's NOT modeled (yet, deliberately): custom working directory,
+//! debugger / launcher identifiers. Add these
 //! incrementally as concrete callers need them — see DOCS.md §3.2 "minimum
 //! abstraction."
 
@@ -40,6 +40,8 @@ pub struct Scheme {
     pub build_implicit_dependencies: bool,
     /// Build action's `parallelizeBuildables` attribute.
     pub parallelize_buildables: bool,
+    pub build_scripts: ActionScripts,
+    pub archive_scripts: ActionScripts,
     /// Test action — present in every scheme Xcode generates, but
     /// sometimes empty (no testables wired up).
     pub test_action: Option<TestAction>,
@@ -82,6 +84,22 @@ pub struct Scheme {
     /// `-tsan` object-dir suffix), while `Alamofire watchOS` sets the same
     /// attribute on `TestAction` and its captures stay NO.
     pub launch_sanitizers: SanitizerEnables,
+}
+
+/// Ordered execution actions around a scheme's build or archive stage.
+#[derive(Debug, Clone, Default)]
+pub struct ActionScripts {
+    pub pre: Vec<ExecutionAction>,
+    pub post: Vec<ExecutionAction>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExecutionAction {
+    pub action_type: String,
+    pub title: String,
+    pub script: String,
+    pub shell: String,
+    pub environment_buildable: Option<BuildableRef>,
 }
 
 /// Scheme-level sanitizer enablement, parsed from a `LaunchAction`'s
@@ -172,6 +190,12 @@ pub struct BuildableRef {
 }
 
 impl BuildableRef {
+    /// Resolve a scheme reference to its owning project.
+    #[must_use]
+    pub fn project_path(&self, scheme_file: &Path) -> Option<PathBuf> {
+        referenced_project(reference_base(scheme_file)?, self)
+    }
+
     /// Whether two references in one scheme name the same target: the same
     /// container, and the same ID, or the same name where either has no ID.
     #[must_use]
@@ -339,6 +363,16 @@ pub fn parse_file(path: &Path) -> Result<Scheme, Error> {
             .chain(testables)
             .chain(scheme.launch_target.as_mut())
             .chain(scheme.launch_macro_expansion.as_mut())
+            .chain(
+                scheme
+                    .build_scripts
+                    .pre
+                    .iter_mut()
+                    .chain(&mut scheme.build_scripts.post)
+                    .chain(&mut scheme.archive_scripts.pre)
+                    .chain(&mut scheme.archive_scripts.post)
+                    .filter_map(|action| action.environment_buildable.as_mut()),
+            )
         {
             rebind(reference, base);
         }
@@ -750,6 +784,8 @@ pub fn from_element(root: &Element) -> Result<Scheme, Error> {
         build_entries,
         build_implicit_dependencies,
         parallelize_buildables,
+        build_scripts: parse_action_scripts(build_action),
+        archive_scripts: parse_action_scripts(root.child("ArchiveAction")),
         test_action,
         // Watch-app schemes launch via `<RemoteRunnable>` (the watch extension
         // runs on the paired device) instead of `<BuildableProductRunnable>`;
@@ -795,6 +831,45 @@ pub fn from_element(root: &Element) -> Result<Scheme, Error> {
         archive_configuration: action_configuration(root, "ArchiveAction"),
         analyze_configuration: action_configuration(root, "AnalyzeAction"),
     })
+}
+
+fn parse_action_scripts(action: Option<&Element>) -> ActionScripts {
+    let scripts = |phase| {
+        action
+            .and_then(|a| a.child(phase))
+            .map(|actions| {
+                actions
+                    .children_named("ExecutionAction")
+                    .map(|action| {
+                        let content = action.child("ActionContent");
+                        ExecutionAction {
+                            action_type: action.attr("ActionType").unwrap_or("").to_string(),
+                            title: content
+                                .and_then(|c| c.attr("title"))
+                                .unwrap_or("Run Script")
+                                .to_string(),
+                            script: content
+                                .and_then(|c| c.attr("scriptText"))
+                                .unwrap_or("")
+                                .to_string(),
+                            shell: content
+                                .and_then(|c| c.attr("shellToInvoke"))
+                                .unwrap_or("/bin/sh")
+                                .to_string(),
+                            environment_buildable: content
+                                .and_then(|c| c.child("EnvironmentBuildable"))
+                                .and_then(|e| e.child("BuildableReference"))
+                                .and_then(parse_buildable),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    ActionScripts {
+        pre: scripts("PreActions"),
+        post: scripts("PostActions"),
+    }
 }
 
 fn action_configuration(root: &Element, action: &str) -> Option<String> {
@@ -1320,6 +1395,28 @@ mod tests {
 
     /// A scheme whose Run action carries `inner` (argument and environment
     /// rows) and the given `LaunchAction` attributes.
+    #[test]
+    fn build_and_archive_execution_actions_preserve_order_and_environment() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "ci/fixture-linux-script/LinuxApp.xcodeproj/xcshareddata/xcschemes/LinuxApp.xcscheme",
+        );
+        let scheme = parse_file(&path).unwrap();
+        assert_eq!(scheme.build_scripts.pre.len(), 2);
+        assert_eq!(scheme.build_scripts.post.len(), 1);
+        assert_eq!(scheme.archive_scripts.pre.len(), 1);
+        assert_eq!(scheme.archive_scripts.post.len(), 1);
+        let first = &scheme.build_scripts.pre[0];
+        assert!(first.script.contains("ScriptGenerated.swift"));
+        assert_eq!(first.shell, "/bin/sh");
+        let target = first.environment_buildable.as_ref().unwrap();
+        assert_eq!(target.blueprint_identifier, "A50000000000000000000001");
+        assert_eq!(
+            target.project_path(&path).unwrap(),
+            path.ancestors().nth(3).unwrap()
+        );
+        assert!(scheme.build_scripts.pre[1].environment_buildable.is_none());
+    }
+
     fn launch_scheme(attrs: &str, inner: &str) -> Scheme {
         let xml = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>

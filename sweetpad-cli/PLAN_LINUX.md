@@ -1,7 +1,8 @@
 # Building Xcode projects on Linux
 
-Status on 2026-11-08. The initial Linux engine merged in PR #346.
-Follow-up work is on `codex/linux-build-followups`. See
+Status on 2026-11-10. The initial Linux engine merged in PR #346.
+SDK export, Ubuntu setup/import, and Linux doctor are committed in `880b692d` on `codex/linux-sdk-setup`.
+The follow-up audit below tracks work after that checkpoint. See
 [`ci/LINUX_PROJECTS.md`](../sweetpad-lib/ci/LINUX_PROJECTS.md) for current app coverage and limits.
 
 `sweetpad build` has a Swift Build engine, the default where there's no
@@ -48,6 +49,118 @@ Distribution export and Linux device debugging remain outside this release.
 Optional `.omo` work and dependency-size cleanup remain deferred.
 
 Items marked *(optional)* can wait until a project needs them.
+
+## Linux x64 host support, issue #349
+
+- [x] Commit the previous audit fixes (`0f88efc5`).
+- [x] Add `linux-x64` packaging and matching-host install checks alongside ARM64.
+- [x] Accept x86_64 in setup, SDK import, and doctor; pin the x64 xtool checksum.
+- [x] Record SDK host architecture and detect incompatible tools before reuse.
+- [x] Add both host architectures to release packaging and private SDK CI selection.
+- [x] Validate ARM64 iPhone and simulator output with the x64 compiler, driver, CLI, and macro plugin.
+- [x] Finish the x64 clean-install and regression evidence; keep 0.1.18 documentation accurate until a new release.
+
+Validation used x86_64 Ubuntu 24.04 under container emulation on Apple hardware,
+Swift 6.4.2, Swift Build 6.4.0, and the pinned x64 Darwin tools. The packaged x64 CLI
+built ARM64 iPhone and simulator apps with zero warnings/errors, including `@Entry`
+macros. Mach-O headers confirm ARM64 and the correct iOS/iOS Simulator platforms.
+The device build used the default target architecture, without an ARCHS override.
+Both package architectures pass clean install and wrong-host rejection checks.
+Evidence: `corpus/_linux-followups/validation/issue-349/` (gitignored).
+A full fresh x64 bootstrap also passes in an isolated Ubuntu 24.04 machine.
+Its initial home has no Swift, xtool, Swift Build, SDK, or source caches. Setup
+PGP-verifies the compiler download, imports a new SDK (`reused: false`), and
+builds the driver and macro plugin from source. Doctor reports zero required
+problems. A setup rerun keeps the same driver and SDK receipt; a subsequent SDK
+import reports reuse. Independent ARM64 iPhone and simulator builds pass without
+changing Ubuntu's Dash shell. No signing material or physical device was used.
+Fresh evidence: `corpus/_linux-followups/validation/fresh-x64-bootstrap-2026-11-11/`.
+
+The existing Flutter AOT and full hybrid-app validation remains ARM64-specific.
+The x64 private CI path covers package installation, core app builds, test manifests,
+and package linking; it does not imply full hybrid-framework runtime coverage.
+
+## Follow-up audit, 2026-11-10
+
+The handoff identified these candidates by reading code. An unchecked item is not a reproduced runtime failure.
+References name the audited implementation. Line numbers in the handoff refer to the code before these fixes.
+Close an item only after implementation checks or a reproduction establishes the result.
+Device disk-image mounting and entitlement behavior need separate hardware or Mac runtime checks.
+The `.omo` work and optional dependency cleanup remain deferred.
+
+Validation evidence for this batch is retained under
+`corpus/_linux-followups/validation/gap-audit-2026-11-10/` (gitignored).
+The public regression fixtures and checks live under `sweetpad-lib/ci/fixture-linux-script`
+and `sweetpad-cli/ci/check-linux-gaps.py`. Device routing tests use a local transport fixture;
+they do not establish physical-device execution for these changes.
+
+### Setup and diagnostics
+
+- [x] S01: Find public setup sources beside extracted archives and mise binaries, as well as installed prefixes (`commands/setup.rs`).
+- [x] S02: Treat missing localized App Intents phrases as an optional capability, and share the engine's macro lookup (`commands/doctor.rs`, `swbuild.rs`).
+- [ ] S03: Check the build service, Darwin librarian, zip, extra platforms, device tools, and pinned Swift Build provenance where available (`commands/doctor.rs`). Build-service and librarian checks are required; zip/usbmuxd are optional checks. Extra platforms and patch provenance remain open.
+- [x] S04: Report `--replace-sdk` for setup migration, retain useful bootstrap errors in JSON, and handle root without sudo (`linux-sdk.py`, `commands/setup.rs`, `ci/linux-setup.sh`).
+- [x] S05: Test setup source discovery and Linux doctor independently of the developer machine (`commands/setup.rs`, `commands/doctor.rs`).
+- [x] S06: Consolidate tool version requirements across bootstrap, export, doctor, and packaging (`commands/setup.rs`, `linux-sdk.py`, `ci/linux-setup.sh`).
+- [x] S07: Document Python before setup and replace raw JSON in SDK human output (`ci/linux-release-README.md`, `commands/sdk.rs`).
+- [x] S08: Upgrade an existing pinned Swift Build checkout without losing local edits; pin its package dependencies (`ci/linux-setup.sh`, Swift Build `Package.swift`).
+- [x] S09: Validate the complete setup on a fresh host, separately from reusing preinstalled compiler tools. Full fresh Ubuntu 24.04 x64 bootstrap passes, including compiler download/signature, new SDK import, cold driver/macro builds, doctor, setup reuse, and ARM64 app builds. See the fresh x64 evidence above; `ci/check-linux-sdk-install.py` retains the separate package-build isolation check.
+- [ ] S10: Validate `doctor --target` behavior on macOS, signing credentials, and provisioning contents (`commands/doctor.rs`). Explicit --target on macOS now fails with a usage error; credential and profile contents remain open.
+
+### Build engine and command routing
+
+- [x] E01: Route run and app install builds through the selected engine (`commands/app.rs::build_and_install`, `xcodebuild.rs::BuildPlan`).
+- [x] E02: Clean Linux products without invoking xcodebuild, including purge (`commands/clean.rs`, `swbuild.rs::run`).
+- [x] E03: Distinguish configuration-sourced xcodebuild flags from passthrough errors (`cli/mod.rs::xcodebuild_args`, `swbuild.rs::refuse_xcodebuild_flags`).
+- [x] E04: Reproduce script sandboxing on Linux and disable unavailable sandbox-exec tasks there (`swbuild.rs::DarwinSdk::overrides`, Swift Build `TaskProducerSandboxing.swift`).
+- [ ] E05: Parse and run scheme pre/post actions with the selected build context (`sweetpad-lib/src/scheme.rs`). Build and Archive shell actions now run in Xcode-validated order, with selected project-target settings, generated-source support, and failure propagation. Test runtime hooks, package-target environments, and non-shell actions remain open.
+- [ ] E06: Preserve Xcode target build-tool plugin dependencies and verify package-target plugins (`sweetpad-lib/src/workspace_pif.rs`).
+- [ ] E07: Use the Darwin SDK for resolved settings, product paths, and BSP preparation (`commands/settings.rs`, `sweetpad-core/src/build_settings.rs`, `bsp/mod.rs`).
+- [x] E08: Offer runnable Linux device destinations without defaulting runtime commands to My Mac (`resolve.rs`, `simctl.rs`).
+- [x] E09: Surface Linux device-discovery failures in destination listings (`commands/destination.rs::gather`).
+- [x] E10: Resolve `build --on device` and device names on Linux (`resolve.rs::build_target_without_devices`).
+- [x] E11: Select the platform of tvOS/watchOS/visionOS-only schemes for generic builds (`resolve.rs::build_target_without_devices`).
+- [ ] E12: Resolve and update packages without xcodebuild on Linux (`commands/dependency.rs`).
+- [ ] E13: Select a Linux opener for config and build directories; report unsupported Xcode opening (`commands/open.rs`).
+- [ ] E14: Match scheme and test-plan targets by identifier and container when names collide (`swbuild.rs::selection`).
+- [ ] E15: Isolate concurrent invocation files and update stand-in links atomically (`swbuild.rs::Invocation`, `swbuild.rs::link_tools`).
+- [ ] E16: Invalidate resource tasks when stand-ins or SDK inputs change (`swbuild.rs::toolset`).
+- [ ] E17: Preserve useful failure output, log paths, exit status, and child-process cancellation (`swbuild.rs`, `process.rs`). Failed build logs are now linked in human output; bubblewrap dies with its parent. Exit-status preservation and descendant-process cancellation remain open.
+- [ ] E18: Correct classic intent-definition codegen visibility, no-codegen, and synchronized-folder metadata (`sweetpad-lib/src/workspace_pif.rs`).
+- [ ] E19: Verify macOS cross-architecture builds and Info.plist preprocessing on Linux (`swbuild.rs::DarwinSdk::overrides`).
+- [ ] E20: Preserve required linker settings when projects supply OTHER_LDFLAGS on additional platforms (`swbuild.rs::Invocation`).
+- [ ] E21: Warn for missing workspace members, explain path case mismatches, and map ASSET_TAGS (`sweetpad-lib/src/workspace_pif.rs`, `swbuild.rs`).
+- [ ] E22: Define verbose passthrough and structured blocker reporting for Swift Build (`swbuild.rs`).
+
+### Signing, tests, and devices
+
+- [ ] D01: Mount the developer disk image after a phone reboot or first connection before opening developer services. Needs hardware (`device_network.py::DvtProvider`).
+- [ ] D02: Preserve simulator entitlements through ad-hoc signing and validate Keychain/App Groups on a Mac (`swbuild.rs::DarwinSdk::overrides`, `codesign/provisioning.rs`).
+- [ ] D03: Match provisioning devices, manual profiles, entitlement values, and certificate validity (`codesign/provisioning.rs`, `codesign/identity.rs`).
+- [ ] D04: Verify watchOS profile platform matching (`codesign/provisioning.rs`).
+- [x] D05: Isolate failures for individual discovered devices and retain actionable resolution errors (`device_network.py`, `resolve.rs`).
+- [x] D06: Report network-action timeout context and support bounded action-specific limits (`device_network.py`).
+- [ ] D07: Validate the legacy device adapter version and scope log streams to the selected UDID (`pymobiledevice3.rs`). Legacy syslog now receives the selected UDID; adapter-version validation remains open.
+- [ ] D08: Keep generated xctestrun paths portable across Linux and Mac hosts (`swbuild/test_manifest.rs`).
+- [ ] D09: Accept harmless test-plan settings such as disabled coverage, and report unsupported coverage explicitly (`swbuild/test_manifest/selection.rs`).
+- [ ] D10: Check zip availability and reject distribution-profiled development exports (`commands/archive/portable.rs`).
+- [ ] D11: Verify signing-secret inheritance into build scripts and plugins (`swbuild.rs`, `codesign/identity.rs`).
+- [ ] D12: Handle CocoaPods absolute codesign calls without requiring fixture rewrites, or document the limitation (`ci/linux-project-prepare.py`, `docs/cli/linux/react-native.md`).
+- [ ] D13: Verify certificate chains beyond the bundled WWDR G3 intermediate (`codesign/identity.rs`).
+
+### Packaging, CI, and docs
+
+- [ ] P01: Run ARM64 packaging on main pushes and define private SDK validation for tag releases (`linux-arm64-package.yaml`, `cli-release.yaml`). Main pushes now run package checks; private SDK tag-release gating remains open.
+- [x] P02: Give Linux self-update instructions that do not require the macOS-only Homebrew formula (`commands/self_update.rs`).
+- [x] P03: Replace installed setup resources without stale files; describe PATH setup and removal (`ci/install-linux.sh`).
+- [x] P04: Reject development-stamped binaries in actual tag-release packages (`ci/package-linux.py`).
+- [x] T01: Correct archive --output-file in the main reference and add setup/sdk/device/doctor commands (`docs/cli/reference.md`).
+- [x] T02: Mark setup convenience commands as newer than 0.1.18 and preserve the released manual setup route (`docs/cli/linux/sdk-transfer.md`, `docs/cli/linux/ubuntu-usb.md`, `880b692d`).
+- [x] T03: Prevent generated shell configuration from shadowing a CI-pinned CLI (`commands/setup.rs`, `docs/cli/linux/github-actions.md`).
+- [x] T04: Replace the setup script's reference to unshipped linux-build.sh (`ci/linux-setup.sh`).
+- [x] T05: Align the Linux device help with the packaged venv layout and remove corpus-only paths (`LINUX_DEVICES.md`).
+- [ ] T06: Document engine selection and setup environment controls, test-manifest platform limits, and app-host requirements (`CLI_DESIGN.md`, CLI help, Linux guides). Engine selection and setup controls are documented. Remaining manifest limits and app-host requirements still need a full review.
+- [ ] T07: Reconcile SDK setup design, current branch/status, MMKV notes, and reference counts (`CLI_DESIGN.md`, `ci/LINUX_PROJECTS.md`, Linux reference). SDK command design, current branch, and MMKV shim notes are updated. Historical status/reference counts still need a full reconciliation.
 
 ## Engine
 

@@ -37,6 +37,7 @@ Listing schemes reads existing checkouts; it does not fetch packages.
 
 The compiler runs on Linux and emits code for the selected Apple destination.
 For an iPhone, that destination uses the iOS device SDK and ARM64 code.
+An x86_64 Linux host can build that ARM64 product. Host executables, including compiler plugins, use the Linux host architecture.
 LLD links the objects into Mach-O executables and libraries.
 
 The compiler toolchain and Apple SDK have different jobs.
@@ -69,7 +70,15 @@ Generated project inputs keep their timestamps when their contents do not change
 A fresh DerivedData directory provides a control when you compare a changed resource processor or toolchain.
 
 Run-script phases execute on Linux.
+Apple's `sandbox-exec` profiles do not apply. Scripts use the Linux build environment.
 The build supplies compatible tools for common Xcode script operations, but a script that depends on macOS still needs adaptation.
+
+Current source builds also run shell pre-actions and post-actions in the scheme's Build action.
+This support is newer than the 0.1.18 release.
+Build pre-actions run before project translation, so they can generate source files.
+Post-actions run only after a successful build. Archive actions run around archive assembly, after the build stage.
+A script can use build settings from its selected project target.
+Scripts that select a package target, non-shell execution actions, and Test action runtime hooks remain unsupported.
 
 ## Signing and the phone
 

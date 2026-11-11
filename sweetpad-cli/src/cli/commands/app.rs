@@ -1062,6 +1062,17 @@ impl RunPlan {
         }
     }
 
+    fn run_build(
+        &self,
+        out: &Output,
+    ) -> Result<Option<crate::cli::buildlog::BuildStats>, CliError> {
+        let build = self.build_plan();
+        match crate::cli::swbuild::Engine::selected()? {
+            crate::cli::swbuild::Engine::SwiftBuild => crate::cli::swbuild::run(&build, out),
+            crate::cli::swbuild::Engine::Xcodebuild => build.run(out),
+        }
+    }
+
     /// Locate the app this plan builds: the same [`xcodebuild::located`] the
     /// build side reports its product from, so the two can't disagree about
     /// where the `.app` landed. The scheme's Run action and the destination
@@ -1653,7 +1664,7 @@ impl BgBoot {
 /// Build and install onto the target, returning the launchable app. Shared by
 /// every flow; the launch step is chosen by the caller.
 fn build_and_install(plan: &RunPlan, out: &Output) -> Result<AppBundle, CliError> {
-    install_built(plan, out, || plan.build_plan().run(out).map(|_| ()))
+    install_built(plan, out, || plan.run_build(out).map(|_| ()))
 }
 
 /// [`build_and_install`] with the build step given, for the debug adapter,
@@ -3255,6 +3266,24 @@ enum BuildOutcome {
 /// once we're back at the prompt. A non-zero exit is [`BuildOutcome::Failed`],
 /// which keeps the session open to fix and rebuild.
 fn build(plan: &RunPlan, out: &Output, capture: Option<&std::path::Path>) -> BuildOutcome {
+    let engine = match crate::cli::swbuild::Engine::selected() {
+        Ok(engine) => engine,
+        Err(error) => return BuildOutcome::Failed(error),
+    };
+    if engine == crate::cli::swbuild::Engine::SwiftBuild {
+        return match plan.run_build(out) {
+            Ok(_) => BuildOutcome::Ok,
+            Err(error) => BuildOutcome::Failed(error),
+        };
+    }
+    build_xcodebuild(plan, out, capture)
+}
+
+fn build_xcodebuild(
+    plan: &RunPlan,
+    out: &Output,
+    capture: Option<&std::path::Path>,
+) -> BuildOutcome {
     use std::io::Write as _;
     let build_plan = plan.build_plan();
     // This path spawns xcodebuild itself rather than going through
@@ -4372,7 +4401,7 @@ fn start_device_logs(
         return None;
     }
     let exe = process_name(app).to_string();
-    let mut child = pymobiledevice3::spawn(&exe).ok()?;
+    let mut child = pymobiledevice3::spawn(device, &exe).ok()?;
     render_device_logs(&mut child, ctx.out.use_color(), exe, Arc::clone(filter));
     let reap_slot = crate::cli::signals::register_child(child.id());
     // `pymobiledevice3` is a direct child, killed on drop — no reparented `log` to reap.
@@ -4958,8 +4987,7 @@ fn simple_on_simulator(
 ) -> Result<AppStageReport, CliError> {
     Ok(match stage {
         Stage::Install => {
-            plan.build_plan()
-                .run(&ctx.out)
+            plan.run_build(&ctx.out)
                 .map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
             ctx.out.step("Booting simulator", || simctl::boot(udid))?;
             ctx.out.step("Installing app", || {
@@ -5029,8 +5057,7 @@ fn simple_on_device(
 ) -> Result<AppStageReport, CliError> {
     Ok(match stage {
         Stage::Install => {
-            plan.build_plan()
-                .run(&ctx.out)
+            plan.run_build(&ctx.out)
                 .map_err(|e| e.or_kind(ErrorKind::BuildFailure))?;
             ctx.out.step("Installing app on device", || {
                 devicectl::install(id, &app.path.display().to_string())
