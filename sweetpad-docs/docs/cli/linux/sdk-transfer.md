@@ -55,6 +55,8 @@ The same options work with `sweetpad sdk import`.
 Development builds after CLI 0.1.22 also resolve shared file data in Apple Archive hard-link, clone, and identical-data clusters.
 The importer can recover data stored outside the selected SDK paths and preserves each file's permissions.
 Missing data, conflicting cluster contents, and invalid checksums fail before SDK replacement.
+Large archives are decoded twice to find shared data before extraction.
+Development builds after CLI 0.1.22 report phases and decoded sizes on stderr during both passes.
 Unsupported encryption profiles fail with an explicit error.
 Use a Mac SDK export if your download needs an unsupported archive feature.
 

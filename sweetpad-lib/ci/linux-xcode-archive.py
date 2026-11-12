@@ -12,6 +12,7 @@ import posixpath
 import shutil
 import stat
 import struct
+import time
 import xml.etree.ElementTree as ET
 import zlib
 
@@ -30,8 +31,9 @@ MAX_ENTRIES = 1_000_000
 
 
 class Reader:
-    def __init__(self, chunks):
+    def __init__(self, chunks, progress=None):
         self.chunks = iter(chunks)
+        self.progress = progress
         self.pending = memoryview(b"")
         self.prefix = b""
         self.pos = 0
@@ -55,6 +57,8 @@ class Reader:
         self.pos += len(result)
         if self.pos > MAX_OUTPUT:
             raise ValueError("Xcode archive exceeds the 64 GiB decoded-size limit")
+        if self.progress is not None:
+            self.progress(self.pos)
         return result
 
     def exact(self, size):
@@ -421,9 +425,19 @@ def selected(name):
     return None
 
 
-def extract(path, destination, key_file=None, public_key_file=None):
+def extract(path, destination, key_file=None, public_key_file=None, progress=None):
     destination = Path(destination)
-    source = Reader(stream(path, key_file, public_key_file))
+    next_progress = time.monotonic() + 10
+
+    def report(stage, decoded, force=False):
+        nonlocal next_progress
+        now = time.monotonic()
+        if progress is not None and (force or now >= next_progress):
+            progress(f"{stage}: {decoded / 1024**3:.1f} GiB decoded")
+            next_progress = now + 10
+
+    source = Reader(stream(path, key_file, public_key_file),
+                    progress=lambda decoded: report("Reading archive metadata", decoded))
     magic = source.read(6); source.unread(magic)
     parser = cpio_entries if magic.startswith(b"0707") else aa_entries
     entries = {}; groups = {}; app_names = set()
@@ -441,6 +455,7 @@ def extract(path, destination, key_file=None, public_key_file=None):
             if previous["size"] != entry["size"]:
                 raise ValueError("Inconsistent XIP hard link sizes")
     source.drain()
+    report("Read archive metadata", source.pos, force=True)
     if len(app_names) != 1:
         raise ValueError("Xcode archive must contain one app with SDK inputs")
     shared_data = AppleDataClusters(entries.values())
@@ -499,7 +514,8 @@ def extract(path, destination, key_file=None, public_key_file=None):
     ranges = {}
     for offset,size,target,mode in regular:
         ranges.setdefault((offset,size),[]).append((target,mode))
-    source = Reader(stream(path,key_file,public_key_file))
+    source = Reader(stream(path,key_file,public_key_file),
+                    progress=lambda decoded: report("Extracting SDK inputs", decoded))
     for (offset,size),targets in sorted(ranges.items()):
         source.skip(offset - source.pos)
         target,mode = targets[0]
@@ -514,6 +530,7 @@ def extract(path, destination, key_file=None, public_key_file=None):
             # Copies preserve distinct modes without changing the shared inode.
             shutil.copyfile(target,alias); alias.chmod(alias_mode)
     source.drain()
+    report("Verified complete archive", source.pos, force=True)
     for target,link in links:
         target.parent.mkdir(parents=True,exist_ok=True)
         target.symlink_to(link)

@@ -258,7 +258,8 @@ def unpack_xcode_archive(archive, work, args):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     print("Reading Xcode archive and selecting private SDK inputs", file=sys.stderr, flush=True)
-    xcode = module.extract(archive, work, getattr(args, "aea_key_file", None), getattr(args, "aea_public_key_file", None))
+    xcode = module.extract(archive, work, getattr(args, "aea_key_file", None), getattr(args, "aea_public_key_file", None),
+                          progress=lambda message: print(message, file=sys.stderr, flush=True))
     version = plistlib.loads((xcode / "Contents/version.plist").read_bytes())
     # Check the baseline inputs before invoking any SDK builder.
     export_roots(xcode)
