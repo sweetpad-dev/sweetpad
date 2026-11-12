@@ -19,6 +19,7 @@ The CLI is a static executable with embedded public setup files.
 Apple SDKs, signing credentials, Swift, and Swift Build are separate requirements.
 The CLI packages and container image contain no Apple SDKs or signing material.
 Ubuntu 24.04 is the validated platform for Apple toolchain setup.
+Development builds after CLI 0.1.21 add [Debian and Arch setup](distributions.md).
 
 ## APT
 

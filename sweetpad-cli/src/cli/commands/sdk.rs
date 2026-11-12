@@ -67,7 +67,7 @@ impl Render for Report {
         out.line(if data["dryRun"] == true {
             "SDK export plan"
         } else if data["configured"] == true {
-            "Ubuntu setup complete"
+            "Linux setup complete"
         } else if data["reused"] == true {
             "SDK already imported"
         } else if data.get("archive").is_some() {

@@ -64,18 +64,10 @@ if [ "$(uname -s)" = Darwin ]; then
 fi
 
 ARCH="$(uname -m)"
+. "$(dirname "$0")/linux-host-tools.sh"
+sweetpad_linux_host
 if [ -n "${SWEETPAD_SDK_ARCHIVE:-}" ]; then
-  . /etc/os-release
-  [[ "$ARCH" = aarch64 || "$ARCH" = x86_64 ]] && [ "$ID" = ubuntu ] && [ "$VERSION_ID" = 24.04 ] || {
-    echo 'error: archive setup requires Ubuntu 24.04 ARM64 or x86_64' >&2; exit 1;
-  }
   python3 "$(dirname "$0")/linux-sdk.py" inspect --archive "$SWEETPAD_SDK_ARCHIVE"
-fi
-SUDO=()
-if [ "$(id -u)" != 0 ]; then
-  command -v sudo >/dev/null || { echo 'error: install sudo or run setup as root' >&2; exit 1; }
-  SUDO=(sudo)
-  if [ "${SWEETPAD_NONINTERACTIVE:-0}" = 1 ]; then SUDO+=(--non-interactive); fi
 fi
 TAG="swift-$SWIFT_VERSION-RELEASE"
 SWIFT_DIR="$HOME/swift/$TAG"
@@ -84,53 +76,11 @@ mkdir -p "$DOWNLOADS" "$HOME/swift" "$HOME/src" "$HOME/bin"
 
 section() { echo; echo "==== $* ===="; }
 
-section "apt packages"
-"${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive apt-get update -qq
-"${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -yqq \
-  bash binutils bubblewrap build-essential ca-certificates cpio curl file git gnupg2 libc6-dev \
-  libcurl4-openssl-dev libedit2 libgcc-13-dev libncurses-dev libpython3-dev \
-  libsqlite3-dev libssl-dev libstdc++-13-dev libxml2-dev libyaml-dev libz3-dev llvm-18 pkg-config \
-  python3 rsync strace tzdata unzip zip xz-utils zlib1g-dev >/dev/null
-# Swift Build's Darwin archive tasks use Apple's libtool command syntax.
-# LLVM supplies the portable implementation; GNU libtool is a different tool.
-if [ ! -e "$HOME/bin/libtool" ]; then
-  ln -sf /usr/bin/llvm-libtool-darwin-18 "$HOME/bin/libtool"
-fi
-ln -sf /usr/bin/llvm-libtool-darwin-18 "$HOME/bin/llvm-libtool-darwin"
-
-section "Swift $SWIFT_VERSION"
-if [ ! -x "$SWIFT_DIR/usr/bin/swift" ]; then
-  # Ubuntu 24.04 is the only distro this pins; the URL is swift.org's layout.
-  platform="ubuntu24.04"
-  [ "$ARCH" = aarch64 ] && platform="$platform-aarch64"
-  url="https://download.swift.org/swift-$SWIFT_VERSION-release/${platform//./}/$TAG/$TAG-$platform.tar.gz"
-  curl -fL --retry 3 -sS -o "$DOWNLOADS/$TAG.tar.gz" "$url"
-  curl -fL -sS -o "$DOWNLOADS/$TAG.tar.gz.sig" "$url.sig"
-  # swift.org serves the key file gzip-encoded.
-  curl -fL -sS --compressed -o "$DOWNLOADS/swift-keys.asc" https://www.swift.org/keys/all-keys.asc
-  gpg --batch --quiet --import "$DOWNLOADS/swift-keys.asc"
-  gpg --batch --verify "$DOWNLOADS/$TAG.tar.gz.sig" "$DOWNLOADS/$TAG.tar.gz"
-  mkdir -p "$SWIFT_DIR"
-  tar -xzf "$DOWNLOADS/$TAG.tar.gz" -C "$SWIFT_DIR" --strip-components=1
-fi
-"$SWIFT_DIR/usr/bin/swift" --version
-export PATH="$HOME/bin:$SWIFT_DIR/usr/bin:$PATH"
+section "Host packages and Swift $SWIFT_VERSION"
+sweetpad_install_host_tools
 
 section "xtool $XTOOL_VERSION"
-if [ "$("$HOME/bin/xtool" --version 2>/dev/null)" != "xtool $XTOOL_VERSION" ]; then
-  image="$DOWNLOADS/xtool-$XTOOL_VERSION-$ARCH.AppImage"
-  curl -fL -sS -o "$image" \
-    "https://github.com/xtool-org/xtool/releases/download/$XTOOL_VERSION/xtool-$ARCH.AppImage"
-  # The manifest pins a separate AppImage checksum for each host architecture.
-  echo "$XTOOL_SHA256  $image" | sha256sum -c -
-  chmod +x "$image"
-  # Extracting sidesteps FUSE, which an OrbStack machine doesn't have.
-  rm -rf "$DOWNLOADS/squashfs-root" "$HOME/xtool"
-  (cd "$DOWNLOADS" && "$image" --appimage-extract >/dev/null)
-  mv "$DOWNLOADS/squashfs-root" "$HOME/xtool"
-  ln -sf "$HOME/xtool/AppRun" "$HOME/bin/xtool"
-fi
-xtool --version
+sweetpad_install_xtool
 
 section "Darwin SDK from $XCODE_APP"
 BUNDLE="${SWEETPAD_DARWIN_SDK:-$HOME/.swiftpm/swift-sdks/darwin.artifactbundle}"

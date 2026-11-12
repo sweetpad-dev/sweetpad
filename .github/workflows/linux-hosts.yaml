@@ -1,0 +1,64 @@
+name: Linux host toolchains
+on:
+  pull_request:
+    paths:
+      - "sweetpad-lib/ci/linux-host-tools.sh"
+      - "sweetpad-lib/ci/linux-toolchain.json"
+      - "sweetpad-lib/ci/test_linux_host.py"
+      - ".github/workflows/linux-hosts.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "sweetpad-lib/ci/linux-host-tools.sh"
+      - "sweetpad-lib/ci/linux-toolchain.json"
+      - "sweetpad-lib/ci/test_linux_host.py"
+      - ".github/workflows/linux-hosts.yaml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  toolchain:
+    name: ${{ matrix.image }} / ${{ matrix.arch }} host tools (no Apple SDK)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {image: "ubuntu:24.04", arch: amd64, runner: ubuntu-24.04}
+          - {image: "ubuntu:24.04", arch: arm64, runner: ubuntu-24.04-arm}
+          - {image: "debian:12", arch: amd64, runner: ubuntu-24.04}
+          - {image: "debian:12", arch: arm64, runner: ubuntu-24.04-arm}
+          - {image: "debian:13", arch: amd64, runner: ubuntu-24.04}
+          - {image: "debian:13", arch: arm64, runner: ubuntu-24.04-arm}
+          - {image: "archlinux:base", arch: amd64, runner: ubuntu-24.04}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check distribution selection and shell syntax
+        run: |
+          python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_host.py
+          bash -n sweetpad-lib/ci/linux-host-tools.sh sweetpad-lib/ci/linux-setup.sh
+      - name: Bootstrap a fresh host and build a Swift package
+        env:
+          IMAGE: ${{ matrix.image }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          docker run --rm --platform "linux/$ARCH" -v "$PWD:/src:ro" "$IMAGE" bash -euc '
+            if command -v apt-get >/dev/null; then
+              apt-get update -qq
+              DEBIAN_FRONTEND=noninteractive apt-get install -yqq python3 ca-certificates
+            else
+              pacman -Syu --noconfirm
+              pacman -S --needed --noconfirm python ca-certificates
+            fi
+            bash /src/sweetpad-lib/ci/linux-host-tools.sh
+            version="$(python3 -c '\''import json; print(json.load(open("/src/sweetpad-lib/ci/linux-toolchain.json"))["swift"])'\'')"
+            export PATH="$HOME/bin:$HOME/swift/swift-$version-RELEASE/usr/bin:$PATH"
+            mkdir /tmp/host-probe
+            cd /tmp/host-probe
+            swift package init --type executable --name HostProbe
+            printf '\''import Foundation\nprint("SwiftPM host probe: " + ProcessInfo.processInfo.operatingSystemVersionString)\n'\'' > Sources/main.swift
+            swift build --jobs 2
+            .build/debug/HostProbe
+            xtool --version
+          '

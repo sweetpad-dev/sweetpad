@@ -1,4 +1,4 @@
-//! Ubuntu bootstrap over the public setup sources embedded in the CLI.
+//! Linux bootstrap over the public setup sources embedded in the CLI.
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -13,6 +13,9 @@ pub struct SetupArgs {
     /// Private SDK archive exported on a Mac, with its .sha256 file.
     #[arg(long = "sdk")]
     pub sdk_archive: PathBuf,
+    /// Use existing host packages instead of installing them with APT or pacman.
+    #[arg(long)]
+    pub skip_system_packages: bool,
     /// Destination for the extracted SDK.
     #[arg(long)]
     pub sdk_path: Option<PathBuf>,
@@ -30,8 +33,7 @@ pub struct SetupArgs {
 pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
     if !cfg!(target_os = "linux") || !cfg!(any(target_arch = "aarch64", target_arch = "x86_64")) {
         return Err(
-            CliError::new("sweetpad setup requires Ubuntu 24.04 ARM64 or x86_64")
-                .kind(ErrorKind::Usage),
+            CliError::new("sweetpad setup requires ARM64 or x86_64 Linux").kind(ErrorKind::Usage),
         );
     }
     let archive = args
@@ -53,6 +55,7 @@ pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
     let mut bootstrap = Command::new("python3");
     bootstrap.args(["-c", "import subprocess,sys; sys.exit(subprocess.call(['bash',sys.argv[1]],stdout=sys.stderr))"])
         .arg(script).env("SWEETPAD_SKIP_RUST", "1")
+        .env("SWEETPAD_SKIP_SYSTEM_PACKAGES", if args.skip_system_packages { "1" } else { "0" })
         .env("SWIFT_VERSION", &pins.swift).env("SWIFT_BUILD_VERSION", &pins.swift_build)
         .env("XTOOL_VERSION", &pins.xtool)
         .env("XTOOL_SHA256", &pins.xtool_sha256[std::env::consts::ARCH])
@@ -82,7 +85,7 @@ pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
 fn run_bootstrap(command: &mut Command, machine: bool) -> Result<(), CliError> {
     let missing = |error| {
         CliError::new(format!(
-            "start Ubuntu setup: {error}; install python3 before running setup"
+            "start Linux setup: {error}; install python3 before running setup"
         ))
         .kind(ErrorKind::ToolMissing)
     };
@@ -97,7 +100,7 @@ fn run_bootstrap(command: &mut Command, machine: bool) -> Result<(), CliError> {
         }
     } else if !command.status().map_err(missing)?.success() {
         return Err(CliError::new(
-            "Ubuntu setup failed. Review the diagnostics and rerun the same command.",
+            "Linux setup failed. Review the diagnostics and rerun the same command.",
         ));
     }
     Ok(())
@@ -112,8 +115,8 @@ fn bootstrap_error(stderr: &str) -> CliError {
             .and_then(|value| value["error"].as_str().map(str::to_string))
     });
     CliError::new(reason.map_or_else(
-        || "Ubuntu setup failed. Review the bootstrap diagnostics.".into(),
-        |reason| format!("Ubuntu setup failed: {reason}"),
+        || "Linux setup failed. Review the bootstrap diagnostics.".into(),
+        |reason| format!("Linux setup failed: {reason}"),
     ))
     .diagnostics(vec![json!({"stage":"bootstrap","message":tail})])
 }
@@ -182,13 +185,11 @@ fn validate_sample(
         .env("PATH", path)
         .env("SWEETPAD_DARWIN_SDK", sdk)
         .stdin(Stdio::null())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .output()
         .map_err(|e| CliError::new(format!("start setup sample build: {e}")))?;
     if !result.status.success() {
-        return Err(CliError::new(
-            "Setup installed the tools, but the sample build failed. Review the diagnostics and run sweetpad doctor --target ios.",
-        ));
+        return Err(sample_build_error(&result.stdout, &result.stderr));
     }
     let report: serde_json::Value = serde_json::from_slice(&result.stdout)
         .map_err(|e| CliError::new(format!("read sample build report: {e}")))?;
@@ -200,10 +201,49 @@ fn validate_sample(
     Ok(report["data"].clone())
 }
 
+fn sample_build_error(stdout: &[u8], stderr: &[u8]) -> CliError {
+    // CLI error envelopes go to stderr; successful reports go to stdout.
+    let report = serde_json::from_slice::<serde_json::Value>(stdout)
+        .or_else(|_| serde_json::from_slice(stderr))
+        .unwrap_or_else(|_| {
+            json!({
+                "stdout": String::from_utf8_lossy(&stdout[stdout.len().saturating_sub(16_384)..]),
+                "stderr": String::from_utf8_lossy(&stderr[stderr.len().saturating_sub(16_384)..])
+            })
+        });
+    let reason = report["error"]["message"].as_str().unwrap_or(
+        "the child build returned no structured error; run sweetpad doctor --target ios",
+    );
+    let tip = report["error"]["tip"].as_str().map(str::to_owned);
+    CliError::new(format!("Setup sample build failed: {reason}"))
+        .kind(ErrorKind::BuildFailure)
+        .tip(tip)
+        .diagnostics(vec![json!({"stage": "sampleBuild", "report": report})])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cli::testdir::TempDir;
+
+    #[test]
+    fn failed_sample_retains_the_child_error_and_log_hint() {
+        let report = json!({"ok": false, "error": {
+            "message": "swbuild exited; full log: /tmp/sample-build.log",
+            "tip": "read full build log: /tmp/sample-build.log",
+            "diagnostics": [{"message": "bwrap: Creating new namespace failed"}]
+        }});
+        let error = sample_build_error(b"", &serde_json::to_vec(&report).unwrap());
+        assert!(error.to_string().contains("/tmp/sample-build.log"));
+        assert_eq!(error.error_kind(), ErrorKind::BuildFailure);
+        assert_eq!(
+            error.tip_text(),
+            Some("read full build log: /tmp/sample-build.log")
+        );
+        assert_eq!(error.json()["diagnostics"][0]["report"], report);
+        assert!(sample_build_error(b"", b"non-JSON child failure").json()["diagnostics"][0]["report"]["stderr"]
+            .as_str().unwrap().contains("non-JSON child failure"));
+    }
 
     #[test]
     fn machine_setup_errors_retain_the_migration_flag_and_stage() {

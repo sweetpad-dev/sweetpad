@@ -2,7 +2,7 @@
 sidebar_label: SDK export and setup
 ---
 
-# Export Apple SDK files and configure Ubuntu
+# Export Apple SDK files and configure Linux
 
 Install CLI 0.1.19 or later on each host.
 The [CLI installation guide](../getting-started.md) covers macOS.
@@ -12,6 +12,7 @@ The complete Linux package supplies the CLI and public setup sources without Rus
 For manual toolchain setup, use the [setup script](ubuntu-usb.md#manual-toolchain-setup).
 
 This flow transfers the required Apple files from your Mac to Ubuntu 24.04 ARM64 or x86_64.
+Development builds after CLI 0.1.21 also support [Debian and Arch setup](distributions.md).
 Use a Linux VM on Apple hardware under [Apple's Xcode agreement](https://www.apple.com/legal/sla/docs/xcode.pdf).
 Keep the SDK archive private. It contains Apple SDK data and contains no signing identities or provisioning profiles.
 
@@ -64,11 +65,12 @@ sweetpad doctor --target ios --json --non-interactive
 ```
 
 Setup requires Python 3 and sudo access for system packages.
+Use `--skip-system-packages` to supply existing host dependencies on development builds after 0.1.21.
 With `--non-interactive`, configure passwordless sudo or authenticate with `sudo -v` before setup.
 Setup installs the pinned Swift toolchain, xtool, patched Swift Build, and macro plugin.
 It verifies the SDK archive and imports the Apple files without access to the original Xcode installation.
 It does not install Rust or modify shell startup files.
-Setup builds the packaged LinuxApp sample for iOS Simulator to validate the installed tools and SDK.
+Setup builds the packaged LinuxApp sample for iPhone to validate the installed tools and SDK.
 The setup report includes the sample build result and product path.
 
 The generated environment file selects the SDK and compiler paths.

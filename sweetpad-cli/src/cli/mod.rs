@@ -772,7 +772,7 @@ pub enum Resource {
         #[command(subcommand)]
         action: commands::sdk::Action,
     },
-    /// Install the pinned Ubuntu ARM64 toolchain and import private SDK files.
+    /// Install the pinned Linux toolchain and import private SDK files.
     Setup(commands::setup::SetupArgs),
     /// Diagnose the local Apple build toolchain.
     Doctor(commands::doctor::DoctorArgs),

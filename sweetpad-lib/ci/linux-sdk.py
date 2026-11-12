@@ -269,7 +269,7 @@ def supplement(xcode, bundle, phrases):
 
 def import_sdk(args):
     if platform.system() != "Linux" or platform.machine() not in ("aarch64", "x86_64"):
-        raise ValueError("SDK import requires Ubuntu 24.04 ARM64 or x86_64")
+        raise ValueError("SDK import requires ARM64 or x86_64 Linux")
     import fcntl
     destination = args.destination.absolute()
     destination.parent.mkdir(parents=True, exist_ok=True)

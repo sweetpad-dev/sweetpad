@@ -39,7 +39,7 @@ These commands require CLI 0.1.19 or later.
 | Command | What it does |
 | --- | --- |
 | `sweetpad sdk export --output-file PATH` | Export private Apple SDK inputs on a Mac. |
-| `sweetpad sdk import ARCHIVE` | Import verified SDK inputs on Ubuntu ARM64 or x86_64. |
+| `sweetpad sdk import ARCHIVE` | Import verified SDK inputs on ARM64 or x86_64 Linux. |
 | `sweetpad setup --sdk ARCHIVE` | Install the pinned tools, import the SDK, and build the sample. |
 | `sweetpad device install PATH --device UDID` | Install an existing signed app or IPA. |
 | `sweetpad device pair-network UDID --out PATH` | Create private Wi-Fi pairing configuration with trusted USB available. |

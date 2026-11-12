@@ -6,7 +6,8 @@ sidebar_label: Support and configuration
 
 Release 0.1.21 provides static ARM64 and x86_64 packages, signed APT updates, Packslip metadata, and a CLI container image.
 See [Install the CLI](install.md) for installation and upgrades.
-Apple toolchain setup targets Ubuntu 24.04.
+Released Apple toolchain setup targets Ubuntu 24.04.
+Development builds after CLI 0.1.21 also support [Debian and Arch setup](distributions.md).
 
 ## Host and target architectures
 
@@ -100,7 +101,7 @@ AssistantIntents catalogs and catalog variations remain unsupported.
 ### Localized phrase resources
 
 `sweetpad sdk export` runs on your Mac and includes the system phrase resources in the private SDK archive.
-Transfer that archive and its checksum privately, then run `sweetpad setup --sdk /path/to/apple-sdk.tar.gz` on Ubuntu.
+Transfer that archive and its checksum privately, then run `sweetpad setup --sdk /path/to/apple-sdk.tar.gz` on Linux.
 See [SDK export and setup](sdk-transfer.md) for the complete commands.
 
 Missing localized resources produce a preparation error.
