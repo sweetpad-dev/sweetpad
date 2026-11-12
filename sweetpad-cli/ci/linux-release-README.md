@@ -2,7 +2,9 @@
 
 This package contains a statically linked Linux CLI for ARM64 or x86_64.
 The executable embeds the public setup sources, pinned patches, macros, and sample project.
-Apple build toolchain setup targets Ubuntu 24.04. The CLI itself needs no glibc or OpenSSL shared libraries.
+Apple toolchain setup supports Ubuntu 24.04 and Debian 12/13 on both architectures, plus Arch Linux x64.
+Other distributions warn and require existing compatible dependencies. Alpine toolchain setup remains unsupported.
+The CLI itself needs no glibc or OpenSSL shared libraries.
 It does not contain Apple SDKs, Xcode, signing identities, provisioning profiles, or build caches.
 
 ## Install the CLI
@@ -47,7 +49,7 @@ mise use -g packslip:github.com/sweetpad-dev/sweetpad/tools/cli
 ```
 
 GHCR supplies a multi-platform CLI image at `ghcr.io/sweetpad-dev/sweetpad`.
-It contains the static executable and CA certificates. Docker builds can copy `/usr/local/bin/sweetpad` into their own image.
+It contains the static executable, CA certificates, and license notices. Docker builds can copy `/usr/local/bin/sweetpad` into their own image.
 Swift, Swift Build, and the private SDK remain separate build-environment requirements.
 
 ## Prepare the Apple build toolchain
@@ -60,7 +62,7 @@ sweetpad sdk export --xcode /Applications/Xcode.app \
 scp "$HOME/apple-sdk.tar.gz" "$HOME/apple-sdk.tar.gz.sha256" ubuntu:~/
 ```
 
-On Ubuntu, import the archive and install the pinned tools:
+On Linux, import the archive and install the pinned tools:
 
 ```bash
 sweetpad setup --sdk "$HOME/apple-sdk.tar.gz" --json --non-interactive
@@ -76,6 +78,18 @@ An unchanged archive reuses the installed SDK. A different archive requires `--r
 The SDK stays private. The prebuilt CLI requires no Rust installation or Sweetpad source checkout.
 App signing requires your development identity and profiles, configured separately.
 
+CLI 0.1.22 also accepts private Xcode `.xip` downloads directly:
+
+```bash
+sweetpad setup --sdk "$HOME/Downloads/Xcode.xip" --json --non-interactive
+```
+
+Apple Encrypted Archive (`.aea`) import is experimental and supports profiles 0–2.
+It supports embedded keys, Apple FCS envelopes, `--aea-key-file`, and `--aea-public-key-file`.
+Use trusted Apple downloads: integrity checks do not validate Apple's publisher certificate chain.
+Direct import omits localized App Intents phrase resources; use a Mac export for localized shortcut training.
+See [SDK import and setup](https://sweetpad.hyzyla.dev/docs/cli/linux/sdk-transfer) for key formats and validation limits.
+
 ## Support scope
 
 The ARM64 validation environment uses Ubuntu 24.04 in OrbStack on Apple hardware.
@@ -87,7 +101,8 @@ Distribution IPA export, Linux device debugging, and device readiness inspection
 Flutter AOT requires the separately built Linux ARM64 iOS snapshot compiler.
 The tested React Native Hermes compiler requires OrbStack's x86 translation in this ARM64 environment.
 Other Linux architectures, including 32-bit x86, are not release targets.
-Apple toolchain setup on other distributions remains unverified.
+Public host-toolchain checks cover Ubuntu, Debian, and Arch. Private SDK app builds cover these distributions separately.
+Additional distributions remain unverified.
 
 Run `sweetpad help linux-devices` for pairing and bounded logs.
 See the [Linux guide](https://sweetpad.hyzyla.dev/docs/cli/linux) for build setup and current limitations.

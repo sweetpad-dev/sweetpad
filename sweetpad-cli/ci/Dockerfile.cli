@@ -1,4 +1,4 @@
-# Only the static CLI and public CA certificates. Apple SDKs are never included.
+# Static CLI, public CA certificates, and license notices. No Apple SDKs.
 FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS certificates
 RUN apt-get update -qq && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -13,6 +13,7 @@ LABEL org.opencontainers.image.source="https://github.com/sweetpad-dev/sweetpad"
       org.opencontainers.image.revision=$REVISION
 COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY linux-${TARGETARCH}/ /usr/local/bin/
+COPY licenses/ /usr/share/licenses/sweetpad/
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/sweetpad"]

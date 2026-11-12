@@ -59,6 +59,11 @@ def source_files(repo):
     for path in sorted((repo / "sweetpad-cli/macros/Sources").rglob("LICENSE*")):
         if path.is_file():
             files["licenses/macros/" + str(path.relative_to(repo / "sweetpad-cli/macros/Sources"))] = path
+    codecs = repo / "sweetpad-lib/ci/archive-codecs"
+    files["licenses/archive-codecs/README.md"] = codecs / "README.md"
+    for path in sorted(codecs.rglob("LICENSE*")):
+        if path.is_file():
+            files["licenses/archive-codecs/" + str(path.relative_to(codecs))] = path
     return files
 
 
@@ -73,7 +78,7 @@ def package(binary, version, out, repo=REPO):
     files = {"sweetpad": binary, **source_files(repo)}
     receipt = {"packageVersion": version, "binaryVersion": binary_version,
                "platform": "linux-" + arch, "linkage": "static", "embeddedSetup": True,
-               "baseline": "Static Linux CLI; Apple build toolchain setup targets Ubuntu 24.04",
+               "baseline": "Static Linux CLI; Apple build toolchain setup supports Ubuntu 24.04, Debian 12/13 and Arch x64",
                "experimental": True, "appleSdkIncluded": False,
                "files": {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in sorted(files.items())}}
     out.mkdir(parents=True, exist_ok=True)

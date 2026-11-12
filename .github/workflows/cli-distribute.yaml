@@ -67,6 +67,7 @@ jobs:
           mkdir -p image/linux-amd64 image/linux-arm64
           tar -xzf "release-packages/sweetpad-cli-${RELEASE_TAG#cli-v}-linux-x64.tar.gz" -C image/linux-amd64 sweetpad sweetpad-dap
           tar -xzf "release-packages/sweetpad-cli-${RELEASE_TAG#cli-v}-linux-arm64.tar.gz" -C image/linux-arm64 sweetpad sweetpad-dap
+          tar -xzf "release-packages/sweetpad-cli-${RELEASE_TAG#cli-v}-linux-x64.tar.gz" -C image licenses
           cp sweetpad-cli/ci/Dockerfile.cli image/Dockerfile
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker buildx create --use
