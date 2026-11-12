@@ -286,9 +286,19 @@ def aa_entries(source):
             else:
                 fields[key] = data
         offsets = {}
+        content_hash = None
         for key, length in blobs:
             offsets[key] = source.pos
-            source.skip(length)
+            if key == "DAT" and any(key in fields for key in ("HLC", "CLC", "SLC", "SH2")):
+                digest = hashlib.sha256()
+                remaining = length
+                while remaining:
+                    block = source.exact(min(remaining, 1024 * 1024))
+                    digest.update(block)
+                    remaining -= len(block)
+                content_hash = digest.digest()
+            else:
+                source.skip(length)
         kind = {ord("F"):"file",ord("D"):"dir",ord("L"):"symlink",ord("H"):"hardlink",ord("M"):"metadata"}.get(fields.get("TYP"), "special")
         if kind == "metadata":
             continue
@@ -296,11 +306,94 @@ def aa_entries(source):
         if not isinstance(fields.get("MOD",0),int) or ("DAT" in fields and "DAT" not in offsets):
             raise ValueError("Invalid Apple Archive file attributes")
         size = fields.get("DAT", 0)
-        if kind == "file" and ("SLC" in fields or fields.get("SIZ", size) != size):
-            raise ValueError("Sparse or sliced Apple Archive files are unsupported")
+        clusters = tuple((key, fields[key]) for key in ("HLC", "CLC", "SLC") if key in fields) if kind == "file" else ()
+        if any(type(value) is not int for _, value in clusters):
+            raise ValueError("Invalid Apple Archive data cluster identifier")
+        logical_size = fields.get("SIZ", size if "DAT" in offsets or not clusters else None)
+        if logical_size is not None and (type(logical_size) is not int or not 0 <= logical_size <= MAX_OUTPUT):
+            raise ValueError("Invalid Apple Archive file size")
+        expected_hash = fields.get("SH2")
+        if expected_hash is not None and (not isinstance(expected_hash, bytes) or len(expected_hash) != 32):
+            raise ValueError("Invalid Apple Archive file checksum")
+        if kind == "file":
+            if "DAT" in offsets and logical_size != size:
+                raise ValueError("Apple Archive file data size differs from its declared size")
+            if "DAT" not in offsets and logical_size and not clusters:
+                raise ValueError("Apple Archive file is missing its data")
+            if "DAT" in offsets and expected_hash is not None and content_hash != expected_hash:
+                raise ValueError("Apple Archive file checksum failed")
         yield {"name":name,"kind":kind,"size":size,"offset":offsets.get("DAT",source.pos),
                "mode":fields.get("MOD",0o755 if kind=="dir" else 0o644) & 0o777,
-               "link":fields.get("LNK"),"group":None}
+               "link":fields.get("LNK"),"group":None,"clusters":clusters,
+               "has_data":"DAT" in offsets,"logical_size":logical_size,
+               "content_hash":content_hash,"expected_hash":expected_hash}
+
+
+class AppleDataClusters:
+    """Resolve AA hard-link, clone and identical-data clusters across filtering.
+
+    Apple's AA_FLAG_ARCHIVE_DEDUPLICATE_DAT permits the only DAT blob to be
+    outside the selected SDK paths. A file can join several cluster namespaces.
+    """
+    def __init__(self, entries):
+        entries = list(entries)
+        self.parents = {}
+        self.ranks = {}
+        self.providers = {}
+        for entry in entries:
+            keys = entry.get("clusters", ())
+            for key in keys:
+                self.parents.setdefault(key, key)
+                self.ranks.setdefault(key, 0)
+            for key in keys[1:]:
+                self.union(keys[0], key)
+        for entry in entries:
+            keys = entry.get("clusters", ())
+            if not keys or not entry["has_data"]:
+                continue
+            root = self.find(keys[0])
+            previous = self.providers.setdefault(root, entry)
+            if previous["size"] != entry["size"] or previous["content_hash"] != entry["content_hash"]:
+                raise ValueError("Conflicting Apple Archive shared file data")
+
+    def find(self, key):
+        root = key
+        while self.parents[root] != root:
+            root = self.parents[root]
+        while self.parents[key] != root:
+            parent = self.parents[key]
+            self.parents[key] = root
+            key = parent
+        return root
+
+    def union(self, left, right):
+        left, right = self.find(left), self.find(right)
+        if left == right:
+            return
+        if self.ranks[left] < self.ranks[right]:
+            left, right = right, left
+        self.parents[right] = left
+        if self.ranks[left] == self.ranks[right]:
+            self.ranks[left] += 1
+
+    def resolve(self, entry):
+        keys = entry.get("clusters", ())
+        if not keys:
+            return entry
+        provider = self.providers.get(self.find(keys[0]))
+        if provider is None:
+            if entry["logical_size"] == 0:
+                provider = entry
+                content_hash = hashlib.sha256(b"").digest()
+            else:
+                raise ValueError("Missing Apple Archive shared file data")
+        else:
+            content_hash = provider["content_hash"]
+        if entry["logical_size"] is not None and entry["logical_size"] != provider["size"]:
+            raise ValueError("Apple Archive shared file size differs from its declared size")
+        if entry["expected_hash"] is not None and content_hash != entry["expected_hash"]:
+            raise ValueError("Apple Archive shared file checksum failed")
+        return provider
 
 
 def selected(name):
@@ -350,6 +443,7 @@ def extract(path, destination, key_file=None, public_key_file=None):
     source.drain()
     if len(app_names) != 1:
         raise ValueError("Xcode archive must contain one app with SDK inputs")
+    shared_data = AppleDataClusters(entries.values())
     wanted = [entry for entry in entries.values() if selected(entry["name"])]
     regular = []; links = []; directories = []
 
@@ -367,7 +461,7 @@ def extract(path, destination, key_file=None, public_key_file=None):
             raise ValueError("Archive hard link target is not a regular file")
         if entry["group"] is not None:
             entry = groups.get(entry["group"], entry)
-        return entry
+        return shared_data.resolve(entry)
 
     for entry in wanted:
         name = selected(entry["name"])

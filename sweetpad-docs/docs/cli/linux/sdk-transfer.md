@@ -52,7 +52,10 @@ sweetpad setup --sdk "$HOME/Downloads/Xcode.aea" \
 The key file can contain a raw 32-byte symmetric key, a `hex:` or `base64:` value, or an Apple FCS private key.
 For signed archives without an embedded signing key, use `--aea-public-key-file /private/path/signing-public.pem`.
 The same options work with `sweetpad sdk import`.
-Unsupported encryption profiles and sparse or sliced Apple Archive files fail with an explicit error.
+Development builds after CLI 0.1.22 also resolve shared file data in Apple Archive hard-link, clone, and identical-data clusters.
+The importer can recover data stored outside the selected SDK paths and preserves each file's permissions.
+Missing data, conflicting cluster contents, and invalid checksums fail before SDK replacement.
+Unsupported encryption profiles fail with an explicit error.
 Use a Mac SDK export if your download needs an unsupported archive feature.
 
 Direct import does not generate localized App Intents phrase resources.

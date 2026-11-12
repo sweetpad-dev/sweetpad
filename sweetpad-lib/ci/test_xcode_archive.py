@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -28,6 +29,22 @@ try:
     HAS_CRYPTO = True
 except ImportError:
     HAS_CRYPTO = False
+
+
+def apple_record(name, data=None, clusters=None, size=None, checksum=None):
+    """Small raw AA records for invalid graphs that Apple's encoder cannot emit."""
+    path = name.encode()
+    fields = b"TYP1F" + b"PATP" + struct.pack("<H", len(path)) + path
+    fields += b"MOD2" + struct.pack("<H", 0o644)
+    for key, identifier in (clusters or {}).items():
+        fields += key.encode() + b"8" + struct.pack("<Q", identifier)
+    if size is not None:
+        fields += b"SIZ8" + struct.pack("<Q", size)
+    if checksum is not None:
+        fields += b"SH2H" + checksum
+    if data is not None:
+        fields += b"DATC" + struct.pack("<Q", len(data))
+    return b"AA01" + struct.pack("<H", len(fields) + 6) + fields + (data or b"")
 
 
 class ArchiveTests(unittest.TestCase):
@@ -57,6 +74,68 @@ class ArchiveTests(unittest.TestCase):
         for source in sorted(FIXTURES.glob("*.aar")) + sorted(FIXTURES.glob("*.xip")):
             with self.subTest(source=source.name):
                 self.assert_extract(source)
+
+    def test_native_apple_shared_clusters_preserve_modes(self):
+        for name in ["clusters-full.aar", "clusters-deduplicated.aar"]:
+            source = FIXTURES / name
+            self.assert_extract(source)
+            folder = self.root / name / str(Path(generator.HEADER).parent)
+            self.assertEqual((folder / "bridging").stat().st_mode & 0o777, 0o644)
+            self.assertEqual((folder / "copy").read_bytes(), generator.DATA)
+            self.assertEqual((folder / "copy").stat().st_mode & 0o777, 0o755)
+            self.assertEqual((folder / "empty-copy").read_bytes(), b"")
+            self.assertFalse((self.root / name / "Xcode.app/Contents/AAData").exists())
+
+    @unittest.skipUnless(HAS_CRYPTO, "Python cryptography is required for AEA")
+    def test_encrypted_native_apple_shared_clusters(self):
+        self.assert_extract(FIXTURES / "profile1-clusters.aea")
+
+    def test_shared_clusters_resolve_transitive_namespaces_and_late_data(self):
+        data = b"shared SDK bytes"
+        checksum = hashlib.sha256(data).digest()
+        provider = apple_record("Xcode.app/Contents/Resources/shared", data, {"HLC": 0})
+        records = [
+            apple_record(generator.HEADER, clusters={"HLC": 0, "CLC": 12}),
+            apple_record(generator.HEADER + ".bridge", clusters={"CLC": 12, "SLC": 4}, size=len(data)),
+            apple_record(generator.HEADER + ".last", clusters={"SLC": 4}, checksum=checksum),
+            # Equal integer identifiers from different cluster namespaces are independent.
+            apple_record(generator.HEADER + ".other", b"other", {"SLC": 0}),
+        ]
+        for index, entries in enumerate([[provider] + records, records + [provider]]):
+            source = self.root / f"transitive-{index}.aar"
+            source.write_bytes(b"".join(entries))
+            app = archive.extract(source, self.root / f"transitive-out-{index}")
+            header = app / generator.HEADER.removeprefix("Xcode.app/")
+            for path in [header, header.with_name("bridging.bridge"), header.with_name("bridging.last")]:
+                self.assertEqual(path.read_bytes(), data)
+            self.assertEqual(header.with_name("bridging.other").read_bytes(), b"other")
+            self.assertFalse((app / "Contents/Resources").exists())
+
+    def test_invalid_shared_data_is_rejected_before_writing(self):
+        outside = "Xcode.app/Contents/Resources/shared"
+        provider = apple_record(outside, b"abc", {"SLC": 0})
+        cases = [
+            (apple_record(generator.HEADER, clusters={"SLC": 0}, size=3), "Missing.*shared file data"),
+            (provider + apple_record(generator.HEADER, b"xyz", {"SLC": 0}), "Conflicting.*shared file data"),
+            (provider + apple_record(generator.HEADER, clusters={"SLC": 0}, size=4), "shared file size"),
+            (provider + apple_record(generator.HEADER, clusters={"SLC": 0}, checksum=bytes(32)), "shared file checksum"),
+            (apple_record(generator.HEADER, b"abc", checksum=bytes(32)), "file checksum failed"),
+            (apple_record(generator.HEADER, size=3), "missing its data"),
+        ]
+        for index, (data, error) in enumerate(cases):
+            source = self.root / f"invalid-cluster-{index}.aar"
+            source.write_bytes(data)
+            output = self.root / f"invalid-cluster-out-{index}"
+            with self.subTest(index=index), self.assertRaisesRegex(ValueError, error):
+                archive.extract(source, output)
+            self.assertFalse(output.exists())
+
+    def test_empty_shared_clusters_without_payload_remain_empty(self):
+        source = self.root / "empty-clusters.aar"
+        source.write_bytes(apple_record(generator.HEADER, clusters={"SLC": 0}, size=0,
+                                       checksum=hashlib.sha256(b"").digest()))
+        app = archive.extract(source, self.root / "empty-clusters")
+        self.assertEqual((app / generator.HEADER.removeprefix("Xcode.app/")).read_bytes(), b"")
 
     @unittest.skipUnless(HAS_CRYPTO, "Python cryptography is required for AEA")
     def test_apple_signed_and_encrypted_archives(self):
@@ -149,6 +228,27 @@ class ArchiveTests(unittest.TestCase):
         for algorithm in ["e","m","x","z","4"]:
             with self.subTest(algorithm=algorithm), self.assertRaises(ValueError):
                 archive.CODECS.decompress(algorithm,b"bad",archive.CODECS.MAX_BLOCK+1)
+
+    def test_codec_cache_uses_private_permissions_with_permissive_umask(self):
+        codec = load("linux-archive-codecs")
+        previous = os.umask(0)
+        try:
+            codec.library()
+        finally:
+            os.umask(previous)
+        libraries = [p for p in (self.root / "cache").rglob("*") if p.suffix in (".so", ".dylib")]
+        self.assertEqual(len(libraries), 1)
+        self.assertEqual(libraries[0].stat().st_mode & 0o777, 0o700)
+        self.assertEqual(libraries[0].parent.stat().st_mode & 0o777, 0o700)
+
+    def test_codec_cache_still_rejects_an_existing_writable_library(self):
+        codec = load("linux-archive-codecs")
+        codec.library()
+        library = next(p for p in (self.root / "cache").rglob("*") if p.suffix in (".so", ".dylib"))
+        library.chmod(0o777)
+        codec._library = None
+        with self.assertRaisesRegex(ValueError, "owned regular file"):
+            codec.library()
 
     def test_existing_sdk_is_preserved_when_native_archive_preparation_fails(self):
         sdk=load("linux-sdk")
