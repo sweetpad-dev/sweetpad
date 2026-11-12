@@ -1,8 +1,8 @@
 ---
-sidebar_label: SDK export and setup
+sidebar_label: SDK import and setup
 ---
 
-# Export Apple SDK files and configure Linux
+# Import Apple SDK files and configure Linux
 
 Install CLI 0.1.19 or later on each host.
 The [CLI installation guide](../getting-started.md) covers macOS.
@@ -11,10 +11,55 @@ The [Ubuntu guide](ubuntu-usb.md#install-the-release) covers Linux.
 The complete Linux package supplies the CLI and public setup sources without Rust.
 For manual toolchain setup, use the [setup script](ubuntu-usb.md#manual-toolchain-setup).
 
-This flow transfers the required Apple files from your Mac to Ubuntu 24.04 ARM64 or x86_64.
-Development builds after CLI 0.1.21 also support [Debian and Arch setup](distributions.md).
+You can export the required Apple files from your Mac or import a private Xcode download directly on Linux.
+CLI 0.1.22 supports Ubuntu, Debian, and Arch setup on the [validated host architectures](distributions.md).
 Use a Linux VM on Apple hardware under [Apple's Xcode agreement](https://www.apple.com/legal/sla/docs/xcode.pdf).
 Keep the SDK archive private. It contains Apple SDK data and contains no signing identities or provisioning profiles.
+
+## Import a Xcode download on Linux
+
+CLI 0.1.22 can import Xcode `.xip` files and has experimental support for `.aea` files.
+Apple introduced `.aea` downloads in [Xcode 27.3](https://developer.apple.com/documentation/xcode-release-notes/xcode-27_3-release-notes).
+Download Xcode from Apple and keep the archive private.
+Then run setup with the downloaded file:
+
+```bash
+sweetpad setup --sdk "$HOME/Downloads/Xcode.xip" --json --non-interactive
+source "$HOME/.config/sweetpad/linux-env.sh"
+sweetpad doctor --target ios --json --non-interactive
+```
+
+Use the `.aea` filename in the same command for an encrypted archive.
+Setup extracts the required SDK inputs and installs Linux host tools.
+It does not install or execute the Xcode application.
+The archive remains on disk, so allow space for the download, extracted inputs, and staged SDK.
+
+The importer checks archive checksums and AEA authentication data.
+It does not validate Apple's publisher certificate chain. Use a trusted Apple download and check its published checksum when available.
+An adjacent `Xcode.xip.sha256` or `Xcode.aea.sha256` file is checked when present.
+Use the usual `sha256sum` format: the digest, two spaces, and the archive filename.
+
+AEA support covers signed or AES-CTR profiles 0, 1, and 2.
+It supports embedded keys and Apple FCS key envelopes.
+FCS import can retrieve public distribution key material from approved Apple HTTPS hosts without account cookies.
+For offline import or archives without embedded keys, pass a key file:
+
+```bash
+sweetpad setup --sdk "$HOME/Downloads/Xcode.aea" \
+  --aea-key-file /private/path/archive-key --json --non-interactive
+```
+
+The key file can contain a raw 32-byte symmetric key, a `hex:` or `base64:` value, or an Apple FCS private key.
+For signed archives without an embedded signing key, use `--aea-public-key-file /private/path/signing-public.pem`.
+The same options work with `sweetpad sdk import`.
+Unsupported encryption profiles and sparse or sliced Apple Archive files fail with an explicit error.
+Use a Mac SDK export if your download needs an unsupported archive feature.
+
+Direct import does not generate localized App Intents phrase resources.
+Ordinary app compilation can proceed; doctor reports a warning for the missing resources.
+Use the Mac export flow below for localized shortcut training.
+Validation uses Apple-tool-generated archive fixtures and full SDK inputs from Xcode 27.2.
+Import of an authenticated Xcode 27.3 download remains unverified.
 
 ## Export on your Mac
 
@@ -53,10 +98,10 @@ Replace `ubuntu` with your SSH host.
 An OrbStack machine can also read the Mac files at their original absolute paths.
 Do not publish the archive as a public CI artifact.
 
-## Configure Ubuntu
+## Configure Linux from an SDK export
 
 Install the complete Linux CLI package or use a current source build before this step.
-Run setup on Ubuntu 24.04 ARM64 or x86_64:
+Run setup on a [supported Linux distribution](distributions.md):
 
 ```bash
 sweetpad setup --sdk "$HOME/apple-sdk.tar.gz" --json --non-interactive
@@ -65,7 +110,7 @@ sweetpad doctor --target ios --json --non-interactive
 ```
 
 Setup requires Python 3 and sudo access for system packages.
-Use `--skip-system-packages` to supply existing host dependencies on development builds after 0.1.21.
+With CLI 0.1.22, use `--skip-system-packages` to supply existing host dependencies.
 With `--non-interactive`, configure passwordless sudo or authenticate with `sudo -v` before setup.
 Setup installs the pinned Swift toolchain, xtool, patched Swift Build, and macro plugin.
 It verifies the SDK archive and imports the Apple files without access to the original Xcode installation.
@@ -99,6 +144,10 @@ With xtool 1.21.0 and Swift 6.4.2 on PATH, import only the SDK:
 ```bash
 sweetpad sdk import "$HOME/apple-sdk.tar.gz" --json --non-interactive
 ```
+
+This command also accepts private `.xip` and `.aea` archives.
+Direct archive import needs Python 3 and a host C compiler. AEA also needs Python `cryptography`.
+Setup installs these dependencies on the supported distributions.
 
 Use `--destination /absolute/path` for a separate SDK.
 Set `SWEETPAD_DARWIN_SDK` to that path before builds.

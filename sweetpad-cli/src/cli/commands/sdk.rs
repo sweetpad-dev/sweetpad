@@ -12,7 +12,7 @@ use crate::cli::{CliError, CommandResult, Context, ErrorKind, Render, Rendered, 
 pub enum Action {
     /// Export private SDK inputs from your Xcode. Contains no signing keys.
     Export(ExportArgs),
-    /// Verify and import an export on ARM64 or x86_64 Linux. Requires pinned xtool.
+    /// Import a private SDK export or Xcode archive on ARM64 or x86_64 Linux.
     Import(ImportArgs),
 }
 
@@ -30,7 +30,7 @@ pub struct ExportArgs {
 
 #[derive(Debug, Args)]
 pub struct ImportArgs {
-    /// Export archive. Its .sha256 file must be beside it.
+    /// Sweetpad export with its checksum, or a private Xcode .xip/.aea archive.
     pub archive: PathBuf,
     /// SDK destination (default: ~/.swiftpm/swift-sdks/darwin.artifactbundle).
     #[arg(long = "destination")]
@@ -38,6 +38,12 @@ pub struct ImportArgs {
     /// Replace an existing SDK only after a successful import.
     #[arg(long)]
     pub replace: bool,
+    /// AEA symmetric key or Apple FCS private key file, for offline decryption.
+    #[arg(long)]
+    pub aea_key_file: Option<PathBuf>,
+    /// AEA signing public key file, if the archive does not embed it.
+    #[arg(long)]
+    pub aea_public_key_file: Option<PathBuf>,
 }
 
 pub(super) struct Report(pub Value);
@@ -129,6 +135,12 @@ pub fn run(_ctx: &mut Context, action: &Action) -> CommandResult {
                 .arg(args.install_path.clone().unwrap_or_else(default_sdk));
             if args.replace {
                 cmd.arg("--replace");
+            }
+            if let Some(path) = &args.aea_key_file {
+                cmd.arg("--aea-key-file").arg(path);
+            }
+            if let Some(path) = &args.aea_public_key_file {
+                cmd.arg("--aea-public-key-file").arg(path);
             }
         }
     }

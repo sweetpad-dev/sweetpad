@@ -86,6 +86,8 @@ section "Darwin SDK from $XCODE_APP"
 BUNDLE="${SWEETPAD_DARWIN_SDK:-$HOME/.swiftpm/swift-sdks/darwin.artifactbundle}"
 if [ -n "${SWEETPAD_SDK_ARCHIVE:-}" ]; then
   import_args=(import --archive "$SWEETPAD_SDK_ARCHIVE" --destination "$BUNDLE" --xtool "$HOME/bin/xtool")
+  [ -z "${SWEETPAD_AEA_KEY_FILE:-}" ] || import_args+=(--aea-key-file "$SWEETPAD_AEA_KEY_FILE")
+  [ -z "${SWEETPAD_AEA_PUBLIC_KEY_FILE:-}" ] || import_args+=(--aea-public-key-file "$SWEETPAD_AEA_PUBLIC_KEY_FILE")
   [ "${SWEETPAD_REFRESH_SDK:-0}" != 1 ] || import_args+=(--replace)
   python3 "$(dirname "$0")/linux-sdk.py" "${import_args[@]}"
 else

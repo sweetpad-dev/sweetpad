@@ -207,6 +207,10 @@ def unpack_verified(archive, work):
 
 
 def inspect_archive(archive):
+    with archive.open("rb") as source:
+        magic = source.read(4)
+    if magic != b"\x1f\x8b\x08\x00" and not magic.startswith(b"\x1f\x8b"):
+        return inspect_xcode_archive(archive, magic)
     checksum = digest(archive)
     expected = archive.with_name(archive.name + ".sha256").read_text().strip().split(maxsplit=1)
     if len(expected) != 2 or expected[0] != checksum or expected[1] != archive.name:
@@ -232,6 +236,33 @@ def inspect_archive(archive):
     return {"archiveSha256": checksum, "xcodeVersion": manifest["xcodeVersion"],
             "xcodeBuild": manifest["xcodeBuild"], "toolchain": VERSIONS,
             "unpackedBytes": size, "requiredFreeBytes": 2 * size + 512 * 1024**2}
+
+
+def inspect_xcode_archive(archive, magic):
+    kind = "xip" if magic == b"xar!" else "aea" if magic == b"AEA1" else "apple-archive" if magic in (b"AA01", b"YAA1", b"pbzx", b"pbzm", b"pbze", b"pbzz", b"pbz4") else None
+    if kind is None or archive.stat().st_size < 12:
+        raise ValueError("Expected a Sweetpad SDK export, Xcode .xip, .aea, or Apple Archive")
+    checksum = digest(archive)
+    sidecar = archive.with_name(archive.name + ".sha256")
+    if sidecar.exists():
+        expected = sidecar.read_text().strip().split(maxsplit=1)
+        if len(expected) != 2 or expected[0] != checksum or expected[1] != archive.name:
+            raise ValueError("Xcode archive checksum does not match its .sha256 file")
+    return {"archiveSha256": checksum, "sourceFormat": kind, "archiveBytes": archive.stat().st_size,
+            "toolchain": VERSIONS, "requiredFreeBytes": 512 * 1024**2}
+
+
+def unpack_xcode_archive(archive, work, args):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("sweetpad_xcode_archive", CI / "linux-xcode-archive.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    print("Reading Xcode archive and selecting private SDK inputs", file=sys.stderr, flush=True)
+    xcode = module.extract(archive, work, getattr(args, "aea_key_file", None), getattr(args, "aea_public_key_file", None))
+    version = plistlib.loads((xcode / "Contents/version.plist").read_bytes())
+    # Check the baseline inputs before invoking any SDK builder.
+    export_roots(xcode)
+    return {"xcodeVersion": version["CFBundleShortVersionString"], "xcodeBuild": version["ProductBuildVersion"]}
 
 
 def copy_host_clang_headers(bundle, copy_tree):
@@ -264,7 +295,8 @@ def supplement(xcode, bundle, phrases):
             source = contents / "Developer/Platforms" / root.name / part
             if source.exists():
                 module.copy_tree(source, root / part)
-    shutil.copyfile(phrases, bundle / "appintents-phrases.json")
+    if phrases.is_file():
+        shutil.copyfile(phrases, bundle / "appintents-phrases.json")
 
 
 def import_sdk(args):
@@ -297,7 +329,9 @@ def sdk_host_architecture(bundle):
 
 def import_locked(args):
     archive = args.archive.resolve()
-    checksum = inspect_archive(archive)["archiveSha256"]
+    inspected = inspect_archive(archive)
+    checksum = inspected["archiveSha256"]
+    source_format = inspected.get("sourceFormat", "sweetpad-export")
     destination = args.destination.absolute()
     if destination.is_symlink():
         raise ValueError("SDK destination must not be a symbolic link")
@@ -305,8 +339,10 @@ def import_locked(args):
         raise ValueError("Existing destination is not a Darwin SDK; select an empty destination")
     receipt_path = destination / "sweetpad-sdk.json"
     receipt = json.loads(receipt_path.read_text()) if receipt_path.is_file() else {}
-    required = ("swift-sdk.json", "toolset-swb.json", "toolset/bin/ld64.lld", "appintents-phrases.json", "version.plist",
+    required = ("swift-sdk.json", "toolset-swb.json", "toolset/bin/ld64.lld", "version.plist",
                 "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h")
+    if source_format == "sweetpad-export" or receipt.get("localizedAppIntents"):
+        required += ("appintents-phrases.json",)
     if destination.exists() and receipt.get("archiveSha256") == checksum and receipt.get("hostArchitecture", sdk_host_architecture(destination)) == platform.machine() and not args.replace and all((destination / p).is_file() for p in required):
         return {"sdkPath": str(destination), "archiveSha256": checksum, "reused": True}
     if destination.exists() and not args.replace:
@@ -317,13 +353,15 @@ def import_locked(args):
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".sweetpad-sdk-", dir=destination.parent) as work:
         work = Path(work)
-        manifest = unpack_verified(archive, work)
+        require_space(work, inspected["requiredFreeBytes"])
+        manifest = unpack_verified(archive, work) if source_format == "sweetpad-export" else unpack_xcode_archive(archive, work, args)
         subprocess.run([xtool, "sdk", "build", str(work / "Xcode.app"), str(work)],
                        check=True, stdout=sys.stderr)
         bundle = work / "darwin.xtoolsdk"
         supplement(work / "Xcode.app", bundle, work / "appintents-phrases.json")
         receipt = {"archiveSha256": checksum, "xcodeBuild": manifest["xcodeBuild"],
-                   "xcodeVersion": manifest["xcodeVersion"], "toolchain": VERSIONS, "hostArchitecture": platform.machine()}
+                   "xcodeVersion": manifest["xcodeVersion"], "toolchain": VERSIONS, "hostArchitecture": platform.machine(),
+                   "sourceFormat": source_format, "localizedAppIntents": (bundle / "appintents-phrases.json").is_file()}
         (bundle / "sweetpad-sdk.json").write_text(json.dumps(receipt, indent=2) + "\n")
         backup = work / "previous-sdk"
         if destination.exists():
@@ -349,6 +387,8 @@ def main():
     install.add_argument("--destination", type=Path, default=Path.home() / ".swiftpm/swift-sdks/darwin.artifactbundle")
     install.add_argument("--xtool")
     install.add_argument("--replace", action="store_true")
+    install.add_argument("--aea-key-file", type=Path)
+    install.add_argument("--aea-public-key-file", type=Path)
     inspect = commands.add_parser("inspect")
     inspect.add_argument("--archive", type=Path, required=True)
     args = parser.parse_args()

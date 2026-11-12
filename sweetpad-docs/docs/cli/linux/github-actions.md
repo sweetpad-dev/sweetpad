@@ -38,7 +38,7 @@ They require a provisioned self-hosted SDK runner and do not run on public pull 
 
 ### x86_64 runners
 
-CLI 0.1.21 provides static ARM64 and x64 archives, Debian packages, and a CLI container image. The example uses the ARM64 archive.
+CLI 0.1.22 provides static ARM64 and x64 archives, Debian packages, and a CLI container image. The example uses the ARM64 archive.
 For an x86_64 runner, select `linux-x64` and use `runs-on: [self-hosted, Linux, X64, sweetpad-linux]`.
 Keep the iPhone destination and `ARCHS=arm64` settings unchanged.
 An SDK imported on ARM64 contains ARM64 host tools. Import the private export on the x64 runner to select x64 tools.
@@ -72,7 +72,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CLI_VERSION=0.1.21
+          CLI_VERSION=0.1.22
           mkdir "$RUNNER_TEMP/cli"
           cd "$RUNNER_TEMP/cli"
           curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz"

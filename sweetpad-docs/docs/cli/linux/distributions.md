@@ -4,7 +4,7 @@ sidebar_label: Linux distributions
 
 # Debian and Arch setup
 
-The setup changes on this page require a development build after CLI 0.1.21.
+The setup changes on this page require CLI 0.1.22 or later.
 Released CLI packages run on x64 and ARM64 Linux hosts.
 Apple app builds also need compatible Swift tools and your private SDK export.
 
@@ -15,6 +15,7 @@ Apple app builds also need compatible Swift tools and your private SDK export.
 | Arch Linux, x64 | pacman | Signed Ubuntu Swift archive with a local ncurses adjustment. |
 
 Arch Linux ARM is a separate port and needs separate validation.
+Its setup warns and uses existing system packages.
 Other distributions produce a doctor warning. Required tools must still pass their checks.
 
 ## Prepare Debian

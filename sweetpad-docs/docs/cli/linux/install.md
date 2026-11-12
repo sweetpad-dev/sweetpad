@@ -18,8 +18,7 @@ The CLI is a static executable with embedded public setup files.
 
 Apple SDKs, signing credentials, Swift, and Swift Build are separate requirements.
 The CLI packages and container image contain no Apple SDKs or signing material.
-Ubuntu 24.04 is the validated platform for Apple toolchain setup.
-Development builds after CLI 0.1.21 add [Debian and Arch setup](distributions.md).
+Apple toolchain setup supports Ubuntu 24.04 and the validated [Debian and Arch hosts](distributions.md).
 
 ## APT
 
@@ -75,7 +74,7 @@ Removal keeps your compiler, private SDK, signing files, and user configuration.
 Download a release package and its checksum:
 
 ```bash
-CLI_VERSION=0.1.21
+CLI_VERSION=0.1.22
 CLI_ARCH="$(dpkg --print-architecture)"
 curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad_$CLI_VERSION-1_$CLI_ARCH.deb"
 curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad_$CLI_VERSION-1_$CLI_ARCH.deb.sha256"
@@ -108,7 +107,7 @@ mise use -g packslip:github.com/sweetpad-dev/sweetpad/tools/cli
 For a project version pin, omit `-g` and add the version:
 
 ```bash
-mise use packslip:github.com/sweetpad-dev/sweetpad/tools/cli@0.1.21
+mise use packslip:github.com/sweetpad-dev/sweetpad/tools/cli@0.1.22
 ```
 
 Use `mise upgrade` for Mise-managed installs.
@@ -119,13 +118,13 @@ On Linux, install `ca-certificates` for HTTPS and `python3` and `bash` for SDK p
 The image supports `linux/amd64` and `linux/arm64`:
 
 ```bash
-docker run --rm ghcr.io/sweetpad-dev/sweetpad:0.1.21 --version
+docker run --rm ghcr.io/sweetpad-dev/sweetpad:0.1.22 --version
 ```
 
 Copy the static CLI into an existing Ubuntu build image:
 
 ```dockerfile
-FROM ghcr.io/sweetpad-dev/sweetpad:0.1.21 AS sweetpad
+FROM ghcr.io/sweetpad-dev/sweetpad:0.1.22 AS sweetpad
 FROM ubuntu:24.04
 COPY --from=sweetpad /usr/local/bin/sweetpad /usr/local/bin/sweetpad
 RUN ln -s sweetpad /usr/local/bin/sweetpad-dap
@@ -148,7 +147,7 @@ sudo apt-get install ca-certificates python3 bash curl
 Download the archive for your host and verify it:
 
 ```bash
-CLI_VERSION=0.1.21
+CLI_VERSION=0.1.22
 case "$(uname -m)" in
   aarch64|arm64) CLI_ARCH=arm64 ;;
   x86_64|amd64) CLI_ARCH=x64 ;;

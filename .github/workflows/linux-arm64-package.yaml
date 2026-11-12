@@ -57,7 +57,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install build dependencies
-        run: sudo apt-get update -qq && sudo apt-get install -y musl-tools cmake ninja-build perl pkg-config dpkg-dev apt-utils gnupg
+        run: sudo apt-get update -qq && sudo apt-get install -y musl-tools cmake ninja-build perl pkg-config dpkg-dev apt-utils gnupg python3-cryptography
       - name: Install pinned Rust
         run: |
           rustup show
@@ -66,6 +66,7 @@ jobs:
         run: |
           python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_sdk.py
           python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_host.py
+          python3 -m unittest discover -s sweetpad-lib/ci -p test_xcode_archive.py
           python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_release.py
           python3 -m unittest discover -s sweetpad-cli/ci -p test_linux_package.py
           python3 -m unittest discover -s sweetpad-cli/ci -p test_linux_apt.py

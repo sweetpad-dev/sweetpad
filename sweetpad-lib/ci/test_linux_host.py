@@ -45,7 +45,10 @@ class LinuxHostTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(result.stdout.startswith("pacman\nubuntu24.04\n"))
         self.assertIn("libxml2-legacy", result.stdout.split())
-        self.assertNotEqual(self.plan("ID=arch", "aarch64").returncode, 0)
+        manual=self.plan("ID=arch", "aarch64")
+        self.assertEqual(manual.returncode,0,manual.stderr)
+        self.assertEqual(manual.stdout.splitlines()[:2],["","ubuntu24.04-aarch64"])
+        self.assertIn("untested",manual.stderr)
 
     def test_unknown_distribution_warns_and_uses_existing_packages(self):
         for release in ["ID=fedora\nVERSION_ID=45", "", "ID=ubuntu\nVERSION_ID=22.04"]:
