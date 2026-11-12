@@ -54,7 +54,7 @@ For signed archives without an embedded signing key, use `--aea-public-key-file 
 The same options work with `sweetpad sdk import`.
 Development builds after CLI 0.1.22 also resolve shared file data in Apple Archive hard-link, clone, and identical-data clusters.
 The importer can recover data stored outside the selected SDK paths and preserves each file's permissions.
-These builds retain the macOS XCTest runner and preserve permissions when platform metadata is patched for Linux.
+These builds retain the macOS XCTest runner and preserve file permissions after Linux metadata updates.
 Missing data, conflicting cluster contents, and invalid checksums fail before SDK replacement.
 Large archives are decoded twice to find shared data before extraction.
 Development builds after CLI 0.1.22 report phases and decoded sizes on stderr during `sweetpad sdk import`.

@@ -65,6 +65,7 @@ jobs:
       - name: Validate SDK archive safety and bootstrap syntax
         run: |
           python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_sdk.py
+          python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_sdk_platforms.py
           python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_host.py
           python3 -m unittest discover -s sweetpad-lib/ci -p test_xcode_archive.py
           python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_release.py
