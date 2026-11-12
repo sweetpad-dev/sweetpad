@@ -70,7 +70,20 @@ def check(archive, out):
     invoke("help", [binary, "--help"])
     invoke("sdk-export-help", [binary, "sdk", "export", "--help"])
     invoke("sdk-import-help", [binary, "sdk", "import", "--help"])
+    invoke("sdk-download-help", [binary, "sdk", "download", "--help"])
+    invoke("auth-help", [binary, "auth", "--help"])
     invoke("setup-help", [binary, "setup", "--help"])
+    # Exercise both embedded Python helpers without credentials or network access.
+    missing_session = out / "missing-apple-session.json"
+    auth_login = invoke("auth-no-session", [binary, "auth", "login", "--apple-id", "synthetic@example.com",
+                                            "--session-file", missing_session, "--json"], success=False)
+    assert "non-interactive" in json.loads(auth_login.stderr)["error"]["message"]
+    for name, arguments in [("download-no-session", ["sdk", "download"]), ("setup-xcode-no-session", ["setup"])]:
+        response = invoke(name, [binary, *arguments, "--xcode", "27.3 beta", "--session-file", missing_session, "--json"], success=False)
+        assert "No Apple session file exists" in json.loads(response.stderr)["error"]["message"]
+    logged_out = invoke("auth-logout-empty", [binary, "auth", "logout", "--session-file", missing_session, "--json"])
+    assert json.loads(logged_out.stdout)["data"]["loggedOut"] is True
+    assert not missing_session.exists()
     invalid_sdk=out / "invalid-sdk.tar.gz"
     invalid_sdk.write_bytes(b"not an SDK archive")
     invalid_sdk.with_name(invalid_sdk.name + ".sha256").write_text(f"{hashlib.sha256(invalid_sdk.read_bytes()).hexdigest()}  {invalid_sdk.name}\n")
@@ -100,7 +113,8 @@ def check(archive, out):
               "binaryVersion": manifest["binaryVersion"], "emptyHome": True, "developerEnvironmentInherited": False,
               "sdkAvailable": False, "sourceCheckoutRequired": False, "installedPrefix": str(prefix),
               "checks": ["checksum", "manifest hashes", "single-binary install", "static linkage", "version", "DAP alias", "help", "device guide",
-                         "embedded setup files", "project schemes", "missing-toolchain diagnostic", "bundled setup syntax", "SDK state preserved"]}
+                         "embedded setup files", "embedded authentication and download helpers", "non-interactive Apple sessions",
+                         "project schemes", "missing-toolchain diagnostic", "bundled setup syntax", "SDK state preserved"]}
     (out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 
