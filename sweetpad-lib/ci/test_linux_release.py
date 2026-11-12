@@ -78,6 +78,8 @@ class LinuxReleaseContracts(unittest.TestCase):
                     self.assertNotIn("install.sh", names)
                     self.assertFalse(any(n.startswith(("setup/", "examples/")) for n in names))
                     self.assertIn("licenses/macros/FoundationMacros/LICENSE.md", names)
+                    self.assertIn("licenses/archive-codecs/lzfse/LICENSE", names)
+                    self.assertIn("licenses/archive-codecs/lzraven/LICENSE", names)
                     self.assertEqual(first["linkage"], "static")
                     self.assertTrue(first["embeddedSetup"])
                     self.assertTrue(archive.getmember("sweetpad-dap").issym())

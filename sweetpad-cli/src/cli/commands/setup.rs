@@ -10,12 +10,18 @@ use crate::cli::{CliError, CommandResult, Context, ErrorKind, Rendered};
 
 #[derive(Debug, Args)]
 pub struct SetupArgs {
-    /// Private SDK archive exported on a Mac, with its .sha256 file.
+    /// Sweetpad SDK export with its checksum, or a private Xcode .xip/.aea archive.
     #[arg(long = "sdk")]
     pub sdk_archive: PathBuf,
     /// Use existing host packages instead of installing them with APT or pacman.
     #[arg(long)]
     pub skip_system_packages: bool,
+    /// AEA symmetric key or Apple FCS private key file, for offline decryption.
+    #[arg(long)]
+    pub aea_key_file: Option<PathBuf>,
+    /// AEA signing public key file, if the archive does not embed it.
+    #[arg(long)]
+    pub aea_public_key_file: Option<PathBuf>,
     /// Destination for the extracted SDK.
     #[arg(long)]
     pub sdk_path: Option<PathBuf>,
@@ -63,6 +69,12 @@ pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
         .env("SWEETPAD_SDK_ARCHIVE", archive).env("SWEETPAD_DARWIN_SDK", &destination)
         .env("SWEETPAD_REFRESH_SDK", if args.replace_sdk { "1" } else { "0" })
         .stdin(Stdio::inherit()).stdout(Stdio::inherit()).stderr(Stdio::inherit());
+    if let Some(path) = &args.aea_key_file {
+        bootstrap.env("SWEETPAD_AEA_KEY_FILE", path);
+    }
+    if let Some(path) = &args.aea_public_key_file {
+        bootstrap.env("SWEETPAD_AEA_PUBLIC_KEY_FILE", path);
+    }
     run_bootstrap(&mut bootstrap, ctx.out.is_json() || ctx.out.is_ndjson())?;
     let env_file = std::path::absolute(
         args.env_file

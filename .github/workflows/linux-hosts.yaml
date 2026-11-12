@@ -5,6 +5,12 @@ on:
       - "sweetpad-lib/ci/linux-host-tools.sh"
       - "sweetpad-lib/ci/linux-toolchain.json"
       - "sweetpad-lib/ci/test_linux_host.py"
+      - "sweetpad-lib/ci/linux-*archive*.py"
+      - "sweetpad-lib/ci/linux-aea.py"
+      - "sweetpad-lib/ci/linux-apple-keys.py"
+      - "sweetpad-lib/ci/archive-codecs/**"
+      - "sweetpad-lib/ci/fixtures/xcode-archives/**"
+      - "sweetpad-lib/ci/test_xcode_archive.py"
       - ".github/workflows/linux-hosts.yaml"
   push:
     branches: [main]
@@ -12,6 +18,12 @@ on:
       - "sweetpad-lib/ci/linux-host-tools.sh"
       - "sweetpad-lib/ci/linux-toolchain.json"
       - "sweetpad-lib/ci/test_linux_host.py"
+      - "sweetpad-lib/ci/linux-*archive*.py"
+      - "sweetpad-lib/ci/linux-aea.py"
+      - "sweetpad-lib/ci/linux-apple-keys.py"
+      - "sweetpad-lib/ci/archive-codecs/**"
+      - "sweetpad-lib/ci/fixtures/xcode-archives/**"
+      - "sweetpad-lib/ci/test_xcode_archive.py"
       - ".github/workflows/linux-hosts.yaml"
   workflow_dispatch:
 permissions:
@@ -54,6 +66,7 @@ jobs:
             bash /src/sweetpad-lib/ci/linux-host-tools.sh
             version="$(python3 -c '\''import json; print(json.load(open("/src/sweetpad-lib/ci/linux-toolchain.json"))["swift"])'\'')"
             export PATH="$HOME/bin:$HOME/swift/swift-$version-RELEASE/usr/bin:$PATH"
+            python3 -m unittest discover -s /src/sweetpad-lib/ci -p test_xcode_archive.py
             mkdir /tmp/host-probe
             cd /tmp/host-probe
             swift package init --type executable --name HostProbe

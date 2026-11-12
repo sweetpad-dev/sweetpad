@@ -76,9 +76,9 @@ def check(archive, out):
     invalid_sdk.with_name(invalid_sdk.name + ".sha256").write_text(f"{hashlib.sha256(invalid_sdk.read_bytes()).hexdigest()}  {invalid_sdk.name}\n")
     raw_setup=invoke("raw-setup-source-discovery", [extracted / "sweetpad", "setup", "--sdk", invalid_sdk, "--json"], success=False)
     raw_error=json.loads(raw_setup.stderr)["error"]
-    assert "gzip" in raw_error["message"] and raw_error["diagnostics"][0]["stage"] == "bootstrap"
+    assert "Expected a Sweetpad SDK export" in raw_error["message"] and raw_error["diagnostics"][0]["stage"] == "bootstrap"
     installed_setup=invoke("standalone-setup-source-discovery", [binary, "setup", "--sdk", invalid_sdk, "--json"], success=False)
-    assert "gzip" in json.loads(installed_setup.stderr)["error"]["message"]
+    assert "Expected a Sweetpad SDK export" in json.loads(installed_setup.stderr)["error"]["message"]
     doctor = json.loads(invoke("linux-doctor-missing-tools", [binary, "doctor", "--target", "ios", "--json"], success=False).stdout)
     assert doctor["ok"] and doctor["data"]["summary"]["problems"] > 0
     assert not any(c["name"] in ("Xcode", "xcodebuild", "Simulator runtimes") for c in doctor["data"]["checks"])

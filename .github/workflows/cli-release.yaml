@@ -155,7 +155,11 @@ jobs:
         run: |
           set -euo pipefail
           ln -sf sweetpad dist/sweetpad-dap
-          tar -C dist -czf "$TARBALL" sweetpad sweetpad-dap
+          mkdir -p dist/licenses/archive-codecs/lzfse dist/licenses/archive-codecs/lzraven
+          cp sweetpad-lib/ci/archive-codecs/README.md dist/licenses/archive-codecs/
+          cp sweetpad-lib/ci/archive-codecs/lzfse/LICENSE dist/licenses/archive-codecs/lzfse/
+          cp sweetpad-lib/ci/archive-codecs/lzraven/LICENSE dist/licenses/archive-codecs/lzraven/
+          tar -C dist -czf "$TARBALL" sweetpad sweetpad-dap licenses
           echo "SHA256=$(shasum -a 256 "$TARBALL" | cut -d' ' -f1)" >> "$GITHUB_ENV"
           tar -tvzf "$TARBALL"
           shasum -a 256 "$TARBALL" > "$TARBALL.sha256"

@@ -21,14 +21,15 @@ sweetpad_linux_host() {
       SWEETPAD_LLVM_PACKAGE=llvm
       ;;
     arch:*)
-      [ "$arch" = x86_64 ] || {
-        echo 'error: Arch setup supports x86_64; Arch Linux ARM needs separate validation' >&2; return 1;
-      }
-      SWEETPAD_PACKAGE_MANAGER=pacman
+      if [ "$arch" = x86_64 ]; then
+        SWEETPAD_PACKAGE_MANAGER=pacman
+      else
+        echo 'warning: Arch Linux ARM is untested; using existing system packages' >&2
+      fi
       # Arch has no official Swift tarball. Use the signed Ubuntu compiler
       # with Arch's compatibility libraries, then check an actual host build.
       SWEETPAD_HOST_PACKAGES=(base-devel bash binutils bubblewrap ca-certificates cpio curl file git gnupg
-        libedit libxml2-legacy libyaml llvm ncurses openssl patchelf pkgconf python rsync sqlite strace tzdata unzip xz zip zlib z3)
+        libedit libxml2-legacy libyaml llvm ncurses openssl patchelf pkgconf python python-cryptography rsync sqlite strace tzdata unzip xz zip zlib z3)
       ;;
     alpine:*)
       echo 'error: the CLI runs on Alpine, but automatic Apple toolchain setup requires glibc. Run setup in an Ubuntu or Debian container.' >&2
@@ -42,7 +43,7 @@ sweetpad_linux_host() {
   if [ "$SWEETPAD_PACKAGE_MANAGER" = apt ]; then
     SWEETPAD_HOST_PACKAGES=(bash binutils bubblewrap build-essential ca-certificates cpio curl file git gnupg
       libc6-dev libcurl4-openssl-dev libedit2 libncurses-dev libpython3-dev libsqlite3-dev libssl-dev
-      libxml2-dev libyaml-dev libz3-dev "$SWEETPAD_LLVM_PACKAGE" pkg-config python3 rsync strace tzdata unzip zip xz-utils zlib1g-dev)
+      libxml2-dev libyaml-dev libz3-dev "$SWEETPAD_LLVM_PACKAGE" pkg-config python3 python3-cryptography rsync strace tzdata unzip zip xz-utils zlib1g-dev)
   fi
   [ "$arch" != aarch64 ] || SWEETPAD_SWIFT_PLATFORM+=-aarch64
 }
@@ -77,13 +78,20 @@ sweetpad_install_host_tools() {
   sweetpad_install_host_packages
   mkdir -p "$HOME/bin" "$HOME/swift" "$HOME/downloads"
   local libtool=
-  for candidate in /usr/bin/llvm-libtool-darwin /usr/bin/llvm-libtool-darwin-*; do
-    if [ -x "$candidate" ]; then libtool="$candidate"; break; fi
-  done
+  libtool="$(command -v llvm-libtool-darwin || true)"
+  if [ -n "$libtool" ]; then
+    libtool="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$libtool")"
+  else
+    for candidate in /usr/bin/llvm-libtool-darwin /usr/bin/llvm-libtool-darwin-*; do
+      if [ -x "$candidate" ]; then libtool="$candidate"; break; fi
+    done
+  fi
   [ -n "$libtool" ] || {
     echo 'error: install LLVM with llvm-libtool-darwin before running setup' >&2; return 1;
   }
-  ln -sf "$libtool" "$HOME/bin/llvm-libtool-darwin"
+  if [ "$libtool" != "$HOME/bin/llvm-libtool-darwin" ]; then
+    ln -sf "$libtool" "$HOME/bin/llvm-libtool-darwin"
+  fi
   # Preserve an existing user-selected libtool.
   if [ ! -e "$HOME/bin/libtool" ]; then ln -sf "$libtool" "$HOME/bin/libtool"; fi
 
