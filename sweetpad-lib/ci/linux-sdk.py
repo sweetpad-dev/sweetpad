@@ -279,6 +279,16 @@ def copy_host_clang_headers(bundle, copy_tree):
     copy_tree(host_include, resource_include)
 
 
+def preserve_platform_manifest_modes(xcode, bundle):
+    # xtool rewrites these manifests with Linux build properties. Keep those
+    # contents while restoring the archive's permissions, even under umask 0000.
+    for root in (bundle / "Developer/Platforms").iterdir():
+        source = xcode / "Contents/Developer/Platforms" / root.name / "Info.plist"
+        target = root / "Info.plist"
+        if source.is_file() and target.is_file() and not target.is_symlink():
+            shutil.copymode(source, target)
+
+
 def supplement(xcode, bundle, phrases):
     subprocess.run([sys.executable, str(CI / "linux-sdk-platforms.py"), str(xcode), str(bundle)],
                    check=True, stdout=sys.stderr)
@@ -296,6 +306,7 @@ def supplement(xcode, bundle, phrases):
             source = contents / "Developer/Platforms" / root.name / part
             if source.exists():
                 module.copy_tree(source, root / part)
+    preserve_platform_manifest_modes(xcode, bundle)
     if phrases.is_file():
         shutil.copyfile(phrases, bundle / "appintents-phrases.json")
 

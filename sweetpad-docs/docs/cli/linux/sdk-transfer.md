@@ -29,7 +29,7 @@ source "$HOME/.config/sweetpad/linux-env.sh"
 sweetpad doctor --target ios --json --non-interactive
 ```
 
-Use the `.aea` filename in the same command for an encrypted archive.
+Use your `.aea` filename in the same command for an AEA download.
 Setup extracts the required SDK inputs and installs Linux host tools.
 It does not install or execute the Xcode application.
 The archive remains on disk, so allow space for the download, extracted inputs, and staged SDK.
@@ -54,17 +54,20 @@ For signed archives without an embedded signing key, use `--aea-public-key-file 
 The same options work with `sweetpad sdk import`.
 Development builds after CLI 0.1.22 also resolve shared file data in Apple Archive hard-link, clone, and identical-data clusters.
 The importer can recover data stored outside the selected SDK paths and preserves each file's permissions.
+These builds retain the macOS XCTest runner and preserve permissions when platform metadata is patched for Linux.
 Missing data, conflicting cluster contents, and invalid checksums fail before SDK replacement.
 Large archives are decoded twice to find shared data before extraction.
-Development builds after CLI 0.1.22 report phases and decoded sizes on stderr during both passes.
+Development builds after CLI 0.1.22 report phases and decoded sizes on stderr during `sweetpad sdk import`.
 Unsupported encryption profiles fail with an explicit error.
 Use a Mac SDK export if your download needs an unsupported archive feature.
 
 Direct import does not generate localized App Intents phrase resources.
 Ordinary app compilation can proceed; doctor reports a warning for the missing resources.
 Use the Mac export flow below for localized shortcut training.
-Validation uses Apple-tool-generated archive fixtures and full SDK inputs from Xcode 27.2.
-Import of an authenticated Xcode 27.3 download remains unverified.
+Development builds after CLI 0.1.22 imported a real Xcode 27.3 beta (27C5020n) profile 0 archive on ARM64 and emulated x64 Linux.
+Both hosts built an ARM64 iPhone sample with that SDK.
+Validation also uses Apple-tool-generated archive fixtures and full SDK inputs from Xcode 27.2.
+A real encrypted Xcode download remains unverified.
 
 ## Export on your Mac
 

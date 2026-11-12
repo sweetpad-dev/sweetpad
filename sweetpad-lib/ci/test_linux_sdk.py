@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import plistlib
 import shutil
 import subprocess
 from pathlib import Path
@@ -144,6 +145,24 @@ class SDKTests(unittest.TestCase):
         with patch.object(sdk.subprocess, "check_output", return_value=json.dumps({"compilerVersion": "Swift version 6.3.4"})):
             with self.assertRaisesRegex(ValueError, "requires Swift 6.4.2"):
                 sdk.copy_host_clang_headers(self.root / "sdk", shutil.copytree)
+
+    def test_supplement_preserves_patched_manifest_contents_and_source_modes(self):
+        xcode, bundle = self.root / "Xcode.app", self.root / "sdk"
+        (xcode / "Contents").mkdir(parents=True)
+        (xcode / "Contents/version.plist").write_bytes(b"version")
+        patched = plistlib.dumps({"DefaultProperties": {"ALTERNATE_LINKER": "lld", "CODESIGN": "true"}})
+        for platform, mode in zip(sdk.BASE_PLATFORMS, [0o444, 0o640, 0o644]):
+            relative = Path("Developer/Platforms") / (platform + ".platform") / "Info.plist"
+            source, target = xcode / "Contents" / relative, bundle / relative
+            source.parent.mkdir(parents=True); target.parent.mkdir(parents=True)
+            source.write_bytes(plistlib.dumps({"DefaultProperties": {}})); source.chmod(mode)
+            target.write_bytes(patched); target.chmod(0o666)
+        with patch.object(sdk.subprocess, "run"), patch.object(sdk, "copy_host_clang_headers"):
+            sdk.supplement(xcode, bundle, self.root / "absent-phrases.json")
+        for platform, mode in zip(sdk.BASE_PLATFORMS, [0o444, 0o640, 0o644]):
+            target = bundle / "Developer/Platforms" / (platform + ".platform") / "Info.plist"
+            self.assertEqual(target.read_bytes(), patched)
+            self.assertEqual(target.stat().st_mode & 0o777, mode)
 
     def test_legacy_sdk_reuse_checks_linker_host_not_target_architecture(self):
         bundle = self.root / "installed"
