@@ -175,6 +175,39 @@ class SDKTests(unittest.TestCase):
             linker.write_bytes(header)
             self.assertEqual(sdk.sdk_host_architecture(bundle), expected)
 
+    def cached_sdk(self, archive):
+        destination = self.root / "cached-sdk"
+        for name in ["swift-sdk.json", "toolset-swb.json", "toolset/bin/ld64.lld", "version.plist",
+                     "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h",
+                     "appintents-phrases.json", "keep"]:
+            path = destination / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(b"cached data")
+        receipt = {"archiveSha256": sdk.digest(archive), "hostArchitecture": "aarch64",
+                   "importerVersion": sdk.IMPORTER_VERSION, "toolchain": dict(sdk.VERSIONS)}
+        (destination / "sweetpad-sdk.json").write_text(json.dumps(receipt))
+        args = SimpleNamespace(archive=archive, destination=destination, replace=False, xtool="xtool")
+        return args, receipt
+
+    def test_current_recipe_reuses_sdk_without_rebuilding(self):
+        args, _ = self.cached_sdk(self.archive())
+        with patch.object(sdk.platform, "system", return_value="Linux"), patch.object(sdk.platform, "machine", return_value="aarch64"), \
+             patch.object(sdk.subprocess, "check_output", side_effect=AssertionError("cache should not rebuild")):
+            result = sdk.import_sdk(args)
+        self.assertTrue(result["reused"])
+        self.assertEqual(result["importerVersion"], sdk.IMPORTER_VERSION)
+
+    def test_old_recipe_and_toolchain_require_explicit_replacement(self):
+        args, current = self.cached_sdk(self.archive())
+        legacy = dict(current); legacy.pop("importerVersion")
+        old_tools = dict(current, toolchain=dict(sdk.VERSIONS, swift="old Swift"))
+        for receipt in [legacy, old_tools]:
+            with self.subTest(receipt=receipt):
+                path = args.destination / "sweetpad-sdk.json"; path.write_text(json.dumps(receipt))
+                with patch.object(sdk.platform, "system", return_value="Linux"), patch.object(sdk.platform, "machine", return_value="aarch64"):
+                    with self.assertRaisesRegex(ValueError, "recipe or toolchain changed;.*--replace.*--replace-sdk"):
+                        sdk.import_sdk(args)
+                self.assertEqual((args.destination / "keep").read_bytes(), b"cached data")
+                self.assertEqual(json.loads(path.read_text()), receipt)
+
     @unittest.skipUnless(os.uname().sysname == 'Linux', 'Host bootstrap uses the Linux shell')
     def test_root_bootstrap_does_not_require_sudo(self):
         helper = Path(__file__).with_name('linux-host-tools.sh')

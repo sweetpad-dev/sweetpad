@@ -130,7 +130,8 @@ The generated environment file selects the SDK and compiler paths.
 Source this file in each new shell or from your shell configuration.
 In CI, source it in each build step.
 
-Setup reuses existing tools. Import of the same archive reuses the completed SDK.
+Setup reuses existing tools.
+Import reuses a completed SDK when the archive, host architecture, import recipe, and toolchain pins match.
 Swift Build uses the shipped dependency lockfile. New tool versions or incompatible caches use a separate source directory.
 Setup preserves existing source checkouts and local edits.
 A different archive requires explicit replacement:
@@ -139,6 +140,9 @@ A different archive requires explicit replacement:
 sweetpad setup --sdk "$HOME/new-apple-sdk.tar.gz" --replace-sdk \
   --json --non-interactive
 ```
+
+An updated import recipe or different toolchain also requires replacement of the same archive.
+Use `--replace-sdk` with setup or `--replace` with `sweetpad sdk import`.
 
 Import stages and verifies the new SDK before it replaces the previous SDK.
 Failure before replacement leaves the previous SDK intact.
