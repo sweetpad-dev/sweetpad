@@ -26,6 +26,8 @@ sweetpad --version
 
 The [SDK export and setup guide](sdk-transfer.md) covers the convenience commands in CLI 0.1.19 and later.
 These commands export the required Apple files on your Mac and import them on Ubuntu without a complete Xcode copy.
+Development builds after CLI 0.1.22 also support [terminal login and direct Xcode downloads](xcode-download.md).
+After login, `sweetpad setup --xcode VERSION` downloads and imports the selected archive on Linux.
 
 ### Manual toolchain setup
 

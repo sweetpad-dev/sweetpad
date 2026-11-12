@@ -66,6 +66,8 @@ jobs:
         run: |
           python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_sdk.py
           python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_sdk_platforms.py
+          python3 -m unittest discover -s sweetpad-lib/ci -p test_apple_auth.py
+          python3 -m unittest discover -s sweetpad-lib/ci -p test_xcode_download.py
           python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_host.py
           python3 -m unittest discover -s sweetpad-lib/ci -p test_xcode_archive.py
           python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_release.py

@@ -133,6 +133,8 @@ mod tests {
         let root = materialize(&dir.join("cache")).unwrap();
         for path in [
             "setup/sweetpad-lib/ci/linux-setup.sh",
+            "setup/sweetpad-lib/ci/apple-auth.py",
+            "setup/sweetpad-lib/ci/linux-xcode-download.py",
             "setup/sweetpad-cli/macros/Package.swift",
             "examples/LinuxApp/LinuxApp.xcodeproj/project.pbxproj",
         ] {

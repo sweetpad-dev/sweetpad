@@ -10,10 +10,24 @@ use crate::cli::{CliError, CommandResult, Context, ErrorKind, Render, Rendered, 
 
 #[derive(Debug, Subcommand)]
 pub enum Action {
+    /// Download a private Xcode archive from Apple. Reuse or resume cached downloads.
+    Download(DownloadArgs),
     /// Export private SDK inputs from your Xcode. Contains no signing keys.
     Export(ExportArgs),
     /// Import a private SDK export or Xcode archive on ARM64 or x86_64 Linux.
     Import(ImportArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct DownloadArgs {
+    /// Exact release or prerelease version, such as 27.2 or '27.3 beta'.
+    #[arg(long)]
+    pub xcode: String,
+    #[command(flatten)]
+    pub session: super::auth::SessionArgs,
+    /// Archive destination (default: ~/.cache/sweetpad/downloads/<Apple filename>).
+    #[arg(long)]
+    pub output_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -70,7 +84,17 @@ pub(super) fn toolchain() -> &'static Toolchain {
 impl Render for Report {
     fn human(&self, out: &Output) {
         let data = &self.0;
-        out.line(if data["dryRun"] == true {
+        out.line(if data["authenticated"] == true {
+            "Apple session ready"
+        } else if data["loggedOut"] == true {
+            "Apple session removed"
+        } else if data["downloaded"] == true {
+            if data["reused"] == true {
+                "Xcode archive already downloaded"
+            } else {
+                "Xcode download complete"
+            }
+        } else if data["dryRun"] == true {
             "SDK export plan"
         } else if data["configured"] == true {
             "Linux setup complete"
@@ -85,6 +109,8 @@ impl Render for Report {
             ("archive", "Archive"),
             ("sdkPath", "SDK"),
             ("environmentFile", "Environment file"),
+            ("sessionFile", "Session file"),
+            ("appleId", "Apple ID"),
             ("xcodeVersion", "Xcode version"),
             ("xcodeBuild", "Xcode build"),
             ("sha256", "SHA-256"),
@@ -114,11 +140,27 @@ impl Render for Report {
     }
 }
 
-pub fn run(_ctx: &mut Context, action: &Action) -> CommandResult {
+pub(super) fn download(ctx: &Context, args: &DownloadArgs) -> Result<Value, CliError> {
+    let mut command = super::auth::helper(ctx, "download")?;
+    command.arg("--xcode").arg(&args.xcode);
+    if let Some(path) = &args.session.session_file {
+        command.arg("--session-file").arg(path);
+    }
+    if let Some(path) = &args.output_file {
+        command.arg("--output-file").arg(path);
+    }
+    super::auth::report(&mut command)
+}
+
+pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
+    if let Action::Download(args) = action {
+        return Ok(Rendered::data(Report(download(ctx, args)?)));
+    }
     let helpers = crate::cli::embedded::root()?.join("setup");
     let mut cmd = Command::new("python3");
     cmd.arg(helpers.join("sweetpad-lib/ci/linux-sdk.py"));
     match action {
+        Action::Download(_) => unreachable!("download handled above"),
         Action::Export(args) => {
             cmd.arg("export")
                 .arg("--xcode")
@@ -234,5 +276,49 @@ mod tests {
             .is_ok()
         );
         assert!(Cli::try_parse_from(["sweetpad", "doctor", "--target", "ios", "--json"]).is_ok());
+    }
+
+    #[test]
+    fn download_and_setup_accept_versions_and_ci_sessions() {
+        for argv in [
+            vec![
+                "sweetpad",
+                "sdk",
+                "download",
+                "--xcode",
+                "27.3 beta",
+                "--session-file",
+                "/tmp/session.json",
+                "--output-file",
+                "/tmp/Xcode.aea",
+                "--json",
+                "--non-interactive",
+            ],
+            vec![
+                "sweetpad",
+                "setup",
+                "--xcode",
+                "27.3 beta",
+                "--session-file",
+                "/tmp/session.json",
+                "--replace-sdk",
+                "--json",
+                "--non-interactive",
+            ],
+        ] {
+            assert!(Cli::try_parse_from(&argv).is_ok(), "{argv:?}");
+        }
+        assert!(Cli::try_parse_from(["sweetpad", "setup"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "sweetpad",
+                "setup",
+                "--sdk",
+                "/tmp/sdk.tar.gz",
+                "--xcode",
+                "27.2"
+            ])
+            .is_err()
+        );
     }
 }
