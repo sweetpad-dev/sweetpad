@@ -18,6 +18,8 @@ import tempfile
 CI = Path(__file__).resolve().parent
 PINS = json.loads((CI / "linux-toolchain.json").read_text())
 VERSIONS = {key: PINS[key] for key in ("swift", "swiftBuild", "xtool")}
+# Bump when SDK construction changes; the export archive format stays separate.
+IMPORTER_VERSION = 2
 BASE_PLATFORMS = ("iPhoneOS", "iPhoneSimulator", "MacOSX")
 EXTRA_PLATFORMS = ("AppleTVOS", "AppleTVSimulator", "WatchOS", "WatchSimulator", "XROS", "XRSimulator")
 
@@ -258,7 +260,8 @@ def unpack_xcode_archive(archive, work, args):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     print("Reading Xcode archive and selecting private SDK inputs", file=sys.stderr, flush=True)
-    xcode = module.extract(archive, work, getattr(args, "aea_key_file", None), getattr(args, "aea_public_key_file", None))
+    xcode = module.extract(archive, work, getattr(args, "aea_key_file", None), getattr(args, "aea_public_key_file", None),
+                          progress=lambda message: print(message, file=sys.stderr, flush=True))
     version = plistlib.loads((xcode / "Contents/version.plist").read_bytes())
     # Check the baseline inputs before invoking any SDK builder.
     export_roots(xcode)
@@ -278,6 +281,16 @@ def copy_host_clang_headers(bundle, copy_tree):
     copy_tree(host_include, resource_include)
 
 
+def preserve_platform_manifest_modes(xcode, bundle):
+    # xtool rewrites these manifests with Linux build properties. Keep those
+    # contents while restoring the archive's permissions, even under umask 0000.
+    for root in (bundle / "Developer/Platforms").iterdir():
+        source = xcode / "Contents/Developer/Platforms" / root.name / "Info.plist"
+        target = root / "Info.plist"
+        if source.is_file() and target.is_file() and not target.is_symlink():
+            shutil.copymode(source, target)
+
+
 def supplement(xcode, bundle, phrases):
     subprocess.run([sys.executable, str(CI / "linux-sdk-platforms.py"), str(xcode), str(bundle)],
                    check=True, stdout=sys.stderr)
@@ -295,6 +308,7 @@ def supplement(xcode, bundle, phrases):
             source = contents / "Developer/Platforms" / root.name / part
             if source.exists():
                 module.copy_tree(source, root / part)
+    preserve_platform_manifest_modes(xcode, bundle)
     if phrases.is_file():
         shutil.copyfile(phrases, bundle / "appintents-phrases.json")
 
@@ -343,9 +357,12 @@ def import_locked(args):
                 "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h")
     if source_format == "sweetpad-export" or receipt.get("localizedAppIntents"):
         required += ("appintents-phrases.json",)
-    if destination.exists() and receipt.get("archiveSha256") == checksum and receipt.get("hostArchitecture", sdk_host_architecture(destination)) == platform.machine() and not args.replace and all((destination / p).is_file() for p in required):
-        return {"sdkPath": str(destination), "archiveSha256": checksum, "reused": True}
+    recipe_current = receipt.get("importerVersion") == IMPORTER_VERSION and receipt.get("toolchain") == VERSIONS
+    if destination.exists() and receipt.get("archiveSha256") == checksum and receipt.get("hostArchitecture", sdk_host_architecture(destination)) == platform.machine() and recipe_current and not args.replace and all((destination / p).is_file() for p in required):
+        return {"sdkPath": str(destination), "archiveSha256": checksum, "importerVersion": IMPORTER_VERSION, "reused": True}
     if destination.exists() and not args.replace:
+        if receipt.get("archiveSha256") == checksum and not recipe_current:
+            raise ValueError("SDK import recipe or toolchain changed; use --replace with sdk import, or --replace-sdk with setup, to rebuild the existing SDK")
         raise ValueError("SDK destination already exists; use --replace with sdk import, or --replace-sdk with setup, to replace it after a successful import")
     xtool = args.xtool or shutil.which("xtool") or str(Path.home() / "bin/xtool")
     if subprocess.check_output([xtool, "--version"], text=True).strip() != "xtool " + VERSIONS["xtool"]:
@@ -359,7 +376,7 @@ def import_locked(args):
                        check=True, stdout=sys.stderr)
         bundle = work / "darwin.xtoolsdk"
         supplement(work / "Xcode.app", bundle, work / "appintents-phrases.json")
-        receipt = {"archiveSha256": checksum, "xcodeBuild": manifest["xcodeBuild"],
+        receipt = {"archiveSha256": checksum, "importerVersion": IMPORTER_VERSION, "xcodeBuild": manifest["xcodeBuild"],
                    "xcodeVersion": manifest["xcodeVersion"], "toolchain": VERSIONS, "hostArchitecture": platform.machine(),
                    "sourceFormat": source_format, "localizedAppIntents": (bundle / "appintents-phrases.json").is_file()}
         (bundle / "sweetpad-sdk.json").write_text(json.dumps(receipt, indent=2) + "\n")

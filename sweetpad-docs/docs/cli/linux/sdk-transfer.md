@@ -29,7 +29,7 @@ source "$HOME/.config/sweetpad/linux-env.sh"
 sweetpad doctor --target ios --json --non-interactive
 ```
 
-Use the `.aea` filename in the same command for an encrypted archive.
+Use your `.aea` filename in the same command for an AEA download.
 Setup extracts the required SDK inputs and installs Linux host tools.
 It does not install or execute the Xcode application.
 The archive remains on disk, so allow space for the download, extracted inputs, and staged SDK.
@@ -52,14 +52,22 @@ sweetpad setup --sdk "$HOME/Downloads/Xcode.aea" \
 The key file can contain a raw 32-byte symmetric key, a `hex:` or `base64:` value, or an Apple FCS private key.
 For signed archives without an embedded signing key, use `--aea-public-key-file /private/path/signing-public.pem`.
 The same options work with `sweetpad sdk import`.
-Unsupported encryption profiles and sparse or sliced Apple Archive files fail with an explicit error.
+Development builds after CLI 0.1.22 also resolve shared file data in Apple Archive hard-link, clone, and identical-data clusters.
+The importer can recover data stored outside the selected SDK paths and preserves each file's permissions.
+These builds retain the macOS XCTest runner and preserve file permissions after Linux metadata updates.
+Missing data, conflicting cluster contents, and invalid checksums fail before SDK replacement.
+Large archives are decoded twice to find shared data before extraction.
+Development builds after CLI 0.1.22 report phases and decoded sizes on stderr during `sweetpad sdk import`.
+Unsupported encryption profiles fail with an explicit error.
 Use a Mac SDK export if your download needs an unsupported archive feature.
 
 Direct import does not generate localized App Intents phrase resources.
 Ordinary app compilation can proceed; doctor reports a warning for the missing resources.
 Use the Mac export flow below for localized shortcut training.
-Validation uses Apple-tool-generated archive fixtures and full SDK inputs from Xcode 27.2.
-Import of an authenticated Xcode 27.3 download remains unverified.
+Development builds after CLI 0.1.22 imported a real Xcode 27.3 beta (27C5020n) profile 0 archive on ARM64 and emulated x64 Linux.
+Both hosts built an ARM64 iPhone sample with that SDK.
+Validation also uses Apple-tool-generated archive fixtures and full SDK inputs from Xcode 27.2.
+A real encrypted Xcode download remains unverified.
 
 ## Export on your Mac
 
@@ -122,7 +130,8 @@ The generated environment file selects the SDK and compiler paths.
 Source this file in each new shell or from your shell configuration.
 In CI, source it in each build step.
 
-Setup reuses existing tools. Import of the same archive reuses the completed SDK.
+Setup reuses existing tools.
+Import reuses a completed SDK when the archive, host architecture, import recipe, and toolchain pins match.
 Swift Build uses the shipped dependency lockfile. New tool versions or incompatible caches use a separate source directory.
 Setup preserves existing source checkouts and local edits.
 A different archive requires explicit replacement:
@@ -131,6 +140,9 @@ A different archive requires explicit replacement:
 sweetpad setup --sdk "$HOME/new-apple-sdk.tar.gz" --replace-sdk \
   --json --non-interactive
 ```
+
+An updated import recipe or different toolchain also requires replacement of the same archive.
+Use `--replace-sdk` with setup or `--replace` with `sweetpad sdk import`.
 
 Import stages and verifies the new SDK before it replaces the previous SDK.
 Failure before replacement leaves the previous SDK intact.

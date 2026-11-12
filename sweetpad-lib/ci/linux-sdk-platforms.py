@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Copy additional Apple SDK platforms from the user's Xcode into a Darwin SDK.
 
-Copies SDK data and platform metadata, without copying macOS-only executables.
+Copies SDK data, target test runners, and platform metadata.
 Uses buffered reads because optimized copies from shared mounts can lose data.
 """
 import argparse
@@ -13,6 +13,7 @@ import shutil
 PLATFORMS = (
     "AppleTVOS", "AppleTVSimulator", "WatchOS", "WatchSimulator", "XROS", "XRSimulator",
 )
+BASE_PLATFORMS = ("iPhoneOS", "iPhoneSimulator", "MacOSX")
 
 
 def copy_tree(source, destination):
@@ -60,6 +61,15 @@ def copy_swift_runtimes(xcode, bundle):
     return copied
 
 
+def copy_base_platform_resources(xcode, bundle):
+    # xtool omits base-platform test runners and app/extension stubs.
+    for platform in BASE_PLATFORMS:
+        root = xcode / "Contents/Developer/Platforms" / (platform + ".platform")
+        for part in ("Library/Application Support", "Developer/Library/Xcode/Agents/XCTRunner.app"):
+            if (root / part).exists():
+                copy_tree(root / part, bundle / "Developer/Platforms" / root.name / part)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("xcode", type=Path)
@@ -87,12 +97,8 @@ def main():
             if (root / part).exists():
                 copy_tree(root / part, target / part)
         print(f"Imported {root.name}", flush=True)
-    # iOS companion/watch products can also need these stubs in the base SDK.
-    for platform in ("iPhoneOS", "iPhoneSimulator"):
-        root = source / (platform + ".platform")
-        for part in ("Library/Application Support", "Developer/Library/Xcode/Agents/XCTRunner.app"):
-            if (root / part).exists() and not args.metadata_only:
-                copy_tree(root / part, destination / root.name / part)
+    if not args.metadata_only:
+        copy_base_platform_resources(args.xcode, args.bundle)
     update_triples(args.bundle)
 
 

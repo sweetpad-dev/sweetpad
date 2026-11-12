@@ -17,6 +17,50 @@ VERSION = plistlib.dumps({"CFBundleShortVersionString":"27.2", "ProductBuildVers
 HEADER = "Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/swift/bridging"
 
 
+def generate_clusters(output):
+    """Use Apple's API flag that omits duplicate DAT blobs from clusters."""
+    import shutil
+    output.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="sweetpad-archive-clusters-") as temporary:
+        root = Path(temporary)
+        tree = root / "input"
+        outside = tree / "Xcode.app/Contents/AAData/shared.dat"
+        outside.parent.mkdir(parents=True)
+        outside.write_bytes(DATA)
+        header = tree / HEADER
+        header.parent.mkdir(parents=True)
+        os.link(outside, header)
+        copy = header.with_name("copy")
+        shutil.copyfile(header, copy)
+        copy.chmod(0o755)
+        (header.parent / "link").symlink_to("bridging")
+        (header.parent / "empty").touch()
+        (header.parent / "empty-copy").touch()
+        (tree / "Xcode.app/Contents/version.plist").write_bytes(VERSION)
+        program = root / "generate-clusters"
+        environment = dict(os.environ)
+        environment.pop("SDKROOT", None)
+        subprocess.run(["cc", "-std=c11", "-O2", str(output / "generate-clusters.c"),
+                        "-lAppleArchive", "-o", str(program)], check=True, env=environment)
+        for deduplicated in [False, True]:
+            name = "clusters-deduplicated" if deduplicated else "clusters-full"
+            target = output / (name + ".aar")
+            target.unlink(missing_ok=True)
+            subprocess.run([str(program), str(tree), str(target), str(int(deduplicated))], check=True)
+        (root / "key").write_bytes(bytes(range(32)))
+        subprocess.run(["/usr/bin/aea", "encrypt", "-profile", "1", "-i", str(output / "clusters-deduplicated.aar"),
+                        "-o", str(output / "profile1-clusters.aea"), "-a", "lzraven", "-checksum", "sha256",
+                        "-padding", "none", "-key", str(root / "key"), "-auth-data-key", "encryption_key",
+                        "-auth-data", str(root / "key")], check=True)
+
+
+def write_checksums(output):
+    import json
+    hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in output.iterdir()
+              if p.suffix in [".aar", ".aea", ".xip", ".pem"]}
+    (output / "checksums.json").write_text(json.dumps(hashes, indent=2, sort_keys=True) + "\n")
+
+
 def cpio(items, newc=False):
     result = bytearray()
     for index, (name, data, mode, inode, links) in enumerate(items + [("TRAILER!!!", b"", 0, 0, 1)]):
@@ -101,10 +145,18 @@ def generate(output):
         for newc in [False,True]:
             for algorithm in ["x","m"]:
                 (output/f"{'newc' if newc else 'odc'}-pbz{algorithm}.xip").write_bytes(xip(cpio(items,newc),algorithm))
-    hashes={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in output.iterdir() if p.suffix in [".aar",".aea",".xip",".pem"]}
-    import json
-    (output/"checksums.json").write_text(json.dumps(hashes,indent=2,sort_keys=True)+"\n")
+    generate_clusters(output)
+    write_checksums(output)
 
 
 if __name__ == "__main__":
-    generate(Path(__file__).with_name("fixtures")/"xcode-archives")
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--clusters-only", action="store_true")
+    args = parser.parse_args()
+    output = Path(__file__).with_name("fixtures") / "xcode-archives"
+    if args.clusters_only:
+        generate_clusters(output)
+        write_checksums(output)
+    else:
+        generate(output)

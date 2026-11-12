@@ -3,9 +3,11 @@
 import importlib.util
 import json
 import os
+import sys
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("sdk_platforms", Path(__file__).with_name("linux-sdk-platforms.py"))
 sdk_platforms = importlib.util.module_from_spec(spec)
@@ -13,6 +15,34 @@ spec.loader.exec_module(sdk_platforms)
 
 
 class SDKImportTests(unittest.TestCase):
+    def test_main_retains_base_platform_test_runners_and_extension_stubs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); xcode, bundle = root / "Xcode.app", root / "bundle"
+            bundle.mkdir()
+            (bundle / "swift-sdk.json").write_text(json.dumps({"targetTriples": {"arm64-apple-ios": {}}}))
+            runners = []
+            for platform in sdk_platforms.BASE_PLATFORMS:
+                relative = Path("Developer/Platforms") / (platform + ".platform")
+                runner = relative / "Developer/Library/Xcode/Agents/XCTRunner.app"
+                executable = runner / ("Contents/MacOS/XCTRunner" if platform == "MacOSX" else "XCTRunner")
+                source = xcode / "Contents" / executable
+                source.parent.mkdir(parents=True); source.write_bytes(b"test runner fixture"); source.chmod(0o755)
+                source.with_name("runner-alias").symlink_to("XCTRunner")
+                runners.append(executable)
+                if platform != "MacOSX":
+                    stub = xcode / "Contents" / relative / "Library/Application Support/MessagesApplicationExtensionStub"
+                    stub.parent.mkdir(parents=True); stub.write_bytes(b"extension stub fixture")
+            with patch.object(sys, "argv", ["linux-sdk-platforms.py", str(xcode), str(bundle)]):
+                sdk_platforms.main()
+            for executable in runners:
+                target = bundle / executable
+                self.assertEqual(target.read_bytes(), b"test runner fixture")
+                self.assertEqual(target.stat().st_mode & 0o777, 0o755)
+                self.assertEqual(target.with_name("runner-alias").readlink(), Path("XCTRunner"))
+            for platform in ("iPhoneOS", "iPhoneSimulator"):
+                stub = bundle / "Developer/Platforms" / (platform + ".platform") / "Library/Application Support/MessagesApplicationExtensionStub"
+                self.assertEqual(stub.read_bytes(), b"extension stub fixture")
+
     def test_imports_versioned_backdeployment_libraries_without_host_tools(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

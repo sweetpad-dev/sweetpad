@@ -25,6 +25,8 @@ def library():
     sources = sorted(p for p in SOURCES.rglob("*") if p.suffix in (".c", ".h"))
     identity = repr((platform.system(), platform.machine(), platform.libc_ver(), platform.mac_ver()[0]))
     digest = hashlib.sha256(identity.encode())
+    # Changes to the builder and its permission/ABI rules invalidate old libraries.
+    digest.update(Path(__file__).read_bytes())
     for path in sources:
         digest.update(path.relative_to(SOURCES).as_posix().encode())
         digest.update(path.read_bytes())
@@ -52,6 +54,9 @@ def library():
             result = subprocess.run(command, capture_output=True, text=True, env=environment)
             if result.returncode:
                 raise ValueError("Build archive codecs failed: " + result.stderr[-4096:])
+            # Compilers can create mode 0777 under a permissive container umask.
+            # Publish a private artifact without relaxing the cache validation.
+            output.chmod(0o700)
             os.replace(output, destination)
     metadata = destination.lstat()
     if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.geteuid() or metadata.st_mode & 0o022:
