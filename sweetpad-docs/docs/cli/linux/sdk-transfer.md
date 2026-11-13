@@ -18,6 +18,9 @@ Keep the SDK archive private. It contains Apple SDK data and contains no signing
 
 ## Import a Xcode download on Linux
 
+Development builds after CLI 0.1.22 can [sign in and download Xcode from a terminal](xcode-download.md).
+Use `sweetpad setup --xcode VERSION` to download the archive and configure Linux in one command.
+
 CLI 0.1.22 can import Xcode `.xip` files and has experimental support for `.aea` files.
 Apple introduced `.aea` downloads in [Xcode 27.3](https://developer.apple.com/documentation/xcode-release-notes/xcode-27_3-release-notes).
 Download Xcode from Apple and keep the archive private.

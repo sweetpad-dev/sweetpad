@@ -26,6 +26,11 @@ With those commands, source `$HOME/.config/sweetpad/linux-env.sh` in each build 
 Its user needs the Linux Swift toolchain, Swift Build, macro plugin, and extracted SDK on the documented paths.
 The example uses the custom runner label `sweetpad-linux`.
 
+Development builds after CLI 0.1.22 can also [download Xcode with a private session file](xcode-download.md#reuse-a-private-session-in-ci).
+Use `sweetpad setup --xcode VERSION --session-file PATH --json --non-interactive` on the provisioned Linux runner.
+Restore the session through your secret store with mode `600`.
+Keep the session and Apple archives out of public artifacts and container layers.
+
 ### Repository validation workflows
 
 The `Linux packages` workflow builds release CLI archives on both `ubuntu-24.04` (x64) and `ubuntu-24.04-arm`.

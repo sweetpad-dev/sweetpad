@@ -11,8 +11,17 @@ use crate::cli::{CliError, CommandResult, Context, ErrorKind, Rendered};
 #[derive(Debug, Args)]
 pub struct SetupArgs {
     /// Sweetpad SDK export with its checksum, or a private Xcode .xip/.aea archive.
-    #[arg(long = "sdk")]
-    pub sdk_archive: PathBuf,
+    #[arg(
+        long = "sdk",
+        required_unless_present = "xcode",
+        conflicts_with = "xcode"
+    )]
+    pub sdk_archive: Option<PathBuf>,
+    /// Download this Xcode release from Apple, then import its SDKs.
+    #[arg(long, required_unless_present = "sdk_archive")]
+    pub xcode: Option<String>,
+    #[command(flatten)]
+    pub session: super::auth::SessionArgs,
     /// Use existing host packages instead of installing them with APT or pacman.
     #[arg(long)]
     pub skip_system_packages: bool,
@@ -42,8 +51,34 @@ pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
             CliError::new("sweetpad setup requires ARM64 or x86_64 Linux").kind(ErrorKind::Usage),
         );
     }
+    let downloaded = args
+        .xcode
+        .as_ref()
+        .map(|version| {
+            super::sdk::download(
+                ctx,
+                &super::sdk::DownloadArgs {
+                    xcode: version.clone(),
+                    session: super::auth::SessionArgs {
+                        session_file: args.session.session_file.clone(),
+                    },
+                    output_file: None,
+                },
+            )
+        })
+        .transpose()?;
     let archive = args
         .sdk_archive
+        .as_deref()
+        .or_else(|| {
+            downloaded
+                .as_ref()
+                .and_then(|data| data["archive"].as_str())
+                .map(std::path::Path::new)
+        })
+        .ok_or_else(|| {
+            CliError::new("Supply --sdk ARCHIVE or --xcode VERSION").kind(ErrorKind::Usage)
+        })?
         .canonicalize()
         .map_err(|e| CliError::new(format!("read SDK archive: {e}")))?;
     let root = setup_root(args.setup_dir.as_deref())?;
@@ -90,6 +125,7 @@ pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
     Ok(Rendered::data(Report(
         json!({"configured": true, "sdkPath": destination,
         "environmentFile": env_file, "sampleBuild": sample, "setupSourcePath": root,
+        "download": downloaded,
         "nextStep": "Source the environment file, then run sweetpad doctor --target ios"}),
     )))
 }

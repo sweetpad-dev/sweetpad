@@ -126,6 +126,7 @@ Those convenience commands require CLI 0.1.19 or later.
 | `SWEETPAD_SKIP_RUST` | Setup only: use `1` to omit Rust for the prebuilt CLI. |
 | `SWEETPAD_REFRESH_SDK` | Setup only: use `1` to refresh an existing SDK extraction. |
 | `SWEETPAD_SDK_ARCHIVE` | Setup script only: import a private archive instead of reading an Xcode directory. |
+| `SWEETPAD_APPLE_SESSION_FILE` | Select private Sweetpad session JSON for terminal login and Xcode downloads. |
 | `SWEETPAD_ENGINE` | Select `swift-build` or `xcodebuild` for build commands. |
 | `SWEETPAD_SETUP_JOBS` | Limit concurrent setup compiler jobs (default: 4). |
 | `SWEETPAD_VM` | Select the OrbStack machine for Mac execution of the setup script. |

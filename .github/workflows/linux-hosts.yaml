@@ -5,6 +5,10 @@ on:
       - "sweetpad-lib/ci/linux-host-tools.sh"
       - "sweetpad-lib/ci/linux-toolchain.json"
       - "sweetpad-lib/ci/test_linux_host.py"
+      - "sweetpad-lib/ci/apple-auth.py"
+      - "sweetpad-lib/ci/linux-xcode-download.py"
+      - "sweetpad-lib/ci/test_apple_auth.py"
+      - "sweetpad-lib/ci/test_xcode_download.py"
       - "sweetpad-lib/ci/linux-*archive*.py"
       - "sweetpad-lib/ci/linux-aea.py"
       - "sweetpad-lib/ci/linux-apple-keys.py"
@@ -18,6 +22,10 @@ on:
       - "sweetpad-lib/ci/linux-host-tools.sh"
       - "sweetpad-lib/ci/linux-toolchain.json"
       - "sweetpad-lib/ci/test_linux_host.py"
+      - "sweetpad-lib/ci/apple-auth.py"
+      - "sweetpad-lib/ci/linux-xcode-download.py"
+      - "sweetpad-lib/ci/test_apple_auth.py"
+      - "sweetpad-lib/ci/test_xcode_download.py"
       - "sweetpad-lib/ci/linux-*archive*.py"
       - "sweetpad-lib/ci/linux-aea.py"
       - "sweetpad-lib/ci/linux-apple-keys.py"
@@ -67,6 +75,8 @@ jobs:
             version="$(python3 -c '\''import json; print(json.load(open("/src/sweetpad-lib/ci/linux-toolchain.json"))["swift"])'\'')"
             export PATH="$HOME/bin:$HOME/swift/swift-$version-RELEASE/usr/bin:$PATH"
             python3 -m unittest discover -s /src/sweetpad-lib/ci -p test_xcode_archive.py
+            python3 -m unittest discover -s /src/sweetpad-lib/ci -p test_apple_auth.py
+            python3 -m unittest discover -s /src/sweetpad-lib/ci -p test_xcode_download.py
             mkdir /tmp/host-probe
             cd /tmp/host-probe
             swift package init --type executable --name HostProbe

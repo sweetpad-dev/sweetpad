@@ -767,7 +767,12 @@ pub enum Resource {
         #[command(subcommand)]
         action: commands::hot::Action,
     },
-    /// Export and import private Apple SDK files.
+    /// Sign in to Apple Developer and manage private download sessions.
+    Auth {
+        #[command(subcommand)]
+        action: commands::auth::Action,
+    },
+    /// Download Xcode archives, or export and import private Apple SDK files.
     Sdk {
         #[command(subcommand)]
         action: commands::sdk::Action,
@@ -1184,6 +1189,7 @@ pub fn run(argv: &[String]) -> ExitCode {
         }
         Resource::Hot { action } => commands::hot::run(&mut ctx, &action),
         Resource::Sdk { action } => commands::sdk::run(&mut ctx, &action),
+        Resource::Auth { action } => commands::auth::run(&mut ctx, &action),
         Resource::Setup(setup_args) => commands::setup::run(&mut ctx, &setup_args),
         Resource::Doctor(doctor_args) => commands::doctor::run(&mut ctx, &doctor_args),
         Resource::Status { target } => {

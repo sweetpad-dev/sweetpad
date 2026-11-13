@@ -50,6 +50,7 @@ pub(crate) fn watch_swift(
 
 pub mod app;
 pub mod archive;
+pub mod auth;
 pub mod bsp;
 pub mod build;
 pub mod clean;
