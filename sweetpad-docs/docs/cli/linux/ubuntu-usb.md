@@ -26,7 +26,7 @@ sweetpad --version
 
 The [SDK export and setup guide](sdk-transfer.md) covers the convenience commands in CLI 0.1.19 and later.
 These commands export the required Apple files on your Mac and import them on Ubuntu without a complete Xcode copy.
-Development builds after CLI 0.1.22 also support [terminal login and direct Xcode downloads](xcode-download.md).
+CLI 0.1.23 also supports [terminal login and direct Xcode downloads](xcode-download.md).
 After login, `sweetpad setup --xcode VERSION` downloads and imports the selected archive on Linux.
 
 ### Manual toolchain setup
@@ -54,7 +54,7 @@ An OrbStack machine can see the Mac's files at the same paths.
 The repository setup script can create and provision the Ubuntu machine from macOS:
 
 ```bash
-git clone --branch cli-v0.1.22 --depth 1 https://github.com/sweetpad-dev/sweetpad.git
+git clone --branch cli-v0.1.23 --depth 1 https://github.com/sweetpad-dev/sweetpad.git
 cd sweetpad
 SWEETPAD_SKIP_RUST=1 bash sweetpad-lib/ci/linux-setup.sh
 orb -m sweetpad-linux

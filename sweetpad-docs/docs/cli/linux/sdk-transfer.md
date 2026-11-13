@@ -18,7 +18,7 @@ Keep the SDK archive private. It contains Apple SDK data and contains no signing
 
 ## Import a Xcode download on Linux
 
-Development builds after CLI 0.1.22 can [sign in and download Xcode from a terminal](xcode-download.md).
+CLI 0.1.23 can [sign in and download Xcode from a terminal](xcode-download.md).
 Use `sweetpad setup --xcode VERSION` to download the archive and configure Linux in one command.
 
 CLI 0.1.22 can import Xcode `.xip` files and has experimental support for `.aea` files.
@@ -55,19 +55,19 @@ sweetpad setup --sdk "$HOME/Downloads/Xcode.aea" \
 The key file can contain a raw 32-byte symmetric key, a `hex:` or `base64:` value, or an Apple FCS private key.
 For signed archives without an embedded signing key, use `--aea-public-key-file /private/path/signing-public.pem`.
 The same options work with `sweetpad sdk import`.
-Development builds after CLI 0.1.22 also resolve shared file data in Apple Archive hard-link, clone, and identical-data clusters.
+CLI 0.1.23 also resolves shared file data in Apple Archive hard-link, clone, and identical-data clusters.
 The importer can recover data stored outside the selected SDK paths and preserves each file's permissions.
-These builds retain the macOS XCTest runner and preserve file permissions after Linux metadata updates.
+The importer retains the macOS XCTest runner and preserves file permissions after Linux metadata updates.
 Missing data, conflicting cluster contents, and invalid checksums fail before SDK replacement.
 Large archives are decoded twice to find shared data before extraction.
-Development builds after CLI 0.1.22 report phases and decoded sizes on stderr during `sweetpad sdk import`.
+CLI 0.1.23 reports phases and decoded sizes on stderr during `sweetpad sdk import`.
 Unsupported encryption profiles fail with an explicit error.
 Use a Mac SDK export if your download needs an unsupported archive feature.
 
 Direct import does not generate localized App Intents phrase resources.
 Ordinary app compilation can proceed; doctor reports a warning for the missing resources.
 Use the Mac export flow below for localized shortcut training.
-Development builds after CLI 0.1.22 imported a real Xcode 27.3 beta (27C5020n) profile 0 archive on ARM64 and emulated x64 Linux.
+CLI 0.1.23 validation imported a real Xcode 27.3 beta (27C5020n) profile 0 archive on ARM64 and emulated x64 Linux.
 Both hosts built an ARM64 iPhone sample with that SDK.
 Validation also uses Apple-tool-generated archive fixtures and full SDK inputs from Xcode 27.2.
 A real encrypted Xcode download remains unverified.

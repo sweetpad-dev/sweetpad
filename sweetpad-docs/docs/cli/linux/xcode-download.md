@@ -4,8 +4,9 @@ sidebar_label: Download Xcode on Linux
 
 # Download Xcode from Apple
 
-Development builds after CLI 0.1.22 can authenticate with Apple and download Xcode directly on Linux.
+CLI 0.1.23 can authenticate with Apple and download Xcode directly on Linux.
 The login and download commands also work on macOS.
+These commands require Python 3 and CA certificates.
 Use Linux on Apple hardware under [Apple's Xcode agreement](https://www.apple.com/legal/sla/docs/xcode.pdf).
 Keep the archive and authenticated session private.
 
