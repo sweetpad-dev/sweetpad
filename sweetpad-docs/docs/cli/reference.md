@@ -26,11 +26,28 @@ feedback reports.
 | `sweetpad build`    | Compile the resolved scheme. `--watch` rebuilds on every Swift save; `--clean` first cleans. |
 | `sweetpad test`     | Run the tests. Supports `--only-testing`, `--skip-testing`, `--failed`, `--retry-flaky`, `--coverage`, `--junit`, `--watch`. `sweetpad test build` compiles them without running. |
 | `sweetpad clean`    | Clean build artifacts; `--purge` also deletes DerivedData.                        |
-| `sweetpad archive`  | Archive and export an `.ipa` (`--export-method`, `--output-file`).                |
+| `sweetpad archive`  | Archive and export an `.ipa`, `.pkg` or `.app` (`--export-method`, `--output-file`). See [Distribution](#distribution). |
 | `sweetpad format`   | Format Swift sources (`--check` to verify only; `--tool swiftlint` to lint). Alias: `fmt`. |
 | `sweetpad devices`  | List everything runnable (macOS, simulators, connected devices), most-used first. |
 | `sweetpad status`   | Show the effective build context and where each value comes from.                 |
-| `sweetpad doctor`   | Diagnose the host toolchain. On Linux, select `--target ios` or `--target macos`. |
+| `sweetpad doctor`   | Diagnose the host toolchain. On Linux, select `--target ios` or `--target macos`. `--network` also checks that Apple's delivery services answer. |
+
+### Distribution
+
+These commands sign in with an App Store Connect API key. See
+[Archive and distribute](archive.md#the-api-key) for setting it up.
+
+| Command | What it does |
+| --- | --- |
+| `sweetpad archive --upload` | Archive, export for App Store Connect, and upload the result. |
+| `sweetpad archive --notarize` | Archive, export with Developer ID, notarize and staple the app and package. |
+| `sweetpad archive export ARCHIVE` | Export an existing `.xcarchive` again, with `--export-method`, `--upload` or `--notarize`. |
+| `sweetpad upload FILE` | Upload an `.ipa` or `.pkg` and wait until Apple accepts or rejects it. `--wait` follows processing too. |
+| `sweetpad upload status ID` | Show where an earlier upload stands. |
+| `sweetpad notarize FILE` | Notarize an `.app`, `.zip`, `.pkg` or `.dmg` and staple the ticket. Needs a team key. |
+| `sweetpad notarize status ID` | Show where an earlier submission stands; `--wait` waits for the verdict. |
+| `sweetpad notarize log ID` | Show what Apple checked and the issues it found. |
+| `sweetpad notarize staple FILE` | Staple the ticket of an app or package Apple has accepted. |
 
 ### Linux setup
 
@@ -308,7 +325,8 @@ Commands that build or run also take targeting flags: `--workspace`, `--project`
 Every targeting flag has an environment-variable twin, so CI pipelines can set the context once:
 `SWEETPAD_WORKSPACE`, `SWEETPAD_PROJECT`, `SWEETPAD_SCHEME`, `SWEETPAD_CONFIGURATION`,
 `SWEETPAD_DESTINATION`, `SWEETPAD_ON`, and `SWEETPAD_SDK`. `SWEETPAD_NONINTERACTIVE=1` (or `CI=1`)
-turns prompts into errors. `NO_COLOR` and `CLICOLOR_FORCE` control color. Run
+turns prompts into errors. `SWEETPAD_ASC_KEY_ID`, `SWEETPAD_ASC_ISSUER_ID`, `SWEETPAD_ASC_KEY_PATH`
+and `SWEETPAD_ASC_KEY` supply the App Store Connect API key for `upload` and `notarize`. `NO_COLOR` and `CLICOLOR_FORCE` control color. Run
 `sweetpad help environment` for the full story.
 
 ## Configuration files

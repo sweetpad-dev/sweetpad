@@ -31,7 +31,7 @@ The validated setup uses an Apple-hardware Linux VM, Swift 6.4.2, Swift Build 6.
 | Operation | Status |
 | --- | --- |
 | Build iOS apps and extensions | Supported by the experimental Linux engine. |
-| Sign development iPhone products | Supported with a P12 identity and matching profiles. |
+| Sign iPhone and macOS products | Supported with P12 identities and matching profiles. |
 | Discover, install, launch, stop, and log an iPhone app | Validated through Linux USB and Wi-Fi. |
 | Build iOS unit and UI test products | Supported, including the documented automatic manifests. |
 | Execute Apple tests | Requires a Mac with Xcode. |
@@ -39,8 +39,12 @@ The validated setup uses an Apple-hardware Linux VM, Swift 6.4.2, Swift Build 6.
 | Build macOS apps | Supported for the validated resource and compiler paths; native execution requires a Mac. |
 | Build tvOS, watchOS, and visionOS simulator targets | Compilation and linking coverage exists; runtime and device signing remain unverified. |
 | Build Mac Catalyst targets on Linux | Remains unverified. |
-| Export a development iOS IPA | Supported from a signed device archive. |
-| Export distribution IPAs or custom export options | Requires Xcode. |
+| Export development, ad hoc, enterprise, and App Store Connect IPAs | Supported. Each export signs the app again for its method. |
+| Export a Mac App Store package, or a Developer ID app and package | Supported. |
+| Upload to App Store Connect | Supported with an App Store Connect API key. |
+| Notarize and staple a Developer ID app or package | Supported with a team API key. |
+| Custom export options | Supported for the keys SweetPad acts on. Other keys that change the result are refused by name. |
+| Build universal macOS archives | Linux archives contain arm64 only. |
 | Debug a device or inspect device readiness on Linux | Unsupported. |
 
 Current Xcode and Swift Build reject deprecated WatchKit extension products.
@@ -116,9 +120,13 @@ Those convenience commands require CLI 0.1.19 or later.
 | `SWEETPAD_DARWIN_SDK` | Select another extracted Darwin SDK bundle. |
 | `SWEETPAD_SWBUILD` | Select the Swift Build driver instead of the executable on PATH. |
 | `SWEETPAD_MACROS` | Select the macro launcher instead of the executable on PATH. |
-| `SWEETPAD_CODE_SIGN_P12` | Select the P12 development identity. |
-| `SWEETPAD_CODE_SIGN_P12_PASSWORD` | Supply that identity's password. |
+| `SWEETPAD_CODE_SIGN_P12` | Select the P12 identity files, separated by `:`. A file can hold several identities. |
+| `SWEETPAD_CODE_SIGN_P12_PASSWORD` | Supply their password, or one per file separated by `:`. |
 | `SWEETPAD_PROVISIONING_PROFILES` | Select a directory of matching profiles. |
+| `SWEETPAD_ASC_KEY_ID` | Select the App Store Connect API key for uploads and notarization. |
+| `SWEETPAD_ASC_ISSUER_ID` | Supply the team key's issuer ID. Notarization needs a team key. |
+| `SWEETPAD_ASC_KEY_PATH` | Select the key's `.p8` file. |
+| `SWEETPAD_ASC_KEY` | Supply the key file's text instead of a path. |
 | `SWEETPAD_DEVICE_PYTHON` | Select Python with the pinned modern device adapter. |
 | `SWEETPAD_DEVICE_TIMEOUT` | Set the finite device-action timeout in seconds (default: 180, maximum: 3600). |
 | `SWEETPAD_DEVICE_DISCOVERY_TIMEOUT` | Set each device's discovery timeout in seconds (default: 30, maximum: 3600). |
