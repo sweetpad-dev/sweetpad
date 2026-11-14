@@ -1101,6 +1101,126 @@ fn a_mac_icon_goes_in_the_car_and_an_icns_file() {
     );
 }
 
+/// A compiled car's app icons as `regen_resources.py` lists Xcode's: each
+/// icon image as `[name, idiom, subtype, scale, index, width, height, file]`
+/// and each list of sizes as `[name, idiom, subtype, [[points, index], …]]`.
+fn icon_listing(path: &Path) -> (Value, Value) {
+    let data = std::fs::read(path).unwrap();
+    let store = super::car::tests::Store::read(&data);
+    let format = store.variable("KEYFORMAT");
+    let le = |data: &[u8], at: usize| u32::from_le_bytes(data[at..at + 4].try_into().unwrap());
+    let attributes: Vec<u32> = (0..le(format, 8) as usize)
+        .map(|i| le(format, 12 + 4 * i))
+        .collect();
+    let (renditions, _) = store.tree("RENDITIONS");
+    let renditions: Vec<(std::collections::BTreeMap<u32, u16>, &[u8])> = renditions
+        .iter()
+        .map(|(key, value)| {
+            let values = key.chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]]));
+            (attributes.iter().copied().zip(values).collect(), *value)
+        })
+        .collect();
+    let name = |value: &[u8]| {
+        let field = &value[40..168];
+        let end = field.iter().position(|&b| b == 0).unwrap_or(field.len());
+        String::from_utf8(field[..end].to_vec()).unwrap()
+    };
+    // A list of sizes carries its icon's name; an icon image, its file's.
+    let mut names = std::collections::BTreeMap::new();
+    let mut lists = Vec::new();
+    for (key, value) in renditions.iter().filter(|(key, _)| key[&2] == 218) {
+        names.insert(key[&17], name(value));
+        let payload = 184 + le(value, 168) as usize;
+        assert_eq!(&value[payload..payload + 4], b"SISM");
+        let sizes: Vec<Value> = (0..le(value, payload + 8) as usize)
+            .map(|i| {
+                let at = payload + 12 + 12 * i;
+                json!([le(value, at), le(value, at + 8)])
+            })
+            .collect();
+        lists.push(json!([name(value), key[&15], key[&16], sizes]));
+    }
+    let icons: Vec<Value> = renditions
+        .iter()
+        .filter(|(key, _)| key[&2] == 220)
+        .map(|(key, value)| {
+            json!([
+                names[&key[&17]],
+                key[&15],
+                key[&16],
+                key[&12],
+                key[&9],
+                le(value, 12),
+                le(value, 16),
+                name(value),
+            ])
+        })
+        .collect();
+    (sorted(&json!(icons)), sorted(&json!(lists)))
+}
+
+/// A JSON array with its items in one order, whichever order they came in.
+fn sorted(items: &Value) -> Value {
+    let mut items = items.as_array().unwrap().clone();
+    items.sort_by_key(ToString::to_string);
+    Value::Array(items)
+}
+
+#[test]
+fn watch_icons_match_actool() {
+    let expected: Value = serde_json::from_str(&fixture("expected/watch.json")).unwrap();
+    for (case, icon, alternate) in [
+        ("single", "AppIcon", None),
+        ("legacy", "Legacy", None),
+        ("alternate", "AppIcon", Some("Legacy")),
+    ] {
+        let expected = &expected[case];
+        let dir = TempDir::new("sweetpad-actool-watch-icon");
+        let out = dir.join("out");
+        let partial = out.join("partial.plist");
+        let mut args = platform_args(&resources().join("Watch.xcassets"), &out, "watchos");
+        for (flag, value) in [
+            ("--minimum-deployment-target", Some("9.0")),
+            ("--target-device", Some("watch")),
+            ("--app-icon", Some(icon)),
+            ("--alternate-app-icon", alternate),
+            ("--output-partial-info-plist", partial.to_str()),
+        ] {
+            if let Some(value) = value {
+                args.flags.push((flag.into(), Some(value.into())));
+            }
+        }
+        compile::compile(&args).unwrap();
+        assert_same(
+            &std::fs::read_to_string(&partial).unwrap(),
+            &xml_plist::of(&expected["partialInfo"]),
+            &format!("{case} watch icon metadata"),
+        );
+        let mut files: Vec<String> = walk(&out)
+            .iter()
+            .map(|p| p.strip_prefix(&out).unwrap().display().to_string())
+            .collect();
+        files.sort();
+        assert_eq!(json!(files), expected["files"], "{case}");
+        let car = std::fs::read(out.join("Assets.car")).unwrap();
+        let metadata = super::car::tests::Store::read(&car).variable("EXTENDED_METADATA");
+        // `META`, 256 reserved bytes and the deployment target come first.
+        let platform = &metadata[516..772];
+        let end = platform.iter().position(|&b| b == 0).unwrap();
+        assert_eq!(
+            json!(std::str::from_utf8(&platform[..end]).unwrap()),
+            expected["platform"]
+        );
+        let (icons, lists) = icon_listing(&out.join("Assets.car"));
+        assert_eq!(
+            icons,
+            sorted(&expected["iconRenditions"]),
+            "{case} icon images"
+        );
+        assert_eq!(lists, sorted(&expected["sizeLists"]), "{case} size lists");
+    }
+}
+
 #[test]
 fn a_jpeg_goes_in_the_car_as_it_is() {
     let dir = TempDir::new("sweetpad-actool-jpeg");

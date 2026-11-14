@@ -70,8 +70,13 @@ pub struct Entry {
     /// Its appearances, as `(appearance, value)`: `("luminosity", "dark")`.
     pub appearances: Vec<(String, String)>,
     /// Whether it varies by something else the stand-in doesn't compile:
-    /// a display gamut, locale, size class, memory or graphics class.
+    /// a display gamut, locale, size class, memory or graphics class, or a
+    /// device subtype, which only a watchOS app icon's slots read.
     pub other_traits: bool,
+    /// The device a watchOS app icon slot is for, like `44mm`.
+    pub subtype: Option<String>,
+    /// Where watchOS shows an app icon slot's image, like `appLauncher`.
+    pub role: Option<String>,
     /// A data set file's type: `universal-type-identifier`.
     pub type_identifier: Option<String>,
 }
@@ -374,6 +379,8 @@ fn files(entries: &[Value]) -> Vec<Entry> {
             appearance: e.get("appearances").is_some(),
             appearances: appearances(e),
             other_traits: other_traits(e),
+            subtype: text(e, "subtype"),
+            role: text(e, "role"),
             type_identifier: text(e, "universal-type-identifier"),
         })
         .collect()

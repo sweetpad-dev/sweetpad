@@ -898,10 +898,15 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
 - [x] iOS Icon Composer `.icon` static light/dark/tinted appearances, layer order,
       primary PNGs, icon metadata, and shared icon/image names
 - [ ] Icon Composer interactive glass lighting and native material effects *(optional)*
-- [ ] watchOS app icons: the stand-in compiles no watchOS `AppIcon`, so a
-      Linux-built watch app has no icon and App Store Connect would refuse
-      it. Needs goldens from Xcode's actool for the watchOS single-size set
-      and the Info.plist keys it writes
+- [x] watchOS app icons: the single-size set and the legacy set with an
+      image for each size go in the car alone, named in `CFBundleIcons`.
+      Each legacy image goes in by the slot it fills, under its watch's
+      device class; as with actool, images that fill no slot and dark or
+      tinted ones stay out. Car metadata names the platform as Xcode does
+      (`watch`, `atv`, `vision`). Goldens in `fixtures/actool`
+      (`regen_resources.py`). The delivery fixture's Linux archive carries
+      the watch icon, as Xcode's does; an upload of a fully Linux-built
+      watch app is unchecked
 - [ ] Icon Composer on other Apple platforms *(optional)*
 - [x] Data sets (`NSDataAsset`), each file as it is with its type: the one
       its entry names, else its extension's, or the `dyn.` type macOS makes
