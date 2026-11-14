@@ -392,7 +392,7 @@ impl Invocation {
             overrides.extend(host.overrides(&sdk, &destination.arch, toolset));
         }
         let archive_signs =
-            host.is_some() && plan.action == BuildAction::Archive && DarwinSdk::is_device(&sdk);
+            host.is_some() && plan.action == BuildAction::Archive && DarwinSdk::is_signed(&sdk);
         if archive_signs {
             sign_archive(&mut overrides);
         }
@@ -1114,9 +1114,9 @@ impl DarwinSdk {
 
     /// The settings a build needs without Xcode's own tools.
     ///
-    /// - `CODE_SIGNING_ALLOWED=NO`, unless the build is for a device and has
-    ///   an identity to sign with (see [`Self::signs`]): the linker's ad hoc
-    ///   signature is all a simulator asks for. A signed build sets
+    /// - `CODE_SIGNING_ALLOWED=NO`, unless the build is for a device or a
+    ///   Mac and has an identity to sign with (see [`Self::signs`]): the
+    ///   linker's ad hoc signature is all a simulator asks for. A signed build sets
     ///   `CODESIGN=codesign`, the stand-in, over the bundle's `true`, which
     ///   leaves signing to xtool.
     /// - `SWIFT_SDK_TOOLSETS`: the bundle's linker, which links for Apple
@@ -1267,18 +1267,19 @@ impl DarwinSdk {
         result
     }
 
-    /// Whether a build for `sdk` is signed: one for a device, with an
-    /// identity in `SWEETPAD_CODE_SIGN_P12` to sign with, which the
+    /// Whether a build for `sdk` is signed: one for a device or a Mac, with
+    /// an identity in `SWEETPAD_CODE_SIGN_P12` to sign with, which the
     /// `codesign` and provisioning stand-ins sign with as Xcode would (see
     /// [`super::codesign`]).
     fn signs(sdk: &str) -> bool {
-        Self::is_device(sdk) && super::codesign::identity_configured()
+        Self::is_signed(sdk) && super::codesign::identity_configured()
     }
 
-    /// Whether `sdk` is a device's, whose builds a signature lets run.
-    fn is_device(sdk: &str) -> bool {
+    /// Whether `sdk` is a device's or a Mac's, whose builds a signature
+    /// lets run and whose archives an export signs again.
+    fn is_signed(sdk: &str) -> bool {
         let platform = sdk.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
-        ["iphoneos", "appletvos", "watchos", "xros"].contains(&platform)
+        ["iphoneos", "appletvos", "watchos", "xros", "macosx"].contains(&platform)
     }
 
     /// Whether the bundle has the `version.plist` of the platform `sdk` is
@@ -1345,9 +1346,9 @@ impl DarwinSdk {
     }
 }
 
-/// A device archive is always signed: ad hoc, with its entitlements, when
-/// the identities can't sign it, for its export to sign again. A device SDK
-/// refuses an ad hoc signature unless allowed.
+/// A device or Mac archive is always signed: ad hoc, with its
+/// entitlements, when the identities can't sign it, for its export to sign
+/// again. A device SDK refuses an ad hoc signature unless allowed.
 fn sign_archive(overrides: &mut BTreeMap<String, String>) {
     overrides.remove("CODE_SIGNING_ALLOWED");
     overrides.insert("CODESIGN".to_string(), "codesign".to_string());

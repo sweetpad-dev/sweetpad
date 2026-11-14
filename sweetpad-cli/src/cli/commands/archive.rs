@@ -17,6 +17,8 @@ use crate::cli::{
 };
 
 mod export;
+#[cfg(test)]
+pub(crate) use export::copy_tree;
 mod export_options;
 mod portable;
 

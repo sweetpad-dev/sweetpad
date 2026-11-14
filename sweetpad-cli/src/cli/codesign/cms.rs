@@ -1,6 +1,7 @@
 //! The CMS signature over a code directory, laid out as `codesign` writes
-//! it: detached, with the certificates above the signing one first, and
-//! Apple's CDHashes attributes beside the standard signed ones.
+//! it: detached, with the certificates above the signing one first, Apple's
+//! CDHashes attributes beside the standard signed ones, and a secure
+//! timestamp's token, when it has one, as an unsigned one.
 
 use std::time::SystemTime;
 
@@ -11,11 +12,12 @@ use super::plist::{self, Plist};
 use super::time::utc_time;
 
 /// The CMS SignedData, in DER, signing `code_directory` as `identity` at
-/// `time`.
+/// `time`, stamped by the timestamp server at `timestamp`, if any.
 pub(super) fn sign(
     identity: &Identity,
     code_directory: &[u8],
     time: SystemTime,
+    timestamp: Option<&str>,
 ) -> Result<Vec<u8>, String> {
     let key = identity
         .key
@@ -49,18 +51,27 @@ pub(super) fn sign(
     ]);
     let signature = crypto::sign_sha256(key, &sha256(&attributes))?;
     let certificate = &identity.certificate;
-    let signer = der::sequence(&[
-        &der::integer(1),
-        &der::sequence(&[&certificate.issuer, &certificate.serial]),
-        &der::algorithm(oids::SHA256),
+    let mut signer = vec![
+        der::integer(1),
+        der::sequence(&[&certificate.issuer, &certificate.serial]),
+        der::algorithm(oids::SHA256),
         // The signed attributes, under their implicit tag.
-        &der::tlv(
+        der::tlv(
             der::context(0),
             &attributes[der_header_length(&attributes)..],
         ),
-        &der::algorithm(oids::SHA256_WITH_RSA),
-        &der::tlv(der::OCTET_STRING, &signature),
-    ]);
+        der::algorithm(oids::SHA256_WITH_RSA),
+        der::tlv(der::OCTET_STRING, &signature),
+    ];
+    if let Some(url) = timestamp {
+        let token = super::timestamp::token(url, &sha256(&signature))?;
+        let unsigned = der::set_of(vec![attribute(oids::TIMESTAMP_TOKEN, token)]);
+        signer.push(der::tlv(
+            der::context(1),
+            &unsigned[der_header_length(&unsigned)..],
+        ));
+    }
+    let signer = der::sequence(&signer.iter().map(Vec::as_slice).collect::<Vec<_>>());
     let certificates: Vec<&[u8]> = identity
         .chain
         .iter()

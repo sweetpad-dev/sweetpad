@@ -1,15 +1,19 @@
 //! The parts of a Mach-O file a signature touches: the code signature load
-//! command, the `__LINKEDIT` segment the signature ends, and the `__TEXT`
-//! segment a code directory names. A universal file is split into its
-//! slices and joined again, each slice where its alignment puts it.
+//! command, the `__LINKEDIT` segment the signature ends, the `__TEXT`
+//! segment a code directory names, and the SDK a hardened runtime records.
+//! A universal file is split into its slices and joined again, each slice
+//! where its alignment puts it.
 
 const MH_MAGIC_64: u32 = 0xfeed_facf;
 const FAT_MAGIC: u32 = 0xcafe_babe;
 const LC_SEGMENT_64: u32 = 0x19;
 const LC_CODE_SIGNATURE: u32 = 0x1d;
 const LC_UUID: u32 = 0x1b;
+const LC_BUILD_VERSION: u32 = 0x32;
+const LC_VERSION_MIN_MACOSX: u32 = 0x24;
+const CPU_TYPE_X86_64: u32 = 0x0100_0007;
 pub(super) const MH_EXECUTE: u32 = 2;
-const CPU_TYPE_ARM64: u32 = 0x0100_000c;
+pub(super) const CPU_TYPE_ARM64: u32 = 0x0100_000c;
 
 /// A slice of a universal file, or the whole of a thin one.
 pub(super) struct Slice {
@@ -62,7 +66,9 @@ pub(super) fn join(slices: Vec<Slice>) -> Vec<u8> {
     let mut offset = 8 + 20 * slices.len();
     let mut body: Vec<u8> = Vec::new();
     for slice in &slices {
+        // codesign_allocate puts every slice on a 16 KiB boundary at least.
         let (cputype, subtype, align) = slice.arch.unwrap_or((0, 0, 14));
+        let align = align.max(14);
         let alignment = 1usize << align;
         let start = offset.next_multiple_of(alignment);
         body.resize(start - 8 - 20 * slices.len(), 0);
@@ -102,6 +108,9 @@ pub(super) struct Layout {
     /// `__TEXT`'s file offset and size, the executable segment.
     pub text: (u64, u64),
     pub uuid: Option<[u8; 16]>,
+    /// The SDK it was built with, `xxxx.yy.zz` in nibbles, as the build
+    /// version command records it.
+    pub sdk: Option<u32>,
 }
 
 impl Layout {
@@ -118,6 +127,7 @@ impl Layout {
         let mut linkedit = None;
         let mut text = None;
         let mut uuid = None;
+        let mut sdk = None;
         let mut first_section = usize::MAX;
         for _ in 0..count {
             let cmd = le32(data, at).ok_or_else(truncated)?;
@@ -151,6 +161,8 @@ impl Layout {
                     let bytes = data.get(at + 8..at + 24).ok_or_else(truncated)?;
                     uuid = bytes.try_into().ok();
                 }
+                LC_BUILD_VERSION => sdk = Some(le32(data, at + 16).ok_or_else(truncated)?),
+                LC_VERSION_MIN_MACOSX => sdk = Some(le32(data, at + 12).ok_or_else(truncated)?),
                 _ => {}
             }
             at += size;
@@ -180,7 +192,18 @@ impl Layout {
             linkedit_fileoff,
             text: text.unwrap_or((0, 0)),
             uuid,
+            sdk,
         })
+    }
+
+    /// The page size its code directory hashes in, as a power of two:
+    /// `codesign` hashes Intel code in 4 KiB pages and the rest in 16 KiB.
+    pub fn page_log2(&self) -> u8 {
+        if self.cputype == CPU_TYPE_X86_64 {
+            12
+        } else {
+            14
+        }
     }
 
     /// The signature the slice carries, if any: its superblob.
@@ -222,13 +245,9 @@ impl Layout {
             put32(&mut out, 20, commands);
         }
         let filesize = (self.signature_offset + size) as u64 - self.linkedit_fileoff;
-        let page = if self.cputype == CPU_TYPE_ARM64 {
-            0x4000
-        } else {
-            0x1000
-        };
+        // codesign_allocate rounds the segment to 16 KiB, Intel code's too.
         let at = self.linkedit_command;
-        put64(&mut out, at + 32, filesize.next_multiple_of(page));
+        put64(&mut out, at + 32, filesize.next_multiple_of(0x4000));
         put64(&mut out, at + 48, filesize);
         Ok(out)
     }

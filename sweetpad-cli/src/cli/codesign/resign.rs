@@ -1,13 +1,14 @@
 //! Re-signing an archived app for distribution, as Xcode's export does:
-//! each nested framework, library and extension first, then the app, with
-//! the identity the export method takes and, for each app and extension,
-//! the profile of its kind embedded and the archived entitlements moved to
-//! it.
+//! each nested framework, library, extension and XPC service first, then
+//! the app, with the identity the export method takes and, for each app and
+//! extension, the profile of its kind embedded and the archived
+//! entitlements moved to it. iOS and macOS apps alike (see [`walk`]).
 
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use super::blobs;
+use super::bundle::{Flavor, Layout};
 use super::identity::{Identity, IdentitySet, Kind};
 use super::macho;
 use super::plist::{self, Plist};
@@ -243,27 +244,59 @@ pub(super) fn apply_with(plan: &Plan, set: &IdentitySet, time: SystemTime) -> Re
     Ok(())
 }
 
-/// The code in `app` to sign, innermost first, the app last: each
-/// framework and library, then each extension, watch app and App Clip, each
-/// with what it holds before it.
+/// Where a bundle keeps code to sign before it, relative to the folder its
+/// signature seals: an iOS app's frameworks, extensions, watch app and App
+/// Clip, and a macOS bundle's frameworks, plug-ins, XPC services, login
+/// items, system extensions and helpers.
+const CODE_FOLDERS: &[&str] = &[
+    "Frameworks",
+    "SharedFrameworks",
+    "PlugIns",
+    "Extensions",
+    "XPCServices",
+    "Library/LoginItems",
+    "Library/SystemExtensions",
+    "Library/QuickLook",
+    "Library/Spotlight",
+    "Helpers",
+    "Watch",
+    "AppClips",
+];
+
+/// The code in `bundle` to sign, innermost first, the bundle last: each
+/// nested bundle with what it holds before it, each library, and each
+/// executable beside a macOS bundle's own.
 fn walk(bundle: &Path) -> Result<Vec<PathBuf>, String> {
+    let layout = Layout::of(bundle)?;
     let mut steps = Vec::new();
-    for folder in ["Frameworks", "PlugIns", "Extensions", "Watch", "AppClips"] {
-        let dir = bundle.join(folder);
+    let mut folders: Vec<&str> = CODE_FOLDERS.to_vec();
+    if layout.flavor == Flavor::Mac {
+        folders.push("MacOS");
+    }
+    for folder in folders {
+        let dir = layout.root.join(folder);
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
         };
         let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
         paths.sort();
         for path in paths {
-            let extension = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or_default();
-            match extension {
-                "framework" | "appex" | "app" if path.is_dir() => steps.extend(walk(&path)?),
-                "dylib" if folder == "Frameworks" => steps.push(path),
-                _ => {}
+            let metadata = std::fs::symlink_metadata(&path)
+                .map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
+            if metadata.is_symlink() {
+                continue;
+            }
+            let is_main = layout
+                .executable
+                .as_ref()
+                .is_some_and(|e| layout.root.join(e) == path);
+            if metadata.is_dir() {
+                // A folder that isn't a bundle holds no code to sign.
+                if path.extension().is_some() && Layout::of(&path).is_ok() {
+                    steps.extend(walk(&path)?);
+                }
+            } else if !is_main && is_mach_o(&path) {
+                steps.push(path);
             }
         }
     }
@@ -271,40 +304,43 @@ fn walk(bundle: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(steps)
 }
 
+/// Whether the file at `path` is Mach-O code.
+fn is_mach_o(path: &Path) -> bool {
+    use std::io::Read as _;
+    let mut magic = [0u8; 4];
+    std::fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut magic))
+        .is_ok()
+        && matches!(
+            magic,
+            [0xcf | 0xce, 0xfa, 0xed, 0xfe] | [0xca, 0xfe, 0xba, 0xbe]
+        )
+}
+
 /// Whether `path` is an app or extension, which embeds a profile and signs
-/// with entitlements, rather than a framework or library.
+/// with entitlements, rather than a framework, library or XPC service.
 fn is_provisioned(path: &Path) -> bool {
     path.extension().is_some_and(|e| e == "app" || e == "appex")
 }
 
 fn read_info(bundle: &Path) -> Result<Plist, String> {
-    let path = bundle.join("Info.plist");
-    let data =
-        std::fs::read(&path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
-    plist::read_info(&data).map_err(|e| format!("{}: {e}", path.display()))
+    Layout::of(bundle).map(|layout| layout.info)
 }
 
 fn bundle_id(bundle: &Path) -> Result<String, String> {
-    plist::string(&read_info(bundle)?, "CFBundleIdentifier")
+    let layout = Layout::of(bundle)?;
+    plist::string(&layout.info, "CFBundleIdentifier")
         .map(str::to_string)
-        .ok_or_else(|| {
-            format!(
-                "{} names no CFBundleIdentifier",
-                bundle.join("Info.plist").display()
-            )
-        })
+        .ok_or_else(|| format!("{} names no CFBundleIdentifier", layout.info_path.display()))
 }
 
 /// The bundle's main executable.
 fn executable(bundle: &Path) -> Result<PathBuf, String> {
-    let info = read_info(bundle)?;
-    let name = plist::string(&info, "CFBundleExecutable").ok_or_else(|| {
-        format!(
-            "{} names no CFBundleExecutable",
-            bundle.join("Info.plist").display()
-        )
-    })?;
-    Ok(bundle.join(name))
+    let layout = Layout::of(bundle)?;
+    let name = layout
+        .executable
+        .ok_or_else(|| format!("{} names no CFBundleExecutable", layout.info_path.display()))?;
+    Ok(layout.root.join(name))
 }
 
 /// The archived signature of a bundle's executable, read from its first

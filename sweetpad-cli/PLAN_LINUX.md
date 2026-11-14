@@ -1008,6 +1008,20 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
 - [x] Upload to App Store Connect from Linux and macOS through its REST
       API (`sweetpad upload`, `archive --upload`), IPAs and Mac App Store
       packages alike
+- [x] macOS signing on Linux: the `codesign` stand-in signs macOS bundles,
+      versioned frameworks, XPC services and universal binaries as Apple's
+      does (16 KiB pages for arm64, 4 KiB for Intel, the runtime version
+      with `-o runtime`, nested code sealed by its code directory hash and
+      designated requirement), matching `codesign`'s output byte for byte
+      for the fixtures. Developer ID signatures get a secure timestamp from
+      Apple's server, as `codesign` gives them; `--timestamp[=URL]` asks
+      for one. A macOS build is signed when there's an identity, and a
+      macOS archive always, ad hoc when the identities can't sign it. The
+      delivery fixture's App Store archive matches Xcode's entitlements,
+      files and seals; packaged with `productbuild` it uploads from Linux
+      and processes as VALID
+- [ ] macOS archives are built for arm64 only, where Xcode builds
+      `ARCHS_STANDARD` (arm64 and x86_64); see E19
 - [ ] `SwiftSupport/` in App Store IPAs whose app embeds the Swift runtime
       (deployment targets before iOS 12.2 and back-deployed concurrency):
       Apple wants its own `libswift*.dylib` copies there

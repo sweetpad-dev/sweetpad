@@ -13,7 +13,10 @@
 //! the bundle identifier, the platform and the identity's certificate; for
 //! manual signing, the one `PROVISIONING_PROFILE_SPECIFIER` names. The
 //! entitlements are the project's, with the application identifier, the
-//! team and the profile's `get-task-allow`, as Xcode adds them.
+//! team and the profile's `get-task-allow`, as Xcode adds them. A macOS
+//! target names its application and team only beside a profile, which a
+//! restricted entitlement needs to launch, and is debuggable when Swift
+//! Build asks for the base entitlements.
 
 // What this prints is the tool's answer, which Swift Build reads, so it
 // doesn't go through `Output`.
@@ -98,6 +101,16 @@ pub(super) fn answer(
         return Ok(Plist::Dict(Vec::new()));
     }
     let mut entitlements = Plist::Dict(dict("productTypeEntitlements"));
+    let mac = platform(text("sdkRoot")) == "OSX";
+    if mac && plist::get(request, "wantsBaseEntitlementInjection") == Some(&Plist::Bool(true)) {
+        // The macOS platform's base entitlements, which an archive's
+        // packaging takes out again.
+        plist::set(
+            &mut entitlements,
+            "com.apple.security.get-task-allow",
+            Plist::Bool(true),
+        );
+    }
     if name == "-" {
         merge(&mut entitlements, dict("projectEntitlements"));
         return Ok(ad_hoc(entitlements, bundle, destination, text("sdkRoot")));
@@ -128,16 +141,18 @@ pub(super) fn answer(
             }
         }
     }
-    plist::set(
-        &mut entitlements,
-        "application-identifier",
-        Plist::String(format!("{team}.{bundle}")),
-    );
-    plist::set(
-        &mut entitlements,
-        "com.apple.developer.team-identifier",
-        Plist::String(team.clone()),
-    );
+    if !mac || profile.is_some() {
+        plist::set(
+            &mut entitlements,
+            application_key(mac),
+            Plist::String(format!("{team}.{bundle}")),
+        );
+        plist::set(
+            &mut entitlements,
+            "com.apple.developer.team-identifier",
+            Plist::String(team.clone()),
+        );
+    }
     if let Some(allow) = profile
         .as_ref()
         .and_then(|p| plist::get(&p.entitlements, "get-task-allow"))
@@ -248,7 +263,7 @@ pub(super) fn archive_ad_hoc(request: &Plist, why: &str) -> Plist {
     let application = team.map_or_else(|| bundle.to_string(), |t| format!("{t}.{bundle}"));
     plist::set(
         &mut entitlements,
-        "application-identifier",
+        application_key(platform(text("sdkRoot")) == "OSX"),
         Plist::String(application),
     );
     let mut warning = format!("signing '{bundle}' ad hoc for its export to sign again: {why}");
@@ -280,15 +295,27 @@ pub(super) fn archive_ad_hoc(request: &Plist, why: &str) -> Plist {
     Plist::Dict(inputs)
 }
 
+/// The key of the application identifier entitlement: macOS has its own.
+fn application_key(mac: bool) -> &'static str {
+    if mac {
+        "com.apple.application-identifier"
+    } else {
+        "application-identifier"
+    }
+}
+
 /// The inputs for an ad hoc signature, as Swift Build's own console gives
 /// them: the bundle identifier as the application identifier, and a
-/// simulator's build debuggable.
+/// simulator's build debuggable. A macOS app signed to run locally names no
+/// application, which needs a profile.
 fn ad_hoc(mut entitlements: Plist, bundle: &str, destination: &str, sdk_root: &str) -> Plist {
-    plist::set(
-        &mut entitlements,
-        "application-identifier",
-        Plist::String(bundle.to_string()),
-    );
+    if platform(sdk_root) != "OSX" {
+        plist::set(
+            &mut entitlements,
+            "application-identifier",
+            Plist::String(bundle.to_string()),
+        );
+    }
     let (mut signed, simulated) = split(entitlements, destination);
     if sdk_root.contains("simulator") {
         plist::set(&mut signed, "get-task-allow", Plist::Bool(true));

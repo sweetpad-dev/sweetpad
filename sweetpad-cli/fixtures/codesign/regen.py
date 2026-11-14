@@ -17,6 +17,12 @@ the identity, signed by it, for the provisioning stand-in's tests.
 identities.p12 holds one identity of each other kind, self-signed but with Apple's policy
 extensions, exported together from a keychain as Keychain Access exports a selection.
 profiles-kinds/ has a profile of each kind for them. `regen.py kinds` remakes only those.
+
+input/Mac.app is a macOS app as Swift Build hands it to codesign, its code linker-signed: a
+universal executable, a helper in MacOS/, a versioned framework, a dylib, an XPC service and a
+resource bundle. expected/Mac.app is codesign's signature of it inside out, as Swift Build
+asks for one, with the hardened runtime; expected/Mac.adhoc.app the same ad hoc. Assets.bundle
+is the resource bundle signed alone. `regen.py mac` remakes only those.
 """
 
 import os
@@ -325,6 +331,147 @@ def make_kind_profiles(work, key, cert, development_der, certificates):
             "-signer", cert, "-inkey", key, "-out", os.path.join(root, f"{name}.{extension}"))
 
 
+MAC_ENTITLEMENTS = {
+    "com.apple.application-identifier": "TESTTEAM01.dev.sweetpad.macfixture",
+    "com.apple.developer.team-identifier": "TESTTEAM01",
+    "com.apple.security.app-sandbox": True,
+    "com.apple.security.application-groups": ["TESTTEAM01.dev.sweetpad.macfixture"],
+    "com.apple.security.get-task-allow": True,
+}
+
+
+def compile_mac(work, source, output, archs, *flags):
+    path = os.path.join(work, os.path.basename(output) + ".c")
+    with open(path, "w") as f:
+        f.write(source)
+    arch_flags = [flag for arch in archs for flag in ("-arch", arch)]
+    run("xcrun", "-sdk", "macosx", "clang", *arch_flags, "-mmacos-version-min=13.0",
+        "-Wl,-dead_strip", "-o", output, path, *flags)
+
+
+def make_mac_inputs(work):
+    root = os.path.join(HERE, "input")
+    for name in ["Mac.app", "Assets.bundle", "mac.xcent"]:
+        path = os.path.join(root, name)
+        shutil.rmtree(path, ignore_errors=True) if os.path.isdir(path) else (
+            os.path.exists(path) and os.remove(path))
+    universal = ["arm64", "x86_64"]
+    contents = os.path.join(root, "Mac.app", "Contents")
+    resources = os.path.join(contents, "Resources")
+    for folder in ["MacOS", "Resources/en.lproj", "Resources/fr.lproj", "Resources/Base.lproj"]:
+        os.makedirs(os.path.join(contents, folder))
+    write_plist(os.path.join(contents, "Info.plist"), {
+        "CFBundleExecutable": "Mac",
+        "CFBundleIdentifier": "dev.sweetpad.macfixture",
+        "CFBundlePackageType": "APPL",
+        "CFBundleVersion": "1",
+        "LSMinimumSystemVersion": "13.0",
+    })
+    with open(os.path.join(contents, "PkgInfo"), "w") as f:
+        f.write("APPL????")
+    compile_mac(work, "int main(void) { return 0; }\n", os.path.join(contents, "MacOS", "Mac"),
+                universal)
+    compile_mac(work, "int main(void) { return 1; }\n", os.path.join(contents, "MacOS", "Helper"),
+                ["arm64"])
+    with open(os.path.join(resources, "dot.txt"), "w") as f:
+        f.write("dot\n")
+    os.symlink("dot.txt", os.path.join(resources, "link.txt"))
+    with open(os.path.join(resources, "en.lproj", "Localizable.strings"), "w") as f:
+        f.write('"hello" = "Hello";\n')
+    with open(os.path.join(resources, "fr.lproj", "locversion.plist"), "w") as f:
+        f.write("omitted\n")
+    with open(os.path.join(resources, "Base.lproj", "Main.strings"), "w") as f:
+        f.write('"title" = "Main";\n')
+    for assets in [os.path.join(resources, "Assets.bundle"), os.path.join(root, "Assets.bundle")]:
+        os.makedirs(os.path.join(assets, "Contents", "Resources"))
+        write_plist(os.path.join(assets, "Contents", "Info.plist"), {
+            "CFBundleIdentifier": "dev.sweetpad.assets",
+            "CFBundlePackageType": "BNDL",
+            "CFBundleVersion": "1",
+        })
+        with open(os.path.join(assets, "Contents", "Resources", "asset.txt"), "w") as f:
+            f.write("asset\n")
+    kit = os.path.join(contents, "Frameworks", "Kit.framework")
+    os.makedirs(os.path.join(kit, "Versions", "A", "Resources", "en.lproj"))
+    write_plist(os.path.join(kit, "Versions", "A", "Resources", "Info.plist"), {
+        "CFBundleExecutable": "Kit",
+        "CFBundleIdentifier": "dev.sweetpad.kit",
+        "CFBundlePackageType": "FMWK",
+        "CFBundleVersion": "1",
+    })
+    with open(os.path.join(kit, "Versions", "A", "Resources", "en.lproj", "Kit.strings"), "w") as f:
+        f.write('"kit" = "Kit";\n')
+    compile_mac(work, "int kit(void) { return 7; }\n", os.path.join(kit, "Versions", "A", "Kit"),
+                universal, "-dynamiclib", "-install_name", "@rpath/Kit.framework/Versions/A/Kit")
+    os.symlink("A", os.path.join(kit, "Versions", "Current"))
+    os.symlink("Versions/Current/Kit", os.path.join(kit, "Kit"))
+    os.symlink("Versions/Current/Resources", os.path.join(kit, "Resources"))
+    compile_mac(work, "int thing(void) { return 3; }\n",
+                os.path.join(contents, "Frameworks", "libThing.dylib"), universal, "-dynamiclib",
+                "-install_name", "@rpath/libThing.dylib")
+    worker = os.path.join(contents, "XPCServices", "Worker.xpc", "Contents")
+    os.makedirs(os.path.join(worker, "MacOS"))
+    write_plist(os.path.join(worker, "Info.plist"), {
+        "CFBundleExecutable": "Worker",
+        "CFBundleIdentifier": "dev.sweetpad.macfixture.worker",
+        "CFBundlePackageType": "XPC!",
+        "CFBundleVersion": "1",
+    })
+    compile_mac(work, "int main(void) { return 2; }\n", os.path.join(worker, "MacOS", "Worker"),
+                ["arm64"])
+    write_plist(os.path.join(root, "mac.xcent"), MAC_ENTITLEMENTS, plistlib.FMT_XML)
+
+
+# What Swift Build signs in a macOS app, inside out, and whether with the entitlements.
+MAC_STEPS = [
+    ("Contents/Frameworks/libThing.dylib", False),
+    ("Contents/Frameworks/Kit.framework/Versions/A", False),
+    ("Contents/XPCServices/Worker.xpc", True),
+    ("Contents/MacOS/Helper", False),
+    ("", True),
+]
+
+
+def make_mac_expected(sign):
+    entitlements = os.path.join(HERE, "input", "mac.xcent")
+    for name, flags in [("Mac.app", ["-o", "runtime"]), ("Mac.adhoc.app", None)]:
+        app = os.path.join(HERE, "expected", name)
+        shutil.rmtree(app, ignore_errors=True)
+        shutil.copytree(os.path.join(HERE, "input", "Mac.app"), app, symlinks=True)
+        for step, with_entitlements in MAC_STEPS:
+            extra = ["--entitlements", entitlements] if with_entitlements else []
+            path = os.path.join(app, step) if step else app
+            if flags is None:
+                run("codesign", "--force", "--sign", "-", "--timestamp=none",
+                    "--generate-entitlement-der", *extra, path, stderr=subprocess.DEVNULL)
+            else:
+                sign(path, *flags, *extra)
+    for name, adhoc in [("Assets.bundle", False), ("Assets.adhoc.bundle", True)]:
+        bundle = os.path.join(HERE, "expected", name)
+        shutil.rmtree(bundle, ignore_errors=True)
+        shutil.copytree(os.path.join(HERE, "input", "Assets.bundle"), bundle, symlinks=True)
+        if adhoc:
+            run("codesign", "--force", "--sign", "-", "--timestamp=none",
+                "--generate-entitlement-der", bundle, stderr=subprocess.DEVNULL)
+        else:
+            sign(bundle)
+
+
+def make_mac():
+    with tempfile.TemporaryDirectory() as work:
+        p12, _, _, _, sha1 = make_identity(work)
+        keychain = make_keychain(work, p12)
+        try:
+            def sign(path, *flags):
+                run("codesign", "--keychain", keychain, "--force", "--sign", sha1, *flags,
+                    "--timestamp=none", "--generate-entitlement-der", path,
+                    stderr=subprocess.DEVNULL)
+            make_mac_inputs(work)
+            make_mac_expected(sign)
+        finally:
+            run("security", "delete-keychain", keychain)
+
+
 def make_kinds(work):
     _, key, cert, der, _ = make_identity(work)
     make_kind_profiles(work, key, cert, der, make_kind_identities(work))
@@ -345,10 +492,13 @@ def main():
             make_kind_profiles(work, key, cert, der, make_kind_identities(work))
         finally:
             run("security", "delete-keychain", keychain)
+    make_mac()
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] == ["kinds"]:
+    if sys.argv[1:] == ["mac"]:
+        make_mac()
+    elif sys.argv[1:] == ["kinds"]:
         with tempfile.TemporaryDirectory() as scratch:
             make_kinds(scratch)
     else:

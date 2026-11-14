@@ -276,8 +276,8 @@ fn signing_a_bundle_executable_recognizes_its_identifier_and_resources() {
     let app = dir.join("App.app");
     copy_tree(&fixtures().join("input/App.app"), &app);
     let path = app.join("App");
-    assert_eq!(executable_bundle(&path), Some(app.as_path()));
-    assert!(executable_bundle(&app.join("App.debug.dylib")).is_none());
+    assert_eq!(bundle::of_executable(&path), Some(app.clone()));
+    assert!(bundle::of_executable(&app.join("App.debug.dylib")).is_none());
     run(&[
         "--force".into(),
         "--sign".into(),
@@ -1504,4 +1504,240 @@ fn derq_writes_the_der_entitlements_codesign_signs() {
         .find(|(slot, _)| *slot == blobs::SLOT_DER_ENTITLEMENTS)
         .unwrap();
     assert_eq!(std::fs::read(&output).unwrap(), blob[8..]);
+}
+
+/// What Swift Build signs in a macOS app, inside out, and whether with the
+/// entitlements; `regen.py` signs the same.
+const MAC_STEPS: &[(&str, bool)] = &[
+    ("Contents/Frameworks/libThing.dylib", false),
+    ("Contents/Frameworks/Kit.framework/Versions/A", false),
+    ("Contents/XPCServices/Worker.xpc", true),
+    ("Contents/MacOS/Helper", false),
+    ("", true),
+];
+
+/// Sign a copy of `input/Mac.app` in `dir` as Swift Build asks `codesign`
+/// to: with the hardened runtime when there's an identity.
+fn sign_mac(dir: &Path, name: &str, identity: Option<&Identity>) -> PathBuf {
+    let app = dir.join(name);
+    crate::cli::commands::archive::copy_tree(&fixtures().join("input/Mac.app"), &app).unwrap();
+    for (step, entitlements) in MAC_STEPS {
+        let options = Options {
+            identity: identity.map_or("-".to_string(), |i| i.certificate.sha1_hex()),
+            entitlements: entitlements.then(|| fixtures().join("input/mac.xcent")),
+            der_entitlements: true,
+            flags: if identity.is_some() {
+                blobs::FLAG_RUNTIME
+            } else {
+                0
+            },
+            timestamp: Timestamp::None,
+            ..Options::default()
+        };
+        let signer = Signer {
+            options: &options,
+            identity,
+            time: SystemTime::now(),
+        };
+        let path = app.join(step);
+        if path.is_dir() {
+            signer.sign_bundle(&path).unwrap();
+        } else {
+            signer.sign_file(&path, None).unwrap();
+        }
+    }
+    app
+}
+
+/// That every file under `ours` is `expected`'s: the same bytes, the same
+/// symlinks, and Mach-O files signed the same but for the CMS.
+fn assert_same_tree(ours: &Path, expected: &Path, identity: Option<&Identity>) {
+    for entry in std::fs::read_dir(expected).unwrap() {
+        let entry = entry.unwrap();
+        let (theirs, mine) = (entry.path(), ours.join(entry.file_name()));
+        let kind = entry.file_type().unwrap();
+        if kind.is_symlink() {
+            assert_eq!(
+                std::fs::read_link(&mine).unwrap(),
+                std::fs::read_link(&theirs).unwrap()
+            );
+        } else if kind.is_dir() {
+            assert_same_tree(&mine, &theirs, identity);
+        } else {
+            let data = std::fs::read(&theirs).unwrap();
+            if macho::split(&data).is_ok() {
+                assert_same_signature(&mine, &theirs, identity);
+            } else {
+                assert!(
+                    std::fs::read(&mine).unwrap() == data,
+                    "{} differs from Apple's",
+                    mine.display()
+                );
+            }
+        }
+    }
+    let count = |dir: &Path| std::fs::read_dir(dir).unwrap().count();
+    assert_eq!(count(ours), count(expected), "{}", ours.display());
+}
+
+#[test]
+fn signs_a_macos_app_like_codesign() {
+    let identity = fixture_identity();
+    let dir = TempDir::new("sweetpad-codesign-mac");
+    for (name, identity) in [("Mac.app", Some(&identity)), ("Mac.adhoc.app", None)] {
+        let ours = sign_mac(&dir, name, identity);
+        if let Ok(keep) = std::env::var("SWEETPAD_KEEP_SIGNED") {
+            let _ = crate::cli::commands::archive::copy_tree(&ours, &Path::new(&keep).join(name));
+        }
+        assert_same_tree(&ours, &fixtures().join("expected").join(name), identity);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let verifier = NativeVerifier::new();
+        for name in ["Mac.app", "Mac.adhoc.app"] {
+            let result = verifier.verify(&dir.join(name), true);
+            assert!(
+                result.status.success(),
+                "codesign rejects {name}: {}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+        }
+    }
+}
+
+#[test]
+fn signs_a_macos_resource_bundle_like_codesign() {
+    let identity = fixture_identity();
+    let dir = TempDir::new("sweetpad-codesign-mac-assets");
+    for (name, identity) in [
+        ("Assets.bundle", Some(&identity)),
+        ("Assets.adhoc.bundle", None),
+    ] {
+        let ours = dir.join(name);
+        crate::cli::commands::archive::copy_tree(&fixtures().join("input/Assets.bundle"), &ours)
+            .unwrap();
+        let options = Options {
+            identity: identity.map_or("-".to_string(), |i| i.certificate.sha1_hex()),
+            der_entitlements: true,
+            ..Options::default()
+        };
+        let signer = Signer {
+            options: &options,
+            identity,
+            time: SystemTime::now(),
+        };
+        signer.sign_bundle(&ours).unwrap();
+        for file in ["CodeDirectory", "CodeRequirements", "CodeResources"] {
+            let relative = Path::new("Contents/_CodeSignature").join(file);
+            assert!(
+                std::fs::read(ours.join(&relative)).unwrap()
+                    == std::fs::read(fixtures().join("expected").join(name).join(&relative))
+                        .unwrap(),
+                "{name}: {file} differs from Apple's signature"
+            );
+        }
+    }
+}
+
+#[test]
+fn nested_code_is_sealed_by_its_cdhash_and_designated_requirement() {
+    let expected = fixtures().join("expected");
+    let (hash, requirement) =
+        inspect::designated(&expected.join("Mac.adhoc.app/Contents/Frameworks/Kit.framework"))
+            .unwrap();
+    // A universal file's ad hoc requirement names every slice, arm64 first.
+    let hashes: Vec<&str> = requirement
+        .split(" or ")
+        .map(|h| h.trim_start_matches("cdhash H\"").trim_end_matches('"'))
+        .collect();
+    assert_eq!(hashes.len(), 2, "{requirement}");
+    assert_eq!(hashes[0], crypto::hex(&hash));
+    let (_, requirement) =
+        inspect::designated(&expected.join("Mac.app/Contents/MacOS/Helper")).unwrap();
+    assert!(
+        requirement.starts_with("identifier Helper and certificate root = H\""),
+        "{requirement}"
+    );
+    let dir = TempDir::new("sweetpad-codesign-unsigned");
+    std::fs::write(dir.join("script"), "#!/bin/sh\n").unwrap();
+    let unsigned = inspect::designated(&dir.join("script")).unwrap_err();
+    assert_eq!(unsigned, "code object is not signed at all");
+}
+
+#[test]
+fn a_macos_export_signs_inside_out_with_the_mac_app_store_profile() {
+    let dir = TempDir::new("resign-mac-app-store");
+    let app = dir.join("Mac.app");
+    crate::cli::commands::archive::copy_tree(&fixtures().join("input/Mac.app"), &app).unwrap();
+    for (info, id) in [
+        ("Contents/Info.plist", "dev.sweetpad.kinds.mac"),
+        (
+            "Contents/XPCServices/Worker.xpc/Contents/Info.plist",
+            "dev.sweetpad.kinds.mac.worker",
+        ),
+    ] {
+        let path = app.join(info);
+        let mut value = plist::read_info(&std::fs::read(&path).unwrap()).unwrap();
+        plist::set(&mut value, "CFBundleIdentifier", Plist::String(id.into()));
+        std::fs::write(&path, plist::to_xml(&value)).unwrap();
+    }
+    let set = kind_set();
+    let request = resign::Request {
+        app: app.clone(),
+        method: resign::Method::AppStoreConnect,
+        team: Some("TESTTEAM01".into()),
+        manual: false,
+        signing_certificate: None,
+        profiles: Vec::new(),
+        icloud_environment: None,
+    };
+    let plan = resign::plan_with(&request, &set, &kind_profiles()).unwrap();
+    let steps: Vec<(String, Option<&str>)> = plan
+        .steps
+        .iter()
+        .map(|s| {
+            (
+                s.path.strip_prefix(&app).unwrap().display().to_string(),
+                s.profile(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        steps,
+        [
+            ("Contents/Frameworks/Kit.framework".to_string(), None),
+            ("Contents/Frameworks/libThing.dylib".to_string(), None),
+            ("Contents/XPCServices/Worker.xpc".to_string(), None),
+            ("Contents/MacOS/Helper".to_string(), None),
+            (String::new(), Some("Sweetpad Kinds mac-app-store")),
+        ]
+    );
+    resign::apply_with(&plan, &set, std::time::SystemTime::now()).unwrap();
+    assert!(app.join("Contents/embedded.provisionprofile").is_file());
+    let main = signature_of(&app.join("Contents/MacOS/Mac"));
+    assert_eq!(main.identifier, "dev.sweetpad.kinds.mac");
+    let entitlements = plist::parse(main.entitlements.as_deref().unwrap()).unwrap();
+    assert_eq!(
+        plist::get(&entitlements, "com.apple.application-identifier"),
+        Some(&Plist::String("TESTTEAM01.dev.sweetpad.kinds.mac".into()))
+    );
+    assert_eq!(
+        plist::get(&entitlements, "com.apple.security.get-task-allow"),
+        None
+    );
+    let kit = signature_of(&app.join("Contents/Frameworks/Kit.framework/Versions/A/Kit"));
+    assert_eq!(kit.identifier, "dev.sweetpad.kit");
+    let resources =
+        std::fs::read_to_string(app.join("Contents/_CodeSignature/CodeResources")).unwrap();
+    for sealed in [
+        "Frameworks/Kit.framework",
+        "XPCServices/Worker.xpc",
+        "MacOS/Helper",
+        "embedded.provisionprofile",
+    ] {
+        assert!(
+            resources.contains(&format!("<key>{sealed}</key>")),
+            "{sealed}"
+        );
+    }
 }
