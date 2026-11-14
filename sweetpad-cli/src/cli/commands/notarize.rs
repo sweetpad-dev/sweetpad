@@ -36,7 +36,7 @@ pub struct NotarizeOptions {
 #[derive(Debug, Args)]
 pub struct NotarizeArgs {
     /// The .app, .zip, .pkg or .dmg to notarize. An app goes to Apple as a
-    /// zip. Apps and packages get the ticket stapled.
+    /// zip. Apps, packages and signed disk images get the ticket stapled.
     pub file: Option<PathBuf>,
     #[command(flatten)]
     pub options: NotarizeOptions,
@@ -64,10 +64,10 @@ pub enum Action {
         #[command(flatten)]
         key: KeyArgs,
     },
-    /// Staple the ticket of an app or package Apple has accepted, so
-    /// Gatekeeper finds it offline. Needs no API key.
+    /// Staple the ticket of an app, package or signed disk image Apple has
+    /// accepted, so Gatekeeper finds it offline. Needs no API key.
     Staple {
-        /// The .app or .pkg that was notarized.
+        /// The .app, .pkg or .dmg that was notarized.
         file: PathBuf,
     },
 }
@@ -106,9 +106,9 @@ pub fn run(ctx: &mut Context, args: &NotarizeArgs, action: Option<&Action>) -> C
             Ok(Rendered::data(LogReport(log)))
         }
         Some(Action::Staple { file }) => {
-            if !matches!(kind(file)?, Kind::App | Kind::Package) {
+            if kind(file)? == Kind::Zip {
                 return Err(CliError::new(format!(
-                    "{} takes no ticket: sweetpad staples apps and packages",
+                    "{} takes no ticket: sweetpad staples apps, packages and disk images",
                     file.display()
                 ))
                 .kind(ErrorKind::Usage));
@@ -219,7 +219,14 @@ pub(crate) fn notarize(
         return Ok(report);
     }
     match kind {
-        Kind::App | Kind::Package => {
+        Kind::DiskImage if !staple::disk_image_is_signed(file).map_err(CliError::new)? => {
+            report.notes.push(
+                "an unsigned disk image takes no ticket; Gatekeeper looks the app's ticket up \
+                 online, or sign the disk image with Developer ID and notarize it again"
+                    .to_string(),
+            );
+        }
+        Kind::App | Kind::Package | Kind::DiskImage => {
             let stapled = staple_when_filed(file)?;
             out.note(&format!(
                 "Stapled the ticket to {} ({})",
@@ -231,10 +238,6 @@ pub(crate) fn notarize(
         Kind::Zip => report.notes.push(
             "a zip takes no ticket: staple the app inside it with 'sweetpad notarize' on the app, \
              or ship the zip as it is"
-                .to_string(),
-        ),
-        Kind::DiskImage => report.notes.push(
-            "sweetpad doesn't staple disk images; Gatekeeper looks the ticket up online"
                 .to_string(),
         ),
     }
@@ -288,6 +291,10 @@ fn show_progress(out: &Output, progress: &Progress<'_>) {
         Progress::Submitted { id, bytes } => (
             json!({"event": "notarize", "stage": "submitted", "submissionId": id, "bytes": bytes}),
             format!("Created submission {id}; sending {bytes} bytes"),
+        ),
+        Progress::Part { done, parts } => (
+            json!({"event": "notarize", "stage": "part", "done": done, "parts": parts}),
+            format!("Sent part {done} of {parts}"),
         ),
         Progress::Sent => (
             json!({"event": "notarize", "stage": "sent"}),

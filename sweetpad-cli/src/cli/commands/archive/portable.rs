@@ -40,6 +40,7 @@ pub(super) fn run(
         "DEPLOYMENT_LOCATION=YES".to_string(),
         "DEPLOYMENT_POSTPROCESSING=YES".to_string(),
     ]);
+    settings.extend(apple_content_settings(&archive));
     let plan = xcodebuild::BuildPlan {
         action: xcodebuild::BuildAction::Archive,
         container: &resolved.container,
@@ -107,6 +108,16 @@ pub(super) fn run(
         &exporting,
         &out_dir.join("export"),
     )
+}
+
+/// The settings that have the build write the content an App Store export
+/// copies (see [`export::APPLE_CONTENT`]) beside the archive's products, as
+/// Xcode's archive does.
+fn apple_content_settings(archive: &Path) -> Vec<String> {
+    export::APPLE_CONTENT
+        .iter()
+        .map(|(setting, folder)| format!("{setting}={}", archive.join(folder).display()))
+        .collect()
 }
 
 /// Export `archive` into `export_dir`, then upload it when asked.

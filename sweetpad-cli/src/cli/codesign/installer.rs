@@ -157,6 +157,7 @@ impl Installer {
     }
 
     fn key(&self) -> Result<&rsa::RsaPrivateKey, String> {
+        self.identity.require_chain()?;
         self.identity
             .key
             .as_ref()

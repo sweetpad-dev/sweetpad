@@ -74,6 +74,57 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Entitlements/Widget-macOS.entitlements
         ENABLE_HARDENED_RUNTIME: YES
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks"
+  # A WatchKit 2 app, a stub whose code is in its extension, and an
+  # iMessage sticker pack: the two that make an App Store export add
+  # Apple's WatchKitSupport2 and Messages stubs beside Payload.
+  DeliveryWatch:
+    type: application.watchapp2
+    platform: watchOS
+    deploymentTarget: "9.0"
+    sources: [Sources/Watch]
+    settings:
+      base:
+        PRODUCT_NAME: DeliveryWatch
+        PRODUCT_BUNDLE_IDENTIFIER: $(DELIVERY_BUNDLE_ID).watchkitapp
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Delivery
+        INFOPLIST_KEY_WKCompanionAppBundleIdentifier: $(DELIVERY_BUNDLE_ID)
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SKIP_INSTALL: YES
+        PROVISIONING_PROFILE_SPECIFIER: $(DELIVERY_WATCH_PROFILE)
+    dependencies:
+      - target: DeliveryWatchExtension
+  DeliveryWatchExtension:
+    type: watchkit2-extension
+    platform: watchOS
+    deploymentTarget: "9.0"
+    sources: [Sources/WatchExt]
+    settings:
+      base:
+        PRODUCT_NAME: DeliveryWatchExtension
+        PRODUCT_BUNDLE_IDENTIFIER: $(DELIVERY_BUNDLE_ID).watchkitapp.watchkitextension
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Delivery Watch Extension
+        INFOPLIST_FILE: Supporting/WatchExt-Info.plist
+        SKIP_INSTALL: YES
+        PROVISIONING_PROFILE_SPECIFIER: $(DELIVERY_WATCH_EXTENSION_PROFILE)
+  DeliveryStickers-iOS:
+    type: app-extension.messages-sticker-pack
+    productName: DeliveryStickers
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [Sources/Stickers]
+    settings:
+      base:
+        PRODUCT_NAME: DeliveryStickers
+        PRODUCT_BUNDLE_IDENTIFIER: $(DELIVERY_BUNDLE_ID).Stickers
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Delivery Stickers
+        # As Xcode's sticker pack template has it.
+        INFOPLIST_FILE: Supporting/Stickers-Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: iMessage App Icon
+        SKIP_INSTALL: YES
+        PROVISIONING_PROFILE_SPECIFIER: $(DELIVERY_STICKERS_PROFILE)
   Delivery-iOS:
     templates: [App]
     platform: iOS
@@ -81,6 +132,8 @@ targets:
     dependencies:
       - target: DeliveryKit-iOS
       - target: DeliveryWidget-iOS
+      - target: DeliveryWatch
+      - target: DeliveryStickers-iOS
     settings:
       base:
         CODE_SIGN_ENTITLEMENTS: Entitlements/App-iOS.entitlements

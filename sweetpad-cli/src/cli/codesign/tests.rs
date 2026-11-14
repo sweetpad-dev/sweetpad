@@ -270,6 +270,26 @@ fn signs_ad_hoc_like_codesign() {
     );
 }
 
+/// The page size, the SHA-1 code directory beside the SHA-256 one, 32-bit
+/// watch code, and the identifier an embedded Info.plist names, each as
+/// Apple's `codesign` picks it.
+#[test]
+fn signs_each_platforms_code_like_codesign() {
+    let identity = fixture_identity();
+    let dir = TempDir::new("sweetpad-codesign-platforms");
+    for (name, identity) in [
+        ("Watch.adhoc", None),
+        ("Phone15.adhoc", None),
+        ("Phone10.adhoc", None),
+        ("Phone10", Some(&identity)),
+        ("TV.adhoc", None),
+        ("Info.adhoc.dylib", None),
+    ] {
+        let ours = sign(&dir, name, identity, false);
+        assert_same_signature(&ours, &fixtures().join("expected").join(name), identity);
+    }
+}
+
 #[test]
 fn signing_a_bundle_executable_recognizes_its_identifier_and_resources() {
     let dir = TempDir::new("sweetpad-codesign-executable-path");
@@ -423,6 +443,19 @@ fn signs_a_bundle_like_codesign() {
 }
 
 #[test]
+fn a_bundle_around_sha1_code_seals_its_files_with_sha1_too() {
+    let dir = TempDir::new("sweetpad-codesign-legacy");
+    let ours = sign(&dir, "Legacy.adhoc.app", None, false);
+    let expected = fixtures().join("expected/Legacy.adhoc.app");
+    assert!(
+        std::fs::read(ours.join("_CodeSignature/CodeResources")).unwrap()
+            == std::fs::read(expected.join("_CodeSignature/CodeResources")).unwrap(),
+        "CodeResources differs"
+    );
+    assert_same_signature(&ours.join("Legacy"), &expected.join("Legacy"), None);
+}
+
+#[test]
 fn resource_bundles_match_native_detached_signatures() {
     let identity = fixture_identity();
     let dir = TempDir::new("sweetpad-codesign-resources");
@@ -484,6 +517,32 @@ fn apples_codesign_verifies_what_it_signs() {
             String::from_utf8_lossy(&result.stderr)
         );
     }
+}
+
+/// An identity whose issuer neither its `.p12` file nor sweetpad carries
+/// signs nothing, rather than signing with a chain that stops short.
+#[test]
+fn an_identity_whose_chain_stops_short_of_a_root_is_refused() {
+    let data = std::fs::read(fixtures().join("orphan.p12")).unwrap();
+    let orphan = Identity::from_p12(&data, "sweetpad-test", true).unwrap();
+    let error = orphan.require_chain().unwrap_err();
+    assert!(error.contains("Sweetpad Fixture Authority (G9)"), "{error}");
+    assert!(fixture_identity().require_chain().is_ok());
+
+    let dir = TempDir::new("sweetpad-codesign-orphan");
+    let path = dir.join("Tool");
+    std::fs::copy(fixtures().join("input/Tool"), &path).unwrap();
+    let options = Options {
+        identity: orphan.certificate.sha1_hex(),
+        ..Options::default()
+    };
+    let signer = Signer {
+        options: &options,
+        identity: Some(&orphan),
+        time: SystemTime::now(),
+    };
+    let error = signer.sign_file(&path, None).unwrap_err();
+    assert!(error.contains("can't reach Apple's root"), "{error}");
 }
 
 #[test]
@@ -1395,6 +1454,37 @@ fn provisions_like_xcodes_automatic_signing() {
         plist::get(&inputs, "simulatedEntitlements"),
         Some(&Plist::Dict(Vec::new()))
     );
+}
+
+/// A device build takes only a development profile that lists its device,
+/// automatic or named, as Xcode does.
+#[test]
+fn a_device_build_needs_a_profile_listing_the_device() {
+    let device = |udid: &str| ("sweetpadDeviceIdentifier", Plist::String(udid.to_string()));
+    let listed = provision(&request(&[device("00008110-000000000000001e")])).unwrap();
+    assert_eq!(
+        plist::string(&listed, "profileName"),
+        Some("Sweetpad Fixture Wildcard")
+    );
+    let other = "00008110-0000000000000099";
+    let automatic = provision(&request(&[device(other)])).unwrap_err();
+    assert_eq!(
+        automatic,
+        format!(
+            "Provisioning profile \"Sweetpad Fixture Wildcard\" doesn't include the currently \
+             selected device (identifier {other})."
+        )
+    );
+    let manual = provision(&request(&[
+        device(other),
+        ("provisioningStyle", Plist::String("manual".to_string())),
+        (
+            "provisioningProfileSpecifier",
+            Plist::String("Sweetpad Fixture Wildcard".to_string()),
+        ),
+    ]))
+    .unwrap_err();
+    assert_eq!(manual, automatic);
 }
 
 #[test]

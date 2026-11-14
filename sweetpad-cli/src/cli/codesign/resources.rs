@@ -349,10 +349,14 @@ enum Found {
 
 /// The `CodeResources` of the bundle whose sealed files are under `root`,
 /// sealed under `flavor`'s rules, leaving out `executable`, relative to it.
+/// With `dual`, when the executable gets a SHA-1 code directory, each file
+/// `files2` seals has its SHA-1 beside its SHA-256, as Apple's `codesign`
+/// writes it, which verifies the seal by either code directory.
 pub(super) fn code_resources(
     root: &Path,
     executable: &str,
     flavor: Flavor,
+    dual: bool,
 ) -> Result<Vec<u8>, String> {
     let (rules, rules2) = match flavor {
         Flavor::Shallow => (RULES, RULES2),
@@ -406,13 +410,21 @@ pub(super) fn code_resources(
                     )),
                     _ => {}
                 }
-                let hash2 = || ("hash2".to_string(), Plist::Data(sha256(&bytes).to_vec()));
+                let hashes = || {
+                    let mut entry = Vec::new();
+                    if dual {
+                        entry.push(("hash".to_string(), Plist::Data(sha1(&bytes).to_vec())));
+                    }
+                    entry.push(("hash2".to_string(), Plist::Data(sha256(&bytes).to_vec())));
+                    entry
+                };
                 match sealed {
-                    Some(Treatment::Hash) => files2.push((path, Plist::Dict(vec![hash2()]))),
-                    Some(Treatment::Optional) => files2.push((
-                        path,
-                        Plist::Dict(vec![hash2(), ("optional".to_string(), Plist::Bool(true))]),
-                    )),
+                    Some(Treatment::Hash) => files2.push((path, Plist::Dict(hashes()))),
+                    Some(Treatment::Optional) => {
+                        let mut entry = hashes();
+                        entry.push(("optional".to_string(), Plist::Bool(true)));
+                        files2.push((path, Plist::Dict(entry)));
+                    }
                     Some(Treatment::Nested) => files2.push((path, nested(&full)?)),
                     _ => {}
                 }

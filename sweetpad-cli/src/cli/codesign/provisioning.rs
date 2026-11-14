@@ -38,6 +38,11 @@ pub const PROFILES_VARIABLE: &str = "SWEETPAD_PROVISIONING_PROFILES";
 /// identities can't sign is signed ad hoc, with its entitlements, in place of
 /// failing the build.
 pub const FALLBACK_VARIABLE: &str = "SWEETPAD_CODE_SIGN_FALLBACK";
+/// The identifier of the device a build runs on, which a development or ad
+/// hoc profile must list. [`main`] adds it to the request under
+/// [`DEVICE_KEY`].
+pub const DEVICE_VARIABLE: &str = "SWEETPAD_PROVISIONING_DEVICE";
+const DEVICE_KEY: &str = "sweetpadDeviceIdentifier";
 
 #[must_use]
 pub fn main(_args: &[String]) -> ExitCode {
@@ -47,7 +52,17 @@ pub fn main(_args: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     }
     let fallback = std::env::var(FALLBACK_VARIABLE).is_ok_and(|v| v == "ad-hoc");
+    let device = std::env::var(DEVICE_VARIABLE)
+        .ok()
+        .filter(|d| !d.is_empty());
     let inputs = plist::parse(&input)
+        .map(|request| match (request, device) {
+            (Plist::Dict(mut entries), Some(device)) => {
+                entries.push((DEVICE_KEY.to_string(), Plist::String(device)));
+                Plist::Dict(entries)
+            }
+            (request, _) => request,
+        })
         .and_then(|request| {
             let answered = answer(&request, &profile_folders(), || {
                 IdentitySet::from_environment(false)
@@ -356,6 +371,7 @@ fn find_profile(
 ) -> Result<Option<Profile>, String> {
     let text = |key: &str| plist::string(request, key).unwrap_or_default();
     let bundle = text("bundleIdentifier");
+    let device = Some(text(DEVICE_KEY)).filter(|d| !d.is_empty());
     let profiles = load_profiles(folders);
     let picked = if text("provisioningStyle") == "manual" {
         let named = [
@@ -367,10 +383,28 @@ fn find_profile(
         let picked = named.and_then(|name| find_named(profiles, name));
         if let Some(profile) = &picked {
             check_named(profile, identity, team, bundle)?;
+            if let Some(device) = device {
+                check_device(profile, device)?;
+            }
         }
         picked
     } else {
-        pick(profiles, identity, team, bundle, platform(text("sdkRoot")))
+        let platform = platform(text("sdkRoot"));
+        let picked = pick(profiles, identity, team, bundle, platform, device);
+        if picked.is_none()
+            && let Some(device) = device
+            && let Some(other) = pick(
+                load_profiles(folders),
+                identity,
+                team,
+                bundle,
+                platform,
+                None,
+            )
+        {
+            check_device(&other, device)?;
+        }
+        picked
     };
     if picked.is_none() && text("provisioningProfileSupport") == "required" {
         let looked = folders
@@ -607,6 +641,17 @@ impl Profile {
             .any(|p| p == platform || (platform == "watchOS" && p == "iOS"))
     }
 
+    /// Whether it lets an app run on `device`: a development or ad hoc
+    /// profile lists the device or runs on any; the other kinds aren't
+    /// bound to devices.
+    pub fn runs_on(&self, device: &str) -> bool {
+        !matches!(
+            self.kind(),
+            ProfileKind::Development | ProfileKind::AdHoc | ProfileKind::MacDevelopment
+        ) || self.all_devices
+            || self.devices.iter().any(|d| d.eq_ignore_ascii_case(device))
+    }
+
     pub fn is_expired(&self, now: &str) -> bool {
         !self.expiration.is_empty() && self.expiration.as_str() <= now
     }
@@ -741,17 +786,32 @@ fn rank(
 }
 
 /// The profile automatic signing picks at build time: one of the
-/// identity's kind, development or distribution.
+/// identity's kind, development or distribution, that runs on `device`
+/// when the build has one.
 fn pick(
     profiles: Vec<Profile>,
     identity: &Identity,
     team: &str,
     bundle: &str,
     platform: &str,
+    device: Option<&str>,
 ) -> Option<Profile> {
     rank(profiles, identity, team, bundle, platform, |p| {
         p.kind().is_development() == identity.is_development()
+            && device.is_none_or(|d| p.runs_on(d))
     })
+}
+
+/// That `profile` runs on `device`, as Xcode checks before a device build.
+fn check_device(profile: &Profile, device: &str) -> Result<(), String> {
+    if profile.runs_on(device) {
+        return Ok(());
+    }
+    Err(format!(
+        "Provisioning profile \"{}\" doesn't include the currently selected device \
+         (identifier {device}).",
+        profile.name
+    ))
 }
 
 /// The profile of `kind` an export embeds for `bundle`.

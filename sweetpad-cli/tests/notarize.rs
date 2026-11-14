@@ -5,6 +5,7 @@ mod common;
 #[path = "common/stub.rs"]
 mod stub;
 
+use std::fmt::Write as _;
 use std::path::Path;
 
 use base64::Engine as _;
@@ -202,6 +203,141 @@ fn an_accepted_package_goes_to_s3_and_gets_its_ticket_stapled() {
     assert!(again.status.success());
     assert_eq!(stub::data(&again)["record"], RECORD);
     assert_eq!(std::fs::read(home.join("Delivery.pkg")).unwrap(), expected);
+}
+
+const OBJECT: &str = "/s3/notary-bucket/prod/AKIDEXAMPLE/S1";
+
+/// The stub notary service, with an S3 that takes the file in parts and
+/// refuses part `refused`, if any.
+fn serve_parts(refused: Option<u32>) -> Stub {
+    let mut polls = 0;
+    let mut lookups = 0;
+    Stub::start_with_headers(move |r, base| {
+        let query = r.path.strip_prefix(OBJECT).unwrap_or_default();
+        let part = query
+            .strip_prefix("?partNumber=")
+            .and_then(|q| q.split('&').next())
+            .and_then(|n| n.parse::<u32>().ok());
+        match (r.method.as_str(), query, part) {
+            ("POST", "?uploads", _) => (
+                "200 OK",
+                Vec::new(),
+                "<InitiateMultipartUploadResult><Bucket>notary-bucket</Bucket>\
+                 <UploadId>UP/1+x</UploadId></InitiateMultipartUploadResult>"
+                    .to_string(),
+            ),
+            ("PUT", _, Some(n)) if Some(n) == refused => (
+                "403 Forbidden",
+                Vec::new(),
+                "<Error><Code>AccessDenied</Code></Error>".into(),
+            ),
+            ("PUT", _, Some(n)) => (
+                "200 OK",
+                vec![("ETag".to_string(), format!("\"tag{n}\""))],
+                String::new(),
+            ),
+            ("POST" | "DELETE", "?uploadId=UP%2F1%2Bx", _) => ("200 OK", Vec::new(), String::new()),
+            _ => {
+                let (status, body) = answer(Verdict::Accepted, r, base, &mut polls, &mut lookups);
+                (status, Vec::new(), body)
+            }
+        }
+    })
+}
+
+#[test]
+fn a_large_file_goes_to_s3_in_parts() {
+    let home = home("parts");
+    let stub = serve_parts(None);
+    let out = stub
+        .command(&home)
+        .env("SWEETPAD_NOTARY_PART_BYTES", "40")
+        .args(["notarize", "Delivery.pkg", "-o", "json"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(data(&out)["status"], "Accepted");
+
+    let requests = stub.requests();
+    let digest = requests[0].json()["sha256"].as_str().unwrap().to_string();
+    assert_eq!(digest, hex(&sweetpad_lib::xcode_hash::sha256(&package())));
+    let s3: Vec<&Received> = requests
+        .iter()
+        .filter(|r| r.path.starts_with(OBJECT))
+        .collect();
+    let paths: Vec<String> = s3
+        .iter()
+        .map(|r| format!("{} {}", r.method, r.path))
+        .collect();
+    let parts = package().len().div_ceil(40);
+    let mut expected = vec![format!("POST {OBJECT}?uploads")];
+    expected
+        .extend((1..=parts).map(|n| format!("PUT {OBJECT}?partNumber={n}&uploadId=UP%2F1%2Bx")));
+    expected.push(format!("POST {OBJECT}?uploadId=UP%2F1%2Bx"));
+    assert_eq!(paths, expected);
+
+    let sent: Vec<u8> = s3[1..=parts].iter().flat_map(|r| r.body.clone()).collect();
+    assert_eq!(sent, package());
+    for part in &s3[1..=parts] {
+        assert_eq!(
+            part.header("x-amz-content-sha256"),
+            Some(hex(&sweetpad_lib::xcode_hash::sha256(&part.body)).as_str())
+        );
+        assert_eq!(part.header("x-amz-security-token"), Some("SESSION-TOKEN"));
+    }
+    let complete = String::from_utf8_lossy(&s3[parts + 1].body).into_owned();
+    let tags = (1..=parts).fold(String::new(), |mut out, n| {
+        let _ = write!(
+            out,
+            "<Part><PartNumber>{n}</PartNumber><ETag>\"tag{n}\"</ETag></Part>"
+        );
+        out
+    });
+    assert_eq!(
+        complete,
+        format!("<CompleteMultipartUpload>{tags}</CompleteMultipartUpload>")
+    );
+}
+
+#[test]
+fn a_refused_part_abandons_the_upload() {
+    let home = home("part-refused");
+    let stub = serve_parts(Some(2));
+    let out = stub
+        .command(&home)
+        .env("SWEETPAD_NOTARY_PART_BYTES", "40")
+        .args(["notarize", "Delivery.pkg", "-o", "json"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let message = error(&out)["message"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    assert!(message.contains("403 Forbidden"), "{message}");
+    let requests = stub.requests();
+    let last = requests
+        .iter()
+        .rfind(|r| r.path.starts_with(OBJECT))
+        .unwrap();
+    assert_eq!(last.method, "DELETE");
+    assert_eq!(last.path, format!("{OBJECT}?uploadId=UP%2F1%2Bx"));
+    assert!(
+        !requests
+            .iter()
+            .any(|r| r.path == "/notary/v2/submissions/S1")
+    );
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().fold(String::new(), |mut out, b| {
+        let _ = write!(out, "{b:02x}");
+        out
+    })
 }
 
 #[test]

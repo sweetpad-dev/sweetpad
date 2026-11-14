@@ -17,12 +17,21 @@ the identity, signed by it, for the provisioning stand-in's tests.
 identities.p12 holds one identity of each other kind, self-signed but with Apple's policy
 extensions, exported together from a keychain as Keychain Access exports a selection.
 profiles-kinds/ has a profile of each kind for them. `regen.py kinds` remakes only those.
+orphan.p12 holds an identity issued by a made-up authority whose certificate it leaves out.
 
 input/Mac.app is a macOS app as Swift Build hands it to codesign, its code linker-signed: a
 universal executable, a helper in MacOS/, a versioned framework, a dylib, an XPC service and a
 resource bundle. expected/Mac.app is codesign's signature of it inside out, as Swift Build
 asks for one, with the hardened runtime; expected/Mac.adhoc.app the same ad hoc. Assets.bundle
 is the resource bundle signed alone. `regen.py mac` remakes only those.
+
+Watch, Phone15, Phone10 and TV are linker-signed executables for the platforms whose code
+directories differ from the Mac's: a watchOS 9 arm64_32 and arm64 universal file, iOS 15 and
+tvOS 17 hashed in 4 KiB pages, and iOS 10 with a SHA-1 code directory beside the SHA-256 one.
+Info.dylib carries an Info.plist in __TEXT,__info_plist, which names its identifier.
+Legacy.app is an iOS app around an iOS 10 executable, whose resource seal codesign writes
+with SHA-1 hashes beside the SHA-256 ones. expected/ has each signed ad hoc, and Phone10 also
+with the identity. `regen.py platforms` remakes only those.
 """
 
 import os
@@ -472,9 +481,109 @@ def make_mac():
             run("security", "delete-keychain", keychain)
 
 
+# Each platform input: the SDK, its version flag, and the architectures.
+PLATFORMS = [
+    ("Watch", "watchos", "-mwatchos-version-min=9.0", ["arm64_32", "arm64"]),
+    ("Phone15", "iphoneos", "-mios-version-min=15.0", ["arm64"]),
+    ("Phone10", "iphoneos", "-mios-version-min=10.0", ["arm64"]),
+    ("TV", "appletvos", "-mtvos-version-min=17.0", ["arm64"]),
+]
+
+
+def make_platform_inputs(work):
+    root = os.path.join(HERE, "input")
+    for name, sdk, version, archs in PLATFORMS:
+        path = os.path.join(work, name + ".c")
+        with open(path, "w") as f:
+            f.write("int main(void) { return 0; }\n")
+        arch_flags = [flag for arch in archs for flag in ("-arch", arch)]
+        run("xcrun", "-sdk", sdk, "clang", *arch_flags, version, "-o",
+            os.path.join(root, name), path)
+    info = os.path.join(work, "Info.plist")
+    write_plist(info, {
+        "CFBundleIdentifier": "dev.sweetpad.info",
+        "CFBundleName": "Info",
+        "CFBundleVersion": "1",
+    }, fmt=plistlib.FMT_XML)
+    path = os.path.join(work, "info.c")
+    with open(path, "w") as f:
+        f.write("int info(void) { return 4; }\n")
+    run("xcrun", "-sdk", "macosx", "clang", "-arch", "arm64", "-mmacos-version-min=13.0",
+        "-dynamiclib", "-install_name", "@rpath/libInfo.dylib",
+        "-Wl,-sectcreate,__TEXT,__info_plist," + info,
+        "-o", os.path.join(root, "Info.dylib"), path)
+    app = os.path.join(root, "Legacy.app")
+    shutil.rmtree(app, ignore_errors=True)
+    os.makedirs(os.path.join(app, "en.lproj"))
+    shutil.copy(os.path.join(root, "Phone10"), os.path.join(app, "Legacy"))
+    write_plist(os.path.join(app, "Info.plist"), {
+        "CFBundleExecutable": "Legacy",
+        "CFBundleIdentifier": "dev.sweetpad.legacy",
+        "CFBundlePackageType": "APPL",
+        "CFBundleVersion": "1",
+    })
+    with open(os.path.join(app, "dot.png"), "wb") as f:
+        f.write(bytes(range(64)))
+    with open(os.path.join(app, "en.lproj", "Localizable.strings"), "w") as f:
+        f.write('"hello" = "Hello";\n')
+
+
+def make_platform_expected(sign):
+    for name in [entry[0] for entry in PLATFORMS] + ["Info.dylib"]:
+        stem, dot, extension = name.partition(".")
+        expected = os.path.join(HERE, "expected", f"{stem}.adhoc{dot}{extension}")
+        shutil.copy(os.path.join(HERE, "input", name), expected)
+        run("codesign", "--force", "--sign", "-", "--timestamp=none",
+            "--generate-entitlement-der", expected, stderr=subprocess.DEVNULL)
+    expected = os.path.join(HERE, "expected", "Legacy.adhoc.app")
+    shutil.rmtree(expected, ignore_errors=True)
+    shutil.copytree(os.path.join(HERE, "input", "Legacy.app"), expected)
+    run("codesign", "--force", "--sign", "-", "--timestamp=none",
+        "--generate-entitlement-der", expected, stderr=subprocess.DEVNULL)
+    # Both code directories under one CMS signature.
+    expected = os.path.join(HERE, "expected", "Phone10")
+    shutil.copy(os.path.join(HERE, "input", "Phone10"), expected)
+    sign(expected)
+
+
+def make_platforms():
+    with tempfile.TemporaryDirectory() as work:
+        p12, _, _, _, sha1 = make_identity(work)
+        keychain = make_keychain(work, p12)
+        try:
+            def sign(path, *flags):
+                run("codesign", "--keychain", keychain, "--force", "--sign", sha1, *flags,
+                    "--timestamp=none", "--generate-entitlement-der", path,
+                    stderr=subprocess.DEVNULL)
+            make_platform_inputs(work)
+            make_platform_expected(sign)
+        finally:
+            run("security", "delete-keychain", keychain)
+
+
+def make_orphan(work):
+    """orphan.p12: an identity whose issuer, a made-up authority, isn't in the file."""
+    p12 = os.path.join(HERE, "orphan.p12")
+    if os.path.exists(p12):
+        return
+    ca_key, ca = os.path.join(work, "ca.key"), os.path.join(work, "ca.pem")
+    run("openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", ca_key,
+        "-out", ca, "-days", "36500",
+        "-subj", "/CN=Sweetpad Fixture Authority/OU=G9/O=Sweetpad Fixture/C=US")
+    key, request, cert = (os.path.join(work, n) for n in ["orphan.key", "orphan.csr", "orphan.pem"])
+    run("openssl", "req", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", request,
+        "-subj", "/CN=Apple Development: Sweetpad Orphan (TESTTEAM09)/OU=TESTTEAM09/O=Sweetpad Fixture/C=US")
+    run("openssl", "x509", "-req", "-in", request, "-CA", ca, "-CAkey", ca_key,
+        "-CAcreateserial", "-out", cert, "-days", "36500")
+    run("openssl", "pkcs12", "-export", "-inkey", key, "-in", cert, "-out", p12,
+        "-passout", f"pass:{PASSWORD}", "-certpbe", "PBE-SHA1-3DES", "-keypbe", "PBE-SHA1-3DES",
+        "-macalg", "sha1")
+
+
 def make_kinds(work):
     _, key, cert, der, _ = make_identity(work)
     make_kind_profiles(work, key, cert, der, make_kind_identities(work))
+    make_orphan(work)
 
 
 def main():
@@ -490,14 +599,18 @@ def main():
             make_expected(sign)
             make_profile(work, key, cert, der)
             make_kind_profiles(work, key, cert, der, make_kind_identities(work))
+            make_orphan(work)
         finally:
             run("security", "delete-keychain", keychain)
     make_mac()
+    make_platforms()
 
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["mac"]:
         make_mac()
+    elif sys.argv[1:] == ["platforms"]:
+        make_platforms()
     elif sys.argv[1:] == ["kinds"]:
         with tempfile.TemporaryDirectory() as scratch:
             make_kinds(scratch)

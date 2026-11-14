@@ -127,7 +127,7 @@ they do not establish physical-device execution for these changes.
 - [ ] E16: Invalidate resource tasks when stand-ins or SDK inputs change (`swbuild.rs::toolset`).
 - [ ] E17: Preserve useful failure output, log paths, exit status, and child-process cancellation (`swbuild.rs`, `process.rs`). Failed build logs are now linked in human output; bubblewrap dies with its parent. Exit-status preservation and descendant-process cancellation remain open.
 - [ ] E18: Correct classic intent-definition codegen visibility, no-codegen, and synchronized-folder metadata (`sweetpad-lib/src/workspace_pif.rs`).
-- [ ] E19: Verify macOS cross-architecture builds and Info.plist preprocessing on Linux (`swbuild.rs::DarwinSdk::overrides`).
+- [ ] E19: Verify macOS cross-architecture builds and Info.plist preprocessing on Linux (`swbuild.rs::DarwinSdk::overrides`). Archives build every `ARCHS_STANDARD` architecture: the delivery fixture's universal Mac app launches as arm64 and as x86_64, and is notarized. Info.plist preprocessing remains unverified.
 - [ ] E20: Preserve required linker settings when projects supply OTHER_LDFLAGS on additional platforms (`swbuild.rs::Invocation`).
 - [ ] E21: Warn for missing workspace members, explain path case mismatches, and map ASSET_TAGS (`sweetpad-lib/src/workspace_pif.rs`, `swbuild.rs`).
 - [ ] E22: Define verbose passthrough and structured blocker reporting for Swift Build (`swbuild.rs`).
@@ -136,8 +136,8 @@ they do not establish physical-device execution for these changes.
 
 - [ ] D01: Mount the developer disk image after a phone reboot or first connection before opening developer services. Needs hardware (`device_network.py::DvtProvider`).
 - [ ] D02: Preserve simulator entitlements through ad-hoc signing and validate Keychain/App Groups on a Mac (`swbuild.rs::DarwinSdk::overrides`, `codesign/provisioning.rs`).
-- [ ] D03: Match provisioning devices, manual profiles, entitlement values, and certificate validity (`codesign/provisioning.rs`, `codesign/identity.rs`).
-- [ ] D04: Verify watchOS profile platform matching (`codesign/provisioning.rs`).
+- [x] D03: Match provisioning devices, manual profiles, entitlement values, and certificate validity (`codesign/provisioning.rs`, `codesign/identity.rs`). A device build takes only a development or ad hoc profile listing its device; a named profile is checked for expiry, app ID, certificate and device; entitlement values are checked against the profile; expired identities are skipped and named as expired.
+- [x] D04: Verify watchOS profile platform matching (`codesign/provisioning.rs`). A watch target takes a profile naming iOS or watchOS. Apple's App Store profiles for a watch app and its WatchKit extension list `iOS`, `xrOS` and `visionOS`, as for any iOS app.
 - [x] D05: Isolate failures for individual discovered devices and retain actionable resolution errors (`device_network.py`, `resolve.rs`).
 - [x] D06: Report network-action timeout context and support bounded action-specific limits (`device_network.py`).
 - [ ] D07: Validate the legacy device adapter version and scope log streams to the selected UDID (`pymobiledevice3.rs`). Legacy syslog now receives the selected UDID; adapter-version validation remains open.
@@ -146,7 +146,7 @@ they do not establish physical-device execution for these changes.
 - [x] D10: Export signs the app again for its method, so a profile of the wrong kind is refused by name (`codesign/resign.rs`, `commands/archive/export.rs`).
 - [ ] D11: Verify signing-secret inheritance into build scripts and plugins (`swbuild.rs`, `codesign/identity.rs`).
 - [ ] D12: Handle CocoaPods absolute codesign calls without requiring fixture rewrites, or document the limitation (`ci/linux-project-prepare.py`, `docs/cli/linux/react-native.md`).
-- [ ] D13: Verify certificate chains beyond the bundled WWDR G3 intermediate (`codesign/identity.rs`).
+- [ ] D13: Verify certificate chains beyond the bundled WWDR G3 intermediate (`codesign/identity.rs`). Developer ID G1 and G2 are bundled and verified with Apple. An identity whose chain stops short of a root is refused with the missing authority's name, in place of a signature without it. WWDR G4 to G6 are not bundled: a certificate they issue needs its `.p12` to carry the intermediate.
 
 ### Packaging, CI, and docs
 
@@ -898,6 +898,10 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
 - [x] iOS Icon Composer `.icon` static light/dark/tinted appearances, layer order,
       primary PNGs, icon metadata, and shared icon/image names
 - [ ] Icon Composer interactive glass lighting and native material effects *(optional)*
+- [ ] watchOS app icons: the stand-in compiles no watchOS `AppIcon`, so a
+      Linux-built watch app has no icon and App Store Connect would refuse
+      it. Needs goldens from Xcode's actool for the watchOS single-size set
+      and the Info.plist keys it writes
 - [ ] Icon Composer on other Apple platforms *(optional)*
 - [x] Data sets (`NSDataAsset`), each file as it is with its type: the one
       its entry names, else its extension's, or the `dyn.` type macOS makes
@@ -1039,13 +1043,31 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       (`sweetpad notarize`, `archive --notarize`): the file goes to S3
       under the submission's credentials, and the ticket is stapled from
       Apple's ticket service, byte for byte as `stapler staple` staples it
-      to an app and a package. The delivery fixture's Linux-built app, zip
-      and package are accepted and pass Gatekeeper as Notarized Developer ID
-- [ ] macOS archives are built for arm64 only, where Xcode builds
-      `ARCHS_STANDARD` (arm64 and x86_64); see E19
-- [ ] `SwiftSupport/` in App Store IPAs whose app embeds the Swift runtime
-      (deployment targets before iOS 12.2 and back-deployed concurrency):
-      Apple wants its own `libswift*.dylib` copies there
+      to an app, a package and a signed disk image. The delivery fixture's
+      Linux-built app, zip and package are accepted and pass Gatekeeper as
+      Notarized Developer ID; a Developer ID disk image stapled by sweetpad
+      is identical to `stapler`'s and passes `spctl` as Notarized Developer
+      ID. Files over 64 MiB go to S3 in parts; a 12 MB zip sent in 5 MiB
+      parts is accepted
+- [x] macOS archives are universal: Xcode's `ARCHS_STANDARD`, arm64 and
+      x86_64, and arm64_32 beside arm64 for a watch app. `lipo -segalign`
+      for `dsymutil`, `lipo`'s output permissions, and the string table
+      alignment `llvm-strip` breaks for x86_64 are fixed on the way; see E19
+- [x] Apple's content in archives and App Store IPAs: `SwiftSupport/<platform>`
+      with the toolchain's own copies of the Swift libraries the app embeds
+      (with Xcode 27, `libswiftCompatibilitySpan.dylib` for Span below OS
+      26), `WatchKitSupport2/WK` and the Messages stubs, each identical to
+      Xcode's archive. The delivery fixture's IPA with SwiftSupport and its
+      universal Mac App Store package, embedding the Span library, upload
+      from Linux and process as VALID, and so does an Xcode archive of the
+      fixture with a watch app and a sticker pack, exported on Linux
+- [x] The codesign stand-in matches Apple's per-platform rules: 4 KiB pages
+      for Intel, tvOS, and iOS before 16 or watchOS before 9; a SHA-1 code
+      directory beside the SHA-256 one for iOS and tvOS before 11 and
+      arm64_32 before watchOS 12, whose bundles seal each resource with its
+      SHA-1 too (ITMS-90034 otherwise, as for the Messages stub); and a bare
+      Mach-O's identifier from its embedded Info.plist (ITMS-90334
+      otherwise). Goldens in `fixtures/codesign` (`regen.py platforms`)
 
 Running in the simulator stays on a Mac.
 

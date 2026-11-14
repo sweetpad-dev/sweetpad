@@ -391,6 +391,9 @@ impl Invocation {
             overrides.extend(host.embedded_platform_overrides(&sdk, &destination.arch, toolset));
             overrides.extend(host.overrides(&sdk, &destination.arch, toolset));
         }
+        if host.is_some() && plan.action == BuildAction::Archive {
+            archive_architectures(&mut overrides);
+        }
         let archive_signs =
             host.is_some() && plan.action == BuildAction::Archive && DarwinSdk::is_signed(&sdk);
         if archive_signs {
@@ -416,6 +419,7 @@ impl Invocation {
 
         if plan.action == BuildAction::Archive {
             parameters["action"] = json!("install");
+            parameters["activeRunDestination"]["disableOnlyActiveArch"] = json!(true);
         }
 
         Ok(Self {
@@ -432,6 +436,7 @@ impl Invocation {
                         tools,
                         DarwinSdk::signs(&sdk) || archive_signs,
                         archive_signs,
+                        run_device(plan.destination, &sdk),
                     )
                 })
                 .unwrap_or_default(),
@@ -1279,7 +1284,7 @@ impl DarwinSdk {
     /// lets run and whose archives an export signs again.
     fn is_signed(sdk: &str) -> bool {
         let platform = sdk.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
-        ["iphoneos", "appletvos", "watchos", "xros", "macosx"].contains(&platform)
+        SIGNED_PLATFORMS.contains(&platform)
     }
 
     /// Whether the bundle has the `version.plist` of the platform `sdk` is
@@ -1303,8 +1308,15 @@ impl DarwinSdk {
     /// `xcstringstool` up on `PATH`, so the stand-ins in `tools` go first,
     /// then the bundle's. A signed build has Swift Build ask the
     /// provisioning stand-in for what Xcode would provision, which signs an
-    /// archive's target ad hoc on `fallback` when the identities can't.
-    fn env(&self, tools: &Path, signs: bool, fallback: bool) -> Vec<(String, Option<String>)> {
+    /// archive's target ad hoc on `fallback` when the identities can't, and
+    /// checks profiles against `device`, the device the build runs on.
+    fn env(
+        &self,
+        tools: &Path,
+        signs: bool,
+        fallback: bool,
+        device: Option<String>,
+    ) -> Vec<(String, Option<String>)> {
         let mut path = vec![tools.to_path_buf(), self.bundle.join("toolset/bin")];
         path.extend(
             std::env::var_os("PATH")
@@ -1342,16 +1354,51 @@ impl DarwinSdk {
                 super::codesign::provisioning::FALLBACK_VARIABLE.to_string(),
                 fallback.then(|| "ad-hoc".to_string()),
             ),
+            (
+                super::codesign::provisioning::DEVICE_VARIABLE.to_string(),
+                device,
+            ),
         ]
     }
 }
 
+/// The device a build for an iOS-family device runs on, as its destination
+/// names it, whose identifier a development or ad hoc profile must list.
+fn run_device(destination: Option<&str>, sdk: &str) -> Option<String> {
+    let spec = sweetpad_lib::destination::DestinationSpec::parse(destination?);
+    let device_sdk = ["iphoneos", "appletvos", "watchos", "xros"]
+        .iter()
+        .any(|platform| sdk.starts_with(platform));
+    spec.id.filter(|_| device_sdk && !spec.generic)
+}
+
+/// An archive is built for every architecture the project names, as Xcode
+/// builds one for a generic destination: `ARCHS_STANDARD` unless the
+/// project says otherwise, so a Mac app is universal and a watch app holds
+/// arm64_32 beside arm64. Other builds stay on the destination's one
+/// architecture.
+fn archive_architectures(overrides: &mut BTreeMap<String, String>) {
+    overrides.retain(|key, _| {
+        let name = key.split('[').next().unwrap_or(key);
+        name != "ARCHS" && name != "ONLY_ACTIVE_ARCH"
+    });
+    overrides.insert("ONLY_ACTIVE_ARCH".to_string(), "NO".to_string());
+}
+
+/// The platforms whose builds are signed: devices and the Mac.
+const SIGNED_PLATFORMS: [&str; 5] = ["iphoneos", "appletvos", "watchos", "xros", "macosx"];
+
 /// A device or Mac archive is always signed: ad hoc, with its
 /// entitlements, when the identities can't sign it, for its export to sign
-/// again. A device SDK refuses an ad hoc signature unless allowed.
+/// again. The stand-in signs the products of every platform the archive
+/// embeds, like a watch app in an iOS archive. A device SDK refuses an ad
+/// hoc signature unless allowed.
 fn sign_archive(overrides: &mut BTreeMap<String, String>) {
     overrides.remove("CODE_SIGNING_ALLOWED");
     overrides.insert("CODESIGN".to_string(), "codesign".to_string());
+    for platform in SIGNED_PLATFORMS {
+        overrides.insert(format!("CODESIGN[sdk={platform}*]"), "codesign".to_string());
+    }
     overrides.insert("AD_HOC_CODE_SIGNING_ALLOWED".to_string(), "YES".to_string());
 }
 
@@ -2059,6 +2106,30 @@ mod tests {
             assert_eq!(request["configuredTargets"], json!([{"guid":"DEMO-GUID"}]));
             assert_eq!(request["parameters"]["configurationName"], "Debug");
         }
+    }
+
+    #[test]
+    fn profiles_are_checked_against_the_device_a_build_runs_on() {
+        let udid = "00008110-001A2C3E0A12801E";
+        let on = |destination: &str, sdk: &str| run_device(Some(destination), sdk);
+        assert_eq!(
+            on(&format!("platform=iOS,id={udid}"), "iphoneos"),
+            Some(udid.to_string())
+        );
+        assert_eq!(
+            on(&format!("platform=watchOS,id={udid}"), "watchos26.0"),
+            Some(udid.to_string())
+        );
+        assert_eq!(
+            on(
+                &format!("platform=iOS Simulator,id={udid}"),
+                "iphonesimulator"
+            ),
+            None
+        );
+        assert_eq!(on("generic/platform=iOS", "iphoneos"), None);
+        assert_eq!(on(&format!("platform=macOS,id={udid}"), "macosx"), None);
+        assert_eq!(run_device(None, "iphoneos"), None);
     }
 
     #[test]

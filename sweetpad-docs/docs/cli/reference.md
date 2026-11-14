@@ -47,7 +47,7 @@ These commands sign in with an App Store Connect API key. See
 | `sweetpad notarize FILE` | Notarize an `.app`, `.zip`, `.pkg` or `.dmg` and staple the ticket. Needs a team key. |
 | `sweetpad notarize status ID` | Show where an earlier submission stands; `--wait` waits for the verdict. |
 | `sweetpad notarize log ID` | Show what Apple checked and the issues it found. |
-| `sweetpad notarize staple FILE` | Staple the ticket of an app or package Apple has accepted. |
+| `sweetpad notarize staple FILE` | Staple the ticket of an app, package or signed disk image Apple has accepted. |
 
 ### Linux setup
 

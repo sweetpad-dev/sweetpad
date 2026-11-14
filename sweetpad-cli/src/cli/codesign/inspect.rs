@@ -163,11 +163,37 @@ pub(super) fn cdhashes(executable: &Path) -> Result<Vec<(u8, Vec<u8>)>, String> 
         let signature = layout
             .signature(&slice.data)
             .ok_or_else(|| format!("{} isn't signed", executable.display()))?;
-        let hash = cdhash(signature)?;
-        let kind = best_directory(signature)?.get(37).copied().unwrap_or(0);
-        out.push((kind, hash));
+        out.push(ticket_hash(signature)?);
     }
     Ok(out)
+}
+
+/// The hash type and hash a signature's notarization ticket is filed
+/// under: its code directory's, as [`cdhash`] picks it.
+pub(super) fn ticket_hash(signature: &[u8]) -> Result<(u8, Vec<u8>), String> {
+    let directory = best_directory(signature)?;
+    Ok((
+        directory.get(37).copied().unwrap_or(0),
+        directory_hash(directory)?,
+    ))
+}
+
+/// Each blob of `signature`, with its slot, in index order.
+pub(super) fn signature_blobs(signature: &[u8]) -> Result<Vec<(u32, Vec<u8>)>, String> {
+    if word(signature, 0)? != blobs::EMBEDDED_SIGNATURE {
+        return Err("invalid signature blob".into());
+    }
+    (0..word(signature, 8)? as usize)
+        .map(|index| {
+            let slot = word(signature, 12 + 8 * index)?;
+            let at = word(signature, 16 + 8 * index)? as usize;
+            let len = word(signature, at + 4)? as usize;
+            let blob = signature
+                .get(at..at + len)
+                .ok_or("truncated signature slot")?;
+            Ok((slot, blob.to_vec()))
+        })
+        .collect()
 }
 
 /// The hash of the signature's code directory: of its SHA-256 one when it

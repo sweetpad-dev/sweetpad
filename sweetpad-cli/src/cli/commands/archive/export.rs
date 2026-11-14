@@ -114,11 +114,12 @@ pub(crate) fn export(
         .map_err(|e| CliError::new(format!("can't create {}: {e}", export_dir.display())))?;
     match mac_output {
         None => {
-            process::capture(
-                "zip",
-                &["-qryX", &file.display().to_string(), "Payload"],
-                Some(&stage),
-            )?;
+            let file = file.display().to_string();
+            let mut contents = vec!["-qryX", file.as_str(), "Payload"];
+            if method == Some(resign::Method::AppStoreConnect) {
+                contents.extend(apple_content(archive, &stage)?);
+            }
+            process::capture("zip", &contents, Some(&stage))?;
         }
         Some(MacOutput::App) => copy_tree(&staged, &file)?,
         Some(MacOutput::DeveloperId) => {
@@ -338,6 +339,113 @@ fn effective_options(
     Plist::Dict(entries)
 }
 
+/// The folders beside an archive's products that an App Store IPA carries,
+/// as Xcode's export copies them: the Swift runtime libraries the app
+/// embeds, as the toolchain has them, and the stub executables of a
+/// WatchKit app and of Messages apps and sticker packs. The archive build
+/// writes each into the folder its setting names.
+pub(crate) const APPLE_CONTENT: [(&str, &str); 4] = [
+    ("SWIFT_STDLIB_TOOL_UNSIGNED_DESTINATION_DIR", SWIFT_SUPPORT),
+    ("WATCHKIT_2_SUPPORT_FOLDER_PATH", WATCHKIT_SUPPORT),
+    (
+        "MESSAGES_APPLICATION_SUPPORT_FOLDER_PATH",
+        "MessagesApplicationSupport",
+    ),
+    (
+        "MESSAGES_APPLICATION_EXTENSION_SUPPORT_FOLDER_PATH",
+        "MessagesApplicationExtensionSupport",
+    ),
+];
+
+const SWIFT_SUPPORT: &str = "SwiftSupport";
+const WATCHKIT_SUPPORT: &str = "WatchKitSupport2";
+
+/// Copy the archive's [`APPLE_CONTENT`] into `stage`, beside the staged
+/// `Payload`, and name the folders the IPA gets. Every Swift runtime library
+/// the app embeds needs its original in `SwiftSupport`, or App Store Connect
+/// rejects the upload. A WatchKit app's stub falls back to the copy inside
+/// the watch app, for an archive made without the folder.
+fn apple_content(archive: &Path, stage: &Path) -> Result<Vec<&'static str>, CliError> {
+    let mut folders = Vec::new();
+    for (_, folder) in APPLE_CONTENT {
+        let source = archive.join(folder);
+        if source.is_dir() {
+            copy_tree(&source, &stage.join(folder))?;
+            folders.push(folder);
+        }
+    }
+    let payload = stage.join("Payload");
+    if !folders.contains(&WATCHKIT_SUPPORT)
+        && let Some(stub) = watchkit_stub(&payload)
+    {
+        copy_tree(&stub, &stage.join(WATCHKIT_SUPPORT).join("WK"))?;
+        folders.push(WATCHKIT_SUPPORT);
+    }
+    let missing: Vec<String> = embedded_swift_libraries(&payload)
+        .into_iter()
+        .filter(|(platform, name)| {
+            !stage
+                .join(SWIFT_SUPPORT)
+                .join(platform)
+                .join(name)
+                .is_file()
+        })
+        .map(|(platform, name)| format!("{platform}/{name}"))
+        .collect();
+    if !missing.is_empty() {
+        return Err(CliError::new(format!(
+            "the app embeds Swift runtime libraries the archive has no originals of in \
+             {SWIFT_SUPPORT}, which App Store Connect requires: {}; archive the app again",
+            missing.join(", ")
+        )));
+    }
+    Ok(folders)
+}
+
+/// The `_WatchKitStub/WK` of the first WatchKit app in `payload`.
+fn watchkit_stub(payload: &Path) -> Option<PathBuf> {
+    let apps = std::fs::read_dir(payload).ok()?.flatten();
+    apps.flat_map(|app| {
+        std::fs::read_dir(app.path().join("Watch"))
+            .into_iter()
+            .flatten()
+    })
+    .flatten()
+    .map(|watch| watch.path().join("_WatchKitStub/WK"))
+    .find(|stub| stub.is_file())
+}
+
+/// The Swift runtime libraries embedded anywhere in `payload`, as the
+/// platform of the bundle that holds them and the library's name.
+fn embedded_swift_libraries(payload: &Path) -> std::collections::BTreeSet<(String, String)> {
+    let mut found = std::collections::BTreeSet::new();
+    let mut pending = vec![(payload.to_path_buf(), String::new())];
+    while let Some((dir, platform)) = pending.pop() {
+        let platform = sweetpad_lib::derived_data::plist_strings(&dir.join("Info.plist"))
+            .into_iter()
+            .find(|(key, _)| key == "DTPlatformName")
+            .map_or(platform, |(_, value)| value);
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                pending.push((path, platform.clone()));
+            } else if name.starts_with("libswift")
+                && path
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("dylib"))
+                && dir.file_name().is_some_and(|parent| parent == "Frameworks")
+            {
+                found.insert((platform.clone(), name));
+            }
+        }
+    }
+    found
+}
+
 /// The one app an archive holds.
 pub(crate) fn archived_app(archive: &Path) -> Result<PathBuf, CliError> {
     let applications = archive.join("Products/Applications");
@@ -378,4 +486,79 @@ pub(crate) fn copy_tree(source: &Path, destination: &Path) -> Result<(), CliErro
         std::fs::copy(source, destination).map_err(failed)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write(path: &Path, bytes: &[u8]) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    }
+
+    /// A staged iOS app that embeds the Span runtime and a WatchKit app.
+    fn staged_app(stage: &Path) {
+        let app = stage.join("Payload/App.app");
+        write(
+            &app.join("Info.plist"),
+            b"<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict>\
+              <key>DTPlatformName</key><string>iphoneos</string></dict></plist>",
+        );
+        write(
+            &app.join("Frameworks/libswiftCompatibilitySpan.dylib"),
+            b"signed",
+        );
+        write(&app.join("Watch/Watch.app/_WatchKitStub/WK"), b"stub");
+    }
+
+    #[test]
+    fn an_app_store_ipa_carries_the_archives_apple_content() {
+        let dir = crate::cli::testdir::TempDir::new("export-apple-content");
+        let archive = dir.join("App.xcarchive");
+        let stage = dir.join("stage");
+        write(
+            &archive.join("SwiftSupport/iphoneos/libswiftCompatibilitySpan.dylib"),
+            b"original",
+        );
+        write(
+            &archive.join("MessagesApplicationExtensionSupport/MessagesApplicationExtensionStub"),
+            b"stub",
+        );
+        staged_app(&stage);
+        let folders = apple_content(&archive, &stage).unwrap();
+        assert_eq!(
+            folders,
+            [
+                "SwiftSupport",
+                "MessagesApplicationExtensionSupport",
+                "WatchKitSupport2"
+            ]
+        );
+        // The original, not the copy the app signed.
+        assert_eq!(
+            std::fs::read(stage.join("SwiftSupport/iphoneos/libswiftCompatibilitySpan.dylib"))
+                .unwrap(),
+            b"original"
+        );
+        // The watch app's stub stands in for an archive without the folder.
+        assert_eq!(
+            std::fs::read(stage.join("WatchKitSupport2/WK")).unwrap(),
+            b"stub"
+        );
+    }
+
+    #[test]
+    fn an_embedded_swift_library_without_its_original_is_refused() {
+        let dir = crate::cli::testdir::TempDir::new("export-missing-swift-support");
+        let archive = dir.join("App.xcarchive");
+        std::fs::create_dir_all(&archive).unwrap();
+        let stage = dir.join("stage");
+        staged_app(&stage);
+        let error = apple_content(&archive, &stage).unwrap_err().to_string();
+        assert!(
+            error.contains("iphoneos/libswiftCompatibilitySpan.dylib"),
+            "{error}"
+        );
+    }
 }

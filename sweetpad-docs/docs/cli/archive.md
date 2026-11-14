@@ -43,6 +43,10 @@ sweetpad archive --export-method app-store-connect
 
 A Developer ID export writes the `.pkg` only when a Developer ID Installer identity is available.
 
+The archive is built for every architecture Xcode builds for a generic destination, so a Mac app is
+universal, arm64 and x86_64. An App Store `.ipa` carries the `SwiftSupport` and `WatchKitSupport2`
+folders App Store Connect expects, with Apple's own copies of the Swift libraries the app embeds.
+
 A release archive is normally a Release build, and SweetPad uses whatever configuration your context
 resolves to, so say so explicitly rather than assuming:
 
@@ -168,6 +172,10 @@ its `.zip` and the stapled `.pkg`.
 ```bash
 sweetpad notarize ./dist/export/MyApp.pkg
 ```
+
+A disk image gets its ticket stapled only if it's signed with your Developer ID Application identity,
+so sign it before you notarize it. An unsigned one is still notarized but can't hold a ticket, and
+Gatekeeper then looks the app's ticket up online.
 
 :::info
 Notarization takes a team API key. An individual key can upload builds, but Apple's notary service

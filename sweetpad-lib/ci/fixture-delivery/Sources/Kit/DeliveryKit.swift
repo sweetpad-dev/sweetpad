@@ -24,4 +24,15 @@ public enum Delivery {
     public static var launches: Int {
         shared?.integer(forKey: "launches") ?? 0
     }
+
+    /// The launch counts as a `Span` describes them. Before iOS and macOS
+    /// 26 the `Span` type comes from the back-deployed
+    /// libswiftCompatibilitySpan.dylib, so the app embeds that library and
+    /// an App Store export carries its original in SwiftSupport.
+    public static func describe(_ counts: [Int]) -> String {
+        counts.withUnsafeBufferPointer { buffer in
+            let span = Span(_unsafeElements: buffer)
+            return "\(type(of: span)) of \(span.count)"
+        }
+    }
 }

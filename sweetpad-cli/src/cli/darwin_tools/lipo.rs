@@ -2,7 +2,8 @@
 //! join the slices of a multi-architecture build, and `-extract` to keep the
 //! architectures a test bundle builds for out of the XCTest runner it copies.
 //! `-thin`, `-remove`, `-info`, `-archs` and `-verify_arch` are here for the
-//! run scripts that use them.
+//! run scripts that use them, and `-segalign` for dsymutil, which joins the
+//! slices of a universal dSYM with it.
 //!
 //! A fat file is a big-endian header listing each slice's CPU type, offset,
 //! size and alignment, then the slices, each a whole Mach-O file (or static
@@ -86,6 +87,9 @@ struct Args {
     extract: Vec<String>,
     remove: Vec<String>,
     verify: Vec<String>,
+    /// `-segalign <arch> <hex>`: the alignment, as a power of two, of an
+    /// architecture's slice in the file `-create` writes.
+    segalign: Vec<(String, u32)>,
 }
 
 fn parse(command_line: &[String]) -> Result<Args, String> {
@@ -102,6 +106,17 @@ fn parse(command_line: &[String]) -> Result<Args, String> {
                 args.extract.push(super::value(arg, &mut it)?.clone());
             }
             "-remove" => args.remove.push(super::value(arg, &mut it)?.clone()),
+            "-segalign" => {
+                let arch = super::value(arg, &mut it)?.clone();
+                let value = super::value(arg, &mut it)?;
+                let alignment = u64::from_str_radix(value.trim_start_matches("0x"), 16)
+                    .ok()
+                    .filter(|n| n.is_power_of_two())
+                    .ok_or_else(|| {
+                        format!("segment alignment value {value} must be a power of 2 in hex")
+                    })?;
+                args.segalign.push((arch, alignment.trailing_zeros()));
+            }
             "-verify_arch" => {
                 args.verify.extend(it.by_ref().cloned());
             }
@@ -118,6 +133,7 @@ fn parse(command_line: &[String]) -> Result<Args, String> {
     Ok(args)
 }
 
+#[allow(clippy::too_many_lines)] // one branch per lipo operation, in lipo's order
 pub(super) fn main(command_line: &[String]) -> Result<(), String> {
     let args = parse(command_line)?;
     let files = args
@@ -133,6 +149,22 @@ pub(super) fn main(command_line: &[String]) -> Result<(), String> {
         args.output
             .as_deref()
             .ok_or_else(|| "no output file specified (use -output)".to_string())
+    };
+    // Apple's lipo gives what it writes the last input's permissions, so a
+    // universal executable stays executable.
+    let finish = |contents: &[u8]| -> Result<(), String> {
+        let path = output()?;
+        super::write(path, contents)?;
+        if let Some(permissions) = args
+            .inputs
+            .last()
+            .and_then(|input| std::fs::metadata(input).ok())
+            .map(|metadata| metadata.permissions())
+        {
+            std::fs::set_permissions(path, permissions)
+                .map_err(|e| format!("can't set the mode of {}: {e}", path.display()))?;
+        }
+        Ok(())
     };
     if args.info {
         for (path, (fat, slices)) in &inputs {
@@ -150,12 +182,12 @@ pub(super) fn main(command_line: &[String]) -> Result<(), String> {
     }
     let [(path, (fat, slices))] = &inputs[..] else {
         if args.create {
-            return super::write(output()?, &create(&inputs)?);
+            return finish(&create(&inputs, &args.segalign)?);
         }
         return Err("only one input file can be specified with this operation".to_string());
     };
     if args.create {
-        return super::write(output()?, &create(&inputs)?);
+        return finish(&create(&inputs, &args.segalign)?);
     }
     if args.archs {
         println!("{}", names(slices));
@@ -176,7 +208,7 @@ pub(super) fn main(command_line: &[String]) -> Result<(), String> {
     }
     if let Some(arch) = &args.thin {
         let slice = find(path, slices, arch)?;
-        return super::write(output()?, slice.data);
+        return finish(slice.data);
     }
     if !args.extract.is_empty() {
         let kept = args
@@ -186,9 +218,9 @@ pub(super) fn main(command_line: &[String]) -> Result<(), String> {
             .collect::<Result<Vec<_>, _>>()?;
         // A thin file of the one architecture asked for stays as it is.
         if !fat && kept.len() == 1 {
-            return super::write(output()?, kept[0].data);
+            return finish(kept[0].data);
         }
-        return super::write(output()?, &fat_file(&kept));
+        return finish(&fat_file(&kept));
     }
     if !args.remove.is_empty() {
         let removed = args
@@ -204,7 +236,7 @@ pub(super) fn main(command_line: &[String]) -> Result<(), String> {
         if kept.is_empty() {
             return Err("-remove's specified would result in an empty fat file".to_string());
         }
-        return super::write(output()?, &fat_file(&kept));
+        return finish(&fat_file(&kept));
     }
     Err(
         "one of -create, -thin, -extract, -remove, -info, -archs or -verify_arch must be specified"
@@ -226,8 +258,11 @@ fn find<'s, 'a>(path: &Path, slices: &'s [Slice<'a>], arch: &str) -> Result<&'s 
     })
 }
 
-/// The slices of every input in one fat file.
-fn create(inputs: &[(&Path, (bool, Vec<Slice>))]) -> Result<Vec<u8>, String> {
+/// The slices of every input in one fat file, aligned as `segalign` asks.
+fn create(
+    inputs: &[(&Path, (bool, Vec<Slice>))],
+    segalign: &[(String, u32)],
+) -> Result<Vec<u8>, String> {
     let mut all: Vec<(&Path, Slice)> = Vec::new();
     for (path, (_, slices)) in inputs {
         for slice in slices {
@@ -245,8 +280,17 @@ fn create(inputs: &[(&Path, (bool, Vec<Slice>))]) -> Result<Vec<u8>, String> {
             all.push((path, *slice));
         }
     }
-    let slices: Vec<Slice> = all.into_iter().map(|(_, s)| s).collect();
-    Ok(fat_file(&slices))
+    let mut slices: Vec<Slice> = all.into_iter().map(|(_, s)| s).collect();
+    // Apple's lipo orders the slices before it applies `-segalign`.
+    order(&mut slices);
+    for (arch, align) in segalign {
+        let wanted = arch_named(arch)?;
+        let slice = slices.iter_mut().find(|s| s.is(wanted)).ok_or_else(|| {
+            format!("-segalign {arch} specified but the fat file doesn't contain that architecture")
+        })?;
+        slice.align = *align;
+    }
+    Ok(layout(&slices))
 }
 
 /// A file's slices, and whether it's fat.
@@ -354,23 +398,42 @@ fn page_align(cputype: u32) -> u32 {
     if cputype & 0xff == 12 { 14 } else { 12 }
 }
 
-/// A fat file of `slices`, by alignment, the way Apple's lipo orders them,
-/// which puts arm64 after x86_64.
+/// A fat file of `slices`, in the order Apple's lipo puts them.
 fn fat_file(slices: &[Slice]) -> Vec<u8> {
     let mut slices = slices.to_vec();
-    slices.sort_by_key(|s| s.align);
-    let mut offsets = Vec::with_capacity(slices.len());
-    // Room for the wider of the two headers; the first slice is aligned
-    // past it either way.
-    let header_size = 8 + 32 * slices.len() as u64;
-    let mut end = header_size;
-    for slice in &slices {
-        let align = 1u64 << slice.align;
-        let offset = end.div_ceil(align) * align;
-        offsets.push(offset);
-        end = offset + slice.data.len() as u64;
-    }
+    order(&mut slices);
+    layout(&slices)
+}
+
+/// Apple's lipo order: by alignment, then by CPU type and subtype, which
+/// puts arm64 after x86_64 and before arm64_32 and arm64e.
+fn order(slices: &mut [Slice]) {
+    slices.sort_by_key(|s| (s.align, s.cputype, s.cpusubtype & SUBTYPE_MASK));
+}
+
+/// A fat file of `slices` in their order, each at an offset aligned to its
+/// alignment, after the 32-bit header unless the file needs the 64-bit one.
+fn layout(slices: &[Slice]) -> Vec<u8> {
+    let place = |entry_size: u64| {
+        let mut offsets = Vec::with_capacity(slices.len());
+        let mut end = 8 + entry_size * slices.len() as u64;
+        for slice in slices {
+            let align = 1u64 << slice.align;
+            let offset = end.div_ceil(align) * align;
+            offsets.push(offset);
+            end = offset + slice.data.len() as u64;
+        }
+        (offsets, end)
+    };
+    let (mut offsets, end) = place(20);
     let wide = end > u64::from(u32::MAX);
+    if wide {
+        offsets = place(32).0;
+    }
+    let end = offsets
+        .last()
+        .zip(slices.last())
+        .map_or(0, |(offset, slice)| offset + slice.data.len() as u64);
     let mut out = Vec::with_capacity(usize::try_from(end).unwrap_or_default());
     out.extend_from_slice(&(if wide { FAT_MAGIC_64 } else { FAT_MAGIC }).to_be_bytes());
     out.extend_from_slice(
@@ -444,7 +507,7 @@ mod tests {
         let arm = macho("arm64", 2);
         let a = slices(Path::new("a"), &arm).unwrap();
         let b = slices(Path::new("b"), &intel).unwrap();
-        let fat = create(&[(Path::new("a"), a), (Path::new("b"), b)]).unwrap();
+        let fat = create(&[(Path::new("a"), a), (Path::new("b"), b)], &[]).unwrap();
         let (is_fat, parsed) = slices(Path::new("fat"), &fat).unwrap();
         assert!(is_fat);
         assert_eq!(names(&parsed), "x86_64 arm64");
@@ -459,12 +522,64 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn the_output_takes_the_last_inputs_permissions() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = crate::cli::testdir::TempDir::new("lipo-permissions");
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        for (first, last) in [(0o644, 0o755), (0o755, 0o644)] {
+            let (a, b, out) = (dir.join("a"), dir.join("b"), dir.join("out"));
+            std::fs::write(&a, macho("arm64", 1)).unwrap();
+            std::fs::write(&b, macho("x86_64", 2)).unwrap();
+            std::fs::set_permissions(&a, std::fs::Permissions::from_mode(first)).unwrap();
+            std::fs::set_permissions(&b, std::fs::Permissions::from_mode(last)).unwrap();
+            let path = |p: &Path| p.display().to_string();
+            main(&[
+                "-create".into(),
+                path(&a),
+                path(&b),
+                "-output".into(),
+                path(&out),
+            ])
+            .unwrap();
+            assert_eq!(mode(&out), last);
+        }
+    }
+
+    #[test]
+    fn segalign_aligns_slices_after_they_are_ordered_as_apples_lipo_does() {
+        // dsymutil joins the slices of a universal dSYM this way; checked
+        // against Apple's lipo byte for byte.
+        let watch = macho("arm64", 1);
+        let watch32 = macho("arm64_32", 2);
+        let a = slices(Path::new("a"), &watch32).unwrap();
+        let b = slices(Path::new("b"), &watch).unwrap();
+        let segalign = parse(&[
+            "-segalign".into(),
+            "arm64_32".into(),
+            "20".into(),
+            "-segalign".into(),
+            "arm64".into(),
+            "0x20".into(),
+        ])
+        .unwrap()
+        .segalign;
+        let fat = create(&[(Path::new("a"), a), (Path::new("b"), b)], &segalign).unwrap();
+        let (_, parsed) = slices(Path::new("fat"), &fat).unwrap();
+        assert_eq!(names(&parsed), "arm64 arm64_32");
+        assert!(parsed.iter().all(|s| s.align == 5));
+        // Two 20-byte entries after the 8-byte header, aligned to 32.
+        assert_eq!(u32::from_be_bytes(fat[16..20].try_into().unwrap()), 64);
+        assert!(parse(&["-segalign".into(), "arm64".into(), "30".into()]).is_err());
+    }
+
     #[test]
     fn the_same_architecture_twice_is_refused() {
         let arm = macho("arm64", 0);
         let a = slices(Path::new("a"), &arm).unwrap();
         let b = slices(Path::new("b"), &arm).unwrap();
-        let err = create(&[(Path::new("a"), a), (Path::new("b"), b)]).unwrap_err();
+        let err = create(&[(Path::new("a"), a), (Path::new("b"), b)], &[]).unwrap_err();
         assert!(err.contains("same architectures (arm64)"), "{err}");
     }
 

@@ -5,17 +5,20 @@
 
 use std::time::SystemTime;
 
+use super::blobs::CodeHash;
 use super::crypto::{self, Hash, sha256};
 use super::der::{self, oids};
 use super::identity::Identity;
 use super::plist::{self, Plist};
 use super::time::utc_time;
 
-/// The CMS SignedData, in DER, signing `code_directory` as `identity` at
-/// `time`, stamped by the timestamp server at `timestamp`, if any.
+/// The CMS SignedData, in DER, signing `directories` as `identity` at
+/// `time`, stamped by the timestamp server at `timestamp`, if any. The
+/// message digest is the first directory's, the one in the code directory
+/// slot, and the CDHashes attributes list every directory's hash.
 pub(super) fn sign(
     identity: &Identity,
-    code_directory: &[u8],
+    directories: &[(CodeHash, Vec<u8>)],
     time: SystemTime,
     timestamp: Option<&str>,
 ) -> Result<Vec<u8>, String> {
@@ -23,26 +26,46 @@ pub(super) fn sign(
         .key
         .as_ref()
         .ok_or("the identity has no private key")?;
-    let cdhash = sha256(code_directory);
+    identity.require_chain()?;
+    let (_, primary) = directories.first().ok_or("no code directory to sign")?;
+    let digests: Vec<(CodeHash, Vec<u8>)> = directories
+        .iter()
+        .map(|(hash, directory)| (*hash, hash.digest(directory)))
+        .collect();
     let cdhashes = plist::to_xml(&Plist::Dict(vec![(
         "cdhashes".to_string(),
-        Plist::Array(vec![Plist::Data(cdhash[..20].to_vec())]),
+        Plist::Array(
+            digests
+                .iter()
+                .map(|(_, digest)| Plist::Data(digest[..20].to_vec()))
+                .collect(),
+        ),
     )]));
-    let attribute =
-        |oid: &[u8], value: Vec<u8>| der::sequence(&[&der::oid(oid), &der::set_of(vec![value])]);
+    let attribute_of =
+        |oid: &[u8], values: Vec<Vec<u8>>| der::sequence(&[&der::oid(oid), &der::set_of(values)]);
+    let attribute = |oid: &[u8], value: Vec<u8>| attribute_of(oid, vec![value]);
     let attributes = der::set_of(vec![
         attribute(oids::CONTENT_TYPE, der::oid(oids::DATA)),
         attribute(
             oids::SIGNING_TIME,
             der::tlv(der::UTC_TIME, utc_time(time).as_bytes()),
         ),
-        attribute(oids::MESSAGE_DIGEST, der::tlv(der::OCTET_STRING, &cdhash)),
         attribute(
+            oids::MESSAGE_DIGEST,
+            der::tlv(der::OCTET_STRING, &sha256(primary)),
+        ),
+        attribute_of(
             oids::APPLE_CDHASHES2,
-            der::sequence(&[
-                &der::oid(oids::SHA256),
-                &der::tlv(der::OCTET_STRING, &cdhash),
-            ]),
+            digests
+                .iter()
+                .map(|(hash, digest)| {
+                    let algorithm = match hash {
+                        CodeHash::Sha1 => oids::SHA1,
+                        CodeHash::Sha256 => oids::SHA256,
+                    };
+                    der::sequence(&[&der::oid(algorithm), &der::tlv(der::OCTET_STRING, digest)])
+                })
+                .collect(),
         ),
         attribute(
             oids::APPLE_CDHASHES,

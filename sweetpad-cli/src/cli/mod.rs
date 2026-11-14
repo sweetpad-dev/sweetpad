@@ -710,8 +710,8 @@ pub enum Resource {
         #[command(subcommand)]
         action: Option<commands::upload::Action>,
     },
-    /// Notarize a Developer ID app, zip or package with Apple and staple the
-    /// ticket, with a team API key.
+    /// Notarize a Developer ID app, zip, package or disk image with Apple and
+    /// staple the ticket, with a team API key.
     #[command(args_conflicts_with_subcommands = true)]
     Notarize {
         #[command(flatten)]

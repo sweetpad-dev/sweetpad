@@ -4628,11 +4628,34 @@ LLVM's Darwin libtool is recognized without treating its LLVM version as a cctoo
 identity or several; the passwords in `SWEETPAD_CODE_SIGN_P12_PASSWORD`,
 one for all or one per file), and the profile is picked as automatic
 signing picks it, from Xcode's folders or `SWEETPAD_PROVISIONING_PROFILES`.
+A build for a phone, TV, watch or Vision Pro passes the device's identifier
+to the provisioning tool, which takes only a development or ad hoc profile
+listing that device and otherwise gives Xcode's "doesn't include the
+currently selected device" error. An identity whose issuer neither its
+`.p12` nor sweetpad carries (sweetpad has WWDR G3 and Developer ID G1 and
+G2) signs nothing, since its signature couldn't name the chain up to
+Apple's root.
 The `codesign` stand-in's signature is Apple's byte for byte, apart from
-the CMS signing time. A simulator build keeps the linker's ad hoc
+the CMS signing time, including the rules that change with the platform:
+4 KiB code pages for Intel code, tvOS, and deployment targets before iOS 16
+or watchOS 9, 16 KiB otherwise; a SHA-1 code directory beside the SHA-256
+one for iOS and tvOS before 11 and 32-bit watch code before watchOS 12, in
+every slice of a universal file once one slice needs it, with the bundle's
+resource seal then listing each file's SHA-1 beside its SHA-256 (App Store
+Connect refuses the bundle otherwise, ITMS-90034); and the identifier
+of a bare Mach-O taken from the Info.plist in its `__TEXT,__info_plist`,
+which App Store Connect checks (ITMS-90334). `fixtures/codesign` holds
+Apple's signatures of each. A simulator build keeps the linker's ad hoc
 signature. A device or macOS build signs when there's an identity, and an
 archive always, ad hoc with its entitlements when the identities can't
 sign it. Developer ID signatures carry a timestamp from Apple's server.
+The `lipo` stand-in orders slices and aligns them as Apple's does, takes
+`-segalign`, which `dsymutil` passes for a universal binary, and keeps the
+last input's permissions. The `strip` stand-in moves each 64-bit string
+table back to an 8-byte boundary after `llvm-strip`, which leaves it 4 bytes
+off when the indirect symbol table has an odd number of entries; dyld
+refuses such an x86_64 image. A linker signature is redone over the moved
+table.
 
 **Apple's macros come from `sweetpad-macros`.** The Darwin SDK's plugin
 server has no `SwiftDataMacros`, has `#Preview` only for SwiftUI views, and
@@ -4675,6 +4698,12 @@ Localized language-model bundles cover the supported schemas. Unsupported catalo
 products. The CLI writes archive metadata and collects matching app, extension, and framework dSYMs.
 Export signs the archived app again for its method, as §9x describes; a development-signed
 `debugging` export keeps the build's profiles and signature. Simulator archives are refused.
+An archive is built for every architecture in `ARCHS_STANDARD`, as Xcode builds one for a generic
+destination, so a Mac app is universal and a watch app has arm64_32 beside arm64. Swift Build
+writes Apple's content into the archive beside `Products`, as Xcode's archive does: the
+unmodified Swift runtime libraries the app embeds in `SwiftSupport/<platform>/`, and the
+`WatchKitSupport2` and Messages stubs. An App Store IPA carries these folders, and an export
+refuses an app whose embedded Swift libraries have no originals in the archive.
 
 **Linux device operations use pymobiledevice3.** The pinned Python adapter supports
 trusted USB and direct Wi-Fi. Both transports pass discovery, install, launch, scoped logs,
@@ -4779,14 +4808,20 @@ signature, as `productbuild` writes it.
 zips an app, creates a submission with the file's SHA-256, PUTs the file to
 the S3 bucket the submission names with the temporary credentials it hands
 out (AWS SigV4, through S3's accelerate endpoint, then the region's), and
-polls until Apple decides. A rejection exits 1 with the issues from Apple's
+polls until Apple decides. A file over 64 MiB goes through S3's multipart
+upload in 64 MiB parts, read from disk one at a time, and an upload that
+fails partway is abandoned. A rejection exits 1 with the issues from Apple's
 log; `notarize log <id>` shows the whole log and `notarize status <id>`
 follows a submission. Once accepted, the ticket is looked up in Apple's
 ticket service (CloudKit, no key) under `2/2/<cdhash>` for an app's main
-executable or `2/1/<table of contents SHA-1>` for a package, and stapled as
-`stapler staple` staples it, byte for byte: an app's in
-`Contents/CodeResources`, a package's after the heap between two 16-byte
-`t8lr` records. `--no-wait` returns the submission ID, and `notarize staple
+executable or a disk image's signature, or `2/1/<table of contents SHA-1>`
+for a package, and stapled as `stapler staple` staples it, byte for byte:
+an app's in `Contents/CodeResources`, a package's after the heap between two
+16-byte `t8lr` records, and a disk image's in its signature, in slot
+0x10002, with the `koly` trailer giving the longer signature length. The
+disk image's code directory hashes the trailer with that length zeroed, so
+the signature stays valid. An unsigned disk image takes no ticket and gets a
+note saying so. `--no-wait` returns the submission ID, and `notarize staple
 <file>` staples once Apple accepts it. `archive --notarize` (implying
 `developer-id`) notarizes the exported app, staples it and zips it beside
 the app, then notarizes and staples the package.
@@ -4794,7 +4829,9 @@ the app, then notarizes and staples the package.
 **Tests never reach Apple.** The hidden `SWEETPAD_ASC_BASE_URL` points the
 client, the S3 upload and the ticket lookup at a stub;
 `tests/upload.rs` and `tests/notarize.rs` drive the commands against one.
-`SWEETPAD_ASC_POLL_SECS` shortens the polling. The package writer is
+`SWEETPAD_ASC_POLL_SECS` shortens the polling, and
+`SWEETPAD_NOTARY_PART_BYTES` shrinks the parts so a small file goes in
+several. The package writer is
 checked against a `productbuild` golden (`fixtures/pkg/regen.sh`), the
 stapling formats against `stapler`'s output, and the signing against
 Apple's `codesign` as §9w describes.

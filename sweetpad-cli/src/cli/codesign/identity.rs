@@ -224,6 +224,22 @@ impl Certificate {
         hex(&sha1(&self.der)).to_ascii_uppercase()
     }
 
+    /// The issuer as a person knows the authority: its common name, and its
+    /// organizational unit, like "G3", when it has one.
+    pub fn issuer_name(&self) -> String {
+        let field = |oid: &[u8]| {
+            Reader::new(&self.issuer)
+                .read()
+                .ok()
+                .and_then(|name| attribute(name, oid).ok().flatten())
+        };
+        match (field(oids::COMMON_NAME), field(oids::ORGANIZATIONAL_UNIT)) {
+            (Some(name), Some(unit)) => format!("{name} ({unit})"),
+            (Some(name), None) => name,
+            (None, _) => "an unnamed authority".to_string(),
+        }
+    }
+
     pub fn has_extension(&self, oid: &[u8]) -> bool {
         self.extensions.iter().any(|e| e == oid)
     }
@@ -368,6 +384,23 @@ impl Identity {
     /// when it's self-signed.
     pub fn root(&self) -> &Certificate {
         self.chain.last().unwrap_or(&self.certificate)
+    }
+
+    /// That the chain reaches a root, as a signature must carry it to be
+    /// trusted: it stops short when neither the `.p12` file nor sweetpad
+    /// carries an authority's certificate.
+    pub fn require_chain(&self) -> Result<(), String> {
+        let top = self.root();
+        if top.issuer == top.subject {
+            return Ok(());
+        }
+        Err(format!(
+            "'{}' is issued by {}, whose certificate neither its .p12 file nor sweetpad \
+             carries, so its signatures can't reach Apple's root: export the identity from \
+             Keychain Access together with that certificate, or add the certificate to the .p12",
+            self.certificate.common_name,
+            top.issuer_name()
+        ))
     }
 
     /// Whether `name`, a `CODE_SIGN_IDENTITY`, picks this identity: its

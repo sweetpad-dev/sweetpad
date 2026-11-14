@@ -3,6 +3,7 @@
 //! reach Apple. It answers each request with what the test's closure returns
 //! and keeps every request for the test to check.
 
+use std::fmt::Write as _;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
@@ -48,6 +49,20 @@ impl Stub {
     pub fn start(
         mut answer: impl FnMut(&Received, &str) -> (&'static str, String) + Send + 'static,
     ) -> Self {
+        Self::start_with_headers(move |request, base| {
+            let (status, body) = answer(request, base);
+            (status, Vec::new(), body)
+        })
+    }
+
+    /// Serve `answer(request, base)`, a status line, more headers and a
+    /// body.
+    #[allow(dead_code)]
+    pub fn start_with_headers(
+        mut answer: impl FnMut(&Received, &str) -> (&'static str, Vec<(String, String)>, String)
+        + Send
+        + 'static,
+    ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let received = Arc::new(Mutex::new(Vec::new()));
@@ -58,10 +73,16 @@ impl Stub {
                 let Ok(mut stream) = stream else { break };
                 let request = read_request(&mut stream);
                 log.lock().unwrap().push(request.clone());
-                let (status, body) = answer(&request, &url);
+                let (status, headers, body) = answer(&request, &url);
+                let headers = headers
+                    .iter()
+                    .fold(String::new(), |mut out, (name, value)| {
+                        let _ = write!(out, "{name}: {value}\r\n");
+                        out
+                    });
                 let _ = stream.write_all(
                     format!(
-                        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\n\
+                        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\n{headers}\
                          Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
                         body.len()
                     )
