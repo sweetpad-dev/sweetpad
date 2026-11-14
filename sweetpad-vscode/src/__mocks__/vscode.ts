@@ -76,6 +76,20 @@ export const DebugConfigurationProviderTriggerKind = {
   Dynamic: 2,
 };
 
+export const tests = {
+  createTestController: vi.fn(() => ({
+    createRunProfile: vi.fn(),
+    createTestRun: vi.fn(),
+    dispose: vi.fn(),
+  })),
+};
+
+export const TestRunProfileKind = {
+  Run: 1,
+  Debug: 2,
+  Coverage: 3,
+};
+
 // Modules under test reach for vscode both as `import * as vscode` and as a default import;
 // the real extension host module satisfies both.
 export default {
@@ -87,5 +101,7 @@ export default {
   debug,
   DebugAdapterExecutable,
   DebugConfigurationProviderTriggerKind,
+  tests,
+  TestRunProfileKind,
   Uri,
 };
