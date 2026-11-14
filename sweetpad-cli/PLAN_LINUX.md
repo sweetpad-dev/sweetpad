@@ -919,6 +919,11 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       image goes in the car as a plain image, the set's only rendition there,
       and the 29-point sizes stay out, as Xcode 27's actool does; App Store
       Connect refuses the extension otherwise (ITMS-90644)
+- [x] Loose catalog outputs an earlier build put in the product, like an
+      icon size the set no longer has, leave it on the next build.
+      `swift-build-linux.patch` has the asset catalog link step remove what
+      the previous compile's dependency info lists and this one doesn't
+      produce; Swift Build declares only `Assets.car`
 - [ ] Sticker sequences and localized sticker-pack strings *(optional)*
 - [ ] AR resources, texture sets, sprite atlases, watch complications,
       launch images *(optional)*

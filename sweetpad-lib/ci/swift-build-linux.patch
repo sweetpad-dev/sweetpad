@@ -105,6 +105,64 @@ index 3acf74a..f3da327 100644
          }
 
          // We don't ever fail if `lsregister` fails, instead we just emit a note.
+diff --git a/Sources/SWBTaskExecution/TaskActions/LinkAssetCatalogTaskAction.swift b/Sources/SWBTaskExecution/TaskActions/LinkAssetCatalogTaskAction.swift
+index 3a30eaa..8a664e5 100644
+--- a/Sources/SWBTaskExecution/TaskActions/LinkAssetCatalogTaskAction.swift
++++ b/Sources/SWBTaskExecution/TaskActions/LinkAssetCatalogTaskAction.swift
+@@ -139,7 +139,18 @@ public final class LinkAssetCatalogTaskAction: TaskAction {
+                 sourcePlist = thinnedPlist
+             }
+ 
+-            try executionDelegate.fs.copyHierarchy(sourceDirectory: sourceDirectory, alternateSourceDirectory: alternateSourceDirectory, destinationDirectory: outputDir, outputDelegate: outputDelegate)
++            // The compiler's loose outputs, like an app icon's PNGs, aren't declared to the build system, so nothing removes one from the product once the catalog stops producing it. The dependency info the previous link copied lists them.
++            var previousRelativePaths = Set<Path>()
++            if case let .dependencyInfo(path) = task.dependencyData, executionDelegate.fs.exists(path), let previous = try? DependencyInfo(bytes: executionDelegate.fs.read(path).bytes) {
++                for output in previous.outputs {
++                    let output = Path(output).normalize()
++                    if let subpath = [thinnedDir, unthinnedDir].lazy.compactMap({ output.relativeSubpath(from: $0.normalize()) }).first {
++                        previousRelativePaths.insert(Path(subpath))
++                    }
++                }
++            }
++
++            try executionDelegate.fs.copyHierarchy(sourceDirectory: sourceDirectory, alternateSourceDirectory: alternateSourceDirectory, previousRelativePaths: previousRelativePaths, destinationDirectory: outputDir, outputDelegate: outputDelegate)
+ 
+             switch task.dependencyData {
+             case let .dependencyInfo(path):
+@@ -173,14 +184,14 @@ extension TaskExecutionDelegate {
+ }
+ 
+ extension FSProxy {
+-    /// Copies a filesystem hierarchy to some destination path, using `alternateDirectory` to remove files in the destination.
++    /// Copies a filesystem hierarchy to some destination path, using `alternateDirectory` and `previousRelativePaths` to remove files in the destination.
+     ///
+     /// 1. Computes a list of relative paths representing the non-directory contents of `sourceDirectory`, "sources".
+     /// 2. Computes a list of relative paths representing the non-directory contents of `alternateSourceDirectory`, "alternates".
+-    /// 3. Computes the set of "alternates" minus "sources", "removals".
++    /// 3. Computes the set of "alternates" and `previousRelativePaths` minus "sources", "removals".
+     /// 4. Copies "sources" into `destinationDirectory`.
+-    /// 5. Deletes "removals" in `destinationDirectory`.
+-    func copyHierarchy(sourceDirectory: Path, alternateSourceDirectory: Path, destinationDirectory: Path, outputDelegate: any TaskOutputDelegate) throws {
++    /// 5. Deletes the "removals" that exist in `destinationDirectory`.
++    func copyHierarchy(sourceDirectory: Path, alternateSourceDirectory: Path, previousRelativePaths: Set<Path> = [], destinationDirectory: Path, outputDelegate: any TaskOutputDelegate) throws {
+         let sourceDirectoryRelativePaths = try relativeFilePaths(directory: sourceDirectory)
+         for subpath in sourceDirectoryRelativePaths {
+             let dst = destinationDirectory.join(subpath)
+@@ -192,10 +203,10 @@ extension FSProxy {
+             outputDelegate.emitNote("Emplaced \(dst.str)")
+         }
+ 
+-        if exists(alternateSourceDirectory) {
+-            let removableRelativePaths = try relativeFilePaths(directory: alternateSourceDirectory).subtracting(sourceDirectoryRelativePaths)
+-            for subpath in removableRelativePaths {
+-                let dst = destinationDirectory.join(subpath)
++        let alternateRelativePaths = exists(alternateSourceDirectory) ? try relativeFilePaths(directory: alternateSourceDirectory) : []
++        for subpath in alternateRelativePaths.union(previousRelativePaths).subtracting(sourceDirectoryRelativePaths) {
++            let dst = destinationDirectory.join(subpath)
++            if exists(dst) {
+                 try remove(dst)
+                 outputDelegate.emitNote("Removed \(dst.str)")
+             }
 diff --git a/Sources/SWBUtil/Architecture.swift b/Sources/SWBUtil/Architecture.swift
 index 8e4c88e..3b5eaa3 100644
 --- a/Sources/SWBUtil/Architecture.swift

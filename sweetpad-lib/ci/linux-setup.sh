@@ -222,6 +222,10 @@ fi
 # .strings can't be written as UTF-16; the patch names the encodings
 # Foundation converts on every platform and detects Unicode BOMs. LLVM
 # libtool version discovery avoids treating its version as a cctools version.
+# Its asset catalog link step leaves a loose file, like an icon PNG, in the
+# product once the catalog stops producing it, since only Assets.car is a
+# declared output; the patch also removes what the previous compile listed in
+# its dependency info.
 # Incompatible cached checkouts remain intact; the cache selection above uses
 # a separate directory for this revision. New files are marked intent-to-add, so `git diff` in the
 # checkout writes the whole patch back; `git apply --intent-to-add` would
