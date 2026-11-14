@@ -1664,6 +1664,65 @@ fn nested_code_is_sealed_by_its_cdhash_and_designated_requirement() {
     assert_eq!(unsigned, "code object is not signed at all");
 }
 
+/// Sign `app` ad hoc inside out, the app with only the sandbox entitlement,
+/// as an archive of an app with ENABLE_APP_SANDBOX is signed with no
+/// identity.
+fn archive_sandboxed(app: &Path, entitlements: PathBuf) {
+    let sandbox = Plist::Dict(vec![(
+        "com.apple.security.app-sandbox".to_string(),
+        Plist::Bool(true),
+    )]);
+    std::fs::write(&entitlements, plist::to_xml(&sandbox)).unwrap();
+    for (step, _) in MAC_STEPS {
+        let options = Options {
+            identity: "-".to_string(),
+            entitlements: step.is_empty().then(|| entitlements.clone()),
+            der_entitlements: true,
+            timestamp: Timestamp::None,
+            ..Options::default()
+        };
+        let signer = Signer {
+            options: &options,
+            identity: None,
+            time: SystemTime::now(),
+        };
+        let path = app.join(step);
+        if path.is_dir() {
+            signer.sign_bundle(&path).unwrap();
+        } else {
+            signer.sign_file(&path, None).unwrap();
+        }
+    }
+}
+
+#[test]
+fn a_mac_app_store_export_needs_the_app_sandbox() {
+    let dir = TempDir::new("resign-mac-unsandboxed");
+    let app = dir.join("Mac.app");
+    crate::cli::commands::archive::copy_tree(&fixtures().join("input/Mac.app"), &app).unwrap();
+    let path = app.join("Contents/Info.plist");
+    let mut value = plist::read_info(&std::fs::read(&path).unwrap()).unwrap();
+    plist::set(
+        &mut value,
+        "CFBundleIdentifier",
+        Plist::String("dev.sweetpad.kinds.mac".into()),
+    );
+    std::fs::write(&path, plist::to_xml(&value)).unwrap();
+    let request = resign::Request {
+        app: app.clone(),
+        method: resign::Method::AppStoreConnect,
+        team: Some("TESTTEAM01".into()),
+        manual: false,
+        signing_certificate: None,
+        profiles: Vec::new(),
+        icloud_environment: None,
+    };
+    let error = resign::plan_with(&request, &kind_set(), &kind_profiles())
+        .err()
+        .unwrap();
+    assert!(error.contains("ENABLE_APP_SANDBOX = YES"), "{error}");
+}
+
 #[test]
 fn a_macos_export_signs_inside_out_with_the_mac_app_store_profile() {
     let dir = TempDir::new("resign-mac-app-store");
@@ -1681,6 +1740,7 @@ fn a_macos_export_signs_inside_out_with_the_mac_app_store_profile() {
         plist::set(&mut value, "CFBundleIdentifier", Plist::String(id.into()));
         std::fs::write(&path, plist::to_xml(&value)).unwrap();
     }
+    archive_sandboxed(&app, dir.join("sandbox.xcent"));
     let set = kind_set();
     let request = resign::Request {
         app: app.clone(),

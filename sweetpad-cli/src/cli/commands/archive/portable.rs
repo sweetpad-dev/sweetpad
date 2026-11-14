@@ -34,13 +34,6 @@ pub(super) fn run(
                 .kind(ErrorKind::Usage),
         );
     }
-    if exporting.is_some() && parsed.platform == "macosx" {
-        return Err(CliError::new(
-            "exporting a macOS archive isn't supported by sweetpad's own signing yet; use \
-             '--no-export' to archive a macOS app",
-        )
-        .kind(ErrorKind::Usage));
-    }
     let archive = out_dir.join(format!("{scheme}.xcarchive"));
     let mut settings = ctx.xcodebuild_args(xcodebuild::Action::Archive, &args.passthrough)?;
     settings.extend([
@@ -64,18 +57,21 @@ pub(super) fn run(
     if args.show_command {
         return Ok(Rendered::data(ArchivePreview {
             archive: Some(swbuild::command(&plan)?),
-            export: (!args.no_export).then(|| xcodebuild::CommandPreview {
-                program: "zip",
-                args: vec![
-                    "-yr".into(),
-                    out_dir
-                        .join("export")
-                        .join(format!("{scheme}.ipa"))
-                        .display()
-                        .to_string(),
-                    "Payload".into(),
-                ],
-                cwd: None,
+            // A macOS export is signed and packaged in-process: no command.
+            export: (!args.no_export && parsed.platform != "macosx").then(|| {
+                xcodebuild::CommandPreview {
+                    program: "zip",
+                    args: vec![
+                        "-yr".into(),
+                        out_dir
+                            .join("export")
+                            .join(format!("{scheme}.ipa"))
+                            .display()
+                            .to_string(),
+                        "Payload".into(),
+                    ],
+                    cwd: None,
+                }
             }),
             generated_plist: None,
             export_method: exporting
@@ -155,9 +151,10 @@ pub(super) fn export_existing(
 ) -> CommandResult {
     let settings = export::settings(&args.export)?;
     if args.show_command {
+        let mac = archived_app(archive).is_ok_and(|app| app.join("Contents").is_dir());
         return Ok(Rendered::data(ArchivePreview {
             archive: None,
-            export: Some(xcodebuild::CommandPreview {
+            export: (!mac).then(|| xcodebuild::CommandPreview {
                 program: "zip",
                 args: vec![
                     "-qryX".into(),

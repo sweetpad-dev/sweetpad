@@ -1020,6 +1020,14 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       delivery fixture's App Store archive matches Xcode's entitlements,
       files and seals; packaged with `productbuild` it uploads from Linux
       and processes as VALID
+- [x] Mac App Store packages on Linux: a macOS archive's
+      `app-store-connect` export signs the app again with Apple
+      Distribution and the Mac App Store profiles, refuses an app without
+      the App Sandbox, and writes the installer package `productbuild
+      --component … --sign` writes, signed with the Mac Installer
+      Distribution identity. Its bill of materials, payload, PackageInfo
+      and Distribution match `productbuild`'s for the fixture app.
+      `debugging` and `mac-application` exports write the `.app`
 - [ ] macOS archives are built for arm64 only, where Xcode builds
       `ARCHS_STANDARD` (arm64 and x86_64); see E19
 - [ ] `SwiftSupport/` in App Store IPAs whose app embeds the Swift runtime

@@ -26,7 +26,7 @@ fn civil(time: SystemTime) -> (i64, i64, i64, u64, u64, u64) {
 
 /// `time` as a property list writes a date, `YYYY-MM-DDThh:mm:ssZ`, which
 /// sorts as the time does.
-pub(super) fn iso8601(time: SystemTime) -> String {
+pub(crate) fn iso8601(time: SystemTime) -> String {
     let (year, month, day, hour, minute, second) = civil(time);
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
 }

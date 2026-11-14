@@ -197,6 +197,25 @@ pub(super) fn plan_with(
             bundle,
         });
     }
+    if mac && request.method == Method::AppStoreConnect {
+        let sandboxed = steps
+            .last()
+            .and_then(|step| step.provisioned.as_ref())
+            .is_some_and(|(_, entitlements)| {
+                matches!(
+                    plist::get(entitlements, "com.apple.security.app-sandbox"),
+                    Some(Plist::Bool(true))
+                )
+            });
+        if !sandboxed {
+            return Err(
+                "the Mac App Store takes only sandboxed apps, and the app's entitlements don't \
+                 turn on com.apple.security.app-sandbox: set ENABLE_APP_SANDBOX = YES and \
+                 archive again"
+                    .to_string(),
+            );
+        }
+    }
     Ok(Plan {
         identity: identity.certificate.common_name.clone(),
         sha1: identity.certificate.sha1_hex(),

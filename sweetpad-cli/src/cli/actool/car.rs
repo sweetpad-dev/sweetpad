@@ -24,6 +24,7 @@
 //! Xcode compresses images with formats of its own, packs small ones into an
 //! atlas and draws bitmaps of symbols too; CoreUI does without all three.
 
+use crate::cli::bom::Bom;
 use std::collections::BTreeSet;
 use std::io::Write as _;
 
@@ -1052,24 +1053,8 @@ enum Keys {
     Inline,
 }
 
-/// A BOM store being put together: blocks, and variables that name them.
-#[derive(Default)]
-struct Bom {
-    /// Every block but the null block 0.
-    blocks: Vec<Vec<u8>>,
-    variables: Vec<(&'static str, u32)>,
-}
-
+/// CoreUI's trees in a BOM store.
 impl Bom {
-    fn add(&mut self, data: Vec<u8>) -> u32 {
-        self.blocks.push(data);
-        count(self.blocks.len())
-    }
-
-    fn variable(&mut self, name: &'static str, index: u32) {
-        self.variables.push((name, index));
-    }
-
     /// A B+tree of `entries`, sorted by key bytes, which is how CoreUI looks
     /// them up. Leaves hold up to [`LEAF_CAPACITY`] entries and link to their
     /// neighbors; past one leaf, a root branch points at each, separated by
@@ -1131,7 +1116,7 @@ impl Bom {
                 .collect();
             leaves.push(pairs);
         }
-        let first = count(self.blocks.len()) + 1;
+        let first = self.next();
         let leaf_blocks: Vec<u32> = (0..leaves.len()).map(|i| first + count(i)).collect();
         for (i, (pairs, chunk)) in leaves.iter().zip(&chunks).enumerate() {
             let fwd = leaf_blocks.get(i + 1).copied().unwrap_or(0);
@@ -1168,51 +1153,6 @@ impl Bom {
         header.extend_from_slice(&0u32.to_be_bytes());
         let index = self.add(header);
         self.variable(name, index);
-    }
-
-    /// The store: a 512-byte header area, the blocks 16-byte aligned, the
-    /// variables, then the block index with two empty free-list entries.
-    fn finish(self) -> Vec<u8> {
-        let align = |out: &mut Vec<u8>| out.resize(out.len().next_multiple_of(16), 0);
-        let mut out = vec![0u8; 512];
-        let mut addresses = vec![(0u32, 0u32)];
-        for block in &self.blocks {
-            align(&mut out);
-            addresses.push((count(out.len()), count(block.len())));
-            out.extend_from_slice(block);
-        }
-        align(&mut out);
-        let variables_offset = count(out.len());
-        let mut variables = count(self.variables.len()).to_be_bytes().to_vec();
-        for (name, index) in &self.variables {
-            variables.extend_from_slice(&index.to_be_bytes());
-            variables.push(u8::try_from(name.len()).unwrap_or(u8::MAX));
-            variables.extend_from_slice(name.as_bytes());
-        }
-        out.extend_from_slice(&variables);
-        align(&mut out);
-        let index_offset = count(out.len());
-        let mut index = count(addresses.len()).to_be_bytes().to_vec();
-        for (address, length) in &addresses {
-            index.extend_from_slice(&address.to_be_bytes());
-            index.extend_from_slice(&length.to_be_bytes());
-        }
-        index.extend_from_slice(&2u32.to_be_bytes());
-        index.extend_from_slice(&[0; 16]);
-        out.extend_from_slice(&index);
-        let mut header = b"BOMStore".to_vec();
-        for value in [
-            1,
-            count(self.blocks.len()),
-            index_offset,
-            count(index.len()),
-            variables_offset,
-            count(variables.len()),
-        ] {
-            header.extend_from_slice(&value.to_be_bytes());
-        }
-        out[..header.len()].copy_from_slice(&header);
-        out
     }
 }
 

@@ -36,58 +36,117 @@ impl Hash {
 const BLOCK: usize = 64;
 
 #[must_use]
+pub(crate) fn sha1(input: &[u8]) -> [u8; 20] {
+    let mut hasher = Sha1::default();
+    hasher.update(input);
+    hasher.finish()
+}
+
+/// SHA-1 over input that arrives in pieces, as a package's payload does.
+pub(crate) struct Sha1 {
+    state: [u32; 5],
+    pending: Vec<u8>,
+    length: u64,
+}
+
+impl Default for Sha1 {
+    fn default() -> Self {
+        Self {
+            state: [
+                0x6745_2301,
+                0xefcd_ab89,
+                0x98ba_dcfe,
+                0x1032_5476,
+                0xc3d2_e1f0,
+            ],
+            pending: Vec::with_capacity(BLOCK),
+            length: 0,
+        }
+    }
+}
+
+impl Sha1 {
+    pub(crate) fn update(&mut self, mut input: &[u8]) {
+        self.length += input.len() as u64;
+        if !self.pending.is_empty() {
+            let take = (BLOCK - self.pending.len()).min(input.len());
+            self.pending.extend_from_slice(&input[..take]);
+            input = &input[take..];
+            if self.pending.len() < BLOCK {
+                return;
+            }
+            let block = std::mem::take(&mut self.pending);
+            compress(&mut self.state, &block);
+        }
+        let mut blocks = input.chunks_exact(BLOCK);
+        for block in &mut blocks {
+            compress(&mut self.state, block);
+        }
+        self.pending.extend_from_slice(blocks.remainder());
+    }
+
+    pub(crate) fn finish(mut self) -> [u8; 20] {
+        let bits = self.length * 8;
+        let mut tail = std::mem::take(&mut self.pending);
+        tail.push(0x80);
+        while tail.len() % BLOCK != 56 {
+            tail.push(0);
+        }
+        tail.extend_from_slice(&bits.to_be_bytes());
+        for block in tail.chunks_exact(BLOCK) {
+            compress(&mut self.state, block);
+        }
+        let mut out = [0u8; 20];
+        for (bytes, word) in out.chunks_exact_mut(4).zip(self.state) {
+            bytes.copy_from_slice(&word.to_be_bytes());
+        }
+        out
+    }
+}
+
+impl std::io::Write for Sha1 {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.update(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 #[allow(clippy::many_single_char_names)]
-pub(super) fn sha1(input: &[u8]) -> [u8; 20] {
-    let mut h: [u32; 5] = [
-        0x6745_2301,
-        0xefcd_ab89,
-        0x98ba_dcfe,
-        0x1032_5476,
-        0xc3d2_e1f0,
-    ];
-    let mut message = input.to_vec();
-    message.push(0x80);
-    while message.len() % BLOCK != 56 {
-        message.push(0);
+fn compress(h: &mut [u32; 5], chunk: &[u8]) {
+    let mut w = [0u32; 80];
+    for (i, word) in chunk.chunks_exact(4).enumerate() {
+        w[i] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
     }
-    message.extend_from_slice(&((input.len() as u64) * 8).to_be_bytes());
-    for chunk in message.chunks_exact(BLOCK) {
-        let mut w = [0u32; 80];
-        for (i, word) in chunk.chunks_exact(4).enumerate() {
-            w[i] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
-        }
-        for i in 16..80 {
-            w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);
-        }
-        let [mut a, mut b, mut c, mut d, mut e] = h;
-        for (i, word) in w.iter().enumerate() {
-            let (f, k) = match i {
-                0..20 => ((b & c) | (!b & d), 0x5a82_7999),
-                20..40 => (b ^ c ^ d, 0x6ed9_eba1),
-                40..60 => ((b & c) | (b & d) | (c & d), 0x8f1b_bcdc),
-                _ => (b ^ c ^ d, 0xca62_c1d6),
-            };
-            let t = a
-                .rotate_left(5)
-                .wrapping_add(f)
-                .wrapping_add(e)
-                .wrapping_add(k)
-                .wrapping_add(*word);
-            e = d;
-            d = c;
-            c = b.rotate_left(30);
-            b = a;
-            a = t;
-        }
-        for (state, value) in h.iter_mut().zip([a, b, c, d, e]) {
-            *state = state.wrapping_add(value);
-        }
+    for i in 16..80 {
+        w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);
     }
-    let mut out = [0u8; 20];
-    for (bytes, word) in out.chunks_exact_mut(4).zip(h) {
-        bytes.copy_from_slice(&word.to_be_bytes());
+    let [mut a, mut b, mut c, mut d, mut e] = *h;
+    for (i, word) in w.iter().enumerate() {
+        let (f, k) = match i {
+            0..20 => ((b & c) | (!b & d), 0x5a82_7999),
+            20..40 => (b ^ c ^ d, 0x6ed9_eba1),
+            40..60 => ((b & c) | (b & d) | (c & d), 0x8f1b_bcdc),
+            _ => (b ^ c ^ d, 0xca62_c1d6),
+        };
+        let t = a
+            .rotate_left(5)
+            .wrapping_add(f)
+            .wrapping_add(e)
+            .wrapping_add(k)
+            .wrapping_add(*word);
+        e = d;
+        d = c;
+        c = b.rotate_left(30);
+        b = a;
+        a = t;
     }
-    out
+    for (state, value) in h.iter_mut().zip([a, b, c, d, e]) {
+        *state = state.wrapping_add(value);
+    }
 }
 
 pub(super) fn hmac(hash: Hash, key: &[u8], message: &[u8]) -> Vec<u8> {
@@ -254,7 +313,7 @@ pub(super) fn decrypt_cbc(
 }
 
 /// `bytes` in lowercase hex.
-pub(super) fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
     bytes.iter().fold(String::new(), |mut out, b| {
         let _ = write!(out, "{b:02x}");
@@ -263,6 +322,20 @@ pub(super) fn hex(bytes: &[u8]) -> String {
 }
 
 /// An RSA PKCS #1 v1.5 signature of the SHA-256 `digest`.
+/// A PKCS #1 v1.5 signature over a SHA-1 `digest`, as installer packages
+/// are signed.
+pub(super) fn sign_sha1(key: &RsaPrivateKey, digest: &[u8; 20]) -> Result<Vec<u8>, String> {
+    // The DigestInfo prefix for SHA-1 (RFC 8017, section 9.2).
+    const PREFIX: [u8; 15] = [
+        0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14,
+    ];
+    key.sign(
+        Pkcs1v15Sign::new_unprefixed(),
+        &[&PREFIX[..], digest].concat(),
+    )
+    .map_err(|e| format!("couldn't sign: {e}"))
+}
+
 pub(super) fn sign_sha256(key: &RsaPrivateKey, digest: &[u8; 32]) -> Result<Vec<u8>, String> {
     // The DigestInfo prefix for SHA-256 (RFC 8017, section 9.2).
     const PREFIX: [u8; 19] = [
@@ -289,6 +362,16 @@ mod tests {
         );
         let long = b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
         assert_eq!(hex(&sha1(long)), "84983e441c3bd26ebaae4aa1f95129e5e54670f1");
+        // Fed in uneven pieces, across block boundaries.
+        let data: Vec<u8> = (0..1000u32).map(|i| (i * 7).to_le_bytes()[0]).collect();
+        let mut pieces = Sha1::default();
+        for piece in data.chunks(37) {
+            pieces.update(piece);
+        }
+        assert_eq!(
+            hex(&pieces.finish()),
+            "38f3aa587f4aa04965a359f9151092759b3a4c2a"
+        );
     }
 
     #[test]

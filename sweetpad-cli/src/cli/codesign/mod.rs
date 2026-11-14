@@ -23,9 +23,11 @@ mod blobs;
 mod bundle;
 mod cms;
 mod crypto;
+pub(crate) use crypto::{Sha1, hex, sha1};
 mod der;
 mod identity;
 mod inspect;
+pub(crate) mod installer;
 mod macho;
 mod pkcs12;
 use crate::cli::property_list as plist;
@@ -34,7 +36,7 @@ pub(crate) mod resign;
 mod resources;
 #[cfg(test)]
 mod tests;
-mod time;
+pub(crate) mod time;
 mod timestamp;
 
 use std::path::{Path, PathBuf};

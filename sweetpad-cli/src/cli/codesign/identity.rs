@@ -287,6 +287,7 @@ fn attribute(name: Tlv<'_>, oid: &[u8]) -> Result<Option<String>, String> {
 }
 
 /// A certificate, the chain above it and, to sign with, its private key.
+#[derive(Clone)]
 pub(super) struct Identity {
     pub certificate: Certificate,
     /// The certificates above it, up to the root, which a signature
