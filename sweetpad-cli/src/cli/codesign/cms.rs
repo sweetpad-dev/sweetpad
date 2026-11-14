@@ -8,6 +8,7 @@ use super::crypto::{self, sha256};
 use super::der::{self, oids};
 use super::identity::Identity;
 use super::plist::{self, Plist};
+use super::time::utc_time;
 
 /// The CMS SignedData, in DER, signing `code_directory` as `identity` at
 /// `time`.
@@ -84,44 +85,5 @@ fn der_header_length(element: &[u8]) -> usize {
     match element.get(1) {
         Some(n) if *n >= 0x80 => 2 + usize::from(n & 0x7f),
         _ => 2,
-    }
-}
-
-/// `time` as an ASN.1 UTCTime: `YYMMDDhhmmssZ`.
-fn utc_time(time: SystemTime) -> String {
-    let seconds = time
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    let days = i64::try_from(seconds / 86_400).unwrap_or(0);
-    let rest = seconds % 86_400;
-    // Howard Hinnant's days-to-civil conversion.
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    format!(
-        "{:02}{month:02}{day:02}{:02}{:02}{:02}Z",
-        year % 100,
-        rest / 3600,
-        rest % 3600 / 60,
-        rest % 60
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::Duration;
-
-    #[test]
-    fn utc_time_from_unix_time() {
-        let time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_793_735_619);
-        assert_eq!(utc_time(time), "261103195339Z");
-        assert_eq!(utc_time(SystemTime::UNIX_EPOCH), "700101000000Z");
     }
 }

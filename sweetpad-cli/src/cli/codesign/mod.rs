@@ -28,6 +28,7 @@ mod pkcs12;
 use crate::cli::property_list as plist;
 pub mod provisioning;
 mod resources;
+mod time;
 #[cfg(test)]
 mod tests;
 
@@ -36,7 +37,7 @@ use std::process::ExitCode;
 use std::time::SystemTime;
 
 use blobs::Directory;
-use identity::Identity;
+use identity::{Identity, IdentitySet};
 use plist::Plist;
 
 /// Whether the environment names an identity to sign with.
@@ -199,10 +200,10 @@ fn run(args: &[String]) -> Result<(), String> {
     if options.display {
         return inspect::display(&path);
     }
-    let identity = if options.identity == "-" {
+    let set = if options.identity == "-" {
         None
     } else {
-        let identity = Identity::from_environment(true)?.ok_or_else(|| {
+        Some(IdentitySet::from_environment(true)?.ok_or_else(|| {
             format!(
                 "no signing identity: point {} at a .p12 file holding '{}' and its key, its \
                  password in {}",
@@ -210,21 +211,15 @@ fn run(args: &[String]) -> Result<(), String> {
                 options.identity,
                 identity::PASSWORD_VARIABLE
             )
-        })?;
-        if !identity.matches(&options.identity) {
-            return Err(format!(
-                "the identity in {} is '{}' ({}), not '{}'",
-                identity::P12_VARIABLE,
-                identity.certificate.common_name,
-                identity.certificate.sha1_hex(),
-                options.identity
-            ));
-        }
-        Some(identity)
+        })?)
     };
+    let identity = set
+        .as_ref()
+        .map(|set| set.by_name(&options.identity))
+        .transpose()?;
     let signer = Signer {
         options: &options,
-        identity: identity.as_ref(),
+        identity,
         time: SystemTime::now(),
     };
     if path.is_dir() {

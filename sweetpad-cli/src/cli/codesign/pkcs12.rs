@@ -1,7 +1,7 @@
 //! Reading a `.p12` file (PKCS #12, RFC 7292): its certificates and its
 //! private key. Keychain Access exports encrypt both with Triple DES under
-//! PKCS #12's own key derivation; OpenSSL 3 uses PBES2 with AES. The 40-bit
-//! RC2 that older OpenSSL used for certificates isn't read.
+//! PKCS #12's own key derivation; OpenSSL 3 uses PBES2 with AES; `security
+//! export` and older OpenSSL encrypt the certificates with 40-bit RC2.
 
 use super::crypto::{self, Cipher, Hash, Purpose};
 use super::der::{self, Reader, Tlv, oids};
@@ -10,8 +10,9 @@ use super::der::{self, Reader, Tlv, oids};
 pub(super) struct Contents {
     /// Each certificate, in DER.
     pub certificates: Vec<Vec<u8>>,
-    /// The private key, as a PKCS #8 PrivateKeyInfo in DER.
-    pub key: Vec<u8>,
+    /// Each private key, as a PKCS #8 PrivateKeyInfo in DER. Keychain Access
+    /// exports every identity selected into one file.
+    pub keys: Vec<Vec<u8>>,
 }
 
 pub(super) fn parse(data: &[u8], password: &str) -> Result<Contents, String> {
@@ -26,7 +27,7 @@ pub(super) fn parse(data: &[u8], password: &str) -> Result<Contents, String> {
     }
     let mut contents = Contents {
         certificates: Vec::new(),
-        key: Vec::new(),
+        keys: Vec::new(),
     };
     for info in Reader::new(&auth_safe)
         .read()?
@@ -54,7 +55,7 @@ pub(super) fn parse(data: &[u8], password: &str) -> Result<Contents, String> {
             read_bag(bag?, password, &mut contents)?;
         }
     }
-    if contents.key.is_empty() {
+    if contents.keys.is_empty() {
         return Err("the file holds no private key".to_string());
     }
     if contents.certificates.is_empty() {
@@ -88,12 +89,12 @@ fn read_bag(bag: Tlv<'_>, password: &str, contents: &mut Contents) -> Result<(),
             contents.certificates.push(certificate);
         }
     } else if kind == oids::KEY_BAG {
-        contents.key = value.as_der();
+        contents.keys.push(value.as_der());
     } else if kind == oids::SHROUDED_KEY_BAG {
         let mut fields = value.children();
         let algorithm = fields.read()?;
         let encrypted = fields.read()?.octets()?;
-        contents.key = decrypt(algorithm, &encrypted, password)?;
+        contents.keys.push(decrypt(algorithm, &encrypted, password)?);
     }
     Ok(())
 }
@@ -144,14 +145,21 @@ fn decrypt(algorithm: Tlv<'_>, data: &[u8], password: &str) -> Result<Vec<u8>, S
     let kind = fields.read()?.expect(der::OID)?.content;
     let parameters = fields.read()?;
     let failed = |e: String| format!("couldn't decrypt the .p12 file: {e}");
-    if kind == oids::PBE_SHA1_3DES {
+    let pkcs12_cipher = if kind == oids::PBE_SHA1_3DES {
+        Some((Cipher::TripleDes, 24))
+    } else if kind == oids::PBE_SHA1_RC2_40 {
+        Some((Cipher::Rc2, 5))
+    } else {
+        None
+    };
+    if let Some((cipher, size)) = pkcs12_cipher {
         let mut fields = parameters.children();
         let salt = fields.read()?.octets()?;
         let iterations = fields.read()?.uint()?;
         let password = bmp(password);
-        let key = crypto::pkcs12_kdf(Hash::Sha1, &password, &salt, Purpose::Key, iterations, 24);
+        let key = crypto::pkcs12_kdf(Hash::Sha1, &password, &salt, Purpose::Key, iterations, size);
         let iv = crypto::pkcs12_kdf(Hash::Sha1, &password, &salt, Purpose::Iv, iterations, 8);
-        return crypto::decrypt_cbc(Cipher::TripleDes, &key, &iv, data).map_err(failed);
+        return crypto::decrypt_cbc(cipher, &key, &iv, data).map_err(failed);
     }
     if kind == oids::PBES2 {
         let mut fields = parameters.children();
@@ -185,13 +193,6 @@ fn decrypt(algorithm: Tlv<'_>, data: &[u8], password: &str) -> Result<Vec<u8>, S
         };
         let key = crypto::pbkdf2(hash, password.as_bytes(), &salt, iterations, size);
         return crypto::decrypt_cbc(Cipher::Aes, &key, &iv, data).map_err(failed);
-    }
-    if kind == oids::PBE_SHA1_RC2_40 {
-        return Err(
-            "the .p12 file encrypts with 40-bit RC2, which isn't supported; export it again \
-             from Keychain Access, or with 'openssl pkcs12 -export' from OpenSSL 3"
-                .to_string(),
-        );
     }
     Err("the .p12 file uses an unsupported encryption".to_string())
 }

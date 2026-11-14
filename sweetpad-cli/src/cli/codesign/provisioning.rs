@@ -24,8 +24,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use super::der::{self, Reader, oids};
-use super::identity::{self, Identity};
+use super::identity::{self, Identity, IdentitySet};
 use super::plist::{self, Plist};
+use super::time::now_iso8601;
 
 /// The name this binary runs under to answer Swift Build.
 pub const TOOL: &str = "sweetpad-provisioning";
@@ -41,7 +42,7 @@ pub fn main(_args: &[String]) -> ExitCode {
     let inputs = plist::parse(&input)
         .and_then(|request| {
             answer(&request, &profile_folders(), || {
-                Identity::from_environment(false)
+                IdentitySet::from_environment(false)
             })
         })
         .unwrap_or_else(|message| {
@@ -71,7 +72,7 @@ pub(crate) fn profile_folders() -> Vec<PathBuf> {
 pub(super) fn answer(
     request: &Plist,
     folders: &[PathBuf],
-    load: impl FnOnce() -> Result<Option<Identity>, String>,
+    load: impl FnOnce() -> Result<Option<IdentitySet>, String>,
 ) -> Result<Plist, String> {
     let text = |key: &str| plist::string(request, key).unwrap_or_default();
     let dict = |key: &str| match plist::get(request, key) {
@@ -93,7 +94,7 @@ pub(super) fn answer(
         return Ok(ad_hoc(entitlements, bundle, destination, text("sdkRoot")));
     }
 
-    let identity = load()?.ok_or_else(|| {
+    let set = load()?.ok_or_else(|| {
         format!(
             "CODE_SIGN_IDENTITY is '{name}', and there's no keychain to find it in here: \
              export the identity from Keychain Access as a .p12 file, point {} at it and \
@@ -102,20 +103,8 @@ pub(super) fn answer(
             identity::PASSWORD_VARIABLE
         )
     })?;
+    let (identity, team, profile) = choose(request, folders, &set, name, bundle)?;
     let certificate = &identity.certificate;
-    if !identity.matches(name) {
-        return Err(format!(
-            "CODE_SIGN_IDENTITY is '{name}', but the identity in {} is '{}'",
-            identity::P12_VARIABLE,
-            certificate.common_name
-        ));
-    }
-    let team = team(request, &identity, bundle)?;
-    let profile = if text("provisioningProfileSupport") == "unsupported" {
-        None
-    } else {
-        find_profile(request, folders, &identity, &team)?
-    };
     let project = dict("projectEntitlements");
     if let Some(profile) = &profile {
         check_entitlements(profile, &project)?;
@@ -165,6 +154,63 @@ pub(super) fn answer(
         ));
     }
     Ok(Plist::Dict(inputs))
+}
+
+/// The identity, team and profile a target signs with: of the identities
+/// `name` picks, the newest that has a profile, as Xcode picks the
+/// certificate a profile holds.
+fn choose<'a>(
+    request: &Plist,
+    folders: &[PathBuf],
+    set: &'a IdentitySet,
+    name: &str,
+    bundle: &str,
+) -> Result<(&'a Identity, String, Option<Profile>), String> {
+    let wanted = plist::string(request, "teamID").filter(|t| !t.is_empty());
+    let named = set.named(name, None);
+    let Some(first) = named.first() else {
+        return Err(format!(
+            "CODE_SIGN_IDENTITY is '{name}', but {}",
+            set.missing(&format!("matches '{name}'"))
+        ));
+    };
+    let candidates = set.named(name, wanted);
+    if candidates.is_empty() {
+        return Err(format!(
+            "DEVELOPMENT_TEAM is {}, but '{}' belongs to team {}",
+            wanted.unwrap_or_default(),
+            first.certificate.common_name,
+            first.team().unwrap_or_default()
+        ));
+    }
+    let supported = plist::string(request, "provisioningProfileSupport") != Some("unsupported");
+    let mut chosen = None;
+    let mut first_error = None;
+    for identity in candidates {
+        let found = team(request, identity, bundle).and_then(|team| {
+            let profile = if supported {
+                find_profile(request, folders, identity, &team)?
+            } else {
+                None
+            };
+            Ok((team, profile))
+        });
+        match found {
+            Ok((team, profile)) => {
+                let has_profile = profile.is_some();
+                if chosen.is_none() || has_profile {
+                    chosen = Some((identity, team, profile));
+                }
+                if has_profile {
+                    break;
+                }
+            }
+            Err(e) => {
+                first_error.get_or_insert(e);
+            }
+        }
+    }
+    chosen.ok_or_else(|| first_error.unwrap_or_default())
 }
 
 /// The inputs for an ad hoc signature, as Swift Build's own console gives
@@ -443,28 +489,4 @@ fn pick(
         })
         .max_by(|(a, p), (b, q)| a.cmp(b).then_with(|| p.creation.cmp(&q.creation)))
         .map(|(_, p)| p)
-}
-
-/// The current time, as a property list writes a date.
-fn now_iso8601() -> String {
-    let seconds = std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    let days = i64::try_from(seconds / 86_400).unwrap_or(0);
-    let rest = seconds % 86_400;
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    format!(
-        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
-        rest / 3600,
-        rest % 3600 / 60,
-        rest % 60
-    )
 }

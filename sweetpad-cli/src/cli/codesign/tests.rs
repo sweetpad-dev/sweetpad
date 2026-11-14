@@ -502,6 +502,116 @@ fn reads_keychain_and_openssl_exports_alike() {
     assert!(error.contains("wrong password"), "{error}");
 }
 
+/// The kind fixtures with the chain of an Apple-issued certificate, so
+/// each names its team.
+fn kind_set() -> identity::IdentitySet {
+    let files = [
+        fixtures().join("identities.p12"),
+        fixtures().join("identity.p12"),
+    ];
+    let mut set = identity::IdentitySet::from_files(&files, "sweetpad-test", true).unwrap();
+    for identity in &mut set.identities {
+        identity.chain = apple_issued_fixture().chain;
+    }
+    set
+}
+
+#[test]
+fn several_p12_files_make_one_set_picked_by_kind_and_team() {
+    use identity::Kind;
+    let set = kind_set();
+    let names: Vec<&str> = set
+        .identities
+        .iter()
+        .map(|i| i.certificate.common_name.as_str())
+        .collect();
+    assert_eq!(set.identities.len(), 5, "{names:?}");
+    let distribution = set.select(Kind::IosDistribution, Some("TESTTEAM01"), None).unwrap();
+    assert_eq!(
+        distribution.certificate.common_name,
+        "Apple Distribution: Sweetpad Fixture (TESTTEAM01)"
+    );
+    assert_eq!(
+        distribution.certificate.kinds(),
+        [Kind::IosDistribution, Kind::MacAppDistribution]
+    );
+    let installer = set.select(Kind::MacInstaller, None, None).unwrap();
+    assert!(installer.certificate.common_name.starts_with("3rd Party Mac Developer Installer"));
+    assert!(installer.matches("Mac Installer Distribution"));
+    let developer_id = set
+        .select(Kind::DeveloperIdApplication, None, Some("Developer ID Application"))
+        .unwrap();
+    assert!(!developer_id.is_development());
+    // A certificate without Apple's extensions is read by its name.
+    let fixture = set.select(Kind::Development, Some("TESTTEAM01"), None).unwrap();
+    assert_eq!(fixture.certificate.der, fixture_identity().certificate.der);
+    let other = set.select(Kind::Development, Some("OTHERTEAM2"), None).unwrap();
+    assert_eq!(other.certificate.kinds(), [Kind::Development]);
+    assert_eq!(set.teams(), ["OTHERTEAM2", "TESTTEAM01"]);
+
+    let missing = set
+        .select(Kind::DeveloperIdInstaller, None, None)
+        .err()
+        .unwrap();
+    assert!(
+        missing.starts_with(
+            "no identity in SWEETPAD_CODE_SIGN_P12 is a valid Developer ID Installer identity; \
+             it holds 'Apple Distribution: Sweetpad Fixture (TESTTEAM01)' ("
+        ),
+        "{missing}"
+    );
+    // codesign takes a name only when it picks one identity.
+    let ambiguous = set.by_name("iPhone Developer").err().unwrap();
+    assert!(ambiguous.contains("is ambiguous"), "{ambiguous}");
+    let sha1 = other.certificate.sha1_hex();
+    assert_eq!(set.by_name(&sha1.to_lowercase()).unwrap().certificate.sha1_hex(), sha1);
+    assert_eq!(set.named("Apple Development", Some("OTHERTEAM2")).len(), 1);
+}
+
+#[test]
+fn passwords_go_one_per_file_or_one_for_all() {
+    let files = [
+        fixtures().join("identities.p12"),
+        fixtures().join("identity.p12"),
+    ];
+    for passwords in ["sweetpad-test", "sweetpad-test:sweetpad-test"] {
+        let set = identity::IdentitySet::from_files(&files, passwords, false).unwrap();
+        assert_eq!(set.identities.len(), 5, "{passwords}");
+        assert!(set.identities.iter().all(|i| i.key.is_none()));
+    }
+    let wrong = identity::IdentitySet::from_files(&files, "sweetpad-test:nope", false)
+        .err()
+        .unwrap();
+    assert!(wrong.contains("identity.p12: "), "{wrong}");
+    assert!(wrong.contains("wrong password"), "{wrong}");
+    // The same identity in two files is one identity.
+    let twice = [fixtures().join("identity.p12"), fixtures().join("identity-aes.p12")];
+    let set = identity::IdentitySet::from_files(&twice, "sweetpad-test", false).unwrap();
+    assert_eq!(set.identities.len(), 1);
+}
+
+#[test]
+fn provisioning_picks_the_identity_of_the_requested_team() {
+    let mut request = request(&[]);
+    plist::set(&mut request, "signingCertificateIdentifier", Plist::String("Apple Development".into()));
+    let answer = |request: &Plist| {
+        provisioning::answer(request, &[fixtures().join("profiles")], || Ok(Some(kind_set())))
+    };
+    plist::set(&mut request, "teamID", Plist::String("TESTTEAM01".into()));
+    let inputs = answer(&request).unwrap();
+    assert_eq!(
+        plist::string(&inputs, "identityHash"),
+        Some(fixture_identity().certificate.sha1_hex().as_str())
+    );
+    assert_eq!(
+        plist::string(&inputs, "profileName"),
+        Some("Sweetpad Fixture Wildcard")
+    );
+    plist::set(&mut request, "teamID", Plist::String("THIRDTEAM3".into()));
+    let error = answer(&request).err().unwrap();
+    assert!(error.starts_with("DEVELOPMENT_TEAM is THIRDTEAM3, but '"), "{error}");
+}
+
 #[test]
 fn an_apple_issued_identity_gets_xcodes_designated_requirement() {
     let identity = apple_issued_fixture();
@@ -597,7 +707,9 @@ fn apple_issued_fixture() -> Identity {
 
 fn provision(request: &Plist) -> Result<Plist, String> {
     provisioning::answer(request, &[fixtures().join("profiles")], || {
-        Ok(Some(apple_issued_fixture()))
+        Ok(Some(identity::IdentitySet {
+            identities: vec![apple_issued_fixture()],
+        }))
     })
 }
 

@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use super::{ArchiveArgs, ArchivePreview, ArchiveReport, ExportMethod};
+use super::{ArchiveArgs, ArchivePreview, ArchiveReport, ExportArgs, ExportMethod};
 use crate::cli::resolve::Resolved;
 use crate::cli::{
     CliError, CommandResult, Context, ErrorKind, Rendered, process, swbuild, xcodebuild, xml_plist,
@@ -20,10 +20,11 @@ pub(super) fn run(
     destination: &str,
     out_dir: &Path,
 ) -> CommandResult {
-    if args.export_options.is_some() {
+    let method = args.export.method()?;
+    if args.export.export_options.is_some() {
         return Err(CliError::new("Swift Build export uses the identity and profiles selected for the build; custom ExportOptions.plist files require xcodebuild").kind(ErrorKind::Usage));
     }
-    if !args.no_export && !matches!(args.export_method, ExportMethod::Debugging) {
+    if !args.no_export && !matches!(method, ExportMethod::Debugging) {
         return Err(CliError::new("Swift Build currently exports development IPAs with '--export-method debugging'; other export methods require xcodebuild").kind(ErrorKind::Usage));
     }
     let parsed = sweetpad_lib::destination::parse_destination_arg(destination)
@@ -56,7 +57,7 @@ pub(super) fn run(
     };
     if args.show_command {
         return Ok(Rendered::data(ArchivePreview {
-            archive: swbuild::command(&plan)?,
+            archive: Some(swbuild::command(&plan)?),
             export: (!args.no_export).then(|| xcodebuild::CommandPreview {
                 program: "zip",
                 args: vec![
@@ -71,7 +72,8 @@ pub(super) fn run(
                 cwd: None,
             }),
             generated_plist: None,
-            export_method: args.export_method,
+            export_method: method,
+            upload: args.export.upload,
         }));
     }
     // Never combine a new install with an archive left by a previous build.
@@ -93,10 +95,25 @@ pub(super) fn run(
         export_ipa(&app, &export.join(format!("{scheme}.ipa")))?;
         Some(export.display().to_string())
     };
-    Ok(Rendered::data(ArchiveReport {
+    Ok(ArchiveReport {
         archive: archive.display().to_string(),
         ipa_dir,
-    }))
+        upload: None,
+    }
+    .rendered())
+}
+
+/// `archive export` on the Swift Build engine.
+pub(super) fn export_existing(
+    _ctx: &Context,
+    _args: &ExportArgs,
+    _archive: &Path,
+    _export_dir: &Path,
+) -> CommandResult {
+    Err(CliError::new(
+        "exporting an existing archive needs xcodebuild for now; pass '--engine xcodebuild' on a Mac",
+    )
+    .kind(ErrorKind::Usage))
 }
 
 fn archived_app(archive: &Path) -> Result<PathBuf, CliError> {

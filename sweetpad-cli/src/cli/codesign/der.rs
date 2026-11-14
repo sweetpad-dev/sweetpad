@@ -11,6 +11,7 @@ pub(super) const NULL: u8 = 0x05;
 pub(super) const OID: u8 = 0x06;
 pub(super) const UTF8_STRING: u8 = 0x0c;
 pub(super) const UTC_TIME: u8 = 0x17;
+pub(super) const GENERALIZED_TIME: u8 = 0x18;
 pub(super) const BMP_STRING: u8 = 0x1e;
 pub(super) const SEQUENCE: u8 = 0x30;
 pub(super) const SET: u8 = 0x31;

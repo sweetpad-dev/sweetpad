@@ -78,3 +78,4 @@ pub mod simulator;
 pub mod spm;
 pub mod status;
 pub mod test;
+pub mod upload;

@@ -28,6 +28,7 @@ use sweetpad_core::xcodebuild_args;
 
 pub mod actool;
 pub mod appintents;
+pub mod appstore;
 pub mod buildlog;
 pub mod codesign;
 pub mod config;
@@ -43,6 +44,7 @@ pub mod keyed_archive;
 pub mod mapc;
 pub mod merge;
 pub mod momc;
+pub mod net;
 pub mod oslog;
 pub mod output;
 pub mod pbxedit;
@@ -63,8 +65,10 @@ pub mod swiftpm;
 #[path = "../../../sweetpad-lib/src/testdir.rs"]
 pub(crate) mod testdir;
 pub mod xcodebuild;
+pub mod xar;
 pub mod xcstringstool;
 pub mod xml_plist;
+pub mod zip;
 
 pub mod commands;
 
@@ -686,8 +690,24 @@ pub enum Resource {
         #[command(subcommand)]
         action: Option<commands::test::Action>,
     },
-    /// Archive the app and export an .ipa (xcodebuild archive + -exportArchive).
-    Archive(commands::archive::ArchiveArgs),
+    /// Archive the app and export an .ipa (xcodebuild archive + -exportArchive),
+    /// or export an existing archive again ('archive export').
+    #[command(args_conflicts_with_subcommands = true)]
+    Archive {
+        #[command(flatten)]
+        args: commands::archive::ArchiveArgs,
+        #[command(subcommand)]
+        action: Option<commands::archive::Action>,
+    },
+    /// Upload an .ipa or .pkg to App Store Connect with an API key, and wait
+    /// until Apple accepts or rejects it.
+    #[command(args_conflicts_with_subcommands = true)]
+    Upload {
+        #[command(flatten)]
+        args: commands::upload::UploadArgs,
+        #[command(subcommand)]
+        action: Option<commands::upload::Action>,
+    },
     /// Clean build artifacts (xcodebuild clean; --purge adds DerivedData).
     /// Takes sweetpad.toml's '[xcodebuild] args', so it cleans where the
     /// build wrote.
@@ -1154,7 +1174,10 @@ pub fn run(argv: &[String]) -> ExitCode {
         // `start`/`run` tokens are optional markers, so both spellings land here.
         Resource::Build { args, action } => commands::build::run(&mut ctx, &args, action.as_ref()),
         Resource::Test { args, action } => commands::test::run(&mut ctx, &args, action.as_ref()),
-        Resource::Archive(archive_args) => commands::archive::run(&mut ctx, &archive_args),
+        Resource::Archive { args, action } => commands::archive::run(&mut ctx, &args, action.as_ref()),
+        Resource::Upload { args, action } => {
+            commands::upload::run(&mut ctx, &args, action.as_ref())
+        }
         Resource::Clean(clean_args) => {
             let mut targeting: Targeting = clean_args.scheme.clone().into();
             // Same `env = SWEETPAD_CONFIGURATION` normalization as

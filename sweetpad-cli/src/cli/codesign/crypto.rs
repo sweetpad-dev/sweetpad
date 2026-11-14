@@ -1,7 +1,7 @@
 //! The hashing and key derivation a signature and a `.p12` file need:
 //! SHA-1 beside the SHA-256 in `sweetpad_lib`, HMAC, PBKDF2 and PKCS #12's
-//! own key derivation, and CBC decryption over the `des` and `aes` block
-//! ciphers. Signing itself is the `rsa` crate's.
+//! own key derivation, and CBC decryption over the `des`, `aes` and `rc2`
+//! block ciphers. Signing itself is the `rsa` crate's.
 
 use aes::cipher::{BlockDecrypt, KeyInit, generic_array::GenericArray};
 use rsa::{Pkcs1v15Sign, RsaPrivateKey};
@@ -189,6 +189,9 @@ pub(super) fn pkcs12_kdf(
 pub(super) enum Cipher {
     TripleDes,
     Aes,
+    /// RC2 with a 40-bit key, which `security export` encrypts
+    /// certificates with.
+    Rc2,
 }
 
 /// One block cipher, decrypting a block in place.
@@ -203,7 +206,7 @@ pub(super) fn decrypt_cbc(
 ) -> Result<Vec<u8>, String> {
     let bad = || "a wrong key or corrupt data".to_string();
     let size = match cipher {
-        Cipher::TripleDes => 8,
+        Cipher::TripleDes | Cipher::Rc2 => 8,
         Cipher::Aes => 16,
     };
     if data.is_empty() || !data.len().is_multiple_of(size) || iv.len() != size {
@@ -212,6 +215,10 @@ pub(super) fn decrypt_cbc(
     let decrypt: Box<BlockFn> = match (cipher, key.len()) {
         (Cipher::TripleDes, 24) => {
             let c = des::TdesEde3::new_from_slice(key).map_err(|_| bad())?;
+            Box::new(move |block| c.decrypt_block(GenericArray::from_mut_slice(block)))
+        }
+        (Cipher::Rc2, 5) => {
+            let c = rc2::Rc2::new_with_eff_key_len(key, 40);
             Box::new(move |block| c.decrypt_block(GenericArray::from_mut_slice(block)))
         }
         (Cipher::Aes, 16) => {

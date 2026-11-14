@@ -446,13 +446,18 @@ pub fn workspace_path(folder: &Path) -> Option<PathBuf> {
 /// An unreadable or malformed file has none.
 #[must_use]
 pub fn plist_strings(path: &Path) -> Vec<(String, String)> {
-    let Ok(bytes) = std::fs::read(path) else {
-        return Vec::new();
-    };
+    std::fs::read(path)
+        .map(|bytes| plist_strings_from_bytes(&bytes))
+        .unwrap_or_default()
+}
+
+/// [`plist_strings`] of a property list already in memory, in either format.
+#[must_use]
+pub fn plist_strings_from_bytes(bytes: &[u8]) -> Vec<(String, String)> {
     if bytes.starts_with(b"bplist00") {
-        binary_plist_strings(&bytes)
+        binary_plist_strings(bytes)
     } else {
-        std::str::from_utf8(&bytes)
+        std::str::from_utf8(bytes)
             .ok()
             .and_then(|text| crate::xcscheme::parse(text).ok())
             .map(|root| xml_plist_strings(&root))
