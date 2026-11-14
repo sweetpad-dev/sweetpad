@@ -143,7 +143,7 @@ they do not establish physical-device execution for these changes.
 - [ ] D07: Validate the legacy device adapter version and scope log streams to the selected UDID (`pymobiledevice3.rs`). Legacy syslog now receives the selected UDID; adapter-version validation remains open.
 - [ ] D08: Keep generated xctestrun paths portable across Linux and Mac hosts (`swbuild/test_manifest.rs`).
 - [ ] D09: Accept harmless test-plan settings such as disabled coverage, and report unsupported coverage explicitly (`swbuild/test_manifest/selection.rs`).
-- [ ] D10: Check zip availability and reject distribution-profiled development exports (`commands/archive/portable.rs`).
+- [x] D10: Export signs the app again for its method, so a profile of the wrong kind is refused by name (`codesign/resign.rs`, `commands/archive/export.rs`).
 - [ ] D11: Verify signing-secret inheritance into build scripts and plugins (`swbuild.rs`, `codesign/identity.rs`).
 - [ ] D12: Handle CocoaPods absolute codesign calls without requiring fixture rewrites, or document the limitation (`ci/linux-project-prepare.py`, `docs/cli/linux/react-native.md`).
 - [ ] D13: Verify certificate chains beyond the bundled WWDR G3 intermediate (`codesign/identity.rs`).
@@ -949,8 +949,12 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
 - [x] Info.plist keys: `DTXcode`, `DTXcodeBuild` and `DTPlatformBuild` from
       the `version.plist` files `linux-setup.sh` copies into the SDK bundle
       (xtool leaves them out); the same as Xcode's build
-- [ ] `BuildMachineOSBuild`: left out, since no macOS built the app. Find
-      out whether App Store validation needs it
+- [x] `BuildMachineOSBuild`: the SDK bundle's `build-machine.plist` holds
+      the macOS build of the Mac that exported the SDK (`sw_vers`), or, for
+      an Xcode archive imported without a Mac, Xcode's own build machine's.
+      sweetpad passes it as `MAC_OS_X_PRODUCT_BUILD_VERSION`, which Swift
+      Build writes into the Info.plist. App Store Connect also accepted a
+      build without it
 - [x] Signing: sweetpad stands in for `codesign` and `derq`, and answers
       Swift Build's provisioning requests, which `swift-build-linux.patch`
       sends to the tool `SWEETPAD_PROVISIONING` names. The identity comes
@@ -990,9 +994,58 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       inspection and device debugging remain unsupported on Linux.
 - [x] Swift Build archives and development IPA export on Linux. A signed
       fixture archive and IPA pass Apple codesign verification. Unsigned IPA
-      export, simulator archives, and distribution export are rejected.
-      App, extension, and embedded-framework dSYMs are collected.
-- [ ] Upload with Transporter, which has a Linux build *(optional)*
+      export and simulator archives are rejected. App, extension, and
+      embedded-framework dSYMs are collected.
+- [x] Distribution export on Linux, as Xcode's: `archive export` and
+      `archive --export-method` sign the archived app again with the
+      identity and profile kind of the method (App Store Connect, ad hoc,
+      enterprise, development), from the identity set and profiles above.
+      A device archive is always signed, ad hoc with its entitlements when
+      the identities can't sign it. The delivery fixture's App Store export
+      matches Xcode's entitlements and files, uploads from Linux and
+      processes as VALID; its ad hoc export installs and launches on an
+      iPhone 13
+- [x] Upload to App Store Connect from Linux and macOS through its REST
+      API (`sweetpad upload`, `archive --upload`), IPAs and Mac App Store
+      packages alike
+- [x] macOS signing on Linux: the `codesign` stand-in signs macOS bundles,
+      versioned frameworks, XPC services and universal binaries as Apple's
+      does (16 KiB pages for arm64, 4 KiB for Intel, the runtime version
+      with `-o runtime`, nested code sealed by its code directory hash and
+      designated requirement), matching `codesign`'s output byte for byte
+      for the fixtures. Developer ID signatures get a secure timestamp from
+      Apple's server, as `codesign` gives them; `--timestamp[=URL]` asks
+      for one. A macOS build is signed when there's an identity, and a
+      macOS archive always, ad hoc when the identities can't sign it. The
+      delivery fixture's App Store archive matches Xcode's entitlements,
+      files and seals; packaged with `productbuild` it uploads from Linux
+      and processes as VALID
+- [x] Mac App Store packages on Linux: a macOS archive's
+      `app-store-connect` export signs the app again with Apple
+      Distribution and the Mac App Store profiles, refuses an app without
+      the App Sandbox, and writes the installer package `productbuild
+      --component … --sign` writes, signed with the Mac Installer
+      Distribution identity. Its bill of materials, payload, PackageInfo
+      and Distribution match `productbuild`'s for the fixture app, and the
+      delivery fixture's package uploads from Linux and processes as VALID.
+      `debugging` and `mac-application` exports write the `.app`
+- [x] Developer ID on Linux: a macOS archive's `developer-id` export signs
+      the app again with Developer ID Application, a timestamp and the
+      hardened runtime (refusing a main executable without it). It embeds a
+      Developer ID profile only for entitlements Apple must grant, and
+      writes a package signed with Developer ID Installer and timestamped
+      when that identity is in the set
+- [x] Notarization from Linux and macOS through the notary REST API
+      (`sweetpad notarize`, `archive --notarize`): the file goes to S3
+      under the submission's credentials, and the ticket is stapled from
+      Apple's ticket service, byte for byte as `stapler staple` staples it
+      to an app and a package. The delivery fixture's Linux-built app, zip
+      and package are accepted and pass Gatekeeper as Notarized Developer ID
+- [ ] macOS archives are built for arm64 only, where Xcode builds
+      `ARCHS_STANDARD` (arm64 and x86_64); see E19
+- [ ] `SwiftSupport/` in App Store IPAs whose app embeds the Swift runtime
+      (deployment targets before iOS 12.2 and back-deployed concurrency):
+      Apple wants its own `libswift*.dylib` copies there
 
 Running in the simulator stays on a Mac.
 

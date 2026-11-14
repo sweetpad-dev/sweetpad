@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<pkg-info overwrite-permissions="true" relocatable="false" identifier="dev.sweetpad.macfixture" postinstall-action="none" version="1.0.0" format-version="2" generator-version="InstallCmds-883 (26B131)" install-location="/Applications" auth="root" preserve-xattr="true">
+    <payload numberOfFiles="46" installKBytes="330"/>
+    <bundle path="./Mac.app" id="dev.sweetpad.macfixture" CFBundleShortVersionString="1.0" CFBundleVersion="1"/>
+    <bundle-version>
+        <bundle id="dev.sweetpad.macfixture"/>
+    </bundle-version>
+    <upgrade-bundle>
+        <bundle id="dev.sweetpad.macfixture"/>
+    </upgrade-bundle>
+    <update-bundle/>
+    <atomic-update-bundle/>
+    <strict-identifier>
+        <bundle id="dev.sweetpad.macfixture"/>
+    </strict-identifier>
+    <relocate/>
+</pkg-info>

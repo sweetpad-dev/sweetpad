@@ -36,6 +36,8 @@ svgtypes.workspace = true
 rsa.workspace = true
 des.workspace = true
 aes.workspace = true
+rc2.workspace = true
+p256.workspace = true
 unicode-normalization.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]

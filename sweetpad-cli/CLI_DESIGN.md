@@ -4623,12 +4623,16 @@ the Mach-O reader has its structures on every platform; and text encodings
 are found by name without CoreFoundation, including Unicode byte-order marks.
 LLVM's Darwin libtool is recognized without treating its LLVM version as a cctools version.
 
-**Signing has no keychain.** The identity is a `.p12` file
-(`SWEETPAD_CODE_SIGN_P12`, its password in `SWEETPAD_CODE_SIGN_P12_PASSWORD`),
-and the profile is picked as automatic signing picks it, from Xcode's
-folders or `SWEETPAD_PROVISIONING_PROFILES`. The `codesign` stand-in's
-signature is Apple's byte for byte, apart from the CMS signing time. Only a
-device build signs; a simulator build keeps the linker's ad hoc signature.
+**Signing has no keychain.** The identities are `.p12` files
+(`SWEETPAD_CODE_SIGN_P12`, a `:`-separated list, each file holding one
+identity or several; the passwords in `SWEETPAD_CODE_SIGN_P12_PASSWORD`,
+one for all or one per file), and the profile is picked as automatic
+signing picks it, from Xcode's folders or `SWEETPAD_PROVISIONING_PROFILES`.
+The `codesign` stand-in's signature is Apple's byte for byte, apart from
+the CMS signing time. A simulator build keeps the linker's ad hoc
+signature. A device or macOS build signs when there's an identity, and an
+archive always, ad hoc with its entitlements when the identities can't
+sign it. Developer ID signatures carry a timestamp from Apple's server.
 
 **Apple's macros come from `sweetpad-macros`.** The Darwin SDK's plugin
 server has no `SwiftDataMacros`, has `#Preview` only for SwiftUI views, and
@@ -4667,10 +4671,10 @@ Dynamic components retain their own registrations; static dependency registratio
 File inputs, dialog/snippet capabilities, and enum declaration order match native captures.
 Localized language-model bundles cover the supported schemas. Unsupported catalog variations fail explicitly.
 
-**Archives preserve development signing.** Swift Build's install action produces `.xcarchive`
+**Archives are exported as Xcode exports them.** Swift Build's install action produces `.xcarchive`
 products. The CLI writes archive metadata and collects matching app, extension, and framework dSYMs.
-Development IPA export preserves the build's profiles and signature. It rejects unsigned export,
-simulator archives, distribution export, and custom export options.
+Export signs the archived app again for its method, as §9x describes; a development-signed
+`debugging` export keeps the build's profiles and signature. Simulator archives are refused.
 
 **Linux device operations use pymobiledevice3.** The pinned Python adapter supports
 trusted USB and direct Wi-Fi. Both transports pass discovery, install, launch, scoped logs,
@@ -4698,6 +4702,102 @@ and with Xcode where Linux fails.
 `ci/linux-projects.py` adds pinned real apps, including Flutter, React Native, and Capacitor.
 `ci/linux-project-checks.py` compares bundles and checks both products in a Mac simulator.
 `ci/LINUX_PROJECTS.md` records setup, results, and fixture patches. The generated-header correction closes the validated MMKV interop case without its former shim.
+
+## 9x. v9 — delivery: export, upload and notarize
+
+> Every way an app leaves the developer's machine for Apple, from Linux
+> and macOS alike: App Store Connect, ad hoc and enterprise IPAs, the Mac
+> App Store package, and Developer ID's notarized app and package.
+> `PLAN_LINUX.md` records what was checked against Apple and how.
+
+**One REST client, an API key, no Apple tools.** `upload` and `notarize`
+talk to App Store Connect's REST API (`appstore/api.rs`) on both hosts:
+there is no altool, Transporter or notarytool to install on Linux, and the
+Mac does the same thing so one path gets tested. The only credential is an
+App Store Connect API key: `--api-key`, `--api-issuer` and `--api-key-path`,
+or `SWEETPAD_ASC_KEY_ID`, `SWEETPAD_ASC_ISSUER_ID` and
+`SWEETPAD_ASC_KEY_PATH`, or the key's text in `SWEETPAD_ASC_KEY` for a CI
+secret. A key without a path is found where altool looks for
+`AuthKey_<id>.p8`. Without an issuer it's an individual key, which uploads
+but can't notarize. Tokens are ES256 JWTs that live 20 minutes and are
+reused until a minute before they expire.
+
+**`upload` waits for Apple to accept the file, not to process it.**
+`upload <ipa|pkg>` follows the Build Upload API: create the upload, create
+its file, PUT the byte ranges Apple asks for (four at a time, each
+retried), commit with the SHA-256, then poll until the upload is `COMPLETE`
+or `FAILED`. A failure exits 1 with Apple's ITMS messages. `--wait` keeps
+polling the build until processing ends, and `upload status <id>` picks an
+upload up later. A build number that's been used is a usage error that
+says to raise `CURRENT_PROJECT_VERSION`. Nothing else in App Store Connect
+is touched: no TestFlight groups, review or build numbering.
+
+**Export signs again, as Xcode's export does.** `archive --export-method`
+and `archive export <xcarchive>` sign the archived app with the identity
+and profile kind the method needs, inside out, from the archived
+signature's entitlements:
+
+| Method | Profile | Identity |
+|---|---|---|
+| `app-store-connect` (iOS family) | App Store | Apple Distribution |
+| `app-store-connect` (macOS) | Mac App Store | Apple Distribution, then Mac Installer Distribution for the package |
+| `release-testing` | Ad Hoc | Apple Distribution |
+| `enterprise` | In-House | Apple Distribution |
+| `debugging` | Development | Apple Development |
+| `developer-id` | Developer ID, only for entitlements Apple grants | Developer ID Application, then Developer ID Installer for the package |
+| `mac-application` | none | the archive's signature |
+
+Identities are told apart by Apple's certificate policy OIDs, so a set of
+`.p12` files works like a keychain. The application identifier, team,
+`get-task-allow`, `aps-environment` and iCloud environment come from the
+profile, and the result is checked against it, so a profile of the wrong
+kind or one missing a capability is refused by name. Only the
+ExportOptions keys sweetpad acts on are accepted (`method`, `teamID`,
+`signingStyle`, `signingCertificate`, `installerSigningCertificate`,
+`provisioningProfiles`, `destination`); any other key that would change the
+output is a usage error naming it, and the export writes the options it
+used beside the export.
+
+**The Mac App Store package is written, not built by `productbuild`.**
+`cli/pkg` writes what `productbuild --component App.app /Applications
+--sign` writes: a bill of materials, a gzip `cpio` payload, PackageInfo and
+Distribution in a XAR whose table of contents is signed with RSA and CMS by
+the installer identity. Its parts match `productbuild`'s for the fixture,
+and App Store Connect processes it as VALID. A Mac App Store export needs
+the App Sandbox and says so.
+
+**Developer ID needs the hardened runtime and little else.** A main
+executable signed without it is refused with the build setting to change.
+A Developer ID profile is embedded only when the app claims an entitlement
+Apple must grant (`com.apple.developer.*`, keychain groups, `group.` App
+Groups); otherwise the development-only entitlements are dropped and an
+archived profile is removed. Every signature gets a timestamp, the package
+signature included, whose CMS carries a timestamp over the SHA-1 of the
+signature, as `productbuild` writes it.
+
+**`notarize` submits, waits and staples.** `notarize <app|zip|pkg|dmg>`
+zips an app, creates a submission with the file's SHA-256, PUTs the file to
+the S3 bucket the submission names with the temporary credentials it hands
+out (AWS SigV4, through S3's accelerate endpoint, then the region's), and
+polls until Apple decides. A rejection exits 1 with the issues from Apple's
+log; `notarize log <id>` shows the whole log and `notarize status <id>`
+follows a submission. Once accepted, the ticket is looked up in Apple's
+ticket service (CloudKit, no key) under `2/2/<cdhash>` for an app's main
+executable or `2/1/<table of contents SHA-1>` for a package, and stapled as
+`stapler staple` staples it, byte for byte: an app's in
+`Contents/CodeResources`, a package's after the heap between two 16-byte
+`t8lr` records. `--no-wait` returns the submission ID, and `notarize staple
+<file>` staples once Apple accepts it. `archive --notarize` (implying
+`developer-id`) notarizes the exported app, staples it and zips it beside
+the app, then notarizes and staples the package.
+
+**Tests never reach Apple.** The hidden `SWEETPAD_ASC_BASE_URL` points the
+client, the S3 upload and the ticket lookup at a stub;
+`tests/upload.rs` and `tests/notarize.rs` drive the commands against one.
+`SWEETPAD_ASC_POLL_SECS` shortens the polling. The package writer is
+checked against a `productbuild` golden (`fixtures/pkg/regen.sh`), the
+stapling formats against `stapler`'s output, and the signing against
+Apple's `codesign` as §9w describes.
 
 ## 10. Testing
 

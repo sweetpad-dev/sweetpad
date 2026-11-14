@@ -1,15 +1,15 @@
-//! Portable .xcarchive creation and development IPA packaging. Swift Build
-//! performs an install action; export preserves the resulting signing identity.
+//! Portable .xcarchive creation on the Swift Build engine, which performs
+//! an install action into the archive; `export` signs and packs the app.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use super::{ArchiveArgs, ArchivePreview, ArchiveReport, ExportMethod};
+use super::export::{self, archived_app, copy_tree};
+use super::{ArchiveArgs, ArchivePreview, ArchiveReport, ExportArgs};
 use crate::cli::resolve::Resolved;
 use crate::cli::{
     CliError, CommandResult, Context, ErrorKind, Rendered, process, swbuild, xcodebuild, xml_plist,
 };
-use sweetpad_core::scratch::ScratchDir;
 
 pub(super) fn run(
     ctx: &Context,
@@ -20,19 +20,18 @@ pub(super) fn run(
     destination: &str,
     out_dir: &Path,
 ) -> CommandResult {
-    if args.export_options.is_some() {
-        return Err(CliError::new("Swift Build export uses the identity and profiles selected for the build; custom ExportOptions.plist files require xcodebuild").kind(ErrorKind::Usage));
-    }
-    if !args.no_export && !matches!(args.export_method, ExportMethod::Debugging) {
-        return Err(CliError::new("Swift Build currently exports development IPAs with '--export-method debugging'; other export methods require xcodebuild").kind(ErrorKind::Usage));
-    }
+    let exporting = if args.no_export {
+        None
+    } else {
+        Some(export::settings(&args.export)?)
+    };
     let parsed = sweetpad_lib::destination::parse_destination_arg(destination)
         .ok_or_else(|| CliError::new("archive needs a generic device platform"))?;
-    if parsed.platform.contains("simulator") || (!args.no_export && parsed.platform != "iphoneos") {
-        return Err(CliError::new(
-            "IPA export needs an iOS device destination; use '--no-export' to archive a macOS app",
-        )
-        .kind(ErrorKind::Usage));
+    if parsed.platform.contains("simulator") {
+        return Err(
+            CliError::new("archive needs a device destination, not a simulator")
+                .kind(ErrorKind::Usage),
+        );
     }
     let archive = out_dir.join(format!("{scheme}.xcarchive"));
     let mut settings = ctx.xcodebuild_args(xcodebuild::Action::Archive, &args.passthrough)?;
@@ -56,22 +55,28 @@ pub(super) fn run(
     };
     if args.show_command {
         return Ok(Rendered::data(ArchivePreview {
-            archive: swbuild::command(&plan)?,
-            export: (!args.no_export).then(|| xcodebuild::CommandPreview {
-                program: "zip",
-                args: vec![
-                    "-yr".into(),
-                    out_dir
-                        .join("export")
-                        .join(format!("{scheme}.ipa"))
-                        .display()
-                        .to_string(),
-                    "Payload".into(),
-                ],
-                cwd: None,
+            archive: Some(swbuild::command(&plan)?),
+            // A macOS export is signed and packaged in-process: no command.
+            export: (!args.no_export && parsed.platform != "macosx").then(|| {
+                xcodebuild::CommandPreview {
+                    program: "zip",
+                    args: vec![
+                        "-yr".into(),
+                        out_dir
+                            .join("export")
+                            .join(format!("{scheme}.ipa"))
+                            .display()
+                            .to_string(),
+                        "Payload".into(),
+                    ],
+                    cwd: None,
+                }
             }),
             generated_plist: None,
-            export_method: args.export_method,
+            export_method: exporting
+                .as_ref()
+                .map_or(args.export.method()?, |s| s.method),
+            upload: exporting.as_ref().is_some_and(|s| s.upload),
         }));
     }
     // Never combine a new install with an archive left by a previous build.
@@ -86,36 +91,66 @@ pub(super) fn run(
     swbuild::scheme_actions::archive(false, &archive, &plan, &ctx.out)?;
     finish_archive(&archive, &app, scheme, &plan)?;
     swbuild::scheme_actions::archive(true, &archive, &plan, &ctx.out)?;
-    let ipa_dir = if args.no_export {
-        None
-    } else {
-        let export = out_dir.join("export");
-        export_ipa(&app, &export.join(format!("{scheme}.ipa")))?;
-        Some(export.display().to_string())
+    let Some(exporting) = exporting else {
+        return Ok(ArchiveReport {
+            archive: archive.display().to_string(),
+            ipa_dir: None,
+            upload: None,
+            notarized: Vec::new(),
+        }
+        .rendered());
     };
-    Ok(Rendered::data(ArchiveReport {
-        archive: archive.display().to_string(),
-        ipa_dir,
-    }))
+    export_and_upload(
+        ctx,
+        &args.export,
+        &archive,
+        &exporting,
+        &out_dir.join("export"),
+    )
 }
 
-fn archived_app(archive: &Path) -> Result<PathBuf, CliError> {
-    let applications = archive.join("Products/Applications");
-    let apps: Vec<PathBuf> = std::fs::read_dir(&applications)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|e| e == "app"))
-        .collect();
-    if apps.len() != 1 {
-        return Err(CliError::new(format!(
-            "archive contains {} applications in {}; expected one",
-            apps.len(),
-            applications.display()
-        )));
+/// Export `archive` into `export_dir`, then upload it when asked.
+fn export_and_upload(
+    ctx: &Context,
+    choice: &super::ExportChoice,
+    archive: &Path,
+    settings: &export::Settings,
+    export_dir: &Path,
+) -> CommandResult {
+    let exported = export::export(ctx, archive, settings, export_dir)?;
+    if let Some(identity) = &exported.identity {
+        ctx.out.note(&format!("signed with {identity}"));
     }
-    Ok(apps[0].clone())
+    super::deliver(ctx, choice, settings.upload, archive, export_dir)
+}
+
+/// `archive export` on the Swift Build engine.
+pub(super) fn export_existing(
+    ctx: &Context,
+    args: &ExportArgs,
+    archive: &Path,
+    export_dir: &Path,
+) -> CommandResult {
+    let settings = export::settings(&args.export)?;
+    if args.show_command {
+        let mac = archived_app(archive).is_ok_and(|app| app.join("Contents").is_dir());
+        return Ok(Rendered::data(ArchivePreview {
+            archive: None,
+            export: (!mac).then(|| xcodebuild::CommandPreview {
+                program: "zip",
+                args: vec![
+                    "-qryX".into(),
+                    export_dir.join("<App>.ipa").display().to_string(),
+                    "Payload".into(),
+                ],
+                cwd: None,
+            }),
+            generated_plist: None,
+            export_method: settings.method,
+            upload: settings.upload,
+        }));
+    }
+    export_and_upload(ctx, &args.export, archive, &settings, export_dir)
 }
 
 fn finish_archive(
@@ -247,63 +282,6 @@ fn archive_info(
     ))
 }
 
-fn export_ipa(app: &Path, output: &Path) -> Result<(), CliError> {
-    if !app.join("embedded.mobileprovision").is_file()
-        || !app.join("_CodeSignature/CodeResources").is_file()
-    {
-        return Err(CliError::new(
-            "the archive is unsigned; set SWEETPAD_CODE_SIGN_P12 and SWEETPAD_PROVISIONING_PROFILES before archiving, or use '--no-export'",
-        ));
-    }
-    let stage = ScratchDir::new("sweetpad-ipa").map_err(|e| CliError::new(e.to_string()))?;
-    copy_tree(
-        app,
-        &stage.join("Payload").join(
-            app.file_name()
-                .ok_or_else(|| CliError::new("app has no name"))?,
-        ),
-    )?;
-    if let Some(parent) = output.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| CliError::new(e.to_string()))?;
-    }
-    // zip updates an existing archive, which could retain stale bundle files.
-    if output.exists() {
-        return Err(CliError::new(format!(
-            "{} already exists",
-            output.display()
-        )));
-    }
-    let output = sweetpad_lib::project::absolutize(output);
-    process::capture(
-        "zip",
-        &["-qry", &output.display().to_string(), "Payload"],
-        Some(&stage),
-    )
-    .map(|_| ())
-}
-
-fn copy_tree(source: &Path, destination: &Path) -> Result<(), CliError> {
-    let metadata = std::fs::symlink_metadata(source).map_err(|e| CliError::new(e.to_string()))?;
-    if metadata.is_symlink() {
-        let target = std::fs::read_link(source).map_err(|e| CliError::new(e.to_string()))?;
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(target, destination)
-            .map_err(|e| CliError::new(e.to_string()))?;
-    } else if metadata.is_dir() {
-        std::fs::create_dir_all(destination).map_err(|e| CliError::new(e.to_string()))?;
-        for entry in std::fs::read_dir(source).map_err(|e| CliError::new(e.to_string()))? {
-            let entry = entry.map_err(|e| CliError::new(e.to_string()))?;
-            copy_tree(&entry.path(), &destination.join(entry.file_name()))?;
-        }
-    } else {
-        if let Some(parent) = destination.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| CliError::new(e.to_string()))?;
-        }
-        std::fs::copy(source, destination).map_err(|e| CliError::new(e.to_string()))?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,16 +306,6 @@ mod tests {
             assert!(symbols.join(format!("{name}.dSYM/fixture")).is_file());
         }
         assert!(!symbols.join("Other.app.dSYM").exists());
-    }
-    #[test]
-    fn unsigned_archives_cannot_be_exported_as_installable_ipas() {
-        let dir = crate::cli::testdir::TempDir::new("sweetpad-unsigned-ipa");
-        assert!(
-            export_ipa(&dir.join("App.app"), &dir.join("App.ipa"))
-                .unwrap_err()
-                .to_string()
-                .contains("unsigned")
-        );
     }
     #[test]
     fn archive_metadata_preserves_the_application_path_and_typed_values() {

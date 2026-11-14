@@ -5,7 +5,8 @@ sidebar_label: Signing, tests, and archives
 # Signing, tests, and archives
 
 An iPhone app needs a development identity and a provisioning profile before installation.
-Linux builds and signs the products. A Mac with Xcode supplies Apple test execution.
+Linux builds and signs the products, and exports, uploads, and notarizes release builds.
+A Mac with Xcode supplies Apple test execution.
 
 ## Configure development signing
 
@@ -100,9 +101,9 @@ A selection that runs zero tests fails.
 The automatic manifests preserve enabled targets, environment values, quoted arguments, locale overrides, and test filters.
 UI test manifests also identify the built runner and target application.
 
-## Create a development archive
+## Archive and distribute
 
-Configure development signing, then archive the device build:
+Archive the device build with the export method you need:
 
 ```bash
 sweetpad archive --project MyApp.xcodeproj --scheme MyApp \
@@ -112,11 +113,49 @@ sweetpad archive --project MyApp.xcodeproj --scheme MyApp \
 ```
 
 The archive includes app, extension, and embedded-framework debug symbols.
-Development IPA export preserves the build's identity and profiles.
-Use `--no-export` to retain only the archive.
+A development export keeps the build's identity and profiles.
+Use `--no-export` to retain only the archive, and `sweetpad archive export` to export it later.
 
-Distribution export and custom export options require Xcode.
-The Linux export path rejects unsigned IPA export and simulator archives.
+### Identities and profiles for each method
+
+Every other method signs the archived app again, as Xcode's export does.
+SweetPad picks the identity by its certificate type and the profile by its kind:
+
+| Method | Identity | Profiles |
+| --- | --- | --- |
+| `app-store-connect` | Apple Distribution, plus Mac Installer Distribution for a macOS package | App Store or Mac App Store |
+| `release-testing` | Apple Distribution | Ad Hoc |
+| `enterprise` | Apple Distribution | In-House |
+| `developer-id` | Developer ID Application, plus Developer ID Installer for the package | Developer ID, when the app uses capabilities that need one |
+
+List every P12 file in `SWEETPAD_CODE_SIGN_P12`, separated by `:`.
+A file exported from Keychain Access can hold several identities.
+`SWEETPAD_CODE_SIGN_P12_PASSWORD` holds one password for all of them, or one per file in the same order.
+Put the profiles for the app and each extension in `SWEETPAD_PROVISIONING_PROFILES`.
+
+When no identity can sign an archive, SweetPad signs it ad hoc and keeps its entitlements.
+The distribution export then signs it properly, so the archive step needs no distribution identity.
+Run `sweetpad doctor --target ios` to list the identities and profiles it finds.
+
+### Upload and notarize
+
+Add `--upload` to send an App Store Connect export to TestFlight, or `--notarize` for a Developer ID build.
+Both need an App Store Connect API key:
+
+```bash
+export SWEETPAD_ASC_KEY_ID=KEY_ID
+export SWEETPAD_ASC_ISSUER_ID=ISSUER_ID
+export SWEETPAD_ASC_KEY_PATH="$HOME/signing/AuthKey_KEY_ID.p8"
+
+sweetpad archive --project MyApp.xcodeproj --scheme MyApp \
+  --destination 'generic/platform=iOS' --upload \
+  --output-file ./artifacts --json --non-interactive
+```
+
+[Archive and distribute](../archive.md#uploading-to-app-store-connect) covers the key, what an upload waits for, and notarization.
+`sweetpad doctor --network` checks that Apple's services answer from the runner.
+
+The Linux export path rejects unsigned archives and simulator archives.
 
 ## Validate on an iPhone
 

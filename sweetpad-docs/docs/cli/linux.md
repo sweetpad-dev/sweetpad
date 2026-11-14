@@ -5,6 +5,7 @@ sidebar_label: Linux overview
 # Build iPhone apps on Linux
 
 SweetPad builds an Xcode project on Linux, signs it with your development identity, and installs it on an iPhone.
+It also exports release builds, uploads them to App Store Connect, and notarizes Developer ID apps.
 The command uses the same project, scheme, and build settings as the macOS CLI.
 
 ```bash
@@ -28,7 +29,7 @@ These guides follow the path from a fresh machine to a running iPhone app:
 | [Install the CLI](linux/install.md) | Choose APT, a Debian package, Packslip, Mise, a container image, or a tarball. |
 | [SDK export and setup](linux/sdk-transfer.md) | Export private Apple files, configure Ubuntu, and diagnose the Linux toolchain. |
 | [Ubuntu and USB setup](linux/ubuntu-usb.md) | Install the CLI and toolchain, pair an iPhone, and launch an app through USB. |
-| [Signing, tests, and archives](linux/signing-and-testing.md) | Configure development signing and run Linux-built test products on a Mac. |
+| [Signing, tests, and archives](linux/signing-and-testing.md) | Configure signing, run Linux-built test products on a Mac, and ship release builds. |
 | [GitHub Actions for iOS](linux/github-actions.md) | Build iPhone products on a provisioned Linux runner and retain usable artifacts. |
 | [React Native](linux/react-native.md) | Prepare Pods and Hermes, then build the iOS workspace. |
 | [Flutter](linux/flutter.md) | Prepare a matching Linux iOS AOT compiler and build the Runner project. |
@@ -51,8 +52,8 @@ See [the support reference](linux/reference.md) for the exact boundaries.
 The iOS Simulator and Apple test execution require macOS with Xcode.
 Linux can build test products and write their test manifest; a Mac runs those products without recompiling them.
 
-Development signing and development IPA export work on Linux.
-App Store distribution export and Linux device debugging remain outside the supported release scope.
+Signing, distribution export, App Store Connect uploads, and Developer ID notarization work on Linux.
+Linux device debugging remains outside the supported release scope.
 
 ## Signing a device build
 

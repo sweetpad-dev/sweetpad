@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <pkg-ref id="dev.sweetpad.macfixture">
+        <bundle-version>
+            <bundle CFBundleShortVersionString="1.0" CFBundleVersion="1" id="dev.sweetpad.macfixture" path="Mac.app"/>
+        </bundle-version>
+    </pkg-ref>
+    <product id="dev.sweetpad.macfixture" version="1.0"/>
+    <title>Mac Fixture</title>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="13.0"/>
+        </allowed-os-versions>
+    </volume-check>
+    <choices-outline>
+        <line choice="default">
+            <line choice="dev.sweetpad.macfixture"/>
+        </line>
+    </choices-outline>
+    <choice id="default" title="Mac Fixture" versStr="1.0"/>
+    <choice id="dev.sweetpad.macfixture" title="Mac Fixture" visible="false" customLocation="/Applications">
+        <pkg-ref id="dev.sweetpad.macfixture"/>
+    </choice>
+    <pkg-ref id="dev.sweetpad.macfixture" version="1.0.0" onConclusion="none" installKBytes="330" updateKBytes="0">#dev.sweetpad.macfixture.pkg</pkg-ref>
+</installer-gui-script>

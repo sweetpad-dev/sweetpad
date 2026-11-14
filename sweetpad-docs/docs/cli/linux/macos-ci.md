@@ -8,7 +8,8 @@ Most pages in this section target iOS and iPhone.
 A macOS app has a different execution and distribution path.
 
 A Linux runner can compile a supported macOS app against the extracted macOS SDK.
-A Mac runs the application, executes native tests, and performs Developer ID distribution signing and notarization.
+It can also sign, package, upload, and notarize the release build.
+A Mac runs the application and executes native tests.
 
 ## Use a hosted Mac for a native workflow
 
@@ -92,18 +93,33 @@ The Linux build path does not provide a macOS runtime.
 Frameworks, run scripts, or assets that require a native Apple tool can still require a Mac build.
 Check [supported features](reference.md) before moving an existing job.
 
-## Tests and distribution
+## Tests
 
 Automatic Linux XCTest manifests currently cover the documented iOS test forms.
 For a complete macOS test workflow, use the hosted-Mac example or your existing native test pipeline.
 Do not assume that an iOS test-manifest recipe also covers macOS tests.
 
-Developer ID distribution requires the matching certificate, entitlements, hardened-runtime settings, and Apple notarization.
-Keep that release stage on a Mac with its existing signing configuration.
-The unsigned build example does not replace this stage.
+## Distribute from Linux
 
-The CLI's Linux development IPA export applies to iOS device archives.
-It is not a macOS distribution workflow.
+A macOS archive on Linux exports the same files as Xcode:
+
+- `--export-method app-store-connect` writes a Mac App Store `.pkg`, and `--upload` sends it to TestFlight.
+- `--notarize` exports with Developer ID, then notarizes and staples the `.app`, its `.zip`, and the `.pkg`.
+
+```bash
+sweetpad archive --project MyMacApp.xcodeproj --scheme MyMacApp \
+  --configuration Release --destination 'generic/platform=macOS' \
+  --notarize --output-file "$RUNNER_TEMP/dist" --json --non-interactive
+```
+
+Provide the identities and profiles the method needs, as in [the signing guide](signing-and-testing.md#archive-and-distribute).
+A Mac App Store build needs the App Sandbox. A Developer ID build needs the hardened runtime.
+SweetPad refuses an export without them and names the build setting to change.
+
+:::warning
+A Linux archive contains arm64 only. Xcode archives arm64 and x86_64 for a universal app.
+Use a Mac for the release when the app must run on Intel Macs.
+:::
 
 ## Verify the actual products
 
