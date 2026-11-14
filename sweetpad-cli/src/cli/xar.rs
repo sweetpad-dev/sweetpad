@@ -19,22 +19,32 @@ pub(crate) struct Xar {
 
 impl Xar {
     pub(crate) fn open(path: &Path) -> Result<Self, String> {
-        let mut file = File::open(path).map_err(|e| format!("can't open {}: {e}", path.display()))?;
+        let mut file =
+            File::open(path).map_err(|e| format!("can't open {}: {e}", path.display()))?;
         let mut header = [0u8; 28];
         file.read_exact(&mut header)
             .map_err(|_| format!("{} is too short to be a package", path.display()))?;
         if &header[..4] != b"xar!" {
-            return Err(format!("{} isn't a flat package (no XAR header)", path.display()));
+            return Err(format!(
+                "{} isn't a flat package (no XAR header)",
+                path.display()
+            ));
         }
         let header_size = u64::from(u16::from_be_bytes([header[4], header[5]]));
         let compressed = u64::from_be_bytes(header[8..16].try_into().unwrap_or([0; 8]));
         let mut raw = vec![0u8; usize::try_from(compressed).map_err(|e| e.to_string())?];
-        file.seek(SeekFrom::Start(header_size)).map_err(|e| e.to_string())?;
+        file.seek(SeekFrom::Start(header_size))
+            .map_err(|e| e.to_string())?;
         file.read_exact(&mut raw).map_err(|e| e.to_string())?;
         let mut xml = String::new();
         flate2::read::ZlibDecoder::new(raw.as_slice())
             .read_to_string(&mut xml)
-            .map_err(|e| format!("{}: the table of contents doesn't inflate: {e}", path.display()))?;
+            .map_err(|e| {
+                format!(
+                    "{}: the table of contents doesn't inflate: {e}",
+                    path.display()
+                )
+            })?;
         let toc = sweetpad_lib::xcscheme::parse(&xml)
             .map_err(|e| format!("{}: the table of contents isn't XML: {e}", path.display()))?;
         Ok(Self {
@@ -94,7 +104,9 @@ impl Xar {
                     .map_err(|e| format!("an entry doesn't inflate: {e}"))?;
                 Ok(out)
             }
-            other => Err(format!("an entry is encoded as {other}, which sweetpad can't read")),
+            other => Err(format!(
+                "an entry is encoded as {other}, which sweetpad can't read"
+            )),
         }
     }
 }

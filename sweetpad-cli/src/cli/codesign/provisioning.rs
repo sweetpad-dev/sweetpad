@@ -24,13 +24,17 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use super::der::{self, Reader, oids};
-use super::identity::{self, Identity, IdentitySet};
+use super::identity::{self, Certificate, Identity, IdentitySet, Kind};
 use super::plist::{self, Plist};
 use super::time::now_iso8601;
 
 /// The name this binary runs under to answer Swift Build.
 pub const TOOL: &str = "sweetpad-provisioning";
 pub const PROFILES_VARIABLE: &str = "SWEETPAD_PROVISIONING_PROFILES";
+/// Set to `ad-hoc` for an archive, whose export signs it again: a target the
+/// identities can't sign is signed ad hoc, with its entitlements, in place of
+/// failing the build.
+pub const FALLBACK_VARIABLE: &str = "SWEETPAD_CODE_SIGN_FALLBACK";
 
 #[must_use]
 pub fn main(_args: &[String]) -> ExitCode {
@@ -39,11 +43,16 @@ pub fn main(_args: &[String]) -> ExitCode {
         eprintln!("error: {TOOL}: couldn't read the request: {e}");
         return ExitCode::FAILURE;
     }
+    let fallback = std::env::var(FALLBACK_VARIABLE).is_ok_and(|v| v == "ad-hoc");
     let inputs = plist::parse(&input)
         .and_then(|request| {
-            answer(&request, &profile_folders(), || {
+            let answered = answer(&request, &profile_folders(), || {
                 IdentitySet::from_environment(false)
-            })
+            });
+            match answered {
+                Err(why) if fallback => Ok(archive_ad_hoc(&request, &why)),
+                answered => answered,
+            }
         })
         .unwrap_or_else(|message| {
             Plist::Dict(vec![(
@@ -107,9 +116,18 @@ pub(super) fn answer(
     let certificate = &identity.certificate;
     let project = dict("projectEntitlements");
     if let Some(profile) = &profile {
-        check_entitlements(profile, &project)?;
+        check_entitlements(profile, &project, &team)?;
     }
     merge(&mut entitlements, project);
+    if let Some(profile) = &profile {
+        for key in ["aps-environment", "com.apple.developer.aps-environment"] {
+            if plist::get(&entitlements, key).is_some()
+                && let Some(value) = plist::get(&profile.entitlements, key)
+            {
+                plist::set(&mut entitlements, key, value.clone());
+            }
+        }
+    }
     plist::set(
         &mut entitlements,
         "application-identifier",
@@ -213,6 +231,55 @@ fn choose<'a>(
     chosen.ok_or_else(|| first_error.unwrap_or_default())
 }
 
+/// The inputs for an archive's ad hoc signature when the identities can't
+/// sign a target, `why` saying what was missing: the target's entitlements,
+/// with the team's prefixes when `DEVELOPMENT_TEAM` names one, which an
+/// export signs again with the identity and profile of its method.
+pub(super) fn archive_ad_hoc(request: &Plist, why: &str) -> Plist {
+    let text = |key: &str| plist::string(request, key).unwrap_or_default();
+    let dict = |key: &str| match plist::get(request, key) {
+        Some(Plist::Dict(entries)) => entries.clone(),
+        _ => Vec::new(),
+    };
+    let bundle = text("bundleIdentifier");
+    let team = Some(text("teamID")).filter(|t| !t.is_empty());
+    let mut entitlements = Plist::Dict(dict("productTypeEntitlements"));
+    merge(&mut entitlements, dict("projectEntitlements"));
+    let application = team.map_or_else(|| bundle.to_string(), |t| format!("{t}.{bundle}"));
+    plist::set(
+        &mut entitlements,
+        "application-identifier",
+        Plist::String(application),
+    );
+    let mut warning = format!("signing '{bundle}' ad hoc for its export to sign again: {why}");
+    if let Some(team) = team {
+        plist::set(
+            &mut entitlements,
+            "com.apple.developer.team-identifier",
+            Plist::String(team.to_string()),
+        );
+    } else {
+        warning.push_str("; set DEVELOPMENT_TEAM so its entitlements name the team");
+    }
+    let (signed, simulated) = split(entitlements, text("entitlementsDestination"));
+    let mut inputs = vec![
+        ("identityHash".to_string(), Plist::String("-".to_string())),
+        ("identityName".to_string(), Plist::String("-".to_string())),
+        ("signedEntitlements".to_string(), signed),
+        ("simulatedEntitlements".to_string(), simulated),
+        (
+            "warnings".to_string(),
+            Plist::Array(vec![Plist::String(warning)]),
+        ),
+    ];
+    if let Some(team) = team {
+        for key in ["appIdentifierPrefix", "teamIdentifierPrefix"] {
+            inputs.push((key.to_string(), Plist::String(format!("{team}."))));
+        }
+    }
+    Plist::Dict(inputs)
+}
+
 /// The inputs for an ad hoc signature, as Swift Build's own console gives
 /// them: the bundle identifier as the application identifier, and a
 /// simulator's build debuggable.
@@ -264,12 +331,17 @@ fn find_profile(
     let bundle = text("bundleIdentifier");
     let profiles = load_profiles(folders);
     let picked = if text("provisioningStyle") == "manual" {
-        let specifier = text("provisioningProfileSpecifier");
-        let uuid = text("provisioningProfileUUID");
-        profiles.into_iter().find(|p| {
-            (!uuid.is_empty() && p.uuid == uuid)
-                || (!specifier.is_empty() && (p.name == specifier || p.uuid == specifier))
-        })
+        let named = [
+            text("provisioningProfileUUID"),
+            text("provisioningProfileSpecifier"),
+        ]
+        .into_iter()
+        .find(|n| !n.is_empty());
+        let picked = named.and_then(|name| find_named(profiles, name));
+        if let Some(profile) = &picked {
+            check_named(profile, identity, team, bundle)?;
+        }
+        picked
     } else {
         pick(profiles, identity, team, bundle, platform(text("sdkRoot")))
     };
@@ -288,26 +360,81 @@ fn find_profile(
     Ok(picked)
 }
 
-/// That `profile` allows each of the project's entitlements that a profile
-/// has to grant, as Xcode checks before it signs.
-fn check_entitlements(profile: &Profile, project: &[(String, Plist)]) -> Result<(), String> {
-    for (key, _) in project {
-        let provisioned = (key.starts_with("com.apple.developer.")
-            && key != "com.apple.developer.team-identifier")
-            || [
-                "aps-environment",
-                "com.apple.security.application-groups",
-                "keychain-access-groups",
-            ]
-            .contains(&key.as_str());
-        if provisioned && plist::get(&profile.entitlements, key).is_none() {
+/// That `profile` allows `entitlements`, as Xcode checks before it signs:
+/// each one a profile has to grant is in it, with a value it allows.
+/// `$(AppIdentifierPrefix)` and `$(TeamIdentifierPrefix)` are `team`'s; a
+/// value naming another setting isn't checked.
+pub(super) fn check_entitlements(
+    profile: &Profile,
+    entitlements: &[(String, Plist)],
+    team: &str,
+) -> Result<(), String> {
+    for (key, value) in entitlements {
+        if !provisioned(key) {
+            continue;
+        }
+        let Some(granted) = plist::get(&profile.entitlements, key) else {
             return Err(format!(
                 "Provisioning profile \"{}\" doesn't include the {key} entitlement.",
+                profile.name
+            ));
+        };
+        if !is_environment(key) && !allows(granted, &expand(value, team)) {
+            return Err(format!(
+                "Provisioning profile \"{}\" doesn't match the entitlements file's value for \
+                 the {key} entitlement.",
                 profile.name
             ));
         }
     }
     Ok(())
+}
+
+/// Whether a profile has to grant entitlement `key`.
+fn provisioned(key: &str) -> bool {
+    (key.starts_with("com.apple.developer.") && key != "com.apple.developer.team-identifier")
+        || [
+            "aps-environment",
+            "com.apple.security.application-groups",
+            "keychain-access-groups",
+        ]
+        .contains(&key)
+}
+
+/// Whether `key` is the push environment, whose value the profile sets
+/// rather than checks: an archive signs for production whatever the
+/// entitlements file says.
+pub(super) fn is_environment(key: &str) -> bool {
+    key == "aps-environment" || key == "com.apple.developer.aps-environment"
+}
+
+/// `value` with the team prefixes Swift Build fills in later.
+fn expand(value: &Plist, team: &str) -> Plist {
+    match value {
+        Plist::String(text) => Plist::String(
+            text.replace("$(AppIdentifierPrefix)", &format!("{team}."))
+                .replace("$(TeamIdentifierPrefix)", &format!("{team}.")),
+        ),
+        Plist::Array(items) => Plist::Array(items.iter().map(|i| expand(i, team)).collect()),
+        other => other.clone(),
+    }
+}
+
+/// Whether a profile's `granted` value allows `wanted`: equal, or matched
+/// by a `*` wildcard; for a list, each item by some granted one.
+fn allows(granted: &Plist, wanted: &Plist) -> bool {
+    match (granted, wanted) {
+        (_, Plist::String(w)) if w.contains("$(") => true,
+        (Plist::String(g), Plist::String(w)) => {
+            g == w
+                || g.strip_suffix('*')
+                    .is_some_and(|prefix| w.starts_with(prefix))
+        }
+        (Plist::Array(gs), Plist::String(_)) => gs.iter().any(|g| allows(g, wanted)),
+        (_, Plist::Array(ws)) => ws.iter().all(|w| allows(granted, w)),
+        (Plist::Bool(g), Plist::Bool(w)) => *g || !*w,
+        _ => true,
+    }
 }
 
 /// `entitlements` where the target's destination puts them: signed into the
@@ -331,7 +458,7 @@ fn merge(into: &mut Plist, entries: Vec<(String, Plist)>) {
 
 /// The platform a profile names for the SDK `sdk_root`, like
 /// `iphoneos27.0`.
-fn platform(sdk_root: &str) -> &'static str {
+pub(super) fn platform(sdk_root: &str) -> &'static str {
     let name = sdk_root.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
     match name {
         "appletvos" => "tvOS",
@@ -352,6 +479,10 @@ pub(super) struct Profile {
     pub platforms: Vec<String>,
     pub entitlements: Plist,
     pub certificates: Vec<Vec<u8>>,
+    /// The devices it lists, and whether it runs on any device, as
+    /// enterprise and Developer ID profiles do.
+    pub devices: Vec<String>,
+    pub all_devices: bool,
     /// When it expires and was made, as their ISO 8601 text, which sorts.
     pub expiration: String,
     pub creation: String,
@@ -397,6 +528,8 @@ impl Profile {
                 .cloned()
                 .unwrap_or(Plist::Dict(Vec::new())),
             certificates,
+            devices: strings("ProvisionedDevices"),
+            all_devices: plist::get(&value, "ProvisionsAllDevices") == Some(&Plist::Bool(true)),
             expiration: plist::string(&value, "ExpirationDate")
                 .unwrap_or_default()
                 .to_string(),
@@ -404,6 +537,108 @@ impl Profile {
                 .unwrap_or_default()
                 .to_string(),
         })
+    }
+}
+
+impl Profile {
+    /// The application identifier it allows, with its team: exact, or a
+    /// prefix ending in `*`. A macOS profile names it with Apple's prefix.
+    pub fn application_identifier(&self) -> Option<&str> {
+        plist::string(&self.entitlements, "application-identifier")
+            .or_else(|| plist::string(&self.entitlements, "com.apple.application-identifier"))
+    }
+
+    /// How closely it fits `application`, a `TEAM.bundle`: an exact
+    /// identifier over the longest wildcard, `None` when it doesn't allow it.
+    pub fn fit(&self, application: &str) -> Option<usize> {
+        let pattern = self.application_identifier()?;
+        if pattern == application {
+            return Some(usize::MAX);
+        }
+        let prefix = pattern.strip_suffix('*')?;
+        application.starts_with(prefix).then_some(prefix.len())
+    }
+
+    /// What its certificates sign.
+    pub fn certificate_kinds(&self) -> Vec<Kind> {
+        let mut kinds: Vec<Kind> = self
+            .certificates
+            .iter()
+            .filter_map(|der| Certificate::parse(der).ok())
+            .flat_map(|c| c.kinds())
+            .collect();
+        kinds.sort();
+        kinds.dedup();
+        kinds
+    }
+
+    /// Whether it's for `platform`, as [`platform`] names one. A watch app's
+    /// profile may name iOS.
+    pub fn is_for(&self, platform: &str) -> bool {
+        self.platforms
+            .iter()
+            .any(|p| p == platform || (platform == "watchOS" && p == "iOS"))
+    }
+
+    pub fn is_expired(&self, now: &str) -> bool {
+        !self.expiration.is_empty() && self.expiration.as_str() <= now
+    }
+
+    /// What it's for, as Xcode tells one kind from another: by its
+    /// certificates, its devices and whether it lets a debugger attach.
+    pub fn kind(&self) -> ProfileKind {
+        let kinds = self.certificate_kinds();
+        let only_development = !kinds.is_empty() && kinds.iter().all(|k| *k == Kind::Development);
+        if self.platforms.iter().any(|p| p == "OSX") {
+            if kinds.contains(&Kind::DeveloperIdApplication) {
+                ProfileKind::DeveloperId
+            } else if !self.devices.is_empty() || only_development {
+                ProfileKind::MacDevelopment
+            } else {
+                ProfileKind::MacAppStore
+            }
+        } else if only_development
+            || plist::get(&self.entitlements, "get-task-allow") == Some(&Plist::Bool(true))
+        {
+            ProfileKind::Development
+        } else if self.all_devices {
+            ProfileKind::Enterprise
+        } else if !self.devices.is_empty() {
+            ProfileKind::AdHoc
+        } else {
+            ProfileKind::AppStore
+        }
+    }
+}
+
+/// What a profile is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProfileKind {
+    Development,
+    AdHoc,
+    AppStore,
+    Enterprise,
+    MacDevelopment,
+    MacAppStore,
+    DeveloperId,
+}
+
+impl ProfileKind {
+    pub fn is_development(self) -> bool {
+        matches!(self, Self::Development | Self::MacDevelopment)
+    }
+
+    /// The name to ask for one in an error.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Development => "development",
+            Self::AdHoc => "ad hoc",
+            Self::AppStore => "App Store",
+            Self::Enterprise => "enterprise",
+            Self::MacDevelopment => "Mac development",
+            Self::MacAppStore => "Mac App Store",
+            Self::DeveloperId => "Developer ID",
+        }
     }
 }
 
@@ -429,7 +664,7 @@ fn signed_content(data: &[u8]) -> Result<Vec<u8>, String> {
         .octets()
 }
 
-fn load_profiles(folders: &[PathBuf]) -> Vec<Profile> {
+pub(super) fn load_profiles(folders: &[PathBuf]) -> Vec<Profile> {
     let mut profiles = Vec::new();
     for folder in folders {
         let Ok(entries) = std::fs::read_dir(folder) else {
@@ -454,10 +689,32 @@ fn load_profiles(folders: &[PathBuf]) -> Vec<Profile> {
     profiles
 }
 
-/// The profile automatic signing picks: for `team`, `bundle` and
-/// `platform`, with `identity`'s certificate, of its kind (development or
-/// distribution), unexpired; an exact application identifier over a
-/// wildcard, then the newest.
+/// The best of `profiles` that `accept` takes: for `team`, `bundle` and
+/// `platform`, holding `identity`'s certificate, unexpired; an exact
+/// application identifier over a wildcard, then the newest.
+fn rank(
+    profiles: Vec<Profile>,
+    identity: &Identity,
+    team: &str,
+    bundle: &str,
+    platform: &str,
+    accept: impl Fn(&Profile) -> bool,
+) -> Option<Profile> {
+    let now = now_iso8601();
+    let application = format!("{team}.{bundle}");
+    profiles
+        .into_iter()
+        .filter(|p| p.teams.iter().any(|t| t == team))
+        .filter(|p| p.is_for(platform))
+        .filter(|p| p.certificates.contains(&identity.certificate.der))
+        .filter(|p| !p.is_expired(&now) && accept(p))
+        .filter_map(|p| Some((p.fit(&application)?, p)))
+        .max_by(|(a, p), (b, q)| a.cmp(b).then_with(|| p.creation.cmp(&q.creation)))
+        .map(|(_, p)| p)
+}
+
+/// The profile automatic signing picks at build time: one of the
+/// identity's kind, development or distribution.
 fn pick(
     profiles: Vec<Profile>,
     identity: &Identity,
@@ -465,28 +722,69 @@ fn pick(
     bundle: &str,
     platform: &str,
 ) -> Option<Profile> {
+    rank(profiles, identity, team, bundle, platform, |p| {
+        p.kind().is_development() == identity.is_development()
+    })
+}
+
+/// The profile of `kind` an export embeds for `bundle`.
+pub(super) fn pick_for_export(
+    profiles: Vec<Profile>,
+    kind: ProfileKind,
+    identity: &Identity,
+    team: &str,
+    bundle: &str,
+    platform: &str,
+) -> Option<Profile> {
+    rank(profiles, identity, team, bundle, platform, |p| {
+        p.kind() == kind
+    })
+}
+
+/// The profile a name or UUID picks, as manual signing and ExportOptions'
+/// `provisioningProfiles` name one: of several with one name, the newest
+/// unexpired.
+pub(super) fn find_named(profiles: Vec<Profile>, name: &str) -> Option<Profile> {
     let now = now_iso8601();
-    let application = format!("{team}.{bundle}");
     profiles
         .into_iter()
-        .filter(|p| p.teams.iter().any(|t| t == team))
-        .filter(|p| p.platforms.iter().any(|t| t == platform))
-        .filter(|p| p.certificates.contains(&identity.certificate.der))
-        .filter(|p| p.expiration.is_empty() || p.expiration > now)
-        .filter(|p| {
-            plist::get(&p.entitlements, "get-task-allow").is_some_and(|v| *v == Plist::Bool(true))
-                == identity.is_development()
+        .filter(|p| p.uuid == name || p.name == name)
+        .max_by(|p, q| {
+            (!p.is_expired(&now))
+                .cmp(&!q.is_expired(&now))
+                .then_with(|| p.creation.cmp(&q.creation))
         })
-        .filter_map(|p| {
-            let pattern = plist::string(&p.entitlements, "application-identifier")?;
-            let specificity = if pattern == application {
-                usize::MAX
-            } else {
-                let prefix = pattern.strip_suffix('*')?;
-                application.starts_with(prefix).then_some(prefix.len())?
-            };
-            Some((specificity, p))
-        })
-        .max_by(|(a, p), (b, q)| a.cmp(b).then_with(|| p.creation.cmp(&q.creation)))
-        .map(|(_, p)| p)
+}
+
+/// That a profile named for a target fits it, as Xcode checks one: not
+/// expired, allowing its application identifier and holding the signing
+/// certificate.
+pub(super) fn check_named(
+    profile: &Profile,
+    identity: &Identity,
+    team: &str,
+    bundle: &str,
+) -> Result<(), String> {
+    if profile.is_expired(&now_iso8601()) {
+        return Err(format!(
+            "Provisioning profile \"{}\" expired on {}.",
+            profile.name, profile.expiration
+        ));
+    }
+    if profile.fit(&format!("{team}.{bundle}")).is_none() {
+        let app = profile.application_identifier().unwrap_or_default();
+        let app = app.split_once('.').map_or(app, |(_, id)| id);
+        return Err(format!(
+            "Provisioning profile \"{}\" has app ID \"{app}\", which does not match the \
+             bundle ID \"{bundle}\".",
+            profile.name
+        ));
+    }
+    if !profile.certificates.contains(&identity.certificate.der) {
+        return Err(format!(
+            "Provisioning profile \"{}\" doesn't include signing certificate \"{}\".",
+            profile.name, identity.certificate.common_name
+        ));
+    }
+    Ok(())
 }

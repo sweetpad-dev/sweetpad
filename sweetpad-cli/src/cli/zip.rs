@@ -41,15 +41,21 @@ pub(crate) fn read_member(
     wanted: impl Fn(&str) -> bool,
 ) -> Result<Option<(String, Vec<u8>)>, String> {
     let mut file = File::open(path).map_err(|e| format!("can't open {}: {e}", path.display()))?;
-    let members = central_directory(&mut file).map_err(|e| format!("{} isn't a zip file: {e}", path.display()))?;
+    let members = central_directory(&mut file)
+        .map_err(|e| format!("{} isn't a zip file: {e}", path.display()))?;
     let Some(member) = members.into_iter().find(|m| wanted(&m.name)) else {
         return Ok(None);
     };
     let mut header = [0u8; 30];
-    file.seek(SeekFrom::Start(member.offset)).map_err(|e| e.to_string())?;
+    file.seek(SeekFrom::Start(member.offset))
+        .map_err(|e| e.to_string())?;
     file.read_exact(&mut header).map_err(|e| e.to_string())?;
     if u32_at(&header, 0) != LOCAL {
-        return Err(format!("{}: {} has no local header", path.display(), member.name));
+        return Err(format!(
+            "{}: {} has no local header",
+            path.display(),
+            member.name
+        ));
     }
     let skip = u64::from(u16_at(&header, 26)) + u64::from(u16_at(&header, 28));
     file.seek(SeekFrom::Current(i64::try_from(skip).unwrap_or(0)))
@@ -80,7 +86,8 @@ fn central_directory(file: &mut File) -> Result<Vec<Member>, String> {
     let length = file.seek(SeekFrom::End(0)).map_err(|e| e.to_string())?;
     let tail_length = length.min(66_000);
     let mut tail = vec![0u8; usize::try_from(tail_length).unwrap_or(0)];
-    file.seek(SeekFrom::Start(length - tail_length)).map_err(|e| e.to_string())?;
+    file.seek(SeekFrom::Start(length - tail_length))
+        .map_err(|e| e.to_string())?;
     file.read_exact(&mut tail).map_err(|e| e.to_string())?;
     let end = (0..tail.len().saturating_sub(21))
         .rev()
@@ -105,7 +112,8 @@ fn central_directory(file: &mut File) -> Result<Vec<Member>, String> {
         offset = u64_at(&record, 48);
     }
     let mut directory = vec![0u8; usize::try_from(size).map_err(|e| e.to_string())?];
-    file.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
+    file.seek(SeekFrom::Start(offset))
+        .map_err(|e| e.to_string())?;
     file.read_exact(&mut directory).map_err(|e| e.to_string())?;
     let mut members = Vec::new();
     let mut at = 0;
@@ -177,7 +185,9 @@ mod tests {
             .unwrap();
         assert_eq!(name, "Payload/App.app/Info.plist");
         assert_eq!(data, "plist ".repeat(200).into_bytes());
-        let (_, tiny) = read_member(&ipa, |n| n.ends_with("/tiny")).unwrap().unwrap();
+        let (_, tiny) = read_member(&ipa, |n| n.ends_with("/tiny"))
+            .unwrap()
+            .unwrap();
         assert_eq!(tiny, b"x");
         assert!(read_member(&ipa, |n| n == "missing").unwrap().is_none());
         assert!(read_member(&dir.join("Payload/App.app/tiny"), |_| true).is_err());

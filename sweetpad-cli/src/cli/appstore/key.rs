@@ -14,13 +14,21 @@ pub struct KeyArgs {
     #[arg(long = "api-key", value_name = "KEY_ID", env = "SWEETPAD_ASC_KEY_ID")]
     pub key_id: Option<String>,
     /// Issuer ID of a team API key. Leave it out for an individual key.
-    #[arg(long = "api-issuer", value_name = "ISSUER_ID", env = "SWEETPAD_ASC_ISSUER_ID")]
+    #[arg(
+        long = "api-issuer",
+        value_name = "ISSUER_ID",
+        env = "SWEETPAD_ASC_ISSUER_ID"
+    )]
     pub issuer: Option<String>,
     /// The key's .p8 file. Without it, sweetpad reads the key's text from
     /// SWEETPAD_ASC_KEY, or looks for 'AuthKey_KEY_ID.p8' where altool does:
     /// ./private_keys, ~/private_keys, ~/.private_keys,
     /// ~/.appstoreconnect/private_keys and $API_PRIVATE_KEYS_DIR.
-    #[arg(long = "api-key-path", value_name = "FILE", env = "SWEETPAD_ASC_KEY_PATH")]
+    #[arg(
+        long = "api-key-path",
+        value_name = "FILE",
+        env = "SWEETPAD_ASC_KEY_PATH"
+    )]
     pub key_path: Option<PathBuf>,
 }
 
@@ -33,7 +41,9 @@ pub(crate) struct ApiKey {
 }
 
 fn non_empty(value: Option<&String>) -> Option<String> {
-    value.map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+    value
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 impl ApiKey {
@@ -49,7 +59,9 @@ impl ApiKey {
             )
         })?;
         let issuer = non_empty(args.issuer.as_ref());
-        let (pem, origin) = if let Some(path) = args.key_path.as_ref().filter(|p| !p.as_os_str().is_empty()) {
+        let (pem, origin) = if let Some(path) =
+            args.key_path.as_ref().filter(|p| !p.as_os_str().is_empty())
+        {
             let text = std::fs::read_to_string(path)
                 .map_err(|e| usage(format!("can't read the API key {}: {e}", path.display())))?;
             (text, path.display().to_string())
@@ -75,7 +87,11 @@ impl ApiKey {
                 "{origin} isn't an App Store Connect API key (a PEM-encoded P-256 private key)"
             ))
         })?;
-        Ok(Self { id, issuer, signing })
+        Ok(Self {
+            id,
+            issuer,
+            signing,
+        })
     }
 }
 
@@ -83,7 +99,11 @@ impl ApiKey {
 fn search_folders() -> Vec<PathBuf> {
     let mut folders = vec![PathBuf::from("./private_keys")];
     if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
-        for sub in ["private_keys", ".private_keys", ".appstoreconnect/private_keys"] {
+        for sub in [
+            "private_keys",
+            ".private_keys",
+            ".appstoreconnect/private_keys",
+        ] {
             folders.push(home.join(sub));
         }
     }

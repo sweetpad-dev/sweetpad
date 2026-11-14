@@ -24,8 +24,15 @@ const PARALLEL_PARTS: usize = 4;
 
 /// What happens while an upload runs, for the command to show.
 pub(crate) enum Progress<'a> {
-    Created { upload_id: &'a str, parts: usize, bytes: u64 },
-    Part { done: usize, parts: usize },
+    Created {
+        upload_id: &'a str,
+        parts: usize,
+        bytes: u64,
+    },
+    Part {
+        done: usize,
+        parts: usize,
+    },
     Committed,
     State(&'a str),
     Processing(&'a str),
@@ -183,7 +190,9 @@ pub(crate) fn upload(
     report.app_id = Some(app_id.to_string());
     report.bundle_id = Some(artifact.bundle_id.clone());
     report.platform.get_or_insert(artifact.platform);
-    report.version.get_or_insert_with(|| artifact.version.clone());
+    report
+        .version
+        .get_or_insert_with(|| artifact.version.clone());
     report.build.get_or_insert_with(|| artifact.build.clone());
     Ok(report)
 }
@@ -238,7 +247,9 @@ fn send_parts(
         match first_error {
             Some(error) => Err(error),
             None if done == operations.len() => Ok(()),
-            None => Err(CliError::new("the upload stopped before every part was sent")),
+            None => Err(CliError::new(
+                "the upload stopped before every part was sent",
+            )),
         }
     })
 }
@@ -254,7 +265,9 @@ fn send_part(
         .as_str()
         .ok_or_else(|| CliError::new("an upload operation has no URL").context(context()))?;
     let offset = operation["offset"].as_u64().unwrap_or(0);
-    let length = operation["length"].as_u64().unwrap_or(artifact.size - offset.min(artifact.size));
+    let length = operation["length"]
+        .as_u64()
+        .unwrap_or(artifact.size - offset.min(artifact.size));
     let method = match operation["method"].as_str().unwrap_or("PUT") {
         "POST" => minreq::Method::Post,
         "PATCH" => minreq::Method::Patch,
@@ -351,9 +364,7 @@ fn follow_build(
 
 /// One read of an upload and its build, if it has one.
 pub(crate) fn read_upload(client: &Client, upload_id: &str) -> Result<UploadReport, CliError> {
-    let value = client.get(&format!(
-        "/v1/buildUploads/{upload_id}?include=build"
-    ))?;
+    let value = client.get(&format!("/v1/buildUploads/{upload_id}?include=build"))?;
     let data = &value["data"];
     let attributes = &data["attributes"];
     let state = &attributes["state"];
@@ -368,12 +379,20 @@ pub(crate) fn read_upload(client: &Client, upload_id: &str) -> Result<UploadRepo
             })
             .collect()
     };
-    let related = |name: &str| data["relationships"][name]["data"]["id"].as_str().map(str::to_string);
+    let related = |name: &str| {
+        data["relationships"][name]["data"]["id"]
+            .as_str()
+            .map(str::to_string)
+    };
     let included = value["included"].as_array().cloned().unwrap_or_default();
     let processing_state = included
         .iter()
         .find(|i| i["type"] == "builds")
-        .and_then(|b| b["attributes"]["processingState"].as_str().map(str::to_string));
+        .and_then(|b| {
+            b["attributes"]["processingState"]
+                .as_str()
+                .map(str::to_string)
+        });
     let text = |key: &str| attributes[key].as_str().map(str::to_string);
     Ok(UploadReport {
         upload_id: upload_id.to_string(),

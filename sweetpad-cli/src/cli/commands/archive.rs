@@ -16,6 +16,8 @@ use crate::cli::{
     CliError, CommandResult, Context, ErrorKind, Render, Rendered, buildlog, process, xcodebuild,
 };
 
+mod export;
+mod export_options;
 mod portable;
 
 /// The export method — ExportOptions.plist `method` values (Xcode 15+ names).
@@ -134,7 +136,10 @@ impl ExportChoice {
         if self.upload {
             if let Some(plist) = &self.export_options {
                 let values = sweetpad_lib::derived_data::plist_strings(plist);
-                let method = values.iter().find(|(k, _)| k == "method").map(|(_, v)| v.as_str());
+                let method = values
+                    .iter()
+                    .find(|(k, _)| k == "method")
+                    .map(|(_, v)| v.as_str());
                 if !matches!(method, Some("app-store-connect" | "app-store")) {
                     return Err(CliError::new(format!(
                         "'--upload' needs an App Store Connect export, but {} sets method {}",
@@ -221,7 +226,11 @@ impl Render for ArchiveReport {
 }
 
 /// Upload the one .ipa or .pkg an export wrote to `export_dir`.
-fn upload_export(ctx: &Context, choice: &ExportChoice, export_dir: &Path) -> Result<upload::Report, CliError> {
+fn upload_export(
+    ctx: &Context,
+    choice: &ExportChoice,
+    export_dir: &Path,
+) -> Result<upload::Report, CliError> {
     let mut found: Vec<PathBuf> = std::fs::read_dir(export_dir)
         .map_err(|e| CliError::new(format!("can't read {}: {e}", export_dir.display())))?
         .filter_map(Result::ok)
@@ -240,8 +249,14 @@ fn upload_export(ctx: &Context, choice: &ExportChoice, export_dir: &Path) -> Res
             found.len()
         )));
     };
-    upload::upload_file(ctx, file, choice.app_id.as_deref(), &choice.key, &choice.follow)
-        .map_err(|e| e.context("uploading the export"))
+    upload::upload_file(
+        ctx,
+        file,
+        choice.app_id.as_deref(),
+        &choice.key,
+        &choice.follow,
+    )
+    .map_err(|e| e.context("uploading the export"))
 }
 
 pub fn run(ctx: &mut Context, args: &ArchiveArgs, action: Option<&Action>) -> CommandResult {

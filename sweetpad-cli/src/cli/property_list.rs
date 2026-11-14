@@ -178,6 +178,13 @@ pub(super) fn set(value: &mut Plist, key: &str, new: Plist) {
     }
 }
 
+/// `value` without `key`.
+pub(super) fn remove(value: &mut Plist, key: &str) {
+    if let Plist::Dict(entries) = value {
+        entries.retain(|(k, _)| k != key);
+    }
+}
+
 /// An `Info.plist`: XML, or the binary form Swift Build writes for iOS.
 pub(super) fn read_info(data: &[u8]) -> Result<Plist, String> {
     if data.starts_with(b"bplist00") {

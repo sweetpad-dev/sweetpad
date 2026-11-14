@@ -63,7 +63,10 @@ mod tests {
         let claims = decode(parts[1]);
         assert_eq!(claims["iss"], "69a6de7e-0000-47e3-e053-5b8c7c11a4d1");
         assert_eq!(claims["aud"], "appstoreconnect-v1");
-        assert_eq!(claims["exp"].as_u64().unwrap() - claims["iat"].as_u64().unwrap(), LIFETIME_SECS);
+        assert_eq!(
+            claims["exp"].as_u64().unwrap() - claims["iat"].as_u64().unwrap(),
+            LIFETIME_SECS
+        );
         assert!(claims.get("sub").is_none());
         let signature = Signature::from_slice(&URL_SAFE_NO_PAD.decode(parts[2]).unwrap()).unwrap();
         VerifyingKey::from(&key.signing)

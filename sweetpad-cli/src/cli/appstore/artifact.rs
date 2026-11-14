@@ -100,7 +100,12 @@ pub(crate) fn inspect(path: &Path) -> Result<Artifact, CliError> {
             .map(|(_, v)| v.trim().to_string())
             .filter(|v| !v.is_empty())
     };
-    let missing = |key: &str| usage(format!("{}: the app's Info.plist has no {key}", path.display()));
+    let missing = |key: &str| {
+        usage(format!(
+            "{}: the app's Info.plist has no {key}",
+            path.display()
+        ))
+    };
     let platform = match value("DTPlatformName") {
         Some(name) => Platform::from_sdk(&name).ok_or_else(|| {
             usage(format!(
@@ -133,14 +138,16 @@ fn is_app(name: &str) -> bool {
 fn ipa_info(path: &Path) -> Result<Vec<(String, String)>, CliError> {
     let is_info = |name: &str| {
         let parts: Vec<&str> = name.split('/').collect();
-        parts.len() == 3
-            && parts[0] == "Payload"
-            && is_app(parts[1])
-            && parts[2] == "Info.plist"
+        parts.len() == 3 && parts[0] == "Payload" && is_app(parts[1]) && parts[2] == "Info.plist"
     };
     let (_, data) = zip::read_member(path, is_info)
         .map_err(usage)?
-        .ok_or_else(|| usage(format!("{} has no Payload/<App>.app/Info.plist", path.display())))?;
+        .ok_or_else(|| {
+            usage(format!(
+                "{} has no Payload/<App>.app/Info.plist",
+                path.display()
+            ))
+        })?;
     Ok(sweetpad_lib::derived_data::plist_strings_from_bytes(&data))
 }
 
@@ -153,7 +160,9 @@ fn pkg_info(path: &Path) -> Result<Vec<(String, String)>, CliError> {
         if name.rsplit('/').next() != Some("PackageInfo") {
             continue;
         }
-        let data = xar.read(file).map_err(|e| usage(format!("{}: {name}: {e}", path.display())))?;
+        let data = xar
+            .read(file)
+            .map_err(|e| usage(format!("{}: {name}: {e}", path.display())))?;
         let text = String::from_utf8_lossy(&data);
         let root = sweetpad_lib::xcscheme::parse(&text)
             .map_err(|e| usage(format!("{}: {name} isn't XML: {e}", path.display())))?;
@@ -218,7 +227,10 @@ mod tests {
         );
         let artifact = inspect(&ipa).unwrap();
         assert_eq!(artifact.bundle_id, "dev.example.app");
-        assert_eq!((artifact.version.as_str(), artifact.build.as_str()), ("1.2", "42"));
+        assert_eq!(
+            (artifact.version.as_str(), artifact.build.as_str()),
+            ("1.2", "42")
+        );
         assert_eq!(artifact.platform, Platform::Ios);
         assert_eq!(artifact.uti, "com.apple.ipa");
         assert_eq!(artifact.file_name, "Delivery.ipa");

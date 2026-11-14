@@ -6,8 +6,8 @@ use serde_json::Value;
 
 use super::jwt;
 use super::key::ApiKey;
-use crate::cli::net::{Request, Session};
 use crate::cli::CliError;
+use crate::cli::net::{Request, Session};
 
 const BASE: &str = "https://api.appstoreconnect.apple.com";
 
@@ -92,7 +92,10 @@ impl Client {
         let mut request = Request::new(method, format!("{}{path}", self.base))
             .header("Authorization", self.bearer())
             .header("Accept", "application/json")
-            .header("User-Agent", concat!("sweetpad-cli/", env!("CARGO_PKG_VERSION")));
+            .header(
+                "User-Agent",
+                concat!("sweetpad-cli/", env!("CARGO_PKG_VERSION")),
+            );
         if let Some(body) = body {
             request = request
                 .header("Content-Type", "application/json")
@@ -116,7 +119,12 @@ impl Client {
         if response.ok() {
             return Ok(value);
         }
-        Err(refusal(response.status, &value, &response.snippet(), &shown))
+        Err(refusal(
+            response.status,
+            &value,
+            &response.snippet(),
+            &shown,
+        ))
     }
 }
 
@@ -185,10 +193,18 @@ mod tests {
         assert_eq!(failure.status, Some(409));
         assert_eq!(failure.codes, ["ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE"]);
         let message = failure.error.to_string();
-        assert!(message.starts_with("App Store Connect refused POST /v1/buildUploads: HTTP 409: The provided entity"), "{message}");
+        assert!(
+            message.starts_with(
+                "App Store Connect refused POST /v1/buildUploads: HTTP 409: The provided entity"
+            ),
+            "{message}"
+        );
         assert!(message.contains("must be higher"), "{message}");
         let failure = refusal(401, &Value::Null, "Unauthenticated", "GET /v1/apps");
-        assert_eq!(failure.error.to_string(), "App Store Connect refused GET /v1/apps: HTTP 401: Unauthenticated");
+        assert_eq!(
+            failure.error.to_string(),
+            "App Store Connect refused GET /v1/apps: HTTP 401: Unauthenticated"
+        );
         assert!(failure.error.tip_text().unwrap().contains("issuer"));
     }
 }

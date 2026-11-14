@@ -91,7 +91,8 @@ pub fn run(ctx: &mut Context, args: &UploadArgs, action: Option<&Action>) -> Com
         }
         None => {
             let file = args.file.as_deref().ok_or_else(|| {
-                CliError::new("upload needs a file: 'sweetpad upload App.ipa'").kind(ErrorKind::Usage)
+                CliError::new("upload needs a file: 'sweetpad upload App.ipa'")
+                    .kind(ErrorKind::Usage)
             })?;
             let report = upload_file(ctx, file, args.app_id.as_deref(), &args.key, &args.follow)?;
             Ok(rendered(report))
@@ -226,7 +227,11 @@ impl Render for Report {
             let state = u.processing_state.as_deref().unwrap_or("not processed yet");
             out.line(&format!("  build     {build} ({state})"));
         }
-        for (label, list) in [("error", &u.errors), ("warning", &u.warnings), ("info", &u.infos)] {
+        for (label, list) in [
+            ("error", &u.errors),
+            ("warning", &u.warnings),
+            ("info", &u.infos),
+        ] {
             for m in list {
                 let code = if m.code.is_empty() {
                     String::new()
@@ -239,7 +244,10 @@ impl Render for Report {
         if !matches!(u.state.as_str(), "COMPLETE" | "FAILED")
             || u.processing_state.as_deref() == Some("PROCESSING")
         {
-            out.line(&format!("  follow it with 'sweetpad upload status {}'", u.upload_id));
+            out.line(&format!(
+                "  follow it with 'sweetpad upload status {}'",
+                u.upload_id
+            ));
         }
     }
 

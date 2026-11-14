@@ -244,10 +244,31 @@ pub(super) fn requirements(
         op(&mut expression, 1);
         data(&mut expression, der::oids::APPLE_WWDR_INTERMEDIATE);
         op(&mut expression, MATCH_EXISTS);
+    } else if let Some(team) = developer_id_team(identity) {
+        // anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6]
+        // exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists
+        // and certificate leaf[subject.OU] = TEAM
+        op(&mut expression, OP_AND);
+        op(&mut expression, OP_APPLE_GENERIC_ANCHOR);
+        op(&mut expression, OP_AND);
+        op(&mut expression, OP_CERT_GENERIC);
+        op(&mut expression, 1);
+        data(&mut expression, der::oids::DEVELOPER_ID_INTERMEDIATE);
+        op(&mut expression, MATCH_EXISTS);
+        op(&mut expression, OP_AND);
+        op(&mut expression, OP_CERT_GENERIC);
+        op(&mut expression, 0);
+        data(&mut expression, der::oids::DEVELOPER_ID_APPLICATION);
+        op(&mut expression, MATCH_EXISTS);
+        op(&mut expression, OP_CERT_FIELD);
+        op(&mut expression, 0);
+        data(&mut expression, b"subject.OU");
+        op(&mut expression, MATCH_EQUAL);
+        data(&mut expression, team.as_bytes());
     } else if identity.is_apple_issued() {
         return Err(format!(
-            "signing with '{}' isn't supported: only Apple Development and Apple \
-             Distribution identities are",
+            "signing code with '{}' isn't supported: Apple Development, Apple Distribution \
+             and Developer ID Application identities are",
             identity.certificate.common_name
         ));
     } else {
@@ -266,6 +287,18 @@ pub(super) fn requirements(
     set.extend_from_slice(&20u32.to_be_bytes());
     set.extend(requirement);
     Ok(blob(REQUIREMENTS, &set))
+}
+
+/// The team of a Developer ID Application identity, under Apple's Developer
+/// ID authority.
+fn developer_id_team(identity: &Identity) -> Option<&str> {
+    let intermediate = identity.chain.first()?;
+    (intermediate.has_extension(der::oids::DEVELOPER_ID_INTERMEDIATE)
+        && identity
+            .certificate
+            .has_extension(der::oids::DEVELOPER_ID_APPLICATION))
+    .then(|| identity.team())
+    .flatten()
 }
 
 const OP_IDENT: u32 = 2;

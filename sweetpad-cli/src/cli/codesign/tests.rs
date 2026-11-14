@@ -526,7 +526,9 @@ fn several_p12_files_make_one_set_picked_by_kind_and_team() {
         .map(|i| i.certificate.common_name.as_str())
         .collect();
     assert_eq!(set.identities.len(), 5, "{names:?}");
-    let distribution = set.select(Kind::IosDistribution, Some("TESTTEAM01"), None).unwrap();
+    let distribution = set
+        .select(Kind::IosDistribution, Some("TESTTEAM01"), None)
+        .unwrap();
     assert_eq!(
         distribution.certificate.common_name,
         "Apple Distribution: Sweetpad Fixture (TESTTEAM01)"
@@ -536,16 +538,29 @@ fn several_p12_files_make_one_set_picked_by_kind_and_team() {
         [Kind::IosDistribution, Kind::MacAppDistribution]
     );
     let installer = set.select(Kind::MacInstaller, None, None).unwrap();
-    assert!(installer.certificate.common_name.starts_with("3rd Party Mac Developer Installer"));
+    assert!(
+        installer
+            .certificate
+            .common_name
+            .starts_with("3rd Party Mac Developer Installer")
+    );
     assert!(installer.matches("Mac Installer Distribution"));
     let developer_id = set
-        .select(Kind::DeveloperIdApplication, None, Some("Developer ID Application"))
+        .select(
+            Kind::DeveloperIdApplication,
+            None,
+            Some("Developer ID Application"),
+        )
         .unwrap();
     assert!(!developer_id.is_development());
     // A certificate without Apple's extensions is read by its name.
-    let fixture = set.select(Kind::Development, Some("TESTTEAM01"), None).unwrap();
+    let fixture = set
+        .select(Kind::Development, Some("TESTTEAM01"), None)
+        .unwrap();
     assert_eq!(fixture.certificate.der, fixture_identity().certificate.der);
-    let other = set.select(Kind::Development, Some("OTHERTEAM2"), None).unwrap();
+    let other = set
+        .select(Kind::Development, Some("OTHERTEAM2"), None)
+        .unwrap();
     assert_eq!(other.certificate.kinds(), [Kind::Development]);
     assert_eq!(set.teams(), ["OTHERTEAM2", "TESTTEAM01"]);
 
@@ -564,7 +579,13 @@ fn several_p12_files_make_one_set_picked_by_kind_and_team() {
     let ambiguous = set.by_name("iPhone Developer").err().unwrap();
     assert!(ambiguous.contains("is ambiguous"), "{ambiguous}");
     let sha1 = other.certificate.sha1_hex();
-    assert_eq!(set.by_name(&sha1.to_lowercase()).unwrap().certificate.sha1_hex(), sha1);
+    assert_eq!(
+        set.by_name(&sha1.to_lowercase())
+            .unwrap()
+            .certificate
+            .sha1_hex(),
+        sha1
+    );
     assert_eq!(set.named("Apple Development", Some("OTHERTEAM2")).len(), 1);
 }
 
@@ -585,7 +606,10 @@ fn passwords_go_one_per_file_or_one_for_all() {
     assert!(wrong.contains("identity.p12: "), "{wrong}");
     assert!(wrong.contains("wrong password"), "{wrong}");
     // The same identity in two files is one identity.
-    let twice = [fixtures().join("identity.p12"), fixtures().join("identity-aes.p12")];
+    let twice = [
+        fixtures().join("identity.p12"),
+        fixtures().join("identity-aes.p12"),
+    ];
     let set = identity::IdentitySet::from_files(&twice, "sweetpad-test", false).unwrap();
     assert_eq!(set.identities.len(), 1);
 }
@@ -593,9 +617,15 @@ fn passwords_go_one_per_file_or_one_for_all() {
 #[test]
 fn provisioning_picks_the_identity_of_the_requested_team() {
     let mut request = request(&[]);
-    plist::set(&mut request, "signingCertificateIdentifier", Plist::String("Apple Development".into()));
+    plist::set(
+        &mut request,
+        "signingCertificateIdentifier",
+        Plist::String("Apple Development".into()),
+    );
     let answer = |request: &Plist| {
-        provisioning::answer(request, &[fixtures().join("profiles")], || Ok(Some(kind_set())))
+        provisioning::answer(request, &[fixtures().join("profiles")], || {
+            Ok(Some(kind_set()))
+        })
     };
     plist::set(&mut request, "teamID", Plist::String("TESTTEAM01".into()));
     let inputs = answer(&request).unwrap();
@@ -609,7 +639,598 @@ fn provisioning_picks_the_identity_of_the_requested_team() {
     );
     plist::set(&mut request, "teamID", Plist::String("THIRDTEAM3".into()));
     let error = answer(&request).err().unwrap();
-    assert!(error.starts_with("DEVELOPMENT_TEAM is THIRDTEAM3, but '"), "{error}");
+    assert!(
+        error.starts_with("DEVELOPMENT_TEAM is THIRDTEAM3, but '"),
+        "{error}"
+    );
+}
+
+fn kind_profiles() -> Vec<provisioning::Profile> {
+    provisioning::load_profiles(&[fixtures().join("profiles-kinds")])
+}
+
+#[test]
+fn profiles_are_told_apart_by_kind() {
+    use provisioning::ProfileKind;
+    let kinds: Vec<(String, ProfileKind)> = kind_profiles()
+        .iter()
+        .map(|p| {
+            (
+                p.name.trim_start_matches("Sweetpad Kinds ").to_string(),
+                p.kind(),
+            )
+        })
+        .collect();
+    let expected = [
+        ("ad-hoc", ProfileKind::AdHoc),
+        ("app-store", ProfileKind::AppStore),
+        ("developer-id", ProfileKind::DeveloperId),
+        ("development", ProfileKind::Development),
+        ("enterprise", ProfileKind::Enterprise),
+        ("mac-app-store", ProfileKind::MacAppStore),
+        ("mac-development", ProfileKind::MacDevelopment),
+    ]
+    .map(|(name, kind)| (name.to_string(), kind));
+    assert_eq!(kinds, expected);
+    let mac = provisioning::find_named(kind_profiles(), "Sweetpad Kinds mac-app-store").unwrap();
+    assert_eq!(
+        mac.application_identifier(),
+        Some("TESTTEAM01.dev.sweetpad.kinds.*")
+    );
+}
+
+#[test]
+fn export_picks_the_profile_of_its_kind() {
+    use identity::Kind;
+    use provisioning::ProfileKind;
+    let set = kind_set();
+    let team = Some("TESTTEAM01");
+    let distribution = set.select(Kind::IosDistribution, team, None).unwrap();
+    let developer_id = set
+        .select(Kind::DeveloperIdApplication, team, None)
+        .unwrap();
+    let development = set.select(Kind::Development, team, None).unwrap();
+    let pick = |kind, identity, platform| {
+        provisioning::pick_for_export(
+            kind_profiles(),
+            kind,
+            identity,
+            "TESTTEAM01",
+            "dev.sweetpad.kinds.app",
+            platform,
+        )
+        .map(|p| p.name)
+    };
+    for (kind, identity, platform, name) in [
+        (ProfileKind::AppStore, distribution, "iOS", "app-store"),
+        (ProfileKind::AdHoc, distribution, "iOS", "ad-hoc"),
+        (ProfileKind::Enterprise, distribution, "xrOS", "enterprise"),
+        (ProfileKind::Development, development, "iOS", "development"),
+        (
+            ProfileKind::MacAppStore,
+            distribution,
+            "OSX",
+            "mac-app-store",
+        ),
+        (
+            ProfileKind::DeveloperId,
+            developer_id,
+            "OSX",
+            "developer-id",
+        ),
+    ] {
+        assert_eq!(
+            pick(kind, identity, platform).as_deref(),
+            Some(format!("Sweetpad Kinds {name}").as_str()),
+            "{kind:?}"
+        );
+    }
+    // A profile without the identity's certificate, or for another
+    // platform, doesn't do.
+    assert_eq!(pick(ProfileKind::AppStore, development, "iOS"), None);
+    assert_eq!(pick(ProfileKind::AppStore, distribution, "tvOS"), None);
+}
+
+#[test]
+fn a_named_profile_must_fit_the_target() {
+    let set = kind_set();
+    let distribution = set
+        .select(identity::Kind::IosDistribution, None, None)
+        .unwrap();
+    let profile = provisioning::find_named(kind_profiles(), "Sweetpad Kinds app-store").unwrap();
+    provisioning::check_named(
+        &profile,
+        distribution,
+        "TESTTEAM01",
+        "dev.sweetpad.kinds.app",
+    )
+    .unwrap();
+    let other =
+        provisioning::check_named(&profile, distribution, "TESTTEAM01", "dev.sweetpad.other")
+            .err()
+            .unwrap();
+    assert_eq!(
+        other,
+        "Provisioning profile \"Sweetpad Kinds app-store\" has app ID \"dev.sweetpad.kinds.*\", \
+         which does not match the bundle ID \"dev.sweetpad.other\"."
+    );
+    let development = set
+        .select(identity::Kind::Development, Some("TESTTEAM01"), None)
+        .unwrap();
+    let certificate = provisioning::check_named(
+        &profile,
+        development,
+        "TESTTEAM01",
+        "dev.sweetpad.kinds.app",
+    )
+    .err()
+    .unwrap();
+    assert!(
+        certificate.contains("doesn't include signing certificate"),
+        "{certificate}"
+    );
+}
+
+#[test]
+fn entitlement_values_are_checked_against_the_profile() {
+    let profile = provisioning::find_named(kind_profiles(), "Sweetpad Kinds app-store").unwrap();
+    let strings =
+        |items: &[&str]| Plist::Array(items.iter().map(|i| Plist::String((*i).into())).collect());
+    let check = |key: &str, value: Plist| {
+        provisioning::check_entitlements(&profile, &[(key.to_string(), value)], "TESTTEAM01")
+    };
+    check(
+        "com.apple.security.application-groups",
+        strings(&["group.dev.sweetpad.kinds"]),
+    )
+    .unwrap();
+    check(
+        "keychain-access-groups",
+        strings(&["$(AppIdentifierPrefix)dev.sweetpad.kinds.app"]),
+    )
+    .unwrap();
+    // The profile sets the push environment, whatever the file says.
+    check("aps-environment", Plist::String("development".into())).unwrap();
+    let group = check(
+        "com.apple.security.application-groups",
+        strings(&["group.other"]),
+    )
+    .err()
+    .unwrap();
+    assert_eq!(
+        group,
+        "Provisioning profile \"Sweetpad Kinds app-store\" doesn't match the entitlements \
+         file's value for the com.apple.security.application-groups entitlement."
+    );
+    let keychain = check(
+        "keychain-access-groups",
+        strings(&["OTHERTEAM2.dev.sweetpad.kinds"]),
+    );
+    assert!(keychain.is_err());
+    let missing = check(
+        "com.apple.developer.icloud-services",
+        strings(&["CloudKit"]),
+    )
+    .err()
+    .unwrap();
+    assert!(
+        missing.ends_with("doesn't include the com.apple.developer.icloud-services entitlement."),
+        "{missing}"
+    );
+}
+
+#[test]
+fn a_developer_id_identity_gets_codesigns_designated_requirement() {
+    let mut set = kind_set();
+    let index = set
+        .identities
+        .iter()
+        .position(|i| i.certificate.is(identity::Kind::DeveloperIdApplication))
+        .unwrap();
+    let mut identity = set.identities.swap_remove(index);
+    identity.chain = [
+        include_bytes!("certs/DeveloperIDG2CA.cer").as_slice(),
+        include_bytes!("certs/AppleRootCA.cer"),
+    ]
+    .iter()
+    .map(|der| identity::Certificate::parse(der).unwrap())
+    .collect();
+    // What Apple's codesign writes for a Developer ID Application identity,
+    // read from a real signature with the team swapped for the fixture's:
+    // identifier "dev.sweetpad.tool" and anchor apple generic and certificate
+    // 1[field.1.2.840.113635.100.6.2.6] exists and certificate
+    // leaf[field.1.2.840.113635.100.6.1.13] exists and certificate
+    // leaf[subject.OU] = TESTTEAM01
+    let expected = "fade0c01 000000b4 00000001 00000003 00000014 fade0c00 000000a0 00000001 \
+        00000006 00000002 00000011 6465762e 73776565 74706164 2e746f6f 6c000000 00000006 \
+        0000000f 00000006 0000000e 00000001 0000000a 2a864886 f7636406 02060000 00000000 \
+        00000006 0000000e 00000000 0000000a 2a864886 f7636406 010d0000 00000000 0000000b \
+        00000000 0000000a 7375626a 6563742e 4f550000 00000001 0000000a 54455354 5445414d \
+        30310000";
+    let requirements = blobs::requirements("dev.sweetpad.tool", Some(&identity)).unwrap();
+    assert_eq!(
+        crypto::hex(&requirements),
+        expected.replace([' ', '\n'], "")
+    );
+}
+
+#[test]
+fn apples_authorities_are_the_ones_pinned() {
+    for (der, sha256) in [
+        (
+            include_bytes!("certs/AppleRootCA.cer").as_slice(),
+            "b0b1730ecbc7ff4505142c49f1295e6eda6bcaed7e2c68c5be91b5a11001f024",
+        ),
+        (
+            include_bytes!("certs/AppleWWDRCAG3.cer"),
+            "dcf21878c77f4198e4b4614f03d696d89c66c66008d4244e1b99161aac91601f",
+        ),
+        (
+            include_bytes!("certs/DeveloperIDCA.cer"),
+            "7afc9d01a62f03a2de9637936d4afe68090d2de18d03f29c88cfb0b1ba63587f",
+        ),
+        (
+            include_bytes!("certs/DeveloperIDG2CA.cer"),
+            "f16cd3c54c7f83cea4bf1a3e6a0819c8aaa8e4a1528fd144715f350643d2df3a",
+        ),
+    ] {
+        assert_eq!(crypto::hex(&crypto::sha256(der)), sha256);
+    }
+}
+
+/// The fixture app as an archive holds it, renamed for the kind profiles:
+/// with a framework and a library beside its extension.
+fn archived_app(dir: &TempDir) -> PathBuf {
+    let app = dir.join("Payload/App.app");
+    copy_tree(&fixtures().join("input/App.app"), &app);
+    let info = |id: &str, executable: &str, kind: &str| {
+        plist::to_xml(&Plist::Dict(vec![
+            (
+                "CFBundleExecutable".into(),
+                Plist::String(executable.into()),
+            ),
+            ("CFBundleIdentifier".into(), Plist::String(id.into())),
+            ("CFBundlePackageType".into(), Plist::String(kind.into())),
+            ("CFBundleVersion".into(), Plist::String("1".into())),
+            ("DTPlatformName".into(), Plist::String("iphoneos".into())),
+        ]))
+    };
+    std::fs::write(
+        app.join("Info.plist"),
+        info("dev.sweetpad.kinds.app", "App", "APPL"),
+    )
+    .unwrap();
+    let extension = app.join("PlugIns/Extension.appex");
+    std::fs::write(
+        extension.join("Info.plist"),
+        info("dev.sweetpad.kinds.app.extension", "Extension", "XPC!"),
+    )
+    .unwrap();
+    let kit = app.join("Frameworks/Kit.framework");
+    std::fs::create_dir_all(&kit).unwrap();
+    std::fs::copy(fixtures().join("input/Library.dylib"), kit.join("Kit")).unwrap();
+    std::fs::write(
+        kit.join("Info.plist"),
+        info("dev.sweetpad.kinds.kit", "Kit", "FMWK"),
+    )
+    .unwrap();
+    std::fs::copy(
+        fixtures().join("input/Library.dylib"),
+        app.join("Frameworks/libExtra.dylib"),
+    )
+    .unwrap();
+    app
+}
+
+fn signature_of(path: &Path) -> blobs::Existing {
+    let data = std::fs::read(path).unwrap();
+    let slice = macho::split(&data).unwrap().remove(0);
+    let layout = macho::Layout::parse(&slice.data).unwrap();
+    blobs::read_existing(layout.signature(&slice.data).unwrap()).unwrap()
+}
+
+#[test]
+fn an_export_signs_inside_out_with_the_methods_identity_and_profiles() {
+    let dir = TempDir::new("resign-app-store");
+    let app = archived_app(&dir);
+    let set = kind_set();
+    let request = resign::Request {
+        app: app.clone(),
+        method: resign::Method::AppStoreConnect,
+        team: Some("TESTTEAM01".into()),
+        manual: false,
+        signing_certificate: None,
+        profiles: Vec::new(),
+        icloud_environment: None,
+    };
+    let plan = resign::plan_with(&request, &set, &kind_profiles()).unwrap();
+    assert_eq!(
+        plan.identity,
+        "Apple Distribution: Sweetpad Fixture (TESTTEAM01)"
+    );
+    let steps: Vec<(String, Option<&str>)> = plan
+        .steps
+        .iter()
+        .map(|s| {
+            (
+                s.path.strip_prefix(&app).unwrap().display().to_string(),
+                s.profile(),
+            )
+        })
+        .collect();
+    let store = Some("Sweetpad Kinds app-store");
+    assert_eq!(
+        steps,
+        [
+            ("Frameworks/Kit.framework".to_string(), None),
+            ("Frameworks/libExtra.dylib".to_string(), None),
+            ("PlugIns/Extension.appex".to_string(), store),
+            (String::new(), store),
+        ]
+    );
+    resign::apply_with(&plan, &set, std::time::SystemTime::now()).unwrap();
+
+    let main = signature_of(&app.join("App"));
+    assert_eq!(main.identifier, "dev.sweetpad.kinds.app");
+    let entitlements = plist::parse(main.entitlements.as_deref().unwrap()).unwrap();
+    for (key, value) in [
+        (
+            "application-identifier",
+            Plist::String("TESTTEAM01.dev.sweetpad.kinds.app".into()),
+        ),
+        (
+            "com.apple.developer.team-identifier",
+            Plist::String("TESTTEAM01".into()),
+        ),
+        ("get-task-allow", Plist::Bool(false)),
+        ("beta-reports-active", Plist::Bool(true)),
+    ] {
+        assert_eq!(plist::get(&entitlements, key), Some(&value), "{key}");
+    }
+    assert!(app.join("embedded.mobileprovision").is_file());
+    assert!(
+        app.join("PlugIns/Extension.appex/embedded.mobileprovision")
+            .is_file()
+    );
+    let extension = signature_of(&app.join("PlugIns/Extension.appex/Extension"));
+    assert_eq!(extension.identifier, "dev.sweetpad.kinds.app.extension");
+    assert!(extension.entitlements.is_some());
+    let kit = signature_of(&app.join("Frameworks/Kit.framework/Kit"));
+    assert_eq!(kit.identifier, "dev.sweetpad.kinds.kit");
+    assert!(kit.entitlements.is_none());
+    // The app's seal holds the extension as it is signed now.
+    let resources = std::fs::read_to_string(app.join("_CodeSignature/CodeResources")).unwrap();
+    assert!(resources.contains("PlugIns/Extension.appex/embedded.mobileprovision"));
+    assert!(resources.contains("Frameworks/Kit.framework/_CodeSignature/CodeResources"));
+}
+
+#[test]
+fn an_export_refuses_a_profile_of_another_kind_or_a_missing_one() {
+    let dir = TempDir::new("resign-refusals");
+    let app = archived_app(&dir);
+    let set = kind_set();
+    let mut request = resign::Request {
+        app,
+        method: resign::Method::ReleaseTesting,
+        team: Some("TESTTEAM01".into()),
+        manual: false,
+        signing_certificate: None,
+        profiles: vec![(
+            "dev.sweetpad.kinds.app".into(),
+            "Sweetpad Kinds app-store".into(),
+        )],
+        icloud_environment: None,
+    };
+    let named = resign::plan_with(&request, &set, &kind_profiles())
+        .err()
+        .unwrap();
+    assert_eq!(
+        named,
+        "Provisioning profile \"Sweetpad Kinds app-store\" is an App Store profile, and this \
+         export needs an ad hoc one"
+    );
+    request.profiles.clear();
+    request.manual = true;
+    let manual = resign::plan_with(&request, &set, &kind_profiles())
+        .err()
+        .unwrap();
+    assert!(
+        manual.contains("requires a provisioning profile"),
+        "{manual}"
+    );
+    request.manual = false;
+    let plan = resign::plan_with(&request, &set, &kind_profiles()).unwrap();
+    assert_eq!(
+        plan.steps.last().unwrap().profile(),
+        Some("Sweetpad Kinds ad-hoc")
+    );
+    request.method = resign::Method::DeveloperId;
+    let mac_only = resign::plan_with(&request, &set, &kind_profiles())
+        .err()
+        .unwrap();
+    assert!(
+        mac_only.starts_with(
+            "No Developer ID profile for 'dev.sweetpad.kinds.app.extension' was found"
+        ),
+        "{mac_only}"
+    );
+    request.team = None;
+    let teams = resign::plan_with(&request, &set, &kind_profiles())
+        .err()
+        .unwrap();
+    assert!(teams.contains("names no team"), "{teams}");
+}
+
+#[test]
+#[allow(clippy::too_many_lines)] // one table of entitlements per method
+fn export_entitlements_move_to_the_profile_and_team() {
+    let profiles = kind_profiles();
+    let profile = |name: &str| {
+        provisioning::find_named(profiles.clone(), &format!("Sweetpad Kinds {name}")).unwrap()
+    };
+    let strings =
+        |items: &[&str]| Plist::Array(items.iter().map(|i| Plist::String((*i).into())).collect());
+    let archived = Plist::Dict(vec![
+        (
+            "application-identifier".into(),
+            Plist::String("OLDTEAM001.dev.sweetpad.kinds.app".into()),
+        ),
+        (
+            "com.apple.developer.team-identifier".into(),
+            Plist::String("OLDTEAM001".into()),
+        ),
+        ("get-task-allow".into(), Plist::Bool(true)),
+        (
+            "aps-environment".into(),
+            Plist::String("development".into()),
+        ),
+        (
+            "keychain-access-groups".into(),
+            strings(&["OLDTEAM001.dev.sweetpad.kinds.app"]),
+        ),
+        (
+            "com.apple.security.application-groups".into(),
+            strings(&["group.dev.sweetpad.kinds"]),
+        ),
+    ]);
+    let store = resign::transform(
+        archived.clone(),
+        &profile("app-store"),
+        "TESTTEAM01",
+        "dev.sweetpad.kinds.app",
+        false,
+        resign::Method::AppStoreConnect,
+    )
+    .unwrap();
+    for (key, value) in [
+        (
+            "application-identifier",
+            Plist::String("TESTTEAM01.dev.sweetpad.kinds.app".into()),
+        ),
+        (
+            "com.apple.developer.team-identifier",
+            Plist::String("TESTTEAM01".into()),
+        ),
+        ("get-task-allow", Plist::Bool(false)),
+        ("aps-environment", Plist::String("production".into())),
+        ("beta-reports-active", Plist::Bool(true)),
+        (
+            "keychain-access-groups",
+            strings(&["TESTTEAM01.dev.sweetpad.kinds.app"]),
+        ),
+        (
+            "com.apple.security.application-groups",
+            strings(&["group.dev.sweetpad.kinds"]),
+        ),
+    ] {
+        assert_eq!(plist::get(&store, key), Some(&value), "{key}");
+    }
+    let ad_hoc = resign::transform(
+        archived.clone(),
+        &profile("ad-hoc"),
+        "TESTTEAM01",
+        "dev.sweetpad.kinds.app",
+        false,
+        resign::Method::ReleaseTesting,
+    )
+    .unwrap();
+    assert_eq!(plist::get(&ad_hoc, "beta-reports-active"), None);
+
+    let mac = Plist::Dict(vec![
+        (
+            "com.apple.security.get-task-allow".into(),
+            Plist::Bool(true),
+        ),
+        ("com.apple.security.app-sandbox".into(), Plist::Bool(true)),
+    ]);
+    let mac = resign::transform(
+        mac,
+        &profile("mac-app-store"),
+        "TESTTEAM01",
+        "dev.sweetpad.kinds.app",
+        true,
+        resign::Method::AppStoreConnect,
+    )
+    .unwrap();
+    assert_eq!(plist::get(&mac, "com.apple.security.get-task-allow"), None);
+    assert_eq!(
+        plist::string(&mac, "com.apple.application-identifier"),
+        Some("TESTTEAM01.dev.sweetpad.kinds.app")
+    );
+
+    let mut other = archived;
+    plist::set(
+        &mut other,
+        "com.apple.security.application-groups",
+        strings(&["group.other"]),
+    );
+    let refused = resign::transform(
+        other,
+        &profile("app-store"),
+        "TESTTEAM01",
+        "dev.sweetpad.kinds.app",
+        false,
+        resign::Method::AppStoreConnect,
+    );
+    assert!(
+        refused
+            .err()
+            .unwrap()
+            .contains("com.apple.security.application-groups")
+    );
+}
+
+#[test]
+fn an_archive_target_the_identities_cant_sign_is_signed_ad_hoc_with_its_entitlements() {
+    let groups = Plist::Array(vec![Plist::String(
+        "$(AppIdentifierPrefix)dev.sweetpad.fixture".into(),
+    )]);
+    let request = request(&[(
+        "projectEntitlements",
+        Plist::Dict(vec![("keychain-access-groups".into(), groups.clone())]),
+    )]);
+    let inputs = provisioning::archive_ad_hoc(&request, "no identity matches 'Apple Development'");
+    assert_eq!(plist::string(&inputs, "identityHash"), Some("-"));
+    assert_eq!(
+        plist::string(&inputs, "appIdentifierPrefix"),
+        Some("TESTTEAM01.")
+    );
+    let signed = plist::get(&inputs, "signedEntitlements").unwrap();
+    assert_eq!(
+        plist::string(signed, "application-identifier"),
+        Some("TESTTEAM01.dev.sweetpad.fixture")
+    );
+    assert_eq!(plist::get(signed, "keychain-access-groups"), Some(&groups));
+    assert_eq!(plist::get(signed, "get-task-allow"), None);
+    let Some(Plist::Array(warnings)) = plist::get(&inputs, "warnings") else {
+        panic!("no warnings");
+    };
+    assert_eq!(
+        warnings,
+        &[Plist::String(
+            "signing 'dev.sweetpad.fixture' ad hoc for its export to sign again: no identity \
+             matches 'Apple Development'"
+                .into()
+        )]
+    );
+
+    let teamless = provisioning::archive_ad_hoc(&request_without_team(), "why");
+    assert_eq!(plist::get(&teamless, "appIdentifierPrefix"), None);
+    let signed = plist::get(&teamless, "signedEntitlements").unwrap();
+    assert_eq!(
+        plist::string(signed, "application-identifier"),
+        Some("dev.sweetpad.fixture")
+    );
+    let Some(Plist::Array(warnings)) = plist::get(&teamless, "warnings") else {
+        panic!("no warnings");
+    };
+    assert!(
+        matches!(&warnings[0], Plist::String(w) if w.ends_with("set DEVELOPMENT_TEAM so its entitlements name the team"))
+    );
+}
+
+fn request_without_team() -> Plist {
+    request(&[("teamID", Plist::String(String::new()))])
 }
 
 #[test]

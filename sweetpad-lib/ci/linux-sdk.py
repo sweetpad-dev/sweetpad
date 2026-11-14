@@ -99,8 +99,12 @@ def export_sdk(args):
     output = args.output.absolute()
     if "\n" in output.name or "\r" in output.name:
         raise ValueError("Archive filename must not contain a newline")
+    # The macOS build an app's Info.plist names as BuildMachineOSBuild: this Mac's.
+    build_machine = subprocess.run(["sw_vers", "-buildVersion"], capture_output=True, text=True,
+                                   check=True).stdout.strip()
     report = {"archive": str(output), "xcodeBuild": version["ProductBuildVersion"],
               "xcodeVersion": version["CFBundleShortVersionString"], "toolchain": VERSIONS,
+              "buildMachineOSBuild": build_machine,
               "fileCount": len(entries), "unpackedBytes": size,
               "requiredFreeBytes": size + 256 * 1024**2, "dryRun": args.dry_run}
     if args.dry_run:
@@ -265,7 +269,10 @@ def unpack_xcode_archive(archive, work, args):
     version = plistlib.loads((xcode / "Contents/version.plist").read_bytes())
     # Check the baseline inputs before invoking any SDK builder.
     export_roots(xcode)
-    return {"xcodeVersion": version["CFBundleShortVersionString"], "xcodeBuild": version["ProductBuildVersion"]}
+    # No Mac takes part, so Xcode's own build machine stands in for one.
+    info = plistlib.loads((xcode / "Contents/Info.plist").read_bytes())
+    return {"xcodeVersion": version["CFBundleShortVersionString"], "xcodeBuild": version["ProductBuildVersion"],
+            "buildMachineOSBuild": info.get("BuildMachineOSBuild")}
 
 
 def copy_host_clang_headers(bundle, copy_tree):
@@ -291,7 +298,14 @@ def preserve_platform_manifest_modes(xcode, bundle):
             shutil.copymode(source, target)
 
 
-def supplement(xcode, bundle, phrases):
+def write_build_machine(bundle, build):
+    # Swift Build leaves BuildMachineOSBuild out of an app's Info.plist without
+    # MAC_OS_X_PRODUCT_BUILD_VERSION, which sweetpad sets from this file.
+    if build:
+        (bundle / "build-machine.plist").write_bytes(plistlib.dumps({"BuildMachineOSBuild": build}))
+
+
+def supplement(xcode, bundle, phrases, build_machine=None):
     subprocess.run([sys.executable, str(CI / "linux-sdk-platforms.py"), str(xcode), str(bundle)],
                    check=True, stdout=sys.stderr)
     import importlib.util
@@ -311,6 +325,7 @@ def supplement(xcode, bundle, phrases):
     preserve_platform_manifest_modes(xcode, bundle)
     if phrases.is_file():
         shutil.copyfile(phrases, bundle / "appintents-phrases.json")
+    write_build_machine(bundle, build_machine)
 
 
 def import_sdk(args):
@@ -375,7 +390,7 @@ def import_locked(args):
         subprocess.run([xtool, "sdk", "build", str(work / "Xcode.app"), str(work)],
                        check=True, stdout=sys.stderr)
         bundle = work / "darwin.xtoolsdk"
-        supplement(work / "Xcode.app", bundle, work / "appintents-phrases.json")
+        supplement(work / "Xcode.app", bundle, work / "appintents-phrases.json", manifest.get("buildMachineOSBuild"))
         receipt = {"archiveSha256": checksum, "importerVersion": IMPORTER_VERSION, "xcodeBuild": manifest["xcodeBuild"],
                    "xcodeVersion": manifest["xcodeVersion"], "toolchain": VERSIONS, "hostArchitecture": platform.machine(),
                    "sourceFormat": source_format, "localizedAppIntents": (bundle / "appintents-phrases.json").is_file()}

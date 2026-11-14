@@ -84,7 +84,13 @@ impl Stub {
     }
 }
 
-fn answer(scenario: Scenario, r: &Received, base: &str, polls: &mut u32, size: &mut u64) -> (&'static str, String) {
+fn answer(
+    scenario: Scenario,
+    r: &Received,
+    base: &str,
+    polls: &mut u32,
+    size: &mut u64,
+) -> (&'static str, String) {
     let path = r.path.split('?').next().unwrap_or_default();
     match (r.method.as_str(), path) {
         ("GET", "/v1/apps") => (
@@ -218,7 +224,9 @@ fn home(tag: &str) -> TempDir {
     )
     .unwrap();
     // Incompressible bytes, so both parts carry something.
-    let filler: Vec<u8> = (0..200_000u32).map(|i| i.wrapping_mul(2_654_435_761).to_be_bytes()[1]).collect();
+    let filler: Vec<u8> = (0..200_000u32)
+        .map(|i| i.wrapping_mul(2_654_435_761).to_be_bytes()[1])
+        .collect();
     std::fs::write(app.join("Delivery"), filler).unwrap();
     let status = Command::new("zip")
         .args(["-qr", "Delivery.ipa", "Payload"])
@@ -231,8 +239,18 @@ fn home(tag: &str) -> TempDir {
 
 fn sweetpad(home: &Path, stub: &Stub, args: &[&str]) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_sweetpad"));
-    for var in ["https_proxy", "HTTPS_PROXY", "http_proxy", "all_proxy", "ALL_PROXY", "no_proxy", "NO_PROXY",
-                "SWEETPAD_ASC_KEY", "SWEETPAD_ASC_KEY_PATH", "API_PRIVATE_KEYS_DIR"] {
+    for var in [
+        "https_proxy",
+        "HTTPS_PROXY",
+        "http_proxy",
+        "all_proxy",
+        "ALL_PROXY",
+        "no_proxy",
+        "NO_PROXY",
+        "SWEETPAD_ASC_KEY",
+        "SWEETPAD_ASC_KEY_PATH",
+        "API_PRIVATE_KEYS_DIR",
+    ] {
         command.env_remove(var);
     }
     command
@@ -246,22 +264,33 @@ fn sweetpad(home: &Path, stub: &Stub, args: &[&str]) -> Output {
         .env("SWEETPAD_ASC_BASE_URL", &stub.base)
         .env("SWEETPAD_ASC_POLL_SECS", "0")
         .env("SWEETPAD_ASC_KEY_ID", "TESTKEY123")
-        .env("SWEETPAD_ASC_ISSUER_ID", "57246542-96fe-1a63-e053-0824d011072a")
+        .env(
+            "SWEETPAD_ASC_ISSUER_ID",
+            "57246542-96fe-1a63-e053-0824d011072a",
+        )
         .output()
         .expect("failed to run the sweetpad binary")
 }
 
 fn data(out: &Output) -> Value {
     let text = String::from_utf8_lossy(&out.stdout);
-    let value: Value = serde_json::from_str(text.trim())
-        .unwrap_or_else(|e| panic!("stdout is not one JSON value ({e}):\n{text}\n{}", String::from_utf8_lossy(&out.stderr)));
+    let value: Value = serde_json::from_str(text.trim()).unwrap_or_else(|e| {
+        panic!(
+            "stdout is not one JSON value ({e}):\n{text}\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
     assert_eq!(value["ok"], true, "{value}");
     value["data"].clone()
 }
 
 fn error(out: &Output) -> Value {
     let text = String::from_utf8_lossy(&out.stderr);
-    let last = text.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("");
+    let last = text
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("");
     let value: Value = serde_json::from_str(last)
         .unwrap_or_else(|e| panic!("stderr's last line is no error envelope ({e}):\n{text}"));
     value["error"].clone()
@@ -271,12 +300,26 @@ fn error(out: &Output) -> Value {
 fn an_accepted_upload_sends_every_part_and_follows_processing() {
     let home = home("accepted");
     let stub = Stub::start(Scenario::Accepted);
-    let out = sweetpad(&home, &stub, &["upload", "Delivery.ipa", "--wait", "-o", "json"]);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = sweetpad(
+        &home,
+        &stub,
+        &["upload", "Delivery.ipa", "--wait", "-o", "json"],
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let data = data(&out);
     assert_eq!(data["uploadId"], "U1");
-    assert_eq!(data["app"], json!({"id": "1234567890", "bundleId": "dev.example.app"}));
-    assert_eq!((data["version"].as_str(), data["build"].as_str()), (Some("1.2"), Some("42")));
+    assert_eq!(
+        data["app"],
+        json!({"id": "1234567890", "bundleId": "dev.example.app"})
+    );
+    assert_eq!(
+        (data["version"].as_str(), data["build"].as_str()),
+        (Some("1.2"), Some("42"))
+    );
     assert_eq!(data["platform"], "IOS");
     assert_eq!(data["state"], "COMPLETE");
     assert_eq!(data["buildId"], "B1");
@@ -284,22 +327,43 @@ fn an_accepted_upload_sends_every_part_and_follows_processing() {
     assert_eq!(data["warnings"][0]["code"], "90899");
 
     let requests = stub.requests();
-    let create = requests.iter().find(|r| r.path == "/v1/buildUploads").unwrap();
+    let create = requests
+        .iter()
+        .find(|r| r.path == "/v1/buildUploads")
+        .unwrap();
     assert_eq!(
         create.json()["data"]["attributes"],
         json!({"cfBundleShortVersionString": "1.2", "cfBundleVersion": "42", "platform": "IOS"})
     );
-    assert_eq!(create.json()["data"]["relationships"]["app"]["data"]["id"], "1234567890");
+    assert_eq!(
+        create.json()["data"]["relationships"]["app"]["data"]["id"],
+        "1234567890"
+    );
     let bearer = create.header("authorization").unwrap();
-    assert!(bearer.starts_with("Bearer ") && bearer.matches('.').count() == 2, "{bearer}");
-    let file = requests.iter().find(|r| r.path == "/v1/buildUploadFiles").unwrap();
+    assert!(
+        bearer.starts_with("Bearer ") && bearer.matches('.').count() == 2,
+        "{bearer}"
+    );
+    let file = requests
+        .iter()
+        .find(|r| r.path == "/v1/buildUploadFiles")
+        .unwrap();
     assert_eq!(file.json()["data"]["attributes"]["uti"], "com.apple.ipa");
-    assert_eq!(file.json()["data"]["attributes"]["fileName"], "Delivery.ipa");
+    assert_eq!(
+        file.json()["data"]["attributes"]["fileName"],
+        "Delivery.ipa"
+    );
     let mut parts: Vec<&Received> = requests.iter().filter(|r| r.method == "PUT").collect();
     parts.sort_by(|a, b| a.path.cmp(&b.path));
     assert_eq!(parts.len(), 2);
-    assert!(parts.iter().all(|p| p.header("authorization").is_none()), "part URLs take no token");
-    assert_eq!(parts[0].header("content-type"), Some("application/octet-stream"));
+    assert!(
+        parts.iter().all(|p| p.header("authorization").is_none()),
+        "part URLs take no token"
+    );
+    assert_eq!(
+        parts[0].header("content-type"),
+        Some("application/octet-stream")
+    );
     let sent: Vec<u8> = parts.iter().flat_map(|p| p.body.clone()).collect();
     assert_eq!(sent, std::fs::read(home.join("Delivery.ipa")).unwrap());
     let commit = requests.iter().find(|r| r.method == "PATCH").unwrap();
@@ -312,13 +376,30 @@ fn an_accepted_upload_sends_every_part_and_follows_processing() {
 fn a_used_build_number_says_to_raise_it() {
     let home = home("duplicate");
     let stub = Stub::start(Scenario::Duplicate);
-    let out = sweetpad(&home, &stub, &["upload", "Delivery.ipa", "--app-id", "1234567890", "-o", "json"]);
+    let out = sweetpad(
+        &home,
+        &stub,
+        &[
+            "upload",
+            "Delivery.ipa",
+            "--app-id",
+            "1234567890",
+            "-o",
+            "json",
+        ],
+    );
     assert_eq!(out.status.code(), Some(1));
     let error = error(&out);
     let message = error["message"].as_str().unwrap();
-    assert!(message.contains("build 42 of version 1.2 is already uploaded"), "{message}");
+    assert!(
+        message.contains("build 42 of version 1.2 is already uploaded"),
+        "{message}"
+    );
     assert!(message.contains("CURRENT_PROJECT_VERSION"), "{message}");
-    assert!(!stub.requests().iter().any(|r| r.path == "/v1/apps"), "--app-id skips the lookup");
+    assert!(
+        !stub.requests().iter().any(|r| r.path == "/v1/apps"),
+        "--app-id skips the lookup"
+    );
 }
 
 #[test]
@@ -329,7 +410,10 @@ fn a_rejected_upload_reports_apple_errors_and_exits_1() {
     assert_eq!(out.status.code(), Some(1));
     let data = data(&out);
     assert_eq!(data["state"], "FAILED");
-    assert_eq!(data["errors"], json!([{"code": "90725", "description": "SDK version issue."}]));
+    assert_eq!(
+        data["errors"],
+        json!([{"code": "90725", "description": "SDK version issue."}])
+    );
 
     let human = sweetpad(&home, &stub, &["upload", "status", "U1"]);
     assert_eq!(human.status.code(), Some(1));
@@ -354,7 +438,10 @@ fn missing_inputs_are_usage_errors_before_any_request() {
         assert_eq!(out.status.code(), Some(2), "{args:?}");
         let error = error(&out);
         assert_eq!(error["code"], "usage_error");
-        assert!(error["message"].as_str().unwrap().contains(needle), "{error}");
+        assert!(
+            error["message"].as_str().unwrap().contains(needle),
+            "{error}"
+        );
     }
     let command_args = vec!["upload", "Delivery.ipa", "-o", "json"];
     let out = {
@@ -370,6 +457,11 @@ fn missing_inputs_are_usage_errors_before_any_request() {
             .unwrap()
     };
     assert_eq!(out.status.code(), Some(2));
-    assert!(error(&out)["message"].as_str().unwrap().contains("--api-key"));
+    assert!(
+        error(&out)["message"]
+            .as_str()
+            .unwrap()
+            .contains("--api-key")
+    );
     assert!(stub.requests().is_empty(), "no request went out");
 }

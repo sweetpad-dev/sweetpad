@@ -94,7 +94,9 @@ fn read_bag(bag: Tlv<'_>, password: &str, contents: &mut Contents) -> Result<(),
         let mut fields = value.children();
         let algorithm = fields.read()?;
         let encrypted = fields.read()?.octets()?;
-        contents.keys.push(decrypt(algorithm, &encrypted, password)?);
+        contents
+            .keys
+            .push(decrypt(algorithm, &encrypted, password)?);
     }
     Ok(())
 }

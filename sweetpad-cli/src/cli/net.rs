@@ -77,7 +77,13 @@ impl Session {
             no_proxy: env_first(&["no_proxy", "NO_PROXY"]).map(|(_, value)| value),
         };
         if session.no_proxy.is_some() && (session.https.is_some() || session.http.is_some()) {
-            for key in ["https_proxy", "HTTPS_PROXY", "http_proxy", "all_proxy", "ALL_PROXY"] {
+            for key in [
+                "https_proxy",
+                "HTTPS_PROXY",
+                "http_proxy",
+                "all_proxy",
+                "ALL_PROXY",
+            ] {
                 // Safety: see the doc comment; callers construct the session
                 // before starting threads.
                 unsafe { std::env::remove_var(key) };
@@ -110,7 +116,10 @@ impl Session {
     }
 
     fn attempt(&self, request: &Request) -> Result<Response, SendFailure> {
-        let proxy = self.proxy(&request.url).map_err(|error| SendFailure { error, transport: false })?;
+        let proxy = self.proxy(&request.url).map_err(|error| SendFailure {
+            error,
+            transport: false,
+        })?;
         let mut call = minreq::Request::new(request.method.clone(), request.url.as_str())
             .with_timeout(request.timeout_secs);
         for (name, value) in &request.headers {
@@ -122,9 +131,9 @@ impl Session {
         if let Some(proxy) = &proxy {
             call = call.with_proxy(proxy.inner.clone());
         }
-        let response = call
-            .send()
-            .map_err(|e| send_error(&e, host(&request.url), proxy.as_ref(), request.timeout_secs))?;
+        let response = call.send().map_err(|e| {
+            send_error(&e, host(&request.url), proxy.as_ref(), request.timeout_secs)
+        })?;
         Ok(Response {
             status: response.status_code,
             reason: response.reason_phrase.clone(),
@@ -137,7 +146,11 @@ impl Session {
     /// 429 up to `attempts` times with a growing pause (a 429's
     /// `Retry-After`, when it gives one). Only for requests that are safe to
     /// repeat.
-    pub(crate) fn send_retrying(&self, request: &Request, attempts: u32) -> Result<Response, CliError> {
+    pub(crate) fn send_retrying(
+        &self,
+        request: &Request,
+        attempts: u32,
+    ) -> Result<Response, CliError> {
         let mut pause = Duration::from_secs(1);
         for attempt in 1..=attempts {
             let last = attempt == attempts;
@@ -271,7 +284,12 @@ pub(crate) fn exempts(no_proxy: &str, host: &str) -> bool {
 
 /// A failed request, in words. Transport failures are marked so
 /// [`Session::send_retrying`] can tell them from a refusal.
-fn send_error(error: &minreq::Error, host: &str, proxy: Option<&Proxy>, timeout: u64) -> SendFailure {
+fn send_error(
+    error: &minreq::Error,
+    host: &str,
+    proxy: Option<&Proxy>,
+    timeout: u64,
+) -> SendFailure {
     let via = proxy.map_or_else(String::new, |p| {
         format!(" through the proxy at {} ({})", p.shown, p.var)
     });
@@ -282,7 +300,10 @@ fn send_error(error: &minreq::Error, host: &str, proxy: Option<&Proxy>, timeout:
                 std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
             ) =>
         {
-            (format!("no answer from {host}{via} within {timeout} seconds"), true)
+            (
+                format!("no answer from {host}{via} within {timeout} seconds"),
+                true,
+            )
         }
         (minreq::Error::IoError(e), _) => (format!("can't reach {host}{via}: {e}"), true),
         (minreq::Error::AddressNotFound, _) => (
@@ -397,9 +418,22 @@ mod tests {
             no_proxy: Some("apple.com".into()),
         };
         assert!(session.proxy("https://example.com/x").unwrap().is_some());
-        assert!(session.proxy("https://api.appstoreconnect.apple.com/v1").unwrap().is_none());
-        assert!(session.proxy("http://timestamp.example.com/ts").unwrap().is_none());
-        assert_eq!(host("https://a.example.com:8443/v1?x=y"), "a.example.com:8443");
+        assert!(
+            session
+                .proxy("https://api.appstoreconnect.apple.com/v1")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            session
+                .proxy("http://timestamp.example.com/ts")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            host("https://a.example.com:8443/v1?x=y"),
+            "a.example.com:8443"
+        );
         assert_eq!(host("http://127.0.0.1:9/"), "127.0.0.1:9");
     }
 }

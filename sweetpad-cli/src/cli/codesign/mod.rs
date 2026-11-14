@@ -27,10 +27,11 @@ mod macho;
 mod pkcs12;
 use crate::cli::property_list as plist;
 pub mod provisioning;
+pub(crate) mod resign;
 mod resources;
-mod time;
 #[cfg(test)]
 mod tests;
+mod time;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -44,6 +45,50 @@ use plist::Plist;
 #[must_use]
 pub fn identity_configured() -> bool {
     std::env::var_os(identity::P12_VARIABLE).is_some_and(|path| !path.is_empty())
+}
+
+/// The identities the environment names, each with what it signs, for
+/// `doctor`; `None` when none is configured.
+#[must_use]
+pub fn identity_summary() -> Option<Result<Vec<String>, String>> {
+    let set = match IdentitySet::from_environment(false) {
+        Ok(None) => return None,
+        Ok(Some(set)) => set,
+        Err(e) => return Some(Err(e)),
+    };
+    let now = time::now_iso8601();
+    Some(Ok(set
+        .identities
+        .iter()
+        .map(|i| {
+            let kinds: Vec<&str> = i.certificate.kinds().iter().map(|k| k.label()).collect();
+            let expired = if i.certificate.is_valid_at(&now) {
+                ""
+            } else {
+                ", expired"
+            };
+            format!(
+                "{} ({}{expired})",
+                i.certificate.common_name,
+                kinds.join(", ")
+            )
+        })
+        .collect()))
+}
+
+/// How many profiles of each kind the provisioning stand-in finds, for
+/// `doctor`.
+#[must_use]
+pub fn profile_summary() -> Vec<(&'static str, usize)> {
+    let mut counts: Vec<(&'static str, usize)> = Vec::new();
+    for profile in provisioning::load_profiles(&provisioning::profile_folders()) {
+        let name = profile.kind().name();
+        match counts.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, count)) => *count += 1,
+            None => counts.push((name, 1)),
+        }
+    }
+    counts
 }
 
 #[must_use]
@@ -101,6 +146,9 @@ struct Options {
     identity: String,
     identifier: Option<String>,
     entitlements: Option<PathBuf>,
+    /// Entitlements to sign with, as a property list's XML, in place of a
+    /// file: what an export signs with.
+    entitlements_data: Option<Vec<u8>>,
     der_entitlements: bool,
     preserve: Vec<String>,
     flags: u32,
@@ -405,6 +453,7 @@ impl Signer<'_> {
             default_identifier(path, self.identity.is_none(), layout.uuid)
         };
         let entitlements = match &self.options.entitlements {
+            _ if self.options.entitlements_data.is_some() => self.options.entitlements_data.clone(),
             Some(file) => Some(
                 std::fs::read(file)
                     .map_err(|e| format!("couldn't read {}: {e}", file.display()))?,

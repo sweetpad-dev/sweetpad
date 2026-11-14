@@ -418,28 +418,31 @@ fn gather_linux_optional(target: Target) -> Vec<Check> {
             true,
             "install usbmuxd for direct USB connections; Wi-Fi transport does not require it",
         ));
-        let identity = std::env::var_os("SWEETPAD_CODE_SIGN_P12").map(std::path::PathBuf::from);
-        let configured = identity.as_ref().is_some_and(|p| p.is_file())
-            && std::env::var_os("SWEETPAD_CODE_SIGN_P12_PASSWORD").is_some();
-        checks.push(linux_check("Development signing", configured, if configured { "identity file and password configured" } else { "identity file or password not configured (unsigned builds remain available)" }.into(), true,
-            "set SWEETPAD_CODE_SIGN_P12, SWEETPAD_CODE_SIGN_P12_PASSWORD and matching provisioning profiles for iPhone installation"));
-        let profiles = crate::cli::codesign::provisioning::profile_folders()
-            .iter()
-            .any(|dir| {
-                std::fs::read_dir(dir)
-                    .into_iter()
-                    .flatten()
-                    .flatten()
-                    .any(|entry| {
-                        let path = entry.path();
-                        path.is_file()
-                            && path
-                                .extension()
-                                .is_some_and(|e| e == "mobileprovision" || e == "provisionprofile")
-                    })
-            });
-        checks.push(linux_check("Provisioning profiles", profiles, if profiles { "profile files found; bundle and entitlement matching happens during signing" } else { "no provisioning profiles found (unsigned builds remain available)" }.into(), true,
-            "set SWEETPAD_PROVISIONING_PROFILES to a directory containing matching development profiles"));
+        let (signing, detail) = match crate::cli::codesign::identity_summary() {
+            None => (
+                false,
+                "no identities configured (unsigned builds remain available)".to_string(),
+            ),
+            Some(Err(e)) => (false, e),
+            Some(Ok(identities)) if identities.is_empty() => {
+                (false, "the .p12 files hold no identity".to_string())
+            }
+            Some(Ok(identities)) => (true, identities.join("; ")),
+        };
+        checks.push(linux_check("Signing identities", signing, detail, true,
+            "set SWEETPAD_CODE_SIGN_P12 to your .p12 files, separated by ':', and SWEETPAD_CODE_SIGN_P12_PASSWORD to their password"));
+        let profiles = crate::cli::codesign::profile_summary();
+        let detail = if profiles.is_empty() {
+            "no provisioning profiles found (unsigned builds remain available)".to_string()
+        } else {
+            profiles
+                .iter()
+                .map(|(kind, n)| format!("{n} {kind}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        checks.push(linux_check("Provisioning profiles", !profiles.is_empty(), detail, true,
+            "set SWEETPAD_PROVISIONING_PROFILES to a directory containing your provisioning profiles"));
         let python = std::env::var("SWEETPAD_DEVICE_PYTHON").unwrap_or_else(|_| "python3".into());
         let adapter = probe(
             &python,

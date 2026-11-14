@@ -64,8 +64,8 @@ pub mod swiftpm;
 #[cfg(test)]
 #[path = "../../../sweetpad-lib/src/testdir.rs"]
 pub(crate) mod testdir;
-pub mod xcodebuild;
 pub mod xar;
+pub mod xcodebuild;
 pub mod xcstringstool;
 pub mod xml_plist;
 pub mod zip;
@@ -1174,7 +1174,9 @@ pub fn run(argv: &[String]) -> ExitCode {
         // `start`/`run` tokens are optional markers, so both spellings land here.
         Resource::Build { args, action } => commands::build::run(&mut ctx, &args, action.as_ref()),
         Resource::Test { args, action } => commands::test::run(&mut ctx, &args, action.as_ref()),
-        Resource::Archive { args, action } => commands::archive::run(&mut ctx, &args, action.as_ref()),
+        Resource::Archive { args, action } => {
+            commands::archive::run(&mut ctx, &args, action.as_ref())
+        }
         Resource::Upload { args, action } => {
             commands::upload::run(&mut ctx, &args, action.as_ref())
         }

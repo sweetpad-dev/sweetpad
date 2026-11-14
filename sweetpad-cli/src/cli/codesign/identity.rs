@@ -78,13 +78,28 @@ impl Kind {
         ),
         ("iPhone Distribution", &[Self::IosDistribution]),
         ("iOS Distribution", &[Self::IosDistribution]),
-        ("3rd Party Mac Developer Application", &[Self::MacAppDistribution]),
+        (
+            "3rd Party Mac Developer Application",
+            &[Self::MacAppDistribution],
+        ),
         ("Mac App Distribution", &[Self::MacAppDistribution]),
         ("3rd Party Mac Developer Installer", &[Self::MacInstaller]),
         ("Mac Installer Distribution", &[Self::MacInstaller]),
         ("Developer ID Application", &[Self::DeveloperIdApplication]),
         ("Developer ID Installer", &[Self::DeveloperIdInstaller]),
     ];
+
+    /// What it signs, in a list of identities.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Development => "development",
+            Self::IosDistribution => "iOS distribution",
+            Self::MacAppDistribution => "Mac App Store",
+            Self::MacInstaller => "Mac installer",
+            Self::DeveloperIdApplication => "Developer ID app",
+            Self::DeveloperIdInstaller => "Developer ID installer",
+        }
+    }
 
     /// The name to ask for one in an error.
     pub fn name(self) -> &'static str {
@@ -107,9 +122,19 @@ const ALIASES: [&[&str]; 4] = [
         "iOS Developer",
         "Mac Developer",
     ],
-    &["Apple Distribution", "iPhone Distribution", "iOS Distribution"],
-    &["3rd Party Mac Developer Application", "Mac App Distribution"],
-    &["3rd Party Mac Developer Installer", "Mac Installer Distribution"],
+    &[
+        "Apple Distribution",
+        "iPhone Distribution",
+        "iOS Distribution",
+    ],
+    &[
+        "3rd Party Mac Developer Application",
+        "Mac App Distribution",
+    ],
+    &[
+        "3rd Party Mac Developer Installer",
+        "Mac Installer Distribution",
+    ],
 ];
 
 /// A certificate and the fields of it a signature uses.

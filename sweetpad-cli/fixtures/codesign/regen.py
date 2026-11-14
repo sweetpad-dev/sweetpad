@@ -265,7 +265,8 @@ def make_kind_identities(work):
 
 
 def make_kind_profiles(work, key, cert, development_der, certificates):
-    """A profile of each kind, named after it, all for TESTTEAM01's dev.sweetpad.kinds."""
+    """A profile of each kind, named after it, each for TESTTEAM01's dev.sweetpad.kinds.*: an
+    app and its extensions."""
     root = os.path.join(HERE, "profiles-kinds")
     shutil.rmtree(root, ignore_errors=True)
     os.makedirs(root)
@@ -287,10 +288,11 @@ def make_kind_profiles(work, key, cert, development_der, certificates):
         mac = platforms == ["OSX"]
         app = "com.apple.application-identifier" if mac else "application-identifier"
         entitlements = {
-            app: "TESTTEAM01.dev.sweetpad.kinds",
+            app: "TESTTEAM01.dev.sweetpad.kinds.*",
             "com.apple.developer.team-identifier": "TESTTEAM01",
             "com.apple.developer.aps-environment" if mac else "aps-environment": aps,
             "com.apple.security.application-groups": ["group.dev.sweetpad.kinds"],
+            "com.apple.developer.icloud-container-environment": ["Development", "Production"],
             "keychain-access-groups": ["TESTTEAM01.*"],
         }
         if not mac or debuggable:
