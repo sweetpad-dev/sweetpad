@@ -1,6 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as vscode from "vscode";
 
-import { findTestClasses } from "./manager";
+import { errorReporting } from "../common/error-reporting";
+import { commonLogger } from "../common/logger";
+import { QuickPickCancelledError } from "../common/quick-pick";
+import { TestingManager, findTestClasses } from "./manager";
+
+vi.mock("../common/logger", () => ({
+  commonLogger: { log: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
+vi.mock("../common/error-reporting", () => ({
+  errorReporting: { captureException: vi.fn() },
+}));
 
 const DEFAULT_BASES = new Set(["XCTestCase"]);
 
@@ -68,5 +80,38 @@ describe("findTestClasses", () => {
         bodyIndex: src.indexOf("{"),
       },
     ]);
+  });
+});
+
+describe("TestingManager.createRunProfile", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** Registers a profile whose run fails with `error`, and calls the handler VS Code receives. */
+  async function runFailingProfile(error: Error): Promise<unknown> {
+    const manager = new TestingManager({} as ConstructorParameters<typeof TestingManager>[0]);
+    manager.createRunProfile({
+      name: "Build and Run Tests",
+      kind: 1 satisfies vscode.TestRunProfileKind.Run,
+      run: async () => {
+        throw error;
+      },
+    });
+    const handler = vi.mocked(manager.controller.createRunProfile).mock.calls[0][2];
+    return await handler({} as vscode.TestRunRequest, {} as vscode.CancellationToken);
+  }
+
+  it("ends the run quietly when a picker is dismissed", async () => {
+    await expect(runFailingProfile(new QuickPickCancelledError())).resolves.toBeUndefined();
+    expect(commonLogger.error).not.toHaveBeenCalled();
+    expect(errorReporting.captureException).not.toHaveBeenCalled();
+  });
+
+  it("logs, reports and rethrows any other error", async () => {
+    const error = new Error("xcodebuild failed");
+    await expect(runFailingProfile(error)).rejects.toBe(error);
+    expect(commonLogger.error).toHaveBeenCalledWith("xcodebuild failed", { error: error });
+    expect(errorReporting.captureException).toHaveBeenCalledWith(error);
   });
 });

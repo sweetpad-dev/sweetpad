@@ -18,6 +18,7 @@ import { exec } from "../common/exec.js";
 import type { ExecutionScopeService } from "../common/execution-scope.js";
 import { isFileExists } from "../common/files.js";
 import { commonLogger } from "../common/logger.js";
+import { QuickPickCancelledError } from "../common/quick-pick.js";
 import { runTask } from "../common/tasks/run.js";
 import { assertUnreachable } from "../common/types.js";
 import type { WorkspaceContextService } from "../common/workspace-context.js";
@@ -296,6 +297,11 @@ export class TestingManager {
         try {
           return await options.run(request, token);
         } catch (error) {
+          // Dismissing one of the pickers (workspace, scheme, configuration, destination) ends
+          // the run without a result, the same way it silently cancels a command.
+          if (error instanceof QuickPickCancelledError) {
+            return;
+          }
           const errorMessage: string =
             error instanceof Error ? error.message : (error?.toString() ?? "[unknown error]");
           commonLogger.error(errorMessage, {
