@@ -23,6 +23,15 @@ def capture(source, icon, extra):
                   'files': sorted(str(p.relative_to(out)) for p in out.rglob('*') if p.is_file())}
         if icon == 'MessageIcon':
             result['packInfo'] = plistlib.loads((out / 'Ordered Pack.stickerpack/Info.plist').read_bytes())
+            # Each rendition's part, idiom, scale, size and file.
+            assets = json.loads(subprocess.check_output(['xcrun', 'assetutil', '--info', str(out / 'Assets.car')]))
+            parts = {'Image': 181, 'MultiSized Image': 218, 'Icon Image': 220}
+            idioms = {'universal': 0, 'phone': 1, 'pad': 2, 'marketing': 6}
+            result['carNames'] = sorted({a['Name'] for a in assets[1:]})
+            result['carRenditions'] = sorted(
+                [parts[a['AssetType']], idioms[a['Idiom']], a['Scale'], a.get('PixelWidth', 0),
+                 a.get('PixelHeight', 0), a.get('RenditionName', '')]
+                for a in assets[1:])
         else:
             shutil.copy(out / (icon + '60x60@2x.png'), HERE / ('expected/' + ('modern' if icon == 'Simple' else icon.lower()) + '-light.png'))
             assets = json.loads(subprocess.check_output(['xcrun', 'assetutil', '--info', str(out / 'Assets.car')]))
@@ -85,4 +94,10 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+    if sys.argv[1:] == ['stickers']:
+        result = capture('Stickers.xcassets', 'MessageIcon', ['--include-sticker-content', '--stickers-icon-role', 'extension',
+                                                              '--sticker-pack-identifier-prefix', 'dev.sweetpad.Fixture.sticker-pack'])
+        (HERE / 'expected' / 'stickers.json').write_text(json.dumps(result, indent=2) + '\n')
+    else:
+        main()

@@ -133,7 +133,11 @@ pub(super) fn compile(args: &Args) -> Result<(), String> {
     let icon_in_car = icon_name.is_some_and(|name| {
         modern.contains(name)
             || app_icon(&catalogs, name).is_some_and(|set| {
-                add_app_icon(&mut car, name, set, &devices, platform, &mut compiled)
+                if set.dir.extension().is_some_and(|e| e == "stickersiconset") {
+                    super::stickers::store_icon(&mut car, name, set, &mut compiled)
+                } else {
+                    add_app_icon(&mut car, name, set, &devices, platform, &mut compiled)
+                }
             })
     });
     let mut alternates_in_car = Vec::new();

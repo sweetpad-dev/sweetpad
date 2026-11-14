@@ -915,7 +915,10 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
 - [ ] Fallback values for system colors (black today; UIKit resolves the
       name anyway) *(optional)*
 - [x] Ordered PNG/GIF/JPEG sticker packs, accessibility labels, pack metadata,
-      and message-extension icon files and metadata
+      and message-extension icon files and metadata. The icon's App Store
+      image goes in the car as a plain image, the set's only rendition there,
+      and the 29-point sizes stay out, as Xcode 27's actool does; App Store
+      Connect refuses the extension otherwise (ITMS-90644)
 - [ ] Sticker sequences and localized sticker-pack strings *(optional)*
 - [ ] AR resources, texture sets, sprite atlases, watch complications,
       launch images *(optional)*
@@ -1064,8 +1067,9 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       26), `WatchKitSupport2/WK` and the Messages stubs, each identical to
       Xcode's archive. The delivery fixture's IPA with SwiftSupport and its
       universal Mac App Store package, embedding the Span library, upload
-      from Linux and process as VALID, and so does an Xcode archive of the
-      fixture with a watch app and a sticker pack, exported on Linux
+      from Linux and process as VALID, and so does the fixture with a watch
+      app and a sticker pack, built and exported entirely on Linux, as well
+      as Xcode's archive of it exported on Linux
 - [x] The codesign stand-in matches Apple's per-platform rules: 4 KiB pages
       for Intel, tvOS, and iOS before 16 or watchOS before 9; a SHA-1 code
       directory beside the SHA-256 one for iOS and tvOS before 11 and

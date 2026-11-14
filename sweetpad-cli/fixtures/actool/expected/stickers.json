@@ -46,5 +46,18 @@
     "IMStickerPackLayout": "MSStickerSizeClassRegular",
     "CFBundlePackageType": "BUNDL",
     "CFBundleVersion": "1"
-  }
+  },
+  "carNames": [
+    "MessageIcon"
+  ],
+  "carRenditions": [
+    [
+      181,
+      6,
+      1,
+      1024,
+      768,
+      "1024x768.png"
+    ]
+  ]
 }

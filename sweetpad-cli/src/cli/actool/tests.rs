@@ -362,6 +362,9 @@ fn sticker_metadata_order_and_files_match_native_actool_and_deleted_members_disa
         .collect();
     files.sort();
     assert_eq!(json!(files), expected["files"]);
+    let car = out.join("Assets.car");
+    assert_eq!(json!(car_names(&car)), expected["carNames"]);
+    assert_eq!(rendition_listing(&car), sorted(&expected["carRenditions"]));
     for (input, output) in [
         ("First.sticker/source.png", "First.png"),
         ("Second.sticker/animated.gif", "Second.gif"),
@@ -1157,6 +1160,38 @@ fn icon_listing(path: &Path) -> (Value, Value) {
         })
         .collect();
     (sorted(&json!(icons)), sorted(&json!(lists)))
+}
+
+/// Each rendition in a compiled `Assets.car` as its part, idiom, scale,
+/// size and file.
+fn rendition_listing(path: &Path) -> Value {
+    let data = std::fs::read(path).unwrap();
+    let store = super::car::tests::Store::read(&data);
+    let format = store.variable("KEYFORMAT");
+    let le = |data: &[u8], at: usize| u32::from_le_bytes(data[at..at + 4].try_into().unwrap());
+    let attributes: Vec<u32> = (0..le(format, 8) as usize)
+        .map(|i| le(format, 12 + 4 * i))
+        .collect();
+    let (renditions, _) = store.tree("RENDITIONS");
+    let listing: Vec<Value> = renditions
+        .iter()
+        .map(|(key, value)| {
+            let values = key.chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]]));
+            let key: std::collections::BTreeMap<u32, u16> =
+                attributes.iter().copied().zip(values).collect();
+            let field = &value[40..168];
+            let end = field.iter().position(|&b| b == 0).unwrap_or(field.len());
+            json!([
+                key[&2],
+                key[&15],
+                key[&12],
+                le(value, 12),
+                le(value, 16),
+                std::str::from_utf8(&field[..end]).unwrap(),
+            ])
+        })
+        .collect();
+    sorted(&json!(listing))
 }
 
 /// A JSON array with its items in one order, whichever order they came in.
