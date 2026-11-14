@@ -1026,8 +1026,21 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       the App Sandbox, and writes the installer package `productbuild
       --component … --sign` writes, signed with the Mac Installer
       Distribution identity. Its bill of materials, payload, PackageInfo
-      and Distribution match `productbuild`'s for the fixture app.
+      and Distribution match `productbuild`'s for the fixture app, and the
+      delivery fixture's package uploads from Linux and processes as VALID.
       `debugging` and `mac-application` exports write the `.app`
+- [x] Developer ID on Linux: a macOS archive's `developer-id` export signs
+      the app again with Developer ID Application, a timestamp and the
+      hardened runtime (refusing a main executable without it). It embeds a
+      Developer ID profile only for entitlements Apple must grant, and
+      writes a package signed with Developer ID Installer and timestamped
+      when that identity is in the set
+- [x] Notarization from Linux and macOS through the notary REST API
+      (`sweetpad notarize`, `archive --notarize`): the file goes to S3
+      under the submission's credentials, and the ticket is stapled from
+      Apple's ticket service, byte for byte as `stapler staple` staples it
+      to an app and a package. The delivery fixture's Linux-built app, zip
+      and package are accepted and pass Gatekeeper as Notarized Developer ID
 - [ ] macOS archives are built for arm64 only, where Xcode builds
       `ARCHS_STANDARD` (arm64 and x86_64); see E19
 - [ ] `SwiftSupport/` in App Store IPAs whose app embeds the Swift runtime

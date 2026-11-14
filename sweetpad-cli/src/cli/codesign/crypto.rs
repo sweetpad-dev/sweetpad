@@ -6,11 +6,11 @@
 use aes::cipher::{BlockDecrypt, KeyInit, generic_array::GenericArray};
 use rsa::{Pkcs1v15Sign, RsaPrivateKey};
 
-pub(super) use sweetpad_lib::xcode_hash::sha256;
+pub(crate) use sweetpad_lib::xcode_hash::sha256;
 
 /// The hash functions the formats here use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Hash {
+pub(crate) enum Hash {
     Sha1,
     Sha256,
 }
@@ -149,7 +149,7 @@ fn compress(h: &mut [u32; 5], chunk: &[u8]) {
     }
 }
 
-pub(super) fn hmac(hash: Hash, key: &[u8], message: &[u8]) -> Vec<u8> {
+pub(crate) fn hmac(hash: Hash, key: &[u8], message: &[u8]) -> Vec<u8> {
     let mut block = if key.len() > BLOCK {
         hash.digest(key)
     } else {

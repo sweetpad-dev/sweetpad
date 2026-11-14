@@ -15,8 +15,18 @@ use base64::Engine as _;
 use crate::cli::codesign::installer::Installer;
 use crate::cli::codesign::{hex, sha1, time};
 
-/// The room set aside for the CMS signature, as `productbuild` sets it.
+/// The room `productbuild` sets aside for the CMS signature, and for one
+/// that carries a timestamp.
 const CMS_RESERVE: usize = 6144;
+const TIMESTAMPED_CMS_RESERVE: usize = 9216;
+
+fn cms_reserve(signer: &Installer) -> usize {
+    if signer.timestamps() {
+        TIMESTAMPED_CMS_RESERVE
+    } else {
+        CMS_RESERVE
+    }
+}
 
 /// The component package's files and the product's Distribution.
 pub(super) struct Product<'a> {
@@ -102,13 +112,14 @@ pub(super) fn write(
             ));
         }
         let mut cms = signer.cms(&checksum, time)?;
-        if cms.len() > CMS_RESERVE {
+        let reserve = cms_reserve(signer);
+        if cms.len() > reserve {
             return Err(format!(
-                "the CMS signature is {} bytes, more than the {CMS_RESERVE} set aside for it",
+                "the CMS signature is {} bytes, more than the {reserve} set aside for it",
                 cms.len()
             ));
         }
-        cms.resize(CMS_RESERVE, 0);
+        cms.resize(reserve, 0);
         signatures = [rsa, cms].concat();
     }
 
@@ -153,7 +164,7 @@ fn table_of_contents(
     time: SystemTime,
 ) -> String {
     let signature_size = signer.map_or(0, Installer::signature_size);
-    let mut offset = 20 + signer.map_or(0, |_| (signature_size + CMS_RESERVE) as u64);
+    let mut offset = 20 + signer.map_or(0, |s| (signature_size + cms_reserve(s)) as u64);
     let mut toc = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xar>\n<toc>\n\
          <checksum style=\"sha1\">\n<size>20</size>\n<offset>0</offset>\n</checksum>\n",
@@ -170,9 +181,10 @@ fn table_of_contents(
             toc,
             "<signature style=\"RSA\">\n<offset>20</offset>\n<size>{signature_size}</size>\n\
              {certificates}</signature>\n\
-             <x-signature style=\"CMS\">\n<offset>{}</offset>\n<size>{CMS_RESERVE}</size>\n\
+             <x-signature style=\"CMS\">\n<offset>{}</offset>\n<size>{}</size>\n\
              {certificates}</x-signature>\n",
-            20 + signature_size
+            20 + signature_size,
+            cms_reserve(signer)
         );
     }
     let _ = write!(

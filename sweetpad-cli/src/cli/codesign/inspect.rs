@@ -148,9 +148,36 @@ fn requirement_set(set: &[u8]) -> Result<Vec<(u32, String)>, String> {
     Ok(out)
 }
 
+/// Each slice's code directory hash type and hash, the preferred slice's
+/// first: what a notarization ticket is filed under.
+pub(super) fn cdhashes(executable: &Path) -> Result<Vec<(u8, Vec<u8>)>, String> {
+    let data = std::fs::read(executable)
+        .map_err(|e| format!("couldn't read {}: {e}", executable.display()))?;
+    let slices = macho::split(&data).map_err(|e| format!("{}: {e}", executable.display()))?;
+    let first = preferred(&slices).and_then(|s| s.arch);
+    let mut ordered: Vec<&macho::Slice> = slices.iter().filter(|s| s.arch == first).collect();
+    ordered.extend(slices.iter().filter(|s| s.arch != first));
+    let mut out = Vec::new();
+    for slice in ordered {
+        let layout = macho::Layout::parse(&slice.data)?;
+        let signature = layout
+            .signature(&slice.data)
+            .ok_or_else(|| format!("{} isn't signed", executable.display()))?;
+        let hash = cdhash(signature)?;
+        let kind = best_directory(signature)?.get(37).copied().unwrap_or(0);
+        out.push((kind, hash));
+    }
+    Ok(out)
+}
+
 /// The hash of the signature's code directory: of its SHA-256 one when it
 /// has SHA-1 and SHA-256 ones, truncated to 20 bytes.
 fn cdhash(signature: &[u8]) -> Result<Vec<u8>, String> {
+    directory_hash(best_directory(signature)?)
+}
+
+/// The signature's SHA-256 code directory when it has one, else its only.
+fn best_directory(signature: &[u8]) -> Result<&[u8], String> {
     let mut best: Option<&[u8]> = None;
     for wanted in [
         blobs::SLOT_CODE_DIRECTORY,
@@ -166,7 +193,7 @@ fn cdhash(signature: &[u8]) -> Result<Vec<u8>, String> {
             best = Some(directory);
         }
     }
-    directory_hash(best.ok_or("signature has no code directory")?)
+    best.ok_or_else(|| "signature has no code directory".to_string())
 }
 
 fn directory_hash(directory: &[u8]) -> Result<Vec<u8>, String> {

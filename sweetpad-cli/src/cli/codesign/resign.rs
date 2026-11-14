@@ -22,10 +22,6 @@ pub(crate) enum Method {
     AppStoreConnect,
     ReleaseTesting,
     Enterprise,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "developer-id exports sign with timestamps")
-    )]
     DeveloperId,
 }
 
@@ -68,16 +64,18 @@ pub(crate) struct Request {
 /// One thing to sign.
 pub(crate) struct Step {
     pub path: PathBuf,
-    /// For an app or extension, the profile it embeds and the entitlements
-    /// it signs with.
-    pub(super) provisioned: Option<(Profile, Plist)>,
+    /// For an app or extension, the profile it embeds: none for a
+    /// Developer ID app whose entitlements need none.
+    pub(super) profile: Option<Profile>,
+    /// For an app or extension, the entitlements it signs with.
+    pub(super) entitlements: Option<Plist>,
     pub(super) bundle: Option<String>,
 }
 
 impl Step {
     /// The name of the profile it embeds.
     pub fn profile(&self) -> Option<&str> {
-        self.provisioned.as_ref().map(|(p, _)| p.name.as_str())
+        self.profile.as_ref().map(|p| p.name.as_str())
     }
 
     /// The bundle identifier of an app or extension.
@@ -156,52 +154,56 @@ pub(super) fn plan_with(
     let identity = set.select(kind, Some(&team), request.signing_certificate.as_deref())?;
     let mut steps = Vec::new();
     for path in walk(app)? {
+        if request.method == Method::DeveloperId {
+            check_runtime(&path)?;
+        }
         let mut bundle = None;
-        let provisioned = if is_provisioned(&path) {
+        let (mut profile, mut entitlements) = (None, None);
+        if is_provisioned(&path) {
             let id = bundle_id(&path)?;
             let bundle = bundle.insert(id);
-            let profile = choose_profile(
-                request,
-                profiles,
-                profile_kind,
-                identity,
-                &team,
-                bundle,
-                platform,
-            )?;
-            let mut entitlements = transform(
-                archived_entitlements(&path)?,
-                &profile,
-                &team,
-                bundle,
-                mac,
-                request.method,
-            )?;
+            let archived = archived_entitlements(&path)?;
+            // A Developer ID app embeds a profile only for what Apple grants
+            // through one, or when ExportOptions names one.
+            let provisioned = request.method != Method::DeveloperId
+                || restricted(&archived)
+                || request.profiles.iter().any(|(id, _)| id == bundle);
+            let mut signed = if provisioned {
+                let chosen = choose_profile(
+                    request,
+                    profiles,
+                    profile_kind,
+                    identity,
+                    &team,
+                    bundle,
+                    platform,
+                )?;
+                let signed = transform(archived, &chosen, &team, bundle, mac, request.method)?;
+                profile = Some(chosen);
+                signed
+            } else {
+                unprovisioned(archived, &team)
+            };
             let icloud = "com.apple.developer.icloud-container-environment";
             if let Some(environment) = &request.icloud_environment
-                && plist::get(&entitlements, icloud).is_some()
+                && plist::get(&signed, icloud).is_some()
             {
-                plist::set(
-                    &mut entitlements,
-                    icloud,
-                    Plist::String(environment.clone()),
-                );
+                plist::set(&mut signed, icloud, Plist::String(environment.clone()));
             }
-            Some((profile, entitlements))
-        } else {
-            None
-        };
+            entitlements = Some(signed);
+        }
         steps.push(Step {
             path,
-            provisioned,
+            profile,
+            entitlements,
             bundle,
         });
     }
     if mac && request.method == Method::AppStoreConnect {
         let sandboxed = steps
             .last()
-            .and_then(|step| step.provisioned.as_ref())
-            .is_some_and(|(_, entitlements)| {
+            .and_then(|step| step.entitlements.as_ref())
+            .is_some_and(|entitlements| {
                 matches!(
                     plist::get(entitlements, "com.apple.security.app-sandbox"),
                     Some(Plist::Bool(true))
@@ -235,11 +237,19 @@ pub(super) fn apply_with(plan: &Plan, set: &IdentitySet, time: SystemTime) -> Re
             path: Some(step.path.clone()),
             ..Options::default()
         };
-        match &step.provisioned {
-            Some((profile, entitlements)) => {
+        match &step.entitlements {
+            Some(entitlements) => {
                 let embedded = embedded_profile(&step.path);
-                std::fs::copy(&profile.path, &embedded)
-                    .map_err(|e| format!("couldn't write {}: {e}", embedded.display()))?;
+                match &step.profile {
+                    Some(profile) => {
+                        std::fs::copy(&profile.path, &embedded)
+                            .map_err(|e| format!("couldn't write {}: {e}", embedded.display()))?;
+                    }
+                    // A profile the archive embeds is the wrong kind.
+                    None if embedded.exists() => std::fs::remove_file(&embedded)
+                        .map_err(|e| format!("couldn't remove {}: {e}", embedded.display()))?,
+                    None => {}
+                }
                 options.entitlements_data = Some(plist::to_xml(entitlements).into_bytes());
                 options.preserve = vec!["flags".to_string()];
             }
@@ -535,6 +545,83 @@ pub(super) fn transform(
         provisioning::check_entitlements(profile, entries, team)?;
     }
     Ok(entitlements)
+}
+
+/// Whether a Developer ID app's entitlements need a profile: a capability
+/// Apple grants through one, as against the sandbox and hardened runtime
+/// exceptions any app may claim. An app that claims one without a profile
+/// doesn't launch.
+pub(super) fn restricted(entitlements: &Plist) -> bool {
+    let Plist::Dict(entries) = entitlements else {
+        return false;
+    };
+    entries.iter().any(|(key, value)| match key.as_str() {
+        "com.apple.application-identifier"
+        | "com.apple.developer.team-identifier"
+        | "com.apple.security.get-task-allow" => false,
+        "keychain-access-groups" => true,
+        // Team-prefixed groups need none; `group.` ones do.
+        "com.apple.security.application-groups" => match value {
+            Plist::Array(groups) => groups
+                .iter()
+                .any(|g| matches!(g, Plist::String(g) if g.starts_with("group."))),
+            _ => false,
+        },
+        key => key.starts_with("com.apple.developer."),
+    })
+}
+
+/// The entitlements a Developer ID app without a profile signs with: the
+/// archived ones moved to `team`, without the debugger's, and without the
+/// application identifier only a profile can grant.
+fn unprovisioned(archived: Plist, team: &str) -> Plist {
+    let mut entitlements = match archived {
+        Plist::Dict(_) => archived,
+        _ => Plist::Dict(Vec::new()),
+    };
+    if let Some(old) = archived_team(&entitlements).filter(|old| old != team) {
+        entitlements = move_team(entitlements, &format!("{old}."), &format!("{team}."));
+    }
+    for key in [
+        "com.apple.security.get-task-allow",
+        "com.apple.application-identifier",
+        "com.apple.developer.team-identifier",
+    ] {
+        plist::remove(&mut entitlements, key);
+    }
+    entitlements
+}
+
+/// Fail when the program at or in `path` lacks the hardened runtime, which
+/// notarization needs of every program.
+fn check_runtime(path: &Path) -> Result<(), String> {
+    let program = if path.is_dir() {
+        executable(path)?
+    } else {
+        path.to_path_buf()
+    };
+    let data =
+        std::fs::read(&program).map_err(|e| format!("couldn't read {}: {e}", program.display()))?;
+    let slices = macho::split(&data).map_err(|e| format!("{}: {e}", program.display()))?;
+    for slice in &slices {
+        let layout =
+            macho::Layout::parse(&slice.data).map_err(|e| format!("{}: {e}", program.display()))?;
+        if layout.filetype != macho::MH_EXECUTE {
+            return Ok(());
+        }
+        let flags = layout
+            .signature(&slice.data)
+            .and_then(blobs::read_existing)
+            .map_or(0, |existing| existing.flags);
+        if flags & blobs::FLAG_RUNTIME == 0 {
+            return Err(format!(
+                "{} isn't signed with the hardened runtime, which notarization needs for \
+                 Developer ID: set ENABLE_HARDENED_RUNTIME = YES and archive again",
+                program.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// `value` with each string that starts with `old`, a team prefix, moved

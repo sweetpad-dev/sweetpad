@@ -41,7 +41,6 @@ pub(crate) fn settings(choice: &ExportChoice) -> Result<Settings, CliError> {
 
 /// What an export wrote.
 pub(crate) struct Exported {
-    pub file: PathBuf,
     /// The identity the app was signed with, unless it was packed as it was.
     pub identity: Option<String>,
 }
@@ -63,6 +62,9 @@ enum MacOutput {
     Package,
     /// The app itself.
     App,
+    /// The app, and a Developer ID Installer package of it when there's
+    /// an identity to sign one.
+    DeveloperId,
 }
 
 /// Export the app in `archive` into `export_dir`.
@@ -89,7 +91,7 @@ pub(crate) fn export(
     let file = export_dir.join(match mac_output {
         None => format!("{stem}.ipa"),
         Some(MacOutput::Package) => format!("{stem}.pkg"),
-        Some(MacOutput::App) => format!("{stem}.app"),
+        Some(MacOutput::App | MacOutput::DeveloperId) => format!("{stem}.app"),
     });
     // zip adds to an existing file, which would keep a previous export's files.
     if file.exists() {
@@ -119,6 +121,28 @@ pub(crate) fn export(
             )?;
         }
         Some(MacOutput::App) => copy_tree(&staged, &file)?,
+        Some(MacOutput::DeveloperId) => {
+            copy_tree(&staged, &file)?;
+            let team = signed.as_ref().map(|s| s.team.clone());
+            match Installer::find(
+                true,
+                team.as_deref(),
+                settings.options.installer_certificate.as_deref(),
+            ) {
+                Ok(installer) => {
+                    let package = export_dir.join(format!("{stem}.pkg"));
+                    ctx.out
+                        .step("Writing the installer package", || {
+                            pkg::product(&staged, Some(&installer), &package)
+                        })
+                        .map_err(|e| CliError::new(e).context("writing the package"))?;
+                    if let Some(signed) = &mut signed {
+                        signed.installer = Some(installer.name().to_string());
+                    }
+                }
+                Err(why) => ctx.out.note(&format!("no installer package: {why}")),
+            }
+        }
         Some(MacOutput::Package) => {
             let team = signed.as_ref().map(|s| s.team.clone());
             let installer = Installer::find(
@@ -142,7 +166,6 @@ pub(crate) fn export(
     std::fs::write(&path, plist::to_xml(&written))
         .map_err(|e| CliError::new(format!("can't write {}: {e}", path.display())))?;
     Ok(Exported {
-        file,
         identity: signed.map(|s| s.identity),
     })
 }
@@ -165,13 +188,10 @@ fn methods(
             Some(MacOutput::Package),
         ),
         (ExportMethod::MacApplication, true) => (None, Some(MacOutput::App)),
-        (ExportMethod::DeveloperId, true) => {
-            return Err(usage(
-                "'developer-id' isn't exported by sweetpad's own signing yet; export it with \
-                 '--engine xcodebuild' on a Mac"
-                    .to_string(),
-            ));
-        }
+        (ExportMethod::DeveloperId, true) => (
+            Some(resign::Method::DeveloperId),
+            Some(MacOutput::DeveloperId),
+        ),
         (other @ (ExportMethod::DeveloperId | ExportMethod::MacApplication), false) => {
             return Err(usage(format!(
                 "'{}' exports a macOS app, and this archive holds an iOS app",

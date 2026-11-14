@@ -176,11 +176,12 @@ Linux builds (Swift Build, where there is no Xcode):
                             a folder of provisioning profiles, in place of
                             Xcode's folders
 
-App Store Connect ('upload', 'archive --upload'):
+App Store Connect ('upload', 'notarize', 'archive --upload' and
+'archive --notarize'):
 
   SWEETPAD_ASC_KEY_ID       the API key's ID ('--api-key')
   SWEETPAD_ASC_ISSUER_ID    its issuer ID ('--api-issuer'); none for an
-                            individual key
+                            individual key, which can't notarize
   SWEETPAD_ASC_KEY_PATH     its AuthKey_<ID>.p8 file ('--api-key-path')
   SWEETPAD_ASC_KEY          the .p8 file's text, in place of a file (CI
                             secrets)

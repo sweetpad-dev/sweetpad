@@ -1,11 +1,13 @@
 //! Signing a flat package as `productbuild --sign` does: an installer
 //! identity's RSA signature over the SHA-1 checksum of the package's table
 //! of contents, and a detached CMS signature over the same checksum, each
-//! with the certificates up to Apple's root.
+//! with the certificates up to Apple's root. A Developer ID Installer
+//! signature carries a secure timestamp from Apple's server.
 
 use std::time::SystemTime;
 
-use super::crypto::{self, sha1};
+use super::cms::der_header_length;
+use super::crypto::{self, Hash, sha1};
 use super::der::{self, oids};
 use super::identity::{Identity, IdentitySet, Kind};
 use super::time::utc_time;
@@ -13,6 +15,8 @@ use super::time::utc_time;
 /// An identity that signs installer packages.
 pub(crate) struct Installer {
     identity: Identity,
+    /// The timestamp server its CMS signature is stamped by.
+    timestamp: Option<&'static str>,
 }
 
 impl Installer {
@@ -46,7 +50,10 @@ impl Installer {
         hint: Option<&str>,
     ) -> Result<Self, String> {
         let identity = set.select(kind, team, hint)?.clone();
-        Ok(Self { identity })
+        Ok(Self {
+            identity,
+            timestamp: (kind == Kind::DeveloperIdInstaller).then_some(super::timestamp::APPLE),
+        })
     }
 
     pub(crate) fn name(&self) -> &str {
@@ -59,6 +66,12 @@ impl Installer {
         std::iter::once(self.identity.certificate.der.as_slice())
             .chain(self.identity.chain.iter().map(|c| c.der.as_slice()))
             .collect()
+    }
+
+    /// Whether its CMS signature carries a timestamp, which takes more
+    /// room.
+    pub(crate) fn timestamps(&self) -> bool {
+        self.timestamp.is_some()
     }
 
     /// How many bytes its RSA signature takes.
@@ -91,15 +104,26 @@ impl Installer {
         ]);
         let signature = crypto::sign_sha1(key, &sha1(&attributes))?;
         let certificate = &self.identity.certificate;
-        let header = attributes.len() - attribute_content_length(&attributes);
-        let signer = der::sequence(&[
-            &der::integer(1),
-            &der::sequence(&[&certificate.issuer, &certificate.serial]),
-            &der::algorithm(oids::SHA1),
-            &der::tlv(der::context(0), &attributes[header..]),
-            &der::algorithm(oids::SHA1_WITH_RSA),
-            &der::tlv(der::OCTET_STRING, &signature),
-        ]);
+        let mut signer = vec![
+            der::integer(1),
+            der::sequence(&[&certificate.issuer, &certificate.serial]),
+            der::algorithm(oids::SHA1),
+            der::tlv(
+                der::context(0),
+                &attributes[der_header_length(&attributes)..],
+            ),
+            der::algorithm(oids::SHA1_WITH_RSA),
+            der::tlv(der::OCTET_STRING, &signature),
+        ];
+        if let Some(url) = self.timestamp {
+            let token = super::timestamp::token(url, Hash::Sha1, &sha1(&signature))?;
+            let unsigned = der::set_of(vec![attribute(oids::TIMESTAMP_TOKEN, token)]);
+            signer.push(der::tlv(
+                der::context(1),
+                &unsigned[der_header_length(&unsigned)..],
+            ));
+        }
+        let signer = der::sequence(&signer.iter().map(Vec::as_slice).collect::<Vec<_>>());
         let certificates: Vec<&[u8]> = self
             .identity
             .chain
@@ -128,6 +152,7 @@ impl Installer {
         let data = std::fs::read(path).unwrap();
         Self {
             identity: Identity::from_p12(&data, "sweetpad-test", true).unwrap(),
+            timestamp: None,
         }
     }
 
@@ -137,15 +162,6 @@ impl Installer {
             .as_ref()
             .ok_or_else(|| "the installer identity has no private key".to_string())
     }
-}
-
-/// How many bytes of a DER element its contents take.
-fn attribute_content_length(element: &[u8]) -> usize {
-    let header = match element.get(1) {
-        Some(n) if *n >= 0x80 => 2 + usize::from(n & 0x7f),
-        _ => 2,
-    };
-    element.len() - header
 }
 
 #[cfg(test)]

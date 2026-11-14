@@ -1,8 +1,10 @@
-//! Secure timestamps, as `codesign --timestamp` gets them: an RFC 3161
-//! token from a timestamp server over the SHA-256 of the CMS signature's
-//! value, which goes in the signer's unsigned attributes. Apple's own
-//! server is the default, as it is `codesign`'s.
+//! Secure timestamps, as `codesign --timestamp` and `productbuild --sign`
+//! get them: an RFC 3161 token from a timestamp server over the hash of the
+//! CMS signature's value (SHA-256 for code, SHA-1 for a package), which goes
+//! in the signer's unsigned attributes. Apple's own server is the default,
+//! as it is `codesign`'s.
 
+use super::crypto::Hash;
 use super::der::{self, Reader, oids};
 use crate::cli::net;
 
@@ -21,13 +23,13 @@ pub(super) enum Timestamp {
     Server(String),
 }
 
-/// The token `url` stamps `imprint`, the hash of a signature, with.
-pub(super) fn token(url: &str, imprint: &[u8; 32]) -> Result<Vec<u8>, String> {
+/// The token `url` stamps `imprint`, the `hash` of a signature, with.
+pub(super) fn token(url: &str, hash: Hash, imprint: &[u8]) -> Result<Vec<u8>, String> {
     let nonce = nonce();
     let unavailable = |why: String| format!("the timestamp service is not available: {why}");
     let request = net::Request::new(minreq::Method::Post, url)
         .header("Content-Type", "application/timestamp-query")
-        .body(request(imprint, &nonce))
+        .body(request(hash, imprint, &nonce))
         .timeout(30);
     let response = net::Session::from_env()
         .send_retrying(&request, 3)
@@ -41,13 +43,17 @@ pub(super) fn token(url: &str, imprint: &[u8; 32]) -> Result<Vec<u8>, String> {
     check(&response.body, imprint, &nonce)
 }
 
-/// A TimeStampReq for `imprint` with `nonce`, asking for the server's
-/// certificate in the token.
-pub(super) fn request(imprint: &[u8; 32], nonce: &[u8]) -> Vec<u8> {
+/// A TimeStampReq for `imprint`, a `hash`, with `nonce`, asking for the
+/// server's certificate in the token.
+pub(super) fn request(hash: Hash, imprint: &[u8], nonce: &[u8]) -> Vec<u8> {
+    let algorithm = match hash {
+        Hash::Sha1 => oids::SHA1,
+        Hash::Sha256 => oids::SHA256,
+    };
     der::sequence(&[
         &der::integer(1),
         &der::sequence(&[
-            &der::algorithm(oids::SHA256),
+            &der::algorithm(algorithm),
             &der::tlv(der::OCTET_STRING, imprint),
         ]),
         &der::tlv(der::INTEGER, &positive(nonce)),
@@ -57,7 +63,7 @@ pub(super) fn request(imprint: &[u8; 32], nonce: &[u8]) -> Vec<u8> {
 
 /// The token of a TimeStampResp, once it's granted and stamps `imprint`
 /// with `nonce`.
-pub(super) fn check(response: &[u8], imprint: &[u8; 32], nonce: &[u8]) -> Result<Vec<u8>, String> {
+pub(super) fn check(response: &[u8], imprint: &[u8], nonce: &[u8]) -> Result<Vec<u8>, String> {
     let malformed = |why: String| format!("the timestamp server's answer is malformed: {why}");
     let mut fields = Reader::new(response)
         .read()
@@ -185,7 +191,10 @@ mod tests {
 
     #[test]
     fn a_request_is_what_openssl_asks_for() {
-        assert_eq!(request(&IMPRINT, &NONCE), fixture("request.tsq"));
+        assert_eq!(
+            request(Hash::Sha256, &IMPRINT, &NONCE),
+            fixture("request.tsq")
+        );
     }
 
     #[test]

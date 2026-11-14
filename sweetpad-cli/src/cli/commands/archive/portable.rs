@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 
 use super::export::{self, archived_app, copy_tree};
 use super::{ArchiveArgs, ArchivePreview, ArchiveReport, ExportArgs};
-use crate::cli::commands::upload;
 use crate::cli::resolve::Resolved;
 use crate::cli::{
     CliError, CommandResult, Context, ErrorKind, Rendered, process, swbuild, xcodebuild, xml_plist,
@@ -97,6 +96,7 @@ pub(super) fn run(
             archive: archive.display().to_string(),
             ipa_dir: None,
             upload: None,
+            notarized: Vec::new(),
         }
         .rendered());
     };
@@ -121,25 +121,7 @@ fn export_and_upload(
     if let Some(identity) = &exported.identity {
         ctx.out.note(&format!("signed with {identity}"));
     }
-    let upload = if settings.upload {
-        let report = upload::upload_file(
-            ctx,
-            &exported.file,
-            choice.app_id.as_deref(),
-            &choice.key,
-            &choice.follow,
-        )
-        .map_err(|e| e.context("uploading the export"))?;
-        Some(report)
-    } else {
-        None
-    };
-    Ok(ArchiveReport {
-        archive: archive.display().to_string(),
-        ipa_dir: Some(export_dir.display().to_string()),
-        upload,
-    }
-    .rendered())
+    super::deliver(ctx, choice, settings.upload, archive, export_dir)
 }
 
 /// `archive export` on the Swift Build engine.

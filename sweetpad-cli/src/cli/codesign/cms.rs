@@ -5,7 +5,7 @@
 
 use std::time::SystemTime;
 
-use super::crypto::{self, sha256};
+use super::crypto::{self, Hash, sha256};
 use super::der::{self, oids};
 use super::identity::Identity;
 use super::plist::{self, Plist};
@@ -64,7 +64,7 @@ pub(super) fn sign(
         der::tlv(der::OCTET_STRING, &signature),
     ];
     if let Some(url) = timestamp {
-        let token = super::timestamp::token(url, &sha256(&signature))?;
+        let token = super::timestamp::token(url, Hash::Sha256, &sha256(&signature))?;
         let unsigned = der::set_of(vec![attribute(oids::TIMESTAMP_TOKEN, token)]);
         signer.push(der::tlv(
             der::context(1),
@@ -92,7 +92,7 @@ pub(super) fn sign(
 }
 
 /// How many bytes an element's tag and length take.
-fn der_header_length(element: &[u8]) -> usize {
+pub(super) fn der_header_length(element: &[u8]) -> usize {
     match element.get(1) {
         Some(n) if *n >= 0x80 => 2 + usize::from(n & 0x7f),
         _ => 2,

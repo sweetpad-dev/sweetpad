@@ -23,7 +23,7 @@ mod blobs;
 mod bundle;
 mod cms;
 mod crypto;
-pub(crate) use crypto::{Sha1, hex, sha1};
+pub(crate) use crypto::{Hash, Sha1, hex, hmac, sha1, sha256};
 mod der;
 mod identity;
 mod inspect;
@@ -34,6 +34,7 @@ use crate::cli::property_list as plist;
 pub mod provisioning;
 pub(crate) mod resign;
 mod resources;
+pub(crate) mod staple;
 #[cfg(test)]
 mod tests;
 pub(crate) mod time;

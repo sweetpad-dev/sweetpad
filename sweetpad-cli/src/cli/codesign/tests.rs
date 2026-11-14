@@ -1045,14 +1045,12 @@ fn an_export_refuses_a_profile_of_another_kind_or_a_missing_one() {
         Some("Sweetpad Kinds ad-hoc")
     );
     request.method = resign::Method::DeveloperId;
-    let mac_only = resign::plan_with(&request, &set, &kind_profiles())
+    let runtime = resign::plan_with(&request, &set, &kind_profiles())
         .err()
         .unwrap();
     assert!(
-        mac_only.starts_with(
-            "No Developer ID profile for 'dev.sweetpad.kinds.app.extension' was found"
-        ),
-        "{mac_only}"
+        runtime.ends_with("set ENABLE_HARDENED_RUNTIME = YES and archive again"),
+        "{runtime}"
     );
     request.team = None;
     let teams = resign::plan_with(&request, &set, &kind_profiles())
@@ -1667,16 +1665,16 @@ fn nested_code_is_sealed_by_its_cdhash_and_designated_requirement() {
 /// Sign `app` ad hoc inside out, the app with only the sandbox entitlement,
 /// as an archive of an app with ENABLE_APP_SANDBOX is signed with no
 /// identity.
-fn archive_sandboxed(app: &Path, entitlements: PathBuf) {
+fn archive_sandboxed(app: &Path, entitlements: &Path) {
     let sandbox = Plist::Dict(vec![(
         "com.apple.security.app-sandbox".to_string(),
         Plist::Bool(true),
     )]);
-    std::fs::write(&entitlements, plist::to_xml(&sandbox)).unwrap();
+    std::fs::write(entitlements, plist::to_xml(&sandbox)).unwrap();
     for (step, _) in MAC_STEPS {
         let options = Options {
             identity: "-".to_string(),
-            entitlements: step.is_empty().then(|| entitlements.clone()),
+            entitlements: step.is_empty().then(|| entitlements.to_path_buf()),
             der_entitlements: true,
             timestamp: Timestamp::None,
             ..Options::default()
@@ -1740,7 +1738,7 @@ fn a_macos_export_signs_inside_out_with_the_mac_app_store_profile() {
         plist::set(&mut value, "CFBundleIdentifier", Plist::String(id.into()));
         std::fs::write(&path, plist::to_xml(&value)).unwrap();
     }
-    archive_sandboxed(&app, dir.join("sandbox.xcent"));
+    archive_sandboxed(&app, &dir.join("sandbox.xcent"));
     let set = kind_set();
     let request = resign::Request {
         app: app.clone(),
@@ -1798,6 +1796,94 @@ fn a_macos_export_signs_inside_out_with_the_mac_app_store_profile() {
         assert!(
             resources.contains(&format!("<key>{sealed}</key>")),
             "{sealed}"
+        );
+    }
+}
+
+fn developer_id_request(app: PathBuf) -> resign::Request {
+    resign::Request {
+        app,
+        method: resign::Method::DeveloperId,
+        team: Some("TESTTEAM01".into()),
+        manual: false,
+        signing_certificate: None,
+        profiles: Vec::new(),
+        icloud_environment: None,
+    }
+}
+
+#[test]
+fn a_developer_id_export_embeds_no_profile_for_entitlements_any_app_may_claim() {
+    let dir = TempDir::new("resign-developer-id");
+    let identity = fixture_identity();
+    let app = sign_mac(&dir, "Mac.app", Some(&identity));
+    let plan =
+        resign::plan_with(&developer_id_request(app), &kind_set(), &kind_profiles()).unwrap();
+    assert!(plan.identity.starts_with("Developer ID Application"));
+    let main = plan.steps.last().unwrap();
+    assert_eq!(main.profile(), None);
+    let entitlements = main.entitlements.as_ref().unwrap();
+    assert_eq!(
+        plist::get(entitlements, "com.apple.security.app-sandbox"),
+        Some(&Plist::Bool(true))
+    );
+    assert!(plist::get(entitlements, "com.apple.security.application-groups").is_some());
+    for key in [
+        "com.apple.application-identifier",
+        "com.apple.developer.team-identifier",
+        "com.apple.security.get-task-allow",
+    ] {
+        assert_eq!(plist::get(entitlements, key), None, "{key}");
+    }
+}
+
+#[test]
+fn a_developer_id_export_needs_the_hardened_runtime() {
+    let dir = TempDir::new("resign-developer-id-runtime");
+    let app = sign_mac(&dir, "Mac.app", None);
+    let error = resign::plan_with(&developer_id_request(app), &kind_set(), &kind_profiles())
+        .err()
+        .unwrap();
+    assert!(error.contains("ENABLE_HARDENED_RUNTIME = YES"), "{error}");
+}
+
+#[test]
+fn only_capabilities_apple_grants_need_a_developer_id_profile() {
+    let entitlements = |key: &str, value: Plist| Plist::Dict(vec![(key.to_string(), value)]);
+    let groups = |group: &str| Plist::Array(vec![Plist::String(group.to_string())]);
+    for (key, value, restricted) in [
+        ("com.apple.security.app-sandbox", Plist::Bool(true), false),
+        (
+            "com.apple.security.get-task-allow",
+            Plist::Bool(true),
+            false,
+        ),
+        (
+            "com.apple.application-identifier",
+            Plist::String("TESTTEAM01.dev.app".into()),
+            false,
+        ),
+        (
+            "com.apple.security.application-groups",
+            groups("TESTTEAM01.dev.app"),
+            false,
+        ),
+        (
+            "com.apple.security.application-groups",
+            groups("group.dev.app"),
+            true,
+        ),
+        (
+            "com.apple.developer.aps-environment",
+            Plist::String("production".into()),
+            true,
+        ),
+        ("keychain-access-groups", groups("TESTTEAM01.dev.app"), true),
+    ] {
+        assert_eq!(
+            resign::restricted(&entitlements(key, value)),
+            restricted,
+            "{key}"
         );
     }
 }

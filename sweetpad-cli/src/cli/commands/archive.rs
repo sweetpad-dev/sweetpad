@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Subcommand, ValueEnum};
 
 use crate::cli::appstore::key::{ApiKey, KeyArgs};
+use crate::cli::commands::notarize;
 use crate::cli::commands::upload::{self, FollowArgs};
 use crate::cli::output::Output;
 use crate::cli::resolve::{self, Container};
@@ -108,6 +109,12 @@ pub struct ExportChoice {
     #[arg(long, value_name = "ID", requires = "upload")]
     pub app_id: Option<String>,
 
+    /// Notarize the Developer ID export with Apple and staple it, as
+    /// 'sweetpad notarize' does, with a team API key. Implies
+    /// '--export-method developer-id'.
+    #[arg(long, conflicts_with = "upload")]
+    pub notarize: bool,
+
     #[command(flatten)]
     pub key: KeyArgs,
 
@@ -119,6 +126,17 @@ impl ExportChoice {
     /// The method to export with. `--upload` means App Store Connect, and any
     /// other method beside it is refused by the command line alone.
     pub(crate) fn method(&self) -> Result<ExportMethod, CliError> {
+        if self.notarize {
+            return match self.export_method {
+                Some(ExportMethod::DeveloperId) | None => Ok(ExportMethod::DeveloperId),
+                Some(other) => Err(CliError::new(format!(
+                    "'--notarize' notarizes a Developer ID export, which takes '--export-method \
+                     developer-id'; '{}' exports aren't notarized",
+                    other.plist_value()
+                ))
+                .kind(ErrorKind::Usage)),
+            };
+        }
         match (self.export_method, self.upload) {
             (Some(ExportMethod::AppStoreConnect) | None, true) => Ok(ExportMethod::AppStoreConnect),
             (Some(other), true) => Err(CliError::new(format!(
@@ -153,6 +171,9 @@ impl ExportChoice {
             }
             ApiKey::resolve(&self.key)?;
         }
+        if self.notarize {
+            crate::cli::appstore::notary::require_team_key(&ApiKey::resolve(&self.key)?)?;
+        }
         Ok(())
     }
 }
@@ -160,7 +181,7 @@ impl ExportChoice {
 #[derive(Debug, Subcommand)]
 pub enum Action {
     /// Export an existing .xcarchive again, with another method or
-    /// ExportOptions.plist, and optionally upload the result.
+    /// ExportOptions.plist, then upload or notarize the result if asked.
     Export(ExportArgs),
 }
 
@@ -191,12 +212,16 @@ struct ArchiveReport {
     archive: String,
     ipa_dir: Option<String>,
     upload: Option<upload::Report>,
+    notarized: Vec<notarize::Report>,
 }
 
 impl ArchiveReport {
-    /// Rendered, exiting 1 when Apple rejected the upload.
+    /// Rendered, exiting 1 when Apple rejected the upload or the
+    /// notarization.
     fn rendered(self) -> Rendered {
-        if self.upload.as_ref().is_some_and(|u| u.upload.failed()) {
+        if self.upload.as_ref().is_some_and(|u| u.upload.failed())
+            || self.notarized.iter().any(notarize::Report::rejected)
+        {
             Rendered::data_with_exit(self, 1)
         } else {
             Rendered::data(self)
@@ -213,6 +238,9 @@ impl Render for ArchiveReport {
         if let Some(upload) = &self.upload {
             upload.human(out);
         }
+        for report in &self.notarized {
+            report.human(out);
+        }
     }
 
     fn json(&self) -> serde_json::Value {
@@ -223,8 +251,80 @@ impl Render for ArchiveReport {
         if let Some(upload) = &self.upload {
             data["upload"] = upload.json();
         }
+        if !self.notarized.is_empty() {
+            data["notarized"] = self.notarized.iter().map(Render::json).collect();
+        }
         data
     }
+}
+
+/// Upload (when `upload`) or notarize what the export in `export_dir`
+/// wrote, as `choice` asks, and report the archive and what became of it.
+fn deliver(
+    ctx: &Context,
+    choice: &ExportChoice,
+    upload: bool,
+    archive: &Path,
+    export_dir: &Path,
+) -> CommandResult {
+    let upload = if upload {
+        Some(upload_export(ctx, choice, export_dir)?)
+    } else {
+        None
+    };
+    let notarized = if choice.notarize {
+        notarize_export(ctx, choice, export_dir)?
+    } else {
+        Vec::new()
+    };
+    Ok(ArchiveReport {
+        archive: archive.display().to_string(),
+        ipa_dir: Some(export_dir.display().to_string()),
+        upload,
+        notarized,
+    }
+    .rendered())
+}
+
+/// Notarize what a Developer ID export wrote to `export_dir`: the app,
+/// stapled and then zipped beside it, and a package when there is one.
+fn notarize_export(
+    ctx: &Context,
+    choice: &ExportChoice,
+    export_dir: &Path,
+) -> Result<Vec<notarize::Report>, CliError> {
+    let mut found: Vec<PathBuf> = std::fs::read_dir(export_dir)
+        .map_err(|e| CliError::new(format!("can't read {}: {e}", export_dir.display())))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|e| e == "app" || e == "pkg"))
+        .collect();
+    // The app before its package.
+    found.sort_by_key(|path| path.extension().is_some_and(|e| e == "pkg"));
+    if !found
+        .iter()
+        .any(|path| path.extension().is_some_and(|e| e == "app"))
+    {
+        return Err(CliError::new(format!(
+            "the export in {} holds no app to notarize",
+            export_dir.display()
+        )));
+    }
+    let options = notarize::NotarizeOptions::default();
+    let mut reports = Vec::new();
+    for file in found {
+        let report = notarize::notarize(ctx, &file, &options, &choice.key)
+            .map_err(|e| e.context("notarizing the export"))?;
+        let rejected = report.rejected();
+        reports.push(report);
+        if rejected {
+            break;
+        }
+        if file.extension().is_some_and(|e| e == "app") {
+            notarize::zip_app(&file, export_dir)?;
+        }
+    }
+    Ok(reports)
 }
 
 /// Upload the one .ipa or .pkg an export wrote to `export_dir`.
@@ -396,6 +496,7 @@ fn run_resolved(
             archive: archive_path.display().to_string(),
             ipa_dir: None,
             upload: None,
+            notarized: Vec::new(),
         }));
     }
 
@@ -407,17 +508,13 @@ fn run_resolved(
     }
     run_xcodebuild(ctx, &export_args, cwd.as_deref(), "Exporting")
         .map_err(|e| e.context("exporting the archive"))?;
-    let upload = if args.export.upload {
-        Some(upload_export(ctx, &args.export, &export_dir)?)
-    } else {
-        None
-    };
-    Ok(ArchiveReport {
-        archive: archive_path.display().to_string(),
-        ipa_dir: Some(export_dir.display().to_string()),
-        upload,
-    }
-    .rendered())
+    deliver(
+        ctx,
+        &args.export,
+        args.export.upload,
+        &archive_path,
+        &export_dir,
+    )
 }
 
 /// `archive export`: export an existing archive, with xcodebuild or (on the
@@ -480,17 +577,7 @@ fn run_export(ctx: &Context, args: &ExportArgs) -> CommandResult {
     }
     run_xcodebuild(ctx, &export_args, None, "Exporting")
         .map_err(|e| e.context("exporting the archive"))?;
-    let upload = if args.export.upload {
-        Some(upload_export(ctx, &args.export, &export_dir)?)
-    } else {
-        None
-    };
-    Ok(ArchiveReport {
-        archive: archive.display().to_string(),
-        ipa_dir: Some(export_dir.display().to_string()),
-        upload,
-    }
-    .rendered())
+    deliver(ctx, &args.export, args.export.upload, &archive, &export_dir)
 }
 
 /// The archive's configuration: flag > user config > sweetpad.toml > the

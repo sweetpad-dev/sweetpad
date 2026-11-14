@@ -10,6 +10,8 @@ use crate::cli::CliError;
 use crate::cli::net::{Request, Session};
 
 const BASE: &str = "https://api.appstoreconnect.apple.com";
+/// The notary service's host, under the same keys and tokens.
+const NOTARY_BASE: &str = "https://appstoreconnect.apple.com";
 
 /// A refused or failed call: the status and Apple's error codes, so a caller
 /// can tell a duplicate from any other refusal, beside the message.
@@ -33,6 +35,16 @@ pub(crate) struct Client {
     token: RefCell<Option<(String, u64)>>,
 }
 
+/// The server `SWEETPAD_ASC_BASE_URL` names. It stands in for every Apple
+/// service sweetpad calls, S3 and the ticket lookup included; the tests'
+/// stub is the only one.
+pub(crate) fn stub_base() -> Option<String> {
+    std::env::var("SWEETPAD_ASC_BASE_URL")
+        .ok()
+        .map(|v| v.trim().trim_end_matches('/').to_string())
+        .filter(|v| !v.is_empty())
+}
+
 fn now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -40,17 +52,21 @@ fn now() -> u64 {
 }
 
 impl Client {
-    /// `SWEETPAD_ASC_BASE_URL` points the client at another server; the
-    /// tests' stub is the only one.
+    /// A client of the App Store Connect API, or of [`stub_base`].
     pub(crate) fn new(key: ApiKey, session: Session) -> Self {
-        let base = std::env::var("SWEETPAD_ASC_BASE_URL")
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| BASE.to_string());
+        Self::with_base(key, session, BASE)
+    }
+
+    /// A client of the notary service, `/notary/v2/…`.
+    pub(crate) fn notary(key: ApiKey, session: Session) -> Self {
+        Self::with_base(key, session, NOTARY_BASE)
+    }
+
+    fn with_base(key: ApiKey, session: Session, default: &str) -> Self {
         Self {
             session,
             key,
-            base: base.trim_end_matches('/').to_string(),
+            base: stub_base().unwrap_or_else(|| default.to_string()),
             token: RefCell::new(None),
         }
     }

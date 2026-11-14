@@ -710,6 +710,15 @@ pub enum Resource {
         #[command(subcommand)]
         action: Option<commands::upload::Action>,
     },
+    /// Notarize a Developer ID app, zip or package with Apple and staple the
+    /// ticket, with a team API key.
+    #[command(args_conflicts_with_subcommands = true)]
+    Notarize {
+        #[command(flatten)]
+        args: commands::notarize::NotarizeArgs,
+        #[command(subcommand)]
+        action: Option<commands::notarize::Action>,
+    },
     /// Clean build artifacts (xcodebuild clean; --purge adds DerivedData).
     /// Takes sweetpad.toml's '[xcodebuild] args', so it cleans where the
     /// build wrote.
@@ -1181,6 +1190,9 @@ pub fn run(argv: &[String]) -> ExitCode {
         }
         Resource::Upload { args, action } => {
             commands::upload::run(&mut ctx, &args, action.as_ref())
+        }
+        Resource::Notarize { args, action } => {
+            commands::notarize::run(&mut ctx, &args, action.as_ref())
         }
         Resource::Clean(clean_args) => {
             let mut targeting: Targeting = clean_args.scheme.clone().into();

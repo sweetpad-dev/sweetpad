@@ -66,6 +66,7 @@ pub mod format;
 pub mod help_topics;
 pub mod hot;
 pub mod merge;
+pub mod notarize;
 pub mod open;
 pub mod pbxproj;
 pub mod project;
