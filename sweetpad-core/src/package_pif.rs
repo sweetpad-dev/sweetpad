@@ -11,7 +11,9 @@
 //! packages under `<DerivedData>/<container>/SourcePackages`. Pointing
 //! `--scratch-path` there would rewrite its `workspace-state.json` under
 //! Xcode's feet, so the dump runs on an APFS clone of it (`cp -c`, which
-//! copies no data and takes about 0.1 s). A container Xcode never resolved
+//! copies no data and takes about 0.1 s). Linux has no `cp -c`; there it is a
+//! reflink where the filesystem has them and a copy where it doesn't. A
+//! container Xcode never resolved
 //! has no checkouts, and a dump that needs them fails: its packages then go
 //! without arguments until Xcode resolves them, and the reason is logged.
 //!
@@ -102,8 +104,13 @@ pub fn load(
     }
     let _ = fs::remove_dir_all(&scratch);
     if source_packages.is_dir() {
-        let cloned = Command::new("cp")
-            .arg("-cR")
+        let mut cp = Command::new("cp");
+        if cfg!(target_os = "macos") {
+            cp.arg("-cR");
+        } else {
+            cp.args(["-R", "--reflink=auto"]);
+        }
+        let cloned = cp
             .arg(source_packages)
             .arg(&scratch)
             .stderr(Stdio::piped())

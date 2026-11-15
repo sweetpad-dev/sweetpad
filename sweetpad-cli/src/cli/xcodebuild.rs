@@ -2276,6 +2276,7 @@ pub(super) fn scheme_action_settings(
             ("SDK_DIR".into(), sdk.display().to_string()),
             ("PLATFORM_DIR".into(), platform.display().to_string()),
             ("DEVELOPER_DIR".into(), developer.display().to_string()),
+            ("AVAILABLE_PLATFORMS".into(), available_platforms(developer)),
         ]);
     }
     let mut settings = sweetpad_core::build_settings::resolve_build_settings(&options)
@@ -2297,6 +2298,24 @@ pub(super) fn scheme_action_settings(
         settings.insert("SDKROOT".into(), canonical);
     }
     Ok(settings)
+}
+
+/// The platforms installed under `developer`, by the lowercase names Swift
+/// Build gives them, sorted as it lists them. A package target's
+/// `SUPPORTED_PLATFORMS` is `$(AVAILABLE_PLATFORMS)`, so without this it
+/// supports no platform and resolves for macOS.
+fn available_platforms(developer: &Path) -> String {
+    let mut names: Vec<String> = std::fs::read_dir(developer.join("Platforms"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            name.strip_suffix(".platform").map(str::to_ascii_lowercase)
+        })
+        .collect();
+    names.sort();
+    names.join(" ")
 }
 
 /// The resolver options [`located`] resolves `plan` with.
@@ -3511,6 +3530,27 @@ Test Suite 'GammaTests' passed at 2026-09-27 14:56:06.580.
             Some(standardize(Path::new(".")).join("dd"))
         );
         assert_eq!(dd(&[], &nested), None);
+    }
+
+    /// Xcode exported `SUPPORTED_PLATFORMS = appletvos appletvsimulator
+    /// driverkit iphoneos …` to a scheme action run against a package target,
+    /// whose PIF says `$(AVAILABLE_PLATFORMS)`: every installed platform,
+    /// lowercased and sorted.
+    #[test]
+    fn a_package_target_supports_every_installed_platform() {
+        let root = sweetpad_core::scratch::ScratchDir::new("sweetpad-cli-platforms").unwrap();
+        for dir in [
+            "iPhoneSimulator.platform",
+            "MacOSX.platform",
+            "AppleTVOS.platform",
+        ] {
+            std::fs::create_dir_all(root.join("Platforms").join(dir)).unwrap();
+        }
+        std::fs::write(root.join("Platforms/README"), "").unwrap();
+        assert_eq!(
+            available_platforms(&root),
+            "appletvos iphonesimulator macosx"
+        );
     }
 
     /// `xcodebuild` reads a relative path against the physical directory it

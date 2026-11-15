@@ -80,8 +80,9 @@ The build supplies compatible tools for common Xcode script operations, but a sc
 CLI 0.1.19 runs shell pre-actions and post-actions in the scheme's Build action.
 Build pre-actions run before project translation, so they can generate source files.
 Post-actions run only after a successful build. Archive actions run around archive assembly, after the build stage.
-A script can use build settings from its selected project target.
-Scripts that select a package target, non-shell execution actions, and Test action runtime hooks remain unsupported.
+A script gets the build settings of the target it selects, which can be a target in a Swift package.
+Send Email actions are skipped with a note, as xcodebuild skips them.
+Test action scripts don't run. The Linux build stops at build-for-testing, and xcodebuild doesn't run them for that either.
 
 ## Settings and editor support
 

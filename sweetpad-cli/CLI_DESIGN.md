@@ -4622,6 +4622,20 @@ the target's dependency on the plugin product, as Xcode's PIF does, so the
 tool still builds. The engine warns for each such plugin in the build's
 target graph that its commands are skipped.
 
+**Scheme actions run as xcodebuild runs them.** Only shell scripts run;
+xcodebuild skips a Send Email action without a word, and the engine skips it
+with a note. A script that selects a target in a local package gets that
+target's settings from the package's PIF, resolved for the build's
+destination. SwiftPM's PIF gives such a target `SUPPORTED_PLATFORMS =
+$(AVAILABLE_PLATFORMS)`, which the resolver has no built-in for, so scheme
+actions define it as the platforms under the developer directory, sorted
+and lowercased, as Xcode exported it. Without it the target supports no
+platform and resolves for macOS. Xcode exports far fewer settings to a
+package target's script (no `TARGET_NAME`, `SRCROOT` or `CONFIGURATION`);
+the engine exports the target's full resolution. Test action scripts don't
+run: `build-for-testing` doesn't run them, and neither does a test run from
+an `.xctestrun`.
+
 **Settings and the editor resolve against the Darwin SDK.** Off macOS,
 with no `DEVELOPER_DIR` and no `xcode-select`, the active developer
 directory is the Darwin SDK's `Developer` folder, which is laid out as
