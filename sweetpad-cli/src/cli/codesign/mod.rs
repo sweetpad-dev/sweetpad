@@ -59,48 +59,104 @@ pub fn identity_configured() -> bool {
     std::env::var_os(identity::P12_VARIABLE).is_some_and(|path| !path.is_empty())
 }
 
-/// The identities the environment names, each with what it signs, for
-/// `doctor`; `None` when none is configured.
+/// An identity as `doctor` shows it: its name, what it signs and what stops
+/// it signing, if anything does.
+pub struct IdentityStatus {
+    pub text: String,
+    pub usable: bool,
+}
+
+/// The identities the environment names, for `doctor`; `None` when none is
+/// configured.
 #[must_use]
-pub fn identity_summary() -> Option<Result<Vec<String>, String>> {
+pub fn identity_summary() -> Option<Result<Vec<IdentityStatus>, String>> {
     let set = match IdentitySet::from_environment(false) {
         Ok(None) => return None,
         Ok(Some(set)) => set,
         Err(e) => return Some(Err(e)),
     };
-    let now = time::now_iso8601();
-    Some(Ok(set
-        .identities
-        .iter()
-        .map(|i| {
-            let kinds: Vec<&str> = i.certificate.kinds().iter().map(|k| k.label()).collect();
-            let expired = if i.certificate.is_valid_at(&now) {
-                ""
-            } else {
-                ", expired"
-            };
-            format!(
-                "{} ({}{expired})",
-                i.certificate.common_name,
-                kinds.join(", ")
-            )
-        })
-        .collect()))
+    Some(Ok(describe_identities(&set, &time::now_iso8601())))
 }
 
-/// How many profiles of each kind the provisioning stand-in finds, for
-/// `doctor`.
+/// Each identity with what it signs, and what stops it signing at `now`:
+/// an expired certificate, or an issuer neither its `.p12` file nor
+/// sweetpad carries.
+fn describe_identities(set: &IdentitySet, now: &str) -> Vec<IdentityStatus> {
+    set.identities
+        .iter()
+        .map(|i| {
+            let mut notes: Vec<String> = i
+                .certificate
+                .kinds()
+                .iter()
+                .map(|k| k.label().to_string())
+                .collect();
+            let expired = !i.certificate.is_valid_at(now);
+            if expired {
+                notes.push("expired".to_string());
+            }
+            let unchained = i.require_chain().is_err();
+            if unchained {
+                notes.push(format!("issuer {} missing", i.root().issuer_name()));
+            }
+            IdentityStatus {
+                text: format!("{} ({})", i.certificate.common_name, notes.join(", ")),
+                usable: !expired && !unchained,
+            }
+        })
+        .collect()
+}
+
+/// The provisioning profiles the provisioning stand-in finds, for `doctor`.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct ProfileSummary {
+    /// How many of each kind.
+    pub kinds: Vec<(&'static str, usize)>,
+    pub expired: usize,
+    /// Current profiles that none of the configured identities' certificates
+    /// is in, so nothing here can sign with them.
+    pub unmatched: usize,
+    pub usable: usize,
+}
+
 #[must_use]
-pub fn profile_summary() -> Vec<(&'static str, usize)> {
-    let mut counts: Vec<(&'static str, usize)> = Vec::new();
-    for profile in provisioning::load_profiles(&provisioning::profile_folders()) {
+pub fn profile_summary() -> ProfileSummary {
+    let identities = IdentitySet::from_environment(false).ok().flatten();
+    summarize_profiles(
+        &provisioning::load_profiles(&provisioning::profile_folders()),
+        identities.as_ref(),
+        &time::now_iso8601(),
+    )
+}
+
+/// Counts `profiles` by kind and by whether they can sign at `now` with
+/// `identities`, or with anything when no identity is configured.
+fn summarize_profiles(
+    profiles: &[provisioning::Profile],
+    identities: Option<&IdentitySet>,
+    now: &str,
+) -> ProfileSummary {
+    let mut summary = ProfileSummary::default();
+    for profile in profiles {
         let name = profile.kind().name();
-        match counts.iter_mut().find(|(n, _)| *n == name) {
+        match summary.kinds.iter_mut().find(|(n, _)| *n == name) {
             Some((_, count)) => *count += 1,
-            None => counts.push((name, 1)),
+            None => summary.kinds.push((name, 1)),
+        }
+        let signable = identities.is_none_or(|set| {
+            set.identities
+                .iter()
+                .any(|i| profile.certificates.contains(&i.certificate.der))
+        });
+        if profile.is_expired(now) {
+            summary.expired += 1;
+        } else if signable {
+            summary.usable += 1;
+        } else {
+            summary.unmatched += 1;
         }
     }
-    counts
+    summary
 }
 
 #[must_use]

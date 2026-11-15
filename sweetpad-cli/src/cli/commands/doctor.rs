@@ -455,28 +455,51 @@ fn signing_checks() -> Vec<Check> {
         Some(Ok(identities)) if identities.is_empty() => {
             (false, "the .p12 files hold no identity".to_string())
         }
-        Some(Ok(identities)) => (true, identities.join("; ")),
+        Some(Ok(identities)) => (
+            identities.iter().all(|i| i.usable),
+            identities
+                .iter()
+                .map(|i| i.text.as_str())
+                .collect::<Vec<_>>()
+                .join("; "),
+        ),
     };
     checks.push(linux_check("Signing identities", signing, detail, true,
-        "set SWEETPAD_CODE_SIGN_P12 to your .p12 files, separated by ':', and SWEETPAD_CODE_SIGN_P12_PASSWORD to their password"));
+        "set SWEETPAD_CODE_SIGN_P12 to your .p12 files, separated by ':', and SWEETPAD_CODE_SIGN_P12_PASSWORD to their password; export each identity with its issuer's certificate"));
     let profiles = crate::cli::codesign::profile_summary();
-    let detail = if profiles.is_empty() {
-        "no provisioning profiles found (unsigned builds remain available)".to_string()
-    } else {
+    checks.push(linux_check(
+        "Provisioning profiles",
+        profiles.usable > 0,
+        profile_detail(&profiles),
+        true,
+        "set SWEETPAD_PROVISIONING_PROFILES to a directory containing current profiles that list your signing certificates",
+    ));
+    checks
+}
+
+/// The profiles by kind, then the ones nothing can sign with.
+fn profile_detail(profiles: &crate::cli::codesign::ProfileSummary) -> String {
+    if profiles.kinds.is_empty() {
+        return "no provisioning profiles found (unsigned builds remain available)".to_string();
+    }
+    let mut parts = vec![
         profiles
+            .kinds
             .iter()
             .map(|(kind, n)| format!("{n} {kind}"))
             .collect::<Vec<_>>()
-            .join(", ")
-    };
-    checks.push(linux_check(
-        "Provisioning profiles",
-        !profiles.is_empty(),
-        detail,
-        true,
-        "set SWEETPAD_PROVISIONING_PROFILES to a directory containing your provisioning profiles",
-    ));
-    checks
+            .join(", "),
+    ];
+    if profiles.expired > 0 {
+        parts.push(format!("{} expired", profiles.expired));
+    }
+    if profiles.unmatched > 0 {
+        parts.push(format!(
+            "{} list none of the configured identities' certificates",
+            profiles.unmatched
+        ));
+    }
+    parts.join("; ")
 }
 
 /// Apple's delivery services, each asked once in parallel. Any HTTP answer,

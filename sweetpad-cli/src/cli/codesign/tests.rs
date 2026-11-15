@@ -704,6 +704,65 @@ fn provisioning_picks_the_identity_of_the_requested_team() {
     );
 }
 
+#[test]
+fn doctor_says_what_stops_an_identity_signing() {
+    let usable = apple_issued_fixture();
+    let now = usable.certificate.not_before.clone();
+    let wwdr_g5 = identity::Certificate::parse(include_bytes!("certs/AppleWWDRCAG5.cer")).unwrap();
+    let mut unchained = apple_issued_fixture();
+    unchained.certificate.issuer = wwdr_g5.subject;
+    unchained.chain.clear();
+    let set = identity::IdentitySet {
+        identities: vec![usable, unchained],
+    };
+    let statuses = describe_identities(&set, &now);
+    let name = "Apple Development: Sweetpad Fixture (TESTTEAM01)";
+    assert_eq!(statuses[0].text, format!("{name} (development)"));
+    assert!(statuses[0].usable);
+    assert_eq!(
+        statuses[1].text,
+        format!(
+            "{name} (development, issuer Apple Worldwide Developer Relations \
+             Certification Authority (G5) missing)"
+        )
+    );
+    assert!(!statuses[1].usable);
+    let later = set.identities[0].certificate.not_after.clone();
+    let statuses = describe_identities(&set, &later);
+    assert_eq!(statuses[0].text, format!("{name} (development, expired)"));
+    assert!(!statuses[0].usable);
+}
+
+#[test]
+fn doctor_counts_the_profiles_something_can_sign_with() {
+    let profiles = kind_profiles();
+    let all = profiles.len();
+    let before = "2000-01-01T00:00:00Z";
+    let summary = summarize_profiles(&profiles, None, before);
+    assert_eq!(summary.kinds.len(), all);
+    assert!(summary.kinds.iter().all(|(_, n)| *n == 1));
+    assert_eq!(
+        (summary.usable, summary.expired, summary.unmatched),
+        (all, 0, 0)
+    );
+    let summary = summarize_profiles(&profiles, Some(&kind_set()), before);
+    assert_eq!(
+        (summary.usable, summary.expired, summary.unmatched),
+        (all, 0, 0)
+    );
+    let nobody = identity::IdentitySet { identities: vec![] };
+    let summary = summarize_profiles(&profiles, Some(&nobody), before);
+    assert_eq!(
+        (summary.usable, summary.expired, summary.unmatched),
+        (0, 0, all)
+    );
+    let summary = summarize_profiles(&profiles, Some(&kind_set()), "9999-01-01T00:00:00Z");
+    assert_eq!(
+        (summary.usable, summary.expired, summary.unmatched),
+        (0, all, 0)
+    );
+}
+
 fn kind_profiles() -> Vec<provisioning::Profile> {
     provisioning::load_profiles(&[fixtures().join("profiles-kinds")])
 }

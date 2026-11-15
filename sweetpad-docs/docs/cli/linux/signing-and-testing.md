@@ -140,6 +140,7 @@ Put the profiles for the app and each extension in `SWEETPAD_PROVISIONING_PROFIL
 When no identity can sign an archive, SweetPad signs it ad hoc and keeps its entitlements.
 The distribution export then signs it properly, so the archive step needs no distribution identity.
 Run `sweetpad doctor --target ios` to list the identities and profiles it finds.
+It warns about an expired certificate, an issuer the P12 file lacks, and profiles that list none of your certificates.
 
 ### Upload and notarize
 

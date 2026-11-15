@@ -105,7 +105,7 @@ they do not establish physical-device execution for these changes.
 - [x] S07: Document Python before setup and replace raw JSON in SDK human output (`ci/linux-release-README.md`, `commands/sdk.rs`).
 - [x] S08: Upgrade an existing pinned Swift Build checkout without losing local edits; pin its package dependencies (`ci/linux-setup.sh`, Swift Build `Package.swift`).
 - [x] S09: Validate the complete setup on a fresh host, separately from reusing preinstalled compiler tools. Full fresh Ubuntu 24.04 x64 bootstrap passes, including compiler download/signature, new SDK import, cold driver/macro builds, doctor, setup reuse, and ARM64 app builds. See the fresh x64 evidence above; `ci/check-linux-sdk-install.py` retains the separate package-build isolation check.
-- [ ] S10: Validate `doctor --target` behavior on macOS, signing credentials, and provisioning contents (`commands/doctor.rs`). Explicit --target on macOS now fails with a usage error; credential and profile contents remain open.
+- [x] S10: Validate `doctor --target` behavior on macOS, signing credentials, and provisioning contents (`commands/doctor.rs`). Explicit --target on macOS fails with a usage error. The identity check lists each identity's kinds and warns about an expired certificate or a missing issuer. The profile check counts profiles by kind and warns when no current profile lists a configured identity's certificate.
 
 ### Build engine and command routing
 
