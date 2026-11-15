@@ -4614,6 +4614,14 @@ product (`<name>-product` in SwiftPM's PIF), else a package's module: the
 scheme Xcode makes for a product builds the product, which shares no name
 with a module when it's made only of binary targets.
 
+**`open` uses the Linux desktop's openers.** Linux has no `open` of macOS's
+kind (Ubuntu 24.04 has none at all), so off macOS the command never runs
+it. A folder goes to `xdg-open`; the
+config file goes to `$VISUAL` or `$EDITOR` when there's a terminal (run as
+Git runs it, through `sh -c`, since the variable can carry arguments), else
+to `xdg-open`, whose failure names the path. There's no Xcode or Simulator
+to open, so `open xcode` and `open sim` fail as `tool_missing`.
+
 **What a Mac forgives, the Linux build names.** A workspace member that
 isn't on disk is left out of the PIF, as Xcode leaves it out and shows it
 missing; the build warns for each one rather than building less without a

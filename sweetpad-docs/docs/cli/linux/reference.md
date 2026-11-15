@@ -77,6 +77,10 @@ When a build needs a tool that Linux doesn't have, such as `metal`, it stops and
 Scripts that import Darwin or call other macOS-only tools need adaptation or a Mac preparation stage.
 Linux file names are case-sensitive and a Mac's usually aren't, so a project that names `Core.swift` for a file saved as `core.swift` builds on a Mac and fails on Linux.
 The failed build's tip names the file as it is on disk.
+
+`sweetpad open dd` opens the DerivedData folder with `xdg-open`.
+`sweetpad open config` opens the config file in `$VISUAL` or `$EDITOR` at a terminal, and with `xdg-open` otherwise.
+`open xcode` and `open sim` need a Mac, so on Linux they exit with code 5 (`tool_missing`).
 Advanced Core Data mapping expressions remain outside the supported mapping-model forms.
 
 Phone startup checks do not validate App Groups, push, payments, or extension behavior.

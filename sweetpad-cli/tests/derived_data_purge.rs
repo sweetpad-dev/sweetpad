@@ -405,7 +405,13 @@ fn open_and_clean_follow_the_projects_own_location() {
     set_project_location(&project, "AbsolutePath", &shown(&custom));
     let own = folder_for(&custom, &project);
     let stock = folder_for(&store(&home), &project);
-    let bin = stub(&cwd, "open");
+    // The folder opener: macOS's `open`, the desktop's `xdg-open` elsewhere.
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    let bin = stub(&cwd, opener);
     stub(&cwd, "xcodebuild");
 
     let open = data(&sweetpad(
@@ -416,7 +422,7 @@ fn open_and_clean_follow_the_projects_own_location() {
     ));
     assert_eq!(open["opened"], shown(&own));
     assert_eq!(
-        std::fs::read_to_string(bin.join("open.args")).unwrap(),
+        std::fs::read_to_string(bin.join(format!("{opener}.args"))).unwrap(),
         format!("{}\n", shown(&own))
     );
 
