@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use clap::Subcommand;
 
 use crate::cli::output::Output;
-use crate::cli::{CliError, CommandResult, Context, ErrorKind, Render, Rendered, config};
+use crate::cli::{CliError, CommandResult, Context, ErrorKind, Render, Rendered, config, net};
 
 /// The VS Code extension's Sentry project: the DSN in
 /// `sweetpad-vscode/.env.example`. A DSN's key is a public client key, which
@@ -658,40 +658,32 @@ fn hex(bytes: &[u8]) -> String {
 
 /// POST the envelope, returning the event id Sentry answers with.
 fn send(payload: &Payload, endpoint: &Endpoint) -> Result<String, CliError> {
-    let proxy = SendProxy::from_env(endpoint)?;
-    // With no proxy named, minreq applies `https_proxy` by itself (and
-    // `http_proxy` or `all_proxy` to plain HTTP), and it reads no `no_proxy`.
-    // The choice above is the one that holds, so those go first.
-    for key in ["https_proxy", "http_proxy", "all_proxy"] {
-        // Safety: `feedback submit` runs on the main thread alone, and the
-        // process exits once this send returns.
-        unsafe { std::env::remove_var(key) };
-    }
     let version = payload.host.sweetpad.as_str();
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    let mut request = minreq::post(&endpoint.url)
-        .with_header("Content-Type", "application/x-sentry-envelope")
-        .with_header(
+    let request = net::Request::new(minreq::Method::Post, endpoint.url.as_str())
+        .header("Content-Type", "application/x-sentry-envelope")
+        .header(
             "X-Sentry-Auth",
             format!(
                 "Sentry sentry_version=7, sentry_client=sweetpad-cli/{version}, sentry_key={}",
                 endpoint.key
             ),
         )
-        .with_header("User-Agent", format!("sweetpad-cli/{version}"))
-        .with_body(payload.envelope(timestamp))
-        .with_timeout(SEND_TIMEOUT_SECS);
-    if let Some(proxy) = &proxy {
-        request = request.with_proxy(proxy.proxy.clone());
-    }
-    let response = request.send().map_err(|e| {
-        send_error(&e, &endpoint.host, proxy.as_ref()).context("couldn't send the report")
-    })?;
-    let body = response.as_str().unwrap_or_default();
-    if !(200..300).contains(&response.status_code) {
-        let detail: String = body.trim().chars().take(200).collect();
+        .header("User-Agent", format!("sweetpad-cli/{version}"))
+        .body(payload.envelope(timestamp).into())
+        .timeout(SEND_TIMEOUT_SECS);
+    // `feedback submit` runs on the main thread alone.
+    let session = net::Session::from_env();
+    // A proxy variable sweetpad can't use is its own refusal, not a failed send.
+    session.proxy(&endpoint.url)?;
+    let response = session
+        .send(&request)
+        .map_err(|e| e.context("couldn't send the report"))?;
+    let body = String::from_utf8_lossy(&response.body);
+    if !response.ok() {
+        let detail = response.snippet();
         let detail = if detail.is_empty() {
             String::new()
         } else {
@@ -699,151 +691,14 @@ fn send(payload: &Payload, endpoint: &Endpoint) -> Result<String, CliError> {
         };
         return Err(CliError::new(format!(
             "{} answered HTTP {} {}{detail}",
-            endpoint.host, response.status_code, response.reason_phrase
+            endpoint.host, response.status, response.reason
         ))
         .context("the report was not accepted"));
     }
-    Ok(serde_json::from_str::<serde_json::Value>(body)
+    Ok(serde_json::from_str::<serde_json::Value>(&body)
         .ok()
         .and_then(|v| v["id"].as_str().map(str::to_string))
         .unwrap_or_else(|| payload.event_id.clone()))
-}
-
-/// The HTTP proxy a send goes through.
-struct SendProxy {
-    proxy: minreq::Proxy,
-    /// The variable it came from, for the messages.
-    var: &'static str,
-    /// `host[:port]`, without the credentials.
-    shown: String,
-    has_credentials: bool,
-}
-
-impl SendProxy {
-    /// `https_proxy` or `HTTPS_PROXY`, read in that order as curl reads them,
-    /// unless `no_proxy` or `NO_PROXY` exempts the endpoint's host. An
-    /// endpoint over plain HTTP, which only the tests' stub is, goes direct.
-    fn from_env(endpoint: &Endpoint) -> Result<Option<Self>, CliError> {
-        if !endpoint.url.starts_with("https://") {
-            return Ok(None);
-        }
-        let Some((var, value)) = env_either("https_proxy", "HTTPS_PROXY") else {
-            return Ok(None);
-        };
-        if let Some((_, no_proxy)) = env_either("no_proxy", "NO_PROXY")
-            && exempts(&no_proxy, &endpoint.host)
-        {
-            return Ok(None);
-        }
-        Self::parse(var, &value).map(Some)
-    }
-
-    fn parse(var: &'static str, value: &str) -> Result<Self, CliError> {
-        let value = value.trim().trim_end_matches('/');
-        let authority = match value.split_once("://") {
-            Some(("http", rest)) => Some(rest),
-            Some(_) => None,
-            None => Some(value),
-        };
-        let parsed = authority.and_then(|authority| {
-            let proxy = minreq::Proxy::new(value).ok()?;
-            let (credentials, shown) = match authority.rsplit_once('@') {
-                Some((_, shown)) => (true, shown),
-                None => (false, authority),
-            };
-            Some(Self {
-                proxy,
-                var,
-                shown: shown.to_string(),
-                has_credentials: credentials,
-            })
-        });
-        // The value stays out of the message: it can hold a password.
-        parsed.ok_or_else(|| {
-            CliError::new(format!(
-                "{var} names a proxy sweetpad can't use, so nothing was sent. It takes an HTTP \
-                 proxy, written 'http://host:port' or 'http://user:password@host:port'"
-            ))
-        })
-    }
-}
-
-/// The first of two environment variables that is set and not empty.
-fn env_either(first: &'static str, second: &'static str) -> Option<(&'static str, String)> {
-    [first, second].into_iter().find_map(|var| {
-        std::env::var(var)
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .map(|value| (var, value))
-    })
-}
-
-/// Whether a `no_proxy` list exempts `host` (`host[:port]`): `*` exempts
-/// every host, and an entry exempts the host it names and the hosts under
-/// it, with or without a leading dot (`example.com` and `.example.com` both
-/// cover `api.example.com`).
-fn exempts(no_proxy: &str, host: &str) -> bool {
-    let host = host
-        .rsplit_once(':')
-        .filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit()))
-        .map_or(host, |(host, _)| host)
-        .to_ascii_lowercase();
-    no_proxy.split(',').map(str::trim).any(|entry| {
-        let entry = entry
-            .trim_start_matches("*.")
-            .trim_start_matches('.')
-            .to_ascii_lowercase();
-        entry == "*"
-            || (!entry.is_empty() && (host == entry || host.ends_with(&format!(".{entry}"))))
-    })
-}
-
-/// A failed send, in words.
-fn send_error(error: &minreq::Error, host: &str, proxy: Option<&SendProxy>) -> CliError {
-    let via = proxy.map_or_else(String::new, |p| {
-        format!(" through the proxy at {} ({})", p.shown, p.var)
-    });
-    let message = match (error, proxy) {
-        (minreq::Error::IoError(e), _)
-            if matches!(
-                e.kind(),
-                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
-            ) =>
-        {
-            format!("no answer from {host}{via} within {SEND_TIMEOUT_SECS} seconds")
-        }
-        (minreq::Error::IoError(e), _) => format!("can't reach {host}{via}: {e}"),
-        (minreq::Error::AddressNotFound, _) => {
-            format!("can't reach {host}{via}: its address didn't resolve")
-        }
-        #[cfg(not(target_os = "linux"))]
-        (minreq::Error::NativeTlsCreateConnection(e), _) => {
-            format!("the secure connection to {host}{via} failed: {e}")
-        }
-        #[cfg(target_os = "linux")]
-        (minreq::Error::RustlsCreateConnection(e), _) => {
-            format!("the secure connection to {host}{via} failed: {e}")
-        }
-        (minreq::Error::InvalidProxyCreds, Some(p)) if p.has_credentials => format!(
-            "the proxy at {} ({}) refused its credentials",
-            p.shown, p.var
-        ),
-        (minreq::Error::InvalidProxyCreds, Some(p)) => format!(
-            "the proxy at {} ({}) asks for credentials; put them in {} as \
-             'http://user:password@{}'",
-            p.shown, p.var, p.var, p.shown
-        ),
-        (minreq::Error::BadProxy, Some(p)) => format!(
-            "the proxy at {} ({}) wouldn't open a connection to {host}",
-            p.shown, p.var
-        ),
-        (minreq::Error::ProxyConnect, Some(p)) => format!(
-            "the proxy at {} ({}) closed the connection without answering",
-            p.shown, p.var
-        ),
-        (other, _) => format!("sending to {host}{via} failed: {other}"),
-    };
-    CliError::new(message)
 }
 
 /// `submit --dry-run`: what would be sent, and how to send it.
@@ -1043,55 +898,6 @@ mod tests {
             && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
             && id.as_bytes()[12] == b'4'
             && matches!(id.as_bytes()[16], b'8' | b'9' | b'a' | b'b')
-    }
-
-    #[test]
-    fn no_proxy_exempts_the_host_and_the_hosts_under_an_entry() {
-        let host = "o325723.ingest.us.sentry.io";
-        for list in [
-            "*",
-            "sentry.io",
-            ".sentry.io",
-            "*.sentry.io",
-            "localhost, ingest.us.sentry.io",
-            "SENTRY.IO",
-            host,
-        ] {
-            assert!(exempts(list, host), "{list}");
-        }
-        for list in ["", "localhost,127.0.0.1", "ry.io", "sentry.io.example", ","] {
-            assert!(!exempts(list, host), "{list}");
-        }
-        assert!(
-            exempts("127.0.0.1", "127.0.0.1:8080"),
-            "the port is not the host"
-        );
-    }
-
-    #[test]
-    fn a_proxy_is_shown_without_its_credentials() {
-        let proxy = SendProxy::parse("HTTPS_PROXY", "http://me:secret@proxy.corp:3128/").unwrap();
-        assert_eq!(proxy.shown, "proxy.corp:3128");
-        assert!(proxy.has_credentials);
-        let proxy = SendProxy::parse("https_proxy", "proxy.corp:3128").unwrap();
-        assert_eq!(proxy.shown, "proxy.corp:3128");
-        assert!(!proxy.has_credentials);
-
-        for value in [
-            "socks5://me:secret@proxy.corp:1080",
-            "https://proxy.corp",
-            "proxy:port",
-        ] {
-            let Err(err) = SendProxy::parse("HTTPS_PROXY", value) else {
-                panic!("{value} parsed");
-            };
-            let message = err.to_string();
-            assert!(
-                message.starts_with("HTTPS_PROXY names a proxy"),
-                "{message}"
-            );
-            assert!(!message.contains("secret"), "{message}");
-        }
     }
 
     #[test]

@@ -127,7 +127,7 @@ they do not establish physical-device execution for these changes.
 - [ ] E16: Invalidate resource tasks when stand-ins or SDK inputs change (`swbuild.rs::toolset`).
 - [ ] E17: Preserve useful failure output, log paths, exit status, and child-process cancellation (`swbuild.rs`, `process.rs`). Failed build logs are now linked in human output; bubblewrap dies with its parent. Exit-status preservation and descendant-process cancellation remain open.
 - [ ] E18: Correct classic intent-definition codegen visibility, no-codegen, and synchronized-folder metadata (`sweetpad-lib/src/workspace_pif.rs`).
-- [ ] E19: Verify macOS cross-architecture builds and Info.plist preprocessing on Linux (`swbuild.rs::DarwinSdk::overrides`).
+- [ ] E19: Verify macOS cross-architecture builds and Info.plist preprocessing on Linux (`swbuild.rs::DarwinSdk::overrides`). Archives build every `ARCHS_STANDARD` architecture: the delivery fixture's universal Mac app launches as arm64 and as x86_64, and is notarized. Info.plist preprocessing remains unverified.
 - [ ] E20: Preserve required linker settings when projects supply OTHER_LDFLAGS on additional platforms (`swbuild.rs::Invocation`).
 - [ ] E21: Warn for missing workspace members, explain path case mismatches, and map ASSET_TAGS (`sweetpad-lib/src/workspace_pif.rs`, `swbuild.rs`).
 - [ ] E22: Define verbose passthrough and structured blocker reporting for Swift Build (`swbuild.rs`).
@@ -136,17 +136,17 @@ they do not establish physical-device execution for these changes.
 
 - [ ] D01: Mount the developer disk image after a phone reboot or first connection before opening developer services. Needs hardware (`device_network.py::DvtProvider`).
 - [ ] D02: Preserve simulator entitlements through ad-hoc signing and validate Keychain/App Groups on a Mac (`swbuild.rs::DarwinSdk::overrides`, `codesign/provisioning.rs`).
-- [ ] D03: Match provisioning devices, manual profiles, entitlement values, and certificate validity (`codesign/provisioning.rs`, `codesign/identity.rs`).
-- [ ] D04: Verify watchOS profile platform matching (`codesign/provisioning.rs`).
+- [x] D03: Match provisioning devices, manual profiles, entitlement values, and certificate validity (`codesign/provisioning.rs`, `codesign/identity.rs`). A device build takes only a development or ad hoc profile listing its device; a named profile is checked for expiry, app ID, certificate and device; entitlement values are checked against the profile; expired identities are skipped and named as expired.
+- [x] D04: Verify watchOS profile platform matching (`codesign/provisioning.rs`). A watch target takes a profile naming iOS or watchOS. Apple's App Store profiles for a watch app and its WatchKit extension list `iOS`, `xrOS` and `visionOS`, as for any iOS app.
 - [x] D05: Isolate failures for individual discovered devices and retain actionable resolution errors (`device_network.py`, `resolve.rs`).
 - [x] D06: Report network-action timeout context and support bounded action-specific limits (`device_network.py`).
 - [ ] D07: Validate the legacy device adapter version and scope log streams to the selected UDID (`pymobiledevice3.rs`). Legacy syslog now receives the selected UDID; adapter-version validation remains open.
 - [ ] D08: Keep generated xctestrun paths portable across Linux and Mac hosts (`swbuild/test_manifest.rs`).
 - [ ] D09: Accept harmless test-plan settings such as disabled coverage, and report unsupported coverage explicitly (`swbuild/test_manifest/selection.rs`).
-- [ ] D10: Check zip availability and reject distribution-profiled development exports (`commands/archive/portable.rs`).
+- [x] D10: Export signs the app again for its method, so a profile of the wrong kind is refused by name (`codesign/resign.rs`, `commands/archive/export.rs`).
 - [ ] D11: Verify signing-secret inheritance into build scripts and plugins (`swbuild.rs`, `codesign/identity.rs`).
 - [ ] D12: Handle CocoaPods absolute codesign calls without requiring fixture rewrites, or document the limitation (`ci/linux-project-prepare.py`, `docs/cli/linux/react-native.md`).
-- [ ] D13: Verify certificate chains beyond the bundled WWDR G3 intermediate (`codesign/identity.rs`).
+- [ ] D13: Verify certificate chains beyond the bundled WWDR G3 intermediate (`codesign/identity.rs`). Developer ID G1 and G2 are bundled and verified with Apple. An identity whose chain stops short of a root is refused with the missing authority's name, in place of a signature without it. WWDR G4 to G6 are not bundled: a certificate they issue needs its `.p12` to carry the intermediate.
 
 ### Packaging, CI, and docs
 
@@ -898,6 +898,15 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
 - [x] iOS Icon Composer `.icon` static light/dark/tinted appearances, layer order,
       primary PNGs, icon metadata, and shared icon/image names
 - [ ] Icon Composer interactive glass lighting and native material effects *(optional)*
+- [x] watchOS app icons: the single-size set and the legacy set with an
+      image for each size go in the car alone, named in `CFBundleIcons`.
+      Each legacy image goes in by the slot it fills, under its watch's
+      device class; as with actool, images that fill no slot and dark or
+      tinted ones stay out. Car metadata names the platform as Xcode does
+      (`watch`, `atv`, `vision`). Goldens in `fixtures/actool`
+      (`regen_resources.py`). The delivery fixture's Linux archive carries
+      the watch icon, as Xcode's does; an upload of a fully Linux-built
+      watch app is unchecked
 - [ ] Icon Composer on other Apple platforms *(optional)*
 - [x] Data sets (`NSDataAsset`), each file as it is with its type: the one
       its entry names, else its extension's, or the `dyn.` type macOS makes
@@ -906,7 +915,15 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
 - [ ] Fallback values for system colors (black today; UIKit resolves the
       name anyway) *(optional)*
 - [x] Ordered PNG/GIF/JPEG sticker packs, accessibility labels, pack metadata,
-      and message-extension icon files and metadata
+      and message-extension icon files and metadata. The icon's App Store
+      image goes in the car as a plain image, the set's only rendition there,
+      and the 29-point sizes stay out, as Xcode 27's actool does; App Store
+      Connect refuses the extension otherwise (ITMS-90644)
+- [x] Loose catalog outputs an earlier build put in the product, like an
+      icon size the set no longer has, leave it on the next build.
+      `swift-build-linux.patch` has the asset catalog link step remove what
+      the previous compile's dependency info lists and this one doesn't
+      produce; Swift Build declares only `Assets.car`
 - [ ] Sticker sequences and localized sticker-pack strings *(optional)*
 - [ ] AR resources, texture sets, sprite atlases, watch complications,
       launch images *(optional)*
@@ -949,8 +966,12 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
 - [x] Info.plist keys: `DTXcode`, `DTXcodeBuild` and `DTPlatformBuild` from
       the `version.plist` files `linux-setup.sh` copies into the SDK bundle
       (xtool leaves them out); the same as Xcode's build
-- [ ] `BuildMachineOSBuild`: left out, since no macOS built the app. Find
-      out whether App Store validation needs it
+- [x] `BuildMachineOSBuild`: the SDK bundle's `build-machine.plist` holds
+      the macOS build of the Mac that exported the SDK (`sw_vers`), or, for
+      an Xcode archive imported without a Mac, Xcode's own build machine's.
+      sweetpad passes it as `MAC_OS_X_PRODUCT_BUILD_VERSION`, which Swift
+      Build writes into the Info.plist. App Store Connect also accepted a
+      build without it
 - [x] Signing: sweetpad stands in for `codesign` and `derq`, and answers
       Swift Build's provisioning requests, which `swift-build-linux.patch`
       sends to the tool `SWEETPAD_PROVISIONING` names. The identity comes
@@ -990,9 +1011,77 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
       inspection and device debugging remain unsupported on Linux.
 - [x] Swift Build archives and development IPA export on Linux. A signed
       fixture archive and IPA pass Apple codesign verification. Unsigned IPA
-      export, simulator archives, and distribution export are rejected.
-      App, extension, and embedded-framework dSYMs are collected.
-- [ ] Upload with Transporter, which has a Linux build *(optional)*
+      export and simulator archives are rejected. App, extension, and
+      embedded-framework dSYMs are collected.
+- [x] Distribution export on Linux, as Xcode's: `archive export` and
+      `archive --export-method` sign the archived app again with the
+      identity and profile kind of the method (App Store Connect, ad hoc,
+      enterprise, development), from the identity set and profiles above.
+      A device archive is always signed, ad hoc with its entitlements when
+      the identities can't sign it. The delivery fixture's App Store export
+      matches Xcode's entitlements and files, uploads from Linux and
+      processes as VALID; its ad hoc export installs and launches on an
+      iPhone 13
+- [x] Upload to App Store Connect from Linux and macOS through its REST
+      API (`sweetpad upload`, `archive --upload`), IPAs and Mac App Store
+      packages alike
+- [x] macOS signing on Linux: the `codesign` stand-in signs macOS bundles,
+      versioned frameworks, XPC services and universal binaries as Apple's
+      does (16 KiB pages for arm64, 4 KiB for Intel, the runtime version
+      with `-o runtime`, nested code sealed by its code directory hash and
+      designated requirement), matching `codesign`'s output byte for byte
+      for the fixtures. Developer ID signatures get a secure timestamp from
+      Apple's server, as `codesign` gives them; `--timestamp[=URL]` asks
+      for one. A macOS build is signed when there's an identity, and a
+      macOS archive always, ad hoc when the identities can't sign it. The
+      delivery fixture's App Store archive matches Xcode's entitlements,
+      files and seals; packaged with `productbuild` it uploads from Linux
+      and processes as VALID
+- [x] Mac App Store packages on Linux: a macOS archive's
+      `app-store-connect` export signs the app again with Apple
+      Distribution and the Mac App Store profiles, refuses an app without
+      the App Sandbox, and writes the installer package `productbuild
+      --component … --sign` writes, signed with the Mac Installer
+      Distribution identity. Its bill of materials, payload, PackageInfo
+      and Distribution match `productbuild`'s for the fixture app, and the
+      delivery fixture's package uploads from Linux and processes as VALID.
+      `debugging` and `mac-application` exports write the `.app`
+- [x] Developer ID on Linux: a macOS archive's `developer-id` export signs
+      the app again with Developer ID Application, a timestamp and the
+      hardened runtime (refusing a main executable without it). It embeds a
+      Developer ID profile only for entitlements Apple must grant, and
+      writes a package signed with Developer ID Installer and timestamped
+      when that identity is in the set
+- [x] Notarization from Linux and macOS through the notary REST API
+      (`sweetpad notarize`, `archive --notarize`): the file goes to S3
+      under the submission's credentials, and the ticket is stapled from
+      Apple's ticket service, byte for byte as `stapler staple` staples it
+      to an app, a package and a signed disk image. The delivery fixture's
+      Linux-built app, zip and package are accepted and pass Gatekeeper as
+      Notarized Developer ID; a Developer ID disk image stapled by sweetpad
+      is identical to `stapler`'s and passes `spctl` as Notarized Developer
+      ID. Files over 64 MiB go to S3 in parts; a 12 MB zip sent in 5 MiB
+      parts is accepted
+- [x] macOS archives are universal: Xcode's `ARCHS_STANDARD`, arm64 and
+      x86_64, and arm64_32 beside arm64 for a watch app. `lipo -segalign`
+      for `dsymutil`, `lipo`'s output permissions, and the string table
+      alignment `llvm-strip` breaks for x86_64 are fixed on the way; see E19
+- [x] Apple's content in archives and App Store IPAs: `SwiftSupport/<platform>`
+      with the toolchain's own copies of the Swift libraries the app embeds
+      (with Xcode 27, `libswiftCompatibilitySpan.dylib` for Span below OS
+      26), `WatchKitSupport2/WK` and the Messages stubs, each identical to
+      Xcode's archive. The delivery fixture's IPA with SwiftSupport and its
+      universal Mac App Store package, embedding the Span library, upload
+      from Linux and process as VALID, and so does the fixture with a watch
+      app and a sticker pack, built and exported entirely on Linux, as well
+      as Xcode's archive of it exported on Linux
+- [x] The codesign stand-in matches Apple's per-platform rules: 4 KiB pages
+      for Intel, tvOS, and iOS before 16 or watchOS before 9; a SHA-1 code
+      directory beside the SHA-256 one for iOS and tvOS before 11 and
+      arm64_32 before watchOS 12, whose bundles seal each resource with its
+      SHA-1 too (ITMS-90034 otherwise, as for the Messages stub); and a bare
+      Mach-O's identifier from its embedded Info.plist (ITMS-90334
+      otherwise). Goldens in `fixtures/codesign` (`regen.py platforms`)
 
 Running in the simulator stays on a Mac.
 

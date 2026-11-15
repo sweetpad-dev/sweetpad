@@ -2,7 +2,7 @@
 //! code directory, the requirements, the entitlements in XML and in DER,
 //! and the superblob that indexes them.
 
-use super::crypto::sha256;
+use super::crypto::{sha1, sha256};
 use super::der;
 use super::identity::Identity;
 use super::plist::Plist;
@@ -17,6 +17,8 @@ pub(super) const CMS_WRAPPER: u32 = 0xfade_0b01;
 
 /// The superblob slot of each blob.
 pub(super) const SLOT_CODE_DIRECTORY: u32 = 0;
+/// The SHA-256 code directory, beside a SHA-1 one in the first slot.
+pub(super) const SLOT_ALTERNATE_CODE_DIRECTORY: u32 = 0x1000;
 pub(super) const SLOT_REQUIREMENTS: u32 = 2;
 pub(super) const SLOT_ENTITLEMENTS: u32 = 5;
 pub(super) const SLOT_DER_ENTITLEMENTS: u32 = 7;
@@ -31,16 +33,19 @@ pub(super) const SPECIAL_DER_ENTITLEMENTS: usize = 7;
 
 /// Code directory flags.
 pub(super) const FLAG_ADHOC: u32 = 0x2;
+pub(super) const FLAG_RUNTIME: u32 = 0x1_0000;
 pub(super) const FLAG_LINKER_SIGNED: u32 = 0x2_0000;
 
 /// Executable segment flags.
 pub(super) const EXECSEG_MAIN_BINARY: u64 = 0x1;
 pub(super) const EXECSEG_ALLOW_UNSIGNED: u64 = 0x10;
 
-/// The page size the code directory hashes the code in: 16 KiB.
-const PAGE_SIZE_LOG2: u8 = 14;
+/// The version of a code directory with an executable segment, and its
+/// header's size; with a hardened runtime's version, the next one.
 const VERSION: u32 = 0x2_0400;
 const HEADER_SIZE: usize = 88;
+const RUNTIME_VERSION: u32 = 0x2_0500;
+const RUNTIME_HEADER_SIZE: usize = 96;
 
 /// A blob: its magic, its length and `payload`.
 pub(super) fn blob(magic: u32, payload: &[u8]) -> Vec<u8> {
@@ -49,6 +54,54 @@ pub(super) fn blob(magic: u32, payload: &[u8]) -> Vec<u8> {
     out.extend_from_slice(&u32::try_from(payload.len() + 8).unwrap_or(0).to_be_bytes());
     out.extend_from_slice(payload);
     out
+}
+
+/// The hashes of a special slot's contents, one for each kind of code
+/// directory.
+#[derive(Clone, Copy)]
+pub(super) struct SlotHash {
+    pub sha1: [u8; 20],
+    pub sha256: [u8; 32],
+}
+
+impl SlotHash {
+    pub fn of(bytes: &[u8]) -> Self {
+        Self {
+            sha1: sha1(bytes),
+            sha256: sha256(bytes),
+        }
+    }
+}
+
+/// The hash a code directory hashes the code and special slots with.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum CodeHash {
+    Sha1,
+    Sha256,
+}
+
+impl CodeHash {
+    /// The hash's size, and its type as a code directory records it.
+    fn size_and_type(self) -> (u8, u8) {
+        match self {
+            Self::Sha1 => (20, 1),
+            Self::Sha256 => (32, 2),
+        }
+    }
+
+    pub fn digest(self, bytes: &[u8]) -> Vec<u8> {
+        match self {
+            Self::Sha1 => sha1(bytes).to_vec(),
+            Self::Sha256 => sha256(bytes).to_vec(),
+        }
+    }
+
+    fn slot(self, hash: &SlotHash) -> &[u8] {
+        match self {
+            Self::Sha1 => &hash.sha1,
+            Self::Sha256 => &hash.sha256,
+        }
+    }
 }
 
 /// What a code directory records besides the hashes of the code.
@@ -60,7 +113,11 @@ pub(super) struct Directory<'a> {
     pub exec_segment: (u64, u64, u64),
     /// The special slots' hashes, by slot number; a slot left out of the
     /// middle hashes as zeros.
-    pub special: Vec<(usize, [u8; 32])>,
+    pub special: Vec<(usize, SlotHash)>,
+    /// The page size the code is hashed in, as a power of two.
+    pub page_log2: u8,
+    /// The SDK version a hardened runtime runs the code as.
+    pub runtime: Option<u32>,
 }
 
 impl Directory<'_> {
@@ -106,22 +163,29 @@ impl Directory<'_> {
                 .special
                 .iter()
                 .find(|(n, _)| *n == slot)
-                .map_or([0; 32], |(_, hash)| *hash);
+                .map_or([0; 32], |(_, hash)| hash.sha256);
             out.extend_from_slice(&hash);
         }
         out.extend_from_slice(&sha256(code));
         out
     }
 
-    /// The code directory over `code`, the slice up to its signature.
-    pub fn build(&self, code: &[u8]) -> Vec<u8> {
+    /// The code directory over `code`, the slice up to its signature,
+    /// hashed with `hash`.
+    pub fn build(&self, code: &[u8], hash: CodeHash) -> Vec<u8> {
+        let (size, hash_type) = hash.size_and_type();
+        let hash_size = usize::from(size);
         let slots = self.special.iter().map(|(n, _)| *n).max().unwrap_or(0);
-        let pages = code.len().div_ceil(1 << PAGE_SIZE_LOG2);
+        let page = 1usize << self.page_log2;
+        let pages = code.len().div_ceil(page);
         let team = self.team.map_or(0, |t| t.len() + 1);
-        let identity_offset = HEADER_SIZE;
+        let (version, identity_offset) = match self.runtime {
+            Some(_) => (RUNTIME_VERSION, RUNTIME_HEADER_SIZE),
+            None => (VERSION, HEADER_SIZE),
+        };
         let team_offset = identity_offset + self.identifier.len() + 1;
-        let hash_offset = team_offset + team + 32 * slots;
-        let length = hash_offset + 32 * pages;
+        let hash_offset = team_offset + team + hash_size * slots;
+        let length = hash_offset + hash_size * pages;
         let mut out = Vec::with_capacity(length);
         let mut u32s = |values: &[usize]| {
             for value in values {
@@ -131,7 +195,7 @@ impl Directory<'_> {
         u32s(&[
             CODE_DIRECTORY as usize,
             length,
-            VERSION as usize,
+            version as usize,
             self.flags as usize,
             hash_offset,
             identity_offset,
@@ -139,8 +203,8 @@ impl Directory<'_> {
             pages,
             code.len(),
         ]);
-        // Hash size, hash type (SHA-256), platform and page size.
-        out.extend_from_slice(&[32, 2, 0, PAGE_SIZE_LOG2]);
+        // Hash size, hash type, platform and page size.
+        out.extend_from_slice(&[size, hash_type, 0, self.page_log2]);
         // The spare, the scatter offset, the team offset, another spare and
         // the 64-bit code limit, unused below 4 GiB.
         out.extend_from_slice(&0u32.to_be_bytes());
@@ -153,6 +217,11 @@ impl Directory<'_> {
         for value in [base, limit, flags] {
             out.extend_from_slice(&value.to_be_bytes());
         }
+        if let Some(runtime) = self.runtime {
+            // The runtime version and the pre-encryption offset, unused.
+            out.extend_from_slice(&runtime.to_be_bytes());
+            out.extend_from_slice(&0u32.to_be_bytes());
+        }
         out.extend_from_slice(self.identifier.as_bytes());
         out.push(0);
         if let Some(team) = self.team {
@@ -160,15 +229,13 @@ impl Directory<'_> {
             out.push(0);
         }
         for slot in (1..=slots).rev() {
-            let hash = self
-                .special
-                .iter()
-                .find(|(n, _)| *n == slot)
-                .map_or([0; 32], |(_, h)| *h);
-            out.extend_from_slice(&hash);
+            match self.special.iter().find(|(n, _)| *n == slot) {
+                Some((_, slot_hash)) => out.extend_from_slice(hash.slot(slot_hash)),
+                None => out.resize(out.len() + hash_size, 0),
+            }
         }
-        for page in code.chunks(1 << PAGE_SIZE_LOG2) {
-            out.extend_from_slice(&sha256(page));
+        for page in code.chunks(page) {
+            out.extend_from_slice(&hash.digest(page));
         }
         out
     }
@@ -244,10 +311,31 @@ pub(super) fn requirements(
         op(&mut expression, 1);
         data(&mut expression, der::oids::APPLE_WWDR_INTERMEDIATE);
         op(&mut expression, MATCH_EXISTS);
+    } else if let Some(team) = developer_id_team(identity) {
+        // anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6]
+        // exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists
+        // and certificate leaf[subject.OU] = TEAM
+        op(&mut expression, OP_AND);
+        op(&mut expression, OP_APPLE_GENERIC_ANCHOR);
+        op(&mut expression, OP_AND);
+        op(&mut expression, OP_CERT_GENERIC);
+        op(&mut expression, 1);
+        data(&mut expression, der::oids::DEVELOPER_ID_INTERMEDIATE);
+        op(&mut expression, MATCH_EXISTS);
+        op(&mut expression, OP_AND);
+        op(&mut expression, OP_CERT_GENERIC);
+        op(&mut expression, 0);
+        data(&mut expression, der::oids::DEVELOPER_ID_APPLICATION);
+        op(&mut expression, MATCH_EXISTS);
+        op(&mut expression, OP_CERT_FIELD);
+        op(&mut expression, 0);
+        data(&mut expression, b"subject.OU");
+        op(&mut expression, MATCH_EQUAL);
+        data(&mut expression, team.as_bytes());
     } else if identity.is_apple_issued() {
         return Err(format!(
-            "signing with '{}' isn't supported: only Apple Development and Apple \
-             Distribution identities are",
+            "signing code with '{}' isn't supported: Apple Development, Apple Distribution \
+             and Developer ID Application identities are",
             identity.certificate.common_name
         ));
     } else {
@@ -266,6 +354,18 @@ pub(super) fn requirements(
     set.extend_from_slice(&20u32.to_be_bytes());
     set.extend(requirement);
     Ok(blob(REQUIREMENTS, &set))
+}
+
+/// The team of a Developer ID Application identity, under Apple's Developer
+/// ID authority.
+fn developer_id_team(identity: &Identity) -> Option<&str> {
+    let intermediate = identity.chain.first()?;
+    (intermediate.has_extension(der::oids::DEVELOPER_ID_INTERMEDIATE)
+        && identity
+            .certificate
+            .has_extension(der::oids::DEVELOPER_ID_APPLICATION))
+    .then(|| identity.team())
+    .flatten()
 }
 
 const OP_IDENT: u32 = 2;

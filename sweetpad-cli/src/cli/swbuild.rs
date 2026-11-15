@@ -336,6 +336,7 @@ fn swbuild_args(plan: &BuildPlan<'_>, parameters_file: &Path, pif: &Path) -> Vec
 }
 
 impl Invocation {
+    #[allow(clippy::too_many_lines)] // one linear assembly: guards, locations, overrides, env
     fn of(plan: &BuildPlan<'_>) -> Result<Self, CliError> {
         let container = match plan.container {
             Container::Workspace(path) | Container::Project(path) => path.clone(),
@@ -390,15 +391,18 @@ impl Invocation {
             overrides.extend(host.embedded_platform_overrides(&sdk, &destination.arch, toolset));
             overrides.extend(host.overrides(&sdk, &destination.arch, toolset));
         }
+        if host.is_some() && plan.action == BuildAction::Archive {
+            archive_architectures(&mut overrides);
+        }
+        let archive_signs =
+            host.is_some() && plan.action == BuildAction::Archive && DarwinSdk::is_signed(&sdk);
+        if archive_signs {
+            sign_archive(&mut overrides);
+        }
         if let Some(tools) = &tools {
-            overrides.insert(
-                "CHMOD".to_string(),
-                tools.join("sweetpad-chmod").display().to_string(),
-            );
-            overrides.insert(
-                "ASSETCATALOG_EXEC".to_string(),
-                tools.join("actool").display().to_string(),
-            );
+            let tool = |name: &str| tools.join(name).display().to_string();
+            overrides.insert("CHMOD".to_string(), tool("sweetpad-chmod"));
+            overrides.insert("ASSETCATALOG_EXEC".to_string(), tool("actool"));
         }
         overrides.extend(settings.overrides.iter().cloned());
         if host.is_some() {
@@ -415,6 +419,7 @@ impl Invocation {
 
         if plan.action == BuildAction::Archive {
             parameters["action"] = json!("install");
+            parameters["activeRunDestination"]["disableOnlyActiveArch"] = json!(true);
         }
 
         Ok(Self {
@@ -426,7 +431,14 @@ impl Invocation {
             package_sysroot: host.as_ref().map(|h| h.sdk_root(&sdk)).transpose()?,
             env: host
                 .zip(tools.as_deref())
-                .map(|(h, tools)| h.env(tools, DarwinSdk::signs(&sdk)))
+                .map(|(h, tools)| {
+                    h.env(
+                        tools,
+                        DarwinSdk::signs(&sdk) || archive_signs,
+                        archive_signs,
+                        run_device(plan.destination, &sdk),
+                    )
+                })
                 .unwrap_or_default(),
             container,
             pif,
@@ -1107,9 +1119,9 @@ impl DarwinSdk {
 
     /// The settings a build needs without Xcode's own tools.
     ///
-    /// - `CODE_SIGNING_ALLOWED=NO`, unless the build is for a device and has
-    ///   an identity to sign with (see [`Self::signs`]): the linker's ad hoc
-    ///   signature is all a simulator asks for. A signed build sets
+    /// - `CODE_SIGNING_ALLOWED=NO`, unless the build is for a device or a
+    ///   Mac and has an identity to sign with (see [`Self::signs`]): the
+    ///   linker's ad hoc signature is all a simulator asks for. A signed build sets
     ///   `CODESIGN=codesign`, the stand-in, over the bundle's `true`, which
     ///   leaves signing to xtool.
     /// - `SWIFT_SDK_TOOLSETS`: the bundle's linker, which links for Apple
@@ -1129,13 +1141,17 @@ impl DarwinSdk {
     /// - The Xcode version (see [`xcode_version_settings`]) and, for a
     ///   platform without its `version.plist`, its build as the SDK's, which
     ///   go into the app's Info.plist as `DTXcode`, `DTXcodeBuild` and
-    ///   `DTPlatformBuild`.
+    ///   `DTPlatformBuild`, and the macOS build the SDK came from (see
+    ///   [`build_machine_settings`]).
     fn overrides(&self, sdk: &str, arch: &str, toolset: &Path) -> Vec<(String, String)> {
         let swift_libraries = self
             .bundle
             .join("Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME)");
         let mut versions = xcode_version_settings(&sweetpad_lib::derived_data::plist_strings(
             &self.bundle.join("version.plist"),
+        ));
+        versions.extend(build_machine_settings(
+            &sweetpad_lib::derived_data::plist_strings(&self.bundle.join("build-machine.plist")),
         ));
         if !self.platform_has_version(sdk) {
             versions.push((
@@ -1256,14 +1272,19 @@ impl DarwinSdk {
         result
     }
 
-    /// Whether a build for `sdk` is signed: one for a device, with an
-    /// identity in `SWEETPAD_CODE_SIGN_P12` to sign with, which the
+    /// Whether a build for `sdk` is signed: one for a device or a Mac, with
+    /// an identity in `SWEETPAD_CODE_SIGN_P12` to sign with, which the
     /// `codesign` and provisioning stand-ins sign with as Xcode would (see
     /// [`super::codesign`]).
     fn signs(sdk: &str) -> bool {
+        Self::is_signed(sdk) && super::codesign::identity_configured()
+    }
+
+    /// Whether `sdk` is a device's or a Mac's, whose builds a signature
+    /// lets run and whose archives an export signs again.
+    fn is_signed(sdk: &str) -> bool {
         let platform = sdk.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
-        ["iphoneos", "appletvos", "watchos", "xros"].contains(&platform)
-            && super::codesign::identity_configured()
+        SIGNED_PLATFORMS.contains(&platform)
     }
 
     /// Whether the bundle has the `version.plist` of the platform `sdk` is
@@ -1286,8 +1307,16 @@ impl DarwinSdk {
     /// with no Xcode to find them in, and looks tools like `dsymutil` and
     /// `xcstringstool` up on `PATH`, so the stand-ins in `tools` go first,
     /// then the bundle's. A signed build has Swift Build ask the
-    /// provisioning stand-in for what Xcode would provision.
-    fn env(&self, tools: &Path, signs: bool) -> Vec<(String, Option<String>)> {
+    /// provisioning stand-in for what Xcode would provision, which signs an
+    /// archive's target ad hoc on `fallback` when the identities can't, and
+    /// checks profiles against `device`, the device the build runs on.
+    fn env(
+        &self,
+        tools: &Path,
+        signs: bool,
+        fallback: bool,
+        device: Option<String>,
+    ) -> Vec<(String, Option<String>)> {
         let mut path = vec![tools.to_path_buf(), self.bundle.join("toolset/bin")];
         path.extend(
             std::env::var_os("PATH")
@@ -1321,8 +1350,56 @@ impl DarwinSdk {
                         .to_string()
                 }),
             ),
+            (
+                super::codesign::provisioning::FALLBACK_VARIABLE.to_string(),
+                fallback.then(|| "ad-hoc".to_string()),
+            ),
+            (
+                super::codesign::provisioning::DEVICE_VARIABLE.to_string(),
+                device,
+            ),
         ]
     }
+}
+
+/// The device a build for an iOS-family device runs on, as its destination
+/// names it, whose identifier a development or ad hoc profile must list.
+fn run_device(destination: Option<&str>, sdk: &str) -> Option<String> {
+    let spec = sweetpad_lib::destination::DestinationSpec::parse(destination?);
+    let device_sdk = ["iphoneos", "appletvos", "watchos", "xros"]
+        .iter()
+        .any(|platform| sdk.starts_with(platform));
+    spec.id.filter(|_| device_sdk && !spec.generic)
+}
+
+/// An archive is built for every architecture the project names, as Xcode
+/// builds one for a generic destination: `ARCHS_STANDARD` unless the
+/// project says otherwise, so a Mac app is universal and a watch app holds
+/// arm64_32 beside arm64. Other builds stay on the destination's one
+/// architecture.
+fn archive_architectures(overrides: &mut BTreeMap<String, String>) {
+    overrides.retain(|key, _| {
+        let name = key.split('[').next().unwrap_or(key);
+        name != "ARCHS" && name != "ONLY_ACTIVE_ARCH"
+    });
+    overrides.insert("ONLY_ACTIVE_ARCH".to_string(), "NO".to_string());
+}
+
+/// The platforms whose builds are signed: devices and the Mac.
+const SIGNED_PLATFORMS: [&str; 5] = ["iphoneos", "appletvos", "watchos", "xros", "macosx"];
+
+/// A device or Mac archive is always signed: ad hoc, with its
+/// entitlements, when the identities can't sign it, for its export to sign
+/// again. The stand-in signs the products of every platform the archive
+/// embeds, like a watch app in an iOS archive. A device SDK refuses an ad
+/// hoc signature unless allowed.
+fn sign_archive(overrides: &mut BTreeMap<String, String>) {
+    overrides.remove("CODE_SIGNING_ALLOWED");
+    overrides.insert("CODESIGN".to_string(), "codesign".to_string());
+    for platform in SIGNED_PLATFORMS {
+        overrides.insert(format!("CODESIGN[sdk={platform}*]"), "codesign".to_string());
+    }
+    overrides.insert("AD_HOC_CODE_SIGNING_ALLOWED".to_string(), "YES".to_string());
 }
 
 /// The Xcode version settings Swift Build fills from Xcode.app's
@@ -1361,6 +1438,19 @@ fn xcode_version_settings(version_plist: &[(String, String)]) -> Vec<(&'static s
         ),
         ("XCODE_PRODUCT_BUILD_VERSION", build.to_string()),
     ]
+}
+
+/// `MAC_OS_X_PRODUCT_BUILD_VERSION` from the SDK's `build-machine.plist`:
+/// the macOS build it came from, which Swift Build writes into an app's
+/// Info.plist as `BuildMachineOSBuild` and leaves out when it's empty. An
+/// SDK imported before the file existed has none.
+fn build_machine_settings(plist: &[(String, String)]) -> Vec<(&'static str, String)> {
+    plist
+        .iter()
+        .find(|(k, v)| k == "BuildMachineOSBuild" && !v.is_empty())
+        .map(|(_, build)| ("MAC_OS_X_PRODUCT_BUILD_VERSION", build.clone()))
+        .into_iter()
+        .collect()
 }
 
 /// swbuild's output as [`buildlog`] events.
@@ -2019,6 +2109,30 @@ mod tests {
     }
 
     #[test]
+    fn profiles_are_checked_against_the_device_a_build_runs_on() {
+        let udid = "00008110-001A2C3E0A12801E";
+        let on = |destination: &str, sdk: &str| run_device(Some(destination), sdk);
+        assert_eq!(
+            on(&format!("platform=iOS,id={udid}"), "iphoneos"),
+            Some(udid.to_string())
+        );
+        assert_eq!(
+            on(&format!("platform=watchOS,id={udid}"), "watchos26.0"),
+            Some(udid.to_string())
+        );
+        assert_eq!(
+            on(
+                &format!("platform=iOS Simulator,id={udid}"),
+                "iphonesimulator"
+            ),
+            None
+        );
+        assert_eq!(on("generic/platform=iOS", "iphoneos"), None);
+        assert_eq!(on(&format!("platform=macOS,id={udid}"), "macosx"), None);
+        assert_eq!(run_device(None, "iphoneos"), None);
+    }
+
+    #[test]
     fn additional_apple_platforms_use_destination_resources_and_lld() {
         let dir = crate::cli::testdir::TempDir::new("sweetpad-platform-sdk");
         let sdk = DarwinSdk {
@@ -2198,6 +2312,16 @@ mod tests {
         );
         assert_eq!(xcode_version_settings(&plist("27.0"))[2].1, "2700");
         assert!(xcode_version_settings(&[]).is_empty());
+    }
+
+    #[test]
+    fn the_build_machine_comes_from_the_sdk() {
+        let plist = vec![("BuildMachineOSBuild".to_string(), "26B131".to_string())];
+        assert_eq!(
+            build_machine_settings(&plist),
+            [("MAC_OS_X_PRODUCT_BUILD_VERSION", "26B131".to_string())]
+        );
+        assert!(build_machine_settings(&[]).is_empty());
     }
 
     #[test]

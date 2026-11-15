@@ -6,14 +6,21 @@
 
 use std::path::{Path, PathBuf};
 
-use clap::{Args, ValueEnum};
+use clap::{Args, Subcommand, ValueEnum};
 
+use crate::cli::appstore::key::{ApiKey, KeyArgs};
+use crate::cli::commands::notarize;
+use crate::cli::commands::upload::{self, FollowArgs};
 use crate::cli::output::Output;
 use crate::cli::resolve::{self, Container};
 use crate::cli::{
     CliError, CommandResult, Context, ErrorKind, Render, Rendered, buildlog, process, xcodebuild,
 };
 
+mod export;
+#[cfg(test)]
+pub(crate) use export::copy_tree;
+mod export_options;
 mod portable;
 
 /// The export method — ExportOptions.plist `method` values (Xcode 15+ names).
@@ -34,7 +41,7 @@ pub enum ExportMethod {
 }
 
 impl ExportMethod {
-    fn plist_value(self) -> &'static str {
+    pub(crate) fn plist_value(self) -> &'static str {
         match self {
             ExportMethod::Debugging => "debugging",
             ExportMethod::AppStoreConnect => "app-store-connect",
@@ -62,21 +69,11 @@ pub struct ArchiveArgs {
     #[arg(long = "output-file", value_name = "DIR")]
     pub output_file: Option<PathBuf>,
 
-    /// How to export the archive.
-    #[arg(long, value_enum, default_value_t = ExportMethod::Debugging)]
-    pub export_method: ExportMethod,
-
-    /// Use an existing ExportOptions.plist instead of generating one.
-    #[arg(
-        long,
-        value_name = "PLIST",
-        conflicts_with = "export_method",
-        conflicts_with = "no_export"
-    )]
-    pub export_options: Option<PathBuf>,
+    #[command(flatten)]
+    pub export: ExportChoice,
 
     /// Archive only; skip the IPA export.
-    #[arg(long)]
+    #[arg(long, conflicts_with_all = ["export_options", "upload"])]
     pub no_export: bool,
 
     /// Print the exact xcodebuild invocation(s) that would run, then exit.
@@ -89,10 +86,147 @@ pub struct ArchiveArgs {
     pub passthrough: Vec<String>,
 }
 
+/// How to export, and where the export goes next. Shared by 'archive' and
+/// 'archive export'.
+#[derive(Debug, Clone, Args)]
+pub struct ExportChoice {
+    /// How to export the archive (default 'debugging', or
+    /// 'app-store-connect' with '--upload').
+    #[arg(long, value_enum)]
+    pub export_method: Option<ExportMethod>,
+
+    /// Use an existing ExportOptions.plist instead of generating one.
+    #[arg(long, value_name = "PLIST", conflicts_with = "export_method")]
+    pub export_options: Option<PathBuf>,
+
+    /// Upload the exported .ipa or .pkg to App Store Connect, as 'sweetpad
+    /// upload' does. Implies '--export-method app-store-connect'.
+    #[arg(long)]
+    pub upload: bool,
+
+    /// The app's App Store Connect ID, for '--upload'. Looked up from the
+    /// bundle identifier when left out.
+    #[arg(long, value_name = "ID", requires = "upload")]
+    pub app_id: Option<String>,
+
+    /// Notarize the Developer ID export with Apple and staple it, as
+    /// 'sweetpad notarize' does, with a team API key. Implies
+    /// '--export-method developer-id'.
+    #[arg(long, conflicts_with = "upload")]
+    pub notarize: bool,
+
+    #[command(flatten)]
+    pub key: KeyArgs,
+
+    #[command(flatten)]
+    pub follow: FollowArgs,
+}
+
+impl ExportChoice {
+    /// The method to export with. `--upload` means App Store Connect, and any
+    /// other method beside it is refused by the command line alone.
+    pub(crate) fn method(&self) -> Result<ExportMethod, CliError> {
+        if self.notarize {
+            return match self.export_method {
+                Some(ExportMethod::DeveloperId) | None => Ok(ExportMethod::DeveloperId),
+                Some(other) => Err(CliError::new(format!(
+                    "'--notarize' notarizes a Developer ID export, which takes '--export-method \
+                     developer-id'; '{}' exports aren't notarized",
+                    other.plist_value()
+                ))
+                .kind(ErrorKind::Usage)),
+            };
+        }
+        match (self.export_method, self.upload) {
+            (Some(ExportMethod::AppStoreConnect) | None, true) => Ok(ExportMethod::AppStoreConnect),
+            (Some(other), true) => Err(CliError::new(format!(
+                "'--upload' sends a build to App Store Connect, which takes only \
+                 '--export-method app-store-connect'; '{}' builds can't be uploaded",
+                other.plist_value()
+            ))
+            .kind(ErrorKind::Usage)),
+            (method, false) => Ok(method.unwrap_or(ExportMethod::Debugging)),
+        }
+    }
+
+    /// Refusals decided by the command line: a method that can't upload, and
+    /// an upload without an API key.
+    fn check(&self) -> Result<(), CliError> {
+        self.method()?;
+        if self.upload {
+            if let Some(plist) = &self.export_options {
+                let values = sweetpad_lib::derived_data::plist_strings(plist);
+                let method = values
+                    .iter()
+                    .find(|(k, _)| k == "method")
+                    .map(|(_, v)| v.as_str());
+                if !matches!(method, Some("app-store-connect" | "app-store")) {
+                    return Err(CliError::new(format!(
+                        "'--upload' needs an App Store Connect export, but {} sets method {}",
+                        plist.display(),
+                        method.map_or_else(|| "nothing".to_string(), |m| format!("'{m}'"))
+                    ))
+                    .kind(ErrorKind::Usage));
+                }
+            }
+            ApiKey::resolve(&self.key)?;
+        }
+        if self.notarize {
+            crate::cli::appstore::notary::require_team_key(&ApiKey::resolve(&self.key)?)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Action {
+    /// Export an existing .xcarchive again, with another method or
+    /// ExportOptions.plist, then upload or notarize the result if asked.
+    Export(ExportArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ExportArgs {
+    /// The .xcarchive to export.
+    pub archive: PathBuf,
+
+    /// Export with xcodebuild or with sweetpad's own signing (the default on
+    /// Linux).
+    #[arg(long, value_enum)]
+    pub engine: Option<crate::cli::swbuild::Engine>,
+
+    /// Output directory for the export (default: ./build).
+    #[arg(long = "output-file", value_name = "DIR")]
+    pub output_file: Option<PathBuf>,
+
+    #[command(flatten)]
+    pub export: ExportChoice,
+
+    /// Print the exact invocation that would run, then exit.
+    #[arg(long)]
+    pub show_command: bool,
+}
+
 /// The archive/export outcome.
 struct ArchiveReport {
     archive: String,
     ipa_dir: Option<String>,
+    upload: Option<upload::Report>,
+    notarized: Vec<notarize::Report>,
+}
+
+impl ArchiveReport {
+    /// Rendered, exiting 1 when Apple rejected the upload or the
+    /// notarization.
+    fn rendered(self) -> Rendered {
+        if self.upload.as_ref().is_some_and(|u| u.upload.failed())
+            || self.notarized.iter().any(notarize::Report::rejected)
+        {
+            Rendered::data_with_exit(self, 1)
+        } else {
+            Rendered::data(self)
+        }
+    }
 }
 
 impl Render for ArchiveReport {
@@ -101,17 +235,137 @@ impl Render for ArchiveReport {
         if let Some(dir) = &self.ipa_dir {
             out.note(&format!("exported: {dir}"));
         }
+        if let Some(upload) = &self.upload {
+            upload.human(out);
+        }
+        for report in &self.notarized {
+            report.human(out);
+        }
     }
 
     fn json(&self) -> serde_json::Value {
-        serde_json::json!({
+        let mut data = serde_json::json!({
             "archive": self.archive,
             "exportedTo": self.ipa_dir,
-        })
+        });
+        if let Some(upload) = &self.upload {
+            data["upload"] = upload.json();
+        }
+        if !self.notarized.is_empty() {
+            data["notarized"] = self.notarized.iter().map(Render::json).collect();
+        }
+        data
     }
 }
 
-pub fn run(ctx: &mut Context, args: &ArchiveArgs) -> CommandResult {
+/// Upload (when `upload`) or notarize what the export in `export_dir`
+/// wrote, as `choice` asks, and report the archive and what became of it.
+fn deliver(
+    ctx: &Context,
+    choice: &ExportChoice,
+    upload: bool,
+    archive: &Path,
+    export_dir: &Path,
+) -> CommandResult {
+    let upload = if upload {
+        Some(upload_export(ctx, choice, export_dir)?)
+    } else {
+        None
+    };
+    let notarized = if choice.notarize {
+        notarize_export(ctx, choice, export_dir)?
+    } else {
+        Vec::new()
+    };
+    Ok(ArchiveReport {
+        archive: archive.display().to_string(),
+        ipa_dir: Some(export_dir.display().to_string()),
+        upload,
+        notarized,
+    }
+    .rendered())
+}
+
+/// Notarize what a Developer ID export wrote to `export_dir`: the app,
+/// stapled and then zipped beside it, and a package when there is one.
+fn notarize_export(
+    ctx: &Context,
+    choice: &ExportChoice,
+    export_dir: &Path,
+) -> Result<Vec<notarize::Report>, CliError> {
+    let mut found: Vec<PathBuf> = std::fs::read_dir(export_dir)
+        .map_err(|e| CliError::new(format!("can't read {}: {e}", export_dir.display())))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|e| e == "app" || e == "pkg"))
+        .collect();
+    // The app before its package.
+    found.sort_by_key(|path| path.extension().is_some_and(|e| e == "pkg"));
+    if !found
+        .iter()
+        .any(|path| path.extension().is_some_and(|e| e == "app"))
+    {
+        return Err(CliError::new(format!(
+            "the export in {} holds no app to notarize",
+            export_dir.display()
+        )));
+    }
+    let options = notarize::NotarizeOptions::default();
+    let mut reports = Vec::new();
+    for file in found {
+        let report = notarize::notarize(ctx, &file, &options, &choice.key)
+            .map_err(|e| e.context("notarizing the export"))?;
+        let rejected = report.rejected();
+        reports.push(report);
+        if rejected {
+            break;
+        }
+        if file.extension().is_some_and(|e| e == "app") {
+            notarize::zip_app(&file, export_dir)?;
+        }
+    }
+    Ok(reports)
+}
+
+/// Upload the one .ipa or .pkg an export wrote to `export_dir`.
+fn upload_export(
+    ctx: &Context,
+    choice: &ExportChoice,
+    export_dir: &Path,
+) -> Result<upload::Report, CliError> {
+    let mut found: Vec<PathBuf> = std::fs::read_dir(export_dir)
+        .map_err(|e| CliError::new(format!("can't read {}: {e}", export_dir.display())))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| e.eq_ignore_ascii_case("ipa") || e.eq_ignore_ascii_case("pkg"))
+        })
+        .collect();
+    found.sort();
+    let [file] = found.as_slice() else {
+        return Err(CliError::new(format!(
+            "the export in {} holds {} .ipa/.pkg files; upload one with 'sweetpad upload FILE'",
+            export_dir.display(),
+            found.len()
+        )));
+    };
+    upload::upload_file(
+        ctx,
+        file,
+        choice.app_id.as_deref(),
+        &choice.key,
+        &choice.follow,
+    )
+    .map_err(|e| e.context("uploading the export"))
+}
+
+pub fn run(ctx: &mut Context, args: &ArchiveArgs, action: Option<&Action>) -> CommandResult {
+    if let Some(Action::Export(export)) = action {
+        return run_export(ctx, export);
+    }
+    args.export.check()?;
     ctx.targeting = args.target.clone().into();
     resolve::reject_on_destination_conflict(ctx)?;
     if let Some(on) = &ctx.targeting.on {
@@ -195,7 +449,7 @@ fn run_resolved(
 
     let cwd = xcodebuild::working_dir(&resolved.container);
     let export_dir = out_dir.join("export");
-    let plist_path = args.export_options.as_deref().map_or_else(
+    let plist_path = args.export.export_options.as_deref().map_or_else(
         || out_dir.join("ExportOptions.plist"),
         sweetpad_lib::project::absolutize,
     );
@@ -222,13 +476,14 @@ fn run_resolved(
             args: export_args,
             cwd: cwd.clone(),
         });
-        let generated_plist = (!args.no_export && args.export_options.is_none())
+        let generated_plist = (!args.no_export && args.export.export_options.is_none())
             .then(|| plist_path.display().to_string());
         return Ok(Rendered::data(ArchivePreview {
-            archive: archive_preview,
+            archive: Some(archive_preview),
             export: export_preview,
             generated_plist,
-            export_method: args.export_method,
+            export_method: args.export.method()?,
+            upload: args.export.upload,
         }));
     }
 
@@ -240,22 +495,89 @@ fn run_resolved(
         return Ok(Rendered::data(ArchiveReport {
             archive: archive_path.display().to_string(),
             ipa_dir: None,
+            upload: None,
+            notarized: Vec::new(),
         }));
     }
 
     // Export: an explicit plist wins; otherwise generate one with automatic
     // signing for the chosen method.
-    if args.export_options.is_none() {
-        std::fs::write(&plist_path, export_options_plist(args.export_method))
+    if args.export.export_options.is_none() {
+        std::fs::write(&plist_path, export_options_plist(args.export.method()?))
             .map_err(|e| CliError::new(format!("failed to write {}: {e}", plist_path.display())))?;
     }
     run_xcodebuild(ctx, &export_args, cwd.as_deref(), "Exporting")
         .map_err(|e| e.context("exporting the archive"))?;
+    deliver(
+        ctx,
+        &args.export,
+        args.export.upload,
+        &archive_path,
+        &export_dir,
+    )
+}
 
-    Ok(Rendered::data(ArchiveReport {
-        archive: archive_path.display().to_string(),
-        ipa_dir: Some(export_dir.display().to_string()),
-    }))
+/// `archive export`: export an existing archive, with xcodebuild or (on the
+/// Swift Build engine) sweetpad's own signing.
+fn run_export(ctx: &Context, args: &ExportArgs) -> CommandResult {
+    args.export.check()?;
+    let archive = sweetpad_lib::project::absolutize(&args.archive);
+    if !archive.join("Info.plist").is_file() {
+        return Err(CliError::new(format!(
+            "{} isn't an .xcarchive (it has no Info.plist)",
+            archive.display()
+        ))
+        .kind(ErrorKind::Usage));
+    }
+    let out_dir = sweetpad_lib::project::absolutize(
+        args.output_file.as_deref().unwrap_or(Path::new("build")),
+    );
+    let export_dir = out_dir.join("export");
+    if args
+        .engine
+        .unwrap_or_else(crate::cli::swbuild::Engine::for_host)
+        == crate::cli::swbuild::Engine::SwiftBuild
+    {
+        return portable::export_existing(ctx, args, &archive, &export_dir);
+    }
+    let plist_path = args.export.export_options.as_deref().map_or_else(
+        || out_dir.join("ExportOptions.plist"),
+        sweetpad_lib::project::absolutize,
+    );
+    let export_args: Vec<String> = vec![
+        "-exportArchive".into(),
+        "-archivePath".into(),
+        archive.display().to_string(),
+        "-exportPath".into(),
+        export_dir.display().to_string(),
+        "-exportOptionsPlist".into(),
+        plist_path.display().to_string(),
+    ];
+    if args.show_command {
+        return Ok(Rendered::data(ArchivePreview {
+            archive: None,
+            export: Some(xcodebuild::CommandPreview {
+                program: "xcodebuild",
+                args: export_args,
+                cwd: None,
+            }),
+            generated_plist: args
+                .export
+                .export_options
+                .is_none()
+                .then(|| plist_path.display().to_string()),
+            export_method: args.export.method()?,
+            upload: args.export.upload,
+        }));
+    }
+    let _ = std::fs::create_dir_all(&out_dir);
+    if args.export.export_options.is_none() {
+        std::fs::write(&plist_path, export_options_plist(args.export.method()?))
+            .map_err(|e| CliError::new(format!("failed to write {}: {e}", plist_path.display())))?;
+    }
+    run_xcodebuild(ctx, &export_args, None, "Exporting")
+        .map_err(|e| e.context("exporting the archive"))?;
+    deliver(ctx, &args.export, args.export.upload, &archive, &export_dir)
 }
 
 /// The archive's configuration: flag > user config > sweetpad.toml > the
@@ -349,18 +671,21 @@ fn on_platform(on: &str) -> Result<&'static str, CliError> {
         })
 }
 
-/// The `--show-command` payload: both xcodebuild invocations, and the
-/// ExportOptions.plist that would be generated.
+/// The `--show-command` payload: the xcodebuild invocations, the
+/// ExportOptions.plist that would be generated, and whether an upload follows.
 struct ArchivePreview {
-    archive: xcodebuild::CommandPreview,
+    archive: Option<xcodebuild::CommandPreview>,
     export: Option<xcodebuild::CommandPreview>,
     generated_plist: Option<String>,
     export_method: ExportMethod,
+    upload: bool,
 }
 
 impl Render for ArchivePreview {
     fn human(&self, out: &Output) {
-        self.archive.human(out);
+        if let Some(archive) = &self.archive {
+            archive.human(out);
+        }
         if let Some(export) = &self.export {
             export.human(out);
         }
@@ -370,16 +695,22 @@ impl Render for ArchivePreview {
                 self.export_method.plist_value()
             ));
         }
+        if self.upload {
+            out.note("then the exported file is uploaded to App Store Connect");
+        }
     }
 
     fn json(&self) -> serde_json::Value {
-        let mut commands = vec![self.archive.json()];
-        if let Some(export) = &self.export {
-            commands.push(export.json());
-        }
+        let commands: Vec<serde_json::Value> = self
+            .archive
+            .iter()
+            .chain(self.export.iter())
+            .map(xcodebuild::CommandPreview::json)
+            .collect();
         serde_json::json!({
             "commands": commands,
             "generatedExportOptions": self.generated_plist,
+            "upload": self.upload,
         })
     }
 }

@@ -4,7 +4,7 @@ sidebar_label: GitHub Actions for iOS
 
 # iOS builds in GitHub Actions
 
-A Linux job can compile iPhone products, generate test manifests, and create development archives.
+A Linux job can compile iPhone products, generate test manifests, create archives, and upload them to TestFlight.
 Apple test execution still runs on a Mac with Xcode.
 
 ## Choose the runner
@@ -178,7 +178,35 @@ sweetpad app launch --project MyApp.xcodeproj --scheme MyApp \
 
 Set `IPHONE_UDID` in your runner configuration.
 For live logs and USB ownership, follow [the iPhone guide](ubuntu-usb.md#connect-the-iphone).
-Distribution delivery through App Store Connect remains a separate Xcode workflow.
+
+## Upload to TestFlight
+
+The same runner can archive, export, and upload a release build.
+Provide your Apple Distribution identity and App Store profiles as in [development signing](#add-development-signing).
+Store an App Store Connect API key in the secret store as well.
+
+Replace the build step with an archive step:
+
+```yaml
+      - name: Archive and upload
+        shell: bash
+        env:
+          SWEETPAD_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          SWEETPAD_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          SWEETPAD_ASC_KEY: ${{ secrets.ASC_KEY }}
+        run: |
+          set -euo pipefail
+          export PATH="$RUNNER_TEMP/sweetpad/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$HOME/bin:$PATH"
+          sweetpad archive --project MyApp.xcodeproj --scheme MyApp \
+            --configuration Release --destination 'generic/platform=iOS' \
+            --upload --output-file "$RUNNER_TEMP/dist" \
+            --json --non-interactive \
+            -- CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" > "$RUNNER_TEMP/archive.json"
+```
+
+The step ends when Apple accepts or rejects the build, and a rejection fails the job.
+Each upload needs a new build number, which the run number supplies here.
+See [Archive and distribute](../archive.md#uploading-to-app-store-connect) for the key and the upload options.
 
 ## Framework apps and repeatable builds
 

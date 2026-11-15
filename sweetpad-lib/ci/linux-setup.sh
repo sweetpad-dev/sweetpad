@@ -57,6 +57,7 @@ if [ "$(uname -s)" = Darwin ]; then
   python3 "$(dirname "$self")/linux-appintents-resources.py" --xcode "$XCODE_APP" --out "$phrase_export"
   exec orb -m "$VM" env XCODE_APP="$XCODE_APP" SWIFT_VERSION="$SWIFT_VERSION" \
     SWEETPAD_APPINTENTS_RESOURCE_EXPORT="$phrase_export" \
+    SWEETPAD_BUILD_MACHINE_OS_BUILD="$(sw_vers -buildVersion)" \
     SWIFT_BUILD_VERSION="$SWIFT_BUILD_VERSION" \
     XTOOL_VERSION="$XTOOL_VERSION" XTOOL_SHA256="$XTOOL_SHA256_OVERRIDE" \
     SWEETPAD_SKIP_RUST="${SWEETPAD_SKIP_RUST:-0}" \
@@ -142,6 +143,17 @@ fi
 if [ -f "$XCODE_APP/Contents/version.plist" ]; then
   cat "$XCODE_APP/Contents/version.plist" > "$BUNDLE/version.plist"
 fi
+# BuildMachineOSBuild: the Mac's build, else Xcode's own build machine's.
+python3 - "$BUNDLE/build-machine.plist" "$XCODE_APP/Contents/Info.plist" "${SWEETPAD_BUILD_MACHINE_OS_BUILD:-}" <<'PY'
+import os, plistlib, sys
+target, info, build = sys.argv[1:]
+if not build and os.path.isfile(info):
+    with open(info, "rb") as source:
+        build = plistlib.load(source).get("BuildMachineOSBuild", "")
+if build:
+    with open(target, "wb") as out:
+        plistlib.dump({"BuildMachineOSBuild": build}, out)
+PY
 for platform in "$BUNDLE"/Developer/Platforms/*.platform; do
   source="$XCODE_APP/Contents/Developer/Platforms/$(basename "$platform")/version.plist"
   [ ! -f "$source" ] || cat "$source" > "$platform/version.plist"
@@ -210,6 +222,10 @@ fi
 # .strings can't be written as UTF-16; the patch names the encodings
 # Foundation converts on every platform and detects Unicode BOMs. LLVM
 # libtool version discovery avoids treating its version as a cctools version.
+# Its asset catalog link step leaves a loose file, like an icon PNG, in the
+# product once the catalog stops producing it, since only Assets.car is a
+# declared output; the patch also removes what the previous compile listed in
+# its dependency info.
 # Incompatible cached checkouts remain intact; the cache selection above uses
 # a separate directory for this revision. New files are marked intent-to-add, so `git diff` in the
 # checkout writes the whole patch back; `git apply --intent-to-add` would

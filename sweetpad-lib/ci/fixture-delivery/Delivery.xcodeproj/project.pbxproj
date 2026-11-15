@@ -1,0 +1,1267 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		160690DB67082D6A5A41CFC8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E2B8FD32CA31B628D58BB08C /* Assets.xcassets */; };
+		1767D6861271A76B6A685D67 /* DeliveryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE2857443B0F2678AE8E2E6B /* DeliveryApp.swift */; };
+		18C3B4B68C4C7D49A656C636 /* DeliveryWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D6DB43B64FE333E4423ACF10 /* DeliveryWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		28C8A9B24024AA01EC1CDF56 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 787770103BFE1EEC0AA281B9 /* Assets.xcassets */; };
+		2F0659BA97AEEEBAB7F5C789 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 787770103BFE1EEC0AA281B9 /* Assets.xcassets */; };
+		2F920C745BA412A0F4BB88A6 /* DeliveryWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C1745C2A8762C8B9CEB4608 /* DeliveryWidget.swift */; };
+		4094B33B25AE89A0F9757B40 /* DeliveryKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2BB7D8BE893070FB3A27298D /* DeliveryKit.framework */; };
+		433765ACC3193E4A1A0BB71A /* ExtensionDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9ECB32CE271D35448EFAD50 /* ExtensionDelegate.swift */; };
+		498EE7571D95B9EA85525788 /* DeliveryWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 370D888A79CF5A5B88E95C16 /* DeliveryWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4CF703053B3E03CC982FFF99 /* DeliveryKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC3F738A7B82970DE911D9B1 /* DeliveryKit.swift */; };
+		4E148B05AA156DC2E01D5BC8 /* DeliveryKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2BB7D8BE893070FB3A27298D /* DeliveryKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		4EBB519487E625CF30EF27AE /* DeliveryKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC3F738A7B82970DE911D9B1 /* DeliveryKit.swift */; };
+		51055E2CE488DC2FE207355C /* DeliveryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE2857443B0F2678AE8E2E6B /* DeliveryApp.swift */; };
+		61D1F00500B2972D9A98135E /* Stickers.xcstickers in Resources */ = {isa = PBXBuildFile; fileRef = 9D33BFE8597B90CB36E4C97C /* Stickers.xcstickers */; };
+		7F95D6040E32E6B70F1374E6 /* DeliveryWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C1745C2A8762C8B9CEB4608 /* DeliveryWidget.swift */; };
+		8A1EF9D22F9303B250D0D749 /* DeliveryKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = B66A42A93FB081CD43CD1B60 /* DeliveryKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		8D39D4D04B38808627D960BC /* DeliveryWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 5979151531102AEB88B7E8F6 /* DeliveryWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B76280CEC8B62D45615F35A0 /* DeliveryWatchExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AF48D7A1CAEC2F21D8A38498 /* DeliveryWatchExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C7EF64F40FDDEE294F27BD85 /* DeliveryKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B66A42A93FB081CD43CD1B60 /* DeliveryKit.framework */; };
+		E561AFCF774A6AB4057C2100 /* DeliveryStickers.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D1287DA92E32BB492EB4CB25 /* DeliveryStickers.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		0439A23F28E241979EBFC2C7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 21C744D40939B74039A1F09A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EAC9D63AA5CE8D3638F64DBC;
+			remoteInfo = "DeliveryKit-macOS";
+		};
+		18953895144B34320B1DA4EA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 21C744D40939B74039A1F09A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0824E7B4C482AE0B8794B118;
+			remoteInfo = DeliveryWatchExtension;
+		};
+		7414B35F4CE4BC0F3A6DE905 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 21C744D40939B74039A1F09A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8BF3C697D7985E242B8733E1;
+			remoteInfo = "DeliveryWidget-iOS";
+		};
+		B03B1F7CCD05650637771331 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 21C744D40939B74039A1F09A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D1D83178C493CAC47045CC40;
+			remoteInfo = "DeliveryStickers-iOS";
+		};
+		BFE6C7C7C4A7A414735A9D4E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 21C744D40939B74039A1F09A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9CC855047213D10A9BA7B370;
+			remoteInfo = DeliveryWatch;
+		};
+		E86B411F3DA0418CCB9F2038 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 21C744D40939B74039A1F09A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4FE0DC1FB6E3AE5CDB3CBE9E;
+			remoteInfo = "DeliveryKit-iOS";
+		};
+		F1A38D8BA4D34EBF64640029 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 21C744D40939B74039A1F09A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A342EB8FEC022CFD1A3901B3;
+			remoteInfo = "DeliveryWidget-macOS";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		0D2F3ED49B89AA2BCB0E3546 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				18C3B4B68C4C7D49A656C636 /* DeliveryWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		35DC94A6563D0C71CCA4B50A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B76280CEC8B62D45615F35A0 /* DeliveryWatchExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3F0F577AF389B824A18FCD76 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				498EE7571D95B9EA85525788 /* DeliveryWidget.appex in Embed Foundation Extensions */,
+				E561AFCF774A6AB4057C2100 /* DeliveryStickers.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		437BF3FBFB169C006548A1D7 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				8D39D4D04B38808627D960BC /* DeliveryWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		52603F5E252A9876633DA198 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				4E148B05AA156DC2E01D5BC8 /* DeliveryKit.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7F5A7FE1BE204BD1EBB2E49A /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				8A1EF9D22F9303B250D0D749 /* DeliveryKit.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		1C1745C2A8762C8B9CEB4608 /* DeliveryWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryWidget.swift; sourceTree = "<group>"; };
+		2BB7D8BE893070FB3A27298D /* DeliveryKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = DeliveryKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		370D888A79CF5A5B88E95C16 /* DeliveryWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = DeliveryWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		4C94C267C58152EE05CC1460 /* Delivery.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Delivery.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5979151531102AEB88B7E8F6 /* DeliveryWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DeliveryWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		787770103BFE1EEC0AA281B9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		9D33BFE8597B90CB36E4C97C /* Stickers.xcstickers */ = {isa = PBXFileReference; lastKnownFileType = folder.stickers; path = Stickers.xcstickers; sourceTree = "<group>"; };
+		A9ECB32CE271D35448EFAD50 /* ExtensionDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionDelegate.swift; sourceTree = "<group>"; };
+		AF48D7A1CAEC2F21D8A38498 /* DeliveryWatchExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DeliveryWatchExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B66A42A93FB081CD43CD1B60 /* DeliveryKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = DeliveryKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		D1287DA92E32BB492EB4CB25 /* DeliveryStickers.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = DeliveryStickers.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D6DB43B64FE333E4423ACF10 /* DeliveryWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DeliveryWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		DC3F738A7B82970DE911D9B1 /* DeliveryKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryKit.swift; sourceTree = "<group>"; };
+		E2B8FD32CA31B628D58BB08C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		FA2EEE2E34BA921D8564E63F /* Delivery.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Delivery.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FE2857443B0F2678AE8E2E6B /* DeliveryApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		474E2A86BDA506047A9DB1AE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C7EF64F40FDDEE294F27BD85 /* DeliveryKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CBFCFDFD511502F49C349D9D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4094B33B25AE89A0F9757B40 /* DeliveryKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		4859C233927CBB8905C82A51 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				FA2EEE2E34BA921D8564E63F /* Delivery.app */,
+				4C94C267C58152EE05CC1460 /* Delivery.app */,
+				B66A42A93FB081CD43CD1B60 /* DeliveryKit.framework */,
+				2BB7D8BE893070FB3A27298D /* DeliveryKit.framework */,
+				D1287DA92E32BB492EB4CB25 /* DeliveryStickers.appex */,
+				5979151531102AEB88B7E8F6 /* DeliveryWatch.app */,
+				AF48D7A1CAEC2F21D8A38498 /* DeliveryWatchExtension.appex */,
+				370D888A79CF5A5B88E95C16 /* DeliveryWidget.appex */,
+				D6DB43B64FE333E4423ACF10 /* DeliveryWidget.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		49C8DB629548C0D1F3BDBBB1 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				FE2857443B0F2678AE8E2E6B /* DeliveryApp.swift */,
+			);
+			name = App;
+			path = Sources/App;
+			sourceTree = "<group>";
+		};
+		5106EFDB8138643B4D03D986 /* Widget */ = {
+			isa = PBXGroup;
+			children = (
+				1C1745C2A8762C8B9CEB4608 /* DeliveryWidget.swift */,
+			);
+			name = Widget;
+			path = Sources/Widget;
+			sourceTree = "<group>";
+		};
+		77EF0F271BF1C18BE4E4B04A = {
+			isa = PBXGroup;
+			children = (
+				49C8DB629548C0D1F3BDBBB1 /* App */,
+				DDC3C12180570BD72A98D13B /* Kit */,
+				EEA065C54EEC82625DF72944 /* Resources */,
+				EB1C413333764B1A1EEA4B61 /* Stickers */,
+				9BDBF9023FBE061648622BAE /* Watch */,
+				9ED42C2DA3CB8803C173F63A /* WatchExt */,
+				5106EFDB8138643B4D03D986 /* Widget */,
+				4859C233927CBB8905C82A51 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		9BDBF9023FBE061648622BAE /* Watch */ = {
+			isa = PBXGroup;
+			children = (
+				E2B8FD32CA31B628D58BB08C /* Assets.xcassets */,
+			);
+			name = Watch;
+			path = Sources/Watch;
+			sourceTree = "<group>";
+		};
+		9ED42C2DA3CB8803C173F63A /* WatchExt */ = {
+			isa = PBXGroup;
+			children = (
+				A9ECB32CE271D35448EFAD50 /* ExtensionDelegate.swift */,
+			);
+			name = WatchExt;
+			path = Sources/WatchExt;
+			sourceTree = "<group>";
+		};
+		DDC3C12180570BD72A98D13B /* Kit */ = {
+			isa = PBXGroup;
+			children = (
+				DC3F738A7B82970DE911D9B1 /* DeliveryKit.swift */,
+			);
+			name = Kit;
+			path = Sources/Kit;
+			sourceTree = "<group>";
+		};
+		EB1C413333764B1A1EEA4B61 /* Stickers */ = {
+			isa = PBXGroup;
+			children = (
+				9D33BFE8597B90CB36E4C97C /* Stickers.xcstickers */,
+			);
+			name = Stickers;
+			path = Sources/Stickers;
+			sourceTree = "<group>";
+		};
+		EEA065C54EEC82625DF72944 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				787770103BFE1EEC0AA281B9 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0824E7B4C482AE0B8794B118 /* DeliveryWatchExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AF75389B225BB4A1756C7D99 /* Build configuration list for PBXNativeTarget "DeliveryWatchExtension" */;
+			buildPhases = (
+				C9D3FAAAD2E5123EFC1D7F4B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DeliveryWatchExtension;
+			packageProductDependencies = (
+			);
+			productName = DeliveryWatchExtension;
+			productReference = AF48D7A1CAEC2F21D8A38498 /* DeliveryWatchExtension.appex */;
+			productType = "com.apple.product-type.watchkit2-extension";
+		};
+		4FE0DC1FB6E3AE5CDB3CBE9E /* DeliveryKit-iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 660DE661483A2EDA3F7A09AA /* Build configuration list for PBXNativeTarget "DeliveryKit-iOS" */;
+			buildPhases = (
+				C8347815261DC4FB709ED1A5 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "DeliveryKit-iOS";
+			packageProductDependencies = (
+			);
+			productName = "DeliveryKit-iOS";
+			productReference = B66A42A93FB081CD43CD1B60 /* DeliveryKit.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		8BF3C697D7985E242B8733E1 /* DeliveryWidget-iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 424406539D529365FB51046B /* Build configuration list for PBXNativeTarget "DeliveryWidget-iOS" */;
+			buildPhases = (
+				3F147047C1E4459D9FE18EFA /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "DeliveryWidget-iOS";
+			packageProductDependencies = (
+			);
+			productName = "DeliveryWidget-iOS";
+			productReference = 370D888A79CF5A5B88E95C16 /* DeliveryWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		937F393F995B70C60EAF5B3C /* Delivery-iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 065A80F0DC9F4049860DD29B /* Build configuration list for PBXNativeTarget "Delivery-iOS" */;
+			buildPhases = (
+				8411B14CBD7678221668914D /* Sources */,
+				B158B610A7223A7C982D7035 /* Resources */,
+				474E2A86BDA506047A9DB1AE /* Frameworks */,
+				3F0F577AF389B824A18FCD76 /* Embed Foundation Extensions */,
+				7F5A7FE1BE204BD1EBB2E49A /* Embed Frameworks */,
+				437BF3FBFB169C006548A1D7 /* Embed Watch Content */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				906CDCFFAA6ADE9DA5874671 /* PBXTargetDependency */,
+				27931B82E832E3D05B146FFF /* PBXTargetDependency */,
+				490411BF201BDB675C049C3C /* PBXTargetDependency */,
+				D2C0BAFC2F797BA10F53AABB /* PBXTargetDependency */,
+			);
+			name = "Delivery-iOS";
+			packageProductDependencies = (
+			);
+			productName = "Delivery-iOS";
+			productReference = FA2EEE2E34BA921D8564E63F /* Delivery.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9CC855047213D10A9BA7B370 /* DeliveryWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CFA712DBC535A8FC0E4001BA /* Build configuration list for PBXNativeTarget "DeliveryWatch" */;
+			buildPhases = (
+				35D2327EE1D2A42A35D2CF29 /* Resources */,
+				35DC94A6563D0C71CCA4B50A /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				85650263A08C92769D4DA37C /* PBXTargetDependency */,
+			);
+			name = DeliveryWatch;
+			packageProductDependencies = (
+			);
+			productName = DeliveryWatch;
+			productReference = 5979151531102AEB88B7E8F6 /* DeliveryWatch.app */;
+			productType = "com.apple.product-type.application.watchapp2";
+		};
+		A342EB8FEC022CFD1A3901B3 /* DeliveryWidget-macOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CEE0BCE66030F15E21D5639D /* Build configuration list for PBXNativeTarget "DeliveryWidget-macOS" */;
+			buildPhases = (
+				52ED45DAD009E27EB39A2014 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "DeliveryWidget-macOS";
+			packageProductDependencies = (
+			);
+			productName = "DeliveryWidget-macOS";
+			productReference = D6DB43B64FE333E4423ACF10 /* DeliveryWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B3375EED74861E667A2D48D1 /* Delivery-macOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AE07D38217EF532BFA38BD6D /* Build configuration list for PBXNativeTarget "Delivery-macOS" */;
+			buildPhases = (
+				C3A813B9F821E9C57C4A609B /* Sources */,
+				4B8DCE41491C65F627F6E14B /* Resources */,
+				CBFCFDFD511502F49C349D9D /* Frameworks */,
+				0D2F3ED49B89AA2BCB0E3546 /* Embed Foundation Extensions */,
+				52603F5E252A9876633DA198 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F77AA1E919BABC015B47D663 /* PBXTargetDependency */,
+				248662EAB1461C0F4D0A5283 /* PBXTargetDependency */,
+			);
+			name = "Delivery-macOS";
+			packageProductDependencies = (
+			);
+			productName = "Delivery-macOS";
+			productReference = 4C94C267C58152EE05CC1460 /* Delivery.app */;
+			productType = "com.apple.product-type.application";
+		};
+		D1D83178C493CAC47045CC40 /* DeliveryStickers-iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 89AEC2BBDDDA38FFC4C6B570 /* Build configuration list for PBXNativeTarget "DeliveryStickers-iOS" */;
+			buildPhases = (
+				049074967D7DCEC5304ACAA3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "DeliveryStickers-iOS";
+			packageProductDependencies = (
+			);
+			productName = "DeliveryStickers-iOS";
+			productReference = D1287DA92E32BB492EB4CB25 /* DeliveryStickers.appex */;
+			productType = "com.apple.product-type.app-extension.messages-sticker-pack";
+		};
+		EAC9D63AA5CE8D3638F64DBC /* DeliveryKit-macOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 785C5098391161FBC5E76172 /* Build configuration list for PBXNativeTarget "DeliveryKit-macOS" */;
+			buildPhases = (
+				B8C806074034D6BA28504C7C /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "DeliveryKit-macOS";
+			packageProductDependencies = (
+			);
+			productName = "DeliveryKit-macOS";
+			productReference = 2BB7D8BE893070FB3A27298D /* DeliveryKit.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		21C744D40939B74039A1F09A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					0824E7B4C482AE0B8794B118 = {
+						ProvisioningStyle = Automatic;
+					};
+					4FE0DC1FB6E3AE5CDB3CBE9E = {
+						ProvisioningStyle = Automatic;
+					};
+					8BF3C697D7985E242B8733E1 = {
+						ProvisioningStyle = Automatic;
+					};
+					937F393F995B70C60EAF5B3C = {
+						ProvisioningStyle = Automatic;
+					};
+					9CC855047213D10A9BA7B370 = {
+						ProvisioningStyle = Automatic;
+					};
+					A342EB8FEC022CFD1A3901B3 = {
+						ProvisioningStyle = Automatic;
+					};
+					B3375EED74861E667A2D48D1 = {
+						ProvisioningStyle = Automatic;
+					};
+					D1D83178C493CAC47045CC40 = {
+						ProvisioningStyle = Automatic;
+					};
+					EAC9D63AA5CE8D3638F64DBC = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 6DE2283F29224775352A7E59 /* Build configuration list for PBXProject "Delivery" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 77EF0F271BF1C18BE4E4B04A;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 4859C233927CBB8905C82A51 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				4FE0DC1FB6E3AE5CDB3CBE9E /* DeliveryKit-iOS */,
+				EAC9D63AA5CE8D3638F64DBC /* DeliveryKit-macOS */,
+				8BF3C697D7985E242B8733E1 /* DeliveryWidget-iOS */,
+				A342EB8FEC022CFD1A3901B3 /* DeliveryWidget-macOS */,
+				9CC855047213D10A9BA7B370 /* DeliveryWatch */,
+				0824E7B4C482AE0B8794B118 /* DeliveryWatchExtension */,
+				D1D83178C493CAC47045CC40 /* DeliveryStickers-iOS */,
+				937F393F995B70C60EAF5B3C /* Delivery-iOS */,
+				B3375EED74861E667A2D48D1 /* Delivery-macOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		049074967D7DCEC5304ACAA3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				61D1F00500B2972D9A98135E /* Stickers.xcstickers in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		35D2327EE1D2A42A35D2CF29 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				160690DB67082D6A5A41CFC8 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4B8DCE41491C65F627F6E14B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				28C8A9B24024AA01EC1CDF56 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B158B610A7223A7C982D7035 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2F0659BA97AEEEBAB7F5C789 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3F147047C1E4459D9FE18EFA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7F95D6040E32E6B70F1374E6 /* DeliveryWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		52ED45DAD009E27EB39A2014 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2F920C745BA412A0F4BB88A6 /* DeliveryWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8411B14CBD7678221668914D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1767D6861271A76B6A685D67 /* DeliveryApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B8C806074034D6BA28504C7C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4EBB519487E625CF30EF27AE /* DeliveryKit.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3A813B9F821E9C57C4A609B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				51055E2CE488DC2FE207355C /* DeliveryApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C8347815261DC4FB709ED1A5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4CF703053B3E03CC982FFF99 /* DeliveryKit.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C9D3FAAAD2E5123EFC1D7F4B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				433765ACC3193E4A1A0BB71A /* ExtensionDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		248662EAB1461C0F4D0A5283 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A342EB8FEC022CFD1A3901B3 /* DeliveryWidget-macOS */;
+			targetProxy = F1A38D8BA4D34EBF64640029 /* PBXContainerItemProxy */;
+		};
+		27931B82E832E3D05B146FFF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8BF3C697D7985E242B8733E1 /* DeliveryWidget-iOS */;
+			targetProxy = 7414B35F4CE4BC0F3A6DE905 /* PBXContainerItemProxy */;
+		};
+		490411BF201BDB675C049C3C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9CC855047213D10A9BA7B370 /* DeliveryWatch */;
+			targetProxy = BFE6C7C7C4A7A414735A9D4E /* PBXContainerItemProxy */;
+		};
+		85650263A08C92769D4DA37C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0824E7B4C482AE0B8794B118 /* DeliveryWatchExtension */;
+			targetProxy = 18953895144B34320B1DA4EA /* PBXContainerItemProxy */;
+		};
+		906CDCFFAA6ADE9DA5874671 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4FE0DC1FB6E3AE5CDB3CBE9E /* DeliveryKit-iOS */;
+			targetProxy = E86B411F3DA0418CCB9F2038 /* PBXContainerItemProxy */;
+		};
+		D2C0BAFC2F797BA10F53AABB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D1D83178C493CAC47045CC40 /* DeliveryStickers-iOS */;
+			targetProxy = B03B1F7CCD05650637771331 /* PBXContainerItemProxy */;
+		};
+		F77AA1E919BABC015B47D663 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EAC9D63AA5CE8D3638F64DBC /* DeliveryKit-macOS */;
+			targetProxy = 0439A23F28E241979EBFC2C7 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		03DC46A3D2513F259A8BA5A8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_COMPLICATION_NAME = Complication;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Supporting/WatchExt-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Delivery Watch Extension";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).watchkitapp.watchkitextension";
+				PRODUCT_NAME = DeliveryWatchExtension;
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_WATCH_EXTENSION_PROFILE)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
+			};
+			name = Debug;
+		};
+		1000B8D7096CCAF1C2858FF0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "iMessage App Icon";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Supporting/Stickers-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Delivery Stickers";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).Stickers";
+				PRODUCT_NAME = DeliveryStickers;
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_STICKERS_PROFILE)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		13DD8C9326256172BFD2F704 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Delivery;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "$(DELIVERY_BUNDLE_ID)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).watchkitapp";
+				PRODUCT_NAME = DeliveryWatch;
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_WATCH_PROFILE)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
+			};
+			name = Debug;
+		};
+		2624F70B18E8ADBB80AB1772 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Entitlements/Widget-macOS.entitlements";
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Supporting/Widget-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Delivery Widget";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).Widget";
+				PRODUCT_NAME = DeliveryWidget;
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_WIDGET_PROFILE)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		3A5B4EAB834E8BA04D6837DB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).kit";
+				PRODUCT_NAME = DeliveryKit;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		45D4ECD6194B524DE3140CCC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).kit";
+				PRODUCT_NAME = DeliveryKit;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		4B0A10D486A266ED71BE4AB6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Entitlements/Widget-macOS.entitlements";
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Supporting/Widget-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Delivery Widget";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).Widget";
+				PRODUCT_NAME = DeliveryWidget;
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_WIDGET_PROFILE)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		51DA0F93F3F8BAD56EE85FE3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Entitlements/Widget-iOS.entitlements";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Supporting/Widget-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Delivery Widget";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).Widget";
+				PRODUCT_NAME = DeliveryWidget;
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_WIDGET_PROFILE)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		60C547AABC731A005BE0C05A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Entitlements/Widget-iOS.entitlements";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Supporting/Widget-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Delivery Widget";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).Widget";
+				PRODUCT_NAME = DeliveryWidget;
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_WIDGET_PROFILE)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		6A0B1E28044A1EE79EF75E13 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).kit";
+				PRODUCT_NAME = DeliveryKit;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		86041C76859B2173807FB723 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "iMessage App Icon";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Supporting/Stickers-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Delivery Stickers";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).Stickers";
+				PRODUCT_NAME = DeliveryStickers;
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_STICKERS_PROFILE)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9FD49DC2F77C2B8C20608370 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "Entitlements/App-iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Delivery;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID)";
+				PRODUCT_NAME = Delivery;
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_APP_PROFILE)";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		B57840AAB4FB65353561ABD2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "Entitlements/App-iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Delivery;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID)";
+				PRODUCT_NAME = Delivery;
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_APP_PROFILE)";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C2522E4E85918F618D3905AA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "Entitlements/App-macOS.entitlements";
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Delivery;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID)";
+				PRODUCT_NAME = Delivery;
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_APP_PROFILE)";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		C6C4C9DA33158DC045C86AC1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DELIVERY_APS_ENVIRONMENT = development;
+				DELIVERY_BUNDLE_ID = dev.example.delivery;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		CEDA42161D34D5F6198FA6A8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DELIVERY_APS_ENVIRONMENT = development;
+				DELIVERY_BUNDLE_ID = dev.example.delivery;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		E54426CF4C2105D811BDDF00 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_COMPLICATION_NAME = Complication;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Supporting/WatchExt-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Delivery Watch Extension";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).watchkitapp.watchkitextension";
+				PRODUCT_NAME = DeliveryWatchExtension;
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_WATCH_EXTENSION_PROFILE)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
+			};
+			name = Release;
+		};
+		EC597E07B64BF4F993812B9A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).kit";
+				PRODUCT_NAME = DeliveryKit;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		EDE815EE86B984752ADE94EF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Delivery;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "$(DELIVERY_BUNDLE_ID)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).watchkitapp";
+				PRODUCT_NAME = DeliveryWatch;
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_WATCH_PROFILE)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
+			};
+			name = Release;
+		};
+		FFC8DFDCAD1BC13F296487B6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "Entitlements/App-macOS.entitlements";
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Delivery;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID)";
+				PRODUCT_NAME = Delivery;
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_APP_PROFILE)";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		065A80F0DC9F4049860DD29B /* Build configuration list for PBXNativeTarget "Delivery-iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B57840AAB4FB65353561ABD2 /* Debug */,
+				9FD49DC2F77C2B8C20608370 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		424406539D529365FB51046B /* Build configuration list for PBXNativeTarget "DeliveryWidget-iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				51DA0F93F3F8BAD56EE85FE3 /* Debug */,
+				60C547AABC731A005BE0C05A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		660DE661483A2EDA3F7A09AA /* Build configuration list for PBXNativeTarget "DeliveryKit-iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3A5B4EAB834E8BA04D6837DB /* Debug */,
+				45D4ECD6194B524DE3140CCC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6DE2283F29224775352A7E59 /* Build configuration list for PBXProject "Delivery" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CEDA42161D34D5F6198FA6A8 /* Debug */,
+				C6C4C9DA33158DC045C86AC1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		785C5098391161FBC5E76172 /* Build configuration list for PBXNativeTarget "DeliveryKit-macOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6A0B1E28044A1EE79EF75E13 /* Debug */,
+				EC597E07B64BF4F993812B9A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		89AEC2BBDDDA38FFC4C6B570 /* Build configuration list for PBXNativeTarget "DeliveryStickers-iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				86041C76859B2173807FB723 /* Debug */,
+				1000B8D7096CCAF1C2858FF0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AE07D38217EF532BFA38BD6D /* Build configuration list for PBXNativeTarget "Delivery-macOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FFC8DFDCAD1BC13F296487B6 /* Debug */,
+				C2522E4E85918F618D3905AA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AF75389B225BB4A1756C7D99 /* Build configuration list for PBXNativeTarget "DeliveryWatchExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				03DC46A3D2513F259A8BA5A8 /* Debug */,
+				E54426CF4C2105D811BDDF00 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CEE0BCE66030F15E21D5639D /* Build configuration list for PBXNativeTarget "DeliveryWidget-macOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4B0A10D486A266ED71BE4AB6 /* Debug */,
+				2624F70B18E8ADBB80AB1772 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CFA712DBC535A8FC0E4001BA /* Build configuration list for PBXNativeTarget "DeliveryWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				13DD8C9326256172BFD2F704 /* Debug */,
+				EDE815EE86B984752ADE94EF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 21C744D40939B74039A1F09A /* Project object */;
+}

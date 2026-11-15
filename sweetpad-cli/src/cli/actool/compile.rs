@@ -1,12 +1,12 @@
 //! actool's `--compile`: what Swift Build links into the product for a
-//! target's catalogs. The colors, images and symbols go in an `Assets.car`
-//! (see [`super::car`]), with each PDF and SVG drawn at the platform's
-//! scales (see [`super::vector`]) and each symbol template read into its
-//! masters (see [`super::glyph`]). An iOS app icon goes in as the loose PNGs
-//! the home screen reads, and a macOS one as an `.icns` file (see
-//! [`super::icns`]). A warning names what's still missing: images in
-//! other formats, colors for traits the stand-in doesn't compile, and assets
-//! of other kinds.
+//! target's catalogs. The colors, images, symbols and app icons go in an
+//! `Assets.car` (see [`super::car`]), with each PDF and SVG drawn at the
+//! platform's scales (see [`super::vector`]) and each symbol template read
+//! into its masters (see [`super::glyph`]). An iOS app icon also goes in as
+//! the loose PNGs the home screen reads, and a macOS one as an `.icns` file
+//! (see [`super::icns`]); a watchOS one is in the car alone. A warning names
+//! what's still missing: images in other formats, colors for traits the
+//! stand-in doesn't compile, and assets of other kinds.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -125,13 +125,19 @@ pub(super) fn compile(args: &Args) -> Result<(), String> {
                 }
                 ok
             }
+            // watchOS reads the icon from the car alone.
+            "watchos" | "watchsimulator" => true,
             _ => false,
         }
     });
     let icon_in_car = icon_name.is_some_and(|name| {
         modern.contains(name)
             || app_icon(&catalogs, name).is_some_and(|set| {
-                add_app_icon(&mut car, name, set, &devices, platform, &mut compiled)
+                if set.dir.extension().is_some_and(|e| e == "stickersiconset") {
+                    super::stickers::store_icon(&mut car, name, set, &mut compiled)
+                } else {
+                    add_app_icon(&mut car, name, set, &devices, platform, &mut compiled)
+                }
             })
     });
     let mut alternates_in_car = Vec::new();
@@ -249,16 +255,60 @@ struct IconImage<'a> {
     entry: &'a super::catalog::Entry,
 }
 
+/// The slots of a watchOS app icon set with an image for each size, as
+/// Xcode 27's actool fills them: each slot's role, size in points, scale and
+/// device, and the device class CoreUI keys its image by. The 38mm launcher
+/// image goes in for no device class, so it's the one for every watch
+/// without a launcher image of its own. An image that fills no slot stays
+/// out, as actool leaves it unassigned.
+const WATCH_SLOTS: &[(&str, &str, &str, Option<&str>, u16)] = &[
+    ("notificationCenter", "24x24", "2x", Some("38mm"), 320),
+    ("notificationCenter", "27.5x27.5", "2x", Some("42mm"), 384),
+    ("notificationCenter", "33x33", "2x", Some("45mm"), 484),
+    ("companionSettings", "29x29", "2x", None, 0),
+    ("companionSettings", "29x29", "3x", None, 0),
+    ("appLauncher", "40x40", "2x", Some("38mm"), 0),
+    ("appLauncher", "44x44", "2x", Some("40mm"), 340),
+    ("appLauncher", "46x46", "2x", Some("41mm"), 430),
+    ("appLauncher", "50x50", "2x", Some("44mm"), 390),
+    ("appLauncher", "51x51", "2x", Some("45mm"), 484),
+    ("appLauncher", "54x54", "2x", Some("49mm"), 502),
+    ("quickLook", "86x86", "2x", Some("38mm"), 320),
+    ("quickLook", "98x98", "2x", Some("42mm"), 384),
+    ("quickLook", "108x108", "2x", Some("44mm"), 390),
+    ("quickLook", "117x117", "2x", Some("45mm"), 484),
+    ("quickLook", "129x129", "2x", Some("49mm"), 502),
+];
+
+/// The device class of the watchOS app icon slot a `watch` entry fills, or
+/// none when it fills none.
+fn watch_slot(entry: &super::catalog::Entry) -> Option<u16> {
+    WATCH_SLOTS
+        .iter()
+        .find(|(role, size, scale, subtype, _)| {
+            entry.idiom == "watch"
+                && entry.role.as_deref() == Some(*role)
+                && entry.size.as_deref() == Some(*size)
+                && entry.scale.as_deref() == Some(*scale)
+                && entry.subtype.as_deref() == *subtype
+        })
+        .map(|&(.., class)| class)
+}
+
 /// The images of an app icon set for the platform and devices, as Xcode
 /// puts them in the car. A single-size iOS icon is one 1024-point image for
 /// each device; a set with an image for each size has its iPhone, iPad and
 /// App Store images, and its 60-point 3x one again at 2x for the iPhone XR's
-/// device class (1792). A macOS icon has its `mac` images.
+/// device class (1792). A macOS icon has its `mac` images. A single-size
+/// watchOS icon is one 1024-point watch image; a set with an image for each
+/// size has those that fill [`WATCH_SLOTS`], and its App Store image.
 fn icon_images<'a>(set: &'a Asset, devices: &[String], platform: &str) -> Vec<IconImage<'a>> {
     let targeted = |device: &str| devices.iter().any(|d| d == device);
+    let watch = matches!(platform, "watchos" | "watchsimulator");
     let mut images = Vec::new();
     for entry in &set.entries {
-        if entry.filename.is_none() || entry.other_traits {
+        let slot = watch.then(|| watch_slot(entry)).flatten();
+        if entry.filename.is_none() || (entry.other_traits && slot.is_none()) {
             continue;
         }
         let appearance = match entry.appearances.as_slice() {
@@ -311,6 +361,26 @@ fn icon_images<'a>(set: &'a Asset, devices: &[String], platform: &str) -> Vec<Ic
             }
             ("iphoneos" | "iphonesimulator", "ios-marketing") => push(6, 0, points, 1),
             ("macosx", "mac") if scale <= 2 => push(0, 0, points, scale),
+            // A watch icon has no dark or tinted look; actool leaves those
+            // images out.
+            ("watchos" | "watchsimulator", _) if appearance != Appearance::Any => {}
+            ("watchos" | "watchsimulator", "universal")
+                if entry.platform.as_deref() == Some("watchos")
+                    && entry.size.as_deref() == Some("1024x1024")
+                    && targeted("watch") =>
+            {
+                push(5, 0, points, 1);
+            }
+            ("watchos" | "watchsimulator", "watch") if targeted("watch") => {
+                if let Some(class) = slot {
+                    push(5, class, points, scale);
+                }
+            }
+            ("watchos" | "watchsimulator", "watch-marketing")
+                if entry.size.as_deref() == Some("1024x1024") =>
+            {
+                push(6, 0, points, 1);
+            }
             _ => {}
         }
     }
@@ -390,8 +460,9 @@ fn add_app_icon<'a>(
 }
 
 /// The Info.plist keys that name the icons in the car: `CFBundleIconName`
-/// on macOS, and on iOS the alternate icons, by name, beside the primary
-/// icon's keys of each device the app targets.
+/// on macOS; on watchOS the primary and alternate icons in `CFBundleIcons`;
+/// and on iOS the alternate icons, by name, beside the primary icon's keys
+/// of each device the app targets.
 fn icon_names_info(
     primary: Option<&str>,
     alternates: &[&str],
@@ -405,12 +476,28 @@ fn icon_names_info(
         }
         return info;
     }
-    if alternates.is_empty() {
-        return info;
-    }
     let mut named = Map::new();
     for name in alternates {
         named.insert((*name).to_string(), json!({ "CFBundleIconName": name }));
+    }
+    if matches!(platform, "watchos" | "watchsimulator") {
+        let mut icons = Map::new();
+        if let Some(name) = primary {
+            icons.insert(
+                "CFBundlePrimaryIcon".into(),
+                json!({ "CFBundleIconName": name }),
+            );
+        }
+        if !named.is_empty() {
+            icons.insert("CFBundleAlternateIcons".into(), Value::Object(named));
+        }
+        if !icons.is_empty() {
+            info.insert("CFBundleIcons".into(), Value::Object(icons));
+        }
+        return info;
+    }
+    if alternates.is_empty() {
+        return info;
     }
     for (key, device) in [("CFBundleIcons", "iphone"), ("CFBundleIcons~ipad", "ipad")] {
         if devices.iter().any(|d| d == device) {
@@ -591,13 +678,13 @@ fn ios_icon_info(name: &str, devices: &[String]) -> Map<String, Value> {
     info
 }
 
-/// The name the metadata gives a platform.
+/// The name the metadata gives a platform, as Xcode's actool spells it.
 fn platform_name(platform: &str) -> &'static str {
     match platform {
         "macosx" => "macosx",
-        "appletvos" | "appletvsimulator" => "tvos",
-        "watchos" | "watchsimulator" => "watchos",
-        "xros" | "xrsimulator" => "xros",
+        "appletvos" | "appletvsimulator" => "atv",
+        "watchos" | "watchsimulator" => "watch",
+        "xros" | "xrsimulator" => "vision",
         _ => "ios",
     }
 }

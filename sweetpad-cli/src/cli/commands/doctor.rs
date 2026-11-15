@@ -3,7 +3,9 @@
 //! Probes the tools the rest of the CLI shells out to (Xcode, `xcodebuild`,
 //! Swift, `simctl` runtimes, `devicectl`, the formatters) and reports each as
 //! ok / warning / problem with a remediation hint. A missing *required* tool is
-//! a hard failure (non-zero exit); optional tools only warn.
+//! a hard failure (non-zero exit); optional tools only warn. `--network` also
+//! asks Apple's delivery services whether they answer; plain doctor stays
+//! offline.
 
 use clap::{Args, ValueEnum};
 use std::process::{Command, Stdio};
@@ -24,6 +26,11 @@ pub struct DoctorArgs {
     /// Apple platform to diagnose on Linux.
     #[arg(long, value_enum)]
     pub target: Option<Target>,
+    /// Also check that the services 'upload' and 'notarize' reach answer:
+    /// App Store Connect, the notary service and its storage, Apple's
+    /// timestamp server and its ticket service.
+    #[arg(long)]
+    pub network: bool,
 }
 
 /// One diagnostic line.
@@ -54,7 +61,7 @@ impl Status {
 }
 
 pub fn run(_ctx: &mut Context, args: &DoctorArgs) -> CommandResult {
-    let checks = if cfg!(target_os = "linux") {
+    let mut checks = if cfg!(target_os = "linux") {
         gather_linux(args.target.unwrap_or_default())
     } else {
         if args.target.is_some() {
@@ -65,6 +72,9 @@ pub fn run(_ctx: &mut Context, args: &DoctorArgs) -> CommandResult {
         }
         gather()
     };
+    if args.network {
+        checks.extend(network_checks());
+    }
     let (ok, warn, fail) = summarize(&checks);
     let report = DoctorReport {
         checks,
@@ -409,6 +419,7 @@ fn gather_linux_optional(target: Target) -> Vec<Check> {
         true,
         "free at least 10 GiB for app builds; toolchain setup can require more",
     ));
+    checks.extend(signing_checks());
     if matches!(target, Target::Ios) {
         let usb = resolved_program("usbmuxd");
         checks.push(linux_check(
@@ -418,28 +429,6 @@ fn gather_linux_optional(target: Target) -> Vec<Check> {
             true,
             "install usbmuxd for direct USB connections; Wi-Fi transport does not require it",
         ));
-        let identity = std::env::var_os("SWEETPAD_CODE_SIGN_P12").map(std::path::PathBuf::from);
-        let configured = identity.as_ref().is_some_and(|p| p.is_file())
-            && std::env::var_os("SWEETPAD_CODE_SIGN_P12_PASSWORD").is_some();
-        checks.push(linux_check("Development signing", configured, if configured { "identity file and password configured" } else { "identity file or password not configured (unsigned builds remain available)" }.into(), true,
-            "set SWEETPAD_CODE_SIGN_P12, SWEETPAD_CODE_SIGN_P12_PASSWORD and matching provisioning profiles for iPhone installation"));
-        let profiles = crate::cli::codesign::provisioning::profile_folders()
-            .iter()
-            .any(|dir| {
-                std::fs::read_dir(dir)
-                    .into_iter()
-                    .flatten()
-                    .flatten()
-                    .any(|entry| {
-                        let path = entry.path();
-                        path.is_file()
-                            && path
-                                .extension()
-                                .is_some_and(|e| e == "mobileprovision" || e == "provisionprofile")
-                    })
-            });
-        checks.push(linux_check("Provisioning profiles", profiles, if profiles { "profile files found; bundle and entitlement matching happens during signing" } else { "no provisioning profiles found (unsigned builds remain available)" }.into(), true,
-            "set SWEETPAD_PROVISIONING_PROFILES to a directory containing matching development profiles"));
         let python = std::env::var("SWEETPAD_DEVICE_PYTHON").unwrap_or_else(|_| "python3".into());
         let adapter = probe(
             &python,
@@ -452,6 +441,105 @@ fn gather_linux_optional(target: Target) -> Vec<Check> {
             "install pymobiledevice3==11.50.0 in a virtual environment and set SWEETPAD_DEVICE_PYTHON"));
     }
     checks
+}
+
+/// The identities and profiles builds and exports sign with.
+fn signing_checks() -> Vec<Check> {
+    let mut checks = Vec::new();
+    let (signing, detail) = match crate::cli::codesign::identity_summary() {
+        None => (
+            false,
+            "no identities configured (unsigned builds remain available)".to_string(),
+        ),
+        Some(Err(e)) => (false, e),
+        Some(Ok(identities)) if identities.is_empty() => {
+            (false, "the .p12 files hold no identity".to_string())
+        }
+        Some(Ok(identities)) => (true, identities.join("; ")),
+    };
+    checks.push(linux_check("Signing identities", signing, detail, true,
+        "set SWEETPAD_CODE_SIGN_P12 to your .p12 files, separated by ':', and SWEETPAD_CODE_SIGN_P12_PASSWORD to their password"));
+    let profiles = crate::cli::codesign::profile_summary();
+    let detail = if profiles.is_empty() {
+        "no provisioning profiles found (unsigned builds remain available)".to_string()
+    } else {
+        profiles
+            .iter()
+            .map(|(kind, n)| format!("{n} {kind}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    checks.push(linux_check(
+        "Provisioning profiles",
+        !profiles.is_empty(),
+        detail,
+        true,
+        "set SWEETPAD_PROVISIONING_PROFILES to a directory containing your provisioning profiles",
+    ));
+    checks
+}
+
+/// Apple's delivery services, each asked once in parallel. Any HTTP answer,
+/// even a refusal, means the service is reachable.
+fn network_checks() -> Vec<Check> {
+    const SERVICES: [(&str, &str); 5] = [
+        (
+            "App Store Connect",
+            "https://api.appstoreconnect.apple.com/v1",
+        ),
+        (
+            "Notary service",
+            "https://appstoreconnect.apple.com/notary/v2/submissions",
+        ),
+        ("Notary storage", "https://s3.us-west-2.amazonaws.com"),
+        ("Timestamp server", "http://timestamp.apple.com/ts01"),
+        ("Ticket service", "https://api.apple-cloudkit.com"),
+    ];
+    // Before any thread starts: see `Session::from_env`.
+    let session = crate::cli::net::Session::from_env();
+    std::thread::scope(|scope| {
+        let probes: Vec<_> = SERVICES
+            .iter()
+            .map(|&(name, url)| {
+                let session = &session;
+                scope.spawn(move || {
+                    let request =
+                        crate::cli::net::Request::new(minreq::Method::Get, url).timeout(15);
+                    let started = std::time::Instant::now();
+                    let answer = session.send(&request);
+                    (name, url, answer, started.elapsed())
+                })
+            })
+            .collect();
+        probes
+            .into_iter()
+            .filter_map(|probe| probe.join().ok())
+            .map(|(name, url, answer, elapsed)| {
+                let host = crate::cli::net::host(url);
+                match answer {
+                    Ok(response) => Check {
+                        name,
+                        status: Status::Ok,
+                        detail: format!(
+                            "{host} answered {} in {:.1} s",
+                            response.status,
+                            elapsed.as_secs_f64()
+                        ),
+                        hint: None,
+                    },
+                    Err(error) => Check {
+                        name,
+                        status: Status::Fail,
+                        detail: format!("{host}: {}", error.message),
+                        hint: Some(
+                            "check the connection to Apple, and https_proxy, http_proxy and \
+                             no_proxy when a proxy is in the way",
+                        ),
+                    },
+                }
+            })
+            .collect()
+    })
 }
 
 /// The toolchain report: the checks plus tallies. Renders as glyph lines and a

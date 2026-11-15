@@ -5,10 +5,14 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value, json};
 
+use super::car::{Appearance, Bitmap, Car, Part, Rendering, Source, Variant};
 use super::catalog::{Asset, Catalog};
-use super::{Args, write};
+use super::{Args, raster, write};
 use crate::cli::xml_plist;
 
+/// A Messages extension's icon as the loose PNGs Messages reads, each size
+/// but the 29-point ones, which Xcode 27's actool leaves out, and the
+/// `CFBundleIcons` keys that name them.
 pub(super) fn icon(
     set: &Asset,
     name: &str,
@@ -18,7 +22,11 @@ pub(super) fn icon(
 ) -> bool {
     let mut names = Vec::new();
     for entry in &set.entries {
-        if entry.idiom == "ios-marketing" || entry.appearance || entry.other_traits {
+        if entry.idiom == "ios-marketing"
+            || entry.appearance
+            || entry.other_traits
+            || entry.size.as_deref() == Some("29x29")
+        {
             continue;
         }
         let (Some(file), Some(size)) = (&entry.filename, &entry.size) else {
@@ -50,6 +58,60 @@ pub(super) fn icon(
         json!({"CFBundlePrimaryIcon": {"CFBundleIconFiles": names}}),
     );
     info.insert("MSMessagesExtensionStoreIconName".into(), json!(name));
+    true
+}
+
+/// A Messages extension icon's App Store image in `car`: its 1024 by 768
+/// `ios-marketing` image, a plain image with the icon's name, the only part
+/// of the set Xcode's actool puts in the car. App Store Connect looks it up
+/// there (ITMS-90644 without it).
+pub(super) fn store_icon<'a>(
+    car: &mut Car,
+    name: &str,
+    set: &'a Asset,
+    compiled: &mut HashSet<&'a Path>,
+) -> bool {
+    let Some(file) = set
+        .entries
+        .iter()
+        .find(|e| {
+            e.idiom == "ios-marketing"
+                && e.size.as_deref() == Some("1024x768")
+                && !e.appearance
+                && !e.other_traits
+        })
+        .and_then(|e| e.filename.as_deref())
+    else {
+        return false;
+    };
+    let Some(bitmap) = std::fs::read(set.dir.join(file))
+        .ok()
+        .and_then(|bytes| raster::decode(&bytes).ok())
+        .map(|rgba| Bitmap::from_rgba(&rgba))
+    else {
+        return false;
+    };
+    let Some(identifier) = car.facet(name, Part::Image) else {
+        return false;
+    };
+    let variant = Variant {
+        appearance: Appearance::Any,
+        scale: 1,
+        idiom: 6,
+    };
+    let source = Source {
+        vector: false,
+        preserved: false,
+    };
+    car.image(
+        file,
+        identifier,
+        variant,
+        &bitmap,
+        Rendering::Original,
+        source,
+    );
+    compiled.insert(set.dir.as_path());
     true
 }
 

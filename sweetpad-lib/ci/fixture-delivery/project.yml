@@ -1,0 +1,155 @@
+name: Delivery
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # The delivery tests override these from the account's e2e.env.
+    DELIVERY_BUNDLE_ID: dev.example.delivery
+    DELIVERY_APS_ENVIRONMENT: development
+    CODE_SIGN_STYLE: Automatic
+targetTemplates:
+  Kit:
+    type: framework
+    productName: DeliveryKit
+    sources: [Sources/Kit]
+    settings:
+      base:
+        PRODUCT_NAME: DeliveryKit
+        PRODUCT_BUNDLE_IDENTIFIER: $(DELIVERY_BUNDLE_ID).kit
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+  App:
+    type: application
+    productName: Delivery
+    sources: [Sources/App, Resources]
+    scheme: {}
+    settings:
+      base:
+        PRODUCT_NAME: Delivery
+        PRODUCT_BUNDLE_IDENTIFIER: $(DELIVERY_BUNDLE_ID)
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Delivery
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        PROVISIONING_PROFILE_SPECIFIER: $(DELIVERY_APP_PROFILE)
+  Widget:
+    type: app-extension
+    productName: DeliveryWidget
+    sources: [Sources/Widget]
+    settings:
+      base:
+        PRODUCT_NAME: DeliveryWidget
+        PRODUCT_BUNDLE_IDENTIFIER: $(DELIVERY_BUNDLE_ID).Widget
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Delivery Widget
+        # Generated keys merge into this file, which holds the NSExtension
+        # dictionary no INFOPLIST_KEY_ setting can.
+        INFOPLIST_FILE: Supporting/Widget-Info.plist
+        SKIP_INSTALL: YES
+        PROVISIONING_PROFILE_SPECIFIER: $(DELIVERY_WIDGET_PROFILE)
+targets:
+  DeliveryKit-iOS:
+    templates: [Kit]
+    platform: iOS
+    deploymentTarget: "17.0"
+  DeliveryKit-macOS:
+    templates: [Kit]
+    platform: macOS
+    deploymentTarget: "14.0"
+  DeliveryWidget-iOS:
+    templates: [Widget]
+    platform: iOS
+    deploymentTarget: "17.0"
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: Entitlements/Widget-iOS.entitlements
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"
+  DeliveryWidget-macOS:
+    templates: [Widget]
+    platform: macOS
+    deploymentTarget: "14.0"
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: Entitlements/Widget-macOS.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks"
+  # A WatchKit 2 app, a stub whose code is in its extension, and an
+  # iMessage sticker pack: the two that make an App Store export add
+  # Apple's WatchKitSupport2 and Messages stubs beside Payload.
+  DeliveryWatch:
+    type: application.watchapp2
+    platform: watchOS
+    deploymentTarget: "9.0"
+    sources: [Sources/Watch]
+    settings:
+      base:
+        PRODUCT_NAME: DeliveryWatch
+        PRODUCT_BUNDLE_IDENTIFIER: $(DELIVERY_BUNDLE_ID).watchkitapp
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Delivery
+        INFOPLIST_KEY_WKCompanionAppBundleIdentifier: $(DELIVERY_BUNDLE_ID)
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SKIP_INSTALL: YES
+        PROVISIONING_PROFILE_SPECIFIER: $(DELIVERY_WATCH_PROFILE)
+    dependencies:
+      - target: DeliveryWatchExtension
+  DeliveryWatchExtension:
+    type: watchkit2-extension
+    platform: watchOS
+    deploymentTarget: "9.0"
+    sources: [Sources/WatchExt]
+    settings:
+      base:
+        PRODUCT_NAME: DeliveryWatchExtension
+        PRODUCT_BUNDLE_IDENTIFIER: $(DELIVERY_BUNDLE_ID).watchkitapp.watchkitextension
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Delivery Watch Extension
+        INFOPLIST_FILE: Supporting/WatchExt-Info.plist
+        SKIP_INSTALL: YES
+        PROVISIONING_PROFILE_SPECIFIER: $(DELIVERY_WATCH_EXTENSION_PROFILE)
+  DeliveryStickers-iOS:
+    type: app-extension.messages-sticker-pack
+    productName: DeliveryStickers
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [Sources/Stickers]
+    settings:
+      base:
+        PRODUCT_NAME: DeliveryStickers
+        PRODUCT_BUNDLE_IDENTIFIER: $(DELIVERY_BUNDLE_ID).Stickers
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Delivery Stickers
+        # As Xcode's sticker pack template has it.
+        INFOPLIST_FILE: Supporting/Stickers-Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: iMessage App Icon
+        SKIP_INSTALL: YES
+        PROVISIONING_PROFILE_SPECIFIER: $(DELIVERY_STICKERS_PROFILE)
+  Delivery-iOS:
+    templates: [App]
+    platform: iOS
+    deploymentTarget: "17.0"
+    dependencies:
+      - target: DeliveryKit-iOS
+      - target: DeliveryWidget-iOS
+      - target: DeliveryWatch
+      - target: DeliveryStickers-iOS
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: Entitlements/App-iOS.entitlements
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+  Delivery-macOS:
+    templates: [App]
+    platform: macOS
+    deploymentTarget: "14.0"
+    dependencies:
+      - target: DeliveryKit-macOS
+      - target: DeliveryWidget-macOS
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: Entitlements/App-macOS.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools

@@ -1,17 +1,21 @@
-//! The requirements probe Swift Build uses before and after signing a copied
-//! Swift runtime library. This reads signatures without loading a private key.
+//! Reading signatures without a private key: the requirements probe Swift
+//! Build uses before and after signing a copied Swift runtime library, and
+//! the code directory hash and designated requirement a bundle seals nested
+//! code with.
 
 use std::fmt::Write as _;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use super::{blobs, crypto, macho, plist};
+use super::bundle::Layout;
+use super::{blobs, crypto, macho};
 
 pub(super) fn display(path: &Path) -> Result<(), String> {
     let executable = if path.is_dir() {
-        let info = std::fs::read(path.join("Info.plist")).map_err(|e| e.to_string())?;
-        let info = plist::read_info(&info)?;
-        path.join(plist::string(&info, "CFBundleExecutable").ok_or("bundle has no executable")?)
+        let layout = Layout::of(path)?;
+        layout
+            .root
+            .join(layout.executable.ok_or("bundle has no executable")?)
     } else {
         path.to_path_buf()
     };
@@ -25,11 +29,7 @@ pub(super) fn display(path: &Path) -> Result<(), String> {
 
 pub(super) fn requirements(data: &[u8]) -> Result<String, String> {
     let slices = macho::split(data)?;
-    let slice = slices
-        .iter()
-        .find(|s| s.arch.is_some_and(|a| a.0 == 0x0100_000c))
-        .or_else(|| slices.first())
-        .ok_or("empty universal executable")?;
+    let slice = preferred(&slices).ok_or("empty universal executable")?;
     let layout = macho::Layout::parse(&slice.data)?;
     let signature = layout
         .signature(&slice.data)
@@ -37,17 +37,7 @@ pub(super) fn requirements(data: &[u8]) -> Result<String, String> {
     let mut text = String::new();
     let mut designated = false;
     if let Some(set) = slot(signature, blobs::SLOT_REQUIREMENTS)? {
-        if word(set, 0)? != blobs::REQUIREMENTS {
-            return Err("invalid requirements blob".into());
-        }
-        for index in 0..word(set, 8)? as usize {
-            let kind = word(set, 12 + 8 * index)?;
-            let at = word(set, 16 + 8 * index)? as usize;
-            let len = word(set, at + 4)? as usize;
-            let requirement = set.get(at..at + len).ok_or("truncated requirement")?;
-            if word(requirement, 0)? != blobs::REQUIREMENT || word(requirement, 8)? != 1 {
-                return Err("unsupported requirement format".into());
-            }
+        for (kind, expression) in requirement_set(set)? {
             let name = match kind {
                 1 => "host",
                 2 => "guest",
@@ -56,29 +46,188 @@ pub(super) fn requirements(data: &[u8]) -> Result<String, String> {
                 5 => "plugin",
                 _ => return Err(format!("unsupported requirement type {kind}")),
             };
-            let mut reader = Reader {
-                data: &requirement[12..],
-                at: 0,
-            };
-            let expression = reader.expression(0, 0)?;
-            if reader.at != reader.data.len() {
-                return Err("trailing requirement data".into());
-            }
             designated |= kind == 3;
             let _ = writeln!(text, "{name} => {expression}");
         }
     }
     if !designated {
-        let directory = slot(signature, blobs::SLOT_CODE_DIRECTORY)?
-            .ok_or("signature has no code directory")?;
-        let hash = match directory.get(37) {
-            Some(1) => crypto::sha1(directory).to_vec(),
-            Some(2 | 3) => crypto::sha256(directory)[..20].to_vec(),
-            _ => return Err("unsupported code directory hash".into()),
-        };
+        let hash = cdhash(signature)?;
         let _ = writeln!(text, "# designated => cdhash H\"{}\"", crypto::hex(&hash));
     }
     Ok(text)
+}
+
+/// The slice `codesign` reads a universal file by on an Apple silicon Mac:
+/// the arm64 one, else the first.
+fn preferred(slices: &[macho::Slice]) -> Option<&macho::Slice> {
+    slices
+        .iter()
+        .find(|s| s.arch.is_some_and(|a| a.0 == macho::CPU_TYPE_ARM64))
+        .or_else(|| slices.first())
+}
+
+/// What a bundle seals nested code at `path` with: its code directory hash
+/// and its designated requirement as `codesign` prints it. An ad hoc
+/// signature's is its code directory hash, every slice's for universal
+/// code, the preferred slice's first.
+pub(super) fn designated(path: &Path) -> Result<(Vec<u8>, String), String> {
+    let unsigned = || "code object is not signed at all".to_string();
+    let (executable, detached) = if path.is_dir() {
+        let layout = Layout::of(path)?;
+        match layout.executable {
+            Some(executable) => (layout.root.join(executable), None),
+            None => (PathBuf::new(), Some(layout.root.join("_CodeSignature"))),
+        }
+    } else {
+        (path.to_path_buf(), None)
+    };
+    if let Some(folder) = detached {
+        let directory = std::fs::read(folder.join("CodeDirectory")).map_err(|_| unsigned())?;
+        let hash = directory_hash(&directory)?;
+        let set = std::fs::read(folder.join("CodeRequirements")).map_err(|_| unsigned())?;
+        let explicit = requirement_set(&set)?
+            .into_iter()
+            .find_map(|(kind, text)| (kind == 3).then_some(text));
+        let text = explicit.unwrap_or_else(|| format!("cdhash H\"{}\"", crypto::hex(&hash)));
+        return Ok((hash, text));
+    }
+    let data = std::fs::read(&executable)
+        .map_err(|e| format!("couldn't read {}: {e}", executable.display()))?;
+    let slices = macho::split(&data).map_err(|_| unsigned())?;
+    let first = preferred(&slices).ok_or_else(unsigned)?;
+    let mut ordered = vec![first];
+    ordered.extend(slices.iter().filter(|s| !std::ptr::eq(*s, first)));
+    let mut hashes = Vec::new();
+    let mut explicit = None;
+    for slice in ordered {
+        let layout = macho::Layout::parse(&slice.data)?;
+        let signature = layout.signature(&slice.data).ok_or_else(unsigned)?;
+        hashes.push(cdhash(signature)?);
+        if explicit.is_none()
+            && let Some(set) = slot(signature, blobs::SLOT_REQUIREMENTS)?
+        {
+            explicit = requirement_set(set)?
+                .into_iter()
+                .find_map(|(kind, text)| (kind == 3).then_some(text));
+        }
+    }
+    let text = explicit.unwrap_or_else(|| {
+        hashes
+            .iter()
+            .map(|hash| format!("cdhash H\"{}\"", crypto::hex(hash)))
+            .collect::<Vec<_>>()
+            .join(" or ")
+    });
+    Ok((hashes.swap_remove(0), text))
+}
+
+/// The requirements of a requirement set blob, by kind, as text.
+fn requirement_set(set: &[u8]) -> Result<Vec<(u32, String)>, String> {
+    if word(set, 0)? != blobs::REQUIREMENTS {
+        return Err("invalid requirements blob".into());
+    }
+    let mut out = Vec::new();
+    for index in 0..word(set, 8)? as usize {
+        let kind = word(set, 12 + 8 * index)?;
+        let at = word(set, 16 + 8 * index)? as usize;
+        let len = word(set, at + 4)? as usize;
+        let requirement = set.get(at..at + len).ok_or("truncated requirement")?;
+        if word(requirement, 0)? != blobs::REQUIREMENT || word(requirement, 8)? != 1 {
+            return Err("unsupported requirement format".into());
+        }
+        let mut reader = Reader {
+            data: &requirement[12..],
+            at: 0,
+        };
+        let expression = reader.expression(0, 0)?;
+        if reader.at != reader.data.len() {
+            return Err("trailing requirement data".into());
+        }
+        out.push((kind, expression));
+    }
+    Ok(out)
+}
+
+/// Each slice's code directory hash type and hash, the preferred slice's
+/// first: what a notarization ticket is filed under.
+pub(super) fn cdhashes(executable: &Path) -> Result<Vec<(u8, Vec<u8>)>, String> {
+    let data = std::fs::read(executable)
+        .map_err(|e| format!("couldn't read {}: {e}", executable.display()))?;
+    let slices = macho::split(&data).map_err(|e| format!("{}: {e}", executable.display()))?;
+    let first = preferred(&slices).and_then(|s| s.arch);
+    let mut ordered: Vec<&macho::Slice> = slices.iter().filter(|s| s.arch == first).collect();
+    ordered.extend(slices.iter().filter(|s| s.arch != first));
+    let mut out = Vec::new();
+    for slice in ordered {
+        let layout = macho::Layout::parse(&slice.data)?;
+        let signature = layout
+            .signature(&slice.data)
+            .ok_or_else(|| format!("{} isn't signed", executable.display()))?;
+        out.push(ticket_hash(signature)?);
+    }
+    Ok(out)
+}
+
+/// The hash type and hash a signature's notarization ticket is filed
+/// under: its code directory's, as [`cdhash`] picks it.
+pub(super) fn ticket_hash(signature: &[u8]) -> Result<(u8, Vec<u8>), String> {
+    let directory = best_directory(signature)?;
+    Ok((
+        directory.get(37).copied().unwrap_or(0),
+        directory_hash(directory)?,
+    ))
+}
+
+/// Each blob of `signature`, with its slot, in index order.
+pub(super) fn signature_blobs(signature: &[u8]) -> Result<Vec<(u32, Vec<u8>)>, String> {
+    if word(signature, 0)? != blobs::EMBEDDED_SIGNATURE {
+        return Err("invalid signature blob".into());
+    }
+    (0..word(signature, 8)? as usize)
+        .map(|index| {
+            let slot = word(signature, 12 + 8 * index)?;
+            let at = word(signature, 16 + 8 * index)? as usize;
+            let len = word(signature, at + 4)? as usize;
+            let blob = signature
+                .get(at..at + len)
+                .ok_or("truncated signature slot")?;
+            Ok((slot, blob.to_vec()))
+        })
+        .collect()
+}
+
+/// The hash of the signature's code directory: of its SHA-256 one when it
+/// has SHA-1 and SHA-256 ones, truncated to 20 bytes.
+fn cdhash(signature: &[u8]) -> Result<Vec<u8>, String> {
+    directory_hash(best_directory(signature)?)
+}
+
+/// The signature's SHA-256 code directory when it has one, else its only.
+fn best_directory(signature: &[u8]) -> Result<&[u8], String> {
+    let mut best: Option<&[u8]> = None;
+    for wanted in [
+        blobs::SLOT_CODE_DIRECTORY,
+        0x1000,
+        0x1001,
+        0x1002,
+        0x1003,
+        0x1004,
+    ] {
+        if let Some(directory) = slot(signature, wanted)?
+            && best.is_none_or(|b| b.get(37) == Some(&1))
+        {
+            best = Some(directory);
+        }
+    }
+    best.ok_or_else(|| "signature has no code directory".to_string())
+}
+
+fn directory_hash(directory: &[u8]) -> Result<Vec<u8>, String> {
+    match directory.get(37) {
+        Some(1) => Ok(crypto::sha1(directory).to_vec()),
+        Some(2 | 3) => Ok(crypto::sha256(directory)[..20].to_vec()),
+        _ => Err("unsupported code directory hash".into()),
+    }
 }
 
 fn word(bytes: &[u8], at: usize) -> Result<u32, String> {

@@ -6,43 +6,101 @@
 //! bundle, then for the bundle around them.
 //!
 //! The signature is `codesign`'s, blob for blob: a code directory hashing
-//! each 16 KiB page with SHA-256, the designated requirement, the
+//! each page with SHA-256, and another with SHA-1 for the deployment
+//! targets `codesign` gives one (see [`macho`]), the designated requirement, the
 //! entitlements in XML and DER, and a CMS signature with Apple's CDHashes
 //! attributes and the certificates up to Apple's root. It reserves the
 //! space `codesign` reserves, so the headers, and with them every hash,
 //! come out the same. The identity is a `.p12` file's (see [`identity`]).
-//! Only iOS-style bundles, without `Contents`, are signed.
+//! iOS-style bundles, macOS ones and versioned frameworks are signed (see
+//! [`bundle`]), with a secure timestamp when one is asked for or the
+//! identity is a Developer ID one (see [`timestamp`]).
 
 // What this prints is the tool's output, which Swift Build parses, so it
 // doesn't go through `Output`.
 #![allow(clippy::print_stderr)]
 
 mod blobs;
+mod bundle;
 mod cms;
 mod crypto;
+pub(crate) use crypto::{Hash, Sha1, hex, hmac, sha1, sha256};
 mod der;
 mod identity;
 mod inspect;
+pub(crate) mod installer;
+mod linkedit;
+pub(crate) use linkedit::align_string_tables;
 mod macho;
 mod pkcs12;
 use crate::cli::property_list as plist;
 pub mod provisioning;
+pub(crate) mod resign;
 mod resources;
+pub(crate) mod staple;
 #[cfg(test)]
 mod tests;
+pub(crate) mod time;
+mod timestamp;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::SystemTime;
 
-use blobs::Directory;
-use identity::Identity;
+use blobs::{CodeHash, Directory, SlotHash};
+use bundle::Layout;
+use identity::{Identity, IdentitySet, Kind};
 use plist::Plist;
+use timestamp::Timestamp;
 
 /// Whether the environment names an identity to sign with.
 #[must_use]
 pub fn identity_configured() -> bool {
     std::env::var_os(identity::P12_VARIABLE).is_some_and(|path| !path.is_empty())
+}
+
+/// The identities the environment names, each with what it signs, for
+/// `doctor`; `None` when none is configured.
+#[must_use]
+pub fn identity_summary() -> Option<Result<Vec<String>, String>> {
+    let set = match IdentitySet::from_environment(false) {
+        Ok(None) => return None,
+        Ok(Some(set)) => set,
+        Err(e) => return Some(Err(e)),
+    };
+    let now = time::now_iso8601();
+    Some(Ok(set
+        .identities
+        .iter()
+        .map(|i| {
+            let kinds: Vec<&str> = i.certificate.kinds().iter().map(|k| k.label()).collect();
+            let expired = if i.certificate.is_valid_at(&now) {
+                ""
+            } else {
+                ", expired"
+            };
+            format!(
+                "{} ({}{expired})",
+                i.certificate.common_name,
+                kinds.join(", ")
+            )
+        })
+        .collect()))
+}
+
+/// How many profiles of each kind the provisioning stand-in finds, for
+/// `doctor`.
+#[must_use]
+pub fn profile_summary() -> Vec<(&'static str, usize)> {
+    let mut counts: Vec<(&'static str, usize)> = Vec::new();
+    for profile in provisioning::load_profiles(&provisioning::profile_folders()) {
+        let name = profile.kind().name();
+        match counts.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, count)) => *count += 1,
+            None => counts.push((name, 1)),
+        }
+    }
+    counts
 }
 
 #[must_use]
@@ -100,9 +158,13 @@ struct Options {
     identity: String,
     identifier: Option<String>,
     entitlements: Option<PathBuf>,
+    /// Entitlements to sign with, as a property list's XML, in place of a
+    /// file: what an export signs with.
+    entitlements_data: Option<Vec<u8>>,
     der_entitlements: bool,
     preserve: Vec<String>,
     flags: u32,
+    timestamp: Timestamp,
     path: Option<PathBuf>,
 }
 
@@ -161,12 +223,11 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 }
             }
             "--timestamp" => {
-                if inline.as_deref() != Some("none") {
-                    return Err(
-                        "secure timestamps aren't supported; sign with '--timestamp=none'"
-                            .to_string(),
-                    );
-                }
+                options.timestamp = match inline.as_deref() {
+                    Some("none") => Timestamp::None,
+                    Some(url) => Timestamp::Server(url.to_string()),
+                    None => Timestamp::Server(timestamp::APPLE.to_string()),
+                };
             }
             // There is no keychain here; the identity comes from the
             // environment.
@@ -199,10 +260,10 @@ fn run(args: &[String]) -> Result<(), String> {
     if options.display {
         return inspect::display(&path);
     }
-    let identity = if options.identity == "-" {
+    let set = if options.identity == "-" {
         None
     } else {
-        let identity = Identity::from_environment(true)?.ok_or_else(|| {
+        Some(IdentitySet::from_environment(true)?.ok_or_else(|| {
             format!(
                 "no signing identity: point {} at a .p12 file holding '{}' and its key, its \
                  password in {}",
@@ -210,54 +271,34 @@ fn run(args: &[String]) -> Result<(), String> {
                 options.identity,
                 identity::PASSWORD_VARIABLE
             )
-        })?;
-        if !identity.matches(&options.identity) {
-            return Err(format!(
-                "the identity in {} is '{}' ({}), not '{}'",
-                identity::P12_VARIABLE,
-                identity.certificate.common_name,
-                identity.certificate.sha1_hex(),
-                options.identity
-            ));
-        }
-        Some(identity)
+        })?)
     };
+    let identity = set
+        .as_ref()
+        .map(|set| set.by_name(&options.identity))
+        .transpose()?;
     let signer = Signer {
         options: &options,
-        identity: identity.as_ref(),
+        identity,
         time: SystemTime::now(),
     };
     if path.is_dir() {
         signer.sign_bundle(&path)
-    } else if let Some(bundle) = executable_bundle(&path) {
+    } else if let Some(bundle) = bundle::of_executable(&path) {
         // Flutter signs Framework.framework/Framework directly. Apple's tool
         // still recognizes its owning bundle, identifier and resource seal.
-        signer.sign_bundle(bundle)
+        signer.sign_bundle(&bundle)
     } else {
         signer.sign_file(&path, None)
     }
-}
-
-fn executable_bundle(executable: &Path) -> Option<&Path> {
-    let parent = executable.parent()?;
-    if !["app", "appex", "framework", "xctest", "bundle"]
-        .iter()
-        .any(|extension| parent.extension().is_some_and(|e| e == *extension))
-    {
-        return None;
-    }
-    let info = std::fs::read(parent.join("Info.plist")).ok()?;
-    let info = plist::read_info(&info).ok()?;
-    (executable.file_name()?.to_str()? == plist::string(&info, "CFBundleExecutable")?)
-        .then_some(parent)
 }
 
 /// What an executable's signature binds besides its code: the bundle's
 /// identifier, `Info.plist` and `CodeResources`.
 struct Bundle {
     identifier: String,
-    info: [u8; 32],
-    resources: [u8; 32],
+    info: SlotHash,
+    resources: SlotHash,
 }
 
 struct Signer<'a> {
@@ -267,65 +308,79 @@ struct Signer<'a> {
 }
 
 impl Signer<'_> {
-    fn sign_bundle(&self, bundle: &Path) -> Result<(), String> {
-        if bundle.join("Contents").is_dir() {
-            return Err(format!(
-                "{} is a macOS bundle, which this codesign doesn't sign yet",
-                bundle.display()
-            ));
+    /// The timestamp server to stamp the signature with, if any.
+    fn timestamp(&self) -> Option<&str> {
+        let identity = self.identity?;
+        match &self.options.timestamp {
+            Timestamp::Default => identity
+                .certificate
+                .is(Kind::DeveloperIdApplication)
+                .then_some(timestamp::APPLE),
+            Timestamp::None => None,
+            Timestamp::Server(url) => Some(url),
         }
-        let info_path = bundle.join("Info.plist");
-        let info_bytes = std::fs::read(&info_path)
-            .map_err(|e| format!("couldn't read {}: {e}", info_path.display()))?;
-        let info = plist::read_info(&info_bytes)?;
+    }
+
+    /// The CMS signature over `directories`, the first of them the one in
+    /// the code directory slot.
+    fn cms(&self, directories: &[(CodeHash, Vec<u8>)]) -> Result<Vec<u8>, String> {
+        self.identity.map_or_else(
+            || Ok(Vec::new()),
+            |identity| cms::sign(identity, directories, self.time, self.timestamp()),
+        )
+    }
+
+    fn sign_bundle(&self, bundle: &Path) -> Result<(), String> {
+        let layout = Layout::of(bundle)?;
         let identifier = match (
             &self.options.identifier,
-            plist::string(&info, "CFBundleIdentifier"),
+            plist::string(&layout.info, "CFBundleIdentifier"),
         ) {
             (Some(identifier), _) => identifier.clone(),
             (None, Some(identifier)) => identifier.to_string(),
             (None, None) => {
                 return Err(format!(
                     "{} names no CFBundleIdentifier",
-                    info_path.display()
+                    layout.info_path.display()
                 ));
             }
         };
-        let Some(executable) = plist::string(&info, "CFBundleExecutable") else {
+        let Some(executable) = &layout.executable else {
             if bundle.extension().is_some_and(|s| s == "bundle")
-                && plist::string(&info, "CFBundlePackageType") == Some("BNDL")
+                && plist::string(&layout.info, "CFBundlePackageType") == Some("BNDL")
             {
-                return self.sign_resource_bundle(bundle, &identifier, &info_bytes);
+                return self.sign_resource_bundle(&layout, &identifier);
             }
             return Err(format!(
                 "{} names no CFBundleExecutable",
-                info_path.display()
+                layout.info_path.display()
             ));
         };
-        let resources = resources::code_resources(bundle, executable)?;
-        let folder = bundle.join("_CodeSignature");
+        let executable_path = layout.root.join(executable);
+        let code = std::fs::read(&executable_path)
+            .map_err(|e| format!("couldn't read {}: {e}", executable_path.display()))?;
+        let dual = code_hashes(&code).contains(&CodeHash::Sha1);
+        let resources = resources::code_resources(&layout.root, executable, layout.flavor, dual)?;
+        let folder = layout.root.join("_CodeSignature");
         std::fs::create_dir_all(&folder)
             .and_then(|()| std::fs::write(folder.join("CodeResources"), &resources))
             .map_err(|e| format!("couldn't write {}: {e}", folder.display()))?;
         let binding = Bundle {
             identifier,
-            info: crypto::sha256(&info_bytes),
-            resources: crypto::sha256(&resources),
+            info: SlotHash::of(&layout.info_bytes),
+            resources: SlotHash::of(&resources),
         };
-        self.sign_file(&bundle.join(executable), Some(&binding))
+        self.sign_file(&layout.root.join(executable), Some(&binding))
     }
 
     /// Resource-only bundles keep detached signature files and hash their
     /// Info.plist as a single unpaged code slot, as Apple's codesign does.
-    fn sign_resource_bundle(
-        &self,
-        bundle: &Path,
-        identifier: &str,
-        info: &[u8],
-    ) -> Result<(), String> {
+    fn sign_resource_bundle(&self, layout: &Layout, identifier: &str) -> Result<(), String> {
         // Apple's codesign ignores executable entitlements for a bundle
         // without executable code, even when Swift Build supplies an xcent.
-        let resources = resources::code_resources(bundle, "Info.plist")?;
+        let info = layout.info_bytes.as_slice();
+        let resources =
+            resources::code_resources(&layout.root, "Info.plist", layout.flavor, false)?;
         let requirements = blobs::requirements(identifier, self.identity)?;
         let directory = Directory {
             identifier,
@@ -337,18 +392,17 @@ impl Signer<'_> {
                     0
                 },
             exec_segment: (0, 0, 0),
+            page_log2: 0,
+            runtime: None,
             special: vec![
-                (blobs::SPECIAL_INFO, crypto::sha256(info)),
-                (blobs::SPECIAL_REQUIREMENTS, crypto::sha256(&requirements)),
-                (blobs::SPECIAL_RESOURCES, crypto::sha256(&resources)),
+                (blobs::SPECIAL_INFO, SlotHash::of(info)),
+                (blobs::SPECIAL_REQUIREMENTS, SlotHash::of(&requirements)),
+                (blobs::SPECIAL_RESOURCES, SlotHash::of(&resources)),
             ],
         }
         .build_unpaged(info);
-        let signature = self.identity.map_or_else(
-            || Ok(Vec::new()),
-            |identity| cms::sign(identity, &directory, self.time),
-        )?;
-        let folder = bundle.join("_CodeSignature");
+        let signature = self.cms(&[(CodeHash::Sha256, directory.clone())])?;
+        let folder = layout.root.join("_CodeSignature");
         std::fs::create_dir_all(&folder)
             .map_err(|e| format!("couldn't create {}: {e}", folder.display()))?;
         for (name, bytes) in [
@@ -367,9 +421,18 @@ impl Signer<'_> {
         let data =
             std::fs::read(path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
         let mut slices = macho::split(&data).map_err(|e| format!("{}: {e}", path.display()))?;
+        // An ad hoc identifier carries one UUID for every slice: the arm64
+        // slice's, else the first's.
+        let uuid = slices
+            .iter()
+            .find(|s| s.arch.is_some_and(|a| a.0 == macho::CPU_TYPE_ARM64))
+            .or_else(|| slices.first())
+            .and_then(|s| macho::Layout::parse(&s.data).ok())
+            .and_then(|layout| layout.uuid);
+        let hashes = code_hashes(&data);
         for slice in &mut slices {
             slice.data = self
-                .sign_slice(&slice.data, path, bundle)
+                .sign_slice(&slice.data, path, bundle, uuid, hashes)
                 .map_err(|e| format!("{}: {e}", path.display()))?;
         }
         let signed = macho::join(slices);
@@ -387,13 +450,25 @@ impl Signer<'_> {
             })
     }
 
+    #[allow(clippy::too_many_lines)] // one slice's signature, its blobs in slot order
     fn sign_slice(
         &self,
         data: &[u8],
         path: &Path,
         bundle: Option<&Bundle>,
+        uuid: Option<[u8; 16]>,
+        hashes: &[CodeHash],
     ) -> Result<Vec<u8>, String> {
         let layout = macho::Layout::parse(data)?;
+        // A file outside a bundle names itself and binds its Info.plist the
+        // way a bundle does when it embeds one, as `codesign` reads it.
+        let embedded_info = layout
+            .info_plist
+            .filter(|_| bundle.is_none())
+            .and_then(|(offset, size)| data.get(offset..offset + size));
+        let embedded_identifier = embedded_info
+            .and_then(|info| plist::parse(info).ok())
+            .and_then(|info| plist::string(&info, "CFBundleIdentifier").map(str::to_string));
         let existing = layout
             .signature(data)
             .and_then(blobs::read_existing)
@@ -406,10 +481,13 @@ impl Signer<'_> {
             existing.identifier.clone()
         } else if let Some(bundle) = bundle {
             bundle.identifier.clone()
+        } else if let Some(identifier) = embedded_identifier {
+            identifier
         } else {
-            default_identifier(path, self.identity.is_none(), layout.uuid)
+            default_identifier(path, self.identity.is_none(), uuid)
         };
         let entitlements = match &self.options.entitlements {
+            _ if self.options.entitlements_data.is_some() => self.options.entitlements_data.clone(),
             Some(file) => Some(
                 std::fs::read(file)
                     .map_err(|e| format!("couldn't read {}: {e}", file.display()))?,
@@ -437,20 +515,22 @@ impl Signer<'_> {
         }
 
         let requirements = blobs::requirements(&identifier, self.identity)?;
-        let mut special = vec![(blobs::SPECIAL_REQUIREMENTS, crypto::sha256(&requirements))];
+        let mut special = vec![(blobs::SPECIAL_REQUIREMENTS, SlotHash::of(&requirements))];
         let mut extra = vec![(blobs::SLOT_REQUIREMENTS, requirements)];
         if let Some(bundle) = bundle {
             special.push((blobs::SPECIAL_INFO, bundle.info));
             special.push((blobs::SPECIAL_RESOURCES, bundle.resources));
+        } else if let Some(info) = embedded_info {
+            special.push((blobs::SPECIAL_INFO, SlotHash::of(info)));
         }
         if let Some(entitlements) = &entitlements {
             let entitlements = blobs::blob(blobs::ENTITLEMENTS, entitlements);
-            special.push((blobs::SPECIAL_ENTITLEMENTS, crypto::sha256(&entitlements)));
+            special.push((blobs::SPECIAL_ENTITLEMENTS, SlotHash::of(&entitlements)));
             extra.push((blobs::SLOT_ENTITLEMENTS, entitlements));
             if self.options.der_entitlements {
                 let der =
                     blobs::der_entitlements(parsed.as_ref().unwrap_or(&Plist::Dict(Vec::new())))?;
-                special.push((blobs::SPECIAL_DER_ENTITLEMENTS, crypto::sha256(&der)));
+                special.push((blobs::SPECIAL_DER_ENTITLEMENTS, SlotHash::of(&der)));
                 extra.push((blobs::SLOT_DER_ENTITLEMENTS, der));
             }
         }
@@ -461,26 +541,42 @@ impl Signer<'_> {
             flags,
             exec_segment: (layout.text.0, layout.text.1, exec_flags),
             special,
+            page_log2: layout.page_log2(),
+            runtime: (flags & blobs::FLAG_RUNTIME != 0).then(|| layout.sdk.unwrap_or(0)),
         };
 
         // codesign reserves room for the signature before it signs: the
         // blobs, the CMS wrapper's header and 18,000 bytes for the CMS,
-        // or 8 bytes ad hoc, rounded to 16 bytes.
-        let unsigned = directory.build(&layout.prepare(data, 0)?);
+        // or 8 bytes for each code directory ad hoc, rounded to 16 bytes.
+        let unsigned_code = layout.prepare(data, 0)?;
         let mut sized = extra.clone();
-        sized.push((blobs::SLOT_CODE_DIRECTORY, unsigned));
+        for (&hash, slot) in hashes.iter().zip(directory_slots()) {
+            let mut unsigned = directory.build(&unsigned_code, hash);
+            // codesign sizes the code directory as one without the runtime
+            // version and the field after it.
+            if directory.runtime.is_some() {
+                unsigned.truncate(unsigned.len() - 8);
+            }
+            sized.push((slot, unsigned));
+        }
         sized.push((blobs::SLOT_CMS, blobs::blob(blobs::CMS_WRAPPER, &[])));
-        let reserve = if self.identity.is_some() { 18_000 } else { 8 };
+        let reserve = if self.identity.is_some() {
+            18_000
+        } else {
+            8 * hashes.len()
+        };
         let size = (blobs::superblob(sized).len() + reserve).next_multiple_of(16);
 
         let mut out = layout.prepare(data, size)?;
-        let code_directory = directory.build(&out);
-        let cms = match self.identity {
-            Some(identity) => cms::sign(identity, &code_directory, self.time)?,
-            None => Vec::new(),
-        };
+        let directories: Vec<(CodeHash, Vec<u8>)> = hashes
+            .iter()
+            .map(|&hash| (hash, directory.build(&out, hash)))
+            .collect();
+        let cms = self.cms(&directories)?;
         let mut blobs = extra;
-        blobs.push((blobs::SLOT_CODE_DIRECTORY, code_directory));
+        for ((_, code_directory), slot) in directories.into_iter().zip(directory_slots()) {
+            blobs.push((slot, code_directory));
+        }
         blobs.push((blobs::SLOT_CMS, blobs::blob(blobs::CMS_WRAPPER, &cms)));
         let mut signature = blobs::superblob(blobs);
         if signature.len() > size {
@@ -490,6 +586,27 @@ impl Signer<'_> {
         out.extend(signature);
         Ok(out)
     }
+}
+
+/// The superblob slots of a signature's code directories, in order: the
+/// first in the code directory slot, the rest in the alternate ones.
+/// The code directories a Mach-O file's signature has: a SHA-1 one beside
+/// the SHA-256 one in every slice when one slice needs it.
+fn code_hashes(data: &[u8]) -> &'static [CodeHash] {
+    let needs_sha1 = macho::split(data).is_ok_and(|slices| {
+        slices
+            .iter()
+            .any(|s| macho::Layout::parse(&s.data).is_ok_and(|layout| layout.needs_sha1()))
+    });
+    if needs_sha1 {
+        &[CodeHash::Sha1, CodeHash::Sha256]
+    } else {
+        &[CodeHash::Sha256]
+    }
+}
+
+fn directory_slots() -> impl Iterator<Item = u32> {
+    std::iter::once(blobs::SLOT_CODE_DIRECTORY).chain(blobs::SLOT_ALTERNATE_CODE_DIRECTORY..)
 }
 
 /// The identifier `codesign` gives a file outside a bundle: its name

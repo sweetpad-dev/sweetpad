@@ -53,6 +53,10 @@ svgtypes = "0.16"
 rsa = { version = "0.9", default-features = false, features = ["std"] }
 des = "0.8"
 aes = "0.8"
+rc2 = "0.8"
+# ES256 for App Store Connect API tokens: ECDSA over P-256 with a PKCS#8 key,
+# a standard algorithm with a de-facto crate, not worth hand-rolling.
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pkcs8", "pem", "std"] }
 # The system calls: the account's home, name and cache directory, read the
 # way Xcode's tools read them (getpwuid_r, confstr), and the raw-input flags
 # the CLI's interactive rebuild session flips.

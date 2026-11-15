@@ -167,13 +167,27 @@ Linux builds (Swift Build, where there is no Xcode):
   SWEETPAD_SWBUILD          the swbuild to run, in place of the one on PATH
   SWEETPAD_MACROS           the sweetpad-macros plugin, in place of the one
                             on PATH
-  SWEETPAD_CODE_SIGN_P12    the .p12 file holding the identity a device
-                            build signs with
+  SWEETPAD_CODE_SIGN_P12    the .p12 files holding the identities builds
+                            and exports sign with, separated by ':'; each
+                            may hold several, as Keychain Access exports them
   SWEETPAD_CODE_SIGN_P12_PASSWORD
-                            that file's password
+                            their password, or one per file, separated by ':'
   SWEETPAD_PROVISIONING_PROFILES
                             a folder of provisioning profiles, in place of
                             Xcode's folders
+
+App Store Connect ('upload', 'notarize', 'archive --upload' and
+'archive --notarize'):
+
+  SWEETPAD_ASC_KEY_ID       the API key's ID ('--api-key')
+  SWEETPAD_ASC_ISSUER_ID    its issuer ID ('--api-issuer'); none for an
+                            individual key, which can't notarize
+  SWEETPAD_ASC_KEY_PATH     its AuthKey_<ID>.p8 file ('--api-key-path')
+  SWEETPAD_ASC_KEY          the .p8 file's text, in place of a file (CI
+                            secrets)
+  API_PRIVATE_KEYS_DIR      another folder to look for AuthKey_<ID>.p8 in,
+                            beside ./private_keys, ~/private_keys,
+                            ~/.private_keys and ~/.appstoreconnect/private_keys
 
 Linux device services (see 'help linux-devices'):
 
