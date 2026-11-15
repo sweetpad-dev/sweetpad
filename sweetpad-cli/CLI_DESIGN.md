@@ -371,7 +371,8 @@ builds it with real `xcodebuild`.
 ```
 
 A SIGINT/SIGTERM that kills the process exits `128 + signo` (130/143), after
-the handler restores the terminal and reaps children.
+the handler restores the terminal and reaps children. A Linux Swift Build build
+first stops what the build started (§9w), then exits the same way.
 
 A run session (`app run` at a terminal, plain or `--hot`) exits by how it
 ended, not by the last thing that happened in it. Ctrl-C while one of its
@@ -4708,6 +4709,17 @@ Runtime and device-signing checks remain unverified for the additional platforms
 for the build process. The host's shell configuration is unchanged. SDK C++ headers come from
 its Xcode toolchain. `xcrun clang` translates Apple deployment flags into a Darwin target
 and selects the SDK linker when linking.
+
+**A cancelled build leaves nothing running.** Swift Build starts each task in a process
+group of its own, which the terminal's Ctrl-C doesn't reach, and a task outlives a
+`swbuild` that dies. While a build runs, sweetpad is the subreaper of what it starts
+(`PR_SET_CHILD_SUBREAPER`), so an orphaned task becomes its child. A first SIGINT, SIGTERM
+or SIGHUP stops `swbuild` instead of exiting at once; sweetpad then stops every child and
+the process group it leads, SIGTERM first and SIGKILL after two seconds, and exits 130,
+143 or 129. A `swbuild` killed by a signal is reported by that signal ("swbuild was
+killed by SIGKILL", with a pointer to `journalctl -k` for the out-of-memory killer) and
+its leftovers are stopped the same way. A build that ends normally stops nothing, so a
+daemon a script starts on purpose keeps running, as it does under Xcode.
 
 **App Intents produce real metadata.** The portable processors consume Swift constant values
 and write registration metadata, strings, and shortcut language models. Unsupported schemas fail

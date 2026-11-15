@@ -37,7 +37,7 @@
 //! disposition: one that inherited an ignored SIGINT from a backgrounded CLI
 //! would drop the forwarded signal.
 
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, AtomicU32, Ordering};
 
 /// Whether stderr was a TTY at startup — read in the handler (where `isatty`
 /// isn't guaranteed safe) to decide if a spinner line may need erasing.
@@ -151,6 +151,39 @@ pub fn clear_forward_child() {
     FORWARD_PID.store(0, Ordering::Release);
 }
 
+/// Enter sweep mode for a Swift Build `pid`: a first SIGINT, SIGTERM or
+/// SIGHUP stops it with SIGTERM and returns instead of exiting, so the main
+/// thread can stop what the build left running (see
+/// [`crate::cli::process::stop_leftovers`]) and then exit with [`finish`].
+/// A second signal exits at once. Cleared with [`clear_sweep_child`] before
+/// the child is reaped.
+pub fn set_sweep_child(pid: u32) {
+    SWEEP_SIGNAL.store(0, Ordering::Release);
+    SWEEP_PID.store(pid, Ordering::Release);
+}
+
+pub fn clear_sweep_child() {
+    SWEEP_PID.store(0, Ordering::Release);
+}
+
+/// The signal that stopped the sweep-mode build, if one did.
+pub fn interrupted_build() -> Option<i32> {
+    Some(SWEEP_SIGNAL.swap(0, Ordering::AcqRel)).filter(|&sig| sig != 0)
+}
+
+/// Exit as the handler does for `sig`, once the main thread has cleaned up
+/// after a build that signal stopped.
+pub fn finish(sig: i32) -> ! {
+    SWEEP_PID.store(0, Ordering::Release);
+    handle(sig);
+    std::process::exit(128 + sig)
+}
+
+/// The sweep-mode build (0 = none) and the signal that stopped it (0 =
+/// none yet).
+static SWEEP_PID: AtomicU32 = AtomicU32::new(0);
+static SWEEP_SIGNAL: AtomicI32 = AtomicI32::new(0);
+
 /// Whether the handler forwarded a signal since [`set_forward_child`] —
 /// consumed by the owning command to report "stopped by the user" instead of
 /// a child failure.
@@ -232,6 +265,26 @@ extern "C" fn handle(sig: libc::c_int) {
             libc::kill(forward.cast_signed(), libc::SIGINT);
         }
         return;
+    }
+    let sweep = SWEEP_PID.load(Ordering::Acquire);
+    if sweep != 0
+        && matches!(sig, libc::SIGINT | libc::SIGTERM | libc::SIGHUP)
+        && SWEEP_SIGNAL
+            .compare_exchange(0, sig, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    {
+        // Safety: kill(2) on the recorded build pid, cleared before its reap.
+        unsafe {
+            libc::kill(sweep.cast_signed(), libc::SIGTERM);
+        }
+        return;
+    }
+    if sweep != 0 {
+        // A second signal: the build didn't stop on the first.
+        // Safety: kill(2) on the recorded build pid, cleared before its reap.
+        unsafe {
+            libc::kill(sweep.cast_signed(), libc::SIGKILL);
+        }
     }
     if STDERR_TTY.load(Ordering::Relaxed) {
         // Safety: write(2) of a static buffer to stderr.

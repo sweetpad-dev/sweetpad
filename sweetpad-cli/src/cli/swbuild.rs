@@ -149,14 +149,20 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
         }
     };
     let mut env = invocation.env.clone();
-    let _secrets =
+    let secrets =
         super::codesign::HiddenSecrets::hide_environment(&mut env, true).map_err(CliError::new)?;
-    let ok =
-        process::stream_lines_with_env(&program, &args, invocation.cwd.as_deref(), &env, |line| {
+    let status =
+        process::stream_build_lines(&program, &args, invocation.cwd.as_deref(), &env, |line| {
             transcript.push_str(line);
             transcript.push('\n');
             parser.push(line).iter().for_each(&mut take);
         })?;
+    if let Some(signal) = crate::cli::signals::interrupted_build() {
+        process::stop_leftovers();
+        drop(secrets);
+        crate::cli::signals::finish(signal);
+    }
+    let ok = status.success();
     if !ok
         && let Some(progress) = &mut progress
         && let Some(banner) = progress.close_failed(ResultKind::BuildFailed)
@@ -176,8 +182,26 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
     let detail = recorded
         .as_ref()
         .map_or_else(String::new, |p| format!("; full log: {}", p.display()));
+    let killer = killed_by(status, program == "bwrap");
+    if killer.is_some() {
+        // Its tasks outlive it, with nothing left to finish or stop them.
+        process::stop_leftovers();
+    }
+    let ended = killer.map_or_else(
+        || "swbuild exited with a non-zero status".to_string(),
+        |signal| format!("swbuild was killed by {}", signal_name(signal)),
+    );
+    let read_log = recorded.map(|p| format!("read full build log: {}", p.display()));
+    let tip = if killer == Some(libc::SIGKILL) && cfg!(target_os = "linux") {
+        Some(format!(
+            "the kernel's out-of-memory killer sends SIGKILL, and 'journalctl -k' says if it did{}",
+            read_log.map_or_else(String::new, |tip| format!("; {tip}"))
+        ))
+    } else {
+        read_log
+    };
     Err(xcodebuild::tool_failure(
-        "swbuild",
+        &ended,
         &invocation.args,
         diagnostics,
         None,
@@ -186,7 +210,43 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
         &detail,
     )
     .context("building the project")
-    .tip(recorded.map(|p| format!("read full build log: {}", p.display()))))
+    .tip(tip))
+}
+
+/// The signal that killed `swbuild`, if one did. `bwrap`, which runs it
+/// where `/bin/sh` isn't Bash, exits with 128 plus that signal's number.
+fn killed_by(status: std::process::ExitStatus, wrapped: bool) -> Option<i32> {
+    use std::os::unix::process::ExitStatusExt as _;
+    status.signal().or_else(|| {
+        status
+            .code()
+            .filter(|&code| wrapped && code > 128 && code < 128 + 32)
+            .map(|code| code - 128)
+    })
+}
+
+/// A signal's name, like `SIGKILL`, or its number.
+fn signal_name(signal: i32) -> String {
+    [
+        (libc::SIGHUP, "SIGHUP"),
+        (libc::SIGINT, "SIGINT"),
+        (libc::SIGQUIT, "SIGQUIT"),
+        (libc::SIGILL, "SIGILL"),
+        (libc::SIGTRAP, "SIGTRAP"),
+        (libc::SIGABRT, "SIGABRT"),
+        (libc::SIGBUS, "SIGBUS"),
+        (libc::SIGFPE, "SIGFPE"),
+        (libc::SIGKILL, "SIGKILL"),
+        (libc::SIGSEGV, "SIGSEGV"),
+        (libc::SIGPIPE, "SIGPIPE"),
+        (libc::SIGTERM, "SIGTERM"),
+    ]
+    .iter()
+    .find(|(number, _)| *number == signal)
+    .map_or_else(
+        || format!("signal {signal}"),
+        |(_, name)| (*name).to_string(),
+    )
 }
 
 /// One build's hold on its DerivedData folder. Swift Build keeps a build
@@ -2615,5 +2675,19 @@ mod tests {
         left.sort();
         assert_eq!(left, ["current", "recent"]);
         assert!(!legacy.exists());
+    }
+
+    #[test]
+    fn a_killed_swbuild_names_its_signal_bare_or_through_bwrap() {
+        use std::os::unix::process::ExitStatusExt as _;
+        let killed = std::process::ExitStatus::from_raw(libc::SIGKILL);
+        assert_eq!(killed_by(killed, false), Some(libc::SIGKILL));
+        let through_bwrap = std::process::ExitStatus::from_raw((128 + libc::SIGSEGV) << 8);
+        assert_eq!(killed_by(through_bwrap, true), Some(libc::SIGSEGV));
+        assert_eq!(killed_by(through_bwrap, false), None);
+        let failed = std::process::ExitStatus::from_raw(1 << 8);
+        assert_eq!(killed_by(failed, true), None);
+        assert_eq!(signal_name(libc::SIGKILL), "SIGKILL");
+        assert_eq!(signal_name(64), "signal 64");
     }
 }

@@ -434,7 +434,7 @@ pub(crate) fn build_failure(
     detail: &str,
 ) -> CliError {
     tool_failure(
-        "xcodebuild",
+        "xcodebuild exited with a non-zero status",
         args,
         diagnostics,
         blocker,
@@ -444,9 +444,11 @@ pub(crate) fn build_failure(
     )
 }
 
-/// [`build_failure`] for a build `tool` other than xcodebuild ran.
+/// [`build_failure`] for a build tool other than xcodebuild, whose end
+/// `ended` says: "swbuild exited with a non-zero status", or "swbuild was
+/// killed by SIGKILL".
 pub(crate) fn tool_failure(
-    tool: &str,
+    ended: &str,
     args: &[String],
     diagnostics: Vec<serde_json::Value>,
     blocker: Option<String>,
@@ -458,12 +460,7 @@ pub(crate) fn tool_failure(
     let shown = streamed_error && !stderr_apart;
     let repeated = (streamed_error && stderr_apart).then(|| repeated_errors(&diagnostics));
     let headline = blocker.map_or_else(
-        || {
-            format!(
-                "{tool} exited with a non-zero status{}",
-                repeated.as_deref().unwrap_or(detail)
-            )
-        },
+        || format!("{ended}{}", repeated.as_deref().unwrap_or(detail)),
         |hint| format!("the build is blocked, not broken: {hint}"),
     );
     // A device's own reason for failing outranks the list of every error.

@@ -224,8 +224,35 @@ pub fn stream_lines_with_env(
     args: &[&str],
     cwd: Option<&Path>,
     env: &[(String, Option<String>)],
-    mut on_line: impl FnMut(&str),
+    on_line: impl FnMut(&str),
 ) -> Result<bool, CliError> {
+    stream_with(program, args, cwd, env, on_line, false).map(|status| status.success())
+}
+
+/// [`stream_lines_with_env`] for a Swift Build build, returning how it
+/// ended. A signal meanwhile stops the build and returns here instead of
+/// exiting the CLI: [`crate::cli::signals::interrupted_build`] then names
+/// it, and [`stop_leftovers`] stops what the build left running. On Linux
+/// this process adopts the build's orphans for that while it runs.
+pub fn stream_build_lines(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    env: &[(String, Option<String>)],
+    on_line: impl FnMut(&str),
+) -> Result<std::process::ExitStatus, CliError> {
+    adopt_orphans();
+    stream_with(program, args, cwd, env, on_line, true)
+}
+
+fn stream_with(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    env: &[(String, Option<String>)],
+    mut on_line: impl FnMut(&str),
+    build: bool,
+) -> Result<std::process::ExitStatus, CliError> {
     let mut cmd = Command::new(program);
     cmd.args(args);
     if let Some(dir) = cwd {
@@ -248,12 +275,102 @@ pub fn stream_lines_with_env(
     // Registered so a directly-addressed SIGTERM/SIGHUP (timeout(1), CI
     // cancellation) stops the tool instead of orphaning it; the terminal's
     // Ctrl-C already reaches it through the foreground group.
-    let reap_slot = crate::cli::signals::register_child(child.id());
+    let reap_slot = if build {
+        crate::cli::signals::set_sweep_child(child.id());
+        None
+    } else {
+        crate::cli::signals::register_child(child.id())
+    };
     read_lines_lossy(reader, &mut on_line);
+    if build {
+        crate::cli::signals::clear_sweep_child();
+    }
     crate::cli::signals::unregister_child(reap_slot);
     let status = child.wait().map_err(|e| spawn_error(program, &e))?;
     drop(leftovers);
-    Ok(status.success())
+    Ok(status)
+}
+
+/// Make this process the subreaper of what it starts, so a process whose
+/// parent dies becomes its child rather than init's. Swift Build runs each
+/// task in a process group of its own, which neither the terminal's Ctrl-C
+/// nor a signal to `swbuild` reaches, and a task outlives a `swbuild` that
+/// dies; adopting it is what lets [`stop_leftovers`] find it.
+fn adopt_orphans() {
+    #[cfg(target_os = "linux")]
+    // Safety: prctl(2) with integer arguments changes only this process.
+    unsafe {
+        libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
+    }
+}
+
+/// Stop what a build stopped by a signal left running: every child of this
+/// process, which as the subreaper ([`adopt_orphans`]) includes the
+/// orphaned tasks, and the process group each leads. Each gets SIGTERM,
+/// and SIGKILL after two seconds, until none is left or five seconds pass.
+/// The children are reaped. Nothing to do off Linux.
+pub fn stop_leftovers() {
+    #[cfg(target_os = "linux")]
+    {
+        let start = std::time::Instant::now();
+        // Safety: getpgrp(2) has no arguments and can't fail.
+        let own_group = unsafe { libc::getpgrp() };
+        loop {
+            // Safety: waitpid(2) with WNOHANG reaps finished children only.
+            while unsafe { libc::waitpid(-1, std::ptr::null_mut(), libc::WNOHANG) } > 0 {}
+            let children = children_of(std::process::id());
+            if children.is_empty() || start.elapsed() > std::time::Duration::from_secs(5) {
+                break;
+            }
+            let signal = if start.elapsed() > std::time::Duration::from_secs(2) {
+                libc::SIGKILL
+            } else {
+                libc::SIGTERM
+            };
+            for (pid, group) in children {
+                // Safety: kill(2) on a child of this process, which isn't
+                // reaped until the loop's next waitpid, and on the group it
+                // leads, never this process's own.
+                unsafe {
+                    if group != own_group {
+                        libc::kill(-group, signal);
+                    }
+                    libc::kill(pid, signal);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+}
+
+/// The live children of `parent` with their process groups, from `/proc`.
+#[cfg(target_os = "linux")]
+fn children_of(parent: u32) -> Vec<(libc::pid_t, libc::pid_t)> {
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let pid: libc::pid_t = entry.file_name().to_str()?.parse().ok()?;
+            let stat = std::fs::read_to_string(entry.path().join("stat")).ok()?;
+            parse_stat(&stat)
+                .filter(|&(state, ppid, _)| ppid == parent && state != 'Z')
+                .map(|(_, _, group)| (pid, group))
+        })
+        .collect()
+}
+
+/// A `/proc/<pid>/stat` line's state, parent and process group. The command
+/// name before them is in parentheses and may hold spaces or parentheses
+/// itself, so the fields are read after its last `)`.
+#[cfg(any(target_os = "linux", test))]
+fn parse_stat(stat: &str) -> Option<(char, u32, i32)> {
+    let mut fields = stat[stat.rfind(')')? + 1..].split_whitespace();
+    let state = fields.next()?.chars().next()?;
+    let parent = fields.next()?.parse().ok()?;
+    let group = fields.next()?.parse().ok()?;
+    Some((state, parent, group))
 }
 
 /// One pipe whose write end is duplicated for a child's stdout and stderr, so
@@ -639,5 +756,17 @@ pub(crate) fn spawn_error(program: &str, e: &std::io::Error) -> CliError {
         CliError::new(format!("'{program}' not found on PATH{hint}")).kind(ErrorKind::ToolMissing)
     } else {
         CliError::new(format!("failed to run '{program}': {e}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stat_line_is_read_after_the_command_names_last_parenthesis() {
+        let stat = "4242 (sh (x) y) S 4200 4242 7 0 -1 4194560 0 0";
+        assert_eq!(parse_stat(stat), Some(('S', 4200, 4242)));
+        assert_eq!(parse_stat("1 (init) Z 0"), None);
     }
 }
