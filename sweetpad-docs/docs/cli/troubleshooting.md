@@ -10,7 +10,7 @@ Two commands answer most "why isn't this working" questions, and they answer dif
 
 ## Is my toolchain OK?
 
-On Ubuntu ARM64 or x86_64, CLI 0.1.19 and later provide `sweetpad doctor --target ios` and `--target macos`.
+On ARM64 or x86_64 Linux, CLI 0.1.19 and later provide `sweetpad doctor --target ios` and `--target macos`.
 The Linux report checks compiler tools, SDK data, and optional device services.
 It does not require Xcode on the Linux host. See [Linux setup](linux/sdk-transfer.md).
 Missing localized App Intents phrase resources are a warning and affect localized shortcut training.
@@ -205,6 +205,25 @@ sweetpad build -v             # the full raw transcript
 
 `build diagnostics` is the one to try first. It's instant, and it reads the last build's results from
 disk rather than repeating the work.
+
+## A Linux build fails
+
+A failed Linux build saves Swift Build's whole transcript, and the error ends with `full log:` and its path under `~/.local/state/sweetpad/results/`.
+`sweetpad build -v` streams Swift Build's output while the build runs, with each task's command line.
+
+These failures have a known cause:
+
+| The error says | What to do |
+| --- | --- |
+| `Could not determine path to developer directory` | The shell hasn't loaded the environment file setup wrote, so Swift isn't on `PATH`. Run `source ~/.config/sweetpad/linux-env.sh`, then `sweetpad doctor --target ios`. |
+| `swbuild was killed by SIGKILL` | The kernel's out-of-memory killer sends SIGKILL, and `journalctl -k` says if it did. If so, give the VM or container more memory. |
+| `'-allowProvisioningUpdates' is an xcodebuild flag` | After `--`, Swift Build takes only build settings (`KEY=VALUE`), `-derivedDataPath`, `-xcconfig`, `-testPlan`, `-verbose` and `-quiet`. Remove the flag from the command or from `[xcodebuild].args` in `sweetpad.toml`. |
+| `needs 'metal', Apple's Metal shader compiler, which has no Linux version` | Build that target on a Mac. [Project and resource support](linux/reference.md#project-and-resource-support) lists the inputs that need macOS tools. |
+| `needs 'mytool', which Swift Build couldn't find` | A run script or build rule calls a tool this machine lacks. Install it on the search path. [Run scripts](linux/how-it-works.md#run-scripts) lists the macOS tools the build supplies. |
+| `'…/Core.swift' is '…/core.swift' on disk` | Linux file names are case-sensitive. Rename the file or the project's reference so they match. |
+
+When `sweetpad doctor` warns about Swift Build patches, the CLI was upgraded after setup ran.
+Run setup again, as [Upgrade](linux/install.md#upgrade) describes.
 
 ## Reading an exit code
 

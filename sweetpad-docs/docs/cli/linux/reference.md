@@ -27,7 +27,7 @@ Flutter AOT and React Native keep the additional host-tool requirements in their
 
 The validated setup uses an Apple-hardware Linux VM, Swift 6.4.2, Swift Build 6.4.0, and SDK data from Xcode.
 Setup builds Swift Build with SweetPad's patches and records which ones it used.
-A newer SweetPad can carry newer patches, so after an upgrade `sweetpad doctor` warns until `sweetpad setup` runs again.
+A newer SweetPad can carry newer patches, so after an upgrade `sweetpad doctor` warns until `sweetpad setup` runs again (see [Upgrade](install.md#upgrade)).
 The same report lists the tvOS, watchOS, and visionOS platforms that the SDK includes.
 
 ## Platform coverage
@@ -144,8 +144,8 @@ Those convenience commands require CLI 0.1.19 or later.
 | `SWEETPAD_ASC_KEY_PATH` | Select the key's `.p8` file. |
 | `SWEETPAD_ASC_KEY` | Supply the key file's text instead of a path. |
 | `SWEETPAD_DEVICE_PYTHON` | Select Python with the pinned modern device adapter. |
-| `SWEETPAD_DEVICE_TIMEOUT` | Set the finite device-action timeout in seconds (default: 180, maximum: 3600). |
-| `SWEETPAD_DEVICE_DISCOVERY_TIMEOUT` | Set each device's discovery timeout in seconds (default: 30, maximum: 3600). |
+| `SWEETPAD_DEVICE_TIMEOUT` | Set the device-action timeout in seconds (default: 180, maximum: 3600). Applies when `SWEETPAD_DEVICE_PYTHON` or `SWEETPAD_DEVICE_NETWORK_CONFIG` is set. |
+| `SWEETPAD_DEVICE_DISCOVERY_TIMEOUT` | Set each device's discovery timeout in seconds (default: 30, maximum: 3600). Applies when `SWEETPAD_DEVICE_PYTHON` or `SWEETPAD_DEVICE_NETWORK_CONFIG` is set. |
 | `SWEETPAD_DEVICE_NETWORK_CONFIG` | Select a private Wi-Fi device configuration. |
 | `SWEETPAD_SKIP_RUST` | Setup only: use `1` to omit Rust for the prebuilt CLI. |
 | `SWEETPAD_REFRESH_SDK` | Setup only: use `1` to refresh an existing SDK extraction. |

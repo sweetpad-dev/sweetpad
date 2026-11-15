@@ -67,6 +67,7 @@ sweetpad setup --sdk "$HOME/apple-sdk.tar.gz" --skip-system-packages
 
 This option still downloads and checks the pinned tools, imports the SDK, and builds the sample.
 It does not skip toolchain validation.
+Setup refuses Alpine, because the Apple toolchain needs glibc. The CLI itself runs there.
 On other distributions, setup warns, skips automatic package installation, and tries the Ubuntu 24.04 Swift archive with your existing dependencies.
 Missing or incompatible libraries still cause setup to fail with diagnostics.
 

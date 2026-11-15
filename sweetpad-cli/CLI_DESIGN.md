@@ -4633,9 +4633,8 @@ disk in the failure's tip.
 **Resources keep their on-demand tags.** A build file's `ASSET_TAGS` is the
 PIF's `assetTags`, sorted, as Xcode 27 writes it (`ci/fixture-asset-tags`).
 Swift Build then lays out the asset packs, `OnDemandResources.plist` and
-`AssetPackManifestTemplate.plist` as Xcode does, except that a pack's name
-ends in a SHA-256 rather than an MD5: off Apple platforms Swift Build's
-`md5()` falls back to SHA-256.
+`AssetPackManifestTemplate.plist` as Xcode does, down to the MD5 that ends
+a pack's name (the vendored MD5 below).
 
 **An intent definition's attributes decide its classes.** Xcode 27's
 `-dumpPIF` for every combination (`ci/fixture-intents`) gives the rule: a

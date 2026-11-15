@@ -122,7 +122,8 @@ sweetpad doctor --target ios --json --non-interactive
 
 Setup requires Python 3 and sudo access for system packages.
 With CLI 0.1.22, use `--skip-system-packages` to supply existing host dependencies.
-With `--non-interactive`, configure passwordless sudo or authenticate with `sudo -v` before setup.
+With `--json` or `--non-interactive`, or when stderr isn't a terminal, sudo can't ask for a password.
+Configure passwordless sudo or authenticate with `sudo -v` before setup.
 Setup installs the pinned Swift toolchain, xtool, patched Swift Build, and macro plugin.
 It verifies the SDK archive and imports the Apple files without access to the original Xcode installation.
 It does not install Rust or modify shell startup files.

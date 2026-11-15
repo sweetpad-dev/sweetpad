@@ -10,9 +10,8 @@ A Mac with Xcode supplies Apple test execution.
 
 ## Configure development signing
 
-Prepare an Apple Development certificate and private key as a P12 file.
-Use OpenSSL 3 with AES encryption for the export.
-Legacy P12 files that use 40-bit RC2 encryption are not supported by the Linux signer.
+Export an Apple Development certificate and its private key as a P12 file.
+The Linux signer reads AES-encrypted files from OpenSSL 3 and older files that use 3DES or 40-bit RC2.
 
 Provide profiles for the app's bundle identifiers, entitlements, and registered iPhone.
 Extensions and UI test runners can require additional matching profiles.
@@ -137,12 +136,13 @@ sweetpad archive --project MyApp.xcodeproj --scheme MyApp \
 ```
 
 The archive includes app, extension, and embedded-framework debug symbols.
-A development export keeps the build's identity and profiles.
+When `SWEETPAD_CODE_SIGN_P12` is set, a development export signs the app again with the Apple Development identity it holds.
+Otherwise the export keeps the build's signature.
 Use `--no-export` to retain only the archive, and `sweetpad archive export` to export it later.
 
 ### Identities and profiles for each method
 
-Every other method signs the archived app again, as Xcode's export does.
+The methods below sign the archived app again, as Xcode's export does, and `mac-application` exports the app as it was signed.
 SweetPad picks the identity by its certificate type and the profile by its kind:
 
 | Method | Identity | Profiles |

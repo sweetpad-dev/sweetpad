@@ -77,7 +77,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CLI_VERSION=0.1.23
+          CLI_VERSION=0.1.25
           mkdir "$RUNNER_TEMP/cli"
           cd "$RUNNER_TEMP/cli"
           curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz"
@@ -87,13 +87,11 @@ jobs:
           install -Dm755 sweetpad "$RUNNER_TEMP/sweetpad/bin/sweetpad"
           ln -s sweetpad "$RUNNER_TEMP/sweetpad/bin/sweetpad-dap"
           echo "$RUNNER_TEMP/sweetpad/bin" >> "$GITHUB_PATH"
-          echo "$HOME/bin" >> "$GITHUB_PATH"
-          echo "$HOME/swift/swift-6.4.2-RELEASE/usr/bin" >> "$GITHUB_PATH"
       - name: Build iPhone products
         shell: bash
         run: |
           set -euo pipefail
-          export PATH="$RUNNER_TEMP/sweetpad/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$HOME/bin:$PATH"
+          source "$HOME/.config/sweetpad/linux-env.sh"
           sweetpad build --project MyApp.xcodeproj --scheme MyApp \
             --configuration Release --destination 'generic/platform=iOS' \
             --json --non-interactive \
@@ -111,6 +109,7 @@ jobs:
 ```
 
 The example creates unsigned device products for a build check.
+Each step sources the environment file that `sweetpad setup` wrote on the runner, which selects the Swift toolchain, Swift Build, and SDK that setup installed.
 [Development signing](signing-and-testing.md#configure-development-signing) is required before installation on a phone.
 
 The tar archive preserves executable permissions and framework symbolic links.
@@ -196,7 +195,7 @@ Replace the build step with an archive step:
           SWEETPAD_ASC_KEY: ${{ secrets.ASC_KEY }}
         run: |
           set -euo pipefail
-          export PATH="$RUNNER_TEMP/sweetpad/bin:$HOME/swift/swift-6.4.2-RELEASE/usr/bin:$HOME/bin:$PATH"
+          source "$HOME/.config/sweetpad/linux-env.sh"
           sweetpad archive --project MyApp.xcodeproj --scheme MyApp \
             --configuration Release --destination 'generic/platform=iOS' \
             --upload --output-file "$RUNNER_TEMP/dist" \

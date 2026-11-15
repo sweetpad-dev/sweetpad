@@ -119,7 +119,7 @@ with 'sweetpad context', not by hand).",
     },
     Topic {
         name: "environment",
-        summary: "every SWEETPAD_* variable, and the color/CI controls",
+        summary: "the SWEETPAD_* variables you can set, and the color/CI controls",
         body: "\
 ENVIRONMENT VARIABLES
 
@@ -150,6 +150,11 @@ Color:
                             force color on even when piped; an explicit
                             --no-color / NO_COLOR still wins
 
+Build engine:
+
+  SWEETPAD_ENGINE           'xcodebuild' or 'swift-build' (the --engine
+                            flag); xcodebuild on macOS, Swift Build elsewhere
+
 Hot reload:
 
   SWEETPAD_HOTRELOAD_DYLIB  override the injection client dylib path (CI)
@@ -159,6 +164,10 @@ Debug adapter ('sweetpad dap'):
   SWEETPAD_LLDB_DAP         the lldb-dap to start in place of 'xcrun lldb-dap'
   SWEETPAD_DAP_LOG          file that records every message between the
                             editor and lldb-dap
+
+Build server ('sweetpad bsp'):
+
+  SWEETPAD_BSP_LOG          file the build server writes its debug log to
 
 Linux builds (Swift Build, where there is no Xcode):
 
@@ -175,6 +184,10 @@ Linux builds (Swift Build, where there is no Xcode):
   SWEETPAD_PROVISIONING_PROFILES
                             a folder of provisioning profiles, in place of
                             Xcode's folders
+  SWEETPAD_APPLE_SESSION_FILE
+                            the Apple session 'auth login' saves and
+                            'setup --xcode' and 'sdk download' use
+                            ('--session-file')
 
 App Store Connect ('upload', 'notarize', 'archive --upload' and
 'archive --notarize'):
@@ -195,7 +208,15 @@ Linux device services (see 'help linux-devices'):
                             modern USB transport unless a network config is set
   SWEETPAD_DEVICE_NETWORK_CONFIG
                             private devices.json from 'device pair-network';
-                            selects direct Wi-Fi with automatic discovery",
+                            selects direct Wi-Fi with automatic discovery
+  SWEETPAD_DEVICE_TIMEOUT   seconds a device action may take (default 180,
+                            at most 3600)
+  SWEETPAD_DEVICE_DISCOVERY_TIMEOUT
+                            seconds to look for each device (default 30, at
+                            most 3600)
+
+  The two timeouts apply when SWEETPAD_DEVICE_PYTHON or
+  SWEETPAD_DEVICE_NETWORK_CONFIG is set.",
     },
     Topic {
         name: "exit-codes",

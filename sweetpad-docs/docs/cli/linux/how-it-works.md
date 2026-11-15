@@ -73,9 +73,23 @@ After you upgrade SweetPad or import an SDK from another Xcode, the next build c
 Two builds that share a DerivedData directory run one after the other, and the second one says it is waiting.
 A fresh DerivedData directory provides a control when you compare a changed resource processor or toolchain.
 
+### Run scripts
+
 Run-script phases execute on Linux.
 Apple's `sandbox-exec` profiles do not apply. Scripts use the Linux build environment.
-The build supplies compatible tools for common Xcode script operations, but a script that depends on macOS still needs adaptation.
+A script's `PATH` holds the Swift toolchain and SweetPad's versions of these macOS tools:
+
+- `xcrun`, which runs a tool by name, finds one with `--find`, and reports an SDK's path and versions with the `--show-sdk-*` options
+- `ditto`, which copies files and folders, but leaves making and opening archives to `zip` and `unzip`
+- `cc`, which sends a compile for an Apple target to Clang and any other compile to the host's `cc`
+- `codesign`, `lipo`, `strip`, and `dsymutil`
+- `actool`, `ibtool`, `momc`, `mapc`, and `xcstringstool`
+
+Other macOS commands, such as `/usr/libexec/PlistBuddy`, `plutil`, `agvtool`, and `sw_vers`, aren't available.
+A script that calls one needs a Linux equivalent, or it has to run on a Mac.
+
+A process that a script starts in the background, such as a local server, keeps running after the script, and the build doesn't wait for it to exit.
+When you stop a build with Ctrl-C, SweetPad stops the processes its scripts left running.
 
 The build runs shell pre-actions and post-actions in the scheme's Build action.
 Build pre-actions run before project translation, so they can generate source files.
@@ -93,11 +107,12 @@ When sourcekit-lsp asks for a target's dependencies, SweetPad builds them with S
 
 ## Signing and the phone
 
-Linux signing uses an Apple Development identity from a P12 file and your provisioning profiles.
+Linux signing takes identities from P12 files and matches them with your provisioning profiles.
+A build signs with the identity its build settings select, and an export signs again with the one its method needs.
 The signer seals the app and its embedded bundles before installation.
 
 The device adapter uses `pymobiledevice3==11.50.0` for USB and Wi-Fi.
-Without `SWEETPAD_DEVICE_PYTHON`, the device commands run the `pymobiledevice3` command on PATH, and they exit with code 5 (`tool_missing`) unless it is that release.
+When neither `SWEETPAD_DEVICE_PYTHON` nor `SWEETPAD_DEVICE_NETWORK_CONFIG` is set, the device commands run the `pymobiledevice3` command on PATH, and they exit with code 5 (`tool_missing`) unless it is that release.
 It authenticates the selected device before installation or launch.
 The modern adapter establishes its developer-service tunnel in userspace.
 

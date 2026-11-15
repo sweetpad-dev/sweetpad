@@ -78,9 +78,9 @@ sweetpad archive --export-options ./ExportOptions.plist
 ```
 
 xcodebuild reads every key. SweetPad's own export on Linux reads `method`, `teamID`, `signingStyle`,
-`signingCertificate`, `installerSigningCertificate`, `provisioningProfiles` and `destination`, and
-refuses, by name, any other key that would change the result. Either way, the export folder gets
-the options it used.
+`signingCertificate`, `installerSigningCertificate`, `provisioningProfiles`,
+`iCloudContainerEnvironment` and `destination`, and refuses, by name, any other key that would
+change the result. Either way, the export folder gets the options it used.
 
 To stop before the export entirely, and hand the `.xcarchive` to something else:
 

@@ -180,3 +180,23 @@ rm -f "$HOME/.local/bin/sweetpad" "$HOME/.local/bin/sweetpad-dap"
 
 After installing the CLI, follow [SDK export and setup](sdk-transfer.md).
 Then use [Ubuntu and USB setup](ubuntu-usb.md) to connect an iPhone.
+
+## Upgrade
+
+A new CLI release can carry new patches for Swift Build, which setup compiles on your machine.
+After upgrading the CLI by any of the methods above, run setup again with the SDK source you used the first time:
+
+```bash
+sweetpad setup --sdk "$HOME/apple-sdk.tar.gz"
+source "$HOME/.config/sweetpad/linux-env.sh"
+sweetpad doctor --target ios
+```
+
+Pass `--xcode` with the same version instead if that is how you set up.
+Setup skips every step whose result is already installed and current.
+When the patches or the Swift Build version changed, it builds Swift Build again in a new folder under `~/src` and points `~/bin/swbuild` at it, which took about 14 minutes on the validated VM.
+Until then, builds keep using the old Swift Build, and `sweetpad doctor` warns about Swift Build patches.
+If setup says the SDK import recipe or toolchain changed, add `--replace-sdk`.
+
+Setup keeps the previous `~/src/swift-build*` folder.
+Delete it once `sweetpad doctor` passes.
