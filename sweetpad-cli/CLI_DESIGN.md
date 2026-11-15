@@ -4777,13 +4777,17 @@ other `-sdk`, as `xcrun` does, and leaves the script's alone without one.
 
 **Swift Build is patched, as little as it can be.** `linux-setup.sh` builds
 Swift 6.4.2 with Swift Build 6.4.0 and `ci/swift-build-linux.patch`, beside
-`ci/swift-build-generic-debug-bridges.patch` and llbuild's `ci/swift-llbuild-directory-race.patch`. Each
+`ci/swift-build-generic-debug-bridges.patch` and llbuild's `ci/swift-llbuild-directory-race.patch` and
+`ci/swift-llbuild-spawn-descriptors.patch`. Each
 change is one an upstream pull request could take: a failed `lsregister`
 start is a note, as a failed run already is; provisioning requests go to the
 tool `SWEETPAD_PROVISIONING` names; `derq` is looked up on the search path;
 the Mach-O reader has its structures on every platform; and text encodings
 are found by name without CoreFoundation, including Unicode byte-order marks.
 LLVM's Darwin libtool is recognized without treating its LLVM version as a cctools version.
+llbuild closes every descriptor but the standard three and its control pipe in the tasks it
+starts, as `POSIX_SPAWN_CLOEXEC_DEFAULT` does on Darwin, so a process a script phase leaves
+running doesn't hold the build service's socket and keep `swbuild` from exiting.
 Where CryptoKit is missing, Swift Build's MD5 is a vendored MD5 instead of SHA-256, so an
 On-Demand Resources asset pack and its `OnDemandResources.plist` entry carry Xcode's names.
 Setup records what it built `swbuild` from beside it

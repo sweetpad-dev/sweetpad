@@ -47,6 +47,7 @@ pub(crate) fn swift_build_patches() -> String {
         "swift-build-linux.patch",
         "swift-build-generic-debug-bridges.patch",
         "swift-llbuild-directory-race.patch",
+        "swift-llbuild-spawn-descriptors.patch",
         "swift-build-Package.resolved",
     ] {
         let path = format!("setup/sweetpad-lib/ci/{name}");

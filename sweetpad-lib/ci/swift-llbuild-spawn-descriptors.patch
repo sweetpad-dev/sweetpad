@@ -1,0 +1,49 @@
+diff --git a/lib/Basic/Subprocess.cpp b/lib/Basic/Subprocess.cpp
+index 4ff47783..30b86f56 100644
+--- a/lib/Basic/Subprocess.cpp
++++ b/lib/Basic/Subprocess.cpp
+@@ -828,6 +828,12 @@ enum class CommunicationPipesCreationError {
+   OUTPUT_PIPE_FAILED,
+   CONTROL_PIPE_FAILED
+ };
++#if defined(__GLIBC__) && __GLIBC_PREREQ(2, 34)
++/// Where a spawned process finds the control pipe: every descriptor after it
++/// is closed.
++static const int inheritedControlDescriptor = STDERR_FILENO + 1;
++#endif
++
+ static std::pair<CommunicationPipesCreationError, int> createCommunicationPipes(const ProcessAttributes &attr,
+         PlatformSpecificPipesConfig& pipesConfig,
+         ManagedDescriptor& outputPipeParentEnd,
+@@ -926,6 +932,19 @@ static std::pair<CommunicationPipesCreationError, int> createCommunicationPipes(
+ #endif
+   }
+ 
++#if defined(__GLIBC__) && __GLIBC_PREREQ(2, 34)
++  // Linux has no POSIX_SPAWN_CLOEXEC_DEFAULT, so the child would inherit
++  // every descriptor the build service holds open, and a process it leaves
++  // running would keep them open after the build. Close them as Darwin does,
++  // keeping the control pipe at the first descriptor after stderr.
++  int firstClosed = STDERR_FILENO + 1;
++  if (attr.controlEnabled) {
++    posix_spawn_file_actions_adddup2(&fileActions, controlPipeChildEnd.unsafeDescriptor(), inheritedControlDescriptor);
++    firstClosed = inheritedControlDescriptor + 1;
++  }
++  posix_spawn_file_actions_addclosefrom_np(&fileActions, firstClosed);
++#endif
++
+ #endif
+ 
+   return std::make_pair(CommunicationPipesCreationError::ERROR_NONE, 0);
+@@ -1143,7 +1162,11 @@ void llbuild::basic::spawnProcess(
+       }
+ 
+       if (controlPipeChildEnd.isValid()) {
++#if defined(__GLIBC__) && __GLIBC_PREREQ(2, 34)
++        long long controlFd = inheritedControlDescriptor;
++#else
+         long long controlFd = (long long)controlPipeChildEnd.unsafeDescriptor();
++#endif
+         environment.setIfMissing("LLBUILD_CONTROL_FD", Twine(controlFd).str());
+       }
+ 

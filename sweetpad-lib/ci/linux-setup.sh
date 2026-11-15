@@ -187,6 +187,7 @@ section "swbuild ($SWB_TAG)"
 PATCH="$(cd "$(dirname "$0")" && pwd)/swift-build-linux.patch"
 GENERIC_PATCH="$(dirname "$PATCH")/swift-build-generic-debug-bridges.patch"
 LLBUILD_PATCH="$(dirname "$PATCH")/swift-llbuild-directory-race.patch"
+LLBUILD_SPAWN_PATCH="$(dirname "$PATCH")/swift-llbuild-spawn-descriptors.patch"
 LOCKFILE="$(dirname "$PATCH")/swift-build-Package.resolved"
 SWB="$HOME/src/swift-build"
 # A new tag, lockfile, or base patch gets its own cache. Keep older checkouts
@@ -197,8 +198,9 @@ if [ -d "$SWB/.git" ]; then
   if [ "$current" != "$wanted" ] || ! cmp -s "$LOCKFILE" "$SWB/Package.resolved" ||
       ! git -C "$SWB" apply --reverse --check "$PATCH" 2>/dev/null ||
       ! git -C "$SWB" apply --reverse --check "$GENERIC_PATCH" 2>/dev/null ||
-      ! git -C "$SWB/.build/checkouts/swift-llbuild" apply --reverse --check "$LLBUILD_PATCH" 2>/dev/null; then
-    cache_key="$(cat "$PATCH" "$GENERIC_PATCH" "$LLBUILD_PATCH" "$LOCKFILE" | sha256sum | cut -c1-12)"
+      ! git -C "$SWB/.build/checkouts/swift-llbuild" apply --reverse --check "$LLBUILD_PATCH" 2>/dev/null ||
+      ! git -C "$SWB/.build/checkouts/swift-llbuild" apply --reverse --check "$LLBUILD_SPAWN_PATCH" 2>/dev/null; then
+    cache_key="$(cat "$PATCH" "$GENERIC_PATCH" "$LLBUILD_PATCH" "$LLBUILD_SPAWN_PATCH" "$LOCKFILE" | sha256sum | cut -c1-12)"
     SWB="$HOME/src/swift-build-$SWIFT_BUILD_VERSION-$cache_key"
   fi
 fi
@@ -251,12 +253,22 @@ if ! git -C "$SWB" apply --reverse --check "$GENERIC_PATCH" 2>/dev/null; then
 fi
 # Resolve dependencies before patching the pinned llbuild checkout. Its directory
 # iterator must tolerate entries removed by dependency replacement scripts.
+# Linux has no POSIX_SPAWN_CLOEXEC_DEFAULT, so every task llbuild starts
+# inherits the build service's descriptors, and a process a script leaves
+# running (a Gradle daemon, say) keeps swbuild from exiting until it does; the
+# spawn patch closes them, as Darwin does.
 cp "$LOCKFILE" "$SWB/Package.resolved"
 (cd "$SWB" && swift package --force-resolved-versions resolve)
 LLBUILD="$SWB/.build/checkouts/swift-llbuild"
-if ! git -C "$LLBUILD" apply --reverse --check "$LLBUILD_PATCH" 2>/dev/null; then
-  git -C "$LLBUILD" apply --check "$LLBUILD_PATCH"
-  git -C "$LLBUILD" apply "$LLBUILD_PATCH"
+llbuild_patched=
+for llbuild_patch in "$LLBUILD_PATCH" "$LLBUILD_SPAWN_PATCH"; do
+  if ! git -C "$LLBUILD" apply --reverse --check "$llbuild_patch" 2>/dev/null; then
+    git -C "$LLBUILD" apply --check "$llbuild_patch"
+    git -C "$LLBUILD" apply "$llbuild_patch"
+    llbuild_patched=1
+  fi
+done
+if [ -n "$llbuild_patched" ]; then
   (cd "$SWB" && swift build --jobs "${SWEETPAD_SETUP_JOBS:-4}" -c release --product swbuild && swift build --jobs "${SWEETPAD_SETUP_JOBS:-4}" -c release --product SWBBuildServiceBundle)
 fi
 if [ ! -x "$SWB/.build/release/swbuild" ] || [ ! -x "$SWB/.build/release/SWBBuildServiceBundle" ]; then
@@ -269,7 +281,7 @@ ls "$SWB/.build/release/swbuild" "$SWB/.build/release/SWBBuildServiceBundle"
 # What this swbuild was built from, which 'sweetpad doctor' compares with
 # the patches the running sweetpad carries.
 printf '{"swiftBuild":"%s","patches":"%s"}\n' "$SWIFT_BUILD_VERSION" \
-  "$(cat "$PATCH" "$GENERIC_PATCH" "$LLBUILD_PATCH" "$LOCKFILE" | sha256sum | cut -d' ' -f1)" \
+  "$(cat "$PATCH" "$GENERIC_PATCH" "$LLBUILD_PATCH" "$LLBUILD_SPAWN_PATCH" "$LOCKFILE" | sha256sum | cut -d' ' -f1)" \
   > "$SWB/.build/release/sweetpad-swift-build.json"
 
 section "sweetpad-macros"

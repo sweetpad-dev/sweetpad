@@ -13,6 +13,7 @@ sweetpad-lib/ci/swift-build-linux.patch
 sweetpad-lib/ci/swift-build-Package.resolved
 sweetpad-lib/ci/swift-build-generic-debug-bridges.patch
 sweetpad-lib/ci/swift-llbuild-directory-race.patch
+sweetpad-lib/ci/swift-llbuild-spawn-descriptors.patch
 sweetpad-cli/macros/Package.swift
 sweetpad-cli/macros/Package.resolved
 sweetpad-cli/fixtures/appintents/extract.actionsdata
