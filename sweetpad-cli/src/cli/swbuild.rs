@@ -16,6 +16,7 @@
 //! its linker, and a few settings stand in for tools that only run on macOS.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Instant;
@@ -110,6 +111,13 @@ pub fn xctestrun(plan: &BuildPlan<'_>) -> Result<PathBuf, String> {
 /// diagnostics `build diagnostics` reads back.
 pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildStats>, CliError> {
     let invocation = Invocation::of(plan)?;
+    let folder = &invocation.locations.folder;
+    let _lock = BuildLock::acquire(folder, || {
+        out.note(&format!(
+            "waiting for another build in {} to finish",
+            folder.display()
+        ));
+    })?;
     if plan.clean {
         clean(plan.container, plan.passthrough)?;
     }
@@ -179,6 +187,43 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
     )
     .context("building the project")
     .tip(recorded.map(|p| format!("read full build log: {}", p.display()))))
+}
+
+/// One build's hold on its DerivedData folder. Swift Build keeps a build
+/// database there that a second build at the same time can't open, and a
+/// build rewrites its inputs there before it runs, so a second build waits
+/// for the first instead of failing halfway or reading the first one's
+/// request. The hold ends when this value drops.
+struct BuildLock {
+    _held: Option<std::fs::File>,
+}
+
+impl BuildLock {
+    /// Waits for any other build in `folder`, calling `waiting` first when
+    /// there is one. A filesystem without locks builds without one.
+    fn acquire(folder: &Path, waiting: impl FnOnce()) -> Result<Self, CliError> {
+        let path = folder.join("sweetpad-build.lock");
+        let file = std::fs::create_dir_all(folder).and_then(|()| {
+            std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(false)
+                .open(&path)
+        });
+        let Ok(file) = file else {
+            return Ok(Self { _held: None });
+        };
+        match file.try_lock() {
+            Ok(()) => Ok(Self { _held: Some(file) }),
+            Err(std::fs::TryLockError::WouldBlock) => {
+                waiting();
+                file.lock()
+                    .map_err(|e| CliError::new(format!("couldn't lock {}: {e}", path.display())))?;
+                Ok(Self { _held: Some(file) })
+            }
+            Err(std::fs::TryLockError::Error(_)) => Ok(Self { _held: None }),
+        }
+    }
 }
 
 /// macOS /bin/sh accepts Bash syntax. Keep that contract for scripts that
@@ -379,7 +424,10 @@ impl Invocation {
         let parameters_file = inputs.join("build-parameters.json");
 
         let host = DarwinSdk::for_host()?;
-        let tools = host.as_ref().map(|_| inputs.join("bin"));
+        let tools = host
+            .as_ref()
+            .map(|h| tools_dir(&inputs, &h.bundle))
+            .transpose()?;
         let toolset = host.as_ref().map(|_| inputs.join("toolset.json"));
         let mut overrides: BTreeMap<String, String> = XCODE_DEFAULTS
             .iter()
@@ -533,8 +581,7 @@ impl Invocation {
                 })?;
             }
             let text = serde_json::to_string(value).map_err(|e| CliError::new(e.to_string()))?;
-            std::fs::write(path, text)
-                .map_err(|e| CliError::new(format!("couldn't write {}: {e}", path.display())))
+            write_whole(path, text.as_bytes())
         };
         let mut request = build_request(plan, &self.container, &pif, &self.parameters)?;
         host_macros::exclude_prebuilt(&mut request, &host_tools);
@@ -701,13 +748,85 @@ fn write_changed(path: &Path, contents: &[u8]) -> Result<(), CliError> {
     if std::fs::read(path).is_ok_and(|old| old == contents) {
         return Ok(());
     }
+    write_whole(path, contents)
+}
+
+/// Write `contents` to `path` by renaming a finished file over it, so a
+/// reader sees the old file or the new one and never one cut short.
+fn write_whole(path: &Path, contents: &[u8]) -> Result<(), CliError> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)
             .map_err(|e| CliError::new(format!("couldn't create {}: {e}", dir.display())))?;
     }
-    std::fs::write(path, contents)
-        .map_err(|e| CliError::new(format!("couldn't write {}: {e}", path.display())))
+    let staging = sibling(path, "tmp");
+    std::fs::write(&staging, contents)
+        .and_then(|()| std::fs::rename(&staging, path))
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&staging);
+            CliError::new(format!("couldn't write {}: {e}", path.display()))
+        })
 }
+
+/// A name beside `path` no other process picks: `.<name>.<pid>-<time>.<kind>`.
+fn sibling(path: &Path, kind: &str) -> PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let name = path
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    path.with_file_name(format!(".{name}.{}-{nanos}.{kind}", std::process::id()))
+}
+
+/// The folder of stand-in links for this binary and the Darwin SDK in
+/// `bundle`, named by what the stand-ins' outputs depend on besides their
+/// inputs: `SweetPad/Tools/<fingerprint>`. Swift Build runs a stand-in by
+/// its path, so a new sweetpad or a new SDK gives each task that runs one a
+/// new command line, and Swift Build runs it again. Links of one fixed name
+/// would leave the outputs of the previous sweetpad in place.
+fn tools_dir(inputs: &Path, bundle: &Path) -> Result<PathBuf, CliError> {
+    let exe = std::env::current_exe()
+        .map_err(|e| CliError::new(format!("couldn't find the sweetpad binary: {e}")))?;
+    Ok(inputs.join("Tools").join(tools_fingerprint(&exe, bundle)))
+}
+
+/// The files of a Darwin SDK bundle that change when it's imported from
+/// another Xcode.
+const SDK_IDENTITY: [&str; 3] = ["info.json", "darwin-sdk-version.txt", "version.plist"];
+
+/// A short hash of this binary (its version, path, size and time) and of
+/// the Darwin SDK in `bundle` (its path and [`SDK_IDENTITY`]).
+fn tools_fingerprint(exe: &Path, bundle: &Path) -> String {
+    let mut identity = format!(
+        "{}\n{}\n{}\n",
+        env!("SWEETPAD_VERSION"),
+        exe.display(),
+        bundle.display()
+    )
+    .into_bytes();
+    if let Ok(meta) = std::fs::metadata(exe) {
+        identity.extend(meta.len().to_le_bytes());
+        if let Ok(time) = meta.modified()
+            && let Ok(since) = time.duration_since(std::time::UNIX_EPOCH)
+        {
+            identity.extend(since.as_nanos().to_le_bytes());
+        }
+    }
+    for name in SDK_IDENTITY {
+        identity.extend(std::fs::read(bundle.join(name)).unwrap_or_default());
+        identity.push(0);
+    }
+    sweetpad_lib::xcode_hash::sha256(&identity)[..8]
+        .iter()
+        .fold(String::new(), |mut hex, b| {
+            let _ = write!(hex, "{b:02x}");
+            hex
+        })
+}
+
+/// How long a folder of stand-in links for another sweetpad or SDK stays,
+/// in case a build with that sweetpad is still running.
+const STALE_TOOLS: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
 /// Link this binary into `dir` under the names of the Xcode tools it stands
 /// in for: `actool`, the asset catalog compiler (see [`super::actool`]),
@@ -716,6 +835,11 @@ fn write_changed(path: &Path, contents: &[u8]) -> Result<(), CliError> {
 /// String Catalog compiler (see [`super::xcstringstool`]), and the small
 /// Darwin tools like `lipo` (see [`super::darwin_tools`]), with the Darwin
 /// SDK's `linker` beside them for the linker stand-in to run.
+///
+/// The links are made in a folder of their own that is then renamed to
+/// `dir`, so a build running at the same time never finds one missing. A
+/// `dir` that already holds them all stays as it is. Folders beside it,
+/// for another sweetpad or SDK, go once they're a day old.
 fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
     let fail = |e: std::io::Error| {
         CliError::new(format!(
@@ -724,12 +848,71 @@ fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
         ))
     };
     let exe = std::env::current_exe().map_err(fail)?;
-    std::fs::create_dir_all(dir).map_err(fail)?;
+    let links = stand_in_links(&exe, linker);
+    let intact = |dir: &Path| {
+        links
+            .iter()
+            .all(|(name, target)| std::fs::read_link(dir.join(name)).is_ok_and(|t| t == *target))
+    };
+    if !intact(dir) {
+        let staging = sibling(dir, "tmp");
+        std::fs::create_dir_all(&staging).map_err(fail)?;
+        for (name, target) in &links {
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(target, staging.join(name)).map_err(fail)?;
+            #[cfg(not(unix))]
+            std::fs::copy(target, staging.join(name)).map_err(fail)?;
+        }
+        if std::fs::rename(&staging, dir).is_err() {
+            // Another build made `dir` first, or an earlier one left it
+            // broken, which is moved aside for the new links.
+            if intact(dir) {
+                let _ = std::fs::remove_dir_all(&staging);
+            } else {
+                let broken = sibling(dir, "old");
+                let _ = std::fs::rename(dir, &broken);
+                std::fs::rename(&staging, dir).map_err(fail)?;
+                let _ = std::fs::remove_dir_all(&broken);
+            }
+        }
+    }
+    remove_stale_tools(dir);
+    Ok(())
+}
+
+/// Remove the folders beside `current` that are [`STALE_TOOLS`] old, and
+/// `SweetPad/bin`, where sweetpad 0.1.25 and earlier linked the stand-ins.
+fn remove_stale_tools(current: &Path) {
+    let Some(parent) = current.parent() else {
+        return;
+    };
+    let legacy = parent.parent().map(|inputs| inputs.join("bin"));
+    let now = std::time::SystemTime::now();
+    let siblings = std::fs::read_dir(parent)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path());
+    for path in siblings.chain(legacy) {
+        let old = std::fs::symlink_metadata(&path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|time| now.duration_since(time).ok())
+            .is_some_and(|age| age > STALE_TOOLS);
+        if path != current && old {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+}
+
+/// The stand-ins' names and what each links to: this binary, `exe`, for
+/// Xcode's tools, and the Darwin SDK's `linker` and its `dsymutil`.
+fn stand_in_links(exe: &Path, linker: Option<&Path>) -> Vec<(&'static str, PathBuf)> {
     let dsymutil = linker
         .and_then(Path::parent)
         .map(|p| p.join("dsymutil"))
         .filter(|p| p.is_file());
-    let tools = [
+    [
         "actool",
         "ibtool",
         "momc",
@@ -745,22 +928,10 @@ fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
     ]
     .iter()
     .chain(super::darwin_tools::TOOLS)
-    .map(|tool| (*tool, exe.as_path()))
-    .chain(linker.map(|l| (super::darwin_tools::SDK_LINKER, l)))
-    .chain(
-        dsymutil
-            .as_deref()
-            .map(|p| (super::darwin_tools::SDK_DSYMUTIL, p)),
-    );
-    for (name, target) in tools {
-        let path = dir.join(name);
-        let _ = std::fs::remove_file(&path);
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(target, &path).map_err(fail)?;
-        #[cfg(not(unix))]
-        std::fs::copy(target, &path).map_err(fail)?;
-    }
-    Ok(())
+    .map(|tool| (*tool, exe.to_path_buf()))
+    .chain(linker.map(|l| (super::darwin_tools::SDK_LINKER, l.to_path_buf())))
+    .chain(dsymutil.map(|p| (super::darwin_tools::SDK_DSYMUTIL, p)))
+    .collect()
 }
 
 /// The `swbuild` to run: `SWEETPAD_SWBUILD`, else the one on `PATH`. The
@@ -2364,5 +2535,85 @@ mod tests {
         assert_eq!(p["overrides"]["commandLine"]["table"]["A"], "1");
         let mac = parameters("Debug", "macosx", "arm64", &locations, &overrides, None);
         assert_eq!(mac["activeRunDestination"]["sdkVariant"], "macos");
+    }
+
+    #[test]
+    fn a_second_build_in_the_same_derived_data_waits_for_the_first() {
+        let dir = crate::cli::testdir::TempDir::new("sweetpad-build-lock");
+        let first = BuildLock::acquire(&dir, || panic!("nothing holds the folder yet")).unwrap();
+        let (sent, received) = std::sync::mpsc::channel();
+        let folder = dir.to_path_buf();
+        let second = std::thread::spawn(move || {
+            let mut waited = false;
+            let lock = BuildLock::acquire(&folder, || waited = true).unwrap();
+            sent.send(waited).unwrap();
+            drop(lock);
+        });
+        assert!(
+            received
+                .recv_timeout(std::time::Duration::from_millis(300))
+                .is_err(),
+            "the second build ran while the first held the folder"
+        );
+        drop(first);
+        let waited = received
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap();
+        assert!(waited, "the second build said nothing about waiting");
+        second.join().unwrap();
+    }
+
+    #[test]
+    fn the_stand_ins_get_a_new_folder_when_sweetpad_or_its_sdk_changes() {
+        let dir = crate::cli::testdir::TempDir::new("sweetpad-tools-fingerprint");
+        let exe = dir.join("sweetpad");
+        let bundle = dir.join("darwin.artifactbundle");
+        std::fs::create_dir_all(&bundle).unwrap();
+        std::fs::write(&exe, "one build").unwrap();
+        std::fs::write(bundle.join("info.json"), r#"{"xcodeVersion":"27.1"}"#).unwrap();
+        let first = tools_fingerprint(&exe, &bundle);
+        assert_eq!(first, tools_fingerprint(&exe, &bundle));
+        std::fs::write(&exe, "a newer build").unwrap();
+        let rebuilt = tools_fingerprint(&exe, &bundle);
+        assert_ne!(first, rebuilt, "a new binary at the same path");
+        std::fs::write(bundle.join("info.json"), r#"{"xcodeVersion":"27.2"}"#).unwrap();
+        assert_ne!(
+            rebuilt,
+            tools_fingerprint(&exe, &bundle),
+            "an SDK from another Xcode"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_stand_in_links_are_whole_and_old_folders_go() {
+        let dir = crate::cli::testdir::TempDir::new("sweetpad-link-tools");
+        let exe = std::env::current_exe().unwrap();
+        let old = dir.join("Tools/older");
+        let recent = dir.join("Tools/recent");
+        let legacy = dir.join("bin");
+        for folder in [&old, &recent, &legacy] {
+            std::fs::create_dir_all(folder).unwrap();
+        }
+        let two_days_ago = std::time::SystemTime::now() - 2 * STALE_TOOLS;
+        for folder in [&old, &legacy] {
+            std::fs::File::open(folder)
+                .unwrap()
+                .set_modified(two_days_ago)
+                .unwrap();
+        }
+        let tools = dir.join("Tools/current");
+        link_tools(&tools, None).unwrap();
+        assert_eq!(std::fs::read_link(tools.join("actool")).unwrap(), exe);
+        std::fs::remove_file(tools.join("ibtool")).unwrap();
+        link_tools(&tools, None).unwrap();
+        assert_eq!(std::fs::read_link(tools.join("ibtool")).unwrap(), exe);
+        let mut left: Vec<_> = std::fs::read_dir(dir.join("Tools"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(left, ["current", "recent"]);
+        assert!(!legacy.exists());
     }
 }

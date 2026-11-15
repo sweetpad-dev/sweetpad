@@ -4583,7 +4583,12 @@ DerivedData folder xcodebuild would use, so the product locator, `app run`'s
 lookups and the extension find the product unchanged. The PIF, the request,
 the parameters, the toolset and the stand-ins' folder go in
 `Intermediates.noindex/SweetPad`, and a file is rewritten only when its
-contents change, which keeps SwiftPM's manifest cache.
+contents change, which keeps SwiftPM's manifest cache. A new file replaces
+the old one by rename, so a reader never sees half of one. A build holds a
+lock on the DerivedData folder (`sweetpad-build.lock`) from before it writes
+those files until it ends, and a second build there waits for it with a
+note: Swift Build's database takes one build at a time, and the second
+would otherwise rewrite the first one's inputs.
 
 **The Darwin SDK replaces Xcode.** xtool's bundle (`SWEETPAD_DARWIN_SDK`)
 has the Apple SDKs, Xcode's runtime libraries and an `ld64.lld` that writes
@@ -4596,7 +4601,15 @@ beside the bundle, since Swift Build reports 99.99.99 without one.
 
 **A stand-in is the sweetpad binary under the tool's name.** The engine
 links the binary into the stand-ins' folder under each name, puts the folder
-on `swbuild`'s `PATH`, and `main` dispatches on `argv[0]`. One binary keeps
+on `swbuild`'s `PATH`, and `main` dispatches on `argv[0]`. The folder is
+`SweetPad/Tools/<fingerprint>`, a hash of the binary (version, path, size
+and time) and of the Darwin SDK's `info.json`, `darwin-sdk-version.txt` and
+`version.plist`. Swift Build runs a tool by its path, so after an upgrade or
+an SDK import every task a stand-in runs has a new command line and runs
+again, and products don't keep the previous version's asset catalogs or
+nibs. The links are made in a folder of their own that is renamed into
+place, so a build never finds one missing, and folders for other
+fingerprints go after a day. One binary keeps
 the stand-ins at the CLI's version, with nothing more to install. Where the
 corpus can check, a stand-in's output is Xcode's byte for byte: asset
 catalogs, nibs, String Catalogs, Core Data models, signatures. What a

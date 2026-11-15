@@ -67,6 +67,8 @@ sweetpad build --project MyApp.xcodeproj --scheme MyApp \
 
 Swift Build tracks inputs and reuses unchanged work.
 Generated project inputs keep their timestamps when their contents do not change.
+After you upgrade SweetPad or import an SDK from another Xcode, the next build compiles asset catalogs, interface files, and other resources again.
+Two builds that share a DerivedData directory run one after the other, and the second one says it is waiting.
 A fresh DerivedData directory provides a control when you compare a changed resource processor or toolchain.
 
 Run-script phases execute on Linux.
