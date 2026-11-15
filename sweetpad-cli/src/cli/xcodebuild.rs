@@ -459,7 +459,7 @@ pub(crate) fn tool_failure(
     let streamed_error = blocker.is_none() && streamed_an_error(streamed, &diagnostics);
     let shown = streamed_error && !stderr_apart;
     let repeated = (streamed_error && stderr_apart).then(|| repeated_errors(&diagnostics));
-    let headline = blocker.map_or_else(
+    let headline = blocker.as_ref().map_or_else(
         || format!("{ended}{}", repeated.as_deref().unwrap_or(detail)),
         |hint| format!("the build is blocked, not broken: {hint}"),
     );
@@ -469,7 +469,8 @@ pub(crate) fn tool_failure(
     let err = CliError::new(headline)
         .kind(ErrorKind::BuildFailure)
         .diagnostics(diagnostics)
-        .tip(tip);
+        .tip(tip)
+        .blocker(blocker);
     if shown { err.shown() } else { err }
 }
 

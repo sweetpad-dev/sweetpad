@@ -67,6 +67,10 @@ $ sweetpad build --on "nope-does-not-exist" -o json
 `error.code` is a name, not a number: `generic`, `usage_error`, `build_failure`, `target_resolution`,
 `tool_missing`, or `user_cancel`. It mirrors the exit-code taxonomy, so a script can branch on either.
 
+Some builds fail for a reason no code change fixes, such as a package plugin nobody has approved or
+a tool that Linux doesn't have. That `build_failure` also carries `error.blocker`, which says how to
+get past it: the flag to pass, or where to build instead.
+
 `usage_error` goes with exit 2 when SweetPad parses a flag but won't take it, such as `--failed` on
 `test build` or `--on` together with `--destination`. It also covers an argument no project could
 make valid, such as `archive --on toaster` or a `pbxproj membership add` that names no file. SweetPad

@@ -3004,6 +3004,11 @@ through the same watcher and builds its error with the same function
 (`xcodebuild::build_failure`), so a blocked build under `run` or `run --hot`
 ends on the same hint as under `build`.
 
+**The error object names the blocker.** The headline is for a person; a
+caller gets the same hint as `error.blocker`, beside `code: build_failure`, so
+it can tell a blocked build from a broken one without matching the message.
+Both engines set it through `tool_failure`.
+
 ### A path guessed at positionally
 
 `sweetpad app screenshot shot.png` — a command whose whole job is writing one
@@ -4621,6 +4626,25 @@ and hands Swift Build their commands as script phases. The emitter keeps
 the target's dependency on the plugin product, as Xcode's PIF does, so the
 tool still builds. The engine warns for each such plugin in the build's
 target graph that its commands are skipped.
+
+**A tool Linux doesn't have blocks the build.** Swift Build reports
+`unable to spawn process 'metal' (No such file or directory)` against the
+task that needed it, then that it couldn't read the serialized diagnostics
+the tool never wrote. The message parser drops that second warning and makes
+the first the build's blocker, naming the task and the tool, and what the
+tool is when it's one Apple has no Linux version of (Metal, `osacompile`,
+`Rez`, `mig`, `iig`, `dtrace`, `realitytool`, `coremlc`, the SceneKit and
+SpriteKit compilers). A tool that exists but won't start isn't a blocker.
+
+**`-v` shows what xcodebuild's log shows.** The parsed view drops each
+task's command line and the output of tasks that succeed; under `-v` both
+come through as `Event::Other`, the command line under its task and the
+output when the task completes. A task's output is left out when the task
+reported a diagnostic, which already says the same, and so is lld's notice
+about the platform. A task that runs inside Swift Build shows only a `cd`
+line and is left out. Swift Build has no `-verbose` or `-quiet` of its own,
+so those after `--` set the progress to `-v`'s or `-q`'s level instead of
+being refused.
 
 **Scheme actions run as xcodebuild runs them.** Only shell scripts run;
 xcodebuild skips a Send Email action without a word, and the engine skips it

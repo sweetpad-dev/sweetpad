@@ -2078,8 +2078,14 @@ pub struct CliError {
     /// The command to run next, when the failure points at one its message
     /// does not name. Human output closes on it as a `tip:` line, even when
     /// the failure is [`shown`](CliError::shown); the error object carries it
-    /// as `tip`.
-    tip: Option<String>,
+    /// as `tip`. Boxed, like `blocker`, to keep every `Result<_, CliError>`
+    /// small.
+    tip: Option<Box<str>>,
+    /// How past a blocked build, which no edit to the code fixes: the flag to
+    /// pass or the place to build. The headline says it too; the error object
+    /// carries it as `blocker`, so a caller tells a blocked build from a
+    /// broken one without reading the message.
+    blocker: Option<Box<str>>,
 }
 
 impl std::fmt::Display for CliError {
@@ -2102,6 +2108,7 @@ impl CliError {
             diagnostics: Vec::new(),
             shown: false,
             tip: None,
+            blocker: None,
         }
     }
 
@@ -2148,6 +2155,7 @@ impl CliError {
             diagnostics: self.diagnostics,
             shown: self.shown,
             tip: self.tip,
+            blocker: self.blocker,
         }
     }
 
@@ -2180,7 +2188,15 @@ impl CliError {
     /// without one. It survives [`context`](CliError::context).
     #[must_use]
     pub fn tip(mut self, tip: Option<String>) -> Self {
-        self.tip = tip;
+        self.tip = tip.map(String::into_boxed_str);
+        self
+    }
+
+    /// Mark this failure as a blocked build, with the way past it (see the
+    /// field). It survives [`context`](CliError::context).
+    #[must_use]
+    pub fn blocker(mut self, blocker: Option<String>) -> Self {
+        self.blocker = blocker.map(String::into_boxed_str);
         self
     }
 
@@ -2192,8 +2208,8 @@ impl CliError {
     }
 
     /// The machine-readable error object: the taxonomy code, the flattened
-    /// message, and — when the failure carried them — the parsed diagnostics
-    /// and the tip. The single shape every `--json`/`-o ndjson` error surface
+    /// message, and — when the failure carried them — the parsed diagnostics,
+    /// the tip and the blocker. The single shape every `--json`/`-o ndjson` error surface
     /// renders.
     #[must_use]
     pub fn json(&self) -> serde_json::Value {
@@ -2206,7 +2222,10 @@ impl CliError {
                 map.insert("diagnostics".into(), self.diagnostics.clone().into());
             }
             if let Some(tip) = &self.tip {
-                map.insert("tip".into(), tip.clone().into());
+                map.insert("tip".into(), tip.as_ref().into());
+            }
+            if let Some(blocker) = &self.blocker {
+                map.insert("blocker".into(), blocker.as_ref().into());
             }
         }
         value

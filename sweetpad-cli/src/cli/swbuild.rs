@@ -132,8 +132,9 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
     let mut parser = MessageParser::default();
     let mut diagnostics = Vec::new();
     let mut transcript = String::new();
-    let mut progress =
-        (!out.is_json() && !out.is_ndjson()).then(|| BuildProgress::start(out, "Building"));
+    let (verbose, quiet) = output_levels(plan.passthrough);
+    let mut progress = (!out.is_json() && !out.is_ndjson())
+        .then(|| BuildProgress::start(out, "Building").with_levels(verbose, quiet));
     let mut take = |parsed: &Parsed| {
         if matches!(parsed.event, Event::Diagnostic { .. })
             && let Some(json) = buildlog::event_json(&parsed.event)
@@ -193,26 +194,32 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
         || "swbuild exited with a non-zero status".to_string(),
         |signal| format!("swbuild was killed by {}", signal_name(signal)),
     );
-    let read_log = recorded.map(|p| format!("read full build log: {}", p.display()));
-    let tip = if killer == Some(libc::SIGKILL) && cfg!(target_os = "linux") {
-        Some(format!(
-            "the kernel's out-of-memory killer sends SIGKILL, and 'journalctl -k' says if it did{}",
-            read_log.map_or_else(String::new, |tip| format!("; {tip}"))
-        ))
-    } else {
-        read_log
-    };
+    let tip = failure_tip(killer, recorded.as_deref());
     Err(xcodebuild::tool_failure(
         &ended,
         &invocation.args,
         diagnostics,
-        None,
+        parser.blocker(),
         progress.is_some(),
         !Output::streams_share_a_file(),
         &detail,
     )
     .context("building the project")
     .tip(tip))
+}
+
+/// Where a failed build points next: the log it left in `recorded`, after
+/// the out-of-memory killer when SIGKILL ended it on Linux.
+fn failure_tip(killer: Option<i32>, recorded: Option<&Path>) -> Option<String> {
+    let read_log = recorded.map(|p| format!("read full build log: {}", p.display()));
+    if killer == Some(libc::SIGKILL) && cfg!(target_os = "linux") {
+        Some(format!(
+            "the kernel's out-of-memory killer sends SIGKILL, and 'journalctl -k' says if it did{}",
+            read_log.map_or_else(String::new, |tip| format!("; {tip}"))
+        ))
+    } else {
+        read_log
+    }
 }
 
 /// The signal that killed `swbuild`, if one did. `bwrap`, which runs it
@@ -1203,11 +1210,13 @@ fn refuse_xcodebuild_flags(passthrough: &[String]) -> Result<(), CliError> {
             "-derivedDataPath" | "-xcconfig" => {
                 args.next();
             }
+            // Output levels, which the build's progress takes (see `output_levels`).
+            "-verbose" | "-quiet" => {}
             flag if flag.starts_with('-') => {
                 return Err(CliError::new(format!(
                     "'{flag}' is an xcodebuild flag from passthrough arguments or sweetpad.toml's [xcodebuild].args; this build runs on Swift Build, which \
-                     takes only build settings ('KEY=VALUE'), '-derivedDataPath', '-xcconfig' and '-testPlan' \
-                     after '--'"
+                     takes only build settings ('KEY=VALUE'), '-derivedDataPath', '-xcconfig', '-testPlan', \
+                     '-verbose' and '-quiet' after '--'"
                 ))
                 .kind(ErrorKind::Usage));
             }
@@ -1215,6 +1224,14 @@ fn refuse_xcodebuild_flags(passthrough: &[String]) -> Result<(), CliError> {
         }
     }
     Ok(())
+}
+
+/// xcodebuild's `-verbose` and `-quiet` among the passthrough arguments, as
+/// the levels of `-v` and `-q` they stand for here: the build's progress
+/// shows what `-v` shows, or only what `-q` leaves.
+fn output_levels(passthrough: &[String]) -> (bool, bool) {
+    let has = |flag: &str| passthrough.iter().any(|a| a == flag);
+    (has("-verbose"), has("-quiet"))
 }
 
 fn test_plan_name(passthrough: &[String]) -> Option<&str> {
@@ -1855,6 +1872,12 @@ fn build_machine_settings(plist: &[(String, String)]) -> Vec<(&'static str, Stri
 /// carries the task's output, which would otherwise go unseen, and so do the
 /// warnings a successful link leaves in its output. Text lines are swbuild's
 /// own errors, written before or after the build.
+///
+/// What xcodebuild's raw log shows and the parsed view drops comes through as
+/// [`Event::Other`], which only `-v` renders: each task's command line, and
+/// the output of a task that reported nothing of its own. A task whose tool
+/// can't be started blocks the build rather than breaking it
+/// ([`blocker`](Self::blocker)).
 #[derive(Debug, Default)]
 pub struct MessageParser {
     /// What each started task is, by task ID.
@@ -1864,6 +1887,13 @@ pub struct MessageParser {
     /// Tasks that reported an error of their own, which explains their
     /// failure.
     diagnosed: HashSet<i64>,
+    /// Tasks that reported a diagnostic of any kind, whose output says the
+    /// same.
+    reported: HashSet<i64>,
+    /// Tasks whose tool couldn't be started.
+    unspawned: HashSet<i64>,
+    /// The way past the first tool that couldn't be started.
+    blocker: Option<String>,
     /// Whether any task has reported an error.
     errors: bool,
     /// The build has finished, so swbuild's closing `error: build failed`
@@ -1894,6 +1924,12 @@ impl MessageParser {
         }
     }
 
+    /// How past a build blocked by a tool that couldn't be started, or `None`.
+    #[must_use]
+    pub fn blocker(&self) -> Option<String> {
+        self.blocker.clone()
+    }
+
     fn message(&mut self, m: &Value) -> Vec<Parsed> {
         let int = |key: &str| m.get(key).and_then(Value::as_i64);
         let text = |key: &str| m.get(key).and_then(Value::as_str).unwrap_or_default();
@@ -1912,10 +1948,12 @@ impl MessageParser {
                         },
                     );
                 }
-                vec![Parsed {
+                let mut parsed = vec![Parsed {
                     raw: description,
                     event,
-                }]
+                }];
+                parsed.extend(command_line(text("commandLineDisplayString")));
+                parsed
             }
             "taskOutput" => {
                 if let Some(id) = int("taskID") {
@@ -1930,11 +1968,15 @@ impl MessageParser {
                     .and_then(|id| self.output.remove(&id))
                     .unwrap_or_default();
                 if text("result") != "failed" {
-                    return if task.is_some_and(|t| t.link) {
+                    let mut parsed = if task.is_some_and(|t| t.link) {
                         linker_warnings(&output)
                     } else {
                         Vec::new()
                     };
+                    if parsed.is_empty() && !id.is_some_and(|id| self.reported.contains(&id)) {
+                        parsed.extend(task_output(&output));
+                    }
+                    return parsed;
                 }
                 if id.is_some_and(|id| self.diagnosed.contains(&id))
                     || (self.errors && task.is_some_and(|t| t.swift))
@@ -1944,33 +1986,7 @@ impl MessageParser {
                 let description = task.map_or("A build task", |t| t.description.as_str());
                 failed_task(description, &output)
             }
-            kind @ ("error" | "warning" | "note" | "remark") => {
-                if kind == "error" {
-                    self.errors = true;
-                    // `Linker command failed …` points at the project or the
-                    // package and says nothing of why; any other error a task
-                    // reports, in a file or not, explains its failure.
-                    let at_project = m
-                        .pointer("/location/path")
-                        .and_then(Value::as_str)
-                        .is_some_and(is_container);
-                    if !at_project
-                        && let Some(id) =
-                            m.pointer("/locationContext/taskID").and_then(Value::as_i64)
-                    {
-                        self.diagnosed.insert(id);
-                    }
-                }
-                let mut out = vec![diagnostic(m)];
-                out.extend(
-                    m.get("childDiagnostics")
-                        .and_then(Value::as_array)
-                        .into_iter()
-                        .flatten()
-                        .map(diagnostic),
-                );
-                out
-            }
+            kind @ ("error" | "warning" | "note" | "remark") => self.diagnostic_message(kind, m),
             "buildCompleted" => {
                 self.finished = true;
                 let kind = if text("result") == "ok" {
@@ -1985,6 +2001,57 @@ impl MessageParser {
             }
             _ => Vec::new(),
         }
+    }
+
+    /// The events a diagnostic message (`error`, `warning`, `note`,
+    /// `remark`) makes, noting which task it explains.
+    fn diagnostic_message(&mut self, kind: &str, m: &Value) -> Vec<Parsed> {
+        let task = m.pointer("/locationContext/taskID").and_then(Value::as_i64);
+        if let Some(id) = task {
+            self.reported.insert(id);
+        }
+        let message = m.get("message").and_then(Value::as_str).unwrap_or_default();
+        if kind == "error"
+            && let Some(tool) = unspawned_tool(message)
+        {
+            if let Some(id) = task {
+                self.unspawned.insert(id);
+            }
+            let description = task
+                .and_then(|id| self.tasks.get(&id))
+                .map(|t| t.description.as_str());
+            self.blocker
+                .get_or_insert_with(|| spawn_blocker(tool, description));
+        }
+        // A tool that never ran wrote no serialized diagnostics, which
+        // Swift Build then reports it couldn't read.
+        if message.starts_with("Could not read serialized diagnostics file")
+            && task.is_some_and(|id| self.unspawned.contains(&id))
+        {
+            return Vec::new();
+        }
+        if kind == "error" {
+            self.errors = true;
+            // `Linker command failed …` points at the project or the
+            // package and says nothing of why; any other error a task
+            // reports, in a file or not, explains its failure.
+            let at_project = m
+                .pointer("/location/path")
+                .and_then(Value::as_str)
+                .is_some_and(is_container);
+            if !at_project && let Some(id) = task {
+                self.diagnosed.insert(id);
+            }
+        }
+        let mut out = vec![diagnostic(m)];
+        out.extend(
+            m.get("childDiagnostics")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(diagnostic),
+        );
+        out
     }
 
     fn text(&self, line: &str) -> Option<Parsed> {
@@ -2140,6 +2207,83 @@ fn is_container(path: &str) -> bool {
 /// run, so it's left out.
 fn lld_platform_notice(message: &str) -> bool {
     message.starts_with("This version of lld does not support linking for platform ")
+}
+
+/// A task's command line as `-v` shows it, under the task, as xcodebuild's
+/// log does. A task that runs in Swift Build's own process shows only its
+/// `cd` line, which says nothing, so it's left out.
+fn command_line(display: &str) -> Option<Parsed> {
+    let display = display.trim_end();
+    let mut lines = display.lines().filter(|l| !l.trim().is_empty());
+    lines.next()?;
+    lines.next()?;
+    Some(Parsed {
+        raw: display.to_string(),
+        event: Event::Other(display.to_string()),
+    })
+}
+
+/// What a task that succeeded printed, for `-v`, without lld's notice about
+/// the platform.
+fn task_output(output: &str) -> Option<Parsed> {
+    let lines: Vec<&str> = output
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter(|l| {
+            l.split_once(": warning: ")
+                .is_none_or(|(_, message)| !lld_platform_notice(message))
+        })
+        .collect();
+    (!lines.is_empty()).then(|| {
+        let text = lines.join("\n");
+        Parsed {
+            raw: text.clone(),
+            event: Event::Other(text),
+        }
+    })
+}
+
+/// The tool in Swift Build's `unable to spawn process 'metal' (No such file
+/// or directory)`: one that isn't on this machine. A tool that is there but
+/// won't start isn't this.
+fn unspawned_tool(message: &str) -> Option<&str> {
+    let rest = message.strip_prefix("unable to spawn process '")?;
+    let (tool, reason) = rest.split_once("' (")?;
+    reason
+        .starts_with("No such file or directory")
+        .then_some(tool)
+}
+
+/// What a build tool with no Linux version is, by the name Swift Build starts
+/// it under.
+fn macos_only_tool(tool: &str) -> Option<&'static str> {
+    let name = tool.rsplit('/').next().unwrap_or(tool);
+    Some(match name {
+        "metal" | "metallib" | "metal-ar" => "Apple's Metal shader compiler",
+        "osacompile" => "the AppleScript compiler",
+        "Rez" | "ResMerger" => "the Carbon resource compiler",
+        "mig" => "the Mach interface generator",
+        "iig" => "the DriverKit interface generator",
+        "dtrace" => "DTrace",
+        "realitytool" => "the RealityKit content compiler",
+        "coremlc" => "the Core ML model compiler",
+        "scntool" | "copySceneKitAssets" | "compileSceneKitShaders" => "SceneKit's asset compiler",
+        "TextureAtlas" => "SpriteKit's texture atlas compiler",
+        _ => return None,
+    })
+}
+
+/// The way past a build whose `task` needs `tool`, which isn't here.
+fn spawn_blocker(tool: &str, task: Option<&str>) -> String {
+    let task = task.map_or_else(|| "a build task".to_string(), |t| format!("'{t}'"));
+    match macos_only_tool(tool) {
+        Some(what) if !cfg!(target_os = "macos") => format!(
+            "{task} needs '{tool}', {what}, which has no Linux version; build this target on a Mac"
+        ),
+        _ => format!(
+            "{task} needs '{tool}', which Swift Build couldn't find; install it on the search path"
+        ),
+    }
 }
 
 /// A failed task that reported no error: an error naming it, and its output
@@ -2399,11 +2543,80 @@ mod tests {
             r#"{"kind":"taskOutput","taskID":7,"data":"/p/A.swift:1:5: warning: unused\n"}"#,
             r#"{"kind":"taskComplete","id":7,"result":"success"}"#,
         ]);
+        // The output is what `-v` shows, not a diagnostic.
         assert_eq!(
             found,
-            vec![Event::Compile {
-                name: "A.swift".into()
-            }]
+            vec![
+                Event::Compile {
+                    name: "A.swift".into()
+                },
+                Event::Other("/p/A.swift:1:5: warning: unused".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn verbose_shows_command_lines_and_the_output_no_diagnostic_carried() {
+        let found = events(&[
+            r#"{"kind":"taskStarted","id":3,"ruleInfo":"PhaseScriptExecution Gen /dd/Script.sh","executionDescription":"Run custom shell script 'Gen'","commandLineDisplayString":"    cd /p\n    /bin/sh -c /dd/Script.sh\n"}"#,
+            r#"{"kind":"taskStarted","id":4,"ruleInfo":"SwiftDriverJobDiscovery normal arm64","executionDescription":"Compile","commandLineDisplayString":"    cd /p\n    \n"}"#,
+            r#"{"kind":"taskOutput","taskID":3,"data":"generated 2 files\n"}"#,
+            r#"{"kind":"taskComplete","id":3,"result":"success"}"#,
+            r#"{"kind":"taskStarted","id":5,"ruleInfo":"SwiftCompile normal arm64 /p/A.swift","executionDescription":"Compile A.swift (arm64)"}"#,
+            r#"{"kind":"warning","message":"unused","location":{"locationType":"path","path":"/p/A.swift","line":1,"column":5},"locationContext":{"locationType":"task","taskID":5}}"#,
+            r#"{"kind":"taskOutput","taskID":5,"data":"/p/A.swift:1:5: warning: unused\n"}"#,
+            r#"{"kind":"taskComplete","id":5,"result":"success"}"#,
+        ]);
+        let others: Vec<&str> = found
+            .iter()
+            .filter_map(|e| match e {
+                Event::Other(raw) => Some(raw.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            others,
+            [
+                "Run custom shell script 'Gen'",
+                "    cd /p\n    /bin/sh -c /dd/Script.sh",
+                "Compile",
+                "generated 2 files",
+            ]
+        );
+    }
+
+    /// Measured on Linux with a `.metal` file: Swift Build reports the spawn
+    /// failure against the task, then that it couldn't read the diagnostics
+    /// the compiler never wrote.
+    #[test]
+    fn a_tool_with_no_linux_version_blocks_the_build() {
+        let mut parser = MessageParser::default();
+        let found: Vec<Event> = [
+            r#"{"kind":"taskStarted","id":6,"ruleInfo":"CompileMetalFile /p/Shaders.metal","executionDescription":"Compile Shaders.metal"}"#,
+            r#"{"kind":"error","message":"unable to spawn process 'metal' (No such file or directory)","location":{"locationType":"unknown"},"locationContext":{"locationType":"task","targetID":0,"taskID":6}}"#,
+            r#"{"kind":"warning","message":"Could not read serialized diagnostics file: Error Domain=NSCocoaErrorDomain Code=260","location":{"locationType":"path","path":"/dd/Shaders.dia"},"locationContext":{"locationType":"task","targetID":0,"taskID":6}}"#,
+            r#"{"kind":"taskComplete","id":6,"result":"failed"}"#,
+        ]
+        .iter()
+        .flat_map(|line| parser.push(line))
+        .map(|parsed| parsed.event)
+        .collect();
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(matches!(
+            &found[1],
+            Event::Diagnostic {
+                kind: DiagKind::Error,
+                ..
+            }
+        ));
+        let blocker = parser.blocker().unwrap();
+        assert!(
+            blocker.starts_with("'Compile Shaders.metal' needs 'metal'"),
+            "{blocker}"
+        );
+        assert_eq!(
+            unspawned_tool("unable to spawn process 'x' (Permission denied)"),
+            None
         );
     }
 
@@ -2460,6 +2673,8 @@ mod tests {
             ]))
             .is_ok()
         );
+        assert!(refuse_xcodebuild_flags(&args(&["-quiet", "-verbose"])).is_ok());
+        assert_eq!(output_levels(&args(&["-quiet", "A=B"])), (false, true));
         let err = refuse_xcodebuild_flags(&args(&["-allowProvisioningUpdates"])).unwrap_err();
         assert!(
             err.to_string()

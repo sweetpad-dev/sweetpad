@@ -73,6 +73,7 @@ Xcode runs those plugins itself through `XcodeProjectPlugin`, which the Linux Sw
 The build warns for each such plugin and goes on without the files it would generate.
 
 Metal shaders, Core ML model classes, SceneKit assets, and RealityKit assets require native tools.
+When a build needs a tool that Linux doesn't have, such as `metal`, it stops and names the tool and the file that needs it.
 Scripts that import Darwin or call other macOS-only tools need adaptation or a Mac preparation stage.
 Advanced Core Data mapping expressions remain outside the supported mapping-model forms.
 

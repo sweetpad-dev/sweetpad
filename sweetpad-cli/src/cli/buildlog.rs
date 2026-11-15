@@ -383,6 +383,20 @@ impl BuildProgress {
         }
     }
 
+    /// Raise the detail to `-v`'s or lower it to `-q`'s, for a build tool's
+    /// own switches (xcodebuild's `-verbose` and `-quiet`, passed through to
+    /// Swift Build). Quiet wins, as `--quiet` does over `--verbose`, and
+    /// stops the spinner.
+    #[must_use]
+    pub fn with_levels(mut self, verbose: bool, quiet: bool) -> Self {
+        self.quiet |= quiet;
+        self.verbose = (self.verbose || verbose) && !self.quiet;
+        if self.quiet {
+            self.spinner = None;
+        }
+        self
+    }
+
     /// Render one raw `xcodebuild` line for display, or `None` to suppress it.
     /// The first line that renders stops and erases the spinner; the closing
     /// success banner is stamped with the elapsed build time. With

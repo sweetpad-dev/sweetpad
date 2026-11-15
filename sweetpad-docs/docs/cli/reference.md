@@ -314,7 +314,9 @@ These work on every command:
 | `-q, --quiet`         | Suppress progress chatter (wins over `--verbose`).                                                 |
 
 `-v` and `-q` are SweetPad's own flags. To pass `xcodebuild`'s `-verbose` or `-quiet`, put it after
-`--`, as in `sweetpad build -- -quiet`.
+`--`, as in `sweetpad build -- -quiet`. Swift Build has no such flags, so on that engine
+`-- -verbose` and `-- -quiet` work like `-v` and `-q`. There, `-v` also prints each task's command
+line and the output of tasks that report no warning or error, which is what `xcodebuild`'s log shows.
 
 Commands that build or run also take targeting flags: `--workspace`, `--project`, `--scheme`,
 `--configuration`, `--sdk`, and the two ways to say where: `--destination` (a raw specifier) or

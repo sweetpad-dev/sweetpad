@@ -924,6 +924,21 @@ fn a_blocked_build_names_the_flag_in_the_run_session_too() {
     }
 }
 
+/// The error object says a build is blocked, and how past it, apart from the
+/// message, so a caller doesn't read the headline to tell.
+#[test]
+fn a_blocked_builds_error_object_carries_the_way_past() {
+    let out = build_with_stub("blocked-json", BLOCKED, 65, &["--json"]);
+    assert_eq!(out.status.code(), Some(3), "{out:?}");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    let envelope: serde_json::Value = serde_json::from_str(stderr.trim()).unwrap();
+    let blocker = envelope["error"]["blocker"].as_str().unwrap_or_default();
+    assert!(
+        blocker.contains("retry with '-- -skipPackagePluginValidation'"),
+        "{stderr}"
+    );
+}
+
 /// A 24x80 pty: the master end, and the slave end a child takes as its
 /// terminal.
 fn pty() -> (std::fs::File, OwnedFd) {
