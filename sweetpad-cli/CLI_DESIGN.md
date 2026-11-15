@@ -4604,7 +4604,10 @@ stand-in doesn't do fails with an error that names it. The stand-ins are
 `actool`, `ibtool`, `momc`, `mapc`, `xcstringstool`, `intentbuilderc`, `extractLocStrings`,
 the App Intents metadata and language-model processors, `codesign`,
 `derq`, the provisioning tool, `copypng`, `ditto`, `lipo`, `strip`,
-`embeddedBinaryValidationUtility`, `ld64.lld` and `xcrun`.
+`embeddedBinaryValidationUtility`, `ld64.lld`, `xcrun` and `cc`. Swift Build
+runs `cc` to preprocess an Info.plist (`INFOPLIST_PREPROCESS`) with an
+Apple `-target`, which a Linux host's GCC refuses, so the stand-in passes a
+run for an Apple target to Clang and any other to the host's own `cc`.
 
 **`xcrun -sdk macosx` runs a tool for the host.** A run script is a host
 program. A Mac script says `-sdk macosx` to run a tool for the Mac it's on,

@@ -15,12 +15,15 @@
 //! - `ld64.lld`, in front of xtool's linker, which loads whole the archives
 //!   xtool makes in place of relocatable objects (see [`ld`]);
 //! - `xcrun`, which run scripts start tools through and ask about an SDK
-//!   with (see [`xcrun`]).
+//!   with (see [`xcrun`]);
+//! - `cc`, which preprocesses an Info.plist for an Apple target with Clang
+//!   (see [`cc`]).
 
 // What these print is the tools' output, which Swift Build and scripts
 // parse, so it doesn't go through `Output`.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
+mod cc;
 mod copypng;
 mod ditto;
 mod dsymutil;
@@ -36,6 +39,7 @@ use std::process::ExitCode;
 
 /// The tools this module stands in for, by the name they run under.
 pub const TOOLS: &[&str] = &[
+    "cc",
     "copypng",
     "ditto",
     "embeddedBinaryValidationUtility",
@@ -57,6 +61,7 @@ pub const SDK_DSYMUTIL: &str = "sdk-dsymutil";
 #[must_use]
 pub fn main(tool: &str, args: &[String]) -> Option<ExitCode> {
     let result = match tool {
+        "cc" => return Some(cc::main(args)),
         "copypng" => copypng::main(args),
         "ditto" => ditto::main(args),
         "embeddedBinaryValidationUtility" => return Some(embedded_binary::main(args)),
@@ -91,6 +96,20 @@ pub fn main(tool: &str, args: &[String]) -> Option<ExitCode> {
             ExitCode::FAILURE
         }
     })
+}
+
+/// Replace this process with `command`, returning only when that fails.
+#[cfg(unix)]
+fn exec(command: &mut std::process::Command) -> std::io::Error {
+    std::os::unix::process::CommandExt::exec(command)
+}
+
+#[cfg(not(unix))]
+fn exec(command: &mut std::process::Command) -> std::io::Error {
+    match command.status() {
+        Ok(status) => std::process::exit(status.code().unwrap_or(1)),
+        Err(e) => e,
+    }
 }
 
 /// The first `name` on `PATH`.

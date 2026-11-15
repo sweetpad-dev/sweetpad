@@ -217,7 +217,7 @@ fn run(request: &Request, folders: &[PathBuf]) -> Result<ExitCode, Failure> {
     Err(Failure::new(format!(
         "can't run {}: {}",
         program.display(),
-        exec(&mut command)
+        super::exec(&mut command)
     )))
 }
 
@@ -269,20 +269,6 @@ fn darwin_clang_args(args: &[String]) -> Result<Option<Vec<String>>, String> {
         }
     }
     Ok(Some(out))
-}
-
-/// Replace this process with `command`, returning only when that fails.
-#[cfg(unix)]
-fn exec(command: &mut Command) -> std::io::Error {
-    std::os::unix::process::CommandExt::exec(command)
-}
-
-#[cfg(not(unix))]
-fn exec(command: &mut Command) -> std::io::Error {
-    match command.status() {
-        Ok(status) => std::process::exit(status.code().unwrap_or(1)),
-        Err(e) => e,
-    }
 }
 
 /// The tool named `name`: a path as given, else the first on `PATH`.
