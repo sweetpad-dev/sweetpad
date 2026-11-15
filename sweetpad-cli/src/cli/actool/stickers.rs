@@ -103,7 +103,14 @@ pub(super) fn store_icon<'a>(
         vector: false,
         preserved: false,
     };
-    car.image(file, identifier, variant, &bitmap, Rendering::Original, source);
+    car.image(
+        file,
+        identifier,
+        variant,
+        &bitmap,
+        Rendering::Original,
+        source,
+    );
     compiled.insert(set.dir.as_path());
     true
 }
