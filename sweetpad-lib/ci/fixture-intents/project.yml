@@ -1,0 +1,35 @@
+# A framework with an intent definition for each combination of build-file
+# ATTRIBUTES that decides class generation, against Xcode's -dumpPIF in
+# Intents.dumpPIF.json. Regenerate the project with `xcodegen generate`.
+name: Intents
+targets:
+  Kit:
+    type: framework
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Src/Main.swift
+      - path: Src/None.intentdefinition
+      - path: Src/Codegen.intentdefinition
+        attributes: [codegen]
+      - path: Src/NoCodegen.intentdefinition
+        attributes: [no_codegen]
+      - path: Src/PublicCodegen.intentdefinition
+        attributes: [Public, codegen]
+      - path: Src/PrivateCodegen.intentdefinition
+        attributes: [Private, codegen]
+      - path: Src/Public.intentdefinition
+        attributes: [Public]
+      - path: Src/NoCodegenPublic.intentdefinition
+        attributes: [no_codegen, Public]
+      - path: Src/Project.intentdefinition
+        attributes: [Project]
+      - path: Src/ProjectCodegen.intentdefinition
+        attributes: [Project, codegen]
+      - path: Src/Private.intentdefinition
+        attributes: [Private]
+      - path: Src/NoCodegenPrivate.intentdefinition
+        attributes: [no_codegen, Private]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES

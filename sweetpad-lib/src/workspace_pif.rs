@@ -993,7 +993,11 @@ impl<'a> Emitter<'a> {
                     .unwrap_or_default();
                 let file_type = referenced.map_or("", |r| file_ref_type(r, path));
                 if phase_kind == "sources" && file_type == "file.intentdefinition" {
-                    out.insert("intentsCodegenVisibility".into(), json!("public"));
+                    let settings = file.get("settings").and_then(Value::as_dict);
+                    let attributes = strings(settings.and_then(|s| s.get("ATTRIBUTES")));
+                    if let Some(visibility) = intents_codegen(&attributes) {
+                        out.insert("intentsCodegenVisibility".into(), json!(visibility));
+                    }
                 }
             }
         } else if let Some(product) = file.get("productRef").and_then(Value::as_str) {
@@ -1082,6 +1086,15 @@ impl<'a> Emitter<'a> {
                     continue;
                 };
                 let mut file = self.synced_build_file(root, phase, node);
+                if phase_isa == "PBXSourcesBuildPhase" && node.file_type == "file.intentdefinition"
+                {
+                    let attributes = target_set
+                        .map(|set| synced_attributes(set, &exception_key(node)))
+                        .unwrap_or_default();
+                    if let Some(visibility) = intents_codegen(&attributes) {
+                        file.insert("intentsCodegenVisibility".into(), json!(visibility));
+                    }
+                }
                 if let Some(set) = target_set {
                     apply_synced_settings(set, &exception_key(node), &mut file);
                     if phase_isa == "PBXHeadersBuildPhase" {
@@ -1419,14 +1432,40 @@ fn apply_synced_settings(set: &Dict, rel: &str, file: &mut Map<String, Json>) {
     if let Some(flags) = by_path("additionalCompilerFlagsByRelativePath").and_then(Value::as_str) {
         file.insert("additionalCompilerOptions".into(), json!(flags));
     }
-    if let Some(attributes) = by_path("attributesByRelativePath") {
-        apply_attributes(&strings(Some(attributes)), file);
-    }
+    apply_attributes(&synced_attributes(set, rel), file);
     if let Some(filters) = by_path("platformFiltersByRelativePath")
         .map(|f| strings(Some(f)))
         .and_then(|names| filters_json(&names))
     {
         file.insert("platformFilters".into(), filters);
+    }
+}
+
+/// The `ATTRIBUTES` an exception set gives the file at `rel`.
+fn synced_attributes(set: &Dict, rel: &str) -> Vec<String> {
+    strings(
+        set.get("attributesByRelativePath")
+            .and_then(Value::as_dict)
+            .and_then(|d| d.get(rel)),
+    )
+}
+
+/// An intent definition's class generation from its build file's
+/// `ATTRIBUTES`, as Xcode 27's PIF has it. A header visibility (`Public`,
+/// `Private`) is all Xcode writes, which Swift Build reads as no generation;
+/// otherwise `no_codegen` turns generation off, and `codegen` or no
+/// attribute at all makes the classes public. `Project` alone writes
+/// nothing. The same holds for a synchronized folder's files.
+fn intents_codegen(attributes: &[String]) -> Option<&'static str> {
+    let has = |name: &str| attributes.iter().any(|a| a == name);
+    if has("Public") || has("Private") {
+        None
+    } else if has("no_codegen") {
+        Some("no_codegen")
+    } else if has("codegen") || !has("Project") {
+        Some("public")
+    } else {
+        None
     }
 }
 

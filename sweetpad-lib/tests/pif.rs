@@ -25,6 +25,7 @@
 //! (or `-workspace`), then drop the package objects and rewrite the directory.
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -410,6 +411,125 @@ fn linux_fixture_matches_xcodebuild_dump() {
         &dir,
     );
     assert_within(&[("fixture-linux".into(), found, 0)]);
+}
+
+/// Every combination of `ATTRIBUTES` that decides an intent definition's
+/// class generation, against Xcode's dump.
+#[test]
+fn intent_definitions_generate_classes_as_their_attributes_say() {
+    let dir = lib_dir().join("ci/fixture-intents");
+    let found = differences(
+        &dir.join("Intents.xcodeproj"),
+        &dir.join("Intents.dumpPIF.json"),
+        "$(FIXTURE_DIR)",
+        &dir,
+    );
+    assert_within(&[("fixture-intents".into(), found, 0)]);
+}
+
+/// A synchronized folder's intent definitions take their `ATTRIBUTES` from
+/// the target's exception set. Xcode 27 dumped the probe with these files
+/// and attributes added: `public` for none, `codegen` and (in the target
+/// without a set) all of them, `no_codegen` for `no_codegen`, nothing for
+/// `Project`, and only `headerVisibility` for `Public` and `Private`.
+#[test]
+fn a_synchronized_folders_intent_definitions_take_the_sets_attributes() {
+    fn walk<'a>(value: &'a Value, f: &mut dyn FnMut(&'a Value)) {
+        f(value);
+        match value {
+            Value::Object(map) => map.values().for_each(|v| walk(v, f)),
+            Value::Array(items) => items.iter().for_each(|v| walk(v, f)),
+            _ => {}
+        }
+    }
+    let fixture = TemporaryFixture::probe();
+    let dir = &fixture.0;
+    let plist = fs::read(lib_dir().join("ci/fixture-intents/Src/None.intentdefinition")).unwrap();
+    let attributes = [
+        ("SyncNone", None),
+        ("SyncNo", Some("no_codegen")),
+        ("SyncPublic", Some("Public")),
+        ("SyncCodegen", Some("codegen")),
+        ("SyncProject", Some("Project")),
+        ("SyncPrivate", Some("Private,\n\t\t\t\t\tcodegen")),
+    ];
+    let mut entries = String::new();
+    for (name, attribute) in attributes {
+        fs::write(
+            dir.join(format!("Probe/Synced/{name}.intentdefinition")),
+            &plist,
+        )
+        .unwrap();
+        if let Some(attribute) = attribute {
+            writeln!(
+                entries,
+                "\t\t\t\t{name}.intentdefinition = (\n\t\t\t\t\t{attribute},\n\t\t\t\t);"
+            )
+            .unwrap();
+        }
+    }
+    let pbxproj = dir.join("Probe/Probe.xcodeproj/project.pbxproj");
+    let text = fs::read_to_string(&pbxproj).unwrap();
+    let anchor = "\t\t\t\tSub/c.swift = (\n";
+    assert!(text.contains(anchor));
+    fs::write(
+        &pbxproj,
+        text.replacen(anchor, &format!("{entries}{anchor}"), 1),
+    )
+    .unwrap();
+
+    let emitted = pif(&dir.join("Probe/Probe.xcodeproj")).unwrap();
+    let mut paths = HashMap::new();
+    let mut found: Vec<(String, String)> = Vec::new();
+    for object in &emitted {
+        walk(object, &mut |v| {
+            if v["type"] == "file"
+                && let (Some(guid), Some(path)) = (v["guid"].as_str(), v["path"].as_str())
+            {
+                paths.insert(guid.to_string(), path.to_string());
+            }
+        });
+    }
+    for object in &emitted {
+        walk(object, &mut |v| {
+            let Some(path) = v["fileReference"].as_str().and_then(|g| paths.get(g)) else {
+                return;
+            };
+            if let Some(name) = path.strip_suffix(".intentdefinition") {
+                let keys = ["intentsCodegenVisibility", "headerVisibility"]
+                    .iter()
+                    .filter_map(|k| v[*k].as_str().map(|value| format!("{k}={value}")))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                found.push((name.to_string(), keys));
+            }
+        });
+    }
+    found.sort();
+    let pairs = |list: &[(&str, &str)]| {
+        list.iter()
+            .map(|(a, b)| ((*a).to_string(), (*b).to_string()))
+            .collect::<Vec<_>>()
+    };
+    let public = "intentsCodegenVisibility=public";
+    let mut expected = pairs(&[
+        ("SyncCodegen", public),
+        ("SyncNo", "intentsCodegenVisibility=no_codegen"),
+        ("SyncNone", public),
+        ("SyncPrivate", "headerVisibility=private"),
+        ("SyncProject", ""),
+        ("SyncPublic", "headerVisibility=public"),
+    ]);
+    expected.extend(pairs(&[
+        ("SyncCodegen", public),
+        ("SyncNo", public),
+        ("SyncNone", public),
+        ("SyncPrivate", public),
+        ("SyncProject", public),
+        ("SyncPublic", public),
+    ]));
+    expected.sort();
+    assert_eq!(found, expected);
 }
 
 /// A target that runs a package's build-tool plugin depends on the plugin

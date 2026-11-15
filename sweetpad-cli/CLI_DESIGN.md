@@ -4614,6 +4614,14 @@ product (`<name>-product` in SwiftPM's PIF), else a package's module: the
 scheme Xcode makes for a product builds the product, which shares no name
 with a module when it's made only of binary targets.
 
+**An intent definition's attributes decide its classes.** Xcode 27's
+`-dumpPIF` for every combination (`ci/fixture-intents`) gives the rule: a
+`Public` or `Private` attribute writes only `headerVisibility`, which Swift
+Build reads as no class generation; otherwise `no_codegen` writes
+`no_codegen`, `codegen` or no attribute at all writes `public`, and
+`Project` alone writes nothing. A synchronized folder's files take their
+attributes from the target's exception set, under the same rule.
+
 **A scheme entry's project and ID pick its target.** The emitter names a
 project target by its project's GUID followed by the MD5 of its pbxproj ID,
 so the request takes the target that a scheme entry's `BlueprintIdentifier`
