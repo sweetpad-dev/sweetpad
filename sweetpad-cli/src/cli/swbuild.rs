@@ -615,6 +615,7 @@ impl Invocation {
                 let dumped = self.dump_package_pif(&root, out)?;
                 sweetpad_lib::workspace_pif::add_package_root(&mut pif, &dumped, &root);
             }
+            warn_project_plugins(&pif, &names, out);
         }
         let host_tools = if self.tools.is_some() {
             host_macros::prepare(
@@ -737,11 +738,28 @@ impl Invocation {
                 "couldn't resolve the package dependencies: {reason}"
             )));
         }
-        serde_json::from_slice(&output.stdout).map_err(|e| {
+        let mut dumped: Vec<Value> = serde_json::from_slice(&output.stdout).map_err(|e| {
             CliError::new(format!(
                 "couldn't read the PIF SwiftPM printed for the package dependencies: {e}"
             ))
-        })
+        })?;
+        sweetpad_lib::workspace_pif::retarget_plugin_tools(
+            &mut dumped,
+            &scratch.join("out/Products"),
+        );
+        Ok(dumped)
+    }
+}
+
+/// Swift Build runs a package target's build-tool plugins, which SwiftPM
+/// evaluates, but not a project target's, which Xcode evaluates itself.
+fn warn_project_plugins(pif: &[Value], names: &[String], out: &Output) {
+    for (target, plugin) in sweetpad_lib::workspace_pif::project_target_plugins(pif, names) {
+        out.warn(&format!(
+            "'{target}' runs the build-tool plugin '{plugin}', which Swift Build runs only \
+             for package targets; this build skips the plugin's commands and the files they \
+             generate"
+        ));
     }
 }
 

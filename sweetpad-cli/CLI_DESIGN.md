@@ -4597,6 +4597,19 @@ product (`<name>-product` in SwiftPM's PIF), else a package's module: the
 scheme Xcode makes for a product builds the product, which shares no name
 with a module when it's made only of binary targets.
 
+**Build-tool plugins run for package targets only.** SwiftPM evaluates a
+package target's plugins while it prints the PIF and gives each command to
+Swift Build as a custom task. The task names the tool where SwiftPM's own
+build would put it, under `<scratch>/out/Products/Debug-<platform>`, so
+`retarget_plugin_tools` renames that folder to
+`${BUILD_DIR}/${CONFIGURATION}-<platform>`, where this build makes the tool
+(Xcode's PIF names it the same way). Xcode evaluates a project target's
+plugins itself through `XcodeProjectPlugin`, which no Linux toolchain ships,
+and hands Swift Build their commands as script phases. The emitter keeps
+the target's dependency on the plugin product, as Xcode's PIF does, so the
+tool still builds. The engine warns for each such plugin in the build's
+target graph that its commands are skipped.
+
 **Everything goes where xcodebuild's build would.** The build writes to the
 DerivedData folder xcodebuild would use, so the product locator, `app run`'s
 lookups and the extension find the product unchanged. The PIF, the request,

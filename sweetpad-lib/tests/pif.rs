@@ -412,6 +412,59 @@ fn linux_fixture_matches_xcodebuild_dump() {
     assert_within(&[("fixture-linux".into(), found, 0)]);
 }
 
+/// A target that runs a package's build-tool plugin depends on the plugin
+/// product, as Xcode 27's PIF for the fixture has it.
+#[test]
+fn a_build_tool_plugin_is_a_dependency_of_the_target_that_runs_it() {
+    let dir = lib_dir().join("ci/fixture-build-tool-plugin");
+    let emitted = pif(&dir.join("PluginApp.xcodeproj")).unwrap();
+    let app = emitted
+        .iter()
+        .find(|o| o["type"] == "target" && o["contents"]["name"] == "PluginApp")
+        .unwrap();
+    assert_eq!(
+        app["contents"]["dependencies"],
+        serde_json::json!([{"guid": "PACKAGE-PRODUCT:gen_GenPlugin.GenPlugin", "name": "GenPlugin"}])
+    );
+}
+
+/// SwiftPM emits a plugin product as an aggregate target. A project target
+/// that depends on one, directly or through a target it depends on, runs the
+/// plugin; a package target's plugins are SwiftPM's to run.
+#[test]
+fn project_targets_that_run_a_plugin_are_found_through_their_dependencies() {
+    use serde_json::json;
+    let target = |guid: &str, name: &str, kind: &str, deps: &[&str]| {
+        json!({ "type": "target", "contents": {
+            "guid": guid, "name": name, "type": kind,
+            "dependencies": deps.iter().map(|g| json!({ "guid": g })).collect::<Vec<_>>(),
+        } })
+    };
+    let plugin = "PACKAGE-PRODUCT:gen_GenPlugin.GenPlugin";
+    let library = "PACKAGE-PRODUCT:gen_Greeting.Greeting";
+    let emitted = [
+        json!({ "type": "workspace", "contents": {} }),
+        target("A", "App", "standard", &["K", library]),
+        target("K", "Kit", "standard", &[plugin]),
+        target("O", "Other", "standard", &[plugin]),
+        target(
+            plugin,
+            "GenPlugin-product",
+            "aggregate",
+            &["PACKAGE-TARGET:GenPlugin"],
+        ),
+        target(
+            library,
+            "Greeting",
+            "packageProduct",
+            &["PACKAGE-TARGET:Greeting"],
+        ),
+        target("PACKAGE-TARGET:Greeting", "Greeting", "standard", &[plugin]),
+    ];
+    let found = sweetpad_lib::workspace_pif::project_target_plugins(&emitted, &["App".into()]);
+    assert_eq!(found, [("Kit".to_string(), "GenPlugin".to_string())]);
+}
+
 /// A synthetic project built to touch every mapping rule: copy destinations,
 /// script and rule options, legacy and aggregate targets, platform filters,
 /// text encodings, synchronized folders and their exceptions, a project

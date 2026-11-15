@@ -61,11 +61,16 @@ The portable build path covers these common inputs:
 - Core Data models and common mapping models
 - Supported SwiftData, Predicate, Preview, SwiftUI Entry, and TipKit macros
 - Package macros whose sources build for the Linux host
+- Build-tool plugins on package targets, such as SwiftLint or SwiftGen applied in a package
 - Supported App Intents metadata and shortcut language models.
 
 Explicit schemes from resolved Git packages are available after dependency resolution.
 Listing schemes does not fetch missing packages.
 Package manifests run on Linux. Host-only conditions that select Apple resources or libraries can require a compatibility patch.
+
+A build-tool plugin on an Xcode project target doesn't run on Linux.
+Xcode runs those plugins itself through `XcodeProjectPlugin`, which the Linux Swift toolchain doesn't include.
+The build warns for each such plugin and goes on without the files it would generate.
 
 Metal shaders, Core ML model classes, SceneKit assets, and RealityKit assets require native tools.
 Scripts that import Darwin or call other macOS-only tools need adaptation or a Mac preparation stage.

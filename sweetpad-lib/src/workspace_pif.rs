@@ -31,7 +31,9 @@ use crate::xcode_hash::{md5_hex, sha256_base64};
 use crate::xcspec;
 
 mod packages;
-pub use packages::{Package, add_package_root, add_packages, manifest, packages};
+pub use packages::{
+    Package, add_package_root, add_packages, manifest, packages, retarget_plugin_tools,
+};
 
 /// The PIF `xcodebuild -dumpPIF` prints for a `.xcworkspace` or an
 /// `.xcodeproj`: a workspace object, then each project followed by its
@@ -66,6 +68,60 @@ pub fn pif(container: &Path) -> Result<Vec<Json>, Error> {
         out.extend(targets);
     }
     Ok(out)
+}
+
+/// The build-tool plugins that project targets run in a build of `roots`
+/// and the targets they depend on, as target and plugin names, from a
+/// workspace's PIF with its packages added. Xcode evaluates such a plugin
+/// itself and gives Swift Build its commands, so only a package target's
+/// plugins, which SwiftPM evaluates, run without Xcode. A plugin dependency
+/// is one on a package product SwiftPM emits as an aggregate target.
+#[must_use]
+pub fn project_target_plugins(pif: &[Json], roots: &[String]) -> Vec<(String, String)> {
+    let targets: HashMap<&str, &Json> = pif
+        .iter()
+        .filter(|o| o["type"] == "target")
+        .filter_map(|o| Some((o["contents"]["guid"].as_str()?, &o["contents"])))
+        .collect();
+    let mut queue: VecDeque<&Json> = targets
+        .values()
+        .filter(|t| {
+            t["name"]
+                .as_str()
+                .is_some_and(|n| roots.iter().any(|r| r == n))
+        })
+        .copied()
+        .collect();
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    while let Some(target) = queue.pop_front() {
+        let guid = target["guid"].as_str().unwrap_or_default();
+        if !seen.insert(guid) {
+            continue;
+        }
+        for dep in target["dependencies"].as_array().into_iter().flatten() {
+            let Some(dep_target) = dep["guid"].as_str().and_then(|g| targets.get(g)) else {
+                continue;
+            };
+            let plugin = dep["guid"]
+                .as_str()
+                .is_some_and(|g| g.starts_with("PACKAGE-PRODUCT:"))
+                && dep_target["type"] == "aggregate";
+            if plugin && !guid.starts_with("PACKAGE-") {
+                // SwiftPM names the aggregate `<plugin>-product`.
+                let name = dep["name"].as_str().unwrap_or_else(|| {
+                    let name = dep_target["name"].as_str().unwrap_or_default();
+                    name.strip_suffix("-product").unwrap_or(name)
+                });
+                out.push((
+                    target["name"].as_str().unwrap_or_default().to_string(),
+                    name.to_string(),
+                ));
+            }
+            queue.push_back(dep_target);
+        }
+    }
+    out
 }
 
 /// The workspace a container stands for.
@@ -644,8 +700,8 @@ impl<'a> Emitter<'a> {
         Ok(Some(object("target", Json::Object(c))))
     }
 
-    /// The target's dependencies on other targets, then one per SwiftPM
-    /// product it links.
+    /// The target's dependencies on other targets and on the build-tool
+    /// plugins it runs, then one per SwiftPM product it links.
     fn dependencies(&self, target: &Value) -> Json {
         let mut out = Vec::new();
         for dep in ids(target, "dependencies").filter_map(|id| self.get(id)) {
@@ -654,7 +710,8 @@ impl<'a> Emitter<'a> {
                 None => dep
                     .get("targetProxy")
                     .and_then(Value::as_str)
-                    .and_then(|p| self.proxied_target(p)),
+                    .and_then(|p| self.proxied_target(p))
+                    .or_else(|| self.plugin_dependency(dep)),
             };
             let Some((guid, name)) = resolved else {
                 continue;
@@ -761,11 +818,27 @@ impl<'a> Emitter<'a> {
         project::standardize(&self.parents.group_dir(portal, &self.project_dir))
     }
 
+    /// A dependency on a package's build-tool plugin, which Xcode's "Run
+    /// Build Tool Plug-ins" phase records as a `PBXTargetDependency` with a
+    /// `productRef`: the plugin product's GUID and its name without the
+    /// `plugin:` prefix, as Xcode's PIF has them.
+    fn plugin_dependency(&self, dep: &Dict) -> Option<(String, String)> {
+        let product_id = dep.get("productRef").and_then(Value::as_str)?;
+        let name = self
+            .get(product_id)?
+            .get("productName")
+            .and_then(Value::as_str)?;
+        let name = name.strip_prefix("plugin:").unwrap_or(name).to_string();
+        Some((self.package_product(product_id)?, name))
+    }
+
     /// SwiftPM's GUID for the product an `XCSwiftPackageProductDependency`
-    /// names: `PACKAGE-PRODUCT:<package identity>_<product>.<product>`.
+    /// names: `PACKAGE-PRODUCT:<package identity>_<product>.<product>`. A
+    /// plugin's name drops its `plugin:` prefix.
     fn package_product(&self, dep_id: &str) -> Option<String> {
         let dep = self.get(dep_id)?;
         let product = dep.get("productName").and_then(Value::as_str)?;
+        let product = product.strip_prefix("plugin:").unwrap_or(product);
         let identity = match dep
             .get("package")
             .and_then(Value::as_str)

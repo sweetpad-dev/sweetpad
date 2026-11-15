@@ -194,6 +194,45 @@ pub fn add_packages(pif: &mut Vec<Json>, dumped: Vec<Json>, root: &Path) {
     remap_missing_products(pif);
 }
 
+/// Point the build-tool plugin commands in `dumped` at the tools this build
+/// makes. SwiftPM evaluates a package target's plugins while it prints the
+/// PIF, and names each tool where its own build would put it, in `products`
+/// (`<scratch>/out/Products`) under the configuration it evaluated with. The
+/// workspace's build puts host tools in `$(BUILD_DIR)` under its own
+/// configuration, which is how Xcode's PIF names them.
+pub fn retarget_plugin_tools(dumped: &mut [Json], products: &Path) {
+    let prefix = format!("{}/", products.to_string_lossy().trim_end_matches('/'));
+    let retarget = |value: &mut Json| {
+        let Some(path) = value.as_str() else {
+            return;
+        };
+        let Some(rest) = path.strip_prefix(&prefix) else {
+            return;
+        };
+        // `Debug-linux-aarch64`, or `Debug` for macOS.
+        let (folder, file) = rest.split_once('/').unwrap_or((rest, ""));
+        let platform = folder.find('-').map_or("", |at| &folder[at..]);
+        let file = if file.is_empty() {
+            String::new()
+        } else {
+            format!("/{file}")
+        };
+        *value = json!(format!("${{BUILD_DIR}}/${{CONFIGURATION}}{platform}{file}"));
+    };
+    for task in dumped
+        .iter_mut()
+        .filter(|o| o["type"] == "target")
+        .filter_map(|o| o["contents"]["customTasks"].as_array_mut())
+        .flatten()
+    {
+        for key in ["commandLine", "inputFilePaths"] {
+            for value in task[key].as_array_mut().into_iter().flatten() {
+                retarget(value);
+            }
+        }
+    }
+}
+
 /// Xcode also resolves products by name when an old package back-reference
 /// names the wrong owner, or when a remote product has no back-reference.
 /// Only an absent GUID and a single matching resolved product permit repair.
@@ -459,6 +498,41 @@ mod tests {
         assert_eq!(
             pif[1]["contents"]["buildConfigurations"][0]["buildSettings"]["TARGETED_DEVICE_FAMILY"],
             "1,2,3,4,6,7"
+        );
+    }
+
+    #[test]
+    fn a_package_plugin_runs_the_tool_the_workspace_build_makes() {
+        let tool = "/dd/SourcePackages/out/Products/Debug-linux-aarch64/GenTool";
+        let output =
+            "/dd/SourcePackages/plugins/outputs/gen/Greeting/destination/GenPlugin/Generated.swift";
+        let mut dumped = vec![
+            json!({ "type": "project", "contents": { "customTasks": [{ "commandLine": [tool] }] } }),
+            json!({ "type": "target", "contents": { "customTasks": [{
+                "commandLine": [tool, output],
+                "inputFilePaths": [tool],
+                "outputFilePaths": [output],
+            }] } }),
+        ];
+        retarget_plugin_tools(&mut dumped, Path::new("/dd/SourcePackages/out/Products"));
+        let built = "${BUILD_DIR}/${CONFIGURATION}-linux-aarch64/GenTool";
+        let task = &dumped[1]["contents"]["customTasks"][0];
+        assert_eq!(task["commandLine"], json!([built, output]));
+        assert_eq!(task["inputFilePaths"], json!([built]));
+        assert_eq!(task["outputFilePaths"], json!([output]));
+        assert_eq!(
+            dumped[0]["contents"]["customTasks"][0]["commandLine"],
+            json!([tool])
+        );
+
+        let mac = "/dd/SourcePackages/out/Products/Debug/GenTool";
+        let mut dumped = vec![json!({ "type": "target", "contents": { "customTasks": [{
+            "commandLine": [mac],
+        }] } })];
+        retarget_plugin_tools(&mut dumped, Path::new("/dd/SourcePackages/out/Products/"));
+        assert_eq!(
+            dumped[0]["contents"]["customTasks"][0]["commandLine"],
+            json!(["${BUILD_DIR}/${CONFIGURATION}/GenTool"])
         );
     }
 }

@@ -1,0 +1,40 @@
+# Two apps and a local package's build-tool plugin, which generates the Swift
+# symbol each uses. PluginApp runs the plugin on its own target, as Xcode's
+# "Run Build Tool Plug-ins" phase does; Xcode 27's PIF gives the target the
+# dependency {"guid": "PACKAGE-PRODUCT:gen_GenPlugin.GenPlugin",
+# "name": "GenPlugin"}. PackagePluginApp uses the package's Greeting library,
+# whose target runs the plugin.
+# Regenerate the project with `xcodegen generate`.
+name: PluginApp
+options:
+  bundleIdPrefix: dev.sweetpad.check
+packages:
+  Gen:
+    path: Gen
+targets:
+  PluginApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [Sources]
+    buildToolPlugins:
+      - plugin: GenPlugin
+        package: Gen
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+  PackagePluginApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [PackageSources]
+    dependencies:
+      - package: Gen
+        product: Greeting
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
