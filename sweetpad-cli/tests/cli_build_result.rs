@@ -696,7 +696,8 @@ fn a_destination_error_off_a_device_gets_no_tip() {
 /// runner without a terminal, since the hot session builds before it launches
 /// anything. It checks for an injection client before that build, and a
 /// sweetpad built from source may bundle none, so a stand-in file serves as
-/// the client.
+/// the client. Only the Mac's tests run a session build.
+#[cfg(target_os = "macos")]
 fn session_with_stub(tag: &str, transcript: &str, status: i32) -> Output {
     let (mut cmd, _home, cwd) = hot_session_command(tag, transcript, status);
     let client = cwd.join("client.dylib");
