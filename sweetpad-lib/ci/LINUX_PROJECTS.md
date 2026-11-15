@@ -339,7 +339,7 @@ python3 sweetpad-lib/ci/linux-projects.py --summarize
 
 Omit `--only` to select every manifest entry.
 Use `--host linux` or `--host xcode` to rebuild one control.
-Use `--clean` after changing a compiler replacement, because Swift Build can reuse old resources.
+A changed stand-in or SDK reruns the tasks that use it, so `--clean` is only needed for a clean control.
 `--summarize` reads existing results without rebuilding.
 
 Results stay in the ignored `corpus/_linux-followups` directory:
@@ -440,9 +440,7 @@ The pin uses React Native 0.85.3 and NitroModules 0.35.9.
 Apply the MMKV scene-lifecycle patch before `bundle exec pod install`.
 For an existing checkout, `linux-projects.py --only react-native-mmkv --prepare-only` applies the patches without building.
 Then run `bundle exec pod install` again inside `example/ios` to regenerate the Pod header-search paths.
-The `SwiftCxxDebugThunks` shim affects only NitroModules and NitroMmkv.
-It leaves Apple's compiler behavior intact and suppresses Linux's debug-only forced thunk emission.
-No generated Swift header rewrite or higher template-depth limit is necessary.
+The Linux header-merge stage corrects the two recursive generic bridge helpers in the generated support header, so no fixture shim is needed.
 
 After successful builds and `linux-project-checks.py --only react-native-mmkv`, run:
 
@@ -524,8 +522,8 @@ Resolved Git package checkouts now contribute their explicit scheme files.
 This exposes `RevenueCatUI` in both CLI backends. It reaches compilation and fails in
 its source code, where the native control also fails.
 Discovery reads the selected DerivedData graph, including a build's custom path or project configuration.
-It does not fetch packages during scheme listing. A cold checkout needs dependency resolution
-through an existing project build before its remote scheme files are available.
+It does not fetch packages during scheme listing. A cold checkout needs `sweetpad dependency resolve`
+or a build before its remote scheme files are available.
 Package-root PIF reads use separate scratch directories, so they preserve the app's resolved graph.
 A local Git fixture verifies remote alias builds and custom DerivedData lookup.
 Action configurations also come from the selected graph; both CLI backends
@@ -832,7 +830,7 @@ Version-1 test plans preserve each named configuration and replace configuration
 The default plan supplies the test targets and manifest. `-- -testPlan Smoke` selects another referenced plan.
 Unknown or ambiguous names fail explicitly. Unsupported plan policies produce a manifest note after a successful build.
 Supported fields include environment, arguments, locale, filters, expansion target, parallelization, timeouts, and attachment lifetime.
-Sanitizer policies still require a supplied manifest.
+Enabled code coverage and sanitizers still require a supplied manifest.
 
 All 13 incremental parity phases pass with the CLI-generated Linux manifests, without editing those manifests.
 That includes 91 Linux-built test executions and unchanged test executable hashes.
@@ -857,20 +855,19 @@ No phone, account resources, or optional `.omo` artifacts form part of this foll
 
 ## ARM64 release packaging
 
-The archive targets Ubuntu 24.04 ARM64 (glibc 2.39) on Apple hardware.
-It includes a prebuilt CLI, the DAP alias, an installer, a sample app, licenses, and public setup sources.
+The static archives run on ARM64 and x86_64 Linux; toolchain setup supports Ubuntu 24.04, Debian 12 and 13, and Arch on x86_64.
+Each includes the prebuilt CLI, the DAP alias, a README, the device notes and licenses, with the setup sources embedded in the binary.
 The manifest records member hashes, binary and package versions, and the supported baseline.
 A separate SHA-256 file verifies the archive. Apple SDKs and signing material remain excluded.
 
-The public ARM64 workflow compiles an optimized binary and installs its archive in a clean Ubuntu container.
+The public package workflow compiles an optimized binary for each architecture and installs its archive and Debian package in a clean Ubuntu container.
 The container has no compiler, Apple SDK, developer home, or source checkout.
 It validates checksums, installation, CLI and DAP help, scheme discovery, and the missing-toolchain diagnostic.
-The setup sources retain their repository layout, pinned patches, macro licenses, and source pins.
 `SWEETPAD_SKIP_RUST=1` omits Rust installation for a prebuilt CLI.
 
 The private SDK check uses bubblewrap with a fresh home, fresh DerivedData, and no network.
 It exposes the supplied Swift toolchain, Swift Build products, macro executable, and private SDK read-only.
-The installed sample builds into an ARM64 Mach-O app without developer sources, signing files, or app build caches.
+An app that the installed CLI's `project new` creates builds into an ARM64 Mach-O app without developer sources, signing files, or app build caches.
 This validates the installed package with explicit toolchain prerequisites. It does not claim a fresh compiler or SDK download.
 
 The isolated build found that Swift gives macro plugins a minimal PATH and removes LD_LIBRARY_PATH.

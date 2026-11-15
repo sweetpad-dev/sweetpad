@@ -116,10 +116,7 @@ Provide the identities and profiles the method needs, as in [the signing guide](
 A Mac App Store build needs the App Sandbox. A Developer ID build needs the hardened runtime.
 SweetPad refuses an export without them and names the build setting to change.
 
-:::warning
-A Linux archive contains arm64 only. Xcode archives arm64 and x86_64 for a universal app.
-Use a Mac for the release when the app must run on Intel Macs.
-:::
+A Linux archive of a Mac app holds arm64 and x86_64, as one from Xcode does.
 
 ## Verify the actual products
 

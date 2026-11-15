@@ -180,7 +180,7 @@ sweetpad archive --project MyApp.xcodeproj --scheme MyApp \
 [Archive and distribute](../archive.md#uploading-to-app-store-connect) covers the key, what an upload waits for, and notarization.
 `sweetpad doctor --network` checks that Apple's services answer from the runner.
 
-The Linux export path rejects unsigned archives and simulator archives.
+Linux can't archive for a simulator. Export refuses an unsigned archive when no identity can sign it.
 
 ## Validate on an iPhone
 

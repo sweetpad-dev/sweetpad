@@ -4590,7 +4590,7 @@ both. `--engine swift-build` (`SWEETPAD_ENGINE`) runs Swift Build on
 a Mac too, which is how a build is checked against xcodebuild's. `build --show-command` prints the
 `swbuild` command line.
 
-SDK setup uses `sdk export` on a Mac and `setup --sdk` on Ubuntu ARM64 or x86_64.
+SDK setup uses `sdk export` on a Mac and `setup --sdk` on Linux: Ubuntu 24.04 or Debian 12 and 13 on ARM64 or x86_64, or Arch on x86_64.
 Export contains private Apple inputs and localized App Intents resources, without signing identities.
 Import verifies checksums and stages the SDK before replacement. It adds the Linux compiler's Clang resource headers.
 Setup discovers installed, extracted-archive, mise, or explicit source layouts and builds a sample to validate the result.
@@ -4776,7 +4776,8 @@ other `-sdk`, as `xcrun` does, and leaves the script's alone without one.
 `--find` and the `--show-sdk-*` queries answer from the Darwin SDK.
 
 **Swift Build is patched, as little as it can be.** `linux-setup.sh` builds
-Swift 6.4.2 with Swift Build 6.4.0 and `ci/swift-build-linux.patch`. Each
+Swift 6.4.2 with Swift Build 6.4.0 and `ci/swift-build-linux.patch`, beside
+`ci/swift-build-generic-debug-bridges.patch` and llbuild's `ci/swift-llbuild-directory-race.patch`. Each
 change is one an upstream pull request could take: a failed `lsregister`
 start is a note, as a failed run already is; provisioning requests go to the
 tool `SWEETPAD_PROVISIONING` names; `derq` is looked up on the search path;
@@ -4906,13 +4907,14 @@ the first device command checks `pymobiledevice3 version` against the same pinne
 and stops with `tool_missing` on any other. `doctor` reports whichever of the two the
 device commands will use.
 
-**Linux ARM64 ships an experimental release archive.** The Ubuntu 24.04 package includes
-the CLI, DAP alias, installer, licenses, a sample app, and public setup sources.
-It excludes Apple SDKs and signing material. Homebrew remains macOS only.
+**Linux ships static ARM64 and x86_64 archives, Debian packages and a container image.**
+An archive holds the static CLI, the DAP alias, a README, the device notes and licenses; the
+setup sources are embedded in the binary. It excludes Apple SDKs and signing material.
+Homebrew remains macOS only.
 The setup script provisions the separate compiler and private SDK prerequisites.
 `SWEETPAD_SKIP_RUST=1` omits Rust for the packaged CLI.
 Hosted CI validates a clean Ubuntu installation. A manual private SDK job builds the
-installed sample with no source checkout, developer home, network, or app build cache.
+app `project new` creates with the installed CLI, with no source checkout, developer home, network, or app build cache.
 The macro launcher restores runtime lookup from its adjacent host-toolchain link,
 because Swift strips PATH and LD_LIBRARY_PATH before it starts plugins.
 The release workflow publishes both platforms only after packaging checks pass.

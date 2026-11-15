@@ -1,7 +1,7 @@
 # Building Xcode projects on Linux
 
 Status on 2026-11-10. The initial Linux engine merged in PR #346.
-SDK export, Ubuntu setup/import, and Linux doctor are committed in `880b692d` on `codex/linux-sdk-setup`.
+SDK export, setup/import, and Linux doctor shipped in CLI 0.1.19.
 The follow-up audit below tracks work after that checkpoint. See
 [`ci/LINUX_PROJECTS.md`](../sweetpad-lib/ci/LINUX_PROJECTS.md) for current app coverage and limits.
 
@@ -31,8 +31,8 @@ Direct Linux Wi-Fi installation, launch, process checks, and startup logs also p
 
 ## ARM64 release gate
 
-The release archive targets Ubuntu 24.04 ARM64 on Apple hardware.
-It contains the CLI, DAP alias, checksums, an installer, a sample app, licenses, and public setup sources.
+The release ships static ARM64 and x86_64 archives, Debian packages and a container image.
+An archive contains the CLI, DAP alias, a README, the device notes and licenses, with checksums beside it.
 Apple SDKs, signing material, and build caches remain private.
 A clean Ubuntu container validates installation without Rust, a developer home, or a source checkout.
 A separate isolated SDK check builds the installed sample from an empty home and fresh DerivedData.
@@ -45,7 +45,7 @@ Manual release runs can select only Linux and invoke the private SDK integration
 That workflow requires a provisioned Apple-hardware runner and never uploads SDK or signing files.
 A dry run does not publish a release or update Homebrew.
 The release remains experimental. Apple test execution and simulator operation require macOS.
-Distribution export and Linux device debugging remain outside this release.
+Linux device debugging remains unsupported.
 Optional `.omo` work and dependency-size cleanup remain deferred.
 
 Items marked *(optional)* can wait until a project needs them.
@@ -164,7 +164,7 @@ they do not establish physical-device execution for these changes.
 - [x] T04: Replace the setup script's reference to unshipped linux-build.sh (`ci/linux-setup.sh`).
 - [x] T05: Align the Linux device help with the packaged venv layout and remove corpus-only paths (`LINUX_DEVICES.md`).
 - [x] T06: Document engine selection and setup environment controls, test-manifest platform limits, and app-host requirements (`CLI_DESIGN.md`, CLI help, Linux guides). Engine selection and setup controls are documented. The manifest's limits (iOS only, app host for device unit tests, `TEST_TARGET_NAME` for UI tests, plan version 1, accepted and refused options) and the path move are in `CLI_DESIGN.md` and the Linux signing and testing guide.
-- [ ] T07: Reconcile SDK setup design, current branch/status, MMKV notes, and reference counts (`CLI_DESIGN.md`, `ci/LINUX_PROJECTS.md`, Linux reference). SDK command design, current branch, and MMKV shim notes are updated. Historical status/reference counts still need a full reconciliation.
+- [x] T07: Reconcile SDK setup design, current branch/status, MMKV notes, and reference counts (`CLI_DESIGN.md`, `ci/LINUX_PROJECTS.md`, Linux reference). SDK command design, current branch, and MMKV shim notes are updated. Historical status/reference counts still need a full reconciliation. A read of the Linux docs, LINUX_PROJECTS.md and CLI_DESIGN.md against the code and this plan corrected: arm64-only Mac archives (E19 made them universal), the Ubuntu-only host and ARM64-only archive descriptions, the archive's contents (no installer or sample; setup is embedded), the retired MMKV shim, `--clean` after a stand-in change (E16), cold-checkout scheme discovery (E12), sanitizer manifests (D09), the three Swift Build patches, the export refusals, and the `880b692d` branch pointer. Version pins in install commands and dated corpus counts stay as they are.
 
 ## Engine
 
@@ -1097,8 +1097,6 @@ Running in the simulator stays on a Mac.
   once hung OrbStack. Set `CARGO_TARGET_DIR=$HOME/sweetpad-target`.
 - Swift Build's sources are at `~/src/swift-build` in the VM; the xcspecs
   are under `Sources/*/Specs`.
-- Swift Build reuses an unchanged catalog's `Assets.car` even after the
-  stand-in changes; clear the app's DerivedData before checking a new one.
 - Local checker apps live in the gitignored `sweetpad-lib/corpus/`:
   `_car-app` (57 asset lookups), `_strings-app`, `_alamofire-spm`,
   `_alamofire-consumer`, `_alamofire-dynamic` (the dynamic product,

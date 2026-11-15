@@ -48,7 +48,7 @@ The same report lists the tvOS, watchOS, and visionOS platforms that the SDK inc
 | Upload to App Store Connect | Supported with an App Store Connect API key. |
 | Notarize and staple a Developer ID app or package | Supported with a team API key. |
 | Custom export options | Supported for the keys SweetPad acts on. Other keys that change the result are refused by name. |
-| Build universal macOS archives | Linux archives contain arm64 only. |
+| Build universal macOS archives | Supported. Archives contain every standard architecture, as Xcode's do. |
 | Debug a device or inspect device readiness on Linux | Unsupported. |
 
 Current Xcode and Swift Build reject deprecated WatchKit extension products.
