@@ -546,8 +546,9 @@ impl Invocation {
             overrides.extend(host.embedded_platform_overrides(&sdk, &destination.arch, toolset));
             overrides.extend(host.overrides(&sdk, &destination.arch, toolset));
         }
-        if host.is_some() && plan.action == BuildAction::Archive {
-            archive_architectures(&mut overrides);
+        let every_arch = plan.action == BuildAction::Archive || builds_every_arch(plan.destination);
+        if host.is_some() && every_arch {
+            standard_architectures(&mut overrides);
         }
         let archive_signs =
             host.is_some() && plan.action == BuildAction::Archive && DarwinSdk::is_signed(&sdk);
@@ -579,6 +580,8 @@ impl Invocation {
 
         if plan.action == BuildAction::Archive {
             parameters["action"] = json!("install");
+        }
+        if every_arch {
             parameters["activeRunDestination"]["disableOnlyActiveArch"] = json!(true);
         }
 
@@ -1919,12 +1922,22 @@ fn run_device(destination: Option<&str>, sdk: &str) -> Option<String> {
     spec.id.filter(|_| device_sdk && !spec.generic)
 }
 
-/// An archive is built for every architecture the project names, as Xcode
-/// builds one for a generic destination: `ARCHS_STANDARD` unless the
-/// project says otherwise, so a Mac app is universal and a watch app holds
-/// arm64_32 beside arm64. Other builds stay on the destination's one
-/// architecture.
-fn archive_architectures(overrides: &mut BTreeMap<String, String>) {
+/// Whether a build is for every architecture the project names, as
+/// xcodebuild builds a generic destination: a simulator or Mac app gets
+/// arm64 and x86_64, a watch app arm64_32 beside arm64. `arch=` keeps a
+/// generic destination to that one architecture; xcodebuild refuses `arch=`
+/// on a generic destination, so nothing it builds is at stake.
+fn builds_every_arch(destination: Option<&str>) -> bool {
+    destination
+        .map(sweetpad_lib::destination::DestinationSpec::parse)
+        .is_some_and(|spec| spec.generic && spec.arch.is_none())
+}
+
+/// A build for every architecture drops the host's one-architecture
+/// overrides, so `ARCHS_STANDARD` applies unless the project says otherwise.
+/// Archives build this way, and so does a generic destination without
+/// `arch=`; other builds stay on the destination's one architecture.
+fn standard_architectures(overrides: &mut BTreeMap<String, String>) {
     overrides.retain(|key, _| {
         let name = key.split('[').next().unwrap_or(key);
         name != "ARCHS" && name != "ONLY_ACTIVE_ARCH"
@@ -2902,6 +2915,19 @@ mod tests {
         assert_eq!(on("generic/platform=iOS", "iphoneos"), None);
         assert_eq!(on(&format!("platform=macOS,id={udid}"), "macosx"), None);
         assert_eq!(run_device(None, "iphoneos"), None);
+    }
+
+    #[test]
+    fn a_generic_destination_builds_every_architecture_unless_it_names_one() {
+        assert!(builds_every_arch(Some("generic/platform=iOS Simulator")));
+        assert!(builds_every_arch(Some("generic/platform=macOS")));
+        assert!(!builds_every_arch(Some(
+            "generic/platform=iOS Simulator,arch=arm64"
+        )));
+        assert!(!builds_every_arch(Some(
+            "platform=iOS Simulator,name=iPhone 17"
+        )));
+        assert!(!builds_every_arch(None));
     }
 
     #[test]

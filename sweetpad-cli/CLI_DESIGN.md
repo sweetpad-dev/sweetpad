@@ -4888,6 +4888,14 @@ unmodified Swift runtime libraries the app embeds in `SwiftSupport/<platform>/`,
 `WatchKitSupport2` and Messages stubs. An App Store IPA carries these folders, and an export
 refuses an app whose embedded Swift libraries have no originals in the archive.
 
+**A generic destination builds every standard architecture.** xcodebuild builds a
+`generic/platform=…` destination with `ONLY_ACTIVE_ARCH` off, so a simulator or Mac product
+has arm64 and x86_64, a watch device product arm64_32 beside arm64, and other devices arm64.
+The Swift Build engine marks such a run destination `disableOnlyActiveArch` and drops its
+one-architecture overrides, as it does for an archive. `arch=` on a generic destination,
+which xcodebuild refuses, keeps the build to that architecture, and a named simulator builds
+the host's.
+
 **Linux device operations use pymobiledevice3.** The pinned Python adapter supports
 trusted USB and direct Wi-Fi. Both transports pass discovery, install, launch, scoped logs,
 stop, uninstall, and reinstallation on an iPhone 13. Automatic discovery uses multicast or

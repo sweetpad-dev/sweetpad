@@ -18,7 +18,8 @@ Apple toolchain setup supports Ubuntu 24.04 and the validated [Debian and Arch h
 The CLI, Swift compiler, Swift Build service, macro plugins, and SDK tools must match the Linux host.
 The build destination selects the app platform and target architecture.
 For example, `--destination 'generic/platform=iOS'` selects an ARM64 iPhone build on either host.
-Simulator and macOS destinations default to the host architecture. An explicit destination `arch=` selects another supported architecture.
+A generic destination builds every standard architecture, as `xcodebuild` does: arm64 and x86_64 for a simulator or a Mac, and arm64 with arm64_32 for a watch.
+Add `arch=` to build one architecture. A named simulator builds the host's architecture.
 
 The same private SDK export can supply Apple files to both hosts.
 SDK import installs host tools for the importing machine. An installed SDK bundle contains host executables and needs replacement after a host-architecture change.
