@@ -1,0 +1,15 @@
+# Project B of fixture-name-collision: a framework named Core like A's, with
+# a symbol A's doesn't have. Regenerate with `xcodegen generate` in this folder.
+name: B
+options:
+  bundleIdPrefix: dev.sweetpad.check.b
+targets:
+  Core:
+    type: framework
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [Core]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO

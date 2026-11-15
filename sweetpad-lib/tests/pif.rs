@@ -428,6 +428,44 @@ fn a_build_tool_plugin_is_a_dependency_of_the_target_that_runs_it() {
     );
 }
 
+/// Two projects of a workspace each have a framework named `Core`; a
+/// scheme's `BlueprintIdentifier` and container pick out which one it means.
+#[test]
+fn a_targets_project_and_id_tell_it_from_another_of_its_name() {
+    use sweetpad_lib::workspace_pif::project_target_guid;
+    let dir = lib_dir().join("ci/fixture-name-collision");
+    let emitted = pif(&dir.join("W.xcworkspace")).unwrap();
+    let target = |guid: &str| {
+        emitted
+            .iter()
+            .find(|o| o["type"] == "target" && o["contents"]["guid"] == guid)
+            .map(|o| o["contents"]["name"].clone())
+    };
+    let a = project_target_guid(
+        &emitted,
+        &dir.join("A/A.xcodeproj"),
+        "713A507CC4F0928C3AFD6809",
+    )
+    .unwrap();
+    let b = project_target_guid(
+        &emitted,
+        &dir.join("B/B.xcodeproj"),
+        "13D97D987A7E5AF1ED577B2E",
+    )
+    .unwrap();
+    assert_ne!(a, b);
+    assert_eq!(target(&a), Some("Core".into()));
+    assert_eq!(target(&b), Some("Core".into()));
+    assert_eq!(
+        project_target_guid(
+            &emitted,
+            &dir.join("A/A.xcodeproj"),
+            "13D97D987A7E5AF1ED577B2E"
+        ),
+        None
+    );
+}
+
 /// SwiftPM emits a plugin product as an aggregate target. A project target
 /// that depends on one, directly or through a target it depends on, runs the
 /// plugin; a package target's plugins are SwiftPM's to run.

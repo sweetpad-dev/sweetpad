@@ -278,6 +278,9 @@ pub fn select_test_plan<'a>(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestPlanTarget {
     pub name: String,
+    /// Its pbxproj ID, which tells it from a target of the same name in
+    /// another project; empty when the plan has none.
+    pub identifier: String,
     /// The project it's in, relative to the plan's container
     /// (`container:App.xcodeproj`).
     pub container: String,
@@ -299,6 +302,11 @@ pub fn test_plan_targets(path: &Path) -> Option<Vec<TestPlanTarget>> {
                 let target = entry.get("target")?;
                 Some(TestPlanTarget {
                     name: target.get("name")?.as_str()?.to_string(),
+                    identifier: target
+                        .get("identifier")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
                     container: target
                         .get("containerPath")
                         .and_then(serde_json::Value::as_str)
@@ -1467,11 +1475,13 @@ mod tests {
             [
                 TestPlanTarget {
                     name: "AppTests".into(),
+                    identifier: "1".into(),
                     container: "App.xcodeproj".into(),
                     enabled: true
                 },
                 TestPlanTarget {
                     name: "SlowTests".into(),
+                    identifier: "2".into(),
                     container: "App.xcodeproj".into(),
                     enabled: false
                 },

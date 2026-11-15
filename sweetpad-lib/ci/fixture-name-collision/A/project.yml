@@ -1,0 +1,26 @@
+# Project A of fixture-name-collision: a Core framework and an app using it.
+# Regenerate with `xcodegen generate` in this folder.
+name: A
+options:
+  bundleIdPrefix: dev.sweetpad.check.a
+targets:
+  Core:
+    type: framework
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [Core]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+  App:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [App]
+    dependencies:
+      - target: Core
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO

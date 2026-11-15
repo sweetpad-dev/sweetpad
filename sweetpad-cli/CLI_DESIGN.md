@@ -4614,6 +4614,14 @@ product (`<name>-product` in SwiftPM's PIF), else a package's module: the
 scheme Xcode makes for a product builds the product, which shares no name
 with a module when it's made only of binary targets.
 
+**A scheme entry's project and ID pick its target.** The emitter names a
+project target by its project's GUID followed by the MD5 of its pbxproj ID,
+so the request takes the target that a scheme entry's `BlueprintIdentifier`
+and `ReferencedContainer` name (a test plan's `identifier` and
+`containerPath`), not the first target of its name: two projects in a
+workspace can each have a `Core`. The name is what's left for a package
+entry and for a reference without an ID.
+
 **Build-tool plugins run for package targets only.** SwiftPM evaluates a
 package target's plugins while it prints the PIF and gives each command to
 Swift Build as a custom task. The task names the tool where SwiftPM's own

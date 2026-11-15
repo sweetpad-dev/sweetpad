@@ -571,20 +571,18 @@ impl Invocation {
             sweetpad_lib::workspace_pif::add_packages(&mut pif, dumped, &self.packages);
             // Dependency packages omit their test products. Treat the package
             // owning an explicit scheme as a root, as Xcode's integration does.
-            let names = scheme_targets(
+            let targets = scheme_targets(
                 &self.container,
                 plan.scheme,
-                match plan.action {
-                    BuildAction::Build => BuildFor::Running,
-                    BuildAction::BuildForTesting => BuildFor::Testing,
-                    BuildAction::Archive => BuildFor::Archiving,
-                },
+                build_for(plan.action),
                 Some(&self.locations.folder),
                 test_plan_name(plan.passthrough),
             )?;
-            let missing: Vec<&String> = names
+            let names = target_names(&targets);
+            let missing: Vec<&String> = targets
                 .iter()
-                .filter(|name| pif_target(&pif, name).is_none())
+                .filter(|target| scheme_pif_target(&pif, target).is_none())
+                .map(|target| &target.name)
                 .collect();
             let mut roots = Vec::new();
             if !missing.is_empty() {
@@ -617,17 +615,13 @@ impl Invocation {
                 &mut pif,
                 &self.locations.intermediates.join("SweetPad/HostTools"),
                 plan.configuration,
-                &scheme_targets(
+                &target_names(&scheme_targets(
                     &self.container,
                     plan.scheme,
-                    match plan.action {
-                        BuildAction::Build => BuildFor::Running,
-                        BuildAction::BuildForTesting => BuildFor::Testing,
-                        BuildAction::Archive => BuildFor::Archiving,
-                    },
+                    build_for(plan.action),
                     Some(&self.locations.folder),
                     test_plan_name(plan.passthrough),
-                )?,
+                )?),
             )?
         } else {
             std::collections::HashSet::default()
@@ -1242,6 +1236,66 @@ fn test_plan_name(passthrough: &[String]) -> Option<&str> {
         .map(|a| a[1].as_str())
 }
 
+/// A target a scheme builds: its name, and where the scheme says, the
+/// project and pbxproj ID that tell it from a target of the same name in
+/// another project of the workspace.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SchemeTarget {
+    name: String,
+    project: Option<(PathBuf, String)>,
+}
+
+impl SchemeTarget {
+    fn named(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            project: None,
+        }
+    }
+
+    /// Whether `other` is this target again: the same name, from the same
+    /// project where both say which.
+    fn same_as(&self, other: &Self) -> bool {
+        self.name == other.name
+            && match (&self.project, &other.project) {
+                (Some(a), Some(b)) => a == b,
+                _ => true,
+            }
+    }
+}
+
+/// The names of `targets`, for what reads a build's targets by name.
+fn target_names(targets: &[SchemeTarget]) -> Vec<String> {
+    targets.iter().map(|t| t.name.clone()).collect()
+}
+
+/// What a build action builds a scheme for.
+fn build_for(action: BuildAction) -> BuildFor {
+    match action {
+        BuildAction::Build => BuildFor::Running,
+        BuildAction::BuildForTesting => BuildFor::Testing,
+        BuildAction::Archive => BuildFor::Archiving,
+    }
+}
+
+/// The PIF target `target` is: the one its project and ID pick out, else the
+/// one [`pif_target`] finds by its name.
+fn scheme_pif_target<'a>(pif: &'a [Value], target: &SchemeTarget) -> Option<&'a Value> {
+    target
+        .project
+        .as_ref()
+        .and_then(|(project, id)| {
+            sweetpad_lib::workspace_pif::project_target_guid(pif, project, id)
+        })
+        .and_then(|guid| {
+            pif.iter()
+                .filter(|object| object["type"] == "target")
+                .map(|object| &object["contents"])
+                .find(|t| t["guid"] == guid.as_str())
+        })
+        .or_else(|| pif_target(pif, &target.name))
+}
+
 /// The targets a scheme builds for `build_for`, by name, the way Swift Build
 /// looks them up. A scheme with no file stands for the target of its name.
 /// Building for testing adds what the test action runs, as `xcodebuild
@@ -1254,7 +1308,7 @@ fn scheme_targets(
     build_for: BuildFor,
     derived_data: Option<&Path>,
     requested_plan: Option<&str>,
-) -> Result<Vec<String>, CliError> {
+) -> Result<Vec<SchemeTarget>, CliError> {
     let explicit_plan = requested_plan.is_some() && build_for == BuildFor::Testing;
     let missing_plan = || {
         CliError::new(format!(
@@ -1268,28 +1322,42 @@ fn scheme_targets(
         if explicit_plan {
             return Err(missing_plan());
         }
-        return Ok(vec![scheme.to_string()]);
+        return Ok(vec![SchemeTarget::named(scheme)]);
     };
     let parsed = match sweetpad_lib::scheme::parse_file(&file) {
         Ok(parsed) => parsed,
         Err(error) if explicit_plan => return Err(CliError::new(error.to_string())),
-        Err(_) => return Ok(vec![scheme.to_string()]),
+        Err(_) => return Ok(vec![SchemeTarget::named(scheme)]),
     };
     if explicit_plan && parsed.test_action.is_none() {
         return Err(missing_plan());
     }
-    let mut targets: Vec<String> = Vec::new();
-    let mut add = |name: &str| {
-        if !targets.iter().any(|t| t == name) {
-            targets.push(name.to_string());
+    let mut targets: Vec<SchemeTarget> = Vec::new();
+    let mut add = |name: &str, project: Option<PathBuf>, identifier: &str| {
+        let target = SchemeTarget {
+            name: name.to_string(),
+            project: project
+                .filter(|_| !identifier.is_empty())
+                .map(|p| (p, identifier.to_string())),
+        };
+        if !targets.iter().any(|t| t.same_as(&target)) {
+            targets.push(target);
         }
+    };
+    let reference = |buildable: &sweetpad_lib::scheme::BuildableRef| {
+        (
+            buildable.blueprint_name.clone(),
+            buildable.project_path(&file),
+            buildable.blueprint_identifier.clone(),
+        )
     };
     for entry in parsed
         .build_entries
         .iter()
         .filter(|e| e.builds_for(build_for))
     {
-        add(&entry.buildable.blueprint_name);
+        let (name, project, identifier) = reference(&entry.buildable);
+        add(&name, project, &identifier);
     }
     if build_for == BuildFor::Testing
         && let Some(test) = &parsed.test_action
@@ -1321,11 +1389,16 @@ fn scheme_targets(
                 ))
             })?;
             for target in plan_targets.iter().filter(|t| t.enabled) {
-                add(&target.name);
+                let project = Path::new(&target.container)
+                    .extension()
+                    .is_some_and(|e| e == "xcodeproj")
+                    .then(|| sweetpad_lib::project::absolutize(&base.join(&target.container)));
+                add(&target.name, project, &target.identifier);
             }
         } else {
             for testable in test.testables.iter().filter(|t| !t.skipped) {
-                add(&testable.buildable.blueprint_name);
+                let (name, project, identifier) = reference(&testable.buildable);
+                add(&name, project, &identifier);
             }
         }
     }
@@ -1356,24 +1429,23 @@ fn build_request(
     pif: &[Value],
     parameters: &Value,
 ) -> Result<Value, CliError> {
-    let build_for = match plan.action {
-        BuildAction::Build => BuildFor::Running,
-        BuildAction::BuildForTesting => BuildFor::Testing,
-        BuildAction::Archive => BuildFor::Archiving,
-    };
+    let build_for = build_for(plan.action);
     let derived_data = parameters["arenaInfo"]["derivedDataPath"]
         .as_str()
         .map(Path::new);
     let mut targets = Vec::new();
-    for name in scheme_targets(
+    for scheme_target in scheme_targets(
         container,
         plan.scheme,
         build_for,
         derived_data,
         test_plan_name(plan.passthrough),
     )? {
-        let target = pif_target(pif, &name).ok_or_else(|| {
-            CliError::new(format!("scheme target '{name}' isn't in the workspace PIF"))
+        let target = scheme_pif_target(pif, &scheme_target).ok_or_else(|| {
+            CliError::new(format!(
+                "scheme target '{}' isn't in the workspace PIF",
+                scheme_target.name
+            ))
         })?;
         targets.push(json!({"guid":target["guid"]}));
     }
@@ -2926,6 +2998,30 @@ mod tests {
         assert!(refuse_xcodebuild_flags(&["-testPlan".into(), "Smoke".into()]).is_ok());
     }
 
+    /// The fixture's workspace has a `Core` framework in each of its two
+    /// projects, and its `BCore` scheme builds B's.
+    #[test]
+    fn a_scheme_target_keeps_the_project_and_id_its_entry_names() {
+        let dir =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../sweetpad-lib/ci/fixture-name-collision");
+        let targets = scheme_targets(
+            &dir.join("W.xcworkspace"),
+            "BCore",
+            BuildFor::Running,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(targets.len(), 1);
+        let (project, id) = targets[0].project.clone().unwrap();
+        assert!(project.ends_with("B/B.xcodeproj"), "{}", project.display());
+        assert_eq!(id, "13D97D987A7E5AF1ED577B2E");
+        let pif = sweetpad_lib::workspace_pif::pif(&dir.join("W.xcworkspace")).unwrap();
+        let picked = scheme_pif_target(&pif, &targets[0]).unwrap();
+        let by_name = pif_target(&pif, "Core").unwrap();
+        assert_ne!(picked["guid"], by_name["guid"]);
+    }
+
     #[test]
     fn building_for_testing_adds_the_test_plans_targets() {
         let dir = crate::cli::testdir::TempDir::new("sweetpad-swbuild-test-plan");
@@ -2961,11 +3057,11 @@ mod tests {
         );
         std::fs::write(schemes.join("App.xcscheme"), scheme(&testables)).unwrap();
         assert_eq!(
-            scheme_targets(&project, "App", BuildFor::Testing, None, None).unwrap(),
+            target_names(&scheme_targets(&project, "App", BuildFor::Testing, None, None).unwrap()),
             ["App", "AppTests", "KitTests"]
         );
         assert_eq!(
-            scheme_targets(&project, "App", BuildFor::Running, None, None).unwrap(),
+            target_names(&scheme_targets(&project, "App", BuildFor::Running, None, None).unwrap()),
             ["App"]
         );
 
@@ -2984,7 +3080,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            scheme_targets(&project, "App", BuildFor::Testing, None, None).unwrap(),
+            target_names(&scheme_targets(&project, "App", BuildFor::Testing, None, None).unwrap()),
             ["App", "UITests"]
         );
     }

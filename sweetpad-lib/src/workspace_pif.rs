@@ -70,6 +70,27 @@ pub fn pif(container: &Path) -> Result<Vec<Json>, Error> {
     Ok(out)
 }
 
+/// The GUID of the target whose pbxproj ID is `identifier` in the project at
+/// `project`, when the PIF has that target. The emitter names a target by
+/// its project's GUID followed by the MD5 of its ID, so a scheme's
+/// `BlueprintIdentifier` picks it out where two projects have targets of the
+/// same name.
+#[must_use]
+pub fn project_target_guid(pif: &[Json], project: &Path, identifier: &str) -> Option<String> {
+    let path = project::standardize(project);
+    let path = path.to_str()?;
+    let project_guid = pif
+        .iter()
+        .filter(|o| o["type"] == "project")
+        .map(|o| &o["contents"])
+        .find(|c| c["path"] == path)?["guid"]
+        .as_str()?;
+    let guid = format!("{project_guid}{}", md5_hex(identifier.as_bytes()));
+    pif.iter()
+        .any(|o| o["type"] == "target" && o["contents"]["guid"] == guid.as_str())
+        .then_some(guid)
+}
+
 /// The build-tool plugins that project targets run in a build of `roots`
 /// and the targets they depend on, as target and plugin names, from a
 /// workspace's PIF with its packages added. Xcode evaluates such a plugin
