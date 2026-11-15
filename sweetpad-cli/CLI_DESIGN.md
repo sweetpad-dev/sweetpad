@@ -4628,7 +4628,11 @@ LLVM's Darwin libtool is recognized without treating its LLVM version as a cctoo
 identity or several; the passwords in `SWEETPAD_CODE_SIGN_P12_PASSWORD`,
 one for all or one per file), and the profile is picked as automatic
 signing picks it, from Xcode's folders or `SWEETPAD_PROVISIONING_PROFILES`.
-A build for a phone, TV, watch or Vision Pro passes the device's identifier
+Swift Build hands its environment to every script phase and plugin, so a
+build removes the password and `SWEETPAD_ASC_KEY` from it and passes the
+password to the stand-ins in a temporary file only the user can read
+(`SWEETPAD_CODE_SIGN_P12_PASSWORD_FILE`), deleted when the build ends;
+scheme actions get neither. A build for a phone, TV, watch or Vision Pro passes the device's identifier
 to the provisioning tool, which takes only a development or ad hoc profile
 listing that device and otherwise gives Xcode's "doesn't include the
 currently selected device" error. An identity whose issuer neither its

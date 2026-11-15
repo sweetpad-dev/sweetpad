@@ -705,6 +705,47 @@ fn provisioning_picks_the_identity_of_the_requested_team() {
 }
 
 #[test]
+fn a_build_reads_the_signing_password_from_a_file_and_no_secret_from_its_environment() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let mut env = vec![
+        ("PATH".to_string(), Some("/bin".to_string())),
+        (
+            "SWEETPAD_ASC_KEY".to_string(),
+            Some("-----BEGIN PRIVATE KEY-----".to_string()),
+        ),
+    ];
+    let secrets = HiddenSecrets::hide(&mut env, Some("not-a-real-password"), true).unwrap();
+    let value = |name: &str| {
+        env.iter()
+            .rev()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.clone())
+    };
+    assert_eq!(value("PATH"), Some(Some("/bin".to_string())));
+    assert_eq!(value("SWEETPAD_ASC_KEY"), Some(None));
+    assert_eq!(value("SWEETPAD_CODE_SIGN_P12_PASSWORD"), Some(None));
+    let file = PathBuf::from(
+        value("SWEETPAD_CODE_SIGN_P12_PASSWORD_FILE")
+            .unwrap()
+            .unwrap(),
+    );
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "not-a-real-password"
+    );
+    assert_eq!(
+        std::fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    drop(secrets);
+    assert!(!file.exists());
+    // A scheme action signs nothing, so it gets no file either.
+    let mut env = Vec::new();
+    let _secrets = HiddenSecrets::hide(&mut env, Some("not-a-real-password"), false).unwrap();
+    assert!(env.iter().all(|(_, value)| value.is_none()));
+}
+
+#[test]
 fn doctor_says_what_stops_an_identity_signing() {
     let usable = apple_issued_fixture();
     let now = usable.certificate.not_before.clone();

@@ -21,6 +21,10 @@ use super::time;
 
 pub(super) const P12_VARIABLE: &str = "SWEETPAD_CODE_SIGN_P12";
 pub(super) const PASSWORD_VARIABLE: &str = "SWEETPAD_CODE_SIGN_P12_PASSWORD";
+/// A file holding the `.p12` password, which a build passes the codesign
+/// and provisioning stand-ins in place of [`PASSWORD_VARIABLE`] (see
+/// [`super::HiddenSecrets`]).
+pub(super) const PASSWORD_FILE_VARIABLE: &str = "SWEETPAD_CODE_SIGN_P12_PASSWORD_FILE";
 
 /// Apple's root certificate authorities: the RSA root above WWDR G3 to G5
 /// and Developer ID, and the ECC root above WWDR G6.
@@ -485,7 +489,19 @@ impl IdentitySet {
         let files: Vec<PathBuf> = std::env::split_paths(&list)
             .filter(|p| !p.as_os_str().is_empty())
             .collect();
-        let passwords = std::env::var(PASSWORD_VARIABLE).unwrap_or_default();
+        let passwords = match (
+            std::env::var(PASSWORD_VARIABLE).ok(),
+            std::env::var_os(PASSWORD_FILE_VARIABLE),
+        ) {
+            (Some(passwords), _) => passwords,
+            (None, Some(file)) => std::fs::read_to_string(&file).map_err(|e| {
+                format!(
+                    "couldn't read {} ({PASSWORD_FILE_VARIABLE}): {e}",
+                    Path::new(&file).display()
+                )
+            })?,
+            (None, None) => String::new(),
+        };
         Self::from_files(&files, &passwords, with_keys).map(Some)
     }
 

@@ -31,6 +31,9 @@ sweetpad build --project MyApp.xcodeproj --scheme MyApp \
   -- -derivedDataPath "$HOME/builds/MyApp" ARCHS=arm64
 ```
 
+The project's build scripts, plugins and scheme actions don't see the password or `SWEETPAD_ASC_KEY` in their environment.
+SweetPad passes the password to its signing tools in a temporary file that only you can read, and deletes it when the build ends.
+
 The signer selects a matching profile from the configured directory.
 Without a configured directory, it also checks the profile locations that Xcode uses under the user's Library.
 When the destination names a device, the signer selects only a profile that lists that device.

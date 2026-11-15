@@ -140,17 +140,15 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
             out.line(&rendered);
         }
     };
-    let ok = process::stream_lines_with_env(
-        &program,
-        &args,
-        invocation.cwd.as_deref(),
-        &invocation.env,
-        |line| {
+    let mut env = invocation.env.clone();
+    let _secrets =
+        super::codesign::HiddenSecrets::hide_environment(&mut env, true).map_err(CliError::new)?;
+    let ok =
+        process::stream_lines_with_env(&program, &args, invocation.cwd.as_deref(), &env, |line| {
             transcript.push_str(line);
             transcript.push('\n');
             parser.push(line).iter().for_each(&mut take);
-        },
-    )?;
+        })?;
     if !ok
         && let Some(progress) = &mut progress
         && let Some(banner) = progress.close_failed(ResultKind::BuildFailed)

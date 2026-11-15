@@ -1,6 +1,7 @@
 //! Scheme execution actions run outside Swift Build's target task graph.
 
 use super::{Invocation, xcodebuild};
+use crate::cli::codesign::HiddenSecrets;
 use crate::cli::{CliError, ErrorKind, output::Output, process};
 use std::path::{Path, PathBuf};
 use sweetpad_lib::scheme::Scheme;
@@ -107,15 +108,12 @@ impl Actions {
                     ),
                 ]);
             }
-            let shell = if cfg!(target_os = "linux") && action.shell == "/bin/sh" {
-                "/bin/bash"
-            } else {
-                &action.shell
-            };
             out.note(&format!("{phase}: {}", action.title));
+            let _secrets =
+                HiddenSecrets::hide_environment(&mut env, false).map_err(CliError::new)?;
             let mut transcript = String::new();
             let ok = process::stream_lines_with_env(
-                shell,
+                shell(&action.shell),
                 &["-c", &action.script],
                 Some(&std::env::temp_dir()),
                 &env,
@@ -188,4 +186,14 @@ pub(crate) fn archive(
         )?;
     }
     Ok(())
+}
+
+/// The shell a scheme action runs in: macOS's `/bin/sh` takes Bash syntax, so
+/// on Linux, whose `/bin/sh` may not, an action naming it runs in Bash.
+fn shell(named: &str) -> &str {
+    if cfg!(target_os = "linux") && named == "/bin/sh" {
+        "/bin/bash"
+    } else {
+        named
+    }
 }

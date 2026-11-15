@@ -59,6 +59,93 @@ pub fn identity_configured() -> bool {
     std::env::var_os(identity::P12_VARIABLE).is_some_and(|path| !path.is_empty())
 }
 
+/// The App Store Connect key's text, which uploads and notarization read
+/// and no build needs.
+const ASC_KEY_VARIABLE: &str = "SWEETPAD_ASC_KEY";
+
+/// Keeps the signing secrets out of the environment a build passes its
+/// tasks. Swift Build hands its environment to every script phase and
+/// plugin, as Xcode does, and a script that prints its environment would
+/// put them in the build log. On a Mac the keychain holds the identity, so
+/// nothing there is in the environment to leak. The `.p12` password reaches
+/// the codesign and provisioning stand-ins in a file only this user can
+/// read, removed when this value drops. The App Store Connect key reaches
+/// nothing.
+pub(crate) struct HiddenSecrets {
+    file: Option<PathBuf>,
+}
+
+impl HiddenSecrets {
+    /// Removes the secrets from `env`, the changes to a child's environment,
+    /// with the password, when `password` is the one set and `signs`, in a
+    /// file the child reads instead.
+    pub(crate) fn hide(
+        env: &mut Vec<(String, Option<String>)>,
+        password: Option<&str>,
+        signs: bool,
+    ) -> Result<Self, String> {
+        env.retain(|(name, _)| {
+            ![
+                ASC_KEY_VARIABLE,
+                identity::PASSWORD_VARIABLE,
+                identity::PASSWORD_FILE_VARIABLE,
+            ]
+            .contains(&name.as_str())
+        });
+        env.push((ASC_KEY_VARIABLE.to_string(), None));
+        env.push((identity::PASSWORD_VARIABLE.to_string(), None));
+        let Some(password) = password.filter(|_| signs) else {
+            return Ok(Self { file: None });
+        };
+        let file = password_file(password)?;
+        env.push((
+            identity::PASSWORD_FILE_VARIABLE.to_string(),
+            Some(file.display().to_string()),
+        ));
+        Ok(Self { file: Some(file) })
+    }
+
+    /// [`Self::hide`] with the password the environment sets.
+    pub(crate) fn hide_environment(
+        env: &mut Vec<(String, Option<String>)>,
+        signs: bool,
+    ) -> Result<Self, String> {
+        let password = std::env::var(identity::PASSWORD_VARIABLE).ok();
+        Self::hide(env, password.as_deref(), signs)
+    }
+}
+
+impl Drop for HiddenSecrets {
+    fn drop(&mut self) {
+        if let Some(file) = &self.file {
+            let _ = std::fs::remove_file(file);
+        }
+    }
+}
+
+/// A new file in the temporary folder that only this user can read, holding
+/// `password`.
+fn password_file(password: &str) -> Result<PathBuf, String> {
+    use std::io::Write as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let path = std::env::temp_dir().join(format!(
+        "sweetpad-p12-password-{}-{nanos}",
+        std::process::id()
+    ));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|e| format!("couldn't create {}: {e}", path.display()))?;
+    file.write_all(password.as_bytes())
+        .map_err(|e| format!("couldn't write {}: {e}", path.display()))?;
+    Ok(path)
+}
+
 /// An identity as `doctor` shows it: its name, what it signs and what stops
 /// it signing, if anything does.
 pub struct IdentityStatus {
