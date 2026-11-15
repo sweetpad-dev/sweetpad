@@ -98,7 +98,7 @@ they do not establish physical-device execution for these changes.
 
 - [x] S01: Find public setup sources beside extracted archives and mise binaries, as well as installed prefixes (`commands/setup.rs`).
 - [x] S02: Treat missing localized App Intents phrases as an optional capability, and share the engine's macro lookup (`commands/doctor.rs`, `swbuild.rs`).
-- [ ] S03: Check the build service, Darwin librarian, zip, extra platforms, device tools, and pinned Swift Build provenance where available (`commands/doctor.rs`). Build-service and librarian checks are required; zip/usbmuxd are optional checks. Extra platforms and patch provenance remain open.
+- [x] S03: Check the build service, Darwin librarian, zip, extra platforms, device tools, and pinned Swift Build provenance where available (`commands/doctor.rs`). Build-service and librarian checks are required; zip/usbmuxd are optional checks. Setup records the Swift Build version and patch digest beside `swbuild`, and `doctor` warns when they differ from what this sweetpad embeds ("Swift Build patches"); "Extra platforms" lists the tvOS, watchOS and visionOS platforms the SDK has. Checked in the VM.
 - [x] S04: Report `--replace-sdk` for setup migration, retain useful bootstrap errors in JSON, and handle root without sudo (`linux-sdk.py`, `commands/setup.rs`, `ci/linux-setup.sh`).
 - [x] S05: Test setup source discovery and Linux doctor independently of the developer machine (`commands/setup.rs`, `commands/doctor.rs`).
 - [x] S06: Consolidate tool version requirements across bootstrap, export, doctor, and packaging (`commands/setup.rs`, `linux-sdk.py`, `ci/linux-setup.sh`).

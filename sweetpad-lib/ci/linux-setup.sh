@@ -263,6 +263,11 @@ fi
 # link.
 ln -sf "$SWB/.build/release/swbuild" "$HOME/bin/swbuild"
 ls "$SWB/.build/release/swbuild" "$SWB/.build/release/SWBBuildServiceBundle"
+# What this swbuild was built from, which 'sweetpad doctor' compares with
+# the patches the running sweetpad carries.
+printf '{"swiftBuild":"%s","patches":"%s"}\n' "$SWIFT_BUILD_VERSION" \
+  "$(cat "$PATCH" "$GENERIC_PATCH" "$LLBUILD_PATCH" "$LOCKFILE" | sha256sum | cut -d' ' -f1)" \
+  > "$SWB/.build/release/sweetpad-swift-build.json"
 
 section "sweetpad-macros"
 # Built outside the checkout, which the Mac shares, so the two builds keep

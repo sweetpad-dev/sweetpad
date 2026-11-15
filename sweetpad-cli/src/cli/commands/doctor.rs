@@ -147,6 +147,7 @@ fn gather_linux(target: Target) -> Vec<Check> {
         false,
         setup,
     ));
+    checks.push(swift_build_provenance(&swbuild));
     let service = resolved_program(&swbuild)
         .and_then(|p| p.parent().map(|d| d.join("SWBBuildServiceBundle")));
     checks.push(linux_check(
@@ -183,6 +184,92 @@ fn gather_linux(target: Target) -> Vec<Check> {
     checks.extend(gather_linux_sdk(target, setup));
     checks.extend(gather_linux_optional(target));
     checks
+}
+
+/// Whether `swbuild` was built from the Swift Build version and patches this
+/// sweetpad pins, from the record `linux-setup.sh` leaves beside it. A
+/// sweetpad upgrade can carry new patches, which take effect only once setup
+/// builds them.
+fn swift_build_provenance(swbuild: &str) -> Check {
+    let pinned = &super::sdk::toolchain().swift_build;
+    let patches = crate::cli::embedded::swift_build_patches();
+    let record = resolved_program(swbuild)
+        .and_then(|p| std::fs::read(p.with_file_name("sweetpad-swift-build.json")).ok())
+        .and_then(|data| serde_json::from_slice::<serde_json::Value>(&data).ok());
+    let (ok, detail) = match &record {
+        None => (
+            false,
+            "no record of what swbuild was built from".to_string(),
+        ),
+        Some(record) => {
+            let version = record["swiftBuild"].as_str().unwrap_or_default();
+            let built = record["patches"].as_str().unwrap_or_default();
+            let short = |digest: &str| digest.get(..12).unwrap_or(digest).to_string();
+            if version != pinned {
+                (
+                    false,
+                    format!("Swift Build {version}; this sweetpad pins {pinned}"),
+                )
+            } else if built != patches {
+                (
+                    false,
+                    format!(
+                        "Swift Build {version} with patches {}; this sweetpad carries {}",
+                        short(built),
+                        short(&patches)
+                    ),
+                )
+            } else {
+                (
+                    true,
+                    format!(
+                        "Swift Build {version} with sweetpad's patches ({})",
+                        short(built)
+                    ),
+                )
+            }
+        }
+    };
+    linux_check(
+        "Swift Build patches",
+        ok,
+        detail,
+        true,
+        "run sweetpad setup again to build Swift Build with this version's patches",
+    )
+}
+
+/// The platforms beyond iOS and macOS that the SDK carries. Export copies
+/// them from the Mac's Xcode when it has them installed; none is needed to
+/// build for iOS.
+fn extra_platforms(sdk: &std::path::Path) -> Check {
+    let platforms = sdk.join("Developer/Platforms");
+    let mut present = Vec::new();
+    let mut missing = Vec::new();
+    for (name, device, simulator) in [
+        ("tvOS", "AppleTVOS", "AppleTVSimulator"),
+        ("watchOS", "WatchOS", "WatchSimulator"),
+        ("visionOS", "XROS", "XRSimulator"),
+    ] {
+        let has = |platform: &str| platforms.join(format!("{platform}.platform")).is_dir();
+        if has(device) && has(simulator) {
+            present.push(name);
+        } else {
+            missing.push(name);
+        }
+    }
+    let detail = match (present.is_empty(), missing.is_empty()) {
+        (_, true) => present.join(", "),
+        (true, false) => format!("none; missing {}", missing.join(", ")),
+        (false, false) => format!("{}; missing {}", present.join(", "), missing.join(", ")),
+    };
+    linux_check(
+        "Extra platforms",
+        missing.is_empty(),
+        detail,
+        true,
+        "install the platform in Xcode on your Mac, then export and import the SDK again",
+    )
 }
 
 fn linux_shell() -> Check {
@@ -320,6 +407,7 @@ fn gather_sdk_at(target: Target, setup: &'static str, sdk: &std::path::Path) -> 
         false,
         setup,
     ));
+    checks.push(extra_platforms(sdk));
     let host_arch = sdk_tool_architecture(sdk);
     checks.push(linux_check(
         "SDK host tools",
@@ -911,6 +999,53 @@ mod tests {
                 .status,
             Status::Fail
         );
+    }
+
+    /// `linux-setup.sh` records what it built `swbuild` from beside it; a
+    /// sweetpad with other patches says to run setup again.
+    #[test]
+    fn swift_build_built_from_other_patches_asks_for_setup() {
+        let root = crate::cli::testdir::TempDir::new("doctor-swift-build");
+        let swbuild = root.join("swbuild");
+        std::fs::write(&swbuild, "").unwrap();
+        let program = swbuild.display().to_string();
+        assert_eq!(swift_build_provenance(&program).status, Status::Warn);
+        let pinned = &super::super::sdk::toolchain().swift_build;
+        let record = |version: &str, patches: &str| {
+            std::fs::write(
+                root.join("sweetpad-swift-build.json"),
+                format!(r#"{{"swiftBuild":"{version}","patches":"{patches}"}}"#),
+            )
+            .unwrap();
+            swift_build_provenance(&program)
+        };
+        let carried = crate::cli::embedded::swift_build_patches();
+        assert_eq!(record(pinned, &carried).status, Status::Ok);
+        let other = record(pinned, "0123456789abcdef");
+        assert_eq!(other.status, Status::Warn);
+        assert!(
+            other.detail.contains("patches 0123456789ab;"),
+            "{}",
+            other.detail
+        );
+        assert_eq!(record("1.0.0", &carried).status, Status::Warn);
+    }
+
+    #[test]
+    fn extra_platforms_name_what_the_sdk_lacks() {
+        let root = crate::cli::testdir::TempDir::new("doctor-platforms");
+        for platform in ["AppleTVOS", "AppleTVSimulator", "WatchOS"] {
+            std::fs::create_dir_all(root.join(format!("Developer/Platforms/{platform}.platform")))
+                .unwrap();
+        }
+        let check = extra_platforms(&root);
+        assert_eq!(check.status, Status::Warn);
+        assert_eq!(check.detail, "tvOS; missing watchOS, visionOS");
+        for platform in ["WatchSimulator", "XROS", "XRSimulator"] {
+            std::fs::create_dir_all(root.join(format!("Developer/Platforms/{platform}.platform")))
+                .unwrap();
+        }
+        assert_eq!(extra_platforms(&root).status, Status::Ok);
     }
 
     #[test]

@@ -25,6 +25,9 @@ SDK import installs host tools for the importing machine. An installed SDK bundl
 Flutter AOT and React Native keep the additional host-tool requirements in their respective guides.
 
 The validated setup uses an Apple-hardware Linux VM, Swift 6.4.2, Swift Build 6.4.0, and SDK data from Xcode.
+Setup builds Swift Build with SweetPad's patches and records which ones it used.
+A newer SweetPad can carry newer patches, so after an upgrade `sweetpad doctor` warns until `sweetpad setup` runs again.
+The same report lists the tvOS, watchOS, and visionOS platforms that the SDK includes.
 
 ## Platform coverage
 

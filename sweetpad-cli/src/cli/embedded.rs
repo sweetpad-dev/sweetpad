@@ -38,6 +38,29 @@ fn fingerprint() -> String {
     digest
 }
 
+/// The SHA-256 of the Swift Build patches and lockfile this sweetpad
+/// carries, one after another, as `linux-setup.sh` records it beside the
+/// `swbuild` it builds.
+pub(crate) fn swift_build_patches() -> String {
+    let mut input = Vec::new();
+    for name in [
+        "swift-build-linux.patch",
+        "swift-build-generic-debug-bridges.patch",
+        "swift-llbuild-directory-race.patch",
+        "swift-build-Package.resolved",
+    ] {
+        let path = format!("setup/sweetpad-lib/ci/{name}");
+        if let Some((_, bytes)) = FILES.iter().find(|(n, _)| *n == path) {
+            input.extend_from_slice(bytes);
+        }
+    }
+    let mut digest = String::with_capacity(64);
+    for byte in sweetpad_lib::xcode_hash::sha256(&input) {
+        write!(digest, "{byte:02x}").unwrap();
+    }
+    digest
+}
+
 fn valid(root: &Path) -> bool {
     FILES.iter().all(|(name, bytes)| {
         let mut path = root.to_path_buf();
