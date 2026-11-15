@@ -1368,6 +1368,7 @@ fn stub_swiftc(bin: &std::path::Path, rest: &str) {
 /// leaves in its `TMPDIR` what a real build does: a `TemporaryDirectory.*`
 /// holding the driver's `.keep-directory`, from the build service's `swiftc
 /// --version`, and one of SwiftPM's lock files.
+#[cfg(target_os = "macos")]
 fn stub_xcodebuild(bin: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;
 
@@ -1513,7 +1514,9 @@ fn a_warm_up_leaves_nothing_in_the_servers_tmpdir() {
 /// The warm-up's `xcodebuild` keeps the user's `TMPDIR`, where SwiftPM's
 /// locks are shared, and each build leaves a `TemporaryDirectory.*` there.
 /// The server removes the ones its builds left once each exits, and keeps the
-/// locks and a directory that was there before it started.
+/// locks and a directory that was there before it started. Only a Mac
+/// prepares with xcodebuild; elsewhere it's sweetpad's Swift Build engine.
+#[cfg(target_os = "macos")]
 #[test]
 fn a_warm_up_removes_what_its_xcodebuild_left_in_tmpdir() {
     let scratch =

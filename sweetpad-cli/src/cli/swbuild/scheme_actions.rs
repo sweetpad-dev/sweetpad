@@ -54,31 +54,32 @@ impl Actions {
             ),
         };
         for action in scripts {
+            // xcodebuild runs only the shell actions and passes over the rest,
+            // such as Send Email, which is the IDE's.
             if action.action_type
                 != "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction"
             {
-                return Err(CliError::new(format!(
-                    "unsupported {phase} action '{}' of type '{}'",
-                    action.title, action.action_type
-                ))
-                .kind(ErrorKind::Usage));
+                out.note(&format!(
+                    "{phase}: skipped '{}', which isn't a shell script, as xcodebuild does",
+                    action.title
+                ));
+                continue;
             }
             let mut env = Vec::new();
             if let Some(reference) = &action.environment_buildable {
                 let project = reference.project_path(&self.file).ok_or_else(|| CliError::new(format!(
                     "{phase} action '{}' needs a project target for its build-settings environment", action.title)))?;
-                let target = if reference.blueprint_identifier.is_empty() {
-                    reference.blueprint_name.clone()
+                let (project, target) = if project.join("Package.swift").is_file() {
+                    register_packages(invocation)?;
+                    let target = if reference.blueprint_name.is_empty() {
+                        reference.blueprint_identifier.clone()
+                    } else {
+                        reference.blueprint_name.clone()
+                    };
+                    (project.join("Package.swift"), target)
                 } else {
-                    sweetpad_lib::project::target_name(&project, &reference.blueprint_identifier)
-                        .ok_or_else(|| {
-                            CliError::new(format!(
-                                "{phase} action '{}' references missing target {} in {}",
-                                action.title,
-                                reference.blueprint_identifier,
-                                project.display()
-                            ))
-                        })?
+                    let target = project_target(&project, reference, phase, &action.title)?;
+                    (project, target)
                 };
                 env.extend(
                     xcodebuild::scheme_action_settings(
@@ -142,6 +143,46 @@ impl Actions {
         }
         Ok(())
     }
+}
+
+/// The project target `reference` names: by its ID, else by its name.
+fn project_target(
+    project: &Path,
+    reference: &sweetpad_lib::scheme::BuildableRef,
+    phase: &str,
+    title: &str,
+) -> Result<String, CliError> {
+    if reference.blueprint_identifier.is_empty() {
+        return Ok(reference.blueprint_name.clone());
+    }
+    sweetpad_lib::project::target_name(project, &reference.blueprint_identifier).ok_or_else(|| {
+        CliError::new(format!(
+            "{phase} action '{title}' references missing target {} in {}",
+            reference.blueprint_identifier,
+            project.display()
+        ))
+    })
+}
+
+/// File the local packages of the build's container, as SwiftPM describes
+/// them, so a package target's settings resolve as a project target's do.
+/// An action can run before the build has read them.
+fn register_packages(invocation: &Invocation) -> Result<(), CliError> {
+    let packages = sweetpad_core::package_pif::load(
+        &invocation.container,
+        &invocation.locations.folder.join("SourcePackages"),
+        &invocation
+            .locations
+            .intermediates
+            .join("SweetPad/PackageSettings"),
+        &sweetpad_core::package_members::Toolchain {
+            swift: None,
+            developer_dir: None,
+        },
+    )
+    .map_err(|e| CliError::new(format!("couldn't read the local packages: {e}")))?;
+    sweetpad_lib::pif::register(&invocation.container, packages);
+    Ok(())
 }
 
 pub(super) fn build(

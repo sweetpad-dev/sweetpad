@@ -4622,6 +4622,20 @@ the target's dependency on the plugin product, as Xcode's PIF does, so the
 tool still builds. The engine warns for each such plugin in the build's
 target graph that its commands are skipped.
 
+**Settings and the editor resolve against the Darwin SDK.** Off macOS,
+with no `DEVELOPER_DIR` and no `xcode-select`, the active developer
+directory is the Darwin SDK's `Developer` folder, which is laid out as
+Xcode's is, with `version.plist` beside it. The resolver keeps the catalog
+built into the binary, since the SDK has no xcspecs, and swaps its SDKs for
+the bundle's (`embedded_at`). It also sets `SWIFT_RESOURCE_DIR` and
+`CLANG_RESOURCE_DIR` to the bundle's toolchain, which a build gets from the
+Swift SDK, so the editor's arguments carry `-resource-dir` like the build's
+do. Without it the host compiler can't load the SDK's `Swift` module. Those
+arguments also get the toolset's cross-import overlay flag and the
+`sweetpad-macros` plugin. A BSP `buildTarget/prepare` runs `sweetpad build`
+on the Swift Build engine, with the scheme, or the target's own name when no
+scheme builds it, into the DerivedData folder the arguments name.
+
 **Everything goes where xcodebuild's build would.** The build writes to the
 DerivedData folder xcodebuild would use, so the product locator, `app run`'s
 lookups and the extension find the product unchanged. The PIF, the request,

@@ -269,6 +269,7 @@ pub fn swift_arguments(
     if let Some(triple) = target_triple(settings, arch) {
         a.pair("-target", &triple);
     }
+    emit_resource_dirs(&mut a, settings);
 
     // --- Debugging + testing -----------------------------------------------
     if debug_info_enabled(get("DEBUG_INFORMATION_FORMAT")) {
@@ -405,6 +406,23 @@ fn emit_parse_as_library(a: &mut ArgBuilder, settings: &Settings, inputs: &[Stri
 /// `SYSTEM_FRAMEWORK_SEARCH_PATHS_USE_FSYSTEM`, and `-F` otherwise. Each
 /// `SYSTEM_HEADER_SEARCH_PATHS` entry reaches the clang importer as
 /// `-isystem`, once (Catalyst's value repeats its iOSSupport `usr/include`).
+/// The resource directories, set where a Swift SDK stands in for Xcode,
+/// whose compiler finds its own: the host compiler's can't read Apple's SDKs.
+fn emit_resource_dirs(a: &mut ArgBuilder, settings: &Settings) {
+    let set = |k: &str| {
+        settings
+            .get(k)
+            .filter(|v| !v.is_empty() && !v.contains("$("))
+    };
+    if let Some(dir) = set("SWIFT_RESOURCE_DIR") {
+        a.pair("-resource-dir", dir);
+    }
+    if let Some(dir) = set("CLANG_RESOURCE_DIR") {
+        a.pair("-Xcc", "-resource-dir");
+        a.pair("-Xcc", dir);
+    }
+}
+
 fn emit_swift_system_search_paths(a: &mut ArgBuilder, settings: &Settings) {
     let all_fsystem = is_yes(
         settings

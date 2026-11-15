@@ -430,17 +430,24 @@ pub fn resolve_file_arguments(
             } else {
                 Vec::new()
             };
+            let mut arguments = compiler_args::swift_arguments(
+                settings,
+                &query.arch,
+                &swift_inputs,
+                swift_opts,
+                xcode_version,
+                has_package_products,
+                &macro_plugins,
+            );
+            let darwin_sdk = xcode::darwin_sdk_developer_dir();
+            if darwin_sdk.is_some_and(|dir| {
+                settings.get("DEVELOPER_DIR") == Some(&dir.to_string_lossy().into_owned())
+            }) {
+                arguments.extend(xcode::darwin_sdk_swift_flags());
+            }
             return Ok(compiler_args::ToolInvocation {
                 tool: "swiftc".into(),
-                arguments: compiler_args::swift_arguments(
-                    settings,
-                    &query.arch,
-                    &swift_inputs,
-                    swift_opts,
-                    xcode_version,
-                    has_package_products,
-                    &macro_plugins,
-                ),
+                arguments,
                 input_files: swift_inputs,
             });
         }
@@ -562,9 +569,14 @@ fn load_catalog(
             .map_err(|e| e.to_string())?
     } else {
         // No explicit source: resolve against the active Xcode, falling back to
-        // the embedded snapshot if it can't be located/parsed (e.g. no Xcode).
-        match catalog_from_xcode(&xcode::detect_developer_dir(), catalog_cache) {
+        // the embedded snapshot if it can't be located/parsed (e.g. no Xcode),
+        // anchored at the Darwin SDK where that stands in for Xcode.
+        let developer_dir = xcode::detect_developer_dir();
+        match catalog_from_xcode(&developer_dir, catalog_cache) {
             Ok(catalog) => catalog,
+            Err(_) if xcode::darwin_sdk_developer_dir().as_ref() == Some(&developer_dir) => {
+                catalog_cache::embedded_at(&developer_dir).map_err(|e| e.to_string())?
+            }
             Err(_) => catalog_cache::embedded().map_err(|e| e.to_string())?,
         }
     };

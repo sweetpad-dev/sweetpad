@@ -89,7 +89,8 @@ pub fn install_at(developer_dir: &Path) -> ActiveInstall {
 }
 
 /// Just the active Developer directory — `DEVELOPER_DIR` if set, else
-/// `xcode-select -p`, else the standard `/Applications/Xcode.app` path.
+/// `xcode-select -p`, else the Darwin SDK's off macOS, else the standard
+/// `/Applications/Xcode.app` path.
 #[must_use]
 pub fn detect_developer_dir() -> PathBuf {
     if let Ok(val) = std::env::var("DEVELOPER_DIR")
@@ -116,9 +117,85 @@ fn selected_developer_dir() -> PathBuf {
                     return PathBuf::from(s);
                 }
             }
-            PathBuf::from("/Applications/Xcode.app/Contents/Developer")
+            darwin_sdk_developer_dir()
+                .unwrap_or_else(|| PathBuf::from("/Applications/Xcode.app/Contents/Developer"))
         })
         .clone()
+}
+
+/// Where the Darwin Swift SDK bundle is: `SWEETPAD_DARWIN_SDK`, else the one
+/// `xtool sdk install` writes. It has the Apple SDKs and Xcode's runtime
+/// libraries, and stands in for Xcode on a host without one.
+#[must_use]
+pub fn darwin_sdk_bundle() -> PathBuf {
+    std::env::var_os("SWEETPAD_DARWIN_SDK").map_or_else(
+        || {
+            PathBuf::from(std::env::var("HOME").unwrap_or_default())
+                .join(".swiftpm/swift-sdks/darwin.artifactbundle")
+        },
+        PathBuf::from,
+    )
+}
+
+/// Apple's macro plugins that `sweetpad-macros` stands in for. Xcode has
+/// them as macOS libraries. The Darwin SDK's plugin server lacks
+/// `SwiftDataMacros` and has `#Preview` only for SwiftUI views, and the
+/// toolchain's own `FoundationMacros` names `FoundationEssentials` in its
+/// expansions, which the SDK's Foundation doesn't have.
+pub const DARWIN_MACRO_MODULES: &[&str] = &[
+    "FoundationMacros",
+    "PreviewsMacros",
+    "SwiftDataMacros",
+    "SwiftUIMacros",
+    "TipKitMacros",
+];
+
+/// `sweetpad-macros`, built from `sweetpad-cli/macros`: `SWEETPAD_MACROS`,
+/// else the one on `PATH`. Without it a compile fails only where a macro of
+/// [`DARWIN_MACRO_MODULES`] is used, with the compiler naming the module.
+#[must_use]
+pub fn darwin_macro_plugin() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("SWEETPAD_MACROS") {
+        return Some(PathBuf::from(path));
+    }
+    std::env::var_os("PATH")
+        .iter()
+        .flat_map(std::env::split_paths)
+        .map(|dir| dir.join("sweetpad-macros"))
+        .find(|candidate| candidate.is_file())
+}
+
+/// The `swiftc` flags a build on the Darwin SDK adds to the SDK's own, in
+/// the `-Xfrontend` form an editor's arguments take: cross-import overlays,
+/// which Xcode's compiler loads by default and the open-source one only when
+/// asked, and the plugin for [`DARWIN_MACRO_MODULES`] when it is installed.
+#[must_use]
+pub fn darwin_sdk_swift_flags() -> Vec<String> {
+    let mut flags = vec![
+        "-Xfrontend".to_string(),
+        "-enable-cross-import-overlays".to_string(),
+    ];
+    if let Some(plugin) = darwin_macro_plugin() {
+        flags.extend([
+            "-Xfrontend".to_string(),
+            "-load-plugin-executable".to_string(),
+            "-Xfrontend".to_string(),
+            format!("{}#{}", plugin.display(), DARWIN_MACRO_MODULES.join(",")),
+        ]);
+    }
+    flags
+}
+
+/// The Darwin SDK's `Developer` directory, laid out as Xcode's is, off
+/// macOS when the SDK is installed. Its `version.plist` sits beside it, where
+/// Xcode's sits beside `Contents/Developer`.
+#[must_use]
+pub fn darwin_sdk_developer_dir() -> Option<PathBuf> {
+    if cfg!(target_os = "macos") {
+        return None;
+    }
+    let developer = darwin_sdk_bundle().join("Developer");
+    developer.join("Platforms").is_dir().then_some(developer)
 }
 
 static SELECTED_CACHE: Mutex<Option<PathBuf>> = Mutex::new(None);

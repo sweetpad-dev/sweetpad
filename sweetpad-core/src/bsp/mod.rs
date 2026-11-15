@@ -1628,6 +1628,9 @@ impl Server {
             None => project::scheme_for_target(&owning, target),
         };
         let EditorPlatform { sdk, arch, .. } = self.editor_platform(target);
+        if !cfg!(target_os = "macos") {
+            return self.swift_build_prepare_command(target, &owning, scheme, &sdk);
+        }
         let developer = self.developer_dir();
         let mut cmd = Command::new(developer.as_ref().map_or_else(
             || PathBuf::from("xcodebuild"),
@@ -1689,6 +1692,58 @@ impl Server {
             "-skipPackagePluginValidation",
         ]);
         (cmd, how)
+    }
+
+    /// The prepare build off macOS, where there is no xcodebuild: sweetpad's
+    /// Swift Build engine, run by the binary serving this connection
+    /// (`sweetpad bsp serve`), into the DerivedData the editor reads. A target
+    /// no scheme builds goes by its own name, which the engine takes as the
+    /// target when no scheme file has that name.
+    fn swift_build_prepare_command(
+        &self,
+        target: &str,
+        owning: &Path,
+        scheme: Option<String>,
+        sdk: &str,
+    ) -> (Command, String) {
+        let sweetpad = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("sweetpad"));
+        let mut cmd = Command::new(sweetpad);
+        cmd.arg("build");
+        if self.is_workspace() && scheme.is_some() {
+            cmd.args(["--workspace".as_ref(), self.project_path.as_os_str()]);
+        } else {
+            cmd.args(["--project".as_ref(), owning.as_os_str()]);
+        }
+        let scheme = scheme.unwrap_or_else(|| target.to_string());
+        let destination = format!("generic/platform={}", platform_name(sdk));
+        cmd.args(["--scheme", &scheme])
+            .args(["--destination", &destination])
+            .args(["--configuration", &self.configuration()])
+            .args([
+                "--engine",
+                "swift-build",
+                "--non-interactive",
+                "--quiet",
+                "--",
+            ]);
+        if let Some(dd) = self.derived_data() {
+            cmd.args(["-derivedDataPath".as_ref(), dd.folder.as_os_str()]);
+        }
+        let command_line = self.command_line();
+        if let Some(xcconfig) = &command_line.xcconfig {
+            cmd.args(["-xcconfig".as_ref(), xcconfig.as_os_str()]);
+        }
+        cmd.args(
+            command_line
+                .overrides
+                .iter()
+                .map(|(k, v)| format!("{k}={v}")),
+        )
+        .arg("CODE_SIGNING_ALLOWED=NO");
+        (
+            cmd,
+            format!("scheme {scheme} ({destination}) with Swift Build"),
+        )
     }
 
     /// Build `target` via `xcodebuild` so its dependency `.swiftmodule`s,
@@ -2770,6 +2825,49 @@ mod tests {
         }
     }
 
+    /// Off macOS, sweetpad's Swift Build engine prepares a target no scheme
+    /// builds under the target's own name, into the editor's DerivedData.
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn a_target_without_a_scheme_prepares_with_swift_build_by_its_name() {
+        let project = PathBuf::from(format!(
+            "{}/fixtures/_synthetic-objectversion-110/project/SweetpadCIApp.xcodeproj",
+            env!("SWEETPAD_LIB_DIR")
+        ));
+        let scratch = crate::scratch::ScratchDir::new("sweetpad-bsp-swift-build").unwrap();
+        let custom = scratch.join("Custom DerivedData");
+        let flags = parse_flags(&[
+            "--project".into(),
+            project.display().to_string(),
+            "--derived-data-path".into(),
+            custom.display().to_string(),
+        ]);
+        let server = Server::build(
+            ResolvedConfig::from_flags(project, &flags),
+            None,
+            Arc::new(AtomicU8::new(LogLevel::Info as u8)),
+            CommandLine::default(),
+            Sent::default().writer(),
+        )
+        .unwrap();
+        let (cmd, how) = server.prepare_command("SweetpadCIAppTests");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(args[0], "build", "{args:?}");
+        for pair in [
+            ["--scheme", "SweetpadCIAppTests"],
+            ["--engine", "swift-build"],
+            ["-derivedDataPath", &custom.display().to_string()],
+        ] {
+            assert!(args.windows(2).any(|w| w == pair), "{pair:?} in {args:?}");
+        }
+        assert!(how.ends_with("with Swift Build"), "{how}");
+    }
+
+    /// The `-target` fallback is xcodebuild's, so a Mac's.
+    #[cfg(target_os = "macos")]
     #[test]
     fn a_target_prepare_writes_to_the_advertised_index_store() {
         let project = PathBuf::from(format!(
@@ -3584,10 +3682,12 @@ mod tests {
             .get_args()
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
-        assert!(
-            args.windows(2).any(|w| w == ["-configuration", "Release"]),
-            "{args:?}"
-        );
+        let flag = if cfg!(target_os = "macos") {
+            "-configuration"
+        } else {
+            "--configuration"
+        };
+        assert!(args.windows(2).any(|w| w == [flag, "Release"]), "{args:?}");
 
         write(&["-quiet"]);
         server.reload_from_file(&config);

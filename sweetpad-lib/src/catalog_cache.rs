@@ -129,6 +129,42 @@ pub fn embedded() -> Result<Catalog, Error> {
     Ok(catalog)
 }
 
+/// The embedded catalog for a `Developer` directory laid out as Xcode's that
+/// has no xcspecs of its own, such as the Darwin SDK's: its SDKs take the
+/// place of the captured ones, and its `version.plist` names the Xcode.
+pub fn embedded_at(developer_dir: &Path) -> Result<Catalog, Error> {
+    let (mut catalog, _) = deserialize(EMBEDDED)?;
+    catalog.sdks.clear();
+    catalog.sdk_paths.clear();
+    crate::xcspec::walk_sdksettings(&developer_dir.join("Platforms"), &mut catalog)
+        .map_err(Error::Build)?;
+    catalog.developer_dir = Some(developer_dir.to_string_lossy().into_owned());
+    // A build gets the toolchain's resource directories from the Swift SDK;
+    // the host's compiler has its own, which can't read Apple's SDKs.
+    for (key, value) in [
+        ("SWIFT_RESOURCE_DIR", "$(DT_TOOLCHAIN_DIR)/usr/lib/swift"),
+        (
+            "CLANG_RESOURCE_DIR",
+            "$(DT_TOOLCHAIN_DIR)/usr/lib/swift/clang",
+        ),
+    ] {
+        catalog.universal.push(crate::xcconfig::Assignment {
+            key: key.to_string(),
+            conditions: Vec::new(),
+            value: value.to_string(),
+            condition: None,
+        });
+    }
+    let install = crate::xcode::install_at(developer_dir);
+    if !install.short_version.is_empty() {
+        catalog.xcode_version = Some(install.short_version);
+    }
+    if !install.build_version.is_empty() {
+        catalog.product_build_version = Some(install.build_version);
+    }
+    Ok(catalog)
+}
+
 /// Serialize a catalog parsed from a captured `xcspec-cache/xcode-<ver>` tree
 /// as the blob [`embedded`] reads. `sdk_root` is that tree's `sdksettings`
 /// directory, which mirrors the captured Xcode's developer dir: every

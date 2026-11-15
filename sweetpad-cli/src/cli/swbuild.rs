@@ -375,7 +375,8 @@ const XCODE_DEFAULTS: &[(&str, &str)] = &[("SKIP_COPYING_TEST_FRAMEWORKS", "YES"
 ///   and the open-source one only when asked;
 /// - the stand-in in `tools` for the SDK's linker (see
 ///   [`super::darwin_tools`]);
-/// - `macros`, the plugin that expands the macros of [`MACRO_MODULES`].
+/// - `macros`, the plugin that expands the macros of
+///   [`sweetpad_lib::xcode::DARWIN_MACRO_MODULES`].
 fn toolset(tools: &Path, macros: Option<&Path>) -> String {
     let mut options = vec![
         "-Xfrontend".to_string(),
@@ -383,7 +384,11 @@ fn toolset(tools: &Path, macros: Option<&Path>) -> String {
     ];
     if let Some(plugin) = macros {
         options.push("-load-plugin-executable".to_string());
-        options.push(format!("{}#{}", plugin.display(), MACRO_MODULES.join(",")));
+        options.push(format!(
+            "{}#{}",
+            plugin.display(),
+            sweetpad_lib::xcode::DARWIN_MACRO_MODULES.join(",")
+        ));
     }
     let toolset = serde_json::json!({
         "schemaVersion": "1.0",
@@ -393,31 +398,9 @@ fn toolset(tools: &Path, macros: Option<&Path>) -> String {
     format!("{toolset:#}\n")
 }
 
-/// Apple's macro plugins that `sweetpad-macros` stands in for. Xcode has
-/// them as macOS libraries. The Darwin SDK's plugin server lacks
-/// `SwiftDataMacros` and has `#Preview` only for SwiftUI views, and the
-/// toolchain's own `FoundationMacros` names `FoundationEssentials` in its
-/// expansions, which the SDK's Foundation doesn't have.
-const MACRO_MODULES: &[&str] = &[
-    "FoundationMacros",
-    "PreviewsMacros",
-    "SwiftDataMacros",
-    "SwiftUIMacros",
-    "TipKitMacros",
-];
-
-/// `sweetpad-macros`, built from `sweetpad-cli/macros`: `SWEETPAD_MACROS`,
-/// else the one on `PATH`. A build without it fails only where a macro of
-/// [`MACRO_MODULES`] is used, with the compiler naming the module.
+/// `sweetpad-macros`: see [`sweetpad_lib::xcode::darwin_macro_plugin`].
 pub(crate) fn macro_plugin() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("SWEETPAD_MACROS") {
-        return Some(PathBuf::from(path));
-    }
-    std::env::var_os("PATH")
-        .iter()
-        .flat_map(std::env::split_paths)
-        .map(|dir| dir.join("sweetpad-macros"))
-        .find(|candidate| candidate.is_file())
+    sweetpad_lib::xcode::darwin_macro_plugin()
 }
 
 /// `swbuild build` with the parameters file, the PIF and the build request,
@@ -1470,13 +1453,7 @@ fn parameters(
 /// Where the Darwin Swift SDK bundle is: `SWEETPAD_DARWIN_SDK`, else the one
 /// `xtool sdk install` writes.
 pub(super) fn darwin_sdk_bundle() -> PathBuf {
-    std::env::var_os("SWEETPAD_DARWIN_SDK").map_or_else(
-        || {
-            PathBuf::from(std::env::var("HOME").unwrap_or_default())
-                .join(".swiftpm/swift-sdks/darwin.artifactbundle")
-        },
-        PathBuf::from,
-    )
+    sweetpad_lib::xcode::darwin_sdk_bundle()
 }
 
 /// A Darwin Swift SDK bundle: the Apple SDKs, Xcode's runtime libraries and a

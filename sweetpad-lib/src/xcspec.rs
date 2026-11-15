@@ -505,7 +505,8 @@ fn ingest_xcspec_entry(entry: &Value, file_domain: Option<&str>, catalog: &mut C
 }
 
 /// Index every SDK under `dir`, from the files [`sdksettings_files`] lists.
-fn walk_sdksettings(dir: &Path, catalog: &mut Catalog) -> Result<(), Error> {
+/// Add the `SDKSettings.plist` of every SDK under `dir` to `catalog`.
+pub fn walk_sdksettings(dir: &Path, catalog: &mut Catalog) -> Result<(), Error> {
     for plist in sdksettings_files(dir) {
         extract_sdksettings(&plist, catalog)?;
     }

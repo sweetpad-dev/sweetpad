@@ -83,6 +83,13 @@ Post-actions run only after a successful build. Archive actions run around archi
 A script can use build settings from its selected project target.
 Scripts that select a package target, non-shell execution actions, and Test action runtime hooks remain unsupported.
 
+## Settings and editor support
+
+`sweetpad settings show` resolves build settings against the Darwin SDK, so `SDKROOT`, `DEVELOPER_DIR`, and the toolchain paths name files on the Linux machine.
+`sweetpad bsp init` sets up sourcekit-lsp the same way it does on a Mac.
+The editor's compiler arguments add the SDK's resource directories and the Apple macro plugin, which the Linux Swift compiler needs to read Apple's SDKs.
+When sourcekit-lsp asks for a target's dependencies, SweetPad builds them with Swift Build into the DerivedData folder the arguments point at.
+
 ## Signing and the phone
 
 Linux signing uses an Apple Development identity from a P12 file and your provisioning profiles.
