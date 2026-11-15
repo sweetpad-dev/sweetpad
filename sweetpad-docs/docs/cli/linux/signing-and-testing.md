@@ -34,6 +34,15 @@ sweetpad build --project MyApp.xcodeproj --scheme MyApp \
 The project's build scripts, plugins and scheme actions don't see the password or `SWEETPAD_ASC_KEY` in their environment.
 SweetPad passes the password to its signing tools in a temporary file that only you can read, and deletes it when the build ends.
 
+A build script that runs `codesign` by name gets SweetPad's signer, but Linux has no `/usr/bin/codesign`.
+CocoaPods writes that full path into each `Pods-<Target>-frameworks.sh`, so a signed build that embeds Pod frameworks fails in the "[CP] Embed Pods Frameworks" phase.
+Unsigned builds skip that call.
+After each `pod install`, change the path in the generated scripts:
+
+```bash
+sed -i 's|/usr/bin/codesign|codesign|' "ios/Pods/Target Support Files"/*/*-frameworks.sh
+```
+
 The signer selects a matching profile from the configured directory.
 Without a configured directory, it also checks the profile locations that Xcode uses under the user's Library.
 When the destination names a device, the signer selects only a profile that lists that device.
