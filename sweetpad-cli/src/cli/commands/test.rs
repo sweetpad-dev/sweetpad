@@ -717,6 +717,27 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
 
     let target = resolve::build_target(ctx, &mut resolved, !args.show_command)?;
 
+    // A manifest built on another machine, like a Linux build's, names that
+    // machine's paths in the values it expanded from build settings.
+    let local_manifest = match (&manifest, args.show_command) {
+        (Some(path), false) => {
+            let container = sweetpad_lib::project::absolutize(resolved.container.path());
+            let source_root = container.parent().unwrap_or(Path::new("/"));
+            let local = crate::cli::swbuild::localize_manifest(path, source_root)
+                .map_err(|e| CliError::new(format!("couldn't read the test run file: {e}")))?;
+            if let Some(local) = &local {
+                ctx.out.note(&format!(
+                    "moved {} value{} in {} from the paths of the machine that built it",
+                    local.moved,
+                    if local.moved == 1 { "" } else { "s" },
+                    path.display()
+                ));
+            }
+            local
+        }
+        _ => None,
+    };
+
     // xcodebuild resolves `-resultBundlePath` against the *container's* parent
     // (its cwd), while the CLI's own exists/summary/rename steps resolve
     // against the CLI's cwd — absolutize so a relative `--result-bundle`
@@ -780,7 +801,10 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         configuration: &target.configuration,
         destination: Some(&target.destination),
         sdk: resolved.sdk.as_deref(),
-        xctestrun: manifest.as_deref(),
+        xctestrun: local_manifest
+            .as_ref()
+            .map(|local| local.path.as_path())
+            .or(manifest.as_deref()),
         only_testing: &only,
         skip_testing: args.skip_testing,
         result_bundle: &run_bundle,

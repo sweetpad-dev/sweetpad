@@ -820,6 +820,24 @@ build diagnostics intact; `test build`, watch mode, and result read-back verbs
 refuse the flag. A readable result with zero tests fails instead of reporting
 success.
 
+A Swift Build `test build` writes that manifest itself, as XML beside the
+products (`swbuild/test_manifest.rs`). Product paths are relative
+(`__TESTROOT__`, `__TESTHOST__`, `__PLATFORMS__`), but values the scheme or
+test plan expands from build settings, like `$(SRCROOT)/Fixtures`, hold the
+building machine's paths, and xcodebuild expands no placeholder there. So the
+manifest's `__xctestrun_metadata__` records `SweetPadSourceRoot` (the folder
+holding the project or workspace) and `SweetPadProductsRoot`, which
+xcodebuild ignores, and `test run --xctestrun` moves those prefixes in the
+target's environment variables and arguments to the local project's folder
+and the manifest's folder. The moved copy goes beside the original, so
+`__TESTROOT__` still names the products, and is removed after the run. A
+generated manifest covers iOS, simulator and device; a device unit test needs
+an app host, a UI test its `TEST_TARGET_NAME` app, and a test plan version 1.
+Options that only turn off what the manifest never turns on (coverage,
+sanitizers, the Main Thread Checker, runtime issue detection) are accepted;
+coverage, sanitizers and any other option report that they need a supplied
+manifest.
+
 `app run` gains the full session experience:
 
 - **`--device` / `--device-id <id>`** — build + install + launch on a physical

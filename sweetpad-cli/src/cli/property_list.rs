@@ -160,6 +160,14 @@ pub(super) fn get<'a>(value: &'a Plist, key: &str) -> Option<&'a Plist> {
     }
 }
 
+/// The value at `key` in a dictionary, to change in place.
+pub(super) fn get_mut<'a>(value: &'a mut Plist, key: &str) -> Option<&'a mut Plist> {
+    match value {
+        Plist::Dict(entries) => entries.iter_mut().find(|(k, _)| k == key).map(|(_, v)| v),
+        _ => None,
+    }
+}
+
 pub(super) fn string<'a>(value: &'a Plist, key: &str) -> Option<&'a str> {
     match get(value, key) {
         Some(Plist::String(text)) => Some(text),

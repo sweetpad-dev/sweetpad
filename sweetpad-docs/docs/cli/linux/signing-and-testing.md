@@ -58,6 +58,10 @@ JSON output includes `built` and `xctestrunPath`.
 A successful build with an unsupported manifest policy reports a null path and an explanatory `xctestrunNote`.
 Check both the build result and the manifest path before scheduling test execution.
 
+The manifest covers iOS tests on a simulator or a device.
+Unit tests for a device need an app host, and UI tests need their target app (`TEST_TARGET_NAME`).
+Tests for other platforms need a manifest that you supply.
+
 For an iPhone test build, select `generic/platform=iOS` and configure signing for every required bundle.
 Unit, UI runner, and target app signatures must match the device's provisioning requirements.
 
@@ -75,7 +79,8 @@ sweetpad test build --project MyApp.xcodeproj --scheme MyApp \
 ```
 
 Supported settings include environment, arguments, locale, selected or skipped tests, expansion target, timeouts, parallelization, and attachment lifetime.
-Sanitizer policies and other unsupported settings require a supplied manifest.
+Settings that turn off code coverage, sanitizers, the Main Thread Checker, or runtime issue detection are accepted.
+Code coverage, sanitizers, and other unsupported settings require a supplied manifest.
 
 ## Run Linux-built tests
 
@@ -102,6 +107,9 @@ The selected runtime must support the product's platform, architecture, and depl
 
 This uses Xcode's test-without-building action.
 It does not compile the application or tests again.
+
+Environment variables and arguments that the build expanded from build settings, like `$(SRCROOT)/Fixtures`, contain paths from the Linux machine.
+`sweetpad test run` changes them to the project folder and the products folder on the Mac, in a temporary copy of the manifest.
 The project supplies result history and context; the manifest supplies the prebuilt products.
 A selection that runs zero tests fails.
 

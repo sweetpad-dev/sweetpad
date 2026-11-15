@@ -36,6 +36,8 @@ mod host_macros;
 pub(crate) mod scheme_actions;
 mod test_manifest;
 
+pub(crate) use test_manifest::localize as localize_manifest;
+
 /// The engine a build runs on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Engine {

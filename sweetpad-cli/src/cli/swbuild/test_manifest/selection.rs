@@ -221,6 +221,11 @@ pub(super) fn plan(value: &Value, name: &str, default: bool) -> Result<Vec<Selec
                         _ => return Err(format!("unsupported value for test-plan '{key}'")),
                     });
                 }
+                // Settings that turn off only what the manifest never turns on.
+                "codeCoverage" | "addressSanitizerEnabled" | "threadSanitizerEnabled" | "undefinedBehaviorSanitizerEnabled" | "mainThreadCheckerEnabled" if *value == false => {}
+                "mainThreadCheckerDetectionPolicy" | "runtimeIssueDetection" | "threadPerformanceCheckerRuntimeIssueDetection" if value["enabled"] == false => {}
+                "codeCoverage" => return Err("the test plan collects code coverage, which a generated .xctestrun doesn't; set 'codeCoverage' to false, or supply an .xctestrun".into()),
+                "addressSanitizerEnabled" | "threadSanitizerEnabled" | "undefinedBehaviorSanitizerEnabled" => return Err(format!("the test plan sets '{key}', which needs a sanitizer build a generated .xctestrun can't run; turn it off, or supply an .xctestrun")),
                 _ => return Err(format!("unsupported test-plan option '{key}'; supply an .xctestrun with the required testing policy")),
             }
         }
@@ -251,6 +256,36 @@ mod tests {
                 .err()
                 .unwrap()
                 .contains("addressSanitizerEnabled")
+        );
+    }
+
+    #[test]
+    fn options_that_turn_off_what_the_manifest_never_turns_on_are_accepted() {
+        let value = json!({"version":1,"defaultOptions":{"codeCoverage":false,"mainThreadCheckerEnabled":false,"threadSanitizerEnabled":false,"mainThreadCheckerDetectionPolicy":{"enabled":false},"runtimeIssueDetection":{"enabled":false},"threadPerformanceCheckerRuntimeIssueDetection":{"enabled":false}},"configurations":[{"name":"A","options":{}}],"testTargets":[]});
+        assert!(super::plan(&value, "Plan", true).is_ok());
+    }
+
+    #[test]
+    fn coverage_and_sanitizers_say_why_they_need_a_supplied_manifest() {
+        let coverage = json!({"version":1,"defaultOptions":{"codeCoverage":true},"configurations":[{"name":"A","options":{}}],"testTargets":[]});
+        let error = super::plan(&coverage, "Plan", true).err().unwrap();
+        assert!(
+            error.contains("code coverage") && error.contains("'codeCoverage' to false"),
+            "{error}"
+        );
+        let targets = json!({"version":1,"defaultOptions":{"codeCoverage":{"targets":[]}},"configurations":[{"name":"A","options":{}}],"testTargets":[]});
+        assert!(
+            super::plan(&targets, "Plan", true)
+                .err()
+                .unwrap()
+                .contains("code coverage")
+        );
+        let tsan = json!({"version":1,"defaultOptions":{"threadSanitizerEnabled":true},"configurations":[{"name":"A","options":{}}],"testTargets":[]});
+        assert!(
+            super::plan(&tsan, "Plan", true)
+                .err()
+                .unwrap()
+                .contains("sanitizer build")
         );
     }
 }

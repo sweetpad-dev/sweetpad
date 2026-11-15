@@ -508,10 +508,16 @@ pub(super) fn write(plan: &BuildPlan<'_>, invocation: &Invocation) -> Result<Pat
     if configurations.is_empty() {
         return Err("test plan has no configurations".into());
     }
+    let container = sweetpad_lib::project::absolutize(&invocation.container);
+    let source_root = container.parent().unwrap_or(Path::new("/"));
     let mut manifest = dict([
         (
             "__xctestrun_metadata__",
-            dict([("FormatVersion", Plist::Int(2))]),
+            dict([
+                ("FormatVersion", Plist::Int(2)),
+                (SOURCE_ROOT, text(source_root.display().to_string())),
+                (PRODUCTS_ROOT, text(products.display().to_string())),
+            ]),
         ),
         (
             "ContainerInfo",
@@ -531,16 +537,235 @@ pub(super) fn write(plan: &BuildPlan<'_>, invocation: &Invocation) -> Result<Pat
     }
     let path = manifest_path(products, plan.scheme, &configuration);
     let temporary = path.with_extension(format!("{}.tmp", std::process::id()));
-    std::fs::write(&temporary, crate::cli::keyed_archive::write(&manifest))
+    std::fs::write(&temporary, plist::to_xml(&manifest))
         .and_then(|()| std::fs::rename(&temporary, &path))
         .map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(path)
+}
+
+/// The metadata keys naming the folder that held the project and the
+/// products folder on the machine that built them. Values from the scheme or
+/// test plan, like `$(SRCROOT)/Fixtures`, are expanded to that machine's
+/// paths, which [`localize`] moves to the machine that runs the tests.
+const SOURCE_ROOT: &str = "SweetPadSourceRoot";
+const PRODUCTS_ROOT: &str = "SweetPadProductsRoot";
+
+/// The keys of a test target whose values are expanded from build settings.
+const EXPANDED: [&str; 4] = [
+    "EnvironmentVariables",
+    "CommandLineArguments",
+    "UITargetAppEnvironmentVariables",
+    "UITargetAppCommandLineArguments",
+];
+
+/// A copy of a manifest with this machine's paths, beside the original so
+/// `__TESTROOT__` still names the products folder, removed when dropped.
+pub(crate) struct LocalManifest {
+    pub(crate) path: PathBuf,
+    /// How many values had a path of the building machine.
+    pub(crate) moved: usize,
+}
+
+impl Drop for LocalManifest {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// The manifest at `manifest`, with the paths the building machine
+/// expanded into environment variables and arguments moved here: its
+/// source root to `source_root` and its products folder to the manifest's
+/// folder. `None` when the manifest names no other machine's paths, or
+/// wasn't written by a sweetpad that records them.
+pub(crate) fn localize(
+    manifest: &Path,
+    source_root: &Path,
+) -> Result<Option<LocalManifest>, String> {
+    let data = std::fs::read(manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
+    if data.starts_with(b"bplist00") {
+        return Ok(None);
+    }
+    let mut value = plist::parse(&data).map_err(|e| format!("{}: {e}", manifest.display()))?;
+    let metadata = plist::get(&value, "__xctestrun_metadata__");
+    let root = |key: &str| {
+        metadata
+            .and_then(|m| plist::string(m, key))
+            .map(str::to_string)
+    };
+    let products = manifest.parent().unwrap_or(Path::new("."));
+    let mut roots: Vec<(String, String)> = [
+        (root(SOURCE_ROOT), source_root),
+        (root(PRODUCTS_ROOT), products),
+    ]
+    .into_iter()
+    .filter_map(|(from, to)| Some((from?, to.display().to_string())))
+    .filter(|(from, to)| from != to && !from.is_empty())
+    .collect();
+    if roots.is_empty() {
+        return Ok(None);
+    }
+    // The products folder may sit inside the source root.
+    roots.sort_by_key(|(from, _)| std::cmp::Reverse(from.len()));
+    let mut changed = 0;
+    if let Some(Plist::Array(configurations)) = plist::get_mut(&mut value, "TestConfigurations") {
+        for configuration in configurations {
+            let Some(Plist::Array(targets)) = plist::get_mut(configuration, "TestTargets") else {
+                continue;
+            };
+            for target in targets {
+                for key in EXPANDED {
+                    if let Some(field) = plist::get_mut(target, key) {
+                        changed += move_paths(field, &roots);
+                    }
+                }
+            }
+        }
+    }
+    if changed == 0 {
+        return Ok(None);
+    }
+    let name = manifest
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let path = manifest.with_file_name(format!(".{name}.{}.local.xctestrun", std::process::id()));
+    std::fs::write(&path, plist::to_xml(&value)).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(Some(LocalManifest {
+        path,
+        moved: changed,
+    }))
+}
+
+/// Move the paths in the strings of `value` from each root in `roots` to
+/// its new place, returning how many strings changed.
+fn move_paths(value: &mut Plist, roots: &[(String, String)]) -> usize {
+    match value {
+        Plist::String(text) => {
+            let relocated = roots
+                .iter()
+                .fold(text.clone(), |text, (from, to)| move_root(&text, from, to));
+            usize::from(std::mem::replace(text, relocated) != *text)
+        }
+        Plist::Array(items) => items.iter_mut().map(|item| move_paths(item, roots)).sum(),
+        Plist::Dict(entries) => entries
+            .iter_mut()
+            .map(|(_, item)| move_paths(item, roots))
+            .sum(),
+        _ => 0,
+    }
+}
+
+/// `text` with each `from` that is a whole path, or a path's leading
+/// folders, replaced by `to`: `from` followed by the end, `/`, `:` or a
+/// quote or space, so `/src/app` doesn't move `/src/application`.
+fn move_root(text: &str, from: &str, to: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(from) {
+        let after = &rest[at + from.len()..];
+        let whole = after
+            .chars()
+            .next()
+            .is_none_or(|c| matches!(c, '/' | ':' | ' ' | '"' | '\'' | ','));
+        out.push_str(&rest[..at]);
+        out.push_str(if whole { to } else { from });
+        rest = after;
+    }
+    out.push_str(rest);
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cli::testdir::TempDir;
+
+    #[test]
+    fn a_manifest_built_elsewhere_gets_this_machines_paths() {
+        let dir = TempDir::new("manifest-localize");
+        let manifest = dir.join("App-Debug-iphonesimulator.xctestrun");
+        let target = dict([
+            (
+                "EnvironmentVariables",
+                dict([
+                    ("FIXTURES", text("/home/me/app/Fixtures")),
+                    (
+                        "OUTPUT",
+                        text("/home/me/dd/Build/Products/Debug-iphonesimulator"),
+                    ),
+                    ("OTHER", text("/home/me/application")),
+                ]),
+            ),
+            ("CommandLineArguments", array([text("--root=/home/me/app")])),
+            (
+                "TestHostPath",
+                text("__TESTROOT__/Debug-iphonesimulator/App.app"),
+            ),
+            ("IsAppHostedTestBundle", Plist::Bool(true)),
+        ]);
+        let value = dict([
+            (
+                "__xctestrun_metadata__",
+                dict([
+                    ("FormatVersion", Plist::Int(2)),
+                    (SOURCE_ROOT, text("/home/me/app")),
+                    (PRODUCTS_ROOT, text("/home/me/dd/Build/Products")),
+                ]),
+            ),
+            (
+                "TestConfigurations",
+                array([dict([("TestTargets", array([target]))])]),
+            ),
+        ]);
+        std::fs::write(&manifest, plist::to_xml(&value)).unwrap();
+        let local = localize(&manifest, Path::new("/Users/me/app"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(local.moved, 3);
+        let moved = plist::parse(&std::fs::read(&local.path).unwrap()).unwrap();
+        let target = &plist::get(&moved, "TestConfigurations")
+            .and_then(|c| {
+                if let Plist::Array(c) = c {
+                    c.first()
+                } else {
+                    None
+                }
+            })
+            .and_then(|c| plist::get(c, "TestTargets"))
+            .and_then(|t| {
+                if let Plist::Array(t) = t {
+                    t.first()
+                } else {
+                    None
+                }
+            })
+            .unwrap()
+            .clone();
+        let environment = plist::get(target, "EnvironmentVariables").unwrap();
+        assert_eq!(
+            plist::string(environment, "FIXTURES"),
+            Some("/Users/me/app/Fixtures")
+        );
+        assert_eq!(
+            plist::string(environment, "OUTPUT").map(PathBuf::from),
+            Some(dir.join("Debug-iphonesimulator"))
+        );
+        assert_eq!(
+            plist::string(environment, "OTHER"),
+            Some("/home/me/application")
+        );
+        assert_eq!(
+            plist::get(target, "IsAppHostedTestBundle"),
+            Some(&Plist::Bool(true))
+        );
+        let path = local.path.clone();
+        drop(local);
+        assert!(!path.exists());
+        assert!(
+            localize(&manifest, Path::new("/home/me/app"))
+                .unwrap()
+                .is_some_and(|l| l.moved == 1)
+        );
+    }
 
     #[test]
     fn selection_honors_skipped_targets_launch_environment_and_test_filters() {
