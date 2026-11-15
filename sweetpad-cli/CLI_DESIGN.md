@@ -4645,8 +4645,10 @@ resource seal then listing each file's SHA-1 beside its SHA-256 (App Store
 Connect refuses the bundle otherwise, ITMS-90034); and the identifier
 of a bare Mach-O taken from the Info.plist in its `__TEXT,__info_plist`,
 which App Store Connect checks (ITMS-90334). `fixtures/codesign` holds
-Apple's signatures of each. A simulator build keeps the linker's ad hoc
-signature. A device or macOS build signs when there's an identity, and an
+Apple's signatures of each. A simulator build is signed ad hoc, as Xcode
+signs it, with its entitlements linked into `__TEXT,__entitlements` and
+`__ents_der` under the team's prefix, where the simulator reads App Groups
+and keychain groups from. A device or macOS build signs when there's an identity, and an
 archive always, ad hoc with its entitlements when the identities can't
 sign it. Developer ID signatures carry a timestamp from Apple's server.
 The `lipo` stand-in orders slices and aligns them as Apple's does, takes

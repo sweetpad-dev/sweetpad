@@ -1569,6 +1569,73 @@ fn provisions_like_xcodes_automatic_signing() {
     );
 }
 
+/// A simulator build is signed to run locally, whatever identity it names,
+/// with its entitlements in the executable's `__entitlements` section, as
+/// Xcode 27's own simulator build writes them.
+#[test]
+fn a_simulator_build_carries_its_entitlements_in_the_executable() {
+    let entitlements = Plist::Dict(vec![
+        (
+            "com.apple.security.application-groups".to_string(),
+            Plist::Array(vec![Plist::String(
+                "group.dev.sweetpad.fixture".to_string(),
+            )]),
+        ),
+        (
+            "keychain-access-groups".to_string(),
+            Plist::Array(vec![Plist::String(
+                "$(AppIdentifierPrefix)dev.sweetpad.fixture.shared".to_string(),
+            )]),
+        ),
+    ]);
+    let simulator = |team: &str| {
+        let request = request(&[
+            ("sdkRoot", Plist::String("iphonesimulator27.2".to_string())),
+            (
+                "entitlementsDestination",
+                Plist::String("__entitlements".to_string()),
+            ),
+            ("projectEntitlements", entitlements.clone()),
+            ("teamID", Plist::String(team.to_string())),
+        ]);
+        provisioning::answer(&request, &[fixtures().join("profiles")], || {
+            panic!("a simulator build needs no identity")
+        })
+        .unwrap()
+    };
+    let inputs = simulator("TESTTEAM01");
+    assert_eq!(plist::string(&inputs, "identityHash"), Some("-"));
+    assert_eq!(
+        plist::get(&inputs, "signedEntitlements"),
+        Some(&Plist::Dict(Vec::new()))
+    );
+    let simulated = plist::get(&inputs, "simulatedEntitlements").unwrap();
+    assert_eq!(
+        plist::string(simulated, "application-identifier"),
+        Some("TESTTEAM01.dev.sweetpad.fixture")
+    );
+    assert_eq!(
+        plist::get(simulated, "com.apple.security.application-groups"),
+        plist::get(&entitlements, "com.apple.security.application-groups")
+    );
+    // Swift Build puts the prefix on the keychain groups, from the inputs.
+    assert_eq!(
+        plist::get(simulated, "keychain-access-groups"),
+        plist::get(&entitlements, "keychain-access-groups")
+    );
+    assert_eq!(
+        plist::string(&inputs, "appIdentifierPrefix"),
+        Some("TESTTEAM01.")
+    );
+    let teamless = simulator("");
+    let simulated = plist::get(&teamless, "simulatedEntitlements").unwrap();
+    assert_eq!(
+        plist::string(simulated, "application-identifier"),
+        Some("dev.sweetpad.fixture")
+    );
+    assert_eq!(plist::get(&teamless, "appIdentifierPrefix"), None);
+}
+
 /// A device build takes only a development profile that lists its device,
 /// automatic or named, as Xcode does.
 #[test]

@@ -126,6 +126,11 @@ pub(super) fn answer(
             Plist::Bool(true),
         );
     }
+    if text("sdkRoot").contains("simulator") {
+        merge(&mut entitlements, dict("projectEntitlements"));
+        let team = plist::string(request, "teamID").filter(|t| !t.is_empty());
+        return Ok(simulator(entitlements, bundle, destination, team));
+    }
     if name == "-" {
         merge(&mut entitlements, dict("projectEntitlements"));
         return Ok(ad_hoc(entitlements, bundle, destination, text("sdkRoot")));
@@ -319,10 +324,42 @@ fn application_key(mac: bool) -> &'static str {
     }
 }
 
+/// The inputs for a simulator build, which Xcode signs to run locally
+/// whatever identity the target names. Its entitlements go in the
+/// executable's `__entitlements` section, where the simulator reads App
+/// Groups and keychain groups from, with the team's prefix on the
+/// application identifier and, through the inputs, on the keychain groups.
+/// The signature itself carries none.
+fn simulator(
+    mut entitlements: Plist,
+    bundle: &str,
+    destination: &str,
+    team: Option<&str>,
+) -> Plist {
+    let prefix = team.map(|team| format!("{team}."));
+    plist::set(
+        &mut entitlements,
+        "application-identifier",
+        Plist::String(format!("{}{bundle}", prefix.as_deref().unwrap_or_default())),
+    );
+    let (signed, simulated) = split(entitlements, destination);
+    let mut inputs = vec![
+        ("identityHash".to_string(), Plist::String("-".to_string())),
+        ("identityName".to_string(), Plist::String("-".to_string())),
+        ("signedEntitlements".to_string(), signed),
+        ("simulatedEntitlements".to_string(), simulated),
+    ];
+    if let Some(prefix) = prefix {
+        for key in ["appIdentifierPrefix", "teamIdentifierPrefix"] {
+            inputs.push((key.to_string(), Plist::String(prefix.clone())));
+        }
+    }
+    Plist::Dict(inputs)
+}
+
 /// The inputs for an ad hoc signature, as Swift Build's own console gives
-/// them: the bundle identifier as the application identifier, and a
-/// simulator's build debuggable. A macOS app signed to run locally names no
-/// application, which needs a profile.
+/// them: the bundle identifier as the application identifier. A macOS app
+/// signed to run locally names no application, which needs a profile.
 fn ad_hoc(mut entitlements: Plist, bundle: &str, destination: &str, sdk_root: &str) -> Plist {
     if platform(sdk_root) != "OSX" {
         plist::set(
@@ -331,10 +368,7 @@ fn ad_hoc(mut entitlements: Plist, bundle: &str, destination: &str, sdk_root: &s
             Plist::String(bundle.to_string()),
         );
     }
-    let (mut signed, simulated) = split(entitlements, destination);
-    if sdk_root.contains("simulator") {
-        plist::set(&mut signed, "get-task-allow", Plist::Bool(true));
-    }
+    let (signed, simulated) = split(entitlements, destination);
     Plist::Dict(vec![
         ("identityHash".to_string(), Plist::String("-".to_string())),
         ("identityName".to_string(), Plist::String("-".to_string())),

@@ -1119,11 +1119,9 @@ impl DarwinSdk {
 
     /// The settings a build needs without Xcode's own tools.
     ///
-    /// - `CODE_SIGNING_ALLOWED=NO`, unless the build is for a device or a
-    ///   Mac and has an identity to sign with (see [`Self::signs`]): the
-    ///   linker's ad hoc signature is all a simulator asks for. A signed build sets
-    ///   `CODESIGN=codesign`, the stand-in, over the bundle's `true`, which
-    ///   leaves signing to xtool.
+    /// - `CODE_SIGNING_ALLOWED=NO`, unless the build is signed (see
+    ///   [`Self::signs`]). A signed build sets `CODESIGN=codesign`, the
+    ///   stand-in, over the bundle's `true`, which leaves signing to xtool.
     /// - `SWIFT_SDK_TOOLSETS`: the bundle's linker, which links for Apple
     ///   platforms where the toolchain's own refuses to, and `toolset`, with
     ///   what a build here needs on top (see [`toolset`]).
@@ -1272,12 +1270,15 @@ impl DarwinSdk {
         result
     }
 
-    /// Whether a build for `sdk` is signed: one for a device or a Mac, with
-    /// an identity in `SWEETPAD_CODE_SIGN_P12` to sign with, which the
-    /// `codesign` and provisioning stand-ins sign with as Xcode would (see
-    /// [`super::codesign`]).
+    /// Whether a build for `sdk` is signed, by the `codesign` and
+    /// provisioning stand-ins as Xcode would (see [`super::codesign`]): one
+    /// for a device or a Mac, with an identity in `SWEETPAD_CODE_SIGN_P12` to
+    /// sign with, and one for a simulator, which Xcode signs ad hoc with its
+    /// entitlements in the executable, where App Groups and keychain groups
+    /// come from.
     fn signs(sdk: &str) -> bool {
-        Self::is_signed(sdk) && super::codesign::identity_configured()
+        sdk.contains("simulator")
+            || (Self::is_signed(sdk) && super::codesign::identity_configured())
     }
 
     /// Whether `sdk` is a device's or a Mac's, whose builds a signature
@@ -2161,6 +2162,28 @@ mod tests {
                     .iter()
                     .any(|(k, _)| k == "SWIFT_RESOURCE_DIR")
             );
+        }
+    }
+
+    #[test]
+    fn a_simulator_build_is_signed_ad_hoc_by_the_stand_in() {
+        let dir = crate::cli::testdir::TempDir::new("sweetpad-simulator-signing");
+        let sdk = DarwinSdk {
+            bundle: dir.to_path_buf(),
+        };
+        for platform in [
+            "iphonesimulator27.2",
+            "appletvsimulator",
+            "watchsimulator",
+            "xrsimulator",
+        ] {
+            assert!(DarwinSdk::signs(platform), "{platform}");
+            let settings: BTreeMap<_, _> = sdk
+                .overrides(platform, "arm64", &dir.join("toolset.json"))
+                .into_iter()
+                .collect();
+            assert_eq!(settings["CODESIGN"], "codesign", "{platform}");
+            assert!(!settings.contains_key("CODE_SIGNING_ALLOWED"), "{platform}");
         }
     }
 
