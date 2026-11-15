@@ -48,6 +48,7 @@ fn streaming_command_exits_after_the_tool_does() {
         let proj_str = proj.to_str().unwrap();
         args.extend_from_slice(&["--project", proj_str, "--non-interactive"]);
         let mut child = Command::new(env!("CARGO_BIN_EXE_sweetpad"))
+            .env("SWEETPAD_ENGINE", "xcodebuild")
             .args(&args)
             .current_dir(&cwd)
             .env("HOME", &home)

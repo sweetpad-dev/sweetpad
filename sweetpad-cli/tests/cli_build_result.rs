@@ -106,6 +106,10 @@ fn command_in(home: &Path, cwd: &Path, args: &[&str]) -> Command {
     std::fs::create_dir_all(&developer_dir).unwrap();
 
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_sweetpad"));
+
+    // These tests stub xcodebuild, which Linux hosts never run.
+
+    cmd.env("SWEETPAD_ENGINE", "xcodebuild");
     cmd.args(args)
         .current_dir(cwd)
         .env("HOME", home)
@@ -328,11 +332,15 @@ fn no_build_verb_repeats_errors_the_log_just_showed() {
         args
     };
     let mac = ["--destination", "platform=macOS"];
-    for (tag, args) in [
+    let mut verbs = vec![
         ("once-test", with(&["test"], &mac)),
         ("once-test-build", with(&["test", "build"], &mac)),
-        ("once-session", with(&["app", "run", "--hot", "--mac"], &[])),
-    ] {
+    ];
+    // A hot-reload session needs a Mac.
+    if cfg!(target_os = "macos") {
+        verbs.push(("once-session", with(&["app", "run", "--hot", "--mac"], &[])));
+    }
+    for (tag, args) in verbs {
         let (mut cmd, _home, cwd) = stub_command(tag, BROKEN, 65, &args);
         // The hot session checks for an injection client before it builds.
         let client = cwd.join("client.dylib");
@@ -847,7 +855,9 @@ fn the_hot_default_yields_to_no_logs_detach_and_wait_for_debugger() {
 
 /// The session's build closes on the same banner as `build`'s, whether
 /// xcodebuild printed one (a compile error) or not (a destination error).
+/// A hot-reload session needs a Mac.
 #[test]
+#[cfg(target_os = "macos")]
 fn the_run_sessions_build_ends_on_the_banner_too() {
     for (tag, transcript, status) in [
         ("session", BROKEN, 65),
@@ -890,8 +900,10 @@ The following build commands failed:
 ";
 
 /// No diagnostic explains a build blocked on plugin approval, so both `build`
-/// and the run session end on the flag that gets past it.
+/// and the run session end on the flag that gets past it. A hot-reload
+/// session needs a Mac.
 #[test]
+#[cfg(target_os = "macos")]
 fn a_blocked_build_names_the_flag_in_the_run_session_too() {
     let build = build_with_stub("blocked-build", BLOCKED, 65, &[]);
     let session = session_with_stub("blocked-session", BLOCKED, 65);
@@ -1226,6 +1238,8 @@ impl RecordingProject {
     /// every home it reads, Xcode's included, in the scratch home.
     fn command(&self, args: &[&str]) -> Command {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_sweetpad"));
+        // These tests stub xcodebuild, which Linux hosts never run.
+        cmd.env("SWEETPAD_ENGINE", "xcodebuild");
         cmd.args(args)
             .current_dir(&self.cwd)
             .env("HOME", &self.home)
@@ -1353,6 +1367,7 @@ fn settings_show_previews_a_typed_tail() {
 /// moves the home. `settings show` places them the same way, so the product
 /// sweetpad looks for is the one the build wrote.
 #[test]
+#[cfg(target_os = "macos")]
 fn settings_show_finds_the_home_and_cache_dir_as_xcodebuild_does() {
     let project = RecordingProject::new("settings-home", "");
     let show = |key: &str, fixed_home: bool| {

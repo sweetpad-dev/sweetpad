@@ -149,7 +149,7 @@ pub(crate) fn for_testing(
     show_command: bool,
     passthrough: &[String],
 ) -> CommandResult {
-    let engine = Engine::for_host();
+    let engine = Engine::selected()?;
     if watch_saves {
         return watch(
             ctx,

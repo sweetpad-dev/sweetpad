@@ -118,8 +118,9 @@ fn gather_linux(target: Target) -> Vec<Check> {
     let os = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
     checks.push(linux_host(std::env::consts::ARCH, &os));
     checks.push(linux_shell());
-    let swift =
-        first_line(probe("swift", &["--version"])).unwrap_or_else(|| "swift missing".into());
+    // `swift --version` leaves a `TemporaryDirectory.*` in a shared `TMPDIR`.
+    let swift = first_line(crate::cli::swiftpm::swift_version().map(|v| v.trim().to_string()))
+        .unwrap_or_else(|| "swift missing".into());
     checks.push(linux_check(
         "swift",
         swift.contains(&format!("Swift version {}", super::sdk::toolchain().swift)),

@@ -59,7 +59,7 @@ pub struct ArchiveArgs {
     pub target: crate::cli::BuildTargetArgs,
 
     /// Build with xcodebuild or Swift Build (the default on Linux).
-    #[arg(long, value_enum)]
+    #[arg(long, value_enum, env = "SWEETPAD_ENGINE")]
     pub engine: Option<crate::cli::swbuild::Engine>,
 
     /// Output directory for the .xcarchive and exported .ipa
@@ -192,7 +192,7 @@ pub struct ExportArgs {
 
     /// Export with xcodebuild or with sweetpad's own signing (the default on
     /// Linux).
-    #[arg(long, value_enum)]
+    #[arg(long, value_enum, env = "SWEETPAD_ENGINE")]
     pub engine: Option<crate::cli::swbuild::Engine>,
 
     /// Output directory for the export (default: ./build).

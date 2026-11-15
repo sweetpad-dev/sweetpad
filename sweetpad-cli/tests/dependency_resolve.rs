@@ -89,6 +89,8 @@ impl Fixture {
             std::env::var("PATH").unwrap_or_default()
         );
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_sweetpad"));
+        // These tests stub xcodebuild, which Linux hosts never run.
+        cmd.env("SWEETPAD_ENGINE", "xcodebuild");
         cmd.args(args)
             .current_dir(&self.root)
             .env("HOME", &self.root)

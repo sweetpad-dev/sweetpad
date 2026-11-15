@@ -74,6 +74,7 @@ fn project() -> TempDir {
 fn sweetpad(dir: &Path, args: &[&str]) -> Output {
     let home = dir.join("home");
     Command::new(env!("CARGO_BIN_EXE_sweetpad"))
+        .env("SWEETPAD_ENGINE", "xcodebuild")
         .args(args)
         .current_dir(dir)
         .env("HOME", &home)

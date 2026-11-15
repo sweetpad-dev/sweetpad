@@ -24,6 +24,7 @@ fn sweetpad(args: &[&str], cwd: &Path, home: &Path) -> Output {
 
 fn sweetpad_with_tmpdir(args: &[&str], cwd: &Path, home: &Path, tmpdir: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_sweetpad"))
+        .env("SWEETPAD_ENGINE", "xcodebuild")
         .args(args)
         .current_dir(cwd)
         .env("HOME", home)
