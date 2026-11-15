@@ -511,13 +511,20 @@ Swift Build names these in its xcspecs. The Swift toolchain has `llvm-ar`,
 - [ ] `TextureAtlas`: SpriteKit `.atlas` to `.atlasc` *(optional)*
 - [ ] SceneKit tools (`scntool`, `copySceneKitAssets`,
       `compileSceneKitShaders`): copy first *(optional)*
-- [ ] `metal`: the compiler is closed; fail clearly, maybe try the Windows
-      build under Wine *(optional)*
+- [x] `metal`: the compiler is closed; fail clearly, maybe try the Windows
+      build under Wine *(optional)*. A build that needs it is blocked and
+      names the task and the tool (E22, checked with a `.metal` file); Wine
+      isn't tried.
 - [ ] `realitytool`, `referenceobjectc`, Skybox, App Playground catalogs:
       fail clearly *(optional)*
-- [ ] macOS-only legacy tools (`osacompile`, `Rez`, `ResMerger`, `mig`,
+- [x] macOS-only legacy tools (`osacompile`, `Rez`, `ResMerger`, `mig`,
       `iig`, `dtrace`, `exutil`, `lsregister`): skip or fail clearly
-      *(optional)*
+      *(optional)*. A macOS target with a `.defs` file, a `.r` file or an
+      AppleScript is blocked in the VM, naming the task and `mig`, `Rez` or
+      `/usr/bin/osacompile` (E22's list, which also names `ResMerger`, `iig`
+      and `dtrace`). A failed `lsregister` start is a note (the Swift Build
+      patch). `exutil` isn't on the list, so it gets the generic "couldn't
+      find" blocker.
 
 ## ibtool
 
