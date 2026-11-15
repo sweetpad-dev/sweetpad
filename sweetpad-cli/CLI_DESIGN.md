@@ -4632,8 +4632,8 @@ A build for a phone, TV, watch or Vision Pro passes the device's identifier
 to the provisioning tool, which takes only a development or ad hoc profile
 listing that device and otherwise gives Xcode's "doesn't include the
 currently selected device" error. An identity whose issuer neither its
-`.p12` nor sweetpad carries (sweetpad has WWDR G3 and Developer ID G1 and
-G2) signs nothing, since its signature couldn't name the chain up to
+`.p12` nor sweetpad carries (sweetpad has WWDR G3 to G6 and Developer ID G1
+and G2) signs nothing, since its signature couldn't name the chain up to
 Apple's root.
 The `codesign` stand-in's signature is Apple's byte for byte, apart from
 the CMS signing time, including the rules that change with the platform:

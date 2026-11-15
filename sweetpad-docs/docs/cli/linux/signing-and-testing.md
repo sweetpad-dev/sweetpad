@@ -35,7 +35,7 @@ The signer selects a matching profile from the configured directory.
 Without a configured directory, it also checks the profile locations that Xcode uses under the user's Library.
 When the destination names a device, the signer selects only a profile that lists that device.
 
-The P12 file must contain the certificate's issuer, unless the issuer is Apple WWDR G3 or a Developer ID authority.
+The P12 file must contain the certificate's issuer, unless the issuer is an Apple WWDR authority (G3 to G6) or a Developer ID authority.
 SweetPad includes those. If the issuer is missing, signing stops and names the missing authority.
 
 An unsigned device build can compile successfully, but the phone cannot install it.

@@ -932,8 +932,62 @@ fn apples_authorities_are_the_ones_pinned() {
             include_bytes!("certs/DeveloperIDG2CA.cer"),
             "f16cd3c54c7f83cea4bf1a3e6a0819c8aaa8e4a1528fd144715f350643d2df3a",
         ),
+        (
+            include_bytes!("certs/AppleRootCAG3.cer"),
+            "63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179",
+        ),
+        (
+            include_bytes!("certs/AppleWWDRCAG4.cer"),
+            "ea4757885538dd8cb59ff4556f676087d83c85e70902c122e42c0808b5bce14c",
+        ),
+        (
+            include_bytes!("certs/AppleWWDRCAG5.cer"),
+            "53fd008278e5a595fe1e908ae9c5e5675f26243264a5a6438c023e3ce2870760",
+        ),
+        (
+            include_bytes!("certs/AppleWWDRCAG6.cer"),
+            "bdd4ed6e74691f0c2bfd01be0296197af1379e0418e2d300efa9c3bef642ca30",
+        ),
     ] {
         assert_eq!(crypto::hex(&crypto::sha256(der)), sha256);
+    }
+}
+
+#[test]
+fn a_certificate_from_any_wwdr_authority_reaches_apples_root() {
+    let pool = identity::with_authorities(&[]).unwrap();
+    let rsa_root = include_bytes!("certs/AppleRootCA.cer").as_slice();
+    let ecc_root = include_bytes!("certs/AppleRootCAG3.cer").as_slice();
+    let expected = blobs::requirements("id", Some(&apple_issued_fixture())).unwrap();
+    for (generation, root) in [
+        ("G3", rsa_root),
+        ("G4", rsa_root),
+        ("G5", rsa_root),
+        ("G6", ecc_root),
+    ] {
+        let authority = pool
+            .iter()
+            .find(|c| {
+                c.organizational_unit.as_deref() == Some(generation)
+                    && c.has_extension(der::oids::APPLE_WWDR_INTERMEDIATE)
+            })
+            .unwrap_or_else(|| panic!("WWDR {generation} isn't bundled"));
+        // The fixture certificate, as if that authority had issued it and
+        // its .p12 held nothing above it.
+        let mut identity = fixture_identity();
+        identity.certificate.issuer = authority.subject.clone();
+        identity.chain = identity::chain(&identity.certificate, &pool);
+        assert_eq!(identity.chain.len(), 2, "{generation}");
+        assert_eq!(identity.chain[0].der, authority.der, "{generation}");
+        assert_eq!(identity.root().der, root, "{generation}");
+        identity.require_chain().unwrap();
+        assert!(identity.is_apple_issued(), "{generation}");
+        assert_eq!(identity.team(), Some("TESTTEAM01"), "{generation}");
+        assert_eq!(
+            blobs::requirements("id", Some(&identity)).unwrap(),
+            expected,
+            "{generation}"
+        );
     }
 }
 

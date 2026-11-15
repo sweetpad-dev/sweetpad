@@ -22,14 +22,24 @@ use super::time;
 pub(super) const P12_VARIABLE: &str = "SWEETPAD_CODE_SIGN_P12";
 pub(super) const PASSWORD_VARIABLE: &str = "SWEETPAD_CODE_SIGN_P12_PASSWORD";
 
+/// Apple's root certificate authorities: the RSA root above WWDR G3 to G5
+/// and Developer ID, and the ECC root above WWDR G6.
+const APPLE_ROOTS: [&[u8]; 2] = [
+    include_bytes!("certs/AppleRootCA.cer"),
+    include_bytes!("certs/AppleRootCAG3.cer"),
+];
+
 /// Apple's certificate authorities, which a code signature carries above
 /// the signing certificate when the `.p12` file doesn't.
-const APPLE_ROOT_CA: &[u8] = include_bytes!("certs/AppleRootCA.cer");
-const AUTHORITIES: [&[u8]; 4] = [
+const AUTHORITIES: [&[u8]; 8] = [
     include_bytes!("certs/AppleWWDRCAG3.cer"),
+    include_bytes!("certs/AppleWWDRCAG4.cer"),
+    include_bytes!("certs/AppleWWDRCAG5.cer"),
+    include_bytes!("certs/AppleWWDRCAG6.cer"),
     include_bytes!("certs/DeveloperIDCA.cer"),
     include_bytes!("certs/DeveloperIDG2CA.cer"),
-    APPLE_ROOT_CA,
+    APPLE_ROOTS[0],
+    APPLE_ROOTS[1],
 ];
 
 /// Apple's certificate policy extensions, `1.2.840.113635.100.6.1.<n>`, by
@@ -189,11 +199,15 @@ impl Certificate {
             }
         }
         let mut key_fields = key_info.children();
-        key_fields.read()?;
+        let algorithm = key_fields.read()?.expect(der::SEQUENCE)?;
+        let is_rsa = algorithm.children().read()?.expect(der::OID)?.content == oids::RSA_ENCRYPTION;
         let bits = key_fields.read()?.expect(der::BIT_STRING)?;
+        // An elliptic-curve key, like WWDR G6's, is a bare point with no
+        // modulus.
         let modulus = bits
             .content
             .get(1..)
+            .filter(|_| is_rsa)
             .map(|key| -> Result<Vec<u8>, String> {
                 let n = Reader::new(key)
                     .read()?
@@ -332,10 +346,7 @@ impl Identity {
             .iter()
             .map(|der| Certificate::parse(der))
             .collect::<Result<Vec<_>, _>>()?;
-        let mut pool = certificates.clone();
-        for der in AUTHORITIES {
-            pool.push(Certificate::parse(der)?);
-        }
+        let pool = with_authorities(&certificates)?;
         let mut identities = Vec::new();
         let mut unreadable = None;
         for key in &contents.keys {
@@ -365,11 +376,12 @@ impl Identity {
         Ok(identities)
     }
 
-    /// Whether the chain ends at Apple's root certificate authority.
+    /// Whether the chain ends at one of Apple's root certificate
+    /// authorities.
     pub fn is_apple_issued(&self) -> bool {
         self.chain
             .last()
-            .is_some_and(|root| root.der == APPLE_ROOT_CA)
+            .is_some_and(|root| APPLE_ROOTS.contains(&root.der.as_slice()))
     }
 
     /// The team the certificate belongs to: its organizational unit, for an
@@ -434,8 +446,18 @@ impl Identity {
     }
 }
 
+/// The certificates a `.p12` file holds, then Apple's authorities: where a
+/// chain is looked for.
+pub(super) fn with_authorities(held: &[Certificate]) -> Result<Vec<Certificate>, String> {
+    let mut pool = held.to_vec();
+    for der in AUTHORITIES {
+        pool.push(Certificate::parse(der)?);
+    }
+    Ok(pool)
+}
+
 /// The certificates above `certificate` in `pool`, up to a self-signed one.
-fn chain(certificate: &Certificate, pool: &[Certificate]) -> Vec<Certificate> {
+pub(super) fn chain(certificate: &Certificate, pool: &[Certificate]) -> Vec<Certificate> {
     let mut chain: Vec<Certificate> = Vec::new();
     let (mut issuer, mut subject) = (&certificate.issuer, &certificate.subject);
     while issuer != subject && chain.len() < 8 {

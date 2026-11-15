@@ -146,7 +146,7 @@ they do not establish physical-device execution for these changes.
 - [x] D10: Export signs the app again for its method, so a profile of the wrong kind is refused by name (`codesign/resign.rs`, `commands/archive/export.rs`).
 - [ ] D11: Verify signing-secret inheritance into build scripts and plugins (`swbuild.rs`, `codesign/identity.rs`).
 - [ ] D12: Handle CocoaPods absolute codesign calls without requiring fixture rewrites, or document the limitation (`ci/linux-project-prepare.py`, `docs/cli/linux/react-native.md`).
-- [ ] D13: Verify certificate chains beyond the bundled WWDR G3 intermediate (`codesign/identity.rs`). Developer ID G1 and G2 are bundled and verified with Apple. An identity whose chain stops short of a root is refused with the missing authority's name, in place of a signature without it. WWDR G4 to G6 are not bundled: a certificate they issue needs its `.p12` to carry the intermediate.
+- [x] D13: Verify certificate chains beyond the bundled WWDR G3 intermediate (`codesign/identity.rs`). WWDR G3 to G6, Developer ID G1 and G2, and Apple's RSA and ECC roots are bundled, each checked against Apple's root and pinned by SHA-256. A certificate from any of them signs without its `.p12` carrying the intermediate. An identity whose chain stops short of a root is refused with the missing authority's name, in place of a signature without it.
 
 ### Packaging, CI, and docs
 
