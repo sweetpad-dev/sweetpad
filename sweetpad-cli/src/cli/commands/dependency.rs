@@ -1075,6 +1075,10 @@ fn resolve_packages(
     if let Container::SwiftPackage(_) = container {
         return swiftpm::resolve(container, quiet || out.is_json() || out.is_ndjson());
     }
+    if crate::cli::swbuild::Engine::selected()? == crate::cli::swbuild::Engine::SwiftBuild {
+        return crate::cli::swbuild::resolve_packages(container.path(), clone_dir, out)
+            .map_err(|e| e.context("resolving package dependencies"));
+    }
     let mut args = vec!["-resolvePackageDependencies".to_string()];
     args.extend(xcodebuild::container_args(container));
     // xcodebuild *requires* a scheme to resolve a workspace (and accepts one for

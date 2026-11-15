@@ -699,51 +699,15 @@ impl Invocation {
         // Xcode builds a dynamic library product as a framework in
         // `PackageFrameworks`, which an app embeds; SwiftPM's own builds
         // make a dylib unless asked otherwise.
-        let args = [
-            "package".as_ref(),
-            "--package-path".as_ref(),
-            root.as_os_str(),
-            "--scratch-path".as_ref(),
-            scratch.as_os_str(),
-            "--experimental-build-dylibs-as-frameworks".as_ref(),
-            "dump-pif".as_ref(),
-        ];
-        let spinner = Spinner::start_timed(
-            "Resolving packages",
-            out.is_interactive() && !out.is_quiet(),
-            out.use_color_stderr(),
-        );
-        // A git prompt for credentials would wait unseen behind the spinner.
-        let mut command = Command::new("swift");
-        command.args(args).env("GIT_TERMINAL_PROMPT", "0");
-        if let Some(sysroot) = &self.package_sysroot {
-            // pkg-config runs on the host, but its headers belong to the
-            // destination SDK. Keep host macro builds outside this environment.
-            command.env("PKG_CONFIG_SYSROOT_DIR", sysroot);
-            // Package manifests execute on the host. Dependencies that need
-            // destination-specific resources can opt in without changing
-            // their Linux host-tool builds.
-            command.env("SWEETPAD_APPLE_TARGET", "1");
-        }
-        let output = command
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|e| process::spawn_error("swift", &e));
-        drop(spinner);
-        let output = output?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let errors = swiftpm_errors(&stderr);
-            let reason = if errors.is_empty() {
-                format!("'swift package dump-pif' exited with {}", output.status)
-            } else {
-                errors.join("\n")
-            };
-            return Err(CliError::new(format!(
-                "couldn't resolve the package dependencies: {reason}"
-            )));
-        }
-        let mut dumped: Vec<Value> = serde_json::from_slice(&output.stdout).map_err(|e| {
+        let stdout = swift_package(
+            root,
+            &scratch,
+            &["--experimental-build-dylibs-as-frameworks", "dump-pif"],
+            self.package_sysroot.is_some(),
+            self.package_sysroot.as_deref(),
+            out,
+        )?;
+        let mut dumped: Vec<Value> = serde_json::from_slice(&stdout).map_err(|e| {
             CliError::new(format!(
                 "couldn't read the PIF SwiftPM printed for the package dependencies: {e}"
             ))
@@ -754,6 +718,182 @@ impl Invocation {
         );
         Ok(dumped)
     }
+}
+
+/// Run `swift package <command>` on the package at `root`, with SwiftPM's
+/// scratch folder at `scratch`, behind a spinner, and return what it
+/// printed. `apple` says the packages build for an Apple platform, whose
+/// SDK is at `sysroot` when they are about to build.
+fn swift_package(
+    root: &Path,
+    scratch: &Path,
+    command: &[&str],
+    apple: bool,
+    sysroot: Option<&Path>,
+    out: &Output,
+) -> Result<Vec<u8>, CliError> {
+    let spinner = Spinner::start_timed(
+        "Resolving packages",
+        out.is_interactive() && !out.is_quiet(),
+        out.use_color_stderr(),
+    );
+    // A git prompt for credentials would wait unseen behind the spinner.
+    let mut swift = Command::new("swift");
+    swift
+        .arg("package")
+        .arg("--package-path")
+        .arg(root)
+        .arg("--scratch-path")
+        .arg(scratch)
+        .args(command)
+        .env("GIT_TERMINAL_PROMPT", "0");
+    if apple {
+        // pkg-config runs on the host, but its headers belong to the
+        // destination SDK. Keep host macro builds outside this environment.
+        if let Some(sysroot) = sysroot {
+            swift.env("PKG_CONFIG_SYSROOT_DIR", sysroot);
+        }
+        // Package manifests execute on the host. Dependencies that need
+        // destination-specific resources can opt in without changing
+        // their Linux host-tool builds.
+        swift.env("SWEETPAD_APPLE_TARGET", "1");
+    }
+    let output = swift
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| process::spawn_error("swift", &e));
+    drop(spinner);
+    let output = output?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let errors = swiftpm_errors(&stderr);
+        let reason = if errors.is_empty() {
+            format!(
+                "'swift package {}' exited with {}",
+                command.last().unwrap_or(&""),
+                output.status
+            )
+        } else {
+            errors.join("\n")
+        };
+        return Err(CliError::new(format!(
+            "couldn't resolve the package dependencies: {reason}"
+        )));
+    }
+    Ok(output.stdout)
+}
+
+/// Resolve the Swift packages `container`'s projects use where there is no
+/// xcodebuild, as a build does: SwiftPM resolves the root manifest naming
+/// them, pinned by the workspace's `Package.resolved`, with the checkouts in
+/// DerivedData's `SourcePackages`, or in `clone_dir`. Pins that changed go
+/// back to the workspace's file; one whose pins stay is left as it is.
+pub fn resolve_packages(
+    container: &Path,
+    clone_dir: Option<&Path>,
+    out: &Output,
+) -> Result<(), CliError> {
+    let packages = sweetpad_lib::workspace_pif::packages(container).map_err(|e| {
+        CliError::new(format!(
+            "couldn't read the packages {} uses: {e}",
+            container.display()
+        ))
+    })?;
+    if packages.is_empty() {
+        return Ok(());
+    }
+    let locations = derived_data::resolve(
+        &ContainerKey::of(container),
+        &std::env::var("HOME").unwrap_or_default(),
+        None,
+        true,
+    );
+    let (root, scratch, _lock) = if let Some(dir) = clone_dir {
+        (dir.join("SweetPadPackages"), dir.to_path_buf(), None)
+    } else {
+        let lock = BuildLock::acquire(&locations.folder, || {
+            out.note(&format!(
+                "waiting for a build in {} to finish",
+                locations.folder.display()
+            ));
+        })?;
+        (
+            locations.intermediates.join("SweetPad/SweetPadPackages"),
+            locations.folder.join("SourcePackages"),
+            Some(lock),
+        )
+    };
+    write_changed(
+        &root.join("Package.swift"),
+        sweetpad_lib::workspace_pif::manifest(&packages).as_bytes(),
+    )?;
+    let pins = resolved_file(container);
+    let pinned = std::fs::read(&pins).ok();
+    match &pinned {
+        Some(text) => write_changed(&root.join("Package.resolved"), text)?,
+        None => match std::fs::remove_file(root.join("Package.resolved")) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(CliError::new(format!(
+                    "couldn't reset the package pins: {e}"
+                )));
+            }
+        },
+    }
+    let apple = DarwinSdk::for_host()?.is_some();
+    swift_package(&root, &scratch, &["resolve"], apple, None, out)?;
+    let Ok(resolved) = std::fs::read(root.join("Package.resolved")) else {
+        return Ok(());
+    };
+    if pinned
+        .as_deref()
+        .is_some_and(|old| same_pins(old, &resolved))
+    {
+        return Ok(());
+    }
+    if let Some(dir) = pins.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| CliError::new(format!("couldn't create {}: {e}", dir.display())))?;
+    }
+    write_whole(&pins, &carry_origin(pinned.as_deref(), &resolved))
+}
+
+/// SwiftPM's pins, `resolved`, in the format of the workspace's file,
+/// `old`. Xcode writes format 3 with an `originHash` it works out from the
+/// project's package requirements, which SwiftPM can't reproduce; the root
+/// manifest's tools version makes SwiftPM write format 2. The hash carries
+/// over: it still holds after an update, and Xcode replaces it after a
+/// requirement changes.
+fn carry_origin(old: Option<&[u8]>, resolved: &[u8]) -> Vec<u8> {
+    let hash = old
+        .and_then(|old| serde_json::from_slice::<Value>(old).ok())
+        .filter(|old| old["version"] == 3)
+        .and_then(|old| old["originHash"].as_str().map(str::to_string));
+    let (Some(hash), Ok(text)) = (hash, std::str::from_utf8(resolved)) else {
+        return resolved.to_vec();
+    };
+    let pins = text
+        .strip_prefix("{\n")
+        .and_then(|rest| rest.strip_suffix("\n  \"version\" : 2\n}\n"));
+    let Some(pins) = pins else {
+        return resolved.to_vec();
+    };
+    format!("{{\n  \"originHash\" : \"{hash}\",\n{pins}\n  \"version\" : 3\n}}\n").into_bytes()
+}
+
+/// Whether two `Package.resolved` files pin the same versions, whatever
+/// their `originHash`, which Xcode and SwiftPM work out from different
+/// inputs.
+fn same_pins(a: &[u8], b: &[u8]) -> bool {
+    let pins = |text: &[u8]| {
+        let value: Value = serde_json::from_slice(text).ok()?;
+        let pins = value
+            .get("pins")
+            .or_else(|| value.pointer("/object/pins"))?;
+        Some(pins.clone())
+    };
+    pins(a).is_some_and(|a| Some(a) == pins(b))
 }
 
 /// Swift Build runs a package target's build-tool plugins, which SwiftPM
@@ -2468,6 +2608,45 @@ mod tests {
             overrides.keys().collect::<Vec<_>>(),
             ["ARCHS[sdk=appletvsimulator*]"]
         );
+    }
+
+    #[test]
+    fn pins_written_back_keep_the_workspaces_format_and_origin() {
+        let xcode = br#"{
+  "originHash" : "7977",
+  "pins" : [
+    {
+      "identity" : "swift-collections",
+      "state" : {
+        "version" : "1.1.0"
+      }
+    }
+  ],
+  "version" : 3
+}
+"#;
+        let swiftpm = br#"{
+  "pins" : [
+    {
+      "identity" : "swift-collections",
+      "state" : {
+        "version" : "1.7.6"
+      }
+    }
+  ],
+  "version" : 2
+}
+"#;
+        assert!(!same_pins(xcode, swiftpm));
+        let written = carry_origin(Some(xcode), swiftpm);
+        assert_eq!(
+            String::from_utf8(written.clone()).unwrap(),
+            String::from_utf8(xcode.to_vec())
+                .unwrap()
+                .replace("1.1.0", "1.7.6")
+        );
+        assert!(same_pins(&written, swiftpm));
+        assert_eq!(carry_origin(None, swiftpm), swiftpm);
     }
 
     #[test]

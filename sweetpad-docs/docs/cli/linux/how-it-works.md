@@ -31,6 +31,8 @@ It describes them in the Project Interchange Format that Swift Build consumes.
 Swift Package Manager supplies the package graph, including resolved remote packages and binary XCFrameworks.
 
 Schemes from remote packages become available after dependency resolution.
+`sweetpad dependency resolve`, `update`, and `add` use Swift Package Manager on Linux instead of `xcodebuild`.
+They write the pins to the workspace's `Package.resolved`, which Xcode reads unchanged.
 Listing schemes reads existing checkouts; it does not fetch packages.
 
 ### Compile for iOS

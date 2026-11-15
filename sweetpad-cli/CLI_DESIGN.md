@@ -1568,6 +1568,18 @@ or stdout piped away), the error repeats the lines as xcodebuild printed them.
 On a terminal or behind `2>&1`, the reason already sits just above the error,
 which stays one line.
 
+**Amendment: without xcodebuild, SwiftPM resolves.** On the Swift Build
+engine `resolve`, `update` and `add` resolve the root manifest a build uses
+(`SweetPad/SweetPadPackages`), with the workspace's `Package.resolved` copied
+in and the checkouts in DerivedData's `SourcePackages`, under the build lock.
+`update`'s empty clone directory becomes SwiftPM's scratch folder. Pins that
+moved go back to the workspace's file and a file whose pins hold is left
+alone. That root manifest makes SwiftPM write format 2 with no `originHash`,
+while Xcode writes format 3 with a hash of the project's requirements, so a
+format-3 file keeps its hash and format: after an update the hash still
+holds and Xcode reads the file unchanged, and after a requirement change
+Xcode replaces it on its next resolve.
+
 > Supersedes the earlier "vendor full source, compile per Xcode" plan: the
 > from-source per-Xcode build (and its `~/.cache/.../<xcode-build>/` cache) existed
 > only to keep XCTest's ABI matched against the active Xcode. Building the
