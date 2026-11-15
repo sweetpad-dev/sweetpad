@@ -97,6 +97,7 @@ Linux signing uses an Apple Development identity from a P12 file and your provis
 The signer seals the app and its embedded bundles before installation.
 
 The device adapter uses `pymobiledevice3==11.50.0` for USB and Wi-Fi.
+Without `SWEETPAD_DEVICE_PYTHON`, the device commands run the `pymobiledevice3` command on PATH, and they exit with code 5 (`tool_missing`) unless it is that release.
 It authenticates the selected device before installation or launch.
 The modern adapter establishes its developer-service tunnel in userspace.
 

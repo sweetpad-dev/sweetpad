@@ -518,16 +518,33 @@ fn gather_linux_optional(target: Target) -> Vec<Check> {
             true,
             "install usbmuxd for direct USB connections; Wi-Fi transport does not require it",
         ));
-        let python = std::env::var("SWEETPAD_DEVICE_PYTHON").unwrap_or_else(|_| "python3".into());
-        let adapter = probe(
-            &python,
-            &[
-                "-c",
-                "import importlib.metadata; print(importlib.metadata.version('pymobiledevice3'))",
-            ],
-        );
-        checks.push(linux_check("iPhone adapter", adapter.as_deref() == Some("11.50.0"), adapter.unwrap_or_else(|| "pymobiledevice3 unavailable (not required for compilation)".into()), true,
-            "install pymobiledevice3==11.50.0 in a virtual environment and set SWEETPAD_DEVICE_PYTHON"));
+        // The device commands take the Python API when the network transport is
+        // configured and the tool's command line otherwise, so this checks the
+        // one they will run.
+        let pinned = crate::cli::pymobiledevice3::VERSION;
+        let adapter = if crate::cli::device_network::configured() {
+            let python =
+                std::env::var("SWEETPAD_DEVICE_PYTHON").unwrap_or_else(|_| "python3".into());
+            probe(
+                &python,
+                &[
+                    "-c",
+                    "import importlib.metadata; print(importlib.metadata.version('pymobiledevice3'))",
+                ],
+            )
+        } else {
+            probe(crate::cli::pymobiledevice3::BINARY, &["version"])
+        };
+        checks.push(linux_check(
+            "iPhone adapter",
+            adapter.as_deref() == Some(pinned),
+            adapter.map_or_else(
+                || "pymobiledevice3 unavailable (not required for compilation)".into(),
+                |version| format!("pymobiledevice3 {version}"),
+            ),
+            true,
+            "install pymobiledevice3==11.50.0 in a virtual environment and set SWEETPAD_DEVICE_PYTHON",
+        ));
     }
     checks
 }

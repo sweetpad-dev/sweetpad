@@ -4,8 +4,41 @@
 //! from `pymobiledevice3 syslog live`. Mirrors the VS Code extension's `Pymd3Sidecar`.
 
 use std::process::Child;
+use std::sync::OnceLock;
 
-use crate::cli::{CliError, process};
+use crate::cli::{CliError, ErrorKind, process};
+
+/// The pymobiledevice3 release the Linux device commands are written against,
+/// both its command line and the Python API the network transport calls.
+pub const VERSION: &str = "11.50.0";
+
+/// Linux device commands run the tool's command line, whose arguments change
+/// between releases, so any release but [`VERSION`] stops before the first
+/// call rather than partway through an install or launch.
+fn command_line() -> Result<(), CliError> {
+    static PROBED: OnceLock<Option<String>> = OnceLock::new();
+    let probed = PROBED.get_or_init(|| {
+        process::capture(BINARY, &["version"], None)
+            .ok()
+            .map(|output| output.trim().to_string())
+    });
+    check_version(probed.as_deref())
+}
+
+fn check_version(probed: Option<&str>) -> Result<(), CliError> {
+    let message = match probed {
+        Some(VERSION) => return Ok(()),
+        Some(other) => {
+            format!("{BINARY} on PATH is {other}; the Linux device commands need {VERSION}")
+        }
+        None => format!("{BINARY} isn't on PATH; the Linux device commands need {VERSION}"),
+    };
+    Err(CliError::new(message)
+        .kind(ErrorKind::ToolMissing)
+        .tip(Some(format!(
+            "install {BINARY}=={VERSION}, or set SWEETPAD_DEVICE_PYTHON to a Python that has it"
+        ))))
+}
 
 /// Physical devices visible to usbmuxd, for hosts without CoreDevice.
 pub fn devices() -> Result<Vec<super::devicectl::Device>, CliError> {
@@ -14,6 +47,7 @@ pub fn devices() -> Result<Vec<super::devicectl::Device>, CliError> {
             &serde_json::json!({"action": "list"}),
         )?);
     }
+    command_line()?;
     let output = process::capture_env(
         BINARY,
         &["usbmux", "list"],
@@ -81,6 +115,7 @@ pub fn install(device: &str, app: &str) -> Result<(), CliError> {
         request["app"] = app.into();
         return super::device_network::capture(&request).map(|_| ());
     }
+    command_line()?;
     process::capture(
         BINARY,
         &[
@@ -103,6 +138,7 @@ pub fn uninstall(device: &str, bundle: &str) -> Result<(), CliError> {
         request["bundle"] = bundle.into();
         return super::device_network::capture(&request).map(|_| ());
     }
+    command_line()?;
     process::capture(
         BINARY,
         &["apps", "uninstall", "--udid", device, "--", bundle],
@@ -125,6 +161,7 @@ pub fn launch(
             "launch", device, bundle, args, env, suspended,
         ));
     }
+    command_line()?;
     let args = launch_args(device, bundle, args, env, suspended);
     process::capture(
         BINARY,
@@ -151,6 +188,7 @@ pub fn launch_console(
             Err(CliError::new("network device console failed"))
         };
     }
+    command_line()?;
     let mut args = launch_args(device, bundle, args, env, false);
     args.insert(args.len() - 1, "--stream".into());
     process::stream(
@@ -171,6 +209,7 @@ pub fn spawn_console(
             "console", device, bundle, args, env, false,
         ));
     }
+    command_line()?;
     let mut args = launch_args(device, bundle, args, env, false);
     args.insert(args.len() - 1, "--stream".into());
     process::spawn_piped_both_env(
@@ -355,6 +394,17 @@ fn split_label<'a>(body: &'a str, image: &'a str) -> (&'a str, &'a str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_command_line_other_than_the_pinned_release_is_refused() {
+        assert!(check_version(Some(VERSION)).is_ok());
+        let other = check_version(Some("4.14.16")).unwrap_err();
+        assert_eq!(other.error_kind(), ErrorKind::ToolMissing);
+        assert!(other.to_string().contains("is 4.14.16"), "{other}");
+        assert!(other.tip_text().unwrap().contains(VERSION));
+        let missing = check_version(None).unwrap_err();
+        assert!(missing.to_string().contains("isn't on PATH"), "{missing}");
+    }
 
     #[test]
     fn usbmux_devices_keep_the_hardware_identifier_and_transport() {

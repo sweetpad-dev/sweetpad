@@ -24,7 +24,7 @@ pub fn command(request: &Value) -> Command {
 
 pub fn capture(request: &Value) -> Result<String, CliError> {
     let output = command(request).output().map_err(|e| {
-        CliError::new(format!("starting Linux device transport: {e}; set SWEETPAD_DEVICE_PYTHON to Python with pymobiledevice3==11.50.0"))
+        CliError::new(format!("starting Linux device transport: {e}; set SWEETPAD_DEVICE_PYTHON to Python with pymobiledevice3=={}", super::pymobiledevice3::VERSION))
     })?;
     if !output.status.success() {
         return Err(CliError::new(

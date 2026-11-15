@@ -4892,6 +4892,11 @@ refuses an app whose embedded Swift libraries have no originals in the archive.
 trusted USB and direct Wi-Fi. Both transports pass discovery, install, launch, scoped logs,
 stop, uninstall, and reinstallation on an iPhone 13. Automatic discovery uses multicast or
 system DNS-SD. Device readiness inspection and device debugging remain unsupported.
+Without `SWEETPAD_DEVICE_PYTHON` or a network configuration, the device commands run
+the `pymobiledevice3` command on PATH instead. Its arguments change between releases, so
+the first device command checks `pymobiledevice3 version` against the same pinned release
+and stops with `tool_missing` on any other. `doctor` reports whichever of the two the
+device commands will use.
 
 **Linux ARM64 ships an experimental release archive.** The Ubuntu 24.04 package includes
 the CLI, DAP alias, installer, licenses, a sample app, and public setup sources.
