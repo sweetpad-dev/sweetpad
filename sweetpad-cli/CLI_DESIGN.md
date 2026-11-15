@@ -4784,6 +4784,8 @@ tool `SWEETPAD_PROVISIONING` names; `derq` is looked up on the search path;
 the Mach-O reader has its structures on every platform; and text encodings
 are found by name without CoreFoundation, including Unicode byte-order marks.
 LLVM's Darwin libtool is recognized without treating its LLVM version as a cctools version.
+Where CryptoKit is missing, Swift Build's MD5 is a vendored MD5 instead of SHA-256, so an
+On-Demand Resources asset pack and its `OnDemandResources.plist` entry carry Xcode's names.
 Setup records what it built `swbuild` from beside it
 (`sweetpad-swift-build.json`: the version and a SHA-256 over the patches and
 lockfile), and `doctor` compares that with the same digest over the copies
