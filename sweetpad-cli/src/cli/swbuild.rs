@@ -194,7 +194,10 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
         || "swbuild exited with a non-zero status".to_string(),
         |signal| format!("swbuild was killed by {}", signal_name(signal)),
     );
-    let tip = failure_tip(killer, recorded.as_deref());
+    let tip = case_mismatches(&diagnostics)
+        .into_iter()
+        .chain(failure_tip(killer, recorded.as_deref()))
+        .reduce(|a, b| format!("{a}; {b}"));
     Err(xcodebuild::tool_failure(
         &ended,
         &invocation.args,
@@ -206,6 +209,60 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
     )
     .context("building the project")
     .tip(tip))
+}
+
+/// What Swift Build couldn't find that's on disk under another case, as
+/// `'…/Core.swift' is '…/core.swift' on disk`. A Mac's file system ignores
+/// case, so a project can name a file one way and hold it another until it
+/// builds on Linux.
+fn case_mismatches(diagnostics: &[Value]) -> Option<String> {
+    let mut found: Vec<String> = Vec::new();
+    for message in diagnostics.iter().filter_map(|d| d["message"].as_str()) {
+        let Some(path) = message
+            .strip_prefix("Build input file cannot be found: '")
+            .and_then(|rest| rest.split_once('\''))
+            .map(|(path, _)| Path::new(path))
+        else {
+            continue;
+        };
+        if let Some(real) = other_case(path) {
+            let hint = format!("'{}' is '{}' on disk", path.display(), real.display());
+            if !found.contains(&hint) {
+                found.push(hint);
+            }
+        }
+    }
+    (!found.is_empty()).then(|| {
+        format!(
+            "{}, and Linux file names are case-sensitive",
+            found.join(", ")
+        )
+    })
+}
+
+/// The file at `path` with each name in it matched without regard to case,
+/// when that finds one and `path` itself isn't there.
+fn other_case(path: &Path) -> Option<PathBuf> {
+    if path.exists() {
+        return None;
+    }
+    let mut real = PathBuf::new();
+    for component in path.components() {
+        let name = component.as_os_str();
+        let next = real.join(name);
+        if next.exists() || matches!(component, std::path::Component::RootDir) {
+            real = next;
+            continue;
+        }
+        let wanted = name.to_str()?.to_lowercase();
+        let entry = std::fs::read_dir(&real).ok()?.flatten().find(|e| {
+            e.file_name()
+                .to_str()
+                .is_some_and(|n| n.to_lowercase() == wanted)
+        })?;
+        real.push(entry.file_name());
+    }
+    Some(real)
 }
 
 /// Where a failed build points next: the log it left in `recorded`, after
@@ -565,6 +622,14 @@ impl Invocation {
             ))
         };
         let mut pif = sweetpad_lib::workspace_pif::pif(&self.container).map_err(translate)?;
+        for member in
+            sweetpad_lib::workspace_pif::missing_members(&self.container).map_err(translate)?
+        {
+            out.warn(&format!(
+                "{} isn't on disk, so this build leaves out the targets it would have; Xcode shows it as missing",
+                member.display()
+            ));
+        }
         let packages = sweetpad_lib::workspace_pif::packages(&self.container).map_err(translate)?;
         if !packages.is_empty() {
             let dumped = self.package_pif(&packages, out)?;
@@ -2403,6 +2468,33 @@ fn failed_task(description: &str, output: &str) -> Vec<Parsed> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A Mac's file system ignores case, so a project can name `Core.swift`
+    /// and hold `core.swift`; Linux then can't find the file. The Mac finds
+    /// it, so the test runs where names are case-sensitive.
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn a_missing_input_found_under_another_case_is_named() {
+        let dir = crate::cli::testdir::TempDir::new("sweetpad-swbuild-case");
+        std::fs::create_dir_all(dir.join("Sources/Kit")).unwrap();
+        std::fs::write(dir.join("Sources/Kit/core.swift"), "").unwrap();
+        let wanted = dir.join("sources/Kit/Core.swift");
+        assert_eq!(
+            other_case(&wanted),
+            Some(dir.join("Sources/Kit/core.swift"))
+        );
+        assert_eq!(other_case(&dir.join("Sources/Kit/core.swift")), None);
+        assert_eq!(other_case(&dir.join("Sources/Kit/Other.swift")), None);
+        let diagnostics = [json!({"message": format!(
+            "Build input file cannot be found: '{}'. Did you forget to declare this file as an output?",
+            wanted.display()
+        )})];
+        let hint = case_mismatches(&diagnostics).unwrap();
+        assert!(
+            hint.ends_with("core.swift' on disk, and Linux file names are case-sensitive"),
+            "{hint}"
+        );
+    }
 
     #[test]
     fn failed_shell_output_is_in_json_diagnostics() {

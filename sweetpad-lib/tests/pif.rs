@@ -413,6 +413,41 @@ fn linux_fixture_matches_xcodebuild_dump() {
     assert_within(&[("fixture-linux".into(), found, 0)]);
 }
 
+/// A resource's on-demand resource tags, which Xcode sorts.
+#[test]
+fn resources_keep_their_asset_tags() {
+    let dir = lib_dir().join("ci/fixture-asset-tags");
+    let found = differences(
+        &dir.join("Tags.xcodeproj"),
+        &dir.join("Tags.dumpPIF.json"),
+        "$(FIXTURE_DIR)",
+        &dir,
+    );
+    assert_within(&[("fixture-asset-tags".into(), found, 0)]);
+}
+
+/// A workspace that lists a project no longer on disk builds the rest, and
+/// says which one is gone.
+#[test]
+fn a_workspace_member_that_isnt_there_is_left_out_and_named() {
+    let fixture = TemporaryFixture::empty("sweetpad-missing-member");
+    let source = lib_dir().join("ci/fixture-name-collision");
+    for file in [
+        "W.xcworkspace/contents.xcworkspacedata",
+        "A/A.xcodeproj/project.pbxproj",
+    ] {
+        let to = fixture.0.join(file);
+        fs::create_dir_all(to.parent().unwrap()).unwrap();
+        fs::copy(source.join(file), to).unwrap();
+    }
+    let workspace = fixture.0.join("W.xcworkspace");
+    let missing = sweetpad_lib::workspace_pif::missing_members(&workspace).unwrap();
+    assert_eq!(missing.len(), 1);
+    assert!(missing[0].ends_with("B/B.xcodeproj"), "{missing:?}");
+    let emitted = pif(&workspace).unwrap();
+    assert_eq!(emitted.iter().filter(|o| o["type"] == "project").count(), 1);
+}
+
 /// Every combination of `ATTRIBUTES` that decides an intent definition's
 /// class generation, against Xcode's dump.
 #[test]

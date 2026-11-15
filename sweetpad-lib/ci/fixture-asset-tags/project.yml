@@ -1,0 +1,21 @@
+# An app whose resources carry on-demand resource tags (ASSET_TAGS), against
+# Xcode's -dumpPIF in Tags.dumpPIF.json, which sorts each file's tags.
+# Regenerate the project with `xcodegen generate`.
+name: Tags
+options:
+  bundleIdPrefix: dev.sweetpad.check
+targets:
+  TagApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: App/App.swift
+      - path: App/a.txt
+        resourceTags: [level1]
+      - path: App/b.txt
+        resourceTags: [zeta, alpha]
+      - path: App/c.txt
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES

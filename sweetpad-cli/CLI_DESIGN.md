@@ -4614,6 +4614,21 @@ product (`<name>-product` in SwiftPM's PIF), else a package's module: the
 scheme Xcode makes for a product builds the product, which shares no name
 with a module when it's made only of binary targets.
 
+**What a Mac forgives, the Linux build names.** A workspace member that
+isn't on disk is left out of the PIF, as Xcode leaves it out and shows it
+missing; the build warns for each one rather than building less without a
+word. A Mac's file system ignores case, so a project can name `Core.swift`
+and hold `core.swift`; when Swift Build reports `Build input file cannot be
+found`, the engine looks for the path under any case and puts the name on
+disk in the failure's tip.
+
+**Resources keep their on-demand tags.** A build file's `ASSET_TAGS` is the
+PIF's `assetTags`, sorted, as Xcode 27 writes it (`ci/fixture-asset-tags`).
+Swift Build then lays out the asset packs, `OnDemandResources.plist` and
+`AssetPackManifestTemplate.plist` as Xcode does, except that a pack's name
+ends in a SHA-256 rather than an MD5: off Apple platforms Swift Build's
+`md5()` falls back to SHA-256.
+
 **An intent definition's attributes decide its classes.** Xcode 27's
 `-dumpPIF` for every combination (`ci/fixture-intents`) gives the rule: a
 `Public` or `Private` attribute writes only `headerVisibility`, which Swift

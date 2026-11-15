@@ -70,6 +70,22 @@ pub fn pif(container: &Path) -> Result<Vec<Json>, Error> {
     Ok(out)
 }
 
+/// The projects a workspace lists that aren't on disk, which the PIF leaves
+/// out, as Xcode shows them missing and builds the rest. Empty for a bare
+/// project, whose own absence is an error.
+pub fn missing_members(container: &Path) -> Result<Vec<PathBuf>, Error> {
+    let container = project::standardize(container);
+    if container.extension().is_none_or(|e| e != "xcworkspace") {
+        return Ok(Vec::new());
+    }
+    let ws = workspace::open(&container).map_err(|e| Error::BadProject(e.to_string()))?;
+    Ok(ws
+        .project_refs
+        .into_iter()
+        .filter(|p| !p.join("project.pbxproj").is_file())
+        .collect())
+}
+
 /// The GUID of the target whose pbxproj ID is `identifier` in the project at
 /// `project`, when the PIF has that target. The emitter names a target by
 /// its project's GUID followed by the MD5 of its ID, so a scheme's
@@ -1015,6 +1031,12 @@ impl<'a> Emitter<'a> {
             &strings(settings.and_then(|s| s.get("ATTRIBUTES"))),
             &mut out,
         );
+        // On-demand resource tags, sorted as Xcode 27 writes them.
+        let mut tags = strings(settings.and_then(|s| s.get("ASSET_TAGS")));
+        if !tags.is_empty() {
+            tags.sort();
+            out.insert("assetTags".into(), json!(tags));
+        }
         if let Some(flags) = settings
             .and_then(|s| s.get("COMPILER_FLAGS"))
             .and_then(Value::as_str)

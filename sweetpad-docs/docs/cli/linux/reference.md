@@ -75,6 +75,8 @@ The build warns for each such plugin and goes on without the files it would gene
 Metal shaders, Core ML model classes, SceneKit assets, and RealityKit assets require native tools.
 When a build needs a tool that Linux doesn't have, such as `metal`, it stops and names the tool and the file that needs it.
 Scripts that import Darwin or call other macOS-only tools need adaptation or a Mac preparation stage.
+Linux file names are case-sensitive and a Mac's usually aren't, so a project that names `Core.swift` for a file saved as `core.swift` builds on a Mac and fails on Linux.
+The failed build's tip names the file as it is on disk.
 Advanced Core Data mapping expressions remain outside the supported mapping-model forms.
 
 Phone startup checks do not validate App Groups, push, payments, or extension behavior.
