@@ -60,6 +60,10 @@ When sourcekit-lsp opens the workspace it finds that file, runs the command in `
 each file's compiler arguments. You never run `bsp serve` yourself. It exists for sourcekit-lsp to
 exec.
 
+If the `argv` names no project, the server serves the `.xcworkspace` or `.xcodeproj` in the folder
+holding `buildServer.json`, picked the same way other commands pick one.
+A config that the VS Code extension registered for that folder takes precedence.
+
 When the server starts, it reads the `KEY=VALUE` settings and the `-xcconfig` in `sweetpad.toml`'s
 `[xcodebuild] args`, so a condition such as `SWIFT_ACTIVE_COMPILATION_CONDITIONS` set there reaches the
 editor the way it reaches your builds. Restart the editor after you change the file. A server that the

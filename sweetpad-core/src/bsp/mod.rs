@@ -518,20 +518,24 @@ fn open_log(path: &Path) -> Option<std::fs::File> {
     opts.open(path).ok()
 }
 
-/// Locate the `bsp.json` for the project containing the cwd — the fallback when
-/// `buildServer.json` carries no explicit `--config`. Walks up from the cwd
-/// through the extension's discovery index and reads the nearest registered
-/// ancestor's `bspConfig` path.
-fn discover_config_from_cwd() -> Result<PathBuf, String> {
-    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-    crate::paths::lookup_index_entry(&cwd)
+/// The `bsp.json` the extension registered for `dir` or the nearest
+/// registered folder above it, in its discovery index.
+#[must_use]
+pub fn registered_config(dir: &Path) -> Option<PathBuf> {
+    crate::paths::lookup_index_entry(dir)
         .as_ref()
         .and_then(|entry| entry.get("bspConfig"))
         .and_then(Value::as_str)
         .map(PathBuf::from)
-        .ok_or_else(|| {
-            "no --config <bsp.json> given and no bspConfig registered for this directory; the SweetPad extension writes buildServer.json with --config, or use 'sweetpad bsp init' for a standalone config".to_string()
-        })
+}
+
+/// Locate the `bsp.json` for the project containing the cwd — the fallback when
+/// `buildServer.json` carries no explicit `--config` (see [`registered_config`]).
+fn discover_config_from_cwd() -> Result<PathBuf, String> {
+    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+    registered_config(&cwd).ok_or_else(|| {
+        "no --config <bsp.json> given, no bspConfig registered for this directory, and no .xcworkspace or .xcodeproj in it; the SweetPad extension writes buildServer.json with --config, or use 'sweetpad bsp init' for a standalone config".to_string()
+    })
 }
 
 impl ResolvedConfig {

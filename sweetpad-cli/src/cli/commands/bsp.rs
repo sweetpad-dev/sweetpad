@@ -40,6 +40,7 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         Action::Init { output_file } => init(ctx, output_file.as_deref()),
         Action::Doctor => doctor(ctx),
         Action::Serve { args } => {
+            discover_container(ctx, args);
             // The bsp resource's ContainerArgs are global, so clap parses
             // --project/--workspace out of the argv before the trailing args
             // see them — reassemble the server's flag list from the parsed
@@ -63,12 +64,40 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     }
 }
 
+/// Names the container for a server started with nothing that names one,
+/// like a `buildServer.json` committed to a repository or written by hand in
+/// a folder the extension never opened: the workspace or project in the
+/// working directory, which is the folder holding `buildServer.json`, as
+/// other commands pick one. A `--config`, or the `bsp.json` the extension
+/// registered for the folder, still names it. A Swift package has
+/// sourcekit-lsp's own support and no server here.
+fn discover_container(ctx: &mut Context, args: &[String]) {
+    let names_config = args
+        .iter()
+        .any(|a| a == "--config" || a.starts_with("--config="));
+    if ctx.targeting.workspace.is_some() || ctx.targeting.project.is_some() || names_config {
+        return;
+    }
+    let Ok(cwd) = std::env::current_dir() else {
+        return;
+    };
+    if sweetpad_core::bsp::registered_config(&cwd).is_some() {
+        return;
+    }
+    match resolve::discover(&cwd) {
+        Some(Container::Workspace(path)) => ctx.targeting.workspace = Some(path),
+        Some(Container::Project(path)) => ctx.targeting.project = Some(path),
+        Some(Container::SwiftPackage(_)) | None => {}
+    }
+}
+
 /// The settings the server layers on every target: the `KEY=VALUE` settings
 /// and `-xcconfig` in the project's `sweetpad.toml` `[xcodebuild] args`, so
 /// the editor's arguments and prepare builds follow the project's builds.
-/// Only a config `bsp init` wrote names the container, and the file is read
-/// for that one. A server the extension's `bsp.json` configures reads that
-/// file's `xcconfig` and `buildSettings` instead: the extension's builds take
+/// Only a config `bsp init` wrote, or one [`discover_container`] found,
+/// names the container, and the file is read for that one. A server the
+/// extension's `bsp.json` configures reads that file's `xcconfig` and
+/// `buildSettings` instead: the extension's builds take
 /// its own `sweetpad.build.args` rather than `sweetpad.toml`, and discovery
 /// from the working directory could name a container other than the one
 /// `bsp.json` does. A file `build` would refuse is warned about and left out,
