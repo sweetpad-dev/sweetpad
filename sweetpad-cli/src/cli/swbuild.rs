@@ -512,6 +512,11 @@ impl Invocation {
             overrides.insert("CHMOD".to_string(), tool("sweetpad-chmod"));
             overrides.insert("ASSETCATALOG_EXEC".to_string(), tool("actool"));
         }
+        let mut additions = BTreeMap::new();
+        if host.is_some() {
+            scope_darwin_settings(&mut overrides, &sdk);
+            additions = take_additions(&mut overrides);
+        }
         overrides.extend(settings.overrides.iter().cloned());
         if host.is_some() {
             scope_darwin_settings(&mut overrides, &sdk);
@@ -521,7 +526,7 @@ impl Invocation {
             &sdk,
             &destination.arch,
             &locations,
-            &overrides,
+            (&overrides, &additions),
             settings.xcconfig.as_deref(),
         );
 
@@ -761,6 +766,24 @@ fn warn_project_plugins(pif: &[Value], names: &[String], out: &Output) {
              generate"
         ));
     }
+}
+
+/// Take the settings the engine adds to rather than sets, `$(inherited)
+/// <addition>`, such as tvOS's `-fuse-ld=lld`, out of `overrides`. They go
+/// in the build's top settings level, above the user's command-line
+/// settings and `-xcconfig` file (which Swift Build places above command-line
+/// settings), so their `$(inherited)` holds whatever the user set:
+/// `OTHER_LDFLAGS=-ObjC` builds with `-ObjC -fuse-ld=lld`.
+fn take_additions(overrides: &mut BTreeMap<String, String>) -> BTreeMap<String, String> {
+    let names: Vec<String> = overrides
+        .iter()
+        .filter(|(_, value)| value.starts_with("$(inherited) "))
+        .map(|(name, _)| name.clone())
+        .collect();
+    names
+        .into_iter()
+        .filter_map(|name| overrides.remove_entry(&name))
+        .collect()
 }
 
 /// A package's host macro uses the Linux SDK. It must not inherit the app's
@@ -1263,7 +1286,7 @@ fn parameters(
     sdk: &str,
     arch: &str,
     locations: &Locations,
-    overrides: &BTreeMap<String, String>,
+    (overrides, additions): (&BTreeMap<String, String>, &BTreeMap<String, String>),
     xcconfig: Option<&Path>,
 ) -> Value {
     let platform = sdk.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
@@ -1276,6 +1299,9 @@ fn parameters(
     let mut overrides_json = json!({ "commandLine": { "table": overrides } });
     if let Some(xcconfig) = xcconfig {
         overrides_json["commandLineConfigPath"] = json!(xcconfig);
+    }
+    if !additions.is_empty() {
+        overrides_json["environmentConfig"] = json!({ "table": additions });
     }
     json!({
         "action": "build",
@@ -2415,6 +2441,36 @@ mod tests {
     }
 
     #[test]
+    fn the_settings_the_engine_adds_to_go_above_the_users() {
+        let mut overrides: BTreeMap<String, String> = [
+            (
+                "OTHER_LDFLAGS[sdk=appletvsimulator*]",
+                "$(inherited) -fuse-ld=lld",
+            ),
+            (
+                "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]",
+                "$(inherited) /sdk/swift",
+            ),
+            ("ARCHS[sdk=appletvsimulator*]", "arm64"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        let additions = take_additions(&mut overrides);
+        assert_eq!(
+            additions.keys().collect::<Vec<_>>(),
+            [
+                "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]",
+                "OTHER_LDFLAGS[sdk=appletvsimulator*]"
+            ]
+        );
+        assert_eq!(
+            overrides.keys().collect::<Vec<_>>(),
+            ["ARCHS[sdk=appletvsimulator*]"]
+        );
+    }
+
+    #[test]
     fn a_simulator_build_is_signed_ad_hoc_by_the_stand_in() {
         let dir = crate::cli::testdir::TempDir::new("sweetpad-simulator-signing");
         let sdk = DarwinSdk {
@@ -2605,7 +2661,18 @@ mod tests {
             derived_data_root: PathBuf::from("/dd"),
         };
         let overrides = BTreeMap::from([("A".to_string(), "1".to_string())]);
-        let p = parameters("Debug", "iphoneos", "arm64", &locations, &overrides, None);
+        let additions = BTreeMap::from([(
+            "OTHER_LDFLAGS[sdk=appletvos*]".to_string(),
+            "$(inherited) -fuse-ld=lld".to_string(),
+        )]);
+        let p = parameters(
+            "Debug",
+            "iphoneos",
+            "arm64",
+            &locations,
+            (&overrides, &additions),
+            None,
+        );
         assert_eq!(p["activeRunDestination"]["platform"], "iphoneos");
         assert_eq!(p["activeRunDestination"]["sdkVariant"], "iphoneos");
         assert_eq!(
@@ -2613,7 +2680,20 @@ mod tests {
             "/dd/App-x/Build/Products"
         );
         assert_eq!(p["overrides"]["commandLine"]["table"]["A"], "1");
-        let mac = parameters("Debug", "macosx", "arm64", &locations, &overrides, None);
+        assert_eq!(
+            p["overrides"]["environmentConfig"]["table"]["OTHER_LDFLAGS[sdk=appletvos*]"],
+            "$(inherited) -fuse-ld=lld"
+        );
+        let none = BTreeMap::new();
+        let mac = parameters(
+            "Debug",
+            "macosx",
+            "arm64",
+            &locations,
+            (&overrides, &none),
+            None,
+        );
+        assert!(mac["overrides"].get("environmentConfig").is_none());
         assert_eq!(mac["activeRunDestination"]["sdkVariant"], "macos");
     }
 

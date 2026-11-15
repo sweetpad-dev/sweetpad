@@ -4631,6 +4631,16 @@ step (`DarwinSdk::overrides` lists each with its reason). The Xcode version
 settings come from Xcode's `version.plist`, which `linux-setup.sh` copies
 beside the bundle, since Swift Build reports 99.99.99 without one.
 
+**The engine's additions sit above the user's settings.** Some overrides
+add to a setting rather than set it: `-fuse-ld=lld` in `OTHER_LDFLAGS` for
+tvOS, watchOS and visionOS, and the Swift library and header search paths.
+Swift Build stacks a request's levels as command-line settings, then the
+`-xcconfig` file, then the environment config, so an addition among the
+command-line settings is lost to a user's `OTHER_LDFLAGS=-ObjC` or to an
+xcconfig that sets the flags without `$(inherited)`. The additions go in the
+environment-config table instead, where `$(inherited)` takes in everything
+below: `-ObjC -fuse-ld=lld`.
+
 **A stand-in is the sweetpad binary under the tool's name.** The engine
 links the binary into the stand-ins' folder under each name, puts the folder
 on `swbuild`'s `PATH`, and `main` dispatches on `argv[0]`. The folder is
