@@ -3,6 +3,7 @@
 Linux fails, to tell a Linux gap from a project that doesn't build at all.
 
     ci/linux-sweep.py [--out DIR] [--only SUBSTRING] [--force] [--xcode] [--jobs N]
+                      [--darwin-sdk VM_PATH] [--derived-data VM_DIR]
 
 Runs on the Mac. Each scheme builds its Debug configuration, whatever its
 case, in the OrbStack machine
@@ -27,6 +28,11 @@ record and summary name the selected action. With
 xcodebuild and without signing, as on Linux, and its result goes beside the
 Linux one. summary.json and
 summary.md sum them up.
+
+--darwin-sdk builds against another Darwin SDK bundle in the VM, as
+SWEETPAD_DARWIN_SDK, and --derived-data gives each container its own
+DerivedData under a VM folder, so two sweeps, one per bundle, keep their
+products apart for ci/linux-sweep-compare.py.
 
 --jobs builds that many containers at once (default 1). A container's
 schemes build one after another, since they share its DerivedData; the
@@ -94,8 +100,11 @@ SKIPPED = {"Derived", ".build", "DerivedData", "derived-data", "SourcePackages",
 VM_BUILD = r"""
 SWIFT_DIR="$(ls -d "$HOME"/swift/swift-*-RELEASE | sort | tail -1)"
 export PATH="$HOME/bin:$SWIFT_DIR/usr/bin:$HOME/.cargo/bin:$PATH"
+if [ -n "$SWEEP_DARWIN_SDK" ]; then export SWEETPAD_DARWIN_SDK="$SWEEP_DARWIN_SDK"; fi
 exec "$HOME/sweetpad-target/debug/sweetpad" "$@"
 """
+DARWIN_SDK = None
+DERIVED_DATA = None
 
 
 def containers():
@@ -185,10 +194,13 @@ def build(where, path, scheme, dest, log, settings=(), action="build"):
     if where == "mac":
         # Linux signs only a device build, so the Mac doesn't sign either.
         settings = [*settings, "CODE_SIGNING_ALLOWED=NO"]
+    elif DERIVED_DATA:
+        settings = ["-derivedDataPath", f"{DERIVED_DATA}/{slugify(os.path.relpath(path, CORPUS))}", *settings]
     if settings:
         args += ["--", *settings]
     if where == "linux":
-        command = ["orb", "-m", VM, "bash", "-c", VM_BUILD, "sweetpad", *args]
+        command = ["orb", "-m", VM, "env", f"SWEEP_DARWIN_SDK={DARWIN_SDK or ''}",
+                   "bash", "-c", VM_BUILD, "sweetpad", *args]
     else:
         command = [MAC_SWEETPAD, *args]
     start = time.time()
@@ -305,7 +317,11 @@ def main():
     parser.add_argument("--xcode-all", action="store_true", help="Run native controls for passing schemes too")
     parser.add_argument("--baseline", help="Repeat only the container/scheme rows in this summary JSON")
     parser.add_argument("--jobs", type=int, default=1)
+    parser.add_argument("--darwin-sdk", help="Darwin SDK bundle in the VM to build against")
+    parser.add_argument("--derived-data", help="VM folder for each container's DerivedData")
     args = parser.parse_args()
+    global DARWIN_SDK, DERIVED_DATA
+    DARWIN_SDK, DERIVED_DATA = args.darwin_sdk, args.derived_data
     args.xcode = args.xcode or args.xcode_all
     os.makedirs(args.out, exist_ok=True)
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
