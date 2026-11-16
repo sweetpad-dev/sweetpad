@@ -2,43 +2,37 @@
 sidebar_label: Install the CLI
 ---
 
-# Install Sweetpad on Linux
+# Install SweetPad on Linux
 
-Choose a package for your Linux host: x64 or ARM64.
-Both hosts can build ARM64 iPhone apps after [Apple toolchain setup](sdk-transfer.md).
-The CLI is a static executable with embedded public setup files.
+The CLI is one static executable for x64 or ARM64 Linux.
+It doesn't include Apple's SDKs or the Swift toolchain. [Set up the Apple toolchain](sdk-transfer.md) after installing it.
 
 | Method | Use it for |
 | --- | --- |
-| APT | Ubuntu machines that need normal package updates. |
-| Local `.deb` | A pinned release on Ubuntu or Debian. |
-| Packslip or Mise | Verified user installs and project version pins. |
-| GHCR image | Docker builds that copy the CLI into another image. |
-| Tarball | A manual install without root access or a package manager. |
-
-Apple SDKs, signing credentials, Swift, and Swift Build are separate requirements.
-The CLI packages and container image contain no Apple SDKs or signing material.
-Apple toolchain setup supports Ubuntu 24.04 and the validated [Debian and Arch hosts](distributions.md).
+| [APT](#apt) | Ubuntu and Debian, with normal package updates. |
+| [Debian package](#debian-package) | A pinned release on Ubuntu or Debian. |
+| [Packslip or Mise](#packslip-or-mise) | User installs and per-project version pins. |
+| [Container image](#container-image) | Copying the CLI into your own build image. |
+| [Tarball](#tarball) | Any distribution, without root access. |
 
 ## APT
 
-Install the repository key and check its fingerprint:
+Download the repository key and check its fingerprint:
 
 ```bash
-sudo apt-get update
 sudo apt-get install ca-certificates curl gnupg
 curl -fsSLo /tmp/sweetpad-archive-keyring.asc \
   https://sweetpad-dev.github.io/sweetpad/apt/sweetpad-archive-keyring.asc
 gpg --show-keys --with-fingerprint /tmp/sweetpad-archive-keyring.asc
 ```
 
-The signing fingerprint is:
+The fingerprint must be:
 
 ```text
 BD4A 4E59 600E EECC 7D9A  9DA7 BA44 850D FB32 ACC9
 ```
 
-After checking it, configure this key for the Sweetpad repository:
+Then add the repository and install:
 
 ```bash
 sudo install -Dm644 /tmp/sweetpad-archive-keyring.asc \
@@ -52,139 +46,82 @@ Signed-By: /etc/apt/keyrings/sweetpad-archive-keyring.asc
 EOF
 sudo apt-get update
 sudo apt-get install sweetpad
-sweetpad --version
 ```
 
-APT selects `amd64` or `arm64` from your host architecture.
-The repository uses its own `stable` suite, independent of your Ubuntu release name.
-The package installs `/usr/bin/sweetpad` and `/usr/bin/sweetpad-dap` without maintainer scripts.
+`sudo apt-get install --only-upgrade sweetpad` upgrades it, and `sudo apt-get remove sweetpad` removes it.
+Removing it keeps your toolchain, SDK, signing files, and configuration.
 
-Upgrade or remove it with APT:
-
-```bash
-sudo apt-get update
-sudo apt-get install --only-upgrade sweetpad
-sudo apt-get remove sweetpad
-```
-
-Removal keeps your compiler, private SDK, signing files, and user configuration.
-
-## Local Debian package
-
-Download a release package and its checksum:
+## Debian package
 
 ```bash
-CLI_VERSION=0.1.23
+CLI_VERSION=0.1.26
 CLI_ARCH="$(dpkg --print-architecture)"
-curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad_$CLI_VERSION-1_$CLI_ARCH.deb"
-curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad_$CLI_VERSION-1_$CLI_ARCH.deb.sha256"
+BASE="https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION"
+curl -fLO "$BASE/sweetpad_$CLI_VERSION-1_$CLI_ARCH.deb"
+curl -fLO "$BASE/sweetpad_$CLI_VERSION-1_$CLI_ARCH.deb.sha256"
 sha256sum -c "sweetpad_$CLI_VERSION-1_$CLI_ARCH.deb.sha256"
 sudo apt-get install "./sweetpad_$CLI_VERSION-1_$CLI_ARCH.deb"
 ```
 
-A local package install does not register the APT feed.
-Install the next verified `.deb` in the same way, or configure the feed above.
+To upgrade, install the next release's package the same way.
 
-## Packslip and Mise
+## Packslip or Mise
 
-With [Packslip](https://packslip.dev/docs/bootstrap/) installed:
+With [Packslip](https://packslip.dev/docs/bootstrap/), which checks the release's signature before installing:
 
 ```bash
 packslip install github.com/sweetpad-dev/sweetpad/tools/cli
-sweetpad --version
 ```
 
-Packslip verifies the signed release metadata and artifact digest before exporting the commands.
-Run the same install command to upgrade.
-The project path ends with `tools/cli` because the repository also publishes editor extension releases.
+Run the same command to upgrade.
 
-With a version of [Mise that supports Packslip](https://mise.jdx.dev/dev-tools/backends/packslip.html):
+With a [Mise that supports Packslip](https://mise.jdx.dev/dev-tools/backends/packslip.html):
 
 ```bash
 mise use -g packslip:github.com/sweetpad-dev/sweetpad/tools/cli
 ```
 
-For a project version pin, omit `-g` and add the version:
+Drop `-g` and add `@0.1.26` to pin a version for one project, and use `mise upgrade` to upgrade.
 
-```bash
-mise use packslip:github.com/sweetpad-dev/sweetpad/tools/cli@0.1.23
-```
+## Container image
 
-Use `mise upgrade` for Mise-managed installs.
-On Linux, install `ca-certificates` for HTTPS and `python3` and `bash` for SDK preparation.
-
-## GHCR container image
-
-The image supports `linux/amd64` and `linux/arm64`:
-
-```bash
-docker run --rm ghcr.io/sweetpad-dev/sweetpad:0.1.23 --version
-```
-
-Copy the static CLI into an existing Ubuntu build image:
+The image at `ghcr.io/sweetpad-dev/sweetpad` holds only the CLI, for `linux/amd64` and `linux/arm64`.
+Copy it into your own build image, which supplies the Apple toolchain:
 
 ```dockerfile
-FROM ghcr.io/sweetpad-dev/sweetpad:0.1.23 AS sweetpad
+FROM ghcr.io/sweetpad-dev/sweetpad:0.1.26 AS sweetpad
 FROM ubuntu:24.04
 COPY --from=sweetpad /usr/local/bin/sweetpad /usr/local/bin/sweetpad
 RUN ln -s sweetpad /usr/local/bin/sweetpad-dap
 RUN apt-get update && apt-get install -y ca-certificates python3 bash
 ```
 
-The published image contains the CLI and CA certificates, with no shell or Apple build toolchain.
-Run `sweetpad setup` in your own prepared build image.
-Import SDK files and signing credentials privately at build or job execution time.
-Use an image digest when your CI requires immutable dependencies.
+Run `sweetpad setup` in that image, and bring the SDK and signing files in only when the job runs.
 
-## Standalone tarball
-
-Install CA certificates for HTTPS, plus Python and Bash for SDK preparation:
+## Tarball
 
 ```bash
-sudo apt-get install ca-certificates python3 bash curl
-```
-
-Download the archive for your host and verify it:
-
-```bash
-CLI_VERSION=0.1.23
+CLI_VERSION=0.1.26
 case "$(uname -m)" in
   aarch64|arm64) CLI_ARCH=arm64 ;;
   x86_64|amd64) CLI_ARCH=x64 ;;
-  *) echo "Unsupported Linux host architecture" >&2; exit 1 ;;
 esac
-mkdir -p "$HOME/downloads/sweetpad-$CLI_VERSION"
-cd "$HOME/downloads/sweetpad-$CLI_VERSION"
-curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz"
-curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz.sha256"
+BASE="https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION"
+curl -fLO "$BASE/sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz"
+curl -fLO "$BASE/sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz.sha256"
 sha256sum -c "sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz.sha256"
 tar -xzf "sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz"
 install -Dm755 sweetpad "$HOME/.local/bin/sweetpad"
 ln -sfn sweetpad "$HOME/.local/bin/sweetpad-dap"
-export PATH="$HOME/.local/bin:$PATH"
-sweetpad --version
 ```
 
-No Rust compiler, source checkout, or installation script is required.
-The binary needs no glibc or OpenSSL shared libraries.
-Setup files are extracted into a content-addressed user cache when needed.
-
-To upgrade, verify the next archive and replace the executable.
-To remove the default manual installation:
-
-```bash
-rm -f "$HOME/.local/bin/sweetpad" "$HOME/.local/bin/sweetpad-dap"
-```
-
-## Prepare the build environment
-
-After installing the CLI, follow [SDK export and setup](sdk-transfer.md).
-Then use [Ubuntu and USB setup](ubuntu-usb.md) to connect an iPhone.
+Make sure `~/.local/bin` is on your `PATH`.
+To upgrade, install the next release's tarball the same way.
 
 ## Upgrade
 
 A new CLI release can carry new patches for Swift Build, which setup compiles on your machine.
-After upgrading the CLI by any of the methods above, run setup again with the SDK source you used the first time:
+After upgrading the CLI, run setup again with the source you used the first time, then check the result:
 
 ```bash
 sweetpad setup --sdk "$HOME/apple-sdk.tar.gz"
@@ -192,11 +129,6 @@ source "$HOME/.config/sweetpad/linux-env.sh"
 sweetpad doctor --target ios
 ```
 
-Pass `--xcode` with the same version instead if that is how you set up.
-Setup skips every step whose result is already installed and current.
-When the patches or the Swift Build version changed, it builds Swift Build again in a new folder under `~/src` and points `~/bin/swbuild` at it, which took about 14 minutes on the validated VM.
-Until then, builds keep using the old Swift Build, and `sweetpad doctor` warns about Swift Build patches.
+Setup rebuilds only what changed. Until it runs, builds use the old Swift Build and `sweetpad doctor` warns about Swift Build patches.
 If setup says the SDK import recipe or toolchain changed, add `--replace-sdk`.
-
-Setup keeps the previous `~/src/swift-build*` folder.
-Delete it once `sweetpad doctor` passes.
+Setup keeps the previous `~/src/swift-build*` folder, which you can delete once `sweetpad doctor` passes.

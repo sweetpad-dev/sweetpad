@@ -41,6 +41,8 @@ const vscodeRedirects: Record<string, string> = {
 /** Pages that were folded into another page, keyed by the URL they used to own. */
 const foldedPages: Record<string, string> = {
   '/docs/vscode/watchos-simulators': '/docs/vscode/simulators#watchos-simulators',
+  '/docs/cli/linux/xcode-download': '/docs/cli/linux/sdk-transfer#download-xcode-on-linux',
+  '/docs/cli/linux/distributions': '/docs/cli/linux/sdk-transfer#supported-hosts',
 };
 
 const redirects = Object.entries({

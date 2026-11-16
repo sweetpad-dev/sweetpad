@@ -4,165 +4,101 @@ sidebar_label: Signing, tests, and archives
 
 # Signing, tests, and archives
 
-An iPhone app needs a development identity and a provisioning profile before installation.
-Linux builds and signs the products, and exports, uploads, and notarizes release builds.
-A Mac with Xcode supplies Apple test execution.
+Linux signs builds, exports and uploads release builds, and notarizes Developer ID apps.
+Running Apple tests still needs a Mac.
 
 ## Configure development signing
 
-Export an Apple Development certificate and its private key as a P12 file.
-The Linux signer reads AES-encrypted files from OpenSSL 3 and older files that use 3DES or 40-bit RC2.
-
-Provide profiles for the app's bundle identifiers, entitlements, and registered iPhone.
-Extensions and UI test runners can require additional matching profiles.
-
-Set the paths and enter the password in your local terminal:
+Export your Apple Development certificate and its private key from Keychain Access as a P12 file, and collect the provisioning profiles for the app and each extension.
+Then point SweetPad at them and enter the password at a prompt:
 
 ```bash
 export SWEETPAD_CODE_SIGN_P12="$HOME/signing/development.p12"
 export SWEETPAD_PROVISIONING_PROFILES="$HOME/signing/profiles"
-read -r -s -p 'P12 password: ' SWEETPAD_CODE_SIGN_P12_PASSWORD
-printf '\n'
+read -r -s -p 'P12 password: ' SWEETPAD_CODE_SIGN_P12_PASSWORD; printf '\n'
 export SWEETPAD_CODE_SIGN_P12_PASSWORD
 
 sweetpad build --project MyApp.xcodeproj --scheme MyApp \
-  --destination 'generic/platform=iOS' --json --non-interactive \
-  -- -derivedDataPath "$HOME/builds/MyApp" ARCHS=arm64
+  --destination 'generic/platform=iOS' --json --non-interactive
 ```
 
-The project's build scripts, plugins and scheme actions don't see the password or `SWEETPAD_ASC_KEY` in their environment.
-SweetPad passes the password to its signing tools in a temporary file that only you can read, and deletes it when the build ends.
+The signer picks a matching profile from that folder, and only one that lists the device when the destination names one.
+Without the variable, it looks where Xcode keeps profiles.
+Build scripts, plugins, and scheme actions don't see the password or the App Store Connect key in their environment.
 
-A build script that runs `codesign` by name gets SweetPad's signer, but Linux has no `/usr/bin/codesign`.
-CocoaPods writes that full path into each `Pods-<Target>-frameworks.sh`, so a signed build that embeds Pod frameworks fails in the "[CP] Embed Pods Frameworks" phase.
-Unsigned builds skip that call.
-After each `pod install`, change the path in the generated scripts:
+`sweetpad doctor --target ios` lists the identities and profiles it finds.
+It warns about an expired certificate, a missing issuer certificate, and profiles that list none of your certificates.
+Simulator builds need no signing.
+
+### CocoaPods
+
+CocoaPods writes `/usr/bin/codesign` into its embed-frameworks scripts, and Linux has no such file, so a signed build fails in "[CP] Embed Pods Frameworks".
+After each `pod install`, point the scripts at SweetPad's signer:
 
 ```bash
 sed -i 's|/usr/bin/codesign|codesign|' "ios/Pods/Target Support Files"/*/*-frameworks.sh
 ```
 
-The signer selects a matching profile from the configured directory.
-Without a configured directory, it also checks the profile locations that Xcode uses under the user's Library.
-When the destination names a device, the signer selects only a profile that lists that device.
-
-The P12 file must contain the certificate's issuer, unless the issuer is an Apple WWDR authority (G3 to G6) or a Developer ID authority.
-SweetPad includes those. If the issuer is missing, signing stops and names the missing authority.
-
-An unsigned device build can compile successfully, but the phone cannot install it.
-Simulator builds require no development identity.
-
 ## Build test products
 
-Use the test action for a scheme that contains unit or UI tests:
-
 ```bash
 sweetpad test build --project MyApp.xcodeproj --scheme MyApp \
   --destination 'generic/platform=iOS Simulator' --json --non-interactive \
-  -- -derivedDataPath "$HOME/builds/MyAppTests" ARCHS=arm64 CODE_SIGNING_ALLOWED=NO
+  -- -derivedDataPath "$HOME/builds/MyAppTests" CODE_SIGNING_ALLOWED=NO
 ```
 
-JSON output includes `built` and `xctestrunPath`.
-A successful build with an unsupported manifest policy reports a null path and an explanatory `xctestrunNote`.
-Check both the build result and the manifest path before scheduling test execution.
+The JSON output's `xctestrunPath` names the test manifest that a Mac runs.
+When the manifest needs something Linux can't write, such as code coverage or sanitizers, the path is null and `xctestrunNote` says why.
+Add `-testPlan Smoke` after `--` to use another test plan from the scheme.
 
-The manifest covers iOS tests on a simulator or a device.
-Unit tests for a device need an app host, and UI tests need their target app (`TEST_TARGET_NAME`).
-Tests for other platforms need a manifest that you supply.
+For an iPhone, build with `generic/platform=iOS` and signing for the app, its tests, and the UI test runner.
+Unit tests on a device need a host app.
 
-For an iPhone test build, select `generic/platform=iOS` and configure signing for every required bundle.
-Unit, UI runner, and target app signatures must match the device's provisioning requirements.
+## Run the tests on a Mac
 
-### Select a test plan
-
-Linux supports version-1 test plans and their named configurations.
-The default plan supplies enabled test targets and manifest settings.
-Select another referenced plan after the passthrough separator:
-
-```bash
-sweetpad test build --project MyApp.xcodeproj --scheme MyApp \
-  --destination 'generic/platform=iOS Simulator' --json --non-interactive \
-  -- -testPlan Smoke -derivedDataPath "$HOME/builds/MyAppSmoke" \
-  ARCHS=arm64 CODE_SIGNING_ALLOWED=NO
-```
-
-Supported settings include environment, arguments, locale, selected or skipped tests, expansion target, timeouts, parallelization, and attachment lifetime.
-Settings that turn off code coverage, sanitizers, the Main Thread Checker, or runtime issue detection are accepted.
-Code coverage, sanitizers, and other unsupported settings require a supplied manifest.
-
-## Run Linux-built tests
-
-Copy the complete Products directory and its generated manifest to a Mac.
-Preserve its directory layout, executable permissions, and symbolic links.
-A tar archive preserves these properties when CI artifact storage does not:
+Copy the whole Products folder to the Mac as a tar archive, which keeps permissions and symbolic links:
 
 ```bash
 tar -C "$HOME/builds/MyAppTests/Build" -czf MyAppTests.tar.gz Products
 ```
 
-On the Mac, extract the archive and run the emitted manifest:
+On the Mac, extract it and run the manifest from `xctestrunPath`:
 
 ```bash
 tar -xzf MyAppTests.tar.gz
 sweetpad test run --project MyApp.xcodeproj --scheme MyApp \
-  --xctestrun /path/to/Products/prebuilt.xctestrun \
-  --on SIMULATOR_UDID --json --non-interactive
+  --xctestrun Products/prebuilt.xctestrun --on SIMULATOR_UDID --json --non-interactive
 ```
 
-Use the actual manifest filename from `xctestrunPath`.
-For signed iPhone products, select the phone's UDID instead of a simulator.
-The selected runtime must support the product's platform, architecture, and deployment target.
-
-This uses Xcode's test-without-building action.
-It does not compile the application or tests again.
-
-Environment variables and arguments that the build expanded from build settings, like `$(SRCROOT)/Fixtures`, contain paths from the Linux machine.
-`sweetpad test run` changes them to the project folder and the products folder on the Mac, in a temporary copy of the manifest.
-The project supplies result history and context; the manifest supplies the prebuilt products.
-A selection that runs zero tests fails.
-
-The automatic manifests preserve enabled targets, environment values, quoted arguments, locale overrides, and test filters.
-UI test manifests also identify the built runner and target application.
+This runs the Linux-built products without compiling them again.
+Paths the build put into test environment variables and arguments are changed to the Mac's project and products folders.
+Use the phone's UDID for signed iPhone products.
 
 ## Archive and distribute
-
-Archive the device build with the export method you need:
 
 ```bash
 sweetpad archive --project MyApp.xcodeproj --scheme MyApp \
   --destination 'generic/platform=iOS' \
-  --export-method debugging --output-file ./artifacts \
+  --export-method release-testing --output-file ./artifacts \
   --json --non-interactive
 ```
 
-The archive includes app, extension, and embedded-framework debug symbols.
-When `SWEETPAD_CODE_SIGN_P12` is set, a development export signs the app again with the Apple Development identity it holds.
-Otherwise the export keeps the build's signature.
-Use `--no-export` to retain only the archive, and `sweetpad archive export` to export it later.
-
-### Identities and profiles for each method
-
-The methods below sign the archived app again, as Xcode's export does, and `mac-application` exports the app as it was signed.
-SweetPad picks the identity by its certificate type and the profile by its kind:
+The export signs the archived app again for its method, as Xcode does, picking the identity by certificate type and the profiles by kind:
 
 | Method | Identity | Profiles |
 | --- | --- | --- |
-| `app-store-connect` | Apple Distribution, plus Mac Installer Distribution for a macOS package | App Store or Mac App Store |
+| `debugging` | Apple Development | Development |
 | `release-testing` | Apple Distribution | Ad Hoc |
 | `enterprise` | Apple Distribution | In-House |
-| `developer-id` | Developer ID Application, plus Developer ID Installer for the package | Developer ID, when the app uses capabilities that need one |
+| `app-store-connect` | Apple Distribution, plus Mac Installer Distribution for a Mac package | App Store or Mac App Store |
+| `developer-id` | Developer ID Application, plus Developer ID Installer for the package | Developer ID, when the app's capabilities need one |
+
+Without `SWEETPAD_CODE_SIGN_P12`, a `debugging` export keeps the build's signature, and `mac-application` always does.
 
 List every P12 file in `SWEETPAD_CODE_SIGN_P12`, separated by `:`.
-A file exported from Keychain Access can hold several identities.
-`SWEETPAD_CODE_SIGN_P12_PASSWORD` holds one password for all of them, or one per file in the same order.
-Put the profiles for the app and each extension in `SWEETPAD_PROVISIONING_PROFILES`.
-
-When no identity can sign an archive, SweetPad signs it ad hoc and keeps its entitlements.
-The distribution export then signs it properly, so the archive step needs no distribution identity.
-Run `sweetpad doctor --target ios` to list the identities and profiles it finds.
-It warns about an expired certificate, an issuer the P12 file lacks, and profiles that list none of your certificates.
-
-### Upload and notarize
+`SWEETPAD_CODE_SIGN_P12_PASSWORD` holds one password for all of them, or one per file.
+When no identity can sign the archive itself, SweetPad signs it ad hoc and the export signs it properly.
+`--no-export` keeps only the archive, and `sweetpad archive export` exports it later.
 
 Add `--upload` to send an App Store Connect export to TestFlight, or `--notarize` for a Developer ID build.
 Both need an App Store Connect API key:
@@ -177,16 +113,5 @@ sweetpad archive --project MyApp.xcodeproj --scheme MyApp \
   --output-file ./artifacts --json --non-interactive
 ```
 
-[Archive and distribute](../archive.md#uploading-to-app-store-connect) covers the key, what an upload waits for, and notarization.
-`sweetpad doctor --network` checks that Apple's services answer from the runner.
-
-Linux can't archive for a simulator. Export refuses an unsigned archive when no identity can sign it.
-
-## Validate on an iPhone
-
-The [Ubuntu and USB guide](ubuntu-usb.md#build-and-install-the-iphone-app) covers installation, launch, and bounded logs.
-A startup check confirms that the signed products launch.
-It does not validate every entitlement, extension, payment flow, or push service.
-
-For CI, keep signing files separate from retained build artifacts.
-The [GitHub Actions guide](github-actions.md) describes the runner and artifact layout.
+[Archive and distribute](../archive.md#uploading-to-app-store-connect) covers the key and the upload options.
+`sweetpad doctor --network` checks that Apple's services answer from the machine.

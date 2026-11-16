@@ -71,7 +71,7 @@ This unsigned build verifies compilation.
 For the phone, configure [development signing](signing-and-testing.md#configure-development-signing).
 Remove the unsigned setting. Then rebuild.
 
-Install and launch the resulting app using [the USB workflow](ubuntu-usb.md#build-and-install-the-iphone-app).
+Install and launch the resulting app using [the USB workflow](ubuntu-usb.md#build-install-and-launch).
 Use the product path from JSON output rather than assuming a bundle name.
 
 ## Release and Debug behavior

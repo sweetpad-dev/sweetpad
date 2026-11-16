@@ -4,180 +4,109 @@ sidebar_label: Support and configuration
 
 # Linux support and configuration
 
-Release 0.1.22 provides static ARM64 and x86_64 packages, signed APT updates, Packslip metadata, and a CLI container image.
-See [Install the CLI](install.md) for installation and upgrades.
-Apple toolchain setup supports Ubuntu 24.04 and the validated [Debian and Arch hosts](distributions.md).
+## Platforms and operations
 
-## Host and target architectures
-
-| Linux host | Package suffix | iPhone target |
-| --- | --- | --- |
-| ARM64 (`aarch64`) | `linux-arm64` | ARM64 (`arm64-apple-ios`) |
-| x86_64 (`amd64`) | `linux-x64` | ARM64 (`arm64-apple-ios`) |
-
-The CLI, Swift compiler, Swift Build service, macro plugins, and SDK tools must match the Linux host.
-The build destination selects the app platform and target architecture.
-For example, `--destination 'generic/platform=iOS'` selects an ARM64 iPhone build on either host.
-A generic destination builds every standard architecture, as `xcodebuild` does: arm64 and x86_64 for a simulator or a Mac, and arm64 with arm64_32 for a watch.
-Add `arch=` to build one architecture. A named simulator builds the host's architecture.
-
-The same private SDK export can supply Apple files to both hosts.
-SDK import installs host tools for the importing machine. An installed SDK bundle contains host executables and needs replacement after a host-architecture change.
-Flutter AOT and React Native keep the additional host-tool requirements in their respective guides.
-
-The validated setup uses an Apple-hardware Linux VM, Swift 6.4.2, Swift Build 6.4.0, and SDK data from Xcode.
-Setup builds Swift Build with SweetPad's patches and records which ones it used.
-A newer SweetPad can carry newer patches, so after an upgrade `sweetpad doctor` warns until `sweetpad setup` runs again (see [Upgrade](install.md#upgrade)).
-The same report lists the tvOS, watchOS, and visionOS platforms that the SDK includes.
-
-## Platform coverage
-
-| Operation | Status |
+| Operation | On Linux |
 | --- | --- |
-| Build iOS apps and extensions | Supported by the experimental Linux engine. |
-| Sign iPhone and macOS products | Supported with P12 identities and matching profiles. |
-| Discover, install, launch, stop, and log an iPhone app | Validated through Linux USB and Wi-Fi. |
-| Build iOS unit and UI test products | Supported, including the documented automatic manifests. |
-| Execute Apple tests | Requires a Mac with Xcode. |
-| Operate an iOS Simulator | Requires a Mac. |
-| Build macOS apps | Supported for the validated resource and compiler paths; native execution requires a Mac. |
-| Build tvOS, watchOS, and visionOS simulator targets | Compilation and linking coverage exists; runtime and device signing remain unverified. |
-| Build Mac Catalyst targets on Linux | Remains unverified. |
-| Export development, ad hoc, enterprise, and App Store Connect IPAs | Supported. Each export signs the app again for its method. |
-| Export a Mac App Store package, or a Developer ID app and package | Supported. |
-| Upload to App Store Connect | Supported with an App Store Connect API key. |
-| Notarize and staple a Developer ID app or package | Supported with a team API key. |
-| Custom export options | Supported for the keys SweetPad acts on. Other keys that change the result are refused by name. |
-| Build universal macOS archives | Supported. Archives contain every standard architecture, as Xcode's do. |
-| Debug a device or inspect device readiness on Linux | Unsupported. |
+| Build iOS apps, extensions, and widgets | Supported. |
+| Build macOS apps | Supported. Running them needs a Mac. |
+| Build tvOS, watchOS, and visionOS simulator targets | Builds and links. Running them and device signing are untested. |
+| Build Mac Catalyst targets | Untested. |
+| Sign iPhone and macOS products | Supported, with P12 identities and matching profiles. |
+| Install, launch, stop, and stream logs from an iPhone app | Supported over USB and Wi-Fi. |
+| Debug an app on a device | Not supported. |
+| Build unit and UI test products | Supported, with automatic test manifests for iOS. |
+| Run Apple tests, use the iOS Simulator | Needs a Mac with Xcode. |
+| Export IPAs, Mac App Store packages, and Developer ID apps | Supported. Each export signs the app again for its method. |
+| Upload to App Store Connect, notarize and staple | Supported, with an App Store Connect API key. |
 
-Current Xcode and Swift Build reject deprecated WatchKit extension products.
-Use modern standalone watchOS apps for new platform validation.
+A generic destination builds every standard architecture, as `xcodebuild` does: arm64 and x86_64 for a simulator or a Mac, and arm64 with arm64_32 for a watch.
+Add `arch=` to the destination to build one architecture. A named simulator builds the host's architecture.
 
-## Project and resource support
+Custom `ExportOptions.plist` keys that SweetPad doesn't act on, and that would change the result, are refused by name.
+Current Xcode and Swift Build reject the old WatchKit extension products, so watchOS apps need to be standalone.
 
-The portable build path covers these common inputs:
+## Projects and resources
 
-- Local and remote Swift packages, including binary XCFrameworks
+These build on Linux:
+
 - Swift, Objective-C, C, and C++ targets
+- Local and remote Swift packages, including binary XCFrameworks, and package macros that build on Linux
 - Frameworks, static libraries, app extensions, and widgets
-- Asset catalogs, storyboards, XIBs, String Catalogs, and ordinary strings
+- Asset catalogs, storyboards, XIBs, String Catalogs, and strings files
 - Core Data models and common mapping models
-- Supported SwiftData, Predicate, Preview, SwiftUI Entry, and TipKit macros
-- Package macros whose sources build for the Linux host
-- Build-tool plugins on package targets, such as SwiftLint or SwiftGen applied in a package
-- Supported App Intents metadata and shortcut language models.
+- SwiftData, Predicate, Preview, SwiftUI Entry, and TipKit macros
+- Build-tool plugins on package targets, such as SwiftLint or SwiftGen
+- App Intents metadata and shortcut language models
+- Icon Composer icons, as static light, dark, and tinted images
+- Sticker packs with PNG, GIF, and JPEG stickers
 
-Explicit schemes from resolved Git packages are available after dependency resolution.
-Listing schemes does not fetch missing packages.
-Package manifests run on Linux. Host-only conditions that select Apple resources or libraries can require a compatibility patch.
+These don't:
 
-A build-tool plugin on an Xcode project target doesn't run on Linux.
-Xcode runs those plugins itself through `XcodeProjectPlugin`, which the Linux Swift toolchain doesn't include.
-The build warns for each such plugin and goes on without the files it would generate.
+- Metal shaders, Core ML model classes, SceneKit assets, and RealityKit assets, which need Apple's own tools. The build stops and names the tool and the file.
+- Build-tool plugins on Xcode project targets. Xcode runs those itself, so the build warns and goes on without their files.
+- Sticker sequences, localized sticker-pack strings, Icon Composer's glass and material effects, and advanced Core Data mapping expressions.
 
-Metal shaders, Core ML model classes, SceneKit assets, and RealityKit assets require native tools.
-When a build needs a tool that Linux doesn't have, such as `metal`, it stops and names the tool and the file that needs it.
-Scripts that import Darwin or call other macOS-only tools need adaptation or a Mac preparation stage.
-Linux file names are case-sensitive and a Mac's usually aren't, so a project that names `Core.swift` for a file saved as `core.swift` builds on a Mac and fails on Linux.
-The failed build's tip names the file as it is on disk.
+Linux file names are case-sensitive and a Mac's usually aren't.
+A project that refers to `Core.swift` for a file saved as `core.swift` builds on a Mac and fails on Linux, and the error names the file as it is on disk.
 
-`sweetpad open dd` opens the DerivedData folder with `xdg-open`.
-`sweetpad open config` opens the config file in `$VISUAL` or `$EDITOR` at a terminal, and with `xdg-open` otherwise.
-`open xcode` and `open sim` need a Mac, so on Linux they exit with code 5 (`tool_missing`).
-Advanced Core Data mapping expressions remain outside the supported mapping-model forms.
+Package manifests run on Linux, so a condition that only holds on macOS can pick different resources or libraries.
 
-Phone startup checks do not validate App Groups, push, payments, or extension behavior.
-Those flows need matching profiles and their own execution checks.
+## Run scripts and scheme actions
 
-### Modern icons and stickers
+Run-script phases run on Linux, without Apple's `sandbox-exec` profiles.
+Their `PATH` holds the Swift toolchain and SweetPad's versions of these macOS tools:
 
-Icon Composer support produces static light, dark, and tinted appearances.
-Interactive glass lighting and native material effects remain unsupported.
+- `xcrun`, which runs a tool by name, finds one with `--find`, and reports an SDK's path and versions with `--show-sdk-*`
+- `ditto`, which copies files and folders, but leaves archives to `zip` and `unzip`
+- `cc`, which compiles for an Apple target with Clang and for the host with the host's `cc`
+- `codesign`, `lipo`, `strip`, and `dsymutil`
+- `actool`, `ibtool`, `momc`, `mapc`, and `xcstringstool`
 
-Sticker packs support ordered PNG, GIF, and JPEG members and message-extension icons.
-Sticker sequences and localized sticker-pack strings remain unsupported.
+Other macOS commands, such as `/usr/libexec/PlistBuddy`, `plutil`, `agvtool`, and `sw_vers`, aren't there.
+A script that needs one needs a Linux equivalent, or has to run on a Mac.
 
-### Swift and C++ interoperability
+A process that a script starts in the background keeps running, and the build doesn't wait for it.
+Ctrl-C stops the build along with anything its scripts left running.
 
-The MMKV validation uses the current generated-header correction rather than its former fixture shim.
-The affected bridge helpers use the supported lazy inline-helper behavior.
-Other compiler versions and interoperability forms need separate validation.
+The scheme's Build pre-actions and post-actions run, with the build settings of the target they select.
+Pre-actions run before the build starts, so they can generate source files, and post-actions run after a successful build.
+Archive actions run around the archive step.
+Test actions don't run, since Linux stops at building the tests. Send Email actions are skipped, as `xcodebuild` skips them.
 
 ## App Intents
 
-The portable processors generate registration metadata, extracted strings, and shortcut language models.
-Supported forms include primitive parameters, optional and array values, file images, dialog or snippet results, enums, basic entities, widget intents, and basic shortcuts.
+The App Intents processors write the registration metadata, extracted strings, and shortcut language models, per language for a localized app.
+They support primitive, optional, and array parameters, file images, dialog and snippet results, enums, basic entities, widget intents, and basic shortcuts.
+Other schemas and language-model options fail with an error that names them.
+AssistantIntents catalogs and catalog variations aren't supported, and Siri voice invocation on a device is untested.
 
-Dynamic frameworks and embedded extensions retain separate registrations.
-Unsupported schemas, static dependency registration, and unsupported language-model options fail explicitly.
-Siri voice invocation on a physical device remains unverified.
+Localized shortcut training needs the phrase resources that a [Mac SDK export](sdk-transfer.md#export-it-on-your-mac) includes.
 
-Localized shortcut models use the app's translated names and AppShortcuts string tables.
-The trainer emits per-language models and removes models for deleted shortcuts.
-AssistantIntents catalogs and catalog variations remain unsupported.
+## Other commands
 
-### Localized phrase resources
-
-`sweetpad sdk export` runs on your Mac and includes the system phrase resources in the private SDK archive.
-Transfer that archive and its checksum privately, then run `sweetpad setup --sdk /path/to/apple-sdk.tar.gz` on Linux.
-See [SDK export and setup](sdk-transfer.md) for the complete commands.
-
-Missing localized resources produce a preparation error.
-The export is SDK data and stays outside your source repository and public artifacts.
+`sweetpad open dd` opens the DerivedData folder with `xdg-open`.
+`sweetpad open config` opens the config file in `$VISUAL` or `$EDITOR`, or with `xdg-open` outside a terminal.
+`open xcode` and `open sim` need a Mac and exit with code 5 (`tool_missing`).
 
 ## Environment variables
 
-For export, import, setup, and Linux diagnostics, see [SDK export and setup](sdk-transfer.md).
-Those convenience commands require CLI 0.1.19 or later.
-
 | Variable | Purpose |
 | --- | --- |
-| `SWEETPAD_DARWIN_SDK` | Select another extracted Darwin SDK bundle. |
-| `SWEETPAD_SWBUILD` | Select the Swift Build driver instead of the executable on PATH. |
-| `SWEETPAD_MACROS` | Select the macro launcher instead of the executable on PATH. |
-| `SWEETPAD_CODE_SIGN_P12` | Select the P12 identity files, separated by `:`. A file can hold several identities. |
-| `SWEETPAD_CODE_SIGN_P12_PASSWORD` | Supply their password, or one per file separated by `:`. |
-| `SWEETPAD_PROVISIONING_PROFILES` | Select a directory of matching profiles. |
-| `SWEETPAD_ASC_KEY_ID` | Select the App Store Connect API key for uploads and notarization. |
-| `SWEETPAD_ASC_ISSUER_ID` | Supply the team key's issuer ID. Notarization needs a team key. |
-| `SWEETPAD_ASC_KEY_PATH` | Select the key's `.p8` file. |
-| `SWEETPAD_ASC_KEY` | Supply the key file's text instead of a path. |
-| `SWEETPAD_DEVICE_PYTHON` | Select Python with the pinned modern device adapter. |
-| `SWEETPAD_DEVICE_TIMEOUT` | Set the device-action timeout in seconds (default: 180, maximum: 3600). Applies when `SWEETPAD_DEVICE_PYTHON` or `SWEETPAD_DEVICE_NETWORK_CONFIG` is set. |
-| `SWEETPAD_DEVICE_DISCOVERY_TIMEOUT` | Set each device's discovery timeout in seconds (default: 30, maximum: 3600). Applies when `SWEETPAD_DEVICE_PYTHON` or `SWEETPAD_DEVICE_NETWORK_CONFIG` is set. |
-| `SWEETPAD_DEVICE_NETWORK_CONFIG` | Select a private Wi-Fi device configuration. |
-| `SWEETPAD_SKIP_RUST` | Setup only: use `1` to omit Rust for the prebuilt CLI. |
-| `SWEETPAD_REFRESH_SDK` | Setup only: use `1` to refresh an existing SDK extraction. |
-| `SWEETPAD_SDK_ARCHIVE` | Setup script only: import a private archive instead of reading an Xcode directory. |
-| `SWEETPAD_APPLE_SESSION_FILE` | Select private Sweetpad session JSON for terminal login and Xcode downloads. |
-| `SWEETPAD_ENGINE` | Select `swift-build` or `xcodebuild` for build commands. |
-| `SWEETPAD_SETUP_JOBS` | Limit concurrent setup compiler jobs (default: 4). |
-| `SWEETPAD_VM` | Select the OrbStack machine for Mac execution of the setup script. |
-| `XCODE_APP` | Select the Xcode directory for the manual setup script. |
-| `SWEETPAD_APPINTENTS_RESOURCE_EXPORT` | Supply the private localized phrase export during manual setup. |
-| `SWEETPAD_NONINTERACTIVE` | Disable interactive prompts. Setup also prevents sudo password prompts. |
+| `SWEETPAD_DARWIN_SDK` | The Darwin SDK to build against. The setup environment file sets it. |
+| `SWEETPAD_SWBUILD` | The Swift Build driver, in place of the one on `PATH`. |
+| `SWEETPAD_MACROS` | The macro plugin, in place of the one on `PATH`. |
+| `SWEETPAD_ENGINE` | `swift-build` or `xcodebuild`. Linux defaults to `swift-build`. |
+| `SWEETPAD_CODE_SIGN_P12` | P12 identity files, separated by `:`. |
+| `SWEETPAD_CODE_SIGN_P12_PASSWORD` | Their password, or one per file separated by `:`. |
+| `SWEETPAD_PROVISIONING_PROFILES` | A folder of provisioning profiles. |
+| `SWEETPAD_ASC_KEY_ID`, `SWEETPAD_ASC_ISSUER_ID` | The App Store Connect API key and its issuer. Notarization needs a team key, which has an issuer. |
+| `SWEETPAD_ASC_KEY_PATH`, `SWEETPAD_ASC_KEY` | The key's `.p8` file, or its text. |
+| `SWEETPAD_APPLE_SESSION_FILE` | The Apple session for Xcode downloads. |
+| `SWEETPAD_DEVICE_PYTHON` | The Python with `pymobiledevice3==11.50.0` that device commands use. |
+| `SWEETPAD_DEVICE_NETWORK_CONFIG` | The Wi-Fi pairing from `sweetpad device pair-network`. |
+| `SWEETPAD_DEVICE_TIMEOUT` | Seconds a device action may take (default 180). |
+| `SWEETPAD_DEVICE_DISCOVERY_TIMEOUT` | Seconds to look for each device (default 30). |
 
-Run `sweetpad help environment` for runtime variables.
-The two setup controls apply to the setup script.
-
-## Wi-Fi transport
-
-With trusted USB available, create an isolated network record:
-
-```bash
-sweetpad device pair-network IPHONE_UDID \
-  --out "$HOME/.local/share/sweetpad/iphone-network" --json --non-interactive
-export SWEETPAD_DEVICE_NETWORK_CONFIG="$HOME/.local/share/sweetpad/iphone-network/devices.json"
-sweetpad device list --json --non-interactive
-```
-
-The command preserves existing default pairing records and rejects an existing output directory.
-The new directory contains private credentials.
-Discovery uses multicast advertisements or the system DNS-SD resolver.
-
-The validated OrbStack bridge uses DNS-SD because raw LAN multicast does not cross the bridge.
-For networks without discovery, the configuration can select an explicit RemotePairing host and port.
-
-Run `sweetpad help linux-devices` for configuration details and bounded app-log commands.
-See [Ubuntu and USB setup](ubuntu-usb.md) for the primary iPhone workflow.
+The two timeouts apply when `SWEETPAD_DEVICE_PYTHON` or `SWEETPAD_DEVICE_NETWORK_CONFIG` is set.
+`sweetpad help environment` lists every variable.

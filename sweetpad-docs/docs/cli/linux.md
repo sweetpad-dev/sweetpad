@@ -4,9 +4,9 @@ sidebar_label: Linux overview
 
 # Build iPhone apps on Linux
 
-SweetPad builds an Xcode project on Linux, signs it with your development identity, and installs it on an iPhone.
+SweetPad builds an Xcode project on Linux, signs it, and installs it on an iPhone.
 It also exports release builds, uploads them to App Store Connect, and notarizes Developer ID apps.
-The command uses the same project, scheme, and build settings as the macOS CLI.
+The commands, project, scheme, and build settings are the same as on a Mac:
 
 ```bash
 sweetpad build --project MyApp.xcodeproj --scheme MyApp \
@@ -14,56 +14,27 @@ sweetpad build --project MyApp.xcodeproj --scheme MyApp \
 ```
 
 :::warning Experimental
-The CLI runs on ARM64 and x86_64 Linux. Apple toolchain setup supports Ubuntu 24.04 and Debian 12 and 13 on either architecture, and Arch Linux on x86_64. Every supported host can build ARM64 iPhone apps.
-The validated setup uses Linux in a VM on Apple hardware.
-Apple SDKs and signing credentials come from your own development environment.
+The CLI runs on ARM64 and x86_64 Linux. The Apple toolchain installs on Ubuntu 24.04, Debian 12 and 13, and Arch Linux on x86_64.
+The validated setup is a Linux VM on Apple hardware, with Apple's SDKs from your own Xcode.
 :::
 
 ## Start here
 
-These guides follow the path from a fresh machine to a running iPhone app:
+1. [Install the CLI](linux/install.md).
+2. [Set up the Apple toolchain](linux/sdk-transfer.md) from your Mac's Xcode or an Xcode download.
+3. [Set up signing](linux/signing-and-testing.md) with your development identity and profiles.
+4. [Connect an iPhone](linux/ubuntu-usb.md) over USB or Wi-Fi, then build, install, and launch.
 
-| Guide | What you will do |
-| --- | --- |
-| [How it works](linux/how-it-works.md) | Understand the compiler, SDK, resource tools, and device transport. |
-| [Install the CLI](linux/install.md) | Choose APT, a Debian package, Packslip, Mise, a container image, or a tarball. |
-| [SDK export and setup](linux/sdk-transfer.md) | Export private Apple files, configure Ubuntu, and diagnose the Linux toolchain. |
-| [Ubuntu and USB setup](linux/ubuntu-usb.md) | Install the CLI and toolchain, pair an iPhone, and launch an app through USB. |
-| [Signing, tests, and archives](linux/signing-and-testing.md) | Configure signing, run Linux-built test products on a Mac, and ship release builds. |
-| [GitHub Actions for iOS](linux/github-actions.md) | Build iPhone products on a provisioned Linux runner and retain usable artifacts. |
-| [React Native](linux/react-native.md) | Prepare Pods and Hermes, then build the iOS workspace. |
-| [Flutter](linux/flutter.md) | Prepare a matching Linux iOS AOT compiler and build the Runner project. |
-| [macOS apps in CI](linux/macos-ci.md) | Build macOS bundles on Linux or use a hosted Mac for the full native workflow. |
-| [Support and configuration](linux/reference.md) | Find supported features, environment variables, and known limits. |
+Then, as you need them:
 
-## What builds
-
-The iOS build path covers Swift, Objective-C, C, and C++ targets, local and remote packages, frameworks, widgets, and app extensions.
-Portable tools compile asset catalogs, Interface Builder files, strings, Core Data models, and supported App Intents metadata.
-
-The validation suite includes native Swift apps, React Native with Hermes and MMKV, Flutter AOT, and Capacitor.
-Device checks cover startup, storage persistence, and direct Linux USB and Wi-Fi transport.
-Some corpus apps require explicit compatibility patches. A successful fixture check does not promise compatibility with every framework version.
-
-See [the support reference](linux/reference.md) for the exact boundaries.
+- [GitHub Actions for iOS](linux/github-actions.md) builds, tests, and uploads from a Linux runner.
+- [React Native](linux/react-native.md) and [Flutter](linux/flutter.md) apps need extra preparation.
+- [macOS apps in CI](linux/macos-ci.md) covers Mac apps built on Linux.
+- [How it works](linux/how-it-works.md) explains the build pipeline.
+- [Support and configuration](linux/reference.md) lists what works and the environment variables.
 
 ## What stays on a Mac
 
-The iOS Simulator and Apple test execution require macOS with Xcode.
-Linux can build test products and write their test manifest; a Mac runs those products without recompiling them.
-
-Signing, distribution export, App Store Connect uploads, and Developer ID notarization work on Linux.
-Linux device debugging remains outside the supported release scope.
-
-## Signing a device build
-
-An iPhone requires a signed app and a matching provisioning profile.
-Follow [signing, tests, and archives](linux/signing-and-testing.md) before the device-build step in the Ubuntu guide.
-
-## Device transport
-
-A connected iPhone can use Linux USB transport directly.
-The [Ubuntu guide](linux/ubuntu-usb.md#connect-the-iphone) covers trust, Developer Mode, and USB passthrough.
-
-Wi-Fi pairing and discovery use the same pinned device adapter.
-Run `sweetpad help linux-devices` for the command guide.
+The iOS Simulator and running Apple tests need macOS with Xcode.
+Linux builds the test products and their test manifest, and a Mac runs them without compiling them again.
+Debugging an app on a device from Linux isn't supported.

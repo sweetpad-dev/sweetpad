@@ -1,187 +1,131 @@
 ---
-sidebar_label: SDK import and setup
+sidebar_label: Set up the Apple toolchain
 ---
 
-# Import Apple SDK files and configure Linux
+# Set up the Apple toolchain
 
-Install CLI 0.1.19 or later on each host.
-The [CLI installation guide](../getting-started.md) covers macOS.
-The [Ubuntu guide](ubuntu-usb.md#install-the-release) covers Linux.
+Linux builds need Apple's SDKs from Xcode, plus a Linux Swift toolchain and Swift Build.
+`sweetpad setup` installs all of them from one source: an SDK archive exported on your Mac, or an Xcode download.
 
-The complete Linux package supplies the CLI and public setup sources without Rust.
-For manual toolchain setup, use the [setup script](ubuntu-usb.md#manual-toolchain-setup).
+Use Linux in a VM on Apple hardware, under [Apple's Xcode agreement](https://www.apple.com/legal/sla/docs/xcode.pdf).
+Keep the archive, the extracted SDK, and your Apple session private, and out of public artifacts and container layers.
 
-You can export the required Apple files from your Mac or import a private Xcode download directly on Linux.
-CLI 0.1.22 supports Ubuntu, Debian, and Arch setup on the [validated host architectures](distributions.md).
-Use a Linux VM on Apple hardware under [Apple's Xcode agreement](https://www.apple.com/legal/sla/docs/xcode.pdf).
-Keep the SDK archive private. It contains Apple SDK data and contains no signing identities or provisioning profiles.
+## Supported hosts
 
-## Import a Xcode download on Linux
+| Distribution | Architectures | System packages |
+| --- | --- | --- |
+| Ubuntu 24.04 | x64, ARM64 | APT |
+| Debian 12 or 13 | x64, ARM64 | APT |
+| Arch Linux | x64 | pacman |
 
-CLI 0.1.23 can [sign in and download Xcode from a terminal](xcode-download.md).
-Use `sweetpad setup --xcode VERSION` to download the archive and configure Linux in one command.
+Every host builds ARM64 iPhone apps.
+On other distributions, setup warns and tries Ubuntu's Swift toolchain with the packages already installed.
+Setup refuses Alpine, because the Apple toolchain needs glibc. Run it in an Ubuntu or Debian container there.
 
-CLI 0.1.22 can import Xcode `.xip` files and has experimental support for `.aea` files.
-Apple introduced `.aea` downloads in [Xcode 27.3](https://developer.apple.com/documentation/xcode-release-notes/xcode-27_3-release-notes).
-Download Xcode from Apple and keep the archive private.
-Then run setup with the downloaded file:
+Install the prerequisites first. On Ubuntu or Debian:
 
 ```bash
-sweetpad setup --sdk "$HOME/Downloads/Xcode.xip" --json --non-interactive
+sudo apt-get install ca-certificates python3 bash
+```
+
+On Arch, update the whole system first, because Arch doesn't support partial upgrades:
+
+```bash
+sudo pacman -Syu
+sudo pacman -S --needed ca-certificates python bash
+```
+
+## Get the SDK
+
+### Export it on your Mac
+
+```bash
+sweetpad sdk export --xcode /Applications/Xcode.app --output-file "$HOME/apple-sdk.tar.gz"
+scp "$HOME/apple-sdk.tar.gz" "$HOME/apple-sdk.tar.gz.sha256" linux-host:~/
+```
+
+The archive holds the SDKs, runtime libraries, test runners, and localized App Intents phrases, but none of Xcode's programs.
+Add `--dry-run` to see how much space it needs.
+An OrbStack machine reads the Mac's files at the same paths, so it doesn't need the copy.
+
+### Download Xcode on Linux
+
+Sign in once from a terminal:
+
+```bash
+sweetpad auth login --apple-id you@example.com
+```
+
+SweetPad asks for your password and two-factor code, and saves only the session, in `~/.local/state/sweetpad/apple-session.json`.
+Treat that file as a credential.
+Accounts that sign in with a security key, federated login, or legacy two-step verification can't sign in from a terminal.
+
+Setup then downloads the release you name with `--xcode`.
+You can also pass a `.xip` or `.aea` file you downloaded yourself to `--sdk`.
+For an `.aea` file without an embedded key, add `--aea-key-file`; `sweetpad setup --help` lists the key formats.
+
+A download doesn't include the localized App Intents phrases that a Mac export carries.
+Apps still build, `doctor` warns, and localized shortcut training needs an export from a Mac.
+
+## Run setup
+
+```bash
+sweetpad setup --sdk "$HOME/apple-sdk.tar.gz"
 source "$HOME/.config/sweetpad/linux-env.sh"
-sweetpad doctor --target ios --json --non-interactive
+sweetpad doctor --target ios
 ```
 
-Use your `.aea` filename in the same command for an AEA download.
-Setup extracts the required SDK inputs and installs Linux host tools.
-It does not install or execute the Xcode application.
-The archive remains on disk, so allow space for the download, extracted inputs, and staged SDK.
+Use `--xcode 27.2` in place of `--sdk` to download that release; a beta needs its name, as in `--xcode '27.3 beta'`.
 
-The importer checks archive checksums and AEA authentication data.
-It does not validate Apple's publisher certificate chain. Use a trusted Apple download and check its published checksum when available.
-An adjacent `Xcode.xip.sha256` or `Xcode.aea.sha256` file is checked when present.
-Use the usual `sha256sum` format: the digest, two spaces, and the archive filename.
+Setup installs the system packages, the pinned Swift toolchain, a patched Swift Build, and the macro plugin.
+It then imports the SDK and builds a sample iPhone app to check the result.
+Compiling Swift Build takes the longest, about 14 minutes on the validated VM.
 
-AEA support covers signed or AES-CTR profiles 0, 1, and 2.
-It supports embedded keys and Apple FCS key envelopes.
-FCS import can retrieve public distribution key material from approved Apple HTTPS hosts without account cookies.
-For offline import or archives without embedded keys, pass a key file:
+The environment file puts the toolchain on `PATH` and selects the SDK.
+Source it in every new shell, or from your shell profile. In CI, source it in every step.
 
-```bash
-sweetpad setup --sdk "$HOME/Downloads/Xcode.aea" \
-  --aea-key-file /private/path/archive-key --json --non-interactive
-```
+Setup skips every step whose result is already installed and current, so it's safe to run again.
+To switch to another archive or Xcode release, add `--replace-sdk`. The old SDK stays until the new one imports.
 
-The key file can contain a raw 32-byte symmetric key, a `hex:` or `base64:` value, or an Apple FCS private key.
-For signed archives without an embedded signing key, use `--aea-public-key-file /private/path/signing-public.pem`.
-The same options work with `sweetpad sdk import`.
-CLI 0.1.23 also resolves shared file data in Apple Archive hard-link, clone, and identical-data clusters.
-The importer can recover data stored outside the selected SDK paths and preserves each file's permissions.
-The importer retains the macOS XCTest runner and preserves file permissions after Linux metadata updates.
-Missing data, conflicting cluster contents, and invalid checksums fail before SDK replacement.
-Large archives are decoded twice to find shared data before extraction.
-CLI 0.1.23 reports phases and decoded sizes on stderr during `sweetpad sdk import`.
-Unsupported encryption profiles fail with an explicit error.
-Use a Mac SDK export if your download needs an unsupported archive feature.
-
-Direct import does not generate localized App Intents phrase resources.
-Ordinary app compilation can proceed; doctor reports a warning for the missing resources.
-Use the Mac export flow below for localized shortcut training.
-CLI 0.1.23 validation imported a real Xcode 27.3 beta (27C5020n) profile 0 archive on ARM64 and emulated x64 Linux.
-Both hosts built an ARM64 iPhone sample with that SDK.
-Validation also uses Apple-tool-generated archive fixtures and full SDK inputs from Xcode 27.2.
-A real encrypted Xcode download remains unverified.
-
-## Export on your Mac
-
-Install Xcode and select a destination for the archive.
-Estimate the input size and required disk space:
-
-```bash
-sweetpad sdk export --xcode /Applications/Xcode.app \
-  --output-file "$HOME/apple-sdk.tar.gz" --dry-run --json --non-interactive
-```
-
-Create the archive:
-
-```bash
-sweetpad sdk export --xcode /Applications/Xcode.app \
-  --output-file "$HOME/apple-sdk.tar.gz" --json --non-interactive
-```
-
-Export includes the iOS device, iOS Simulator, and macOS base files required by the pinned importer.
-It also includes additional platform SDKs present in Xcode.
-The archive contains compatibility headers, runtime libraries, platform metadata, test runners, sticker stubs, and localized App Intents resources.
-It excludes compiler caches and Xcode host compiler executables.
-
-The manifest records the Xcode build, required toolchain versions, file sizes, file checksums, and symbolic links.
-Export creates a `.sha256` file beside the archive and refuses to overwrite existing exports.
-
-## Transfer both files
-
-Copy the archive and its checksum file to your private Linux host:
-
-```bash
-scp "$HOME/apple-sdk.tar.gz" "$HOME/apple-sdk.tar.gz.sha256" ubuntu:~/
-```
-
-Replace `ubuntu` with your SSH host.
-An OrbStack machine can also read the Mac files at their original absolute paths.
-Do not publish the archive as a public CI artifact.
-
-## Configure Linux from an SDK export
-
-Install the complete Linux CLI package or use a current source build before this step.
-Run setup on a [supported Linux distribution](distributions.md):
-
-```bash
-sweetpad setup --sdk "$HOME/apple-sdk.tar.gz" --json --non-interactive
-source "$HOME/.config/sweetpad/linux-env.sh"
-sweetpad doctor --target ios --json --non-interactive
-```
-
-Setup requires Python 3 and sudo access for system packages.
-With CLI 0.1.22, use `--skip-system-packages` to supply existing host dependencies.
 With `--json` or `--non-interactive`, or when stderr isn't a terminal, sudo can't ask for a password.
-Configure passwordless sudo or authenticate with `sudo -v` before setup.
-Setup installs the pinned Swift toolchain, xtool, patched Swift Build, and macro plugin.
-It verifies the SDK archive and imports the Apple files without access to the original Xcode installation.
-It does not install Rust or modify shell startup files.
-Setup builds the packaged LinuxApp sample for iPhone to validate the installed tools and SDK.
-The setup report includes the sample build result and product path.
+Configure passwordless sudo or run `sudo -v` first.
+`--skip-system-packages` uses the packages already installed instead.
 
-The generated environment file selects the SDK and compiler paths.
-Source this file in each new shell or from your shell configuration.
-In CI, source it in each build step.
+### Containers
 
-Setup reuses existing tools.
-Import reuses a completed SDK when the archive, host architecture, import recipe, and toolchain pins match.
-Swift Build uses the shipped dependency lockfile. New tool versions or incompatible caches use a separate source directory.
-Setup preserves existing source checkouts and local edits.
-A different archive requires explicit replacement:
+Ubuntu and Debian builds run Xcode's scripts through bubblewrap, so that `/bin/sh` is Bash.
+Docker must allow mount namespaces, for example with `--cap-add SYS_ADMIN --security-opt seccomp=unconfined`.
+Where that isn't allowed, use a VM. `sweetpad doctor` checks it.
+
+### CI with a saved Apple session
+
+Create a separate session file in an interactive terminal:
 
 ```bash
-sweetpad setup --sdk "$HOME/new-apple-sdk.tar.gz" --replace-sdk \
-  --json --non-interactive
+sweetpad auth login --apple-id you@example.com \
+  --session-file "$HOME/private/apple-session.json"
 ```
 
-An updated import recipe or different toolchain also requires replacement of the same archive.
-Use `--replace-sdk` with setup or `--replace` with `sweetpad sdk import`.
-
-Import stages and verifies the new SDK before it replaces the previous SDK.
-Failure before replacement leaves the previous SDK intact.
-Disk checks include space for extracted inputs and the new SDK.
-Toolchain compilation and your app builds require additional space.
-
-## Import without toolchain setup
-
-With xtool 1.21.0 and Swift 6.4.2 on PATH, import only the SDK:
+Store it in your CI secret store, restore it with mode `600`, and pass it to setup:
 
 ```bash
-sweetpad sdk import "$HOME/apple-sdk.tar.gz" --json --non-interactive
+sweetpad setup --xcode 27.2 \
+  --session-file "$RUNNER_TEMP/apple-session.json" --json --non-interactive
 ```
 
-This command also accepts private `.xip` and `.aea` archives.
-Direct archive import needs Python 3 and a host C compiler. AEA also needs Python `cryptography`.
-Setup installs these dependencies on the supported distributions.
+`SWEETPAD_APPLE_SESSION_FILE` sets the same path.
+Apple decides when a session expires. Sign in again to replace the secret, and use `sweetpad auth logout` to delete a session file.
 
-Use `--destination /absolute/path` for a separate SDK.
-Set `SWEETPAD_DARWIN_SDK` to that path before builds.
-Use `--replace` to replace a different SDK after successful import.
-For full setup, `--sdk-path /absolute/path` selects the equivalent destination and records it in the environment file.
-Use `--env-file /absolute/path` to write a separate environment file for a CI runner or an isolated setup.
+### Other locations
+
+`--sdk-path` and `--env-file` put the SDK and the environment file somewhere else, for example one per CI runner.
+With Swift 6.4.2 and xtool 1.21.0 already on `PATH`, `sweetpad sdk import` imports an archive without the rest of setup.
 
 ## Read the doctor report
 
-Linux doctor checks the host, Swift version, Swift Build, macro plugin, SDK inputs, target SDKs, linker, and disk space.
-It reports optional development signing and iPhone adapter configuration separately.
-It does not require Xcode, `xcodebuild`, or Simulator on Linux.
-Missing localized App Intents phrase resources produce a warning, because ordinary app compilation does not require them.
-Use `--target macos` for macOS app builds.
+`sweetpad doctor --target ios` checks the host, Swift, Swift Build and its patches, the macro plugin, the SDK, the linker, and disk space.
+Signing and the iPhone adapter appear separately and don't block unsigned builds.
+In JSON, read `data.summary.problems` and each check's `status` and `hint`.
+Use `--target macos` for Mac apps.
 
-The command exits with a nonzero status when required tools are missing.
-JSON output still contains the report. Read `data.summary.problems` and each check's `status` and `hint`.
-Warnings about signing or the iPhone adapter do not prevent unsigned compilation.
-Doctor does not pair a phone, validate entitlements, or prove that an app installs.
-
-Continue with [a sample build and USB setup](ubuntu-usb.md#build-without-a-phone), then [development signing](signing-and-testing.md).
+Next, [connect an iPhone](ubuntu-usb.md) and [set up signing](signing-and-testing.md).

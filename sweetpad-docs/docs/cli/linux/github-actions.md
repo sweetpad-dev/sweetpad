@@ -4,59 +4,19 @@ sidebar_label: GitHub Actions for iOS
 
 # iOS builds in GitHub Actions
 
-A Linux job can compile iPhone products, generate test manifests, create archives, and upload them to TestFlight.
-Apple test execution still runs on a Mac with Xcode.
+A Linux job can build iPhone apps and test products, archive them, and upload them to TestFlight.
+Running Apple tests still needs a Mac.
 
-## Choose the runner
+## Prepare the runner
 
-| Job | Runner |
-| --- | --- |
-| Run the CLI without Apple SDKs | A hosted Ubuntu 24.04 runner for the package architecture. |
-| Compile an iOS app on Linux | A provisioned ARM64 or x86_64 Linux runner with your private SDK and matching host tools. |
-| Run iOS Simulator tests | A Mac with Xcode and a compatible simulator runtime. |
-| Install on an iPhone | A trusted USB or paired Wi-Fi connection from the selected host. |
+Hosted Ubuntu runners don't have your Apple SDK, so iOS builds need a self-hosted runner.
+Set it up once with [the Apple toolchain](sdk-transfer.md), then run `sweetpad doctor --target ios` as the runner's user.
+The validated runner is a Linux VM on Apple hardware, and the example below uses the custom label `sweetpad-linux`.
 
-The validated app-build setup uses a Linux VM on Apple hardware.
-Use SDK files under [Apple's Xcode agreement](https://www.apple.com/legal/sla/docs/xcode.pdf).
-A hosted Ubuntu runner supplies neither your licensed SDK environment nor a connected iPhone.
+Run these jobs only for trusted code, because a pull request's code can read a self-hosted runner's files.
+GitHub documents [self-hosted runners](https://docs.github.com/en/actions/reference/runners/self-hosted-runners).
 
-Provision the app-build runner using [Ubuntu setup](ubuntu-usb.md).
-CLI 0.1.19 and later provide [SDK export and setup commands](sdk-transfer.md).
-With those commands, source `$HOME/.config/sweetpad/linux-env.sh` in each build step and run `sweetpad doctor --target ios` before compilation.
-Its user needs the Linux Swift toolchain, Swift Build, macro plugin, and extracted SDK on the documented paths.
-The example uses the custom runner label `sweetpad-linux`.
-
-CLI 0.1.23 can also [download Xcode with a private session file](xcode-download.md#reuse-a-private-session-in-ci).
-Use `sweetpad setup --xcode VERSION --session-file PATH --json --non-interactive` on the provisioned Linux runner.
-Restore the session through your secret store with mode `600`.
-Keep the session and Apple archives out of public artifacts and container layers.
-
-### Repository validation workflows
-
-The `Linux packages` workflow builds release CLI archives on both `ubuntu-24.04` (x64) and `ubuntu-24.04-arm`.
-It runs on relevant pull requests and main pushes. Each job checks static linkage, embedded setup, HTTPS, and clean installation.
-Debian and signed APT checks cover installation, upgrades, removal, and rejection of modified repository metadata.
-The library workflow also runs Rust tests and clippy on both hosts.
-
-SDK-dependent app checks stay in the existing manually dispatched `Linux Apple SDK integration` workflow.
-They require a provisioned self-hosted SDK runner and do not run on public pull requests.
-
-### x86_64 runners
-
-CLI 0.1.22 provides static ARM64 and x64 archives, Debian packages, and a CLI container image. The example uses the ARM64 archive.
-For an x86_64 runner, select `linux-x64` and use `runs-on: [self-hosted, Linux, X64, sweetpad-linux]`.
-Keep the iPhone destination and `ARCHS=arm64` settings unchanged.
-An SDK imported on ARM64 contains ARM64 host tools. Import the private export on the x64 runner to select x64 tools.
-
-See [Install the CLI](install.md) for Packslip/Mise version pins and copying the CLI from GHCR into a build image.
-The GHCR image contains the CLI and CA certificates; your build image supplies the compiler tools and private SDK.
-
-## Build and retain iPhone products
-
-This workflow installs the released CLI into a temporary prefix.
-The toolchain and SDK are existing runner prerequisites.
-
-Replace the project and scheme names with your own:
+## Build iPhone products
 
 ```yaml
 name: iPhone build on Linux
@@ -77,15 +37,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CLI_VERSION=0.1.25
-          mkdir "$RUNNER_TEMP/cli"
-          cd "$RUNNER_TEMP/cli"
-          curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz"
-          curl -fLO "https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION/sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz.sha256"
+          CLI_VERSION=0.1.26
+          BASE="https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION"
+          mkdir "$RUNNER_TEMP/cli" && cd "$RUNNER_TEMP/cli"
+          curl -fLO "$BASE/sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz"
+          curl -fLO "$BASE/sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz.sha256"
           sha256sum -c "sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz.sha256"
           tar -xzf "sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz"
           install -Dm755 sweetpad "$RUNNER_TEMP/sweetpad/bin/sweetpad"
-          ln -s sweetpad "$RUNNER_TEMP/sweetpad/bin/sweetpad-dap"
           echo "$RUNNER_TEMP/sweetpad/bin" >> "$GITHUB_PATH"
       - name: Build iPhone products
         shell: bash
@@ -96,7 +55,7 @@ jobs:
             --configuration Release --destination 'generic/platform=iOS' \
             --json --non-interactive \
             -- -derivedDataPath "$RUNNER_TEMP/DerivedData" \
-            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO > "$RUNNER_TEMP/build.json"
+            CODE_SIGNING_ALLOWED=NO > "$RUNNER_TEMP/build.json"
           tar -C "$RUNNER_TEMP/DerivedData/Build" \
             -czf "$RUNNER_TEMP/Products.tar.gz" Products
       - uses: actions/upload-artifact@v7
@@ -108,83 +67,45 @@ jobs:
           if-no-files-found: error
 ```
 
-The example creates unsigned device products for a build check.
-Each step sources the environment file that `sweetpad setup` wrote on the runner, which selects the Swift toolchain, Swift Build, and SDK that setup installed.
-[Development signing](signing-and-testing.md#configure-development-signing) is required before installation on a phone.
+Each step sources the environment file that setup wrote, which selects its toolchain and SDK.
+The tar archive keeps the products' permissions and symbolic links, which artifact uploads lose.
+On an x86_64 runner, use the `linux-x64` archive and the `X64` label. The build itself doesn't change.
 
-The tar archive preserves executable permissions and framework symbolic links.
-Upload the archive rather than individual app-bundle files.
-Retain build products and reports, not the private SDK or signing keys.
+## Add signing
 
-## Add development signing
+Keep the P12 file, its password, and the profiles in your secret store.
+Decode them into a private folder under `RUNNER_TEMP` with `umask 077`, and set `SWEETPAD_CODE_SIGN_P12`, `SWEETPAD_CODE_SIGN_P12_PASSWORD`, and `SWEETPAD_PROVISIONING_PROFILES` as in [the signing guide](signing-and-testing.md#configure-development-signing).
+Then drop `CODE_SIGNING_ALLOWED=NO`, and delete the signing files in a final step with `if: always()`.
 
-Store the P12, its password, and profiles in your CI secret store.
-Decode the files into a private directory under `RUNNER_TEMP` with `umask 077`.
-Set these CLI variables for the signed build:
+## Build tests
 
-| Variable | CI value |
-| --- | --- |
-| `SWEETPAD_CODE_SIGN_P12` | Path to the decoded identity file. |
-| `SWEETPAD_CODE_SIGN_P12_PASSWORD` | The identity's password from the secret store. |
-| `SWEETPAD_PROVISIONING_PROFILES` | Directory containing matching profiles. |
-
-Remove `CODE_SIGNING_ALLOWED=NO` from the build.
-Remove temporary signing files in a final cleanup step that uses `if: always()`.
-
-This example uses a manual trigger.
-Keep private SDK and signing jobs on trusted code. Untrusted pull-request code can read a self-hosted runner's files.
-GitHub documents [self-hosted runner operation](https://docs.github.com/en/actions/reference/runners/self-hosted-runners) and [runner labels](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job).
-
-## Build tests on Linux
-
-Replace the app-build command with a test-build command:
+Swap the build command for a test build, and keep the Products archive:
 
 ```bash
 sweetpad test build --project MyApp.xcodeproj --scheme MyApp \
   --destination 'generic/platform=iOS Simulator' --json --non-interactive \
-  -- -derivedDataPath "$RUNNER_TEMP/DerivedData" \
-  ARCHS=arm64 CODE_SIGNING_ALLOWED=NO
+  -- -derivedDataPath "$RUNNER_TEMP/DerivedData" CODE_SIGNING_ALLOWED=NO
 ```
 
-Retain the complete Products directory, including its generated XCTest run manifest.
-Check `xctestrunPath` before publishing the test artifact.
-See [test plans and supported policies](signing-and-testing.md#select-a-test-plan).
+A later job on a Mac, such as `macos-15`, extracts the archive and runs it with `sweetpad test run --xctestrun`, as in [running the tests on a Mac](signing-and-testing.md#run-the-tests-on-a-mac).
 
-A following Mac job can extract the same archive and invoke `sweetpad test run --xctestrun`.
-That uses the Linux products without a Mac rebuild.
-Choose a simulator with the matching architecture and a sufficient OS version.
+## Install on a connected iPhone
 
-GitHub currently lists `macos-15` as an ARM64 hosted runner.
-Check [GitHub's runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) when you change labels or architectures.
-
-## Deploy to a connected iPhone
-
-Use a trusted runner with a paired phone and the pinned Python adapter.
-Serialize jobs that share the same phone.
-The signed build must use a profile that includes that device.
-
-After the signed build, install its reported product and launch it:
+On a runner with a [paired phone](ubuntu-usb.md#connect-the-iphone), install the signed build and launch it.
+Run one job at a time per phone, and use a profile that lists it:
 
 ```bash
 export SWEETPAD_DEVICE_PYTHON="$HOME/.local/share/sweetpad/device-tools/bin/python"
 APP_PATH="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["data"]["productPath"])' "$RUNNER_TEMP/build.json")"
-sweetpad device install "$APP_PATH" --device "$IPHONE_UDID" \
-  --json --non-interactive
+sweetpad device install "$APP_PATH" --device "$IPHONE_UDID" --json --non-interactive
 sweetpad app launch --project MyApp.xcodeproj --scheme MyApp \
   --configuration Release --device-id "$IPHONE_UDID" \
   --derived-data-path "$RUNNER_TEMP/DerivedData" --json --non-interactive
 ```
 
-Set `IPHONE_UDID` in your runner configuration.
-For live logs and USB ownership, follow [the iPhone guide](ubuntu-usb.md#connect-the-iphone).
-
 ## Upload to TestFlight
 
-The same runner can archive, export, and upload a release build.
-Provide your Apple Distribution identity and App Store profiles as in [development signing](#add-development-signing).
-Store an App Store Connect API key in the secret store as well.
-
-Replace the build step with an archive step:
+With your Apple Distribution identity, App Store profiles, and an App Store Connect API key in the secret store, replace the build step:
 
 ```yaml
       - name: Archive and upload
@@ -205,15 +126,5 @@ Replace the build step with an archive step:
 
 The step ends when Apple accepts or rejects the build, and a rejection fails the job.
 Each upload needs a new build number, which the run number supplies here.
-See [Archive and distribute](../archive.md#uploading-to-app-store-connect) for the key and the upload options.
 
-## Framework apps and repeatable builds
-
-React Native and Flutter need their own dependency preparation before the Xcode project can compile.
-Use the [React Native](react-native.md) or [Flutter](flutter.md) guide for the validated versions and Linux-specific tools.
-
-Keep dependency locks and pin the CLI version.
-A fresh DerivedData path prevents CI from accepting stale app products.
-Cache compiler and package inputs separately from signing material and SDK files.
-
-For macOS app targets, use the separate [macOS CI guide](macos-ci.md).
+React Native and Flutter apps need their own preparation first; see the [React Native](react-native.md) and [Flutter](flutter.md) guides.

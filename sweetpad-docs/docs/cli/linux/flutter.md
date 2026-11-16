@@ -119,7 +119,7 @@ sweetpad build \
 The unsigned command verifies the build.
 For installation, configure [development signing](signing-and-testing.md#configure-development-signing).
 Remove the unsigned setting. Then rebuild.
-Then use the [USB installation and launch steps](ubuntu-usb.md#build-and-install-the-iphone-app).
+Then use the [USB installation and launch steps](ubuntu-usb.md#build-install-and-launch).
 
 The validated Release app launches twice on an iPhone with the Linux-generated snapshot.
 A successful app launch also confirms that the matching engine can load that snapshot.

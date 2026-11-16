@@ -61,7 +61,7 @@ These commands require CLI 0.1.19 or later.
 | `sweetpad device install PATH --device UDID` | Install an existing signed app or IPA. |
 | `sweetpad device pair-network UDID --out PATH` | Create private Wi-Fi pairing configuration with trusted USB available. |
 
-See [SDK export and setup](linux/sdk-transfer.md) and [Ubuntu USB setup](linux/ubuntu-usb.md).
+See [Set up the Apple toolchain](linux/sdk-transfer.md) and [Connect an iPhone](linux/ubuntu-usb.md).
 
 ### Project inspection
 
