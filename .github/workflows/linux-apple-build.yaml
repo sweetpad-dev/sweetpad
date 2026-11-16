@@ -79,6 +79,25 @@ jobs:
         run: |
           export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
           bash sweetpad-lib/ci/build-swift-helpers.sh "$HOME/sweetpad-target/debug"
+      # It links and makes dSYMs with LLVM's multicall binary from the same
+      # folder: the one the package run built, else one built here from the
+      # pinned release, which needs cmake, ninja and a C++ compiler.
+      - name: Download LLVM's Apple linker
+        if: inputs.artifact_run_id != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: darwin-linker-linux-${{ inputs.package_arch }}
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}
+      - name: Install LLVM's Apple linker
+        run: |
+          ARCHIVE="$RUNNER_TEMP/darwin-linker-linux-${{ inputs.package_arch }}.tar.gz"
+          if [ -f "$ARCHIVE" ]; then
+            tar -xzf "$ARCHIVE" -C "$HOME/sweetpad-target/debug"
+          else
+            bash sweetpad-lib/ci/build-darwin-linker.sh "$HOME/sweetpad-target/debug"
+          fi
       - name: Install frozen framework tools
         if: inputs.package_arch == 'arm64'
         run: bash sweetpad-lib/ci/linux-framework-tools.sh

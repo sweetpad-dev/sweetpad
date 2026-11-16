@@ -414,8 +414,8 @@ struct Invocation {
     /// The folder of links that run this binary as the Xcode tools it stands
     /// in for, on a host without Xcode's.
     tools: Option<PathBuf>,
-    /// The Darwin SDK's linker, which the linker stand-in runs.
-    linker: Option<PathBuf>,
+    /// LLVM's multicall binary, which the linker and `dsymutil` stand-ins run.
+    llvm: Option<PathBuf>,
     /// Where the toolset a host without Xcode needs goes (see [`toolset`]).
     toolset: Option<PathBuf>,
     /// The plugin for Apple's macros that the Darwin SDK has none for (see
@@ -589,7 +589,7 @@ impl Invocation {
             program: swbuild_program()?,
             args: swbuild_args(plan, &parameters_file, &pif),
             cwd: xcodebuild::working_dir(plan.container),
-            linker: host.as_ref().map(|h| h.bundle.join("toolset/bin/ld64.lld")),
+            llvm: host.as_ref().map(|_| darwin_linker()).transpose()?,
             macros: host.as_ref().and_then(|_| macro_plugin()),
             package_sysroot: host.as_ref().map(|h| h.sdk_root(&sdk)).transpose()?,
             env: host
@@ -709,7 +709,7 @@ impl Invocation {
         write(&self.pif, &Value::Array(pif))?;
         write(&self.parameters_file, &self.parameters)?;
         if let Some(tools) = &self.tools {
-            link_tools(tools, self.linker.as_deref())?;
+            link_tools(tools, self.llvm.as_deref())?;
         }
         if let (Some(path), Some(tools)) = (&self.toolset, &self.tools) {
             write_changed(path, toolset(tools, self.macros.as_deref()).as_bytes())?;
@@ -1128,14 +1128,15 @@ const STALE_TOOLS: std::time::Duration = std::time::Duration::from_secs(24 * 60 
 /// `ibtool`, the Interface Builder compiler (see [`super::ibtool`]), `momc`,
 /// the Core Data model compiler (see [`super::momc`]), `xcstringstool`, the
 /// String Catalog compiler (see [`super::xcstringstool`]), and the small
-/// Darwin tools like `lipo` (see [`super::darwin_tools`]), with the Darwin
-/// SDK's `linker` beside them for the linker stand-in to run.
+/// Darwin tools like `lipo` (see [`super::darwin_tools`]), with LLVM's
+/// multicall binary, `llvm`, beside them for the linker and `dsymutil`
+/// stand-ins to run.
 ///
 /// The links are made in a folder of their own that is then renamed to
 /// `dir`, so a build running at the same time never finds one missing. A
 /// `dir` that already holds them all stays as it is. Folders beside it,
 /// for another sweetpad or SDK, go once they're a day old.
-fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
+fn link_tools(dir: &Path, llvm: Option<&Path>) -> Result<(), CliError> {
     let fail = |e: std::io::Error| {
         CliError::new(format!(
             "couldn't link the stand-ins for Xcode's tools into {}: {e}",
@@ -1143,7 +1144,7 @@ fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
         ))
     };
     let exe = std::env::current_exe().map_err(fail)?;
-    let links = stand_in_links(&exe, linker);
+    let links = stand_in_links(&exe, llvm);
     let intact = |dir: &Path| {
         links
             .iter()
@@ -1201,12 +1202,9 @@ fn remove_stale_tools(current: &Path) {
 }
 
 /// The stand-ins' names and what each links to: this binary, `exe`, for
-/// Xcode's tools, and the Darwin SDK's `linker` and its `dsymutil`.
-fn stand_in_links(exe: &Path, linker: Option<&Path>) -> Vec<(&'static str, PathBuf)> {
-    let dsymutil = linker
-        .and_then(Path::parent)
-        .map(|p| p.join("dsymutil"))
-        .filter(|p| p.is_file());
+/// Xcode's tools, and `llvm`, LLVM's multicall binary, for the linker and
+/// `dsymutil` the stand-ins for those run.
+fn stand_in_links(exe: &Path, llvm: Option<&Path>) -> Vec<(&'static str, PathBuf)> {
     [
         "actool",
         "ibtool",
@@ -1224,9 +1222,40 @@ fn stand_in_links(exe: &Path, linker: Option<&Path>) -> Vec<(&'static str, PathB
     .iter()
     .chain(super::darwin_tools::TOOLS)
     .map(|tool| (*tool, exe.to_path_buf()))
-    .chain(linker.map(|l| (super::darwin_tools::SDK_LINKER, l.to_path_buf())))
-    .chain(dsymutil.map(|p| (super::darwin_tools::SDK_DSYMUTIL, p)))
+    .chain(llvm.into_iter().flat_map(|llvm| {
+        [
+            super::darwin_tools::SDK_LINKER,
+            super::darwin_tools::SDK_DSYMUTIL,
+        ]
+        .map(|name| (name, llvm.to_path_buf()))
+    }))
     .collect()
+}
+
+/// LLVM's multicall binary with LLD and `dsymutil`, which links and makes
+/// dSYMs for Apple targets: `SWEETPAD_LLVM`, else the one the Linux package
+/// installed with this binary. Swift's own LLD refuses to link for iOS.
+pub(crate) fn darwin_linker() -> Result<PathBuf, CliError> {
+    std::env::var_os("SWEETPAD_LLVM")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|exe| sweetpad_lib::xcode::packaged_helper_beside(&exe, "llvm"))
+        })
+        .ok_or_else(|| {
+            CliError::new("LLVM's Apple linker isn't installed with sweetpad")
+                .kind(ErrorKind::ToolMissing)
+                .tip(Some(
+                    "sweetpad's Linux archive and Debian package ship it as llvm in \
+                     libexec/sweetpad beside the binary. If you replaced only the sweetpad \
+                     binary, also replace the libexec/sweetpad folder from the same release, \
+                     or reinstall from the archive or the .deb. SWEETPAD_LLVM can point at \
+                     an LLVM 23.1.3 or later built with LLD and dsymutil as one multicall \
+                     binary"
+                        .to_string(),
+                ))
+        })
 }
 
 /// The `swbuild` to run: `SWEETPAD_SWBUILD`, else the one the Linux package

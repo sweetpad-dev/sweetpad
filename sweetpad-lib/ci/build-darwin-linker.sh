@@ -30,6 +30,12 @@ CACHE="${SWEETPAD_LINKER_CACHE:-$HOME/.cache/sweetpad/darwin-linker}/llvm-$LLVM_
 SRC="$CACHE/llvm-project-$LLVM_VERSION.src"
 BUILD="$CACHE/build"
 
+for tool in cmake ninja c++ curl xz; do
+  command -v "$tool" >/dev/null || {
+    echo "error: $tool isn't installed; building LLVM takes cmake, ninja, a C++ compiler, curl and xz" >&2
+    exit 1
+  }
+done
 section() { echo; echo "==== $* ===="; }
 section "LLVM $LLVM_VERSION source"
 mkdir -p "$CACHE"

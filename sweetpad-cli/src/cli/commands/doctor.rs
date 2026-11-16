@@ -161,6 +161,7 @@ fn gather_linux(target: Target) -> Vec<Check> {
         false,
         setup,
     ));
+    checks.push(darwin_linker_check(setup));
     checks.push(tool_check(
         "Darwin libtool",
         first_line(probe("llvm-libtool-darwin", &["--version"])),
@@ -185,6 +186,45 @@ fn gather_linux(target: Target) -> Vec<Check> {
     checks.extend(gather_linux_sdk(target, setup));
     checks.extend(gather_linux_optional(target));
     checks
+}
+
+/// LLVM's multicall binary that links and makes dSYMs for Apple targets,
+/// started as `ld64.lld`, the name it picks LLD by.
+fn darwin_linker_check(setup: &'static str) -> Check {
+    use std::os::unix::process::CommandExt as _;
+    let Ok(llvm) = crate::cli::swbuild::darwin_linker() else {
+        return linux_check(
+            "Darwin linker",
+            false,
+            "llvm missing from libexec/sweetpad".into(),
+            false,
+            setup,
+        );
+    };
+    let version = Command::new(&llvm)
+        .arg0("ld64.lld")
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .and_then(|out| {
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .next()
+                .map(str::to_string)
+        });
+    linux_check(
+        "Darwin linker",
+        version.is_some(),
+        version.map_or_else(
+            || format!("{} cannot start", llvm.display()),
+            |v| format!("{v} ({})", llvm.display()),
+        ),
+        false,
+        setup,
+    )
 }
 
 /// Whether `swbuild` was built from the Swift Build version and patches this
@@ -464,15 +504,6 @@ fn gather_sdk_at(target: Target, setup: &'static str, sdk: &std::path::Path) -> 
             setup,
         ));
     }
-    let linker = sdk.join("toolset/bin/ld64.lld");
-    let linker_version = linker.to_str().and_then(|p| probe(p, &["--version"]));
-    checks.push(linux_check(
-        "Darwin linker",
-        linker_version.is_some(),
-        first_line(linker_version).unwrap_or_else(|| "cannot start linker".into()),
-        false,
-        setup,
-    ));
     checks
 }
 

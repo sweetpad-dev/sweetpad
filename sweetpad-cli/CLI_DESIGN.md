@@ -4815,8 +4815,13 @@ multicall binary that runs as the tool its argv[0] names. Swift's own LLVM
 refuses to link for iOS and has no `dsymutil`; upstream LLVM from 23.1.3
 reads SDK 27's `arm64e.x1` stubs without patches. It loads only host
 libraries and has no RUNPATH, and the package script refuses one from
-another LLVM release. Builds take it once the CLI writes the Darwin SDK
-bundle itself (SC07, SC09); until then they use the bundle's linker.
+another LLVM release. Builds link and make dSYMs with it (`SWEETPAD_LLVM`
+overrides it), through the `ld64.lld` and `dsymutil` stand-ins, which
+start it under those names. The Darwin SDK bundle's linker is unused. LLD
+can't make the relocatable object `ld -r` asks for, which Swift Build
+still runs for each package target, so the stand-in writes a static
+archive of its objects in its place with the Swift toolchain's `llvm-ar`,
+and the final link loads each such archive whole.
 
 **Signing has no keychain.** The identities are `.p12` files
 (`SWEETPAD_CODE_SIGN_P12`, a `:`-separated list, each file holding one

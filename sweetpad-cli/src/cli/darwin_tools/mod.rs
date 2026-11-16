@@ -12,8 +12,9 @@
 //!   static library with Swift sources (see [`ditto`]);
 //! - `embeddedBinaryValidationUtility`, which checks each app extension an
 //!   app embeds (see [`embedded_binary`]);
-//! - `ld64.lld`, in front of xtool's linker, which loads whole the archives
-//!   xtool makes in place of relocatable objects (see [`ld`]);
+//! - `ld64.lld`, in front of LLVM's linker, which makes a static archive
+//!   for `ld -r` and loads such archives whole (see [`ld`]);
+//! - `dsymutil`, in front of LLVM's (see [`dsymutil`]);
 //! - `xcrun`, which run scripts start tools through and ask about an SDK
 //!   with (see [`xcrun`]);
 //! - `cc`, which preprocesses an Info.plist for an Apple target with Clang
@@ -52,8 +53,8 @@ pub const TOOLS: &[&str] = &[
     "dsymutil",
 ];
 
-/// The name of the link to the Darwin SDK's own linker, beside the stand-in
-/// for it, which runs it (see [`ld`]).
+/// The names of the links to LLVM's linker and `dsymutil`, beside the
+/// stand-ins for them, which run them (see [`ld`] and [`dsymutil`]).
 pub const SDK_LINKER: &str = "sdk-ld64.lld";
 pub const SDK_DSYMUTIL: &str = "sdk-dsymutil";
 

@@ -1,88 +1,73 @@
-//! `ld64.lld`, the linker Swift Build runs, in front of the one in xtool's
-//! Darwin SDK. lld can't make a relocatable object, so for `ld -r`, which
-//! Swift Build runs to put each package target's objects into one, xtool's
-//! makes a static archive instead, named like the object. A link given that
-//! archive takes only the members it needs, where the object would have
-//! brought in all of it: a dynamic library made from a package target alone
-//! comes out with none of the target's code. This hands each such archive
-//! to the linker with `-force_load`, which brings in every member, and
-//! leaves everything else to xtool's linker.
+//! `ld64.lld`, the linker Swift Build runs, in front of LLVM's. LLD can't
+//! make a relocatable object, so `ld -r`, which Swift Build runs to put each
+//! package target's objects into one, makes a static archive instead, named
+//! like the object (see [`relocatable`]). A link given that archive takes
+//! only the members it needs, where the object would have brought in all of
+//! it: a dynamic library made from a package target alone comes out with
+//! none of the target's code. So the final link loads each such archive
+//! with `-force_load`, which brings in every member. The rest of the link
+//! is LLD's, with the load order of the libraries it links matched to
+//! Apple's linker (see [`autolink`] and [`reexports`]).
 
-use std::path::{Path, PathBuf};
 use std::os::unix::process::CommandExt as _;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 mod autolink;
 mod reexports;
+mod relocatable;
 mod response;
 
 pub(super) fn main(args: &[String]) -> ExitCode {
-    let Some(linker) = next_linker() else {
-        eprintln!("error: ld64.lld: no other ld64.lld on PATH; xtool's Darwin SDK has one");
-        return ExitCode::FAILURE;
-    };
-    let args = match prepare(args) {
-        Ok(args) => args,
+    match run(args) {
+        Ok(code) => code,
         Err(message) => {
             eprintln!("error: ld64.lld: {message}");
-            return ExitCode::FAILURE;
-        }
-    };
-    // By name, since the linker can be a link to LLVM's multicall binary,
-    // which picks its tool from the name it's started under.
-    match Command::new(&linker)
-        .arg0("ld64.lld")
-        .args(&args)
-        .status()
-    {
-        Ok(status) => ExitCode::from(
-            status
-                .code()
-                .and_then(|c| u8::try_from(c).ok())
-                .unwrap_or(1),
-        ),
-        Err(e) => {
-            eprintln!("error: ld64.lld: couldn't run {}: {e}", linker.display());
             ExitCode::FAILURE
         }
     }
 }
 
-fn prepare(args: &[String]) -> Result<Vec<String>, String> {
+fn run(args: &[String]) -> Result<ExitCode, String> {
     let expanded = response::expand(args)?;
     if expanded.iter().any(|a| a == "-r") {
-        return Ok(args.to_vec());
+        relocatable::archive(&expanded)?;
+        return Ok(ExitCode::SUCCESS);
     }
+    let linker = next_linker().ok_or("no LLVM linker beside this one; sweetpad links it there")?;
     let transformed =
         force_load_prelinked(&expanded).and_then(autolink::prefer_swiftui_umbrella)?;
-    response::forward(args, &expanded, transformed)
+    let args = response::forward(args, &expanded, transformed)?;
+    // By name, since the linker can be a link to LLVM's multicall binary,
+    // which picks its tool from the name it's started under.
+    let status = Command::new(&linker)
+        .arg0("ld64.lld")
+        .args(&args)
+        .status()
+        .map_err(|e| format!("couldn't run {}: {e}", linker.display()))?;
+    Ok(ExitCode::from(
+        status
+            .code()
+            .and_then(|c| u8::try_from(c).ok())
+            .unwrap_or(1),
+    ))
 }
 
-/// The Darwin SDK's `ld64.lld`: the one the engine links beside this one,
-/// else the first other one on `PATH`. A task's `PATH` puts the Swift
-/// toolchain's lld first, which refuses to link for Apple's platforms.
+/// LLVM's linker, linked beside this one by the engine. A task's `PATH`
+/// puts the Swift toolchain's LLD first, which refuses to link for Apple's
+/// platforms, so this one is never looked up there.
 fn next_linker() -> Option<PathBuf> {
-    let beside = std::env::args_os()
+    std::env::args_os()
         .next()
         .map(PathBuf::from)
         .and_then(|me| me.parent().map(|dir| dir.join(super::SDK_LINKER)))
-        .and_then(|link| link.canonicalize().ok());
-    if beside.is_some() {
-        return beside;
-    }
-    let me = std::env::current_exe().ok()?.canonicalize().ok()?;
-    std::env::var_os("PATH")
-        .iter()
-        .flat_map(std::env::split_paths)
-        .map(|dir| dir.join("ld64.lld"))
-        .filter(|candidate| candidate.is_file())
-        .find(|candidate| candidate.canonicalize().ok().as_ref() != Some(&me))
+        .and_then(|link| link.canonicalize().ok())
 }
 
 /// The options whose value is a file the link writes or already loads.
 const TAKES_PATH: &[&str] = &["-o", "-force_load", "-load_hidden"];
 
-/// `args` with each archive xtool made for `ld -r` loaded whole, where it
+/// `args` with each archive made for `ld -r` loaded whole, where it
 /// stood or where the file list that names it stood.
 fn force_load_prelinked(args: &[String]) -> Result<Vec<String>, String> {
     let mut out = Vec::with_capacity(args.len());
@@ -113,16 +98,11 @@ fn force_load_prelinked(args: &[String]) -> Result<Vec<String>, String> {
 /// archives in it, and those archives. A list with none stays as it is;
 /// any other is written again beside it.
 fn filelist(value: &str) -> Result<(String, Vec<String>), String> {
-    let (list, folder) = match value.rsplit_once(',') {
-        Some((list, folder)) if !Path::new(value).is_file() => (list, Some(folder)),
-        _ => (value, None),
-    };
-    let text = std::fs::read_to_string(list)
-        .map_err(|e| format!("can't read the file list {list}: {e}"))?;
+    let list = FileList::read(value)?;
     let mut kept = String::new();
     let mut archives = Vec::new();
-    for line in text.lines() {
-        let path = folder.map_or_else(|| PathBuf::from(line), |f| Path::new(f).join(line));
+    for line in &list.lines {
+        let path = list.path(line);
         if is_prelinked(&path) {
             archives.push(path.display().to_string());
         } else {
@@ -133,13 +113,51 @@ fn filelist(value: &str) -> Result<(String, Vec<String>), String> {
     if archives.is_empty() {
         return Ok((value.to_string(), archives));
     }
-    let rewritten = format!("{list}.objects");
+    let rewritten = format!("{}.objects", list.file);
     super::write(Path::new(&rewritten), kept.as_bytes())?;
-    let value = match folder {
+    let value = match list.folder {
         Some(folder) => format!("{rewritten},{folder}"),
         None => rewritten,
     };
     Ok((value, archives))
+}
+
+/// A `-filelist` value, `<file>` or `<file>,<folder>`, and the lines of the
+/// file; each names an input, relative to the folder when there is one.
+struct FileList<'a> {
+    file: &'a str,
+    folder: Option<&'a str>,
+    lines: Vec<String>,
+}
+
+impl<'a> FileList<'a> {
+    fn read(value: &'a str) -> Result<Self, String> {
+        let (file, folder) = match value.rsplit_once(',') {
+            Some((file, folder)) if !Path::new(value).is_file() => (file, Some(folder)),
+            _ => (value, None),
+        };
+        let text = std::fs::read_to_string(file)
+            .map_err(|e| format!("can't read the file list {file}: {e}"))?;
+        let lines = text
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(str::to_string)
+            .collect();
+        Ok(Self {
+            file,
+            folder,
+            lines,
+        })
+    }
+
+    fn path(&self, line: &str) -> PathBuf {
+        self.folder
+            .map_or_else(|| PathBuf::from(line), |f| Path::new(f).join(line))
+    }
+
+    fn paths(&self) -> impl Iterator<Item = PathBuf> + '_ {
+        self.lines.iter().map(|line| self.path(line))
+    }
 }
 
 /// Whether `path` is an object file name over a static archive.
