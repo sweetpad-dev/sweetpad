@@ -81,8 +81,18 @@ swift build --jobs "$JOBS" -c release "${FLAGS[@]}" --package-path "$REPO/sweetp
 section "Staging into $OUT"
 LIBEXEC="$OUT/libexec/sweetpad"
 LICENSES="$OUT/licenses/swift-build"
+# LLVM's linker, which build-darwin-linker.sh puts in the same folder,
+# stays: a checkout's target folder holds both.
+KEEP="$(mktemp -d)"
+for kept in llvm sweetpad-llvm.json; do
+  [ ! -e "$LIBEXEC/$kept" ] || mv "$LIBEXEC/$kept" "$KEEP/"
+done
 rm -rf "$LIBEXEC" "$LICENSES" "$OUT/licenses/sweetpad-macros" "$OUT/licenses/swift" "$OUT/licenses/ncurses"
 mkdir -p "$LIBEXEC" "$LICENSES/patches"
+for kept in "$KEEP"/*; do
+  [ ! -e "$kept" ] || mv "$kept" "$LIBEXEC/"
+done
+rmdir "$KEEP"
 install -m 755 "$SWB/.build/release/swbuild" "$SWB/.build/release/SWBBuildServiceBundle" \
   "$CACHE/sweetpad-macros/release/sweetpad-macros" "$LIBEXEC/"
 for bundle in "$SWB"/.build/release/SwiftBuild_*.resources "$SWB"/.build/release/SwiftBuild_*.bundle; do
