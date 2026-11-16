@@ -17,6 +17,10 @@ from unittest.mock import patch
 SPEC = importlib.util.spec_from_file_location("linux_sdk", Path(__file__).with_name("linux-sdk.py"))
 sdk = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(sdk)
+GENERATOR_SPEC = importlib.util.spec_from_file_location(
+    "generate_xcode_archive_fixtures", Path(__file__).with_name("generate_xcode_archive_fixtures.py"))
+generator = importlib.util.module_from_spec(GENERATOR_SPEC)
+GENERATOR_SPEC.loader.exec_module(generator)
 
 
 class SDKTests(unittest.TestCase):
@@ -130,6 +134,22 @@ class SDKTests(unittest.TestCase):
         for relative in ["Contents/version.plist", "Contents/development.key", "Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"]:
             path = xcode / relative; path.parent.mkdir(parents=True, exist_ok=True); path.write_text("test")
         self.assertEqual(set(sdk.export_entries(xcode)), {"Xcode.app/Contents/version.plist"})
+
+    def test_xcode_archive_import_reads_the_build_machine_from_xcode(self):
+        info = plistlib.dumps({"CFBundleIdentifier": "com.apple.dt.Xcode", "BuildMachineOSBuild": "25C56"})
+        platforms = [(f"Xcode.app/Contents/Developer/Platforms/{name}.platform/Developer/SDKs/{name}.sdk/SDKSettings.json",
+                      b"{}", 0o100644, 10 + index, 1) for index, name in enumerate(sdk.BASE_PLATFORMS)]
+        version = ("Xcode.app/Contents/version.plist", generator.VERSION, 0o100644, 2, 1)
+        for name, items, build in [
+            ("with-info", [("Xcode.app/Contents/Info.plist", info, 0o100644, 1, 1), version] + platforms, "25C56"),
+            ("without-info", [version] + platforms, None),
+        ]:
+            with self.subTest(name):
+                archive = self.root / f"{name}.xip"
+                archive.write_bytes(generator.xip(generator.cpio(items)))
+                with patch("sys.stderr", io.StringIO()):
+                    manifest = sdk.unpack_xcode_archive(archive, self.root / name, SimpleNamespace())
+                self.assertEqual(manifest, {"xcodeVersion": "27.2", "xcodeBuild": "fixture", "buildMachineOSBuild": build})
 
     def test_import_supplies_linux_compiler_resource_headers(self):
         resource = self.root / "linux-swift"

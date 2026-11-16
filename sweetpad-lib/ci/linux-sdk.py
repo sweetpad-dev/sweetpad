@@ -270,7 +270,8 @@ def unpack_xcode_archive(archive, work, args):
     # Check the baseline inputs before invoking any SDK builder.
     export_roots(xcode)
     # No Mac takes part, so Xcode's own build machine stands in for one.
-    info = plistlib.loads((xcode / "Contents/Info.plist").read_bytes())
+    info_path = xcode / "Contents/Info.plist"
+    info = plistlib.loads(info_path.read_bytes()) if info_path.is_file() else {}
     return {"xcodeVersion": version["CFBundleShortVersionString"], "xcodeBuild": version["ProductBuildVersion"],
             "buildMachineOSBuild": info.get("BuildMachineOSBuild")}
 

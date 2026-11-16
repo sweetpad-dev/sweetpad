@@ -405,7 +405,7 @@ def selected(name):
     if not parts or not parts[0].endswith(".app") or "prebuilt-modules" in parts:
         return None
     relative = "/".join(parts[1:])
-    if relative == "Contents/version.plist":
+    if relative in ("Contents/version.plist", "Contents/Info.plist"):
         return "Xcode.app/" + relative
     base = "Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/"
     if relative.startswith(base):
