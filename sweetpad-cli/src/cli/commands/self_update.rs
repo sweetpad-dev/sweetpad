@@ -100,7 +100,7 @@ pub fn run(ctx: &mut Context) -> CommandResult {
 
 fn linux_update_note(path: &str) -> String {
     format!(
-        "this sweetpad ({path}) was installed manually. Download the Linux archive for your host architecture (linux-arm64 or linux-x64) and its checksum from https://github.com/sweetpad-dev/sweetpad/releases, verify it with sha256sum -c, then replace this executable. The binary includes its setup files. Your private SDK and signing files stay in their separate locations."
+        "this sweetpad ({path}) was installed manually. Download the Linux archive for your host architecture (linux-arm64 or linux-x64) and its checksum from https://github.com/sweetpad-dev/sweetpad/releases, verify it with sha256sum -c, then replace this executable and the libexec/sweetpad folder installed with it. The binary includes its setup files. Your private SDK and signing files stay in their separate locations."
     )
 }
 

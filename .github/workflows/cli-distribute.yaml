@@ -61,12 +61,14 @@ jobs:
           ref: ${{ inputs.release_tag }}
       - name: Verify published release packages
         run: python3 sweetpad-cli/ci/collect-release-packages.py --tag "$RELEASE_TAG" --out release-packages
-      - name: Prepare static executables
+      - name: Prepare executables and helpers
         run: |
           set -euo pipefail
-          mkdir -p image/linux-amd64 image/linux-arm64
-          tar -xzf "release-packages/sweetpad-cli-${RELEASE_TAG#cli-v}-linux-x64.tar.gz" -C image/linux-amd64 sweetpad sweetpad-dap
-          tar -xzf "release-packages/sweetpad-cli-${RELEASE_TAG#cli-v}-linux-arm64.tar.gz" -C image/linux-arm64 sweetpad sweetpad-dap
+          for arch in amd64:x64 arm64:arm64; do
+            mkdir -p "image/linux-${arch%%:*}/bin"
+            tar -xzf "release-packages/sweetpad-cli-${RELEASE_TAG#cli-v}-linux-${arch##*:}.tar.gz" -C "image/linux-${arch%%:*}/bin" sweetpad sweetpad-dap
+            tar -xzf "release-packages/sweetpad-cli-${RELEASE_TAG#cli-v}-linux-${arch##*:}.tar.gz" -C "image/linux-${arch%%:*}" libexec
+          done
           tar -xzf "release-packages/sweetpad-cli-${RELEASE_TAG#cli-v}-linux-x64.tar.gz" -C image licenses
           cp sweetpad-cli/ci/Dockerfile.cli image/Dockerfile
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
@@ -78,7 +80,9 @@ jobs:
             --tag "ghcr.io/sweetpad-dev/sweetpad:${RELEASE_TAG#cli-v}" \
             --tag ghcr.io/sweetpad-dev/sweetpad:latest --provenance=mode=max --sbom=true --push image
       - name: Smoke-test published image
-        run: docker run --rm "ghcr.io/sweetpad-dev/sweetpad:${RELEASE_TAG#cli-v}" --version
+        run: |
+          docker run --rm "ghcr.io/sweetpad-dev/sweetpad:${RELEASE_TAG#cli-v}" --version
+          docker run --rm --entrypoint /usr/local/libexec/sweetpad/swbuild "ghcr.io/sweetpad-dev/sweetpad:${RELEASE_TAG#cli-v}" --version
       - name: Remove registry credentials
         if: always()
         run: docker logout ghcr.io
@@ -99,7 +103,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y dpkg-dev gnupg
-          python3 sweetpad-cli/ci/collect-release-packages.py --tag "$RELEASE_TAG" --out release-packages --history 10
+          python3 sweetpad-cli/ci/collect-release-packages.py --tag "$RELEASE_TAG" --out release-packages --history 5
       - name: Import dedicated APT signing key
         env:
           APT_SIGNING_KEY: ${{ secrets.SWEETPAD_APT_SIGNING_KEY }}

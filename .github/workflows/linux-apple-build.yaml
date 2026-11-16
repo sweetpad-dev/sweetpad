@@ -63,19 +63,22 @@ jobs:
           PACKAGE_ROOT: ${{ runner.temp }}/release-package
         run: |
           export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
-          MACROS="$HOME/bin/sweetpad-macros.bin"
-          if [ ! -e "$MACROS" ]; then MACROS="$HOME/bin/sweetpad-macros"; fi
           python3 sweetpad-cli/ci/check-linux-sdk-install.py \
             --archive "$(find "$PACKAGE_ROOT" -maxdepth 1 -name '*.tar.gz')" \
             --out "$RUNNER_TEMP/sdk-package-install" \
             --swift "$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE" \
-            --swbuild-products "$(dirname "$(readlink -f "$HOME/bin/swbuild")")" \
-            --macros "$(readlink -f "$MACROS")" \
             --sdk "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle"
       - name: Build CLI
         run: |
           export PATH="$HOME/.cargo/bin:$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
           CARGO_TARGET_DIR="$HOME/sweetpad-target" cargo build --locked -p sweetpad-cli --bin sweetpad
+      # The checkout's sweetpad finds Swift Build and the macro plugin in
+      # libexec/sweetpad beside it, as the package's does. The build caches
+      # by the pins and patches, so an unchanged runner reuses it.
+      - name: Build Swift Build and the macro plugin
+        run: |
+          export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
+          bash sweetpad-lib/ci/build-swift-helpers.sh "$HOME/sweetpad-target/debug"
       - name: Install frozen framework tools
         if: inputs.package_arch == 'arm64'
         run: bash sweetpad-lib/ci/linux-framework-tools.sh
@@ -143,5 +146,6 @@ jobs:
             ${{ runner.temp }}/linux-clean/reports/
             ${{ runner.temp }}/sdk-package-install/summary.json
             ${{ runner.temp }}/sdk-package-install/work/build.json
+            ${{ runner.temp }}/sdk-package-install/work/doctor.json
             ${{ runner.temp }}/sdk-package-install/sandbox.stderr
           if-no-files-found: error

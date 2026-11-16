@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import subprocess
 import struct
@@ -21,26 +22,49 @@ package = load("linux_package", "package-linux.py")
 version = load("release_version", "release-version.py")
 
 
-class LinuxReleaseContracts(unittest.TestCase):
-    def test_macro_launcher_works_with_compilers_minimal_environment(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            toolchain = root / "relocated-swift/usr"
-            (toolchain / "bin").mkdir(parents=True)
-            (toolchain / "lib/swift/linux").mkdir(parents=True)
-            (toolchain / "bin/swift").touch()
-            (root / "sweetpad-macro-swift").symlink_to(toolchain / "bin/swift")
-            binary = root / "sweetpad-macros.bin"
-            binary.write_text('#!/bin/bash\nprintf "%s\\n" "$LD_LIBRARY_PATH" "$1"\n')
-            binary.chmod(0o755)
-            launcher = root / "sweetpad-macros"
-            launcher.write_bytes((REPO / "sweetpad-lib/ci/linux-macro-launcher.sh").read_bytes())
-            launcher.chmod(0o755)
-            result = subprocess.check_output([str(launcher), "plugin-argument"],
-                                             env={"PATH": "/usr/bin:/bin"}, text=True).splitlines()
-            self.assertEqual(Path(result[0]).resolve(), (toolchain / "lib/swift/linux").resolve())
-            self.assertEqual(result[1], "plugin-argument")
+def elf(path, machine, needed=(), runpath="$ORIGIN"):
+    """A 64-bit ELF file with one load segment and a dynamic section."""
+    strings = bytearray(b"\0")
+    def name(text):
+        strings.extend(text.encode() + b"\0")
+        return len(strings) - len(text) - 1
+    entries = [(1, name(library)) for library in needed]
+    if runpath is not None:
+        entries.append((29, name(runpath)))
+    dynamic_at = 64 + 2 * 56
+    strtab_at = dynamic_at + 16 * (len(entries) + 2)
+    entries += [(5, strtab_at), (0, 0)]
+    data = bytearray(strtab_at + len(strings))
+    data[:6] = b"\x7fELF\x02\x01"
+    data[18:20] = machine.to_bytes(2, "little")
+    struct.pack_into("<Q", data, 32, 64)
+    struct.pack_into("<HH", data, 54, 56, 2)
+    struct.pack_into("<IIQQQQQQ", data, 64, 1, 5, 0, 0, 0, len(data), len(data), 8)
+    struct.pack_into("<IIQQQQQQ", data, 120, 2, 6, dynamic_at, dynamic_at, 0, 16 * len(entries), 16 * len(entries), 8)
+    for index, (tag, value) in enumerate(entries):
+        struct.pack_into("<qQ", data, dynamic_at + 16 * index, tag, value)
+    data[strtab_at:] = strings
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
 
+
+def helpers(root, machine):
+    """The tree build-swift-helpers.sh stages, with stand-in binaries."""
+    libexec = root / "libexec/sweetpad"
+    for name in package.HELPERS:
+        elf(libexec / name, machine, needed=["libswiftCore.so", "libc.so.6"])
+    elf(libexec / "libswiftCore.so", machine, needed=["libstdc++.so.6"])
+    (libexec / "SwiftBuild_SWBCore.resources").mkdir()
+    (libexec / "SwiftBuild_SWBCore.resources/Core.xcspec").write_text("(\n)\n")
+    pins = json.loads((REPO / "sweetpad-lib/ci/linux-toolchain.json").read_text())
+    (libexec / "sweetpad-swift-build.json").write_text(
+        '{"swiftBuild":"%s","patches":"0123","swift":"%s"}\n' % (pins["swiftBuild"], pins["swift"]))
+    (root / "licenses/swift-build").mkdir(parents=True)
+    (root / "licenses/swift-build/LICENSE.txt").write_text("Apache License\n")
+    return root
+
+
+class LinuxReleaseContracts(unittest.TestCase):
     def test_tag_version_must_match_and_dry_runs_do_not_publish(self):
         self.assertEqual(version.resolve("1.2.3", "refs/tags/cli-v1.2.3"), "1.2.3")
         self.assertEqual(version.resolve("1.2.3", "refs/heads/main"), "1.2.3-dryrun")
@@ -67,9 +91,10 @@ class LinuxReleaseContracts(unittest.TestCase):
                 struct.pack_into("<HH", data, 54, 56, 1)
                 struct.pack_into("<I", data, 64, 1)
                 binary.write_bytes(data)
+                tree = helpers(root / arch / "helpers", machine)
                 with patch.object(package.subprocess, "check_output", return_value="sweetpad 1.2.3\n"):
-                    first = package.package(binary, "1.2.3", root / arch / "first")
-                    second = package.package(binary, "1.2.3", root / arch / "second")
+                    first = package.package(binary, tree, "1.2.3", root / arch / "first")
+                    second = package.package(binary, tree, "1.2.3", root / arch / "second")
                 self.assertEqual(first["sha256"], second["sha256"])
                 self.assertEqual(first["platform"], f"linux-{arch}")
                 self.assertTrue(first["archive"].endswith(f"linux-{arch}.tar.gz"))
@@ -83,8 +108,66 @@ class LinuxReleaseContracts(unittest.TestCase):
                     self.assertEqual(first["linkage"], "static")
                     self.assertTrue(first["embeddedSetup"])
                     self.assertTrue(archive.getmember("sweetpad-dap").issym())
+                    for helper in package.HELPERS:
+                        self.assertEqual(archive.getmember(f"libexec/sweetpad/{helper}").mode, 0o755)
+                    self.assertEqual(archive.getmember("libexec/sweetpad/SwiftBuild_SWBCore.resources/Core.xcspec").mode, 0o644)
+                    self.assertEqual(archive.getmember("libexec/sweetpad/libswiftCore.so").mode, 0o644)
+                    self.assertIn("libexec/sweetpad/sweetpad-swift-build.json", names)
+                    self.assertIn("licenses/swift-build/LICENSE.txt", names)
+                    self.assertEqual(first["swiftHelpers"]["patches"], "0123")
                     self.assertEqual(archive.getmember("sweetpad-dap").linkname, "sweetpad")
                     self.assertFalse(any(n.endswith((".p12", ".cer", ".mobileprovision", ".omo")) or ".sdk/" in n for n in names))
+
+    def test_helpers_must_match_the_cli_architecture_and_be_complete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tree = helpers(Path(directory), 62)
+            self.assertIn("libexec/sweetpad/swbuild", package.helper_files(tree, "x64"))
+            with self.assertRaisesRegex(ValueError, "linux-arm64"):
+                package.helper_files(tree, "arm64")
+            (tree / "libexec/sweetpad/sweetpad-macros").unlink()
+            with self.assertRaisesRegex(ValueError, "sweetpad-macros"):
+                package.helper_files(tree, "x64")
+
+    def test_helpers_load_only_bundled_and_host_libraries_through_origin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tree = helpers(Path(directory), 183)
+            libexec = tree / "libexec/sweetpad"
+            self.assertEqual(package.elf_dynamic(libexec / "swbuild"), (["libswiftCore.so", "libc.so.6"], "$ORIGIN"))
+            package.check_helper_linkage(libexec)
+            elf(libexec / "libBlocksRuntime.so", 183, needed=["libc.so.6"], runpath=None)
+            package.check_helper_linkage(libexec)
+            elf(libexec / "libBlocksRuntime.so", 183, needed=["libswiftCore.so"], runpath=None)
+            with self.assertRaisesRegex(ValueError, "libBlocksRuntime.so must have a RUNPATH"):
+                package.check_helper_linkage(libexec)
+            elf(libexec / "libBlocksRuntime.so", 183, needed=["libc.so.6"], runpath=None)
+            elf(libexec / "swbuild", 183, needed=["libswiftCore.so"], runpath="/home/ci/swift/usr/lib/swift/linux:$ORIGIN")
+            with self.assertRaisesRegex(ValueError, "RUNPATH"):
+                package.check_helper_linkage(libexec)
+            elf(libexec / "swbuild", 183, needed=["libFoundation.so"])
+            with self.assertRaisesRegex(ValueError, "libFoundation.so"):
+                package.check_helper_linkage(libexec)
+
+    def test_helpers_built_on_a_newer_host_than_debian_12_are_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tree = helpers(Path(directory), 183)
+            core = tree / "libexec/sweetpad/libswiftCore.so"
+            core.write_bytes(core.read_bytes() + b"\0GLIBC_2.17\0GLIBC_2.36\0GLIBCXX_3.4.30\0")
+            package.helper_files(tree, "arm64")
+            core.write_bytes(core.read_bytes() + b"GLIBC_2.38\0")
+            with self.assertRaisesRegex(ValueError, "GLIBC_2.38"):
+                package.helper_files(tree, "arm64")
+            elf(core, 183, needed=["libstdc++.so.6"])
+            core.write_bytes(core.read_bytes() + b"\0GLIBCXX_3.4.32\0")
+            with self.assertRaisesRegex(ValueError, "GLIBCXX_3.4.32"):
+                package.helper_files(tree, "arm64")
+
+    def test_helpers_must_come_from_the_pinned_swift(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tree = helpers(Path(directory), 183)
+            record = tree / "libexec/sweetpad/sweetpad-swift-build.json"
+            record.write_text(record.read_text().replace('"swift":"', '"swift":"0.'))
+            with self.assertRaisesRegex(ValueError, "swift '0."):
+                package.helper_files(tree, "arm64")
 
 
 if __name__ == "__main__":

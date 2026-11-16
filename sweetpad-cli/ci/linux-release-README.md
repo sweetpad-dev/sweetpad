@@ -27,12 +27,16 @@ tar -xzf sweetpad-cli-VERSION-linux-arm64.tar.gz -C /path/to/empty-directory
 cd /path/to/empty-directory
 install -Dm755 sweetpad "$HOME/.local/bin/sweetpad"
 ln -sfn sweetpad "$HOME/.local/bin/sweetpad-dap"
+rm -rf "$HOME/.local/libexec/sweetpad"
+mkdir -p "$HOME/.local/libexec"
+cp -R libexec/sweetpad "$HOME/.local/libexec/sweetpad"
 export PATH="$HOME/.local/bin:$PATH"
 sweetpad --version
 ```
 
 Installation requires no compiler, root access, or Sweetpad installation script.
-You can copy the executable into another directory on PATH.
+Swift Build and the macro plugin are in `libexec/sweetpad`. The CLI looks for them beside itself and in `../libexec/sweetpad`,
+so copy the folder along with the executable. They need the host's SQLite library (`libsqlite3-0` on Ubuntu and Debian).
 The CLI materializes its embedded setup files in its content-addressed user cache when needed.
 
 ## Package managers and containers
@@ -49,8 +53,9 @@ mise use -g packslip:github.com/sweetpad-dev/sweetpad/tools/cli
 ```
 
 GHCR supplies a multi-platform CLI image at `ghcr.io/sweetpad-dev/sweetpad`.
-It contains the static executable, CA certificates, and license notices. Docker builds can copy `/usr/local/bin/sweetpad` into their own image.
-Swift, Swift Build, and the private SDK remain separate build-environment requirements.
+It contains the static executable, Swift Build and the macro plugin in `/usr/local/libexec/sweetpad`, CA certificates, and license notices.
+Docker builds can copy `/usr/local/bin/sweetpad` and `/usr/local/libexec/sweetpad` into their own image.
+The image has no Swift or Apple SDK; supply both in the build environment.
 
 ## Prepare the Apple build toolchain
 
@@ -110,13 +115,14 @@ See the [Linux guide](https://sweetpad.hyzyla.dev/docs/cli/linux) for build setu
 ## Upgrade or remove the CLI
 
 Use the package manager that installed the CLI to upgrade or remove it.
-For manual installations, verify the next archive and replace the executable.
+For manual installations, verify the next archive and replace the executable and the `libexec/sweetpad` folder.
 Its embedded setup files move with the binary, so an upgrade cannot retain older helper sources.
 
 For the default prefix, remove the CLI with:
 
 ```bash
 rm -f "$HOME/.local/bin/sweetpad" "$HOME/.local/bin/sweetpad-dap"
+rm -rf "$HOME/.local/libexec/sweetpad"
 ```
 
 The compiler, private SDK, signing files, and user configuration remain in their separate locations.

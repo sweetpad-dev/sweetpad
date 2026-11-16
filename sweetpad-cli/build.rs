@@ -24,13 +24,6 @@ fn embed_setup_resources() {
             files.push((format!("setup/{line}"), repo.join(line)));
         }
     }
-    collect_resources(
-        repo,
-        &repo.join("sweetpad-cli/macros/Sources"),
-        "setup",
-        &["swift", "md"],
-        &mut files,
-    );
     let sample = repo.join("sweetpad-lib/ci/fixture-linux");
     collect_resources(
         &sample,

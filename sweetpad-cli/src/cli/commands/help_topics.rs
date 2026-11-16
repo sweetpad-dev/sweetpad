@@ -173,9 +173,10 @@ Linux builds (Swift Build, where there is no Xcode):
 
   SWEETPAD_DARWIN_SDK       the Darwin SDK bundle 'sweetpad setup' imported
                             (default ~/.swiftpm/swift-sdks/darwin.artifactbundle)
-  SWEETPAD_SWBUILD          the swbuild to run, in place of the one on PATH
+  SWEETPAD_SWBUILD          the swbuild to run, in place of the one installed
+                            with sweetpad in libexec/sweetpad
   SWEETPAD_MACROS           the sweetpad-macros plugin, in place of the one
-                            on PATH
+                            installed with sweetpad in libexec/sweetpad
   SWEETPAD_CODE_SIGN_P12    the .p12 files holding the identities builds
                             and exports sign with, separated by ':'; each
                             may hold several, as Keychain Access exports them

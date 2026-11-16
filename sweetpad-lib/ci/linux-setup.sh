@@ -8,21 +8,19 @@
 #   Swift      the release toolchain, PGP-checked against swift.org's keys
 #   xtool      its Darwin Swift SDK: the iOS and macOS SDKs plus an ld64.lld
 #              that links for Apple platforms, extracted from an Xcode.app
-#   swbuild    Swift Build's command-line driver, which the toolchain doesn't
-#              ship, built from the separately pinned swiftlang/swift-build tag,
-#              with swift-build-linux.patch, and linked into ~/bin
-#   sweetpad-macros
-#              the plugin for Apple's macros that Linux has no working build
-#              of (SwiftData's, #Predicate, #Preview), built from
-#              sweetpad-cli/macros into ~/bin
 #   Rust       rustup, for building sweetpad itself
+#
+# Swift Build and the macro plugin ship in the sweetpad package. A sweetpad
+# built from a checkout finds them in libexec/sweetpad beside its binary;
+# build-swift-helpers.sh puts them there, for example
+#   build-swift-helpers.sh ~/sweetpad-target/debug
 #
 # The SDK comes from your own Xcode (XCODE_APP, default /Applications/Xcode.app,
 # visible inside OrbStack at the same path). Apple's SDK license ties the SDK to
 # Apple-branded hardware; this script never downloads or redistributes it.
 #
 # Knobs (env): SWEETPAD_VM (OrbStack machine name, default sweetpad-linux),
-# XCODE_APP, SWIFT_VERSION, SWIFT_BUILD_VERSION, XTOOL_VERSION, XTOOL_SHA256,
+# XCODE_APP, SWIFT_VERSION, XTOOL_VERSION, XTOOL_SHA256,
 # SWEETPAD_REFRESH_SDK=1 (replace a stale slim SDK, with rollback on error).
 # SWEETPAD_SKIP_RUST=1 skips Rust when using the prebuilt CLI package.
 set -euo pipefail
@@ -39,12 +37,11 @@ arch = sys.argv[2]
 arch = {"arm64": "aarch64"}.get(arch, arch)
 if arch not in pins["xtoolSha256"]:
     raise SystemExit("setup supports ARM64 and x86_64 hosts")
-print(*(pins[key] for key in ("swift", "swiftBuild", "xtool")), pins["xtoolSha256"][arch])
+print(*(pins[key] for key in ("swift", "xtool")), pins["xtoolSha256"][arch])
 PY
 )"
-read -r pinned_swift pinned_swb pinned_xtool pinned_xtool_sha <<< "$requirements"
+read -r pinned_swift pinned_xtool pinned_xtool_sha <<< "$requirements"
 SWIFT_VERSION="${SWIFT_VERSION:-$pinned_swift}"
-SWIFT_BUILD_VERSION="${SWIFT_BUILD_VERSION:-$pinned_swb}"
 XTOOL_VERSION="${XTOOL_VERSION:-$pinned_xtool}"
 XTOOL_SHA256="${XTOOL_SHA256:-$pinned_xtool_sha}"
 
@@ -58,7 +55,6 @@ if [ "$(uname -s)" = Darwin ]; then
   exec orb -m "$VM" env XCODE_APP="$XCODE_APP" SWIFT_VERSION="$SWIFT_VERSION" \
     SWEETPAD_APPINTENTS_RESOURCE_EXPORT="$phrase_export" \
     SWEETPAD_BUILD_MACHINE_OS_BUILD="$(sw_vers -buildVersion)" \
-    SWIFT_BUILD_VERSION="$SWIFT_BUILD_VERSION" \
     XTOOL_VERSION="$XTOOL_VERSION" XTOOL_SHA256="$XTOOL_SHA256_OVERRIDE" \
     SWEETPAD_SKIP_RUST="${SWEETPAD_SKIP_RUST:-0}" \
     SWEETPAD_REFRESH_SDK="${SWEETPAD_REFRESH_SDK:-0}" bash "$self"
@@ -73,7 +69,7 @@ fi
 TAG="swift-$SWIFT_VERSION-RELEASE"
 SWIFT_DIR="$HOME/swift/$TAG"
 DOWNLOADS="$HOME/downloads"
-mkdir -p "$DOWNLOADS" "$HOME/swift" "$HOME/src" "$HOME/bin"
+mkdir -p "$DOWNLOADS" "$HOME/swift" "$HOME/bin"
 
 section() { echo; echo "==== $* ===="; }
 
@@ -181,120 +177,6 @@ if [ -d "$source" ]; then
   tar -C "$source" -cf - . | tar -C "$destination" -xf -
 fi
 fi # SDK archive or visible Xcode.app
-
-SWB_TAG="swift-$SWIFT_BUILD_VERSION-RELEASE"
-section "swbuild ($SWB_TAG)"
-PATCH="$(cd "$(dirname "$0")" && pwd)/swift-build-linux.patch"
-GENERIC_PATCH="$(dirname "$PATCH")/swift-build-generic-debug-bridges.patch"
-LLBUILD_PATCH="$(dirname "$PATCH")/swift-llbuild-directory-race.patch"
-LLBUILD_SPAWN_PATCH="$(dirname "$PATCH")/swift-llbuild-spawn-descriptors.patch"
-LOCKFILE="$(dirname "$PATCH")/swift-build-Package.resolved"
-SWB="$HOME/src/swift-build"
-# A new tag, lockfile, or base patch gets its own cache. Keep older checkouts
-# and local edits intact instead of resetting a developer's source tree.
-if [ -d "$SWB/.git" ]; then
-  current="$(git -C "$SWB" rev-parse HEAD)"
-  wanted="$(git -C "$SWB" rev-parse "$SWB_TAG^{commit}" 2>/dev/null || true)"
-  if [ "$current" != "$wanted" ] || ! cmp -s "$LOCKFILE" "$SWB/Package.resolved" ||
-      ! git -C "$SWB" apply --reverse --check "$PATCH" 2>/dev/null ||
-      ! git -C "$SWB" apply --reverse --check "$GENERIC_PATCH" 2>/dev/null ||
-      ! git -C "$SWB/.build/checkouts/swift-llbuild" apply --reverse --check "$LLBUILD_PATCH" 2>/dev/null ||
-      ! git -C "$SWB/.build/checkouts/swift-llbuild" apply --reverse --check "$LLBUILD_SPAWN_PATCH" 2>/dev/null; then
-    cache_key="$(cat "$PATCH" "$GENERIC_PATCH" "$LLBUILD_PATCH" "$LLBUILD_SPAWN_PATCH" "$LOCKFILE" | sha256sum | cut -c1-12)"
-    SWB="$HOME/src/swift-build-$SWIFT_BUILD_VERSION-$cache_key"
-  fi
-fi
-[ -d "$SWB/.git" ] || git clone -q --depth 1 --branch "$SWB_TAG" https://github.com/swiftlang/swift-build.git "$SWB"
-if [ "$(git -C "$SWB" rev-parse HEAD)" != "$(git -C "$SWB" rev-parse "$SWB_TAG^{commit}")" ]; then
-  echo "error: $SWB must use $SWB_TAG; use a separate cache for another revision" >&2
-  exit 1
-fi
-# swift-build-linux.patch ports host-specific build tasks. A macOS app's build registers
-# it with Launch Services through /System/…/lsregister, and Swift Build fails
-# the build when that can't start, where it only notes a run that fails; the
-# patch notes both. Swift Build's console asks no one for a signing identity
-# or provisioning profile, so it signs only ad hoc; the patch has it ask the
-# tool SWEETPAD_PROVISIONING names, which sweetpad sets for a device build.
-# It runs /usr/bin/derq by absolute path for a signed target's DER
-# entitlements; the patch has it look derq up on the search path first.
-# Its Mach-O reader takes the file's structures from the Darwin SDK and
-# fails every read elsewhere; the patch defines them in a new file,
-# SWBUtil/MachOStructures.swift, and names the architectures itself. And it
-# finds a text encoding by name only through CoreFoundation, so a Mac app's
-# .strings can't be written as UTF-16; the patch names the encodings
-# Foundation converts on every platform and detects Unicode BOMs. LLVM
-# libtool version discovery avoids treating its version as a cctools version.
-# Without CryptoKit its MD5 is SHA-256, which makes the names Xcode derives
-# from MD5, like an On-Demand Resources asset pack's, 64 hex digits long; the
-# patch carries an MD5 for that case.
-# Its asset catalog link step leaves a loose file, like an icon PNG, in the
-# product once the catalog stops producing it, since only Assets.car is a
-# declared output; the patch also removes what the previous compile listed in
-# its dependency info.
-# Incompatible cached checkouts remain intact; the cache selection above uses
-# a separate directory for this revision. New files are marked intent-to-add, so `git diff` in the
-# checkout writes the whole patch back; `git apply --intent-to-add` would
-# drop every other file from the index.
-if ! git -C "$SWB" apply --reverse --check "$PATCH" 2>/dev/null; then
-  if ! git -C "$SWB" diff --quiet || [ -n "$(git -C "$SWB" ls-files --others --exclude-standard -- Sources)" ]; then
-    echo "error: $SWB contains local edits; preserve it and select an empty setup cache" >&2
-    exit 1
-  fi
-  git -C "$SWB" apply "$PATCH"
-  git -C "$SWB" add --intent-to-add -- $(git -C "$SWB" ls-files --others --exclude-standard -- Sources)
-  rm -f "$SWB/.build/release/swbuild"
-fi
-# Correct only the two self-nesting Optional Objective-C bridge helpers in
-# generated C++ headers. Keep DEBUG and all other forced debugger thunks.
-if ! git -C "$SWB" apply --reverse --check "$GENERIC_PATCH" 2>/dev/null; then
-  git -C "$SWB" apply --check "$GENERIC_PATCH"
-  git -C "$SWB" apply "$GENERIC_PATCH"
-  rm -f "$SWB/.build/release/swbuild"
-fi
-# Resolve dependencies before patching the pinned llbuild checkout. Its directory
-# iterator must tolerate entries removed by dependency replacement scripts.
-# Linux has no POSIX_SPAWN_CLOEXEC_DEFAULT, so every task llbuild starts
-# inherits the build service's descriptors, and a process a script leaves
-# running (a Gradle daemon, say) keeps swbuild from exiting until it does; the
-# spawn patch closes them, as Darwin does.
-cp "$LOCKFILE" "$SWB/Package.resolved"
-(cd "$SWB" && swift package --force-resolved-versions resolve)
-LLBUILD="$SWB/.build/checkouts/swift-llbuild"
-llbuild_patched=
-for llbuild_patch in "$LLBUILD_PATCH" "$LLBUILD_SPAWN_PATCH"; do
-  if ! git -C "$LLBUILD" apply --reverse --check "$llbuild_patch" 2>/dev/null; then
-    git -C "$LLBUILD" apply --check "$llbuild_patch"
-    git -C "$LLBUILD" apply "$llbuild_patch"
-    llbuild_patched=1
-  fi
-done
-if [ -n "$llbuild_patched" ]; then
-  (cd "$SWB" && swift build --jobs "${SWEETPAD_SETUP_JOBS:-4}" -c release --product swbuild && swift build --jobs "${SWEETPAD_SETUP_JOBS:-4}" -c release --product SWBBuildServiceBundle)
-fi
-if [ ! -x "$SWB/.build/release/swbuild" ] || [ ! -x "$SWB/.build/release/SWBBuildServiceBundle" ]; then
-  (cd "$SWB" && swift build --jobs "${SWEETPAD_SETUP_JOBS:-4}" -c release --product swbuild && swift build --jobs "${SWEETPAD_SETUP_JOBS:-4}" -c release --product SWBBuildServiceBundle)
-fi
-# sweetpad looks swbuild up on PATH; it finds its service bundle through the
-# link.
-ln -sf "$SWB/.build/release/swbuild" "$HOME/bin/swbuild"
-ls "$SWB/.build/release/swbuild" "$SWB/.build/release/SWBBuildServiceBundle"
-# What this swbuild was built from, which 'sweetpad doctor' compares with
-# the patches the running sweetpad carries.
-printf '{"swiftBuild":"%s","patches":"%s"}\n' "$SWIFT_BUILD_VERSION" \
-  "$(cat "$PATCH" "$GENERIC_PATCH" "$LLBUILD_PATCH" "$LLBUILD_SPAWN_PATCH" "$LOCKFILE" | sha256sum | cut -d' ' -f1)" \
-  > "$SWB/.build/release/sweetpad-swift-build.json"
-
-section "sweetpad-macros"
-# Built outside the checkout, which the Mac shares, so the two builds keep
-# apart.
-MACROS="$(cd "$(dirname "$0")/../../sweetpad-cli/macros" && pwd)"
-swift build --jobs "${SWEETPAD_SETUP_JOBS:-4}" -c release --package-path "$MACROS" --scratch-path "$HOME/src/sweetpad-macros" --product sweetpad-macros
-ln -sf "$HOME/src/sweetpad-macros/release/sweetpad-macros" "$HOME/bin/sweetpad-macros.bin"
-ln -sf "$(command -v swift)" "$HOME/bin/sweetpad-macro-swift"
-# Remove the old executable symlink before installing the launcher.
-rm -f "$HOME/bin/sweetpad-macros"
-install -m 755 "$(dirname "$0")/linux-macro-launcher.sh" "$HOME/bin/sweetpad-macros"
-ls "$HOME/bin/sweetpad-macros"
 
 if [ "${SWEETPAD_SKIP_RUST:-0}" != 1 ]; then
   section "Rust"

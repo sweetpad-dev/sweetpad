@@ -32,12 +32,11 @@ Direct Linux Wi-Fi installation, launch, process checks, and startup logs also p
 ## ARM64 release gate
 
 The release ships static ARM64 and x86_64 archives, Debian packages and a container image.
-An archive contains the CLI, DAP alias, a README, the device notes and licenses, with checksums beside it.
+An archive contains the CLI, DAP alias, Swift Build and the macro plugin, a README, the device notes and licenses, with checksums beside it.
 Apple SDKs, signing material, and build caches remain private.
 A clean Ubuntu container validates installation without Rust, a developer home, or a source checkout.
 A separate isolated SDK check builds the installed sample from an empty home and fresh DerivedData.
-It exposes only the explicit read-only compiler, build engine, macro binary, and private SDK prerequisites.
-The macro launcher restores Swift runtime lookup after the compiler strips PATH and LD_LIBRARY_PATH.
+It exposes only the explicit read-only compiler and private SDK prerequisites; Swift Build and the macro plugin come from the archive.
 
 Pull requests run ARM64 release packaging and the clean-container check on a hosted runner.
 Tag releases publish both macOS and Linux archives only after their packaging jobs pass.
@@ -116,11 +115,11 @@ Measured in the ARM64 VM: stripped `swbuild` is 26 MB,
 together, against a 6 to 10 MB package today. `swbuild` loads 16 Swift
 libraries from the toolchain, which setup installs anyway.
 
-- [ ] SC01: Build the patched `swbuild`, its build service and `sweetpad-macros` per architecture in release CI, on Debian 12 for the oldest glibc, against the pinned toolchain's runtime.
-- [ ] SC02: Ship them in the tarball, `.deb`, APT feed and container image, with Swift Build's license and NOTICE and a note of our changes.
-- [ ] SC03: Find them beside the CLI binary; keep `SWEETPAD_SWBUILD` and `SWEETPAD_MACROS` as overrides. Confirm Swift Build's spec resources are embedded or ship them.
-- [ ] SC04: Run the packaged binaries in the public install checks on Ubuntu 24.04, Debian 12 and 13, and Arch.
-- [ ] SC05: Drop the clone, patch and build steps from setup, and the `~/src/swift-build-*` caches.
+- [x] SC01: Build the patched `swbuild`, its build service and `sweetpad-macros` per architecture in release CI, on Debian 12 for the oldest glibc, against the pinned toolchain's runtime. `ci/build-swift-helpers.sh` builds them and copies the 17 Swift runtime and Foundation libraries they load, plus Debian 12's `libncurses.so.6` and `libtinfo.so.6` (Arch has neither), into `libexec/sweetpad`, with `$ORIGIN` as the only RUNPATH. Static linking was measured and dropped: Foundation and ICU in each binary made the archive about 70 MB against 56 MB. The `swift-helpers` job in `linux-arm64-package.yaml` runs it in a `debian:12` container per architecture and caches the output by its inputs; the same run in an ARM64 `debian:12` container passes.
+- [x] SC02: Ship them in the tarball, `.deb`, APT feed and container image, with Swift Build's license and NOTICE and a note of our changes. Archive `libexec/sweetpad`, `/usr/libexec/sweetpad` in the `.deb` (which now depends on `libsqlite3-0`, `libstdc++6`, `libgcc-s1` and `libc6 (>= 2.36)`), `/usr/local/libexec/sweetpad` in the image, now on `debian:12-slim` since the helpers need glibc. Licenses: Swift Build's and its dependencies', swift-syntax's, Swift's, ncurses', the four patches and `licenses/swift-build/README.md` describing them (Swift Build has no NOTICE file). `package-linux.py` refuses helpers of the wrong architecture, another Swift or Swift Build version, a RUNPATH or library need outside the folder, or a glibc or libstdc++ symbol newer than Debian 12's. The ARM64 archive is 56 MB and the `.deb` 35.5 MB, so the APT feed keeps 5 versions instead of 10.
+- [x] SC03: Find them beside the CLI binary; keep `SWEETPAD_SWBUILD` and `SWEETPAD_MACROS` as overrides. Confirm Swift Build's spec resources are embedded or ship them. `sweetpad_lib::xcode::linux_helper` tries the variable, then `libexec/sweetpad` beside the resolved binary or in its parent, then `PATH`; build, doctor and the editor's macro flags share it. The spec resources are `SwiftBuild_*.bundle` folders beside the service, shipped with it. The macro launcher is gone: the plugin loads its runtime through `$ORIGIN`, which survives the compiler's bare environment.
+- [x] SC04: Run the packaged binaries in the public install checks on Ubuntu 24.04, Debian 12 and 13, and Arch. `ci/check-linux-helpers.py` runs `swbuild isAlive` (which starts the build service), a compiler-plugin handshake with `sweetpad-macros`, and `doctor`, on a host without Swift; the `host-installs` job runs it on the four distributions. The clean-install, `.deb` lifecycle and isolated SDK checks now use the packaged helpers too. Ubuntu 24.04 and Debian 12 and 13 pass locally on ARM64; Arch (x64 only) runs in CI.
+- [x] SC05: Drop the clone, patch and build steps from setup, and the `~/src/swift-build-*` caches. The environment file no longer exports `SWEETPAD_SWBUILD` or `SWEETPAD_MACROS`; the embedded setup files lose the patches, the lockfile and the macro package. Setup leaves an existing `~/src/swift-build*` and its `~/bin` links alone; the install guide says to delete them. A checkout build gets its helpers with `build-swift-helpers.sh <target>/debug`, which `linux-build.sh` and the private SDK workflow run.
 
 ### Phase 2: replace xtool
 

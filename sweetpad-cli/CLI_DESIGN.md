@@ -4774,8 +4774,8 @@ runs the tool without `SDKROOT` for macOS, gives it the SDK's path for any
 other `-sdk`, as `xcrun` does, and leaves the script's alone without one.
 `--find` and the `--show-sdk-*` queries answer from the Darwin SDK.
 
-**Swift Build is patched, as little as it can be.** `linux-setup.sh` builds
-Swift 6.4.2 with Swift Build 6.4.0 and `ci/swift-build-linux.patch`, beside
+**Swift Build is patched, as little as it can be.** Release CI builds
+Swift Build 6.4.0 with Swift 6.4.2 (`ci/build-swift-helpers.sh`) and `ci/swift-build-linux.patch`, beside
 `ci/swift-build-generic-debug-bridges.patch` and llbuild's `ci/swift-llbuild-directory-race.patch` and
 `ci/swift-llbuild-spawn-descriptors.patch`. Each
 change is one an upstream pull request could take: a failed `lsregister`
@@ -4789,11 +4789,25 @@ starts, as `POSIX_SPAWN_CLOEXEC_DEFAULT` does on Darwin, so a process a script p
 running doesn't hold the build service's socket and keep `swbuild` from exiting.
 Where CryptoKit is missing, Swift Build's MD5 is a vendored MD5 instead of SHA-256, so an
 On-Demand Resources asset pack and its `OnDemandResources.plist` entry carry Xcode's names.
-Setup records what it built `swbuild` from beside it
-(`sweetpad-swift-build.json`: the version and a SHA-256 over the patches and
-lockfile), and `doctor` compares that with the same digest over the copies
-this sweetpad embeds, so an upgrade whose patches changed asks for setup
-again instead of building with the old ones unnoticed.
+The build records what `swbuild` came from beside it
+(`sweetpad-swift-build.json`: the Swift Build and Swift versions and a SHA-256
+over the patches and lockfile), and `doctor` compares that with the same
+digest over the copies this sweetpad embeds. The package's own `swbuild`
+always matches; the check catches an older one picked through
+`SWEETPAD_SWBUILD` or `PATH`.
+
+**Swift Build and the macro plugin ship in the package.** `swbuild`,
+`SWBBuildServiceBundle` with its `SwiftBuild_*` resource bundles, and
+`sweetpad-macros` sit in `libexec/sweetpad`: beside the binary in the
+archive, and in `/usr/libexec/sweetpad` beside `/usr/bin/sweetpad` in the
+Debian package. sweetpad looks there after `SWEETPAD_SWBUILD` and
+`SWEETPAD_MACROS` and before `PATH`, following a link to the binary. The Swift
+runtime and Foundation libraries they load, and ncurses, which Arch names
+differently, are copied beside them from the pinned toolchain and Debian 12,
+and `$ORIGIN` is their only RUNPATH, so they run without Swift installed and
+the compiler, which starts plugins with a bare environment, needs no
+launcher. The package script refuses helpers whose RUNPATH or library needs
+reach past that folder, or that record another Swift.
 
 **Signing has no keychain.** The identities are `.p12` files
 (`SWEETPAD_CODE_SIGN_P12`, a `:`-separated list, each file holding one
@@ -4913,15 +4927,15 @@ and stops with `tool_missing` on any other. `doctor` reports whichever of the tw
 device commands will use.
 
 **Linux ships static ARM64 and x86_64 archives, Debian packages and a container image.**
-An archive holds the static CLI, the DAP alias, a README, the device notes and licenses; the
-setup sources are embedded in the binary. It excludes Apple SDKs and signing material.
+An archive holds the static CLI, the DAP alias, Swift Build and the macro plugin in
+`libexec/sweetpad`, a README, the device notes and licenses; the setup sources are embedded in
+the binary. It excludes Apple SDKs and signing material.
 Homebrew remains macOS only.
 The setup script provisions the separate compiler and private SDK prerequisites.
 `SWEETPAD_SKIP_RUST=1` omits Rust for the packaged CLI.
 Hosted CI validates a clean Ubuntu installation. A manual private SDK job builds the
 app `project new` creates with the installed CLI, with no source checkout, developer home, network, or app build cache.
-The macro launcher restores runtime lookup from its adjacent host-toolchain link,
-because Swift strips PATH and LD_LIBRARY_PATH before it starts plugins.
+Each archive's helpers run on Ubuntu 24.04, Debian 12 and 13, and Arch with no Swift installed.
 The release workflow publishes both platforms only after packaging checks pass.
 Manual Linux-only dry runs publish nothing.
 

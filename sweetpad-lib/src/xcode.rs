@@ -150,18 +150,46 @@ pub const DARWIN_MACRO_MODULES: &[&str] = &[
     "TipKitMacros",
 ];
 
-/// `sweetpad-macros`, built from `sweetpad-cli/macros`: `SWEETPAD_MACROS`,
-/// else the one on `PATH`. Without it a compile fails only where a macro of
-/// [`DARWIN_MACRO_MODULES`] is used, with the compiler naming the module.
+/// `sweetpad-macros`, built from `sweetpad-cli/macros`: see [`linux_helper`].
+/// Without it a compile fails only where a macro of [`DARWIN_MACRO_MODULES`]
+/// is used, with the compiler naming the module.
 #[must_use]
 pub fn darwin_macro_plugin() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("SWEETPAD_MACROS") {
+    linux_helper("sweetpad-macros", "SWEETPAD_MACROS")
+}
+
+/// A Swift helper the Linux package ships, like `swbuild` or
+/// `sweetpad-macros`: the path in the `override_var` environment variable,
+/// else the one installed with the running binary (see
+/// [`packaged_helper_beside`]), else the one on `PATH`.
+#[must_use]
+pub fn linux_helper(name: &str, override_var: &str) -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os(override_var) {
         return Some(PathBuf::from(path));
     }
-    std::env::var_os("PATH")
-        .iter()
-        .flat_map(std::env::split_paths)
-        .map(|dir| dir.join("sweetpad-macros"))
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| packaged_helper_beside(&exe, name))
+        .or_else(|| {
+            std::env::var_os("PATH")
+                .iter()
+                .flat_map(std::env::split_paths)
+                .map(|dir| dir.join(name))
+                .find(|candidate| candidate.is_file())
+        })
+}
+
+/// `name` in the `libexec/sweetpad` folder installed with the binary at
+/// `exe`: beside it, as the release archive unpacks, or in its parent, as
+/// `/usr/bin/sweetpad` and `/usr/libexec/sweetpad` from the Debian package.
+/// A link to the binary is followed to where the package put it.
+#[must_use]
+pub fn packaged_helper_beside(exe: &Path, name: &str) -> Option<PathBuf> {
+    let exe = exe.canonicalize().ok()?;
+    let dir = exe.parent()?;
+    [dir.join("libexec/sweetpad"), dir.parent()?.join("libexec/sweetpad")]
+        .into_iter()
+        .map(|folder| folder.join(name))
         .find(|candidate| candidate.is_file())
 }
 
@@ -353,6 +381,46 @@ mod tests {
         };
         assert_eq!(i.major_version(), 26);
         assert_eq!(i.product_build_version(), "26.0.1-17A400");
+    }
+
+    /// The archive keeps helpers in `libexec/sweetpad` beside the binary, the
+    /// Debian package in `/usr/libexec/sweetpad` beside `/usr/bin`, and a
+    /// link on `PATH` resolves to whichever the package installed.
+    #[cfg(unix)]
+    #[test]
+    fn packaged_helpers_are_found_beside_the_binary_and_through_links() {
+        let root = TempDir::new("sweetpad-packaged-helper");
+        let helper = |folder: &Path| {
+            std::fs::create_dir_all(folder).unwrap();
+            std::fs::write(folder.join("swbuild"), "").unwrap();
+            folder.join("swbuild").canonicalize().unwrap()
+        };
+        let archive = root.join("archive");
+        let in_archive = helper(&archive.join("libexec/sweetpad"));
+        std::fs::write(archive.join("sweetpad"), "").unwrap();
+        assert_eq!(
+            packaged_helper_beside(&archive.join("sweetpad"), "swbuild"),
+            Some(in_archive.clone())
+        );
+        let usr = root.join("usr");
+        let in_usr = helper(&usr.join("libexec/sweetpad"));
+        std::fs::create_dir_all(usr.join("bin")).unwrap();
+        std::fs::write(usr.join("bin/sweetpad"), "").unwrap();
+        assert_eq!(
+            packaged_helper_beside(&usr.join("bin/sweetpad"), "swbuild"),
+            Some(in_usr)
+        );
+        std::fs::create_dir_all(root.join("home/bin")).unwrap();
+        std::os::unix::fs::symlink(archive.join("sweetpad"), root.join("home/bin/sweetpad"))
+            .unwrap();
+        assert_eq!(
+            packaged_helper_beside(&root.join("home/bin/sweetpad"), "swbuild"),
+            Some(in_archive)
+        );
+        assert_eq!(
+            packaged_helper_beside(&archive.join("sweetpad"), "sweetpad-macros"),
+            None
+        );
     }
 
     #[test]

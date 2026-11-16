@@ -4,7 +4,7 @@ sidebar_label: Install the CLI
 
 # Install SweetPad on Linux
 
-The CLI is one static executable for x64 or ARM64 Linux.
+The CLI is a static executable for x64 or ARM64 Linux, with Swift Build and the macro plugin in a `libexec/sweetpad` folder beside it.
 It doesn't include Apple's SDKs or the Swift toolchain. [Set up the Apple toolchain](sdk-transfer.md) after installing it.
 
 | Method | Use it for |
@@ -85,15 +85,16 @@ Drop `-g` and add `@0.1.26` to pin a version for one project, and use `mise upgr
 
 ## Container image
 
-The image at `ghcr.io/sweetpad-dev/sweetpad` holds only the CLI, for `linux/amd64` and `linux/arm64`.
-Copy it into your own build image, which supplies the Apple toolchain:
+The image at `ghcr.io/sweetpad-dev/sweetpad` holds the CLI and its Swift helpers, for `linux/amd64` and `linux/arm64`.
+Copy both into your own build image, which supplies the Apple toolchain:
 
 ```dockerfile
 FROM ghcr.io/sweetpad-dev/sweetpad:0.1.26 AS sweetpad
 FROM ubuntu:24.04
 COPY --from=sweetpad /usr/local/bin/sweetpad /usr/local/bin/sweetpad
+COPY --from=sweetpad /usr/local/libexec/sweetpad /usr/local/libexec/sweetpad
 RUN ln -s sweetpad /usr/local/bin/sweetpad-dap
-RUN apt-get update && apt-get install -y ca-certificates python3 bash
+RUN apt-get update && apt-get install -y ca-certificates python3 bash libsqlite3-0
 ```
 
 Run `sweetpad setup` in that image, and bring the SDK and signing files in only when the job runs.
@@ -110,18 +111,25 @@ BASE="https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSI
 curl -fLO "$BASE/sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz"
 curl -fLO "$BASE/sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz.sha256"
 sha256sum -c "sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz.sha256"
-tar -xzf "sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz"
-install -Dm755 sweetpad "$HOME/.local/bin/sweetpad"
+mkdir sweetpad-cli
+tar -xzf "sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz" -C sweetpad-cli
+install -Dm755 sweetpad-cli/sweetpad "$HOME/.local/bin/sweetpad"
 ln -sfn sweetpad "$HOME/.local/bin/sweetpad-dap"
+rm -rf "$HOME/.local/libexec/sweetpad"
+mkdir -p "$HOME/.local/libexec"
+cp -R sweetpad-cli/libexec/sweetpad "$HOME/.local/libexec/sweetpad"
 ```
 
 Make sure `~/.local/bin` is on your `PATH`.
+SweetPad finds its helpers in `../libexec/sweetpad` next to the `bin` folder, so keep the two together.
+Swift Build needs the host's SQLite library: install `libsqlite3-0` on Ubuntu and Debian, or `sqlite` on Arch.
 To upgrade, install the next release's tarball the same way.
 
 ## Upgrade
 
-A new CLI release can carry new patches for Swift Build, which setup compiles on your machine.
-After upgrading the CLI, run setup again with the source you used the first time, then check the result:
+Swift Build and the macro plugin come with the package, so upgrading the CLI upgrades them too.
+Keep the tarball's `libexec` folder next to the `sweetpad` binary.
+If a release changes the SDK import recipe or the toolchain, run setup again with the source you used the first time, and add `--replace-sdk` if it asks:
 
 ```bash
 sweetpad setup --sdk "$HOME/apple-sdk.tar.gz"
@@ -129,6 +137,5 @@ source "$HOME/.config/sweetpad/linux-env.sh"
 sweetpad doctor --target ios
 ```
 
-Setup rebuilds only what changed. Until it runs, builds use the old Swift Build and `sweetpad doctor` warns about Swift Build patches.
-If setup says the SDK import recipe or toolchain changed, add `--replace-sdk`.
-Setup keeps the previous `~/src/swift-build*` folder, which you can delete once `sweetpad doctor` passes.
+Setup in older releases compiled Swift Build into `~/src/swift-build*` and linked it from `~/bin`.
+Rerun setup once to drop those from the environment file, then delete the folders.

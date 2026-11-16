@@ -45,6 +45,8 @@ jobs:
           sha256sum -c "sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz.sha256"
           tar -xzf "sweetpad-cli-$CLI_VERSION-linux-arm64.tar.gz"
           install -Dm755 sweetpad "$RUNNER_TEMP/sweetpad/bin/sweetpad"
+          mkdir -p "$RUNNER_TEMP/sweetpad/libexec"
+          cp -R libexec/sweetpad "$RUNNER_TEMP/sweetpad/libexec/sweetpad"
           echo "$RUNNER_TEMP/sweetpad/bin" >> "$GITHUB_PATH"
       - name: Build iPhone products
         shell: bash

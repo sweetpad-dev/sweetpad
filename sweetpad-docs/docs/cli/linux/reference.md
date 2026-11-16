@@ -94,8 +94,8 @@ Localized shortcut training needs the phrase resources that a [Mac SDK export](s
 | Variable | Purpose |
 | --- | --- |
 | `SWEETPAD_DARWIN_SDK` | The Darwin SDK to build against. The setup environment file sets it. |
-| `SWEETPAD_SWBUILD` | The Swift Build driver, in place of the one on `PATH`. |
-| `SWEETPAD_MACROS` | The macro plugin, in place of the one on `PATH`. |
+| `SWEETPAD_SWBUILD` | The Swift Build driver, in place of the one installed with SweetPad. |
+| `SWEETPAD_MACROS` | The macro plugin, in place of the one installed with SweetPad. |
 | `SWEETPAD_ENGINE` | `swift-build` or `xcodebuild`. Linux defaults to `swift-build`. |
 | `SWEETPAD_CODE_SIGN_P12` | P12 identity files, separated by `:`. |
 | `SWEETPAD_CODE_SIGN_P12_PASSWORD` | Their password, or one per file separated by `:`. |

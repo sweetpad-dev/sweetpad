@@ -1229,27 +1229,18 @@ fn stand_in_links(exe: &Path, linker: Option<&Path>) -> Vec<(&'static str, PathB
     .collect()
 }
 
-/// The `swbuild` to run: `SWEETPAD_SWBUILD`, else the one on `PATH`. The
-/// toolchain doesn't ship it, so a missing one gets a pointer to its source.
-fn swbuild_program() -> Result<PathBuf, CliError> {
-    if let Some(path) = std::env::var_os("SWEETPAD_SWBUILD") {
-        return Ok(PathBuf::from(path));
-    }
-    std::env::var_os("PATH")
-        .iter()
-        .flat_map(std::env::split_paths)
-        .map(|dir| dir.join("swbuild"))
-        .find(|candidate| candidate.is_file())
-        .ok_or_else(|| {
-            CliError::new("swbuild isn't on PATH")
-                .kind(ErrorKind::ToolMissing)
-                .tip(Some(
-                    "build its swbuild and SWBBuildServiceBundle products from \
-                     github.com/swiftlang/swift-build and keep them side by side, or point \
-                     SWEETPAD_SWBUILD at a swbuild"
-                        .to_string(),
-                ))
-        })
+/// The `swbuild` to run: `SWEETPAD_SWBUILD`, else the one the Linux package
+/// installed with this binary, else the one on `PATH`.
+pub(crate) fn swbuild_program() -> Result<PathBuf, CliError> {
+    sweetpad_lib::xcode::linux_helper("swbuild", "SWEETPAD_SWBUILD").ok_or_else(|| {
+        CliError::new("swbuild isn't installed with sweetpad or on PATH")
+            .kind(ErrorKind::ToolMissing)
+            .tip(Some(
+                "install sweetpad from its Linux archive or Debian package, which ship \
+                 swbuild in libexec/sweetpad, or point SWEETPAD_SWBUILD at a swbuild"
+                    .to_string(),
+            ))
+    })
 }
 
 /// The arguments after `--` that Swift Build can take: build settings

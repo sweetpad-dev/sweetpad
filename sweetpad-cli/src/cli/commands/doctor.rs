@@ -128,7 +128,8 @@ fn gather_linux(target: Target) -> Vec<Check> {
         false,
         setup,
     ));
-    let swbuild = std::env::var("SWEETPAD_SWBUILD").unwrap_or_else(|_| "swbuild".into());
+    let swbuild = crate::cli::swbuild::swbuild_program()
+        .map_or_else(|_| "swbuild".into(), |p| p.display().to_string());
     let driver = Command::new(&swbuild)
         .arg("--version")
         .stdin(Stdio::null())
@@ -187,9 +188,9 @@ fn gather_linux(target: Target) -> Vec<Check> {
 }
 
 /// Whether `swbuild` was built from the Swift Build version and patches this
-/// sweetpad pins, from the record `linux-setup.sh` leaves beside it. A
-/// sweetpad upgrade can carry new patches, which take effect only once setup
-/// builds them.
+/// sweetpad pins, from the record `build-swift-helpers.sh` leaves beside it.
+/// The package's own `swbuild` always matches; one from `SWEETPAD_SWBUILD` or
+/// `PATH` can be an older build.
 fn swift_build_provenance(swbuild: &str) -> Check {
     let pinned = &super::sdk::toolchain().swift_build;
     let patches = crate::cli::embedded::swift_build_patches();
@@ -235,7 +236,7 @@ fn swift_build_provenance(swbuild: &str) -> Check {
         ok,
         detail,
         true,
-        "run sweetpad setup again to build Swift Build with this version's patches",
+        "unset SWEETPAD_SWBUILD, or remove the swbuild on PATH, to use the one installed with sweetpad",
     )
 }
 
@@ -1018,8 +1019,8 @@ mod tests {
         );
     }
 
-    /// `linux-setup.sh` records what it built `swbuild` from beside it; a
-    /// sweetpad with other patches says to run setup again.
+    /// `build-swift-helpers.sh` records what it built `swbuild` from beside
+    /// it; one built with other patches is a warning.
     #[test]
     fn swift_build_built_from_other_patches_asks_for_setup() {
         let root = crate::cli::testdir::TempDir::new("doctor-swift-build");

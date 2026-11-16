@@ -2,7 +2,8 @@
 """Build the packaged example with a fresh home and explicit read-only tools.
 
 Bubblewrap exposes no developer home, source checkout, signing files, or app
-build cache. The private SDK and public compiler runtimes are prerequisites.
+build cache. The private SDK and the public compiler are prerequisites; Swift
+Build and the macro plugin come from the package, with no library path set.
 """
 import argparse
 import hashlib
@@ -24,7 +25,8 @@ def check(args):
     with tarfile.open(args.archive) as source:
         source.extractall(unpacked, filter="data")
     manifest = json.loads((unpacked / "manifest.json").read_text())
-    assert hashlib.sha256((unpacked / "sweetpad").read_bytes()).hexdigest() == manifest["files"]["sweetpad"]
+    for name, digest in manifest["files"].items():
+        assert hashlib.sha256((unpacked / name).read_bytes()).hexdigest() == digest, name
     command = ["bwrap", "--die-with-parent", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
                "--unshare-net", "--tmpfs", "/", "--ro-bind", "/usr", "/usr",
                "--ro-bind", "/etc", "/etc", "--symlink", "usr/bin", "/bin",
@@ -34,22 +36,21 @@ def check(args):
     command += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
                 "--bind", str(work), "/work", "--ro-bind", str(unpacked), "/package",
                 "--ro-bind", str(args.swift.resolve()), "/opt/swift",
-                "--ro-bind", str(args.swbuild_products.resolve()), "/opt/swbuild",
-                "--ro-bind", str(args.macros.resolve()), "/opt/bin/sweetpad-macros.bin",
-                "--ro-bind", str(Path(__file__).resolve().parents[2] / "sweetpad-lib/ci/linux-macro-launcher.sh"),
-                "/opt/bin/sweetpad-macros",
-                "--symlink", "../swift/usr/bin/swift", "/opt/bin/sweetpad-macro-swift",
                 "--ro-bind", str(args.sdk.resolve()), "/opt/darwin-sdk",
                 "--chdir", "/work", "--clearenv", "--setenv", "HOME", "/work/home",
-                "--setenv", "PATH", "/work/home/.local/bin:/opt/bin:/opt/swbuild:/opt/swift/usr/bin:/usr/bin:/bin",
-                "--setenv", "LD_LIBRARY_PATH", "/opt/swift/usr/lib/swift/linux",
+                "--setenv", "PATH", "/work/home/.local/bin:/opt/swift/usr/bin:/usr/bin:/bin",
                 "--setenv", "SWEETPAD_DARWIN_SDK", "/opt/darwin-sdk",
                 "--setenv", "LANG", "C.UTF-8", "--setenv", "NO_COLOR", "1"]
     script = '''set -eu
 mkdir -p "$HOME"
 mkdir -p "$HOME/.local/bin"
-cp /package/sweetpad "$HOME/.local/bin/sweetpad"
+# A link on PATH to the unpacked archive, which keeps libexec/sweetpad beside
+# the binary.
+ln -s /package/sweetpad "$HOME/.local/bin/sweetpad"
 ln -s sweetpad "$HOME/.local/bin/sweetpad-dap"
+! command -v swbuild
+! command -v sweetpad-macros
+sweetpad doctor --target ios --json > /work/doctor.json || true
 test ! -e /Users
 test ! -e /home
 test ! -e /root
@@ -71,12 +72,14 @@ sweetpad build --project /work/Example/LinuxApp.xcodeproj --scheme LinuxApp \
     assert executable.is_file()
     description = subprocess.check_output(["file", str(executable)], text=True).strip()
     assert "Mach-O" in description and "arm64" in description
-    installed = work / "home/.local/bin/sweetpad"
-    assert hashlib.sha256(installed.read_bytes()).hexdigest() == manifest["files"]["sweetpad"]
+    doctor = {c["name"]: c for c in json.loads((work / "doctor.json").read_text())["data"]["checks"]}
+    for name in ("Swift Build", "Swift Build service", "Swift Build patches", "Macro plugin"):
+        assert doctor[name]["status"] == "ok", doctor[name]
+        assert name == "Swift Build patches" or "/package/libexec/sweetpad/" in doctor[name]["detail"], doctor[name]
     report = {"passed": True, "hostArchitecture": platform.machine(), "targetArchitecture": "arm64", "targetPlatform": "iOS device", "freshHome": True, "sourceCheckoutVisible": False,
               "developerHomeVisible": False, "networkAvailable": False, "appBuildCacheReused": False,
               "toolchainsReadOnly": True, "sdkReadOnly": True, "signingMaterialAvailable": False,
-              "installedBinarySha256": manifest["files"]["sweetpad"],
+              "installedBinarySha256": manifest["files"]["sweetpad"], "packagedSwiftHelpers": True,
               "product": str(product), "executableDescription": description,
               "scope": "Fresh app build from the installed release artifact; compiler and SDK installation are explicit prerequisites."}
     (out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -91,8 +94,6 @@ if __name__ == "__main__":
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--swift", type=Path, required=True)
-    parser.add_argument("--swbuild-products", type=Path, required=True)
-    parser.add_argument("--macros", type=Path, required=True)
     parser.add_argument("--sdk", type=Path, required=True)
     parser.add_argument("--keep-build-cache", action="store_true")
     check(parser.parse_args())

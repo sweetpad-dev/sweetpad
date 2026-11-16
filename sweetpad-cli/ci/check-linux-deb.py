@@ -32,6 +32,13 @@ def check(package, upgrade, out):
         assert "sweetpad:" in run("dpkg-query", "-S", "/usr/bin/sweetpad")
         assert run("/usr/bin/sweetpad", "--version").startswith("sweetpad ")
         assert "sweetpad dap" in run("/usr/bin/sweetpad-dap", "--help")
+        # apt pulled in the host libraries the Swift helpers load.
+        assert "yes" in run("/usr/libexec/sweetpad/swbuild", "isAlive")
+        doctor = subprocess.run(["/usr/bin/sweetpad", "doctor", "--target", "ios", "--json"],
+                                capture_output=True, text=True, timeout=180)
+        checks = {c["name"]: c for c in json.loads(doctor.stdout)["data"]["checks"]}
+        assert checks["Swift Build"]["detail"].startswith("/usr/libexec/sweetpad/swbuild"), checks["Swift Build"]
+        assert checks["Macro plugin"]["status"] == "ok", checks["Macro plugin"]
         assert sentinel.read_text() == "private SDK and signing state"
         return expected
 
@@ -49,6 +56,7 @@ def check(package, upgrade, out):
     run("apt-get", "remove", "-y", "sweetpad")
     assert not Path("/usr/bin/sweetpad").exists()
     assert not Path("/usr/bin/sweetpad-dap").exists()
+    assert not Path("/usr/libexec/sweetpad").exists()
     assert sentinel.read_text() == "private SDK and signing state"
     report = {"passed": True, "installedVersion": first, "upgradedVersion": second,
               "packageSha256": hashlib.sha256(package.read_bytes()).hexdigest(),

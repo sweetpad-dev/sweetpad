@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package the standalone static CLI as an archive and a Debian package."""
+"""Package the static CLI and its Swift helpers as an archive and a Debian package."""
 import argparse
 import gzip
 import hashlib
@@ -14,7 +14,8 @@ import shutil
 import tarfile
 import tempfile
 
-REPO = Path(__file__).resolve().parents[2]
+# .parent, unlike .parents[2], also works where the CI folder is mounted alone.
+REPO = Path(__file__).resolve().parent.parent.parent
 
 
 def validate_elf(path):
@@ -50,6 +51,105 @@ def validate_static(path):
                     raise ValueError("release CLI must be static: DT_NEEDED is present")
 
 
+HELPERS = ("swbuild", "SWBBuildServiceBundle", "sweetpad-macros")
+# What the helpers may load from the host. Everything else comes from
+# libexec/sweetpad, through a RUNPATH of $ORIGIN alone.
+SYSTEM_LIBRARIES = {"libc.so.6", "libm.so.6", "libdl.so.2", "libpthread.so.0", "librt.so.1", "libutil.so.1",
+                    "ld-linux-aarch64.so.1", "ld-linux-x86-64.so.2", "libstdc++.so.6", "libgcc_s.so.1",
+                    "libsqlite3.so.0"}
+
+
+# Debian 12, the oldest host the package supports: glibc 2.36 and GCC 12's
+# libstdc++. Helpers built on a newer host ask for newer symbol versions.
+GLIBC_FLOOR = (2, 36)
+GLIBCXX_FLOOR = (3, 4, 30)
+
+
+def symbol_versions(path, prefix):
+    """The highest PREFIX_x.y[.z] version a file names, as a tuple."""
+    found = re.findall(rb"\b" + prefix + rb"_(\d+(?:\.\d+)+)\b", Path(path).read_bytes())
+    return max((tuple(int(part) for part in version.split(b".")) for version in found), default=())
+
+
+def check_host_floor(libexec):
+    for path in sorted(libexec.iterdir()):
+        if path.name in HELPERS or ".so" in path.name:
+            for prefix, floor in ((b"GLIBC", GLIBC_FLOOR), (b"GLIBCXX", GLIBCXX_FLOOR)):
+                version = symbol_versions(path, prefix)
+                if version > floor:
+                    wanted = ".".join(map(str, version))
+                    raise ValueError(f"libexec/sweetpad/{path.name} needs {prefix.decode()}_{wanted}, newer than Debian 12's; build the helpers on Debian 12")
+
+
+def elf_dynamic(path):
+    """The DT_NEEDED names and the DT_RUNPATH/DT_RPATH of a 64-bit ELF file."""
+    data = Path(path).read_bytes()
+    offset = struct.unpack_from("<Q", data, 32)[0]
+    size, count = struct.unpack_from("<HH", data, 54)
+    loads, dynamic = [], None
+    for i in range(count):
+        kind, _, start, vaddr, _, length, _, _ = struct.unpack_from("<IIQQQQQQ", data, offset + i * size)
+        if kind == 1:
+            loads.append((vaddr, start, length))
+        elif kind == 2:
+            dynamic = (start, length)
+    if dynamic is None:
+        return [], None
+    entries = [struct.unpack_from("<qQ", data, entry) for entry in range(dynamic[0], dynamic[0] + dynamic[1], 16)]
+    strtab = next(value for tag, value in entries if tag == 5)
+    base = next(start + strtab - vaddr for vaddr, start, length in loads if vaddr <= strtab < vaddr + length)
+
+    def string(at):
+        return data[base + at:data.index(b"\0", base + at)].decode()
+    needed = [string(value) for tag, value in entries if tag == 1]
+    paths = [string(value) for tag, value in entries if tag in (15, 29)]
+    return needed, paths[0] if paths else None
+
+
+def check_helper_linkage(libexec):
+    """Every helper and bundled library finds what it loads beside it or on the host."""
+    bundled = {path.name for path in libexec.glob("*.so*")}
+    for path in [*(libexec / name for name in HELPERS), *(libexec / name for name in sorted(bundled))]:
+        needed, runpath = elf_dynamic(path)
+        # A library that loads only host libraries needs no RUNPATH.
+        if runpath != "$ORIGIN" and (path.name in HELPERS or runpath is not None or set(needed) & bundled):
+            raise ValueError(f"libexec/sweetpad/{path.name} must have a RUNPATH of $ORIGIN alone, not {runpath!r}")
+        missing = sorted(set(needed) - bundled - SYSTEM_LIBRARIES)
+        if missing:
+            raise ValueError(f"libexec/sweetpad/{path.name} needs {', '.join(missing)}, which is neither bundled nor a host library")
+
+
+def helper_files(helpers, arch):
+    """The tree build-swift-helpers.sh stages: libexec/sweetpad and licenses."""
+    files = {}
+    for top in ("libexec", "licenses"):
+        for path in sorted((helpers / top).rglob("*")):
+            if path.is_symlink() or not (path.is_file() or path.is_dir()):
+                raise ValueError(f"helpers must be regular files: {path}")
+            if path.is_file():
+                files[str(path.relative_to(helpers))] = path
+    for name in HELPERS:
+        path = helpers / "libexec/sweetpad" / name
+        if not path.is_file():
+            raise ValueError(f"helpers lack libexec/sweetpad/{name}")
+        if validate_elf(path) != arch:
+            raise ValueError(f"libexec/sweetpad/{name} is not built for linux-{arch}")
+    if not any(name.startswith("libexec/sweetpad/SwiftBuild_") for name in files):
+        raise ValueError("helpers lack Swift Build's resource bundles")
+    record = json.loads((helpers / "libexec/sweetpad/sweetpad-swift-build.json").read_text())
+    pins = json.loads((REPO / "sweetpad-lib/ci/linux-toolchain.json").read_text())
+    for key in ("swiftBuild", "swift"):
+        if record.get(key) != pins[key]:
+            raise ValueError(f"helpers record {key} {record.get(key)!r}; the CLI pins {pins[key]}")
+    check_helper_linkage(helpers / "libexec/sweetpad")
+    check_host_floor(helpers / "libexec/sweetpad")
+    return files
+
+
+def executable(name):
+    return name in ("sweetpad", *(f"libexec/sweetpad/{helper}" for helper in HELPERS)) or name.endswith(".sh")
+
+
 def source_files(repo):
     files = {"README.md": repo / "sweetpad-cli/ci/linux-release-README.md",
              "LINUX_DEVICES.md": repo / "sweetpad-cli/LINUX_DEVICES.md",
@@ -67,7 +167,7 @@ def source_files(repo):
     return files
 
 
-def package(binary, version, out, repo=REPO):
+def package(binary, helpers, version, out, repo=REPO):
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?", version):
         raise ValueError("invalid package version")
     arch = validate_elf(binary)
@@ -75,11 +175,12 @@ def package(binary, version, out, repo=REPO):
     binary_version = subprocess.check_output([str(binary.resolve()), "--version"], text=True).strip()
     if not valid_binary_version(binary_version, version):
         raise ValueError(f"binary version {binary_version!r} differs from package version {version!r}")
-    files = {"sweetpad": binary, **source_files(repo)}
+    files = {"sweetpad": binary, **source_files(repo), **helper_files(helpers, arch)}
     receipt = {"packageVersion": version, "binaryVersion": binary_version,
                "platform": "linux-" + arch, "linkage": "static", "embeddedSetup": True,
                "baseline": "Static Linux CLI; Apple build toolchain setup supports Ubuntu 24.04, Debian 12/13 and Arch x64",
                "experimental": True, "appleSdkIncluded": False,
+               "swiftHelpers": json.loads((helpers / "libexec/sweetpad/sweetpad-swift-build.json").read_text()),
                "files": {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in sorted(files.items())}}
     out.mkdir(parents=True, exist_ok=True)
     archive = out / f"sweetpad-cli-{version}-linux-{arch}.tar.gz"
@@ -90,7 +191,7 @@ def package(binary, version, out, repo=REPO):
                 data = path.read_bytes()
                 entry = tarfile.TarInfo(name)
                 entry.size = len(data)
-                entry.mode = 0o755 if name == "sweetpad" or name.endswith(".sh") else 0o644
+                entry.mode = 0o755 if executable(name) else 0o644
                 entry.mtime = epoch
                 tar.addfile(entry, io.BytesIO(data))
             link = tarfile.TarInfo("sweetpad-dap")
@@ -105,9 +206,10 @@ def package(binary, version, out, repo=REPO):
     return {"archive": str(archive), "sha256": checksum, **receipt}
 
 
-def debian_package(binary, version, out, revision=1, repo=REPO):
+def debian_package(binary, helpers, version, out, revision=1, repo=REPO):
     arch = {"x64": "amd64", "arm64": "arm64"}[validate_elf(binary)]
     validate_static(binary)
+    shipped = helper_files(helpers, validate_elf(binary))
     # Debian sorts ~ prereleases before their stable release.
     upstream = version.replace("-", "~", 1)
     if revision < 1:
@@ -130,6 +232,12 @@ def debian_package(binary, version, out, revision=1, repo=REPO):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(source.read_bytes())
             path.chmod(0o644)
+        # sweetpad finds its helpers in /usr/libexec/sweetpad, beside /usr/bin.
+        for name, source in shipped.items():
+            path = stage / "usr" / name if name.startswith("libexec/") else stage / "usr/share/doc/sweetpad" / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(source.read_bytes())
+            path.chmod(0o755 if executable(name) else 0o644)
         control = stage / "DEBIAN"
         control.mkdir()
         installed_kib = sum(
@@ -140,10 +248,13 @@ def debian_package(binary, version, out, revision=1, repo=REPO):
             f"Package: sweetpad\nVersion: {deb_version}\nArchitecture: {arch}\n"
             f"Installed-Size: {installed_kib}\n"
             "Maintainer: Yevhenii Hyzyla <hyzyla@gmail.com>\nSection: devel\nPriority: optional\n"
-            "Depends: ca-certificates, python3, bash\n"
+            # The Swift helpers link the Swift runtime statically and
+            # these system libraries dynamically.
+            "Depends: ca-certificates, python3, bash, libc6 (>= 2.36), libgcc-s1, libstdc++6, libsqlite3-0\n"
             "Homepage: https://sweetpad.hyzyla.dev\n"
             "Description: Build Apple projects with the Sweetpad CLI\n"
-            " Static CLI with embedded public setup files. Apple SDKs and signing\n"
+            " Static CLI with embedded public setup files, and the Swift Build and\n"
+            " macro plugin binaries it runs on Linux. Apple SDKs and signing\n"
             " material are supplied separately.\n"
         )
         (control / "control").chmod(0o644)
@@ -166,12 +277,13 @@ def valid_binary_version(binary_version, version):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
+    parser.add_argument("--helpers", type=Path, required=True, help="output of build-swift-helpers.sh")
     parser.add_argument("--version", required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--deb", action="store_true", help="also build a Debian package")
     parser.add_argument("--deb-revision", type=int, default=1)
     args = parser.parse_args()
-    report = package(args.binary, args.version, args.out)
+    report = package(args.binary, args.helpers, args.version, args.out)
     if args.deb:
-        report["debian"] = debian_package(args.binary, args.version, args.out, args.deb_revision)
+        report["debian"] = debian_package(args.binary, args.helpers, args.version, args.out, args.deb_revision)
     print(json.dumps(report, indent=2))

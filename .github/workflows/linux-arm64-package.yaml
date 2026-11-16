@@ -28,8 +28,60 @@ on:
 permissions:
   contents: read
 jobs:
+  swift-helpers:
+    name: ${{ matrix.arch }} Swift Build and macro plugin
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: arm64, runner: ubuntu-24.04-arm, docker_arch: arm64}
+          - {arch: x64, runner: ubuntu-24.04, docker_arch: amd64}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      # The staged output is cached whole: it changes only with these inputs.
+      - name: Restore helpers built from the same inputs
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: swift-helpers
+          key: swift-helpers-${{ matrix.arch }}-${{ hashFiles('sweetpad-lib/ci/build-swift-helpers.sh', 'sweetpad-lib/ci/swift-helpers-NOTICE.md', 'sweetpad-lib/ci/swift-build-*.patch', 'sweetpad-lib/ci/swift-llbuild-*.patch', 'sweetpad-lib/ci/swift-build-Package.resolved', 'sweetpad-lib/ci/linux-toolchain.json', 'sweetpad-lib/ci/linux-host-tools.sh', 'sweetpad-cli/macros/**') }}
+      # Debian 12 has the oldest glibc the package supports, and the
+      # runtime libraries come from swift.org's Debian 12 toolchain.
+      - name: Build on Debian 12 against the pinned Swift
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          docker run --rm --platform linux/${{ matrix.docker_arch }} -v "$PWD:/src" debian:12 bash -euc '
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -yqq python3 ca-certificates patchelf
+            SWIFT_VERSION="$(python3 -c "import json; print(json.load(open(\"/src/sweetpad-lib/ci/linux-toolchain.json\"))[\"swift\"])")"
+            . /src/sweetpad-lib/ci/linux-host-tools.sh
+            sweetpad_install_host_tools
+            git config --global --add safe.directory "*"
+            bash /src/sweetpad-lib/ci/build-swift-helpers.sh /src/swift-helpers
+            chown -R "$(stat -c %u:%g /src)" /src/swift-helpers
+          '
+      - name: Check the helpers start with no Swift installed
+        run: |
+          docker run --rm --platform linux/${{ matrix.docker_arch }} -v "$PWD/swift-helpers:/helpers:ro" debian:12 bash -euc '
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -yqq libsqlite3-0 libstdc++6
+            ! command -v swift
+            /helpers/libexec/sweetpad/swbuild --version
+            /helpers/libexec/sweetpad/sweetpad-macros --help > /dev/null
+          '
+      - name: Archive the helpers
+        run: tar -C swift-helpers -czf swift-helpers-linux-${{ matrix.arch }}.tar.gz .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: swift-helpers-linux-${{ matrix.arch }}
+          path: swift-helpers-linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
   package:
     name: ${{ matrix.arch }} static archive, Debian package and clean installs
+    needs: swift-helpers
     strategy:
       fail-fast: false
       matrix:
@@ -74,7 +126,7 @@ jobs:
           python3 -m unittest discover -s sweetpad-cli/ci -p test_linux_package.py
           python3 -m unittest discover -s sweetpad-cli/ci -p test_linux_apt.py
           python3 -m unittest discover -s sweetpad-cli/ci -p test_device_discovery.py
-          bash -n sweetpad-lib/ci/linux-setup.sh sweetpad-lib/ci/linux-host-tools.sh
+          bash -n sweetpad-lib/ci/linux-setup.sh sweetpad-lib/ci/linux-host-tools.sh sweetpad-lib/ci/build-swift-helpers.sh
       - uses: Swatinem/rust-cache@v2
       - name: Check static CLI and HTTPS
         run: |
@@ -82,12 +134,19 @@ jobs:
           cargo test --release --locked -p sweetpad-cli --lib --target ${{ matrix.target }} static_https_uses_host_certificate_store -- --ignored
       - name: Build static Linux release CLI
         run: cargo build --release --locked -p sweetpad-cli --bin sweetpad --target ${{ matrix.target }} -j 4
+      - uses: actions/download-artifact@v8
+        with:
+          name: swift-helpers-linux-${{ matrix.arch }}
+          path: ${{ runner.temp }}
       - name: Package standalone binary and Debian package
         run: |
           VERSION="$(python3 sweetpad-cli/ci/release-version.py)"
           export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          python3 sweetpad-cli/ci/package-linux.py --binary target/${{ matrix.target }}/release/sweetpad --version "$VERSION" --out dist --deb
-          python3 sweetpad-cli/ci/package-linux.py --binary target/${{ matrix.target }}/release/sweetpad --version "$VERSION" --out "$RUNNER_TEMP/deb-upgrade" --deb --deb-revision 2
+          HELPERS="$RUNNER_TEMP/swift-helpers"
+          mkdir -p "$HELPERS"
+          tar -xzf "$RUNNER_TEMP/swift-helpers-linux-${{ matrix.arch }}.tar.gz" -C "$HELPERS"
+          python3 sweetpad-cli/ci/package-linux.py --binary target/${{ matrix.target }}/release/sweetpad --helpers "$HELPERS" --version "$VERSION" --out dist --deb
+          python3 sweetpad-cli/ci/package-linux.py --binary target/${{ matrix.target }}/release/sweetpad --helpers "$HELPERS" --version "$VERSION" --out "$RUNNER_TEMP/deb-upgrade" --deb --deb-revision 2
       - name: Install in a clean Ubuntu 24.04 container
         run: |
           mkdir -p "$RUNNER_TEMP/package-smoke"
@@ -96,7 +155,7 @@ jobs:
             -v "$PWD/sweetpad-cli/ci:/validation/sweetpad-cli/ci:ro" \
             -v "$RUNNER_TEMP/package-smoke:/reports" ubuntu:24.04 bash -euc '
               apt-get update -qq
-              DEBIAN_FRONTEND=noninteractive apt-get install -yqq python3 ca-certificates
+              DEBIAN_FRONTEND=noninteractive apt-get install -yqq python3 ca-certificates libsqlite3-0
               python3 /validation/sweetpad-cli/ci/check-linux-package.py --archive "$(find /artifacts -maxdepth 1 -name "*.tar.gz")" --out /reports/install
             '
       - name: Check Debian install, upgrade and removal
@@ -137,3 +196,49 @@ jobs:
             dist/*.deb
             dist/*.sha256
           if-no-files-found: error
+
+  host-installs:
+    name: ${{ matrix.image }} / ${{ matrix.arch }} packaged Swift helpers (no Swift)
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {image: "ubuntu:24.04", arch: x64, docker_arch: amd64, runner: ubuntu-24.04}
+          - {image: "ubuntu:24.04", arch: arm64, docker_arch: arm64, runner: ubuntu-24.04-arm}
+          - {image: "debian:12", arch: x64, docker_arch: amd64, runner: ubuntu-24.04}
+          - {image: "debian:12", arch: arm64, docker_arch: arm64, runner: ubuntu-24.04-arm}
+          - {image: "debian:13", arch: x64, docker_arch: amd64, runner: ubuntu-24.04}
+          - {image: "debian:13", arch: arm64, docker_arch: arm64, runner: ubuntu-24.04-arm}
+          - {image: "archlinux:base", arch: x64, docker_arch: amd64, runner: ubuntu-24.04}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: cli-tarball-linux-${{ matrix.arch }}
+          path: dist
+      - name: Run the helpers from the archive
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/helpers"
+          docker run --rm --platform linux/${{ matrix.docker_arch }} \
+            -v "$PWD/dist:/artifacts:ro" -v "$PWD/sweetpad-cli/ci:/validation:ro" \
+            -v "$RUNNER_TEMP/helpers:/reports" "$IMAGE" bash -euc '
+              if command -v apt-get >/dev/null; then
+                apt-get update -qq
+                DEBIAN_FRONTEND=noninteractive apt-get install -yqq python3 ca-certificates libsqlite3-0 libstdc++6
+              else
+                pacman -Syu --noconfirm
+                pacman -S --needed --noconfirm python sqlite gcc-libs
+              fi
+              python3 /validation/check-linux-helpers.py --archive "$(find /artifacts -maxdepth 1 -name "*.tar.gz")" --out /reports/run
+            '
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linux-helpers-${{ matrix.arch }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/helpers/run/*
+          if-no-files-found: warn

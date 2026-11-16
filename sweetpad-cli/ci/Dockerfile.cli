@@ -1,18 +1,20 @@
-# Static CLI, public CA certificates, and license notices. No Apple SDKs.
-FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS certificates
-RUN apt-get update -qq && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-FROM scratch
+# Static CLI, its Swift Build and macro plugin helpers, and license notices.
+# No Apple SDKs. Debian 12 carries the glibc and system libraries the helpers
+# load; the CLI itself is static.
+FROM debian:12-slim
 ARG TARGETARCH
 ARG VERSION
 ARG REVISION
 LABEL org.opencontainers.image.source="https://github.com/sweetpad-dev/sweetpad" \
       org.opencontainers.image.title="Sweetpad CLI" \
-      org.opencontainers.image.description="Static Sweetpad CLI; Apple SDKs and build toolchains supplied separately" \
+      org.opencontainers.image.description="Sweetpad CLI with Swift Build; Apple SDKs and the Swift compiler supplied separately" \
       org.opencontainers.image.version=$VERSION \
       org.opencontainers.image.revision=$REVISION
-COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY linux-${TARGETARCH}/ /usr/local/bin/
+RUN apt-get update -qq \
+    && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 libstdc++6 \
+    && rm -rf /var/lib/apt/lists/*
+COPY linux-${TARGETARCH}/bin/ /usr/local/bin/
+COPY linux-${TARGETARCH}/libexec/ /usr/local/libexec/
 COPY licenses/ /usr/share/licenses/sweetpad/
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 WORKDIR /workspace

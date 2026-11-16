@@ -38,23 +38,18 @@ fn fingerprint() -> String {
     digest
 }
 
-/// The SHA-256 of the Swift Build patches and lockfile this sweetpad
-/// carries, one after another, as `linux-setup.sh` records it beside the
-/// `swbuild` it builds.
+/// The SHA-256 of the Swift Build patches and lockfile this sweetpad was
+/// released with, one after another, as `build-swift-helpers.sh` records it
+/// beside the `swbuild` it builds.
 pub(crate) fn swift_build_patches() -> String {
-    let mut input = Vec::new();
-    for name in [
-        "swift-build-linux.patch",
-        "swift-build-generic-debug-bridges.patch",
-        "swift-llbuild-directory-race.patch",
-        "swift-llbuild-spawn-descriptors.patch",
-        "swift-build-Package.resolved",
-    ] {
-        let path = format!("setup/sweetpad-lib/ci/{name}");
-        if let Some((_, bytes)) = FILES.iter().find(|(n, _)| *n == path) {
-            input.extend_from_slice(bytes);
-        }
-    }
+    let input = [
+        include_bytes!("../../../sweetpad-lib/ci/swift-build-linux.patch").as_slice(),
+        include_bytes!("../../../sweetpad-lib/ci/swift-build-generic-debug-bridges.patch"),
+        include_bytes!("../../../sweetpad-lib/ci/swift-llbuild-directory-race.patch"),
+        include_bytes!("../../../sweetpad-lib/ci/swift-llbuild-spawn-descriptors.patch"),
+        include_bytes!("../../../sweetpad-lib/ci/swift-build-Package.resolved"),
+    ]
+    .concat();
     let mut digest = String::with_capacity(64);
     for byte in sweetpad_lib::xcode_hash::sha256(&input) {
         write!(digest, "{byte:02x}").unwrap();
@@ -152,18 +147,20 @@ mod tests {
     use crate::cli::testdir::TempDir;
 
     #[test]
-    fn standalone_resources_include_bootstrap_macros_and_sample() {
+    fn standalone_resources_include_bootstrap_and_sample() {
         let dir = TempDir::new("embedded-public-resources");
         let root = materialize(&dir.join("cache")).unwrap();
         for path in [
             "setup/sweetpad-lib/ci/linux-setup.sh",
             "setup/sweetpad-lib/ci/apple-auth.py",
             "setup/sweetpad-lib/ci/linux-xcode-download.py",
-            "setup/sweetpad-cli/macros/Package.swift",
             "examples/LinuxApp/LinuxApp.xcodeproj/project.pbxproj",
         ] {
             assert!(root.join(path).is_file(), "{path}");
         }
+        // Swift Build and the macro plugin ship built, beside the binary.
+        assert!(!root.join("setup/sweetpad-cli/macros").exists());
+        assert!(!root.join("setup/sweetpad-lib/ci/swift-build-linux.patch").exists());
         assert_eq!(materialize(&dir.join("cache")).unwrap(), root);
     }
 

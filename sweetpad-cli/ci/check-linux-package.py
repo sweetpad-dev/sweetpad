@@ -56,6 +56,8 @@ def check(archive, out):
     shutil.copyfile(extracted / "sweetpad", prefix / "bin/sweetpad.new")
     (prefix / "bin/sweetpad.new").chmod(0o755)
     os.replace(prefix / "bin/sweetpad.new", prefix / "bin/sweetpad")
+    # The helpers go in the prefix's libexec, where the CLI looks beside bin.
+    shutil.copytree(extracted / "libexec/sweetpad", prefix / "libexec/sweetpad", symlinks=True)
     assert private.read_text() == "preserve SDK state"
     binary = prefix / "bin/sweetpad"
     assert hashlib.sha256(binary.read_bytes()).hexdigest() == manifest["files"]["sweetpad"]
@@ -94,6 +96,10 @@ def check(archive, out):
     assert "Expected a Sweetpad SDK export" in json.loads(installed_setup.stderr)["error"]["message"]
     doctor = json.loads(invoke("linux-doctor-missing-tools", [binary, "doctor", "--target", "ios", "--json"], success=False).stdout)
     assert doctor["ok"] and doctor["data"]["summary"]["problems"] > 0
+    checks = {c["name"]: c for c in doctor["data"]["checks"]}
+    assert checks["Swift Build"]["status"] == "ok", checks["Swift Build"]
+    assert checks["Swift Build"]["detail"].startswith(str(prefix / "libexec/sweetpad/swbuild")), checks["Swift Build"]
+    assert checks["Macro plugin"]["status"] == "ok", checks["Macro plugin"]
     assert not any(c["name"] in ("Xcode", "xcodebuild", "Simulator runtimes") for c in doctor["data"]["checks"])
     value = json.loads(invoke("device-guide", [binary, "help", "linux-devices", "--json"]).stdout)
     assert value["ok"]
@@ -107,13 +113,13 @@ def check(archive, out):
     assert error["ok"] is False and any(s in error["error"]["message"].lower() for s in ["sdk", "swift", "swbuild"])
     setup = next((home / ".cache/sweetpad/distribution").glob("*/setup/sweetpad-lib/ci/linux-setup.sh"))
     invoke("setup-syntax", ["/bin/bash", "-n", setup])
-    assert (setup.parents[2] / "sweetpad-cli/macros/Package.resolved").is_file()
+    assert not (setup.parents[2] / "sweetpad-cli/macros").exists()
     assert shutil.which("swift", path=env["PATH"]) is None
     report = {"passed": True, "archiveSha256": expected[0], "binarySha256": manifest["files"]["sweetpad"],
               "binaryVersion": manifest["binaryVersion"], "emptyHome": True, "developerEnvironmentInherited": False,
               "sdkAvailable": False, "sourceCheckoutRequired": False, "installedPrefix": str(prefix),
               "checks": ["checksum", "manifest hashes", "single-binary install", "static linkage", "version", "DAP alias", "help", "device guide",
-                         "embedded setup files", "embedded authentication and download helpers", "non-interactive Apple sessions",
+                         "embedded setup files", "packaged Swift helpers in the prefix", "embedded authentication and download helpers", "non-interactive Apple sessions",
                          "project schemes", "missing-toolchain diagnostic", "bundled setup syntax", "SDK state preserved"]}
     (out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))

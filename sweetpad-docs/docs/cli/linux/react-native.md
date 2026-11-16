@@ -104,7 +104,7 @@ Its workspace is in the example's iOS directory, and its scheme is MmkvExample.
 Its Hermes compiler comes from the repository-root dependency directory.
 
 The current build path does not need the former MMKV debug-thunk fixture shim.
-The setup script includes the Swift Build correction for the affected generated C++ bridge helpers.
+The Swift Build that ships with SweetPad includes the fix for these generated C++ bridge helpers.
 This covers the pinned compiler and example; other Swift/C++ combinations can expose different issues.
 
 ## Use your own app

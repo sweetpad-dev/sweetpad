@@ -77,9 +77,9 @@ sweetpad doctor --target ios
 
 Use `--xcode 27.2` in place of `--sdk` to download that release; a beta needs its name, as in `--xcode '27.3 beta'`.
 
-Setup installs the system packages, the pinned Swift toolchain, a patched Swift Build, and the macro plugin.
+Setup installs the system packages and the pinned Swift toolchain.
 It then imports the SDK and builds a sample iPhone app to check the result.
-Compiling Swift Build takes the longest, about 14 minutes on the validated VM.
+Swift Build and the macro plugin ship prebuilt in the SweetPad package.
 
 The environment file puts the toolchain on `PATH` and selects the SDK.
 Source it in every new shell, or from your shell profile. In CI, source it in every step.
