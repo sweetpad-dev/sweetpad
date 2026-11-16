@@ -9,6 +9,7 @@
 //! leaves everything else to xtool's linker.
 
 use std::path::{Path, PathBuf};
+use std::os::unix::process::CommandExt as _;
 use std::process::{Command, ExitCode};
 
 mod autolink;
@@ -27,7 +28,13 @@ pub(super) fn main(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match Command::new(&linker).args(&args).status() {
+    // By name, since the linker can be a link to LLVM's multicall binary,
+    // which picks its tool from the name it's started under.
+    match Command::new(&linker)
+        .arg0("ld64.lld")
+        .args(&args)
+        .status()
+    {
         Ok(status) => ExitCode::from(
             status
                 .code()

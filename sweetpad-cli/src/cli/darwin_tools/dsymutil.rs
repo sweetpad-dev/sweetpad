@@ -4,6 +4,7 @@
 
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::os::unix::process::CommandExt as _;
 use std::process::{Command, ExitCode};
 
 use sweetpad_lib::{derived_data::plist_strings, xcscheme};
@@ -21,7 +22,9 @@ pub(super) fn main(args: &[String]) -> ExitCode {
 
 fn run(args: &[String]) -> Result<u8, String> {
     let tool = backend().ok_or("no LLVM dsymutil beside the SDK linker or on PATH")?;
+    // By name, as the linker stand-in does: see `ld::main`.
     let status = Command::new(tool)
+        .arg0("dsymutil")
         .args(linker_choice(args))
         .args(args)
         .status()
