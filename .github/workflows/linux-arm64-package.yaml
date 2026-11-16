@@ -79,6 +79,54 @@ jobs:
           path: swift-helpers-linux-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
 
+  darwin-linker:
+    name: ${{ matrix.arch }} LLD and dsymutil
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: arm64, runner: ubuntu-24.04-arm, docker_arch: arm64}
+          - {arch: x64, runner: ubuntu-24.04, docker_arch: amd64}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read the pinned LLVM
+        id: pin
+        run: echo "llvm=$(jq -r '.llvm + "-" + .llvmSourceSha256[0:12]' sweetpad-lib/ci/linux-toolchain.json)" >> "$GITHUB_OUTPUT"
+      # LLVM takes about an hour to build here, so the staged output is
+      # cached by the pinned release and the script that builds it.
+      - name: Restore the linker built from the same inputs
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: darwin-linker
+          key: darwin-linker-${{ matrix.arch }}-${{ steps.pin.outputs.llvm }}-${{ hashFiles('sweetpad-lib/ci/build-darwin-linker.sh') }}
+      - name: Build on Debian 12 from the pinned LLVM release
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          docker run --rm --platform linux/${{ matrix.docker_arch }} -v "$PWD:/src" debian:12 bash -euc '
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -yqq --no-install-recommends cmake ninja-build g++ python3 xz-utils curl ca-certificates binutils
+            bash /src/sweetpad-lib/ci/build-darwin-linker.sh /src/darwin-linker
+            chown -R "$(stat -c %u:%g /src)" /src/darwin-linker
+          '
+      - name: Check both tools start on Debian 12
+        run: |
+          docker run --rm --platform linux/${{ matrix.docker_arch }} -v "$PWD/darwin-linker:/linker:ro" debian:12 bash -euc '
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -yqq libstdc++6
+            /linker/libexec/sweetpad/ld64.lld --version | grep -q "^LLD "
+            /linker/libexec/sweetpad/dsymutil --version | grep -q "LLVM version"
+          '
+      - name: Archive the linker
+        run: tar -C darwin-linker -czf darwin-linker-linux-${{ matrix.arch }}.tar.gz .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: darwin-linker-linux-${{ matrix.arch }}
+          path: darwin-linker-linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
   package:
     name: ${{ matrix.arch }} static archive, Debian package and clean installs
     needs: swift-helpers
@@ -126,7 +174,7 @@ jobs:
           python3 -m unittest discover -s sweetpad-cli/ci -p test_linux_package.py
           python3 -m unittest discover -s sweetpad-cli/ci -p test_linux_apt.py
           python3 -m unittest discover -s sweetpad-cli/ci -p test_device_discovery.py
-          bash -n sweetpad-lib/ci/linux-setup.sh sweetpad-lib/ci/linux-host-tools.sh sweetpad-lib/ci/build-swift-helpers.sh
+          bash -n sweetpad-lib/ci/linux-setup.sh sweetpad-lib/ci/linux-host-tools.sh sweetpad-lib/ci/build-swift-helpers.sh sweetpad-lib/ci/build-darwin-linker.sh
       - uses: Swatinem/rust-cache@v2
       - name: Check static CLI and HTTPS
         run: |
