@@ -80,23 +80,42 @@ jobs:
           export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
           bash sweetpad-lib/ci/build-swift-helpers.sh "$HOME/sweetpad-target/debug"
       # It links and makes dSYMs with LLVM's multicall binary from the same
-      # folder: the one the package run built, else one built here from the
+      # folder: the one the given package run built, else the one from the
+      # latest successful package run on main, else one built here from the
       # pinned release, which needs cmake, ninja and a C++ compiler.
+      - name: Find a package run with LLVM's Apple linker
+        id: linker-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.artifact_run_id }}
+        run: |
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/linux-arm64-package.yaml/runs?branch=main&status=success&per_page=1" \
+              | python3 -c 'import json, sys; runs = json.load(sys.stdin)["workflow_runs"]; print(runs[0]["id"] if runs else "")' || true)"
+          fi
+          echo "id=$RUN_ID" >> "$GITHUB_OUTPUT"
       - name: Download LLVM's Apple linker
-        if: inputs.artifact_run_id != ''
+        if: steps.linker-run.outputs.id != ''
+        # A run from before the linker shipped has no such artifact.
+        continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           name: darwin-linker-linux-${{ inputs.package_arch }}
-          run-id: ${{ inputs.artifact_run_id }}
+          run-id: ${{ steps.linker-run.outputs.id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}
       - name: Install LLVM's Apple linker
         run: |
           ARCHIVE="$RUNNER_TEMP/darwin-linker-linux-${{ inputs.package_arch }}.tar.gz"
+          DEST="$HOME/sweetpad-target/debug"
+          PINNED="$(python3 -c 'import json; print(json.load(open("sweetpad-lib/ci/linux-toolchain.json"))["llvm"])')"
           if [ -f "$ARCHIVE" ]; then
-            tar -xzf "$ARCHIVE" -C "$HOME/sweetpad-target/debug"
-          else
-            bash sweetpad-lib/ci/build-darwin-linker.sh "$HOME/sweetpad-target/debug"
+            tar -xzf "$ARCHIVE" -C "$DEST"
+          fi
+          BUILT="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["llvm"])' "$DEST/libexec/sweetpad/sweetpad-llvm.json" 2>/dev/null || true)"
+          if [ "$BUILT" != "$PINNED" ]; then
+            bash sweetpad-lib/ci/build-darwin-linker.sh "$DEST"
           fi
       - name: Install frozen framework tools
         if: inputs.package_arch == 'arm64'
