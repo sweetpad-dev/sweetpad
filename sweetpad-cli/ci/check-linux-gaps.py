@@ -127,7 +127,7 @@ else: raise RuntimeError('Unexpected fixture action: '+request['action'])
     assert rows()[-2]["environment"]["ARCHIVE_PATH"] is None
     trace.unlink()
     pbx=project / "project.pbxproj"
-    text=pbx.read_text()
+    text=original_pbx=pbx.read_text()
     text=re.sub(r'shellScript = "(?:[^"\\]|\\.)*";', lambda _: 'shellScript = '+json.dumps("echo expected-script-failure >&2\nexit 1\n")+';',text,count=1)
     pbx.write_text(text)
     human=[arg for arg in build if arg!='--json']
@@ -136,6 +136,7 @@ else: raise RuntimeError('Unexpected fixture action: '+request['action'])
     (out/'human-failure.stderr').write_text(failure.stderr)
     assert failure.returncode != 0 and 'read full build log:' in failure.stderr
     assert [row['phase'] for row in rows()] == ['BuildAction.PreActions', 'BuildAction.PreActions.NoEnvironment']
+    pbx.write_text(original_pbx)
     scheme_file = project / "xcshareddata/xcschemes/LinuxApp.xcscheme"
     tree = ET.parse(scheme_file)
     action = tree.find("BuildAction/PreActions/ExecutionAction")
@@ -143,9 +144,12 @@ else: raise RuntimeError('Unexpected fixture action: '+request['action'])
     action.set("ActionType", "UnsupportedFixtureAction")
     tree.write(scheme_file, encoding="unicode")
     trace.unlink()
-    unsupported = invoke("unsupported-scheme-action", build, False)
-    assert "unsupported BuildAction.PreActions" in unsupported["error"]["message"]
-    assert not trace.exists()
+    # xcodebuild runs only shell actions and passes over the others.
+    assert invoke("unsupported-scheme-action", build)["data"]["built"]
+    assert [row["phase"] for row in rows()] == ["BuildAction.PreActions.NoEnvironment", "BuildAction.PostActions"]
+    human_skip = subprocess.run([str(binary), *human], cwd=source, env=env, capture_output=True, text=True, timeout=600)
+    assert human_skip.returncode == 0 and "which isn't a shell script, as xcodebuild does" in human_skip.stderr, human_skip.stderr
+    trace.unlink()
     action.set("ActionType", original_type)
     reference = action.find("ActionContent/EnvironmentBuildable/BuildableReference")
     reference.set("BlueprintIdentifier", "FFFFFFFFFFFFFFFFFFFFFFFF")
@@ -154,7 +158,7 @@ else: raise RuntimeError('Unexpected fixture action: '+request['action'])
     assert "references missing target" in missing_target["error"]["message"]
     assert not trace.exists()
     summary = {"passed": True, "compilation": f"real Linux {platform.machine()} host", "targetArchitecture": "arm64", "transport": "local fixture, no hardware",
-               "checks": ["sandboxed project script", "generated scheme source", "scheme action environment/order/failures", "archive actions", "clean", "purge", "configuration flag error", "discovery error",
+               "checks": ["sandboxed project script", "generated scheme source", "scheme action environment/order/failures", "non-shell scheme actions skipped", "archive actions", "clean", "purge", "configuration flag error", "discovery error",
                           "Linux picker", "app install engine", "run engine", "build --on device name"]}
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
