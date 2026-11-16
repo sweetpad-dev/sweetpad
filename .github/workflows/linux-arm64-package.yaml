@@ -171,6 +171,7 @@ jobs:
           python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_host.py
           python3 -m unittest discover -s sweetpad-lib/ci -p test_xcode_archive.py
           python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_release.py
+          python3 -m unittest discover -s sweetpad-lib/ci -p test_sdk_tree.py
           python3 -m unittest discover -s sweetpad-cli/ci -p test_linux_package.py
           python3 -m unittest discover -s sweetpad-cli/ci -p test_linux_apt.py
           python3 -m unittest discover -s sweetpad-cli/ci -p test_device_discovery.py
