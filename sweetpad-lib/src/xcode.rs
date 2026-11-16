@@ -138,12 +138,12 @@ pub fn darwin_sdk_bundle() -> PathBuf {
 }
 
 /// Apple's macro plugins that `sweetpad-macros` stands in for. Xcode has
-/// them as macOS libraries. The Darwin SDK's plugin server lacks
-/// `SwiftDataMacros` and has `#Preview` only for SwiftUI views, and the
-/// toolchain's own `FoundationMacros` names `FoundationEssentials` in its
-/// expansions, which the SDK's Foundation doesn't have.
+/// them as macOS libraries. The toolchain's own `FoundationMacros` names
+/// `FoundationEssentials` in its expansions, which the SDK's Foundation
+/// doesn't have.
 pub const DARWIN_MACRO_MODULES: &[&str] = &[
     "FoundationMacros",
+    "FoundationModelsMacros",
     "PreviewsMacros",
     "SwiftDataMacros",
     "SwiftUIMacros",

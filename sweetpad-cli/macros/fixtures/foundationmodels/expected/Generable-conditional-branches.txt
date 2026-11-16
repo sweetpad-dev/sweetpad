@@ -1,0 +1,158 @@
+=== __swiftmacro_4main14ConditionalRaw9GenerablefMe_.swift
+extension ConditionalRaw: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        let rawValue = try content.value(String.self)
+        if let value = Self(rawValue: rawValue) {
+            self = value
+        } else {
+            if #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) {
+                throw FoundationModels.GeneratedContent.ParsingError(rawContent: content.jsonString, debugDescription: "Unexpected rawValue \"\(rawValue)\" for \(Self.self)")
+            } else {
+                throw FoundationModels.LanguageModelSession.GenerationError.decodingFailure(FoundationModels.LanguageModelSession.GenerationError.Context(debugDescription: "Unexpected rawValue \"\(rawValue)\" for \(Self.self)"))
+            }
+        }
+    }
+}
+=== __swiftmacro_4main14ConditionalRaw9GenerablefMm_.swift
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    var properties = [String]()
+    #if os(macOS)
+    properties.append(mac.rawValue)
+    #else
+    properties.append(other.rawValue)
+    #endif
+    properties.append(common.rawValue)
+    return FoundationModels.GenerationSchema(type: Self.self, anyOf: properties)
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    rawValue.generatedContent
+}
+=== __swiftmacro_4main16ConditionalPlain9GenerablefMe_.swift
+extension ConditionalPlain: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        let rawValue = try content.value(String.self)
+        switch rawValue {
+        #if os(macOS)
+        case "mac":
+            self = .mac
+        #else
+        case "other":
+            self = .other
+        #endif
+        case "common":
+            self = .common
+        default:
+            if #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) {
+                throw FoundationModels.GeneratedContent.ParsingError(rawContent: content.jsonString, debugDescription: "Unexpected value \"\(rawValue)\" for \(Self.self)")
+            } else {
+                throw FoundationModels.LanguageModelSession.GenerationError.decodingFailure(FoundationModels.LanguageModelSession.GenerationError.Context(debugDescription: "Unexpected value \"\(rawValue)\" for \(Self.self)"))
+            }
+        }
+    }
+}
+=== __swiftmacro_4main16ConditionalPlain9GenerablefMm_.swift
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    var properties = [String]()
+    #if os(macOS)
+    properties.append("mac")
+    #else
+    properties.append("other")
+    #endif
+    properties.append("common")
+    return FoundationModels.GenerationSchema(type: Self.self, anyOf: properties)
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    switch self {
+    #if os(macOS)
+    case .mac:
+    "mac".generatedContent
+    #else
+    case .other:
+    "other".generatedContent
+    #endif
+
+    case .common:
+    "common".generatedContent
+    }
+}
+=== __swiftmacro_4main19ConditionalBranches9GenerablefMe_.swift
+extension ConditionalBranches: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        #if os(macOS)
+        self.first = try content.value(forProperty: "first")
+        self.second = try content.value(forProperty: "second")
+        #elseif os(iOS)
+        self.mobile = try content.value(forProperty: "mobile")
+        #else
+        self.fallback = try content.value(forProperty: "fallback")
+        #endif
+    }
+}
+=== __swiftmacro_4main19ConditionalBranches9GenerablefMm_.swift
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    var properties = [FoundationModels.GenerationSchema.Property]()
+    #if os(macOS)
+    properties.append(FoundationModels.GenerationSchema.Property(name: "first", type: String.self))
+    properties.append(FoundationModels.GenerationSchema.Property(name: "second", type: Int.self))
+    #elseif os(iOS)
+    properties.append(FoundationModels.GenerationSchema.Property(name: "mobile", type: Bool.self))
+    #else
+    properties.append(FoundationModels.GenerationSchema.Property(name: "fallback", type: Double.self))
+    #endif
+    return FoundationModels.GenerationSchema(
+        type: Self.self,
+        properties: properties
+    )
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    let explicitNil = false
+    var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+    #if os(macOS)
+    addProperty(name: "first", value: self.first)
+    addProperty(name: "second", value: self.second)
+    #elseif os(iOS)
+    addProperty(name: "mobile", value: self.mobile)
+    #else
+    addProperty(name: "fallback", value: self.fallback)
+    #endif
+    return GeneratedContent(
+        properties: properties,
+        uniquingKeysWith: { _, second in
+            second
+        }
+    )
+    func addProperty(name: String, value: some Generable) {
+      properties.append((name: name, value: value))
+    }
+    func addProperty(name: String, value: (some Generable)?) {
+      if explicitNil || value != nil {
+        properties.append((name: name, value: value))
+      }
+    }
+}
+
+nonisolated struct PartiallyGenerated: Identifiable, nonisolated FoundationModels.ConvertibleFromGeneratedContent {
+    var id: GenerationID
+    #if os(macOS)
+    var first: String.PartiallyGenerated?
+    var second: Int.PartiallyGenerated?
+    #elseif os(iOS)
+    var mobile: Bool.PartiallyGenerated?
+    #else
+    var fallback: Double.PartiallyGenerated?
+    #endif
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.id = content.id ?? GenerationID()
+        #if os(macOS)
+        self.first = try content.value(forProperty: "first")
+        self.second = try content.value(forProperty: "second")
+        #elseif os(iOS)
+        self.mobile = try content.value(forProperty: "mobile")
+        #else
+        self.fallback = try content.value(forProperty: "fallback")
+        #endif
+    }
+}

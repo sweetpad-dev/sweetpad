@@ -1,0 +1,59 @@
+=== __swiftmacro_4main13GuideVariants9GenerablefMe_.swift
+extension GuideVariants: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.first = try content.value(forProperty: "first")
+        self.second = try content.value(forProperty: "second")
+    }
+}
+=== __swiftmacro_4main13GuideVariants9GenerablefMm_.swift
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    FoundationModels.GenerationSchema(
+        type: Self.self,
+        properties: [
+            FoundationModels.GenerationSchema.Property(name: "first", description: "Multiple", type: String.self),
+            FoundationModels.GenerationSchema.Property(name: "second", description: "Multiple", type: String.self)
+        ]
+    )
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    let explicitNil = false
+    var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+    addProperty(name: "first", value: self.first)
+    addProperty(name: "second", value: self.second)
+    return GeneratedContent(
+        properties: properties,
+        uniquingKeysWith: { _, second in
+            second
+        }
+    )
+    func addProperty(name: String, value: some Generable) {
+      properties.append((name: name, value: value))
+    }
+    func addProperty(name: String, value: (some Generable)?) {
+      if explicitNil || value != nil {
+        properties.append((name: name, value: value))
+      }
+    }
+}
+
+nonisolated struct PartiallyGenerated: Identifiable, nonisolated FoundationModels.ConvertibleFromGeneratedContent {
+    var id: GenerationID
+    var first: String.PartiallyGenerated?
+    var second: String.PartiallyGenerated?
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.id = content.id ?? GenerationID()
+        self.first = try content.value(forProperty: "first")
+        self.second = try content.value(forProperty: "second")
+    }
+}
+=== __swiftmacro_4main13GuideVariantsV5first0B0fMp_.swift
+
+=== __swiftmacro_4main13GuideVariantsV6second0B0fMp_.swift
+
+=== __swiftmacro_4main13GuideVariantsV6shared0B0fMp_.swift
+
+=== diagnostic
+Guide-variants.swift:8:5: error: '@Guide' can only be used with a stored property. (from macro 'Guide')
+=== diagnostic
+Guide-variants.swift:9:16: error: static property 'shared' is not concurrency-safe because it is nonisolated global shared mutable state [#MutableGlobalVariable]

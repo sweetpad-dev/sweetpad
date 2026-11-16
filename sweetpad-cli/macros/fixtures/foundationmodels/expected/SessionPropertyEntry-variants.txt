@@ -1,0 +1,46 @@
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE14__Key_inferred33_3D6E36740AC67E8C1E5D7637EAFE63C0LLV12defaultValue02__cd12EntryDefaultS0fMa_.swift
+{
+    get {
+        42
+    }
+}
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE14__Key_optional33_3D6E36740AC67E8C1E5D7637EAFE63C0LLV12defaultValue02__cd12EntryDefaultS0fMa_.swift
+{
+    get {
+        nil
+    }
+}
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE8inferred0cD5EntryfMa_.swift
+{
+    get {
+        self[__Key_inferred.self]
+    }
+    set {
+        self[__Key_inferred.self] = newValue
+    }
+    _modify {
+        yield &self[__Key_inferred.self]
+    }
+}
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE8inferred0cD5EntryfMp_.swift
+private struct __Key_inferred: FoundationModels.SessionPropertyKey {
+    @FoundationModels.__SessionPropertyEntryDefaultValue
+    static var defaultValue = 42
+}
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE8optional0cD5EntryfMa_.swift
+{
+    get {
+        self[__Key_optional.self]
+    }
+    set {
+        self[__Key_optional.self] = newValue
+    }
+    _modify {
+        yield &self[__Key_optional.self]
+    }
+}
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE8optional0cD5EntryfMp_.swift
+private struct __Key_optional: FoundationModels.SessionPropertyKey {
+    @FoundationModels.__SessionPropertyEntryDefaultValue
+    static var defaultValue: String? = nil
+}

@@ -1,0 +1,160 @@
+=== __swiftmacro_4main12LabeledValue9GenerablefMe_.swift
+extension LabeledValue: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        let type: String = try content.value(forProperty: "type")
+        switch type {
+        case "one":
+            self = .one(try content.value(forProperty: "value"))
+        case "two":
+            self = .two(
+                try content.value(forProperty: "first"),
+                try content.value(forProperty: "second")
+            )
+        default:
+            if #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) {
+                throw FoundationModels.GeneratedContent.ParsingError(rawContent: content.jsonString, debugDescription: "Unexpected type \"\(type)\" for \(Self.self)")
+            } else {
+                throw FoundationModels.LanguageModelSession.GenerationError.decodingFailure(FoundationModels.LanguageModelSession.GenerationError.Context(debugDescription: "Unexpected type \"\(type)\" for \(Self.self)"))
+            }
+        }
+    }
+}
+=== __swiftmacro_4main12LabeledValue9GenerablefMm_.swift
+nonisolated enum PartiallyGenerated: nonisolated FoundationModels.ConvertibleFromGeneratedContent {
+    case one(String.PartiallyGenerated?)
+    case two(String.PartiallyGenerated?, Int.PartiallyGenerated?)
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        let type: String = try content.value(forProperty: "type")
+        switch type {
+        case "one":
+            self = .one(try content.value(forProperty: "value"))
+        case "two":
+            self = .two(
+                try content.value(forProperty: "first"),
+                try content.value(forProperty: "second")
+            )
+        default:
+            if #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) {
+                throw FoundationModels.GeneratedContent.ParsingError(rawContent: content.jsonString, debugDescription: "Unexpected type \"\(type)\" for \(Self.self)")
+            } else {
+                throw FoundationModels.LanguageModelSession.GenerationError.decodingFailure(FoundationModels.LanguageModelSession.GenerationError.Context(debugDescription: "Unexpected type \"\(type)\" for \(Self.self)"))
+            }
+        }
+    }
+}
+
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    FoundationModels.GenerationSchema(
+        type: Self.self,
+        anyOf: [
+            DiscriminatedOne.self,
+            DiscriminatedTwo.self
+        ]
+    )
+}
+
+private nonisolated struct DiscriminatedOne: nonisolated FoundationModels.Generable {
+    @Guide(.constant("one"))
+    let type: String
+    let value: String
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.type = try content.value(forProperty: "type")
+        self.value = try content.value(forProperty: "value")
+    }
+    nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+        FoundationModels.GenerationSchema(
+            type: Self.self,
+            properties: [
+                FoundationModels.GenerationSchema.Property(name: "type", type: String.self, guides: [.constant("one")]),
+                FoundationModels.GenerationSchema.Property(name: "value", type: String.self)
+            ]
+        )
+    }
+    nonisolated var generatedContent: GeneratedContent {
+        let explicitNil = false
+        var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+        addProperty(name: "type", value: self.type)
+        addProperty(name: "value", value: self.value)
+        return GeneratedContent(
+            properties: properties,
+            uniquingKeysWith: { _, second in
+                second
+            }
+        )
+        func addProperty(name: String, value: some Generable) {
+          properties.append((name: name, value: value))
+        }
+        func addProperty(name: String, value: (some Generable)?) {
+          if explicitNil || value != nil {
+            properties.append((name: name, value: value))
+          }
+        }
+    }
+}
+
+private nonisolated struct DiscriminatedTwo: nonisolated FoundationModels.Generable {
+    @Guide(.constant("two"))
+    let type: String
+    let first: String
+    let second: Int
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.type = try content.value(forProperty: "type")
+        self.first = try content.value(forProperty: "first")
+        self.second = try content.value(forProperty: "second")
+    }
+    nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+        FoundationModels.GenerationSchema(
+            type: Self.self,
+            properties: [
+                FoundationModels.GenerationSchema.Property(name: "type", type: String.self, guides: [.constant("two")]),
+                FoundationModels.GenerationSchema.Property(name: "first", type: String.self),
+                FoundationModels.GenerationSchema.Property(name: "second", type: Int.self)
+            ]
+        )
+    }
+    nonisolated var generatedContent: GeneratedContent {
+        let explicitNil = false
+        var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+        addProperty(name: "type", value: self.type)
+        addProperty(name: "first", value: self.first)
+        addProperty(name: "second", value: self.second)
+        return GeneratedContent(
+            properties: properties,
+            uniquingKeysWith: { _, second in
+                second
+            }
+        )
+        func addProperty(name: String, value: some Generable) {
+          properties.append((name: name, value: value))
+        }
+        func addProperty(name: String, value: (some Generable)?) {
+          if explicitNil || value != nil {
+            properties.append((name: name, value: value))
+          }
+        }
+    }
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    switch self {
+    case .one(let value):
+        GeneratedContent(
+            properties: [
+                "type": "one",
+                "value": value
+            ]
+        )
+    case .two(let first, let second):
+        GeneratedContent(
+            properties: [
+                "type": "two",
+                "first": first,
+                "second": second
+            ]
+        )
+    }
+}
+=== __swiftmacro_4main12LabeledValueO16DiscriminatedOne33_923D2F9544793D9C0A26251B5AF38182LLV4type5GuidefMp_.swift
+
+=== __swiftmacro_4main12LabeledValueO16DiscriminatedTwo33_923D2F9544793D9C0A26251B5AF38182LLV4type5GuidefMp_.swift
+

@@ -1,0 +1,113 @@
+=== __swiftmacro_4main13CustomPartial9GenerablefMe_.swift
+extension CustomPartial: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.value = try content.value(forProperty: "value")
+    }
+}
+=== __swiftmacro_4main13CustomPartial9GenerablefMm_.swift
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    FoundationModels.GenerationSchema(
+        type: Self.self,
+        properties: [
+            FoundationModels.GenerationSchema.Property(name: "value", type: String.self)
+        ]
+    )
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    let explicitNil = false
+    var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+    addProperty(name: "value", value: self.value)
+    return GeneratedContent(
+        properties: properties,
+        uniquingKeysWith: { _, second in
+            second
+        }
+    )
+    func addProperty(name: String, value: some Generable) {
+      properties.append((name: name, value: value))
+    }
+    func addProperty(name: String, value: (some Generable)?) {
+      if explicitNil || value != nil {
+        properties.append((name: name, value: value))
+      }
+    }
+}
+=== __swiftmacro_4main17CustomEnumPartial9GenerablefMe_.swift
+extension CustomEnumPartial: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        let type: String = try content.value(forProperty: "type")
+        switch type {
+        case "value":
+            self = .value(try content.value(forProperty: "value"))
+        default:
+            if #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) {
+                throw FoundationModels.GeneratedContent.ParsingError(rawContent: content.jsonString, debugDescription: "Unexpected type \"\(type)\" for \(Self.self)")
+            } else {
+                throw FoundationModels.LanguageModelSession.GenerationError.decodingFailure(FoundationModels.LanguageModelSession.GenerationError.Context(debugDescription: "Unexpected type \"\(type)\" for \(Self.self)"))
+            }
+        }
+    }
+}
+=== __swiftmacro_4main17CustomEnumPartial9GenerablefMm_.swift
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    FoundationModels.GenerationSchema(
+        type: Self.self,
+        anyOf: [
+            DiscriminatedValue.self
+        ]
+    )
+}
+
+private nonisolated struct DiscriminatedValue: nonisolated FoundationModels.Generable {
+    @Guide(.constant("value"))
+    let type: String
+    let value: String
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.type = try content.value(forProperty: "type")
+        self.value = try content.value(forProperty: "value")
+    }
+    nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+        FoundationModels.GenerationSchema(
+            type: Self.self,
+            properties: [
+                FoundationModels.GenerationSchema.Property(name: "type", type: String.self, guides: [.constant("value")]),
+                FoundationModels.GenerationSchema.Property(name: "value", type: String.self)
+            ]
+        )
+    }
+    nonisolated var generatedContent: GeneratedContent {
+        let explicitNil = false
+        var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+        addProperty(name: "type", value: self.type)
+        addProperty(name: "value", value: self.value)
+        return GeneratedContent(
+            properties: properties,
+            uniquingKeysWith: { _, second in
+                second
+            }
+        )
+        func addProperty(name: String, value: some Generable) {
+          properties.append((name: name, value: value))
+        }
+        func addProperty(name: String, value: (some Generable)?) {
+          if explicitNil || value != nil {
+            properties.append((name: name, value: value))
+          }
+        }
+    }
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    switch self {
+    case .value(let value):
+        GeneratedContent(
+            properties: [
+                "type": "value",
+                "value": value
+            ]
+        )
+    }
+}
+=== __swiftmacro_4main17CustomEnumPartialO18DiscriminatedValue33_EADDFEF5F193DAADB8D46A8C805D4B5CLLV4type5GuidefMp_.swift
+

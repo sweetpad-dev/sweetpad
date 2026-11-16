@@ -1,0 +1,88 @@
+=== __swiftmacro_4main11PublicValue9GenerablefMe_.swift
+extension PublicValue: nonisolated FoundationModels.Generable {
+    nonisolated public init(_ content: FoundationModels.GeneratedContent) throws {
+        self.value = try content.value(forProperty: "value")
+    }
+}
+=== __swiftmacro_4main11PublicValue9GenerablefMm_.swift
+nonisolated public static var generationSchema: FoundationModels.GenerationSchema {
+    FoundationModels.GenerationSchema(
+        type: Self.self,
+        properties: [
+            FoundationModels.GenerationSchema.Property(name: "value", type: String.self)
+        ]
+    )
+}
+
+nonisolated public var generatedContent: GeneratedContent {
+    let explicitNil = false
+    var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+    addProperty(name: "value", value: self.value)
+    return GeneratedContent(
+        properties: properties,
+        uniquingKeysWith: { _, second in
+            second
+        }
+    )
+    func addProperty(name: String, value: some Generable) {
+      properties.append((name: name, value: value))
+    }
+    func addProperty(name: String, value: (some Generable)?) {
+      if explicitNil || value != nil {
+        properties.append((name: name, value: value))
+      }
+    }
+}
+
+nonisolated public struct PartiallyGenerated: Identifiable, nonisolated FoundationModels.ConvertibleFromGeneratedContent {
+    public var id: GenerationID
+    public var value: String.PartiallyGenerated?
+    nonisolated public init(_ content: FoundationModels.GeneratedContent) throws {
+        self.id = content.id ?? GenerationID()
+        self.value = try content.value(forProperty: "value")
+    }
+}
+=== __swiftmacro_4main12PrivateValue33_9A8766BE0137A35BC3FA2067075FD372LL9GenerablefMe_.swift
+extension PrivateValue: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.value = try content.value(forProperty: "value")
+    }
+}
+=== __swiftmacro_4main12PrivateValue33_9A8766BE0137A35BC3FA2067075FD372LL9GenerablefMm_.swift
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    FoundationModels.GenerationSchema(
+        type: Self.self,
+        properties: [
+            FoundationModels.GenerationSchema.Property(name: "value", type: Int.self)
+        ]
+    )
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    let explicitNil = false
+    var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+    addProperty(name: "value", value: self.value)
+    return GeneratedContent(
+        properties: properties,
+        uniquingKeysWith: { _, second in
+            second
+        }
+    )
+    func addProperty(name: String, value: some Generable) {
+      properties.append((name: name, value: value))
+    }
+    func addProperty(name: String, value: (some Generable)?) {
+      if explicitNil || value != nil {
+        properties.append((name: name, value: value))
+      }
+    }
+}
+
+nonisolated struct PartiallyGenerated: Identifiable, nonisolated FoundationModels.ConvertibleFromGeneratedContent {
+    var id: GenerationID
+    var value: Int.PartiallyGenerated?
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.id = content.id ?? GenerationID()
+        self.value = try content.value(forProperty: "value")
+    }
+}

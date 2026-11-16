@@ -1,4 +1,5 @@
 import FoundationMacros
+import FoundationModelsMacros
 import PreviewsMacros
 import SwiftCompilerPlugin
 import SwiftDataMacros
@@ -11,7 +12,7 @@ import SwiftSyntaxMacros
 /// name, which is each type's own: `SwiftDataMacros.PersistentModelMacro`.
 @main
 struct SweetPadMacros: CompilerPlugin {
-    let providingMacros: [Macro.Type] = swiftDataMacros + previewsMacros + swiftUIMacros + tipKitMacros + [
+    let providingMacros: [Macro.Type] = swiftDataMacros + previewsMacros + swiftUIMacros + tipKitMacros + foundationModelsMacros + [
         PredicateMacro.self,
         ExpressionMacro.self,
         BundleMacro.self,

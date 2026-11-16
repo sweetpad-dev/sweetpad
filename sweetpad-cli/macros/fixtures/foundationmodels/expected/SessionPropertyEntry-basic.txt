@@ -1,0 +1,23 @@
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE15activatedSkills0cD5EntryfMa_.swift
+{
+    get {
+        self[__Key_activatedSkills.self]
+    }
+    set {
+        self[__Key_activatedSkills.self] = newValue
+    }
+    _modify {
+        yield &self[__Key_activatedSkills.self]
+    }
+}
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE15activatedSkills0cD5EntryfMp_.swift
+private struct __Key_activatedSkills: FoundationModels.SessionPropertyKey {
+    @FoundationModels.__SessionPropertyEntryDefaultValue
+    static var defaultValue: [String: Bool] = [:]
+}
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE21__Key_activatedSkills33_D51FE0D0DAEA9BA9B33EE77CA24796E3LLV12defaultValue02__cd12EntryDefaultT0fMa_.swift
+{
+    get {
+        [:]
+    }
+}

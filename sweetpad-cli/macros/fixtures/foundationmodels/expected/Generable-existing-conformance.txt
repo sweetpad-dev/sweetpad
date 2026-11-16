@@ -1,0 +1,12 @@
+=== __swiftmacro_4main16AlreadyGenerable0C0fMe_.swift
+
+=== __swiftmacro_4main16AlreadyGenerable0C0fMm_.swift
+
+=== diagnostic
+Generable-existing-conformance.swift:3:1: error: Type already conforms to 'Generable'. Remove the '@Generable' macro or delete the existing conformance. (from macro 'Generable')
+=== diagnostic
+Generable-existing-conformance.swift:4:8: error: type 'AlreadyGenerable' does not conform to protocol 'ConvertibleFromGeneratedContent'
+=== diagnostic
+Generable-existing-conformance.swift:4:8: error: type 'AlreadyGenerable' does not conform to protocol 'ConvertibleToGeneratedContent'
+=== diagnostic
+Generable-existing-conformance.swift:4:8: error: type 'AlreadyGenerable' does not conform to protocol 'Generable'

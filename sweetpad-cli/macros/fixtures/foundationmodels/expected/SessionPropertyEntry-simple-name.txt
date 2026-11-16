@@ -1,0 +1,28 @@
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE4left0cD5EntryfMp_.swift
+
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE5first0cD5EntryfMp_.swift
+
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE5right0cD5EntryfMp_.swift
+
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE6second0cD5EntryfMp_.swift
+
+=== diagnostic
+SessionPropertyEntry-simple-name.swift:5:31: error: accessor macro 'SessionPropertyEntry()' can only apply to a single variable
+=== diagnostic
+SessionPropertyEntry-simple-name.swift:5:31: error: extensions must not contain stored properties
+=== diagnostic
+SessionPropertyEntry-simple-name.swift:5:42: error: accessor macro 'SessionPropertyEntry()' can only apply to a single variable
+=== diagnostic
+SessionPropertyEntry-simple-name.swift:5:42: error: extensions must not contain stored properties
+=== diagnostic
+SessionPropertyEntry-simple-name.swift:5:5: error: '@SessionPropertyEntry' can only be applied to a 'var' declaration with a simple name (from macro 'SessionPropertyEntry ')
+=== diagnostic
+SessionPropertyEntry-simple-name.swift:6:31: error: Expected an identifier for the property (from macro 'SessionPropertyEntry ')
+=== diagnostic
+SessionPropertyEntry-simple-name.swift:6:32: error: accessor macro 'SessionPropertyEntry()' can only apply to a single variable
+=== diagnostic
+SessionPropertyEntry-simple-name.swift:6:32: error: extensions must not contain stored properties
+=== diagnostic
+SessionPropertyEntry-simple-name.swift:6:38: error: accessor macro 'SessionPropertyEntry()' can only apply to a single variable
+=== diagnostic
+SessionPropertyEntry-simple-name.swift:6:38: error: extensions must not contain stored properties

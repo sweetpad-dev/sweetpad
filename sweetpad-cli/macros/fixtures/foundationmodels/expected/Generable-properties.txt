@@ -1,0 +1,51 @@
+=== __swiftmacro_4main10Properties9GenerablefMe_.swift
+extension Properties: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.immutable = try content.value(forProperty: "immutable")
+        self.defaulted = try content.value(forProperty: "defaulted")
+    }
+}
+=== __swiftmacro_4main10Properties9GenerablefMm_.swift
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    FoundationModels.GenerationSchema(
+        type: Self.self,
+        properties: [
+            FoundationModels.GenerationSchema.Property(name: "immutable", type: String.self),
+            FoundationModels.GenerationSchema.Property(name: "defaulted", type: Int.self)
+        ]
+    )
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    let explicitNil = false
+    var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+    addProperty(name: "immutable", value: self.immutable)
+    addProperty(name: "defaulted", value: self.defaulted)
+    return GeneratedContent(
+        properties: properties,
+        uniquingKeysWith: { _, second in
+            second
+        }
+    )
+    func addProperty(name: String, value: some Generable) {
+      properties.append((name: name, value: value))
+    }
+    func addProperty(name: String, value: (some Generable)?) {
+      if explicitNil || value != nil {
+        properties.append((name: name, value: value))
+      }
+    }
+}
+
+nonisolated struct PartiallyGenerated: Identifiable, nonisolated FoundationModels.ConvertibleFromGeneratedContent {
+    var id: GenerationID
+    var immutable: String.PartiallyGenerated?
+    var defaulted: Int.PartiallyGenerated?
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.id = content.id ?? GenerationID()
+        self.immutable = try content.value(forProperty: "immutable")
+        self.defaulted = try content.value(forProperty: "defaulted")
+    }
+}
+=== diagnostic
+Generable-properties.swift:7:16: error: static property 'shared' is not concurrency-safe because it is nonisolated global shared mutable state [#MutableGlobalVariable]
