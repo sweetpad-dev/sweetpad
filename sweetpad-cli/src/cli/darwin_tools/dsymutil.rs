@@ -22,6 +22,7 @@ pub(super) fn main(args: &[String]) -> ExitCode {
 fn run(args: &[String]) -> Result<u8, String> {
     let tool = backend().ok_or("no LLVM dsymutil beside the SDK linker or on PATH")?;
     let status = Command::new(tool)
+        .args(linker_choice(args))
         .args(args)
         .status()
         .map_err(|e| e.to_string())?;
@@ -45,6 +46,14 @@ fn run(args: &[String]) -> Result<u8, String> {
         omit_sdk_interfaces(&output, &roots)?;
     }
     Ok(code)
+}
+
+/// The DWARF linker to ask for: Apple's, the classic one, unless the caller
+/// names one. LLVM 23 defaults to its parallel linker, which leaves
+/// `DW_AT_GNU_dwo_id` on each Clang module's unit, and Xcode's `dwarfdump`
+/// then takes those units for split DWARF and looks for `.dwo` files.
+fn linker_choice(args: &[String]) -> Option<&'static str> {
+    (!args.iter().any(|a| a.starts_with("--linker"))).then_some("--linker=classic")
 }
 
 fn backend() -> Option<PathBuf> {
@@ -221,6 +230,17 @@ fn omit_sdk_interfaces(bundle: &Path, roots: &[PathBuf]) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::cli::testdir::TempDir;
+
+    #[test]
+    fn asks_for_the_classic_dwarf_linker_unless_one_is_named() {
+        let args = |list: &[&str]| list.iter().map(ToString::to_string).collect::<Vec<_>>();
+        assert_eq!(
+            linker_choice(&args(&["App", "-o", "App.dSYM"])),
+            Some("--linker=classic")
+        );
+        assert_eq!(linker_choice(&args(&["--linker=parallel", "App"])), None);
+        assert_eq!(linker_choice(&args(&["--linker", "parallel", "App"])), None);
+    }
 
     #[test]
     fn metadata_uses_the_nearest_bundle_and_preserves_other_keys() {
