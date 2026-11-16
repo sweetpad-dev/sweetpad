@@ -88,15 +88,15 @@ toolchain, and the Apple SDK. Everything else ships inside the SweetPad
 package. On Ubuntu or Debian the end state is:
 
 ```
-sudo apt install sweetpad        # Swift 6.4.2 arrives as a dependency
-sweetpad setup --xcode 27.2      # downloads Xcode and imports the SDK
+sudo apt install sweetpad        # system libraries arrive as dependencies
+sweetpad setup --xcode 27.2      # installs Swift 6.4.2, downloads Xcode, imports the SDK
 ```
 
 | Piece | Today | Target |
 | --- | --- | --- |
 | Patched Swift Build (`swbuild`) | compiled on the host, about 14 minutes | in the SweetPad package |
 | Macro plugin (`sweetpad-macros`) | compiled on the host | in the SweetPad package |
-| Swift 6.4.2 toolchain | downloaded by `linux-setup.sh` | a dependency from our APT feed; setup downloads it elsewhere |
+| Swift 6.4.2 toolchain | downloaded by `linux-setup.sh` | installed by setup through swiftly or a verified download; the package lists only Swift's system libraries |
 | Darwin SDK bundle | `xtool sdk build`, then Python fix-ups | written by the CLI |
 | `.xip`, `.aea` and SDK export reading | Python, plus C codecs compiled at import | the CLI |
 | Setup steps | `linux-setup.sh` behind a Python shim | the CLI |
@@ -104,7 +104,9 @@ sweetpad setup --xcode 27.2      # downloads Xcode and imports the SDK
 Each phase ships in its own release. Setup no longer needs `git`, xtool,
 Python or a sourced environment file at the end; device commands still use
 `pymobiledevice3`. The other directions considered (linking Swift Build into
-the binary, shipping Swift inside the SweetPad package) are dropped.
+the binary, shipping Swift inside the SweetPad package or repackaging it on our
+APT feed) are dropped. A Swift package is 400 to 600 MB per architecture, and
+the APT feed is served from GitHub Pages, whose sites are limited to about 1 GB.
 
 ### Phase 1: Swift Build and the macro plugin in the package
 
@@ -151,8 +153,8 @@ folder and removing Clang's include folder. It patches each platform's
 
 - [ ] SC18: Steps with a `status()` and `run()`, shared with `doctor`, with progress events under `--json` and typed errors.
 - [ ] SC19: Host packages through `sudo apt-get` or `pacman`, with the package lists in `linux-toolchain.json`.
-- [ ] SC20: Publish `sweetpad-swift-6.4.2` on our APT feed, repackaged from the swift.org release with its notices, and make `sweetpad` depend on it. Include it in the container image.
-- [ ] SC21: Elsewhere, use a matching Swift on `PATH` or from swiftly, and otherwise download and verify the pinned release.
+- [ ] SC20: Audit which system packages Swift and the build need, and list them as dependencies of the `sweetpad` package, so apt installs them and setup skips that step on Debian and Ubuntu. Include Swift in the container image.
+- [ ] SC21: Install Swift in setup: use a matching Swift on `PATH` or from swiftly, and otherwise download and verify the pinned release. Swift is never repackaged.
 - [ ] SC22: Find the toolchain, SDK and helpers without `linux-env.sh`; keep writing it for running `swift` by hand.
 - [ ] SC23: Delete `linux-setup.sh`, `linux-host-tools.sh` and the Python shim; update `CLI_DESIGN.md`, the Linux docs and `help environment`.
 
