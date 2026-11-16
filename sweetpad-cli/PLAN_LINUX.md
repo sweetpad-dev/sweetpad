@@ -80,6 +80,82 @@ The existing Flutter AOT and full hybrid-app validation remains ARM64-specific.
 The x64 private CI path covers package installation, core app builds, test manifests,
 and package linking; it does not imply full hybrid-framework runtime coverage.
 
+## Self-contained setup
+
+Goal: make setup simple and SweetPad as self-contained as possible. Setup
+installs only three things itself: system packages, the pinned Swift
+toolchain, and the Apple SDK. Everything else ships inside the SweetPad
+package. On Ubuntu or Debian the end state is:
+
+```
+sudo apt install sweetpad        # Swift 6.4.2 arrives as a dependency
+sweetpad setup --xcode 27.2      # downloads Xcode and imports the SDK
+```
+
+| Piece | Today | Target |
+| --- | --- | --- |
+| Patched Swift Build (`swbuild`) | compiled on the host, about 14 minutes | in the SweetPad package |
+| Macro plugin (`sweetpad-macros`) | compiled on the host | in the SweetPad package |
+| Swift 6.4.2 toolchain | downloaded by `linux-setup.sh` | a dependency from our APT feed; setup downloads it elsewhere |
+| Darwin SDK bundle | `xtool sdk build`, then Python fix-ups | written by the CLI |
+| `.xip`, `.aea` and SDK export reading | Python, plus C codecs compiled at import | the CLI |
+| Setup steps | `linux-setup.sh` behind a Python shim | the CLI |
+
+Each phase ships in its own release. Setup no longer needs `git`, xtool,
+Python or a sourced environment file at the end; device commands still use
+`pymobiledevice3`. The other directions considered (linking Swift Build into
+the binary, shipping Swift inside the SweetPad package) are dropped.
+
+### Phase 1: Swift Build and the macro plugin in the package
+
+Measured in the ARM64 VM: stripped `swbuild` is 26 MB,
+`SWBBuildServiceBundle` 20 MB and `sweetpad-macros` 8.5 MB, 20 MB gzipped
+together, against a 6 to 10 MB package today. `swbuild` loads 16 Swift
+libraries from the toolchain, which setup installs anyway.
+
+- [ ] SC01: Build the patched `swbuild`, its build service and `sweetpad-macros` per architecture in release CI, on Debian 12 for the oldest glibc, against the pinned toolchain's runtime.
+- [ ] SC02: Ship them in the tarball, `.deb`, APT feed and container image, with Swift Build's license and NOTICE and a note of our changes.
+- [ ] SC03: Find them beside the CLI binary; keep `SWEETPAD_SWBUILD` and `SWEETPAD_MACROS` as overrides. Confirm Swift Build's spec resources are embedded or ship them.
+- [ ] SC04: Run the packaged binaries in the public install checks on Ubuntu 24.04, Debian 12 and 13, and Arch.
+- [ ] SC05: Drop the clone, patch and build steps from setup, and the `~/src/swift-build-*` caches.
+
+### Phase 2: replace xtool
+
+xtool 1.21.0 (`SDKBuilder.swift`, MIT) does five things. It downloads a
+Darwin linker toolset from `xtool-org/darwin-tools-linux-llvm` 1.1.0 and
+wraps `ld64.lld` so `-r` becomes a `libtool` archive. It downloads the
+OpenAppleMacros server and stub plugin libraries. It copies a trimmed
+Developer folder, moving XCTest and Testing, linking the simulator plugin
+folder and removing Clang's include folder. It patches each platform's
+`Info.plist` (`SWIFT_RESOURCE_DIR`, `CLANG_RESOURCE_DIR`,
+`ALTERNATE_LINKER=lld`, `CODESIGN=true`). And it writes `swift-sdk.json`,
+`toolset.json`, `toolset-swb.json` and `info.json`.
+
+- [ ] SC06: In the VM, check whether the pinned toolchain's own `lld`, run as `ld64.lld`, links the corpus as xtool's toolset does. If not, build that toolset in our release CI or pin its tarball by checksum.
+- [ ] SC07: Check whether Swift Build with our patches still emits `ld64.lld -r`, and whether `sweetpad-macros` covers what the OpenAppleMacros stubs provide.
+- [ ] SC08: Save today's `darwin.xtoolsdk` tree with file hashes as the reference.
+- [ ] SC09: Write the bundle from an unpacked Xcode.app in the CLI: layout, JSON files, platform manifests for all nine platforms, Linux Clang headers, `version.plist`, `build-machine.plist` and App Intents phrases. This replaces `linux-sdk-platforms.py` and the fix-ups after xtool.
+- [ ] SC10: Match the reference apart from chosen differences; pass the corpus, device install and hybrid-app checks; bump `IMPORTER_VERSION`.
+- [ ] SC11: Remove xtool from setup, `linux-toolchain.json`, `doctor` and the docs.
+
+### Phase 3: archive reading in the CLI
+
+- [ ] SC12: Read SDK exports, xar (`.xip`), pbzx, cpio (odc and newc), Apple Archive and AEA in Rust, with the selected paths as a typed table.
+- [ ] SC13: Codecs: `flate2`, an LZMA crate and `lzfse_rust`. For LZRAVEN, test the `lzraven` crate against our conformance archives, or port the 0BSD C decoder.
+- [ ] SC14: AEA with RustCrypto HPKE, HKDF and AES and `p256`, keeping the key-host rules and `--aea-key-file` formats.
+- [ ] SC15: Port the traversal, link, size and checksum tests over the existing fixtures, and keep `--replace-sdk` keeping the old SDK until the new one imports.
+- [ ] SC16: Add a private CI job that imports a real `.xip`, the gap #363 shipped through.
+- [ ] SC17: Move `sdk export` on the Mac to the same code, then delete `linux-sdk.py`, `linux-xcode-archive.py`, `linux-archive-codecs.py`, `archive-codecs/` and their Python tests.
+
+### Phase 4: setup in the CLI
+
+- [ ] SC18: Steps with a `status()` and `run()`, shared with `doctor`, with progress events under `--json` and typed errors.
+- [ ] SC19: Host packages through `sudo apt-get` or `pacman`, with the package lists in `linux-toolchain.json`.
+- [ ] SC20: Publish `sweetpad-swift-6.4.2` on our APT feed, repackaged from the swift.org release with its notices, and make `sweetpad` depend on it. Include it in the container image.
+- [ ] SC21: Elsewhere, use a matching Swift on `PATH` or from swiftly, and otherwise download and verify the pinned release.
+- [ ] SC22: Find the toolchain, SDK and helpers without `linux-env.sh`; keep writing it for running `swift` by hand.
+- [ ] SC23: Delete `linux-setup.sh`, `linux-host-tools.sh` and the Python shim; update `CLI_DESIGN.md`, the Linux docs and `help environment`.
+
 ## Follow-up audit, 2026-11-10
 
 The handoff identified these candidates by reading code. An unchecked item is not a reproduced runtime failure.
