@@ -4,7 +4,7 @@ sidebar_label: Install the CLI
 
 # Install SweetPad on Linux
 
-The CLI is a static executable for x64 or ARM64 Linux, with Swift Build and the macro plugin in a `libexec/sweetpad` folder beside it.
+The CLI is a static executable for x64 or ARM64 Linux, with Swift Build, the macro plugin and an LLVM linker for Apple platforms in a `libexec/sweetpad` folder beside it.
 It doesn't include Apple's SDKs or the Swift toolchain. [Set up the Apple toolchain](sdk-transfer.md) after installing it.
 
 | Method | Use it for |
@@ -127,7 +127,7 @@ To upgrade, install the next release's tarball the same way.
 
 ## Upgrade
 
-Swift Build and the macro plugin come with the package, so upgrading the CLI upgrades them too.
+Swift Build, the macro plugin and the linker come with the package, so upgrading the CLI upgrades them too.
 Keep the tarball's `libexec` folder next to the `sweetpad` binary.
 If a release changes the SDK import recipe or the toolchain, run setup again with the source you used the first time, and add `--replace-sdk` if it asks:
 

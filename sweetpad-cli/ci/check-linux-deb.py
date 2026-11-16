@@ -34,6 +34,9 @@ def check(package, upgrade, out):
         assert "sweetpad dap" in run("/usr/bin/sweetpad-dap", "--help")
         # apt pulled in the host libraries the Swift helpers load.
         assert "yes" in run("/usr/libexec/sweetpad/swbuild", "isAlive")
+        # LLVM's multicall binary runs as the tool its argv[0] names.
+        assert run("bash", "-c", "exec -a ld64.lld /usr/libexec/sweetpad/llvm --version").startswith("LLD ")
+        assert "LLVM version" in run("bash", "-c", "exec -a dsymutil /usr/libexec/sweetpad/llvm --version")
         doctor = subprocess.run(["/usr/bin/sweetpad", "doctor", "--target", "ios", "--json"],
                                 capture_output=True, text=True, timeout=180)
         checks = {c["name"]: c for c in json.loads(doctor.stdout)["data"]["checks"]}

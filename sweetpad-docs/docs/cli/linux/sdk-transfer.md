@@ -79,7 +79,7 @@ Use `--xcode 27.2` in place of `--sdk` to download that release; a beta needs it
 
 Setup installs the system packages and the pinned Swift toolchain.
 It then imports the SDK and builds a sample iPhone app to check the result.
-Swift Build and the macro plugin ship prebuilt in the SweetPad package.
+Swift Build, the macro plugin and the LLVM linker ship prebuilt in the SweetPad package.
 
 The environment file puts the toolchain on `PATH` and selects the SDK.
 Source it in every new shell, or from your shell profile. In CI, source it in every step.

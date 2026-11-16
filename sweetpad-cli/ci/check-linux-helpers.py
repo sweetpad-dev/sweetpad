@@ -2,8 +2,9 @@
 """Run the Swift helpers from a Linux archive on a host with no Swift installed.
 
 Checks that swbuild starts its build service, that the macro plugin answers
-the compiler's capability request, and that 'sweetpad doctor' finds both in
-libexec/sweetpad beside the unpacked binary. Needs only the host libraries
+the compiler's capability request, that LLVM's linker and dsymutil start, and
+that 'sweetpad doctor' finds the helpers in libexec/sweetpad beside the
+unpacked binary. Needs only the host libraries
 the Debian package depends on.
 """
 import argparse
@@ -68,6 +69,11 @@ def check(archive, out):
     assert "yes" in alive.stdout, alive.stdout
     capability = plugin_capability(libexec / "sweetpad-macros", env)
     assert capability["protocolVersion"] >= 7, capability
+    # LLVM's multicall binary runs as the tool its argv[0] names.
+    for tool, banner in (("ld64.lld", "LLD "), ("dsymutil", "LLVM version")):
+        version = subprocess.run([tool, "--version"], executable=libexec / "llvm", env=env,
+                                 capture_output=True, text=True, timeout=60)
+        assert version.returncode == 0 and banner in version.stdout, (tool, version.stdout, version.stderr)
     doctor = json.loads(run("doctor", [unpacked / "sweetpad", "doctor", "--target", "ios", "--json"], success=False).stdout)
     checks = {c["name"]: c for c in doctor["data"]["checks"]}
     for name in ("Swift Build", "Swift Build service", "Swift Build patches", "Macro plugin"):
@@ -78,7 +84,7 @@ def check(archive, out):
     report = {"passed": True, "host": host.get("PRETTY_NAME", "").strip('"'), "machine": os.uname().machine,
               "swiftInstalled": False, "pluginProtocolVersion": capability["protocolVersion"],
               "checks": ["helper linkage", "swbuild starts its service", "macro plugin handshake",
-                         "doctor finds packaged helpers"]}
+                         "LLD and dsymutil start", "doctor finds packaged helpers"]}
     (out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 

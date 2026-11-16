@@ -3,10 +3,9 @@
 # Build the linker and dSYM tool that Apple targets need on Linux, from the
 # pinned upstream LLVM release:
 #
-#   llvm      one multicall binary with LLD and dsymutil, which it runs as
-#             by the name it's started under
-#   ld64.lld  a link to it: LLD's Mach-O linker
-#   dsymutil  a link to it
+#   llvm      one multicall binary with LLD's Mach-O linker and dsymutil;
+#             it runs as the tool its argv[0] names, ld64.lld or dsymutil,
+#             which is how sweetpad starts it
 #
 # Swift's own toolchain has an lld, but Swift's LLVM fork refuses to link for
 # iOS, and no Swift toolchain ships dsymutil. Upstream LLVM 23.1.3 and later
@@ -16,8 +15,8 @@
 #
 #   build-darwin-linker.sh OUT_DIR
 #
-# OUT_DIR receives libexec/sweetpad/llvm and its two links, and
-# licenses/llvm/. The source and build are cached in
+# OUT_DIR receives libexec/sweetpad/llvm, the record of what it was built
+# from beside it, and licenses/llvm/. The source and build are cached in
 # SWEETPAD_LINKER_CACHE (default ~/.cache/sweetpad/darwin-linker), keyed by
 # the pinned version.
 set -euo pipefail
@@ -79,14 +78,12 @@ ninja -C "$BUILD" -j "$JOBS" llvm-driver
 section "Staging"
 DEST="$OUT/libexec/sweetpad"
 mkdir -p "$DEST" "$OUT/licenses/llvm"
-rm -f "$DEST/llvm" "$DEST/ld64.lld" "$DEST/dsymutil"
+rm -f "$DEST/llvm"
 cp "$BUILD/bin/llvm" "$DEST/llvm"
 strip --strip-all "$DEST/llvm"
-ln -s llvm "$DEST/ld64.lld"
-ln -s llvm "$DEST/dsymutil"
 cp "$SRC/llvm/LICENSE.TXT" "$OUT/licenses/llvm/LICENSE.TXT"
 cp "$SRC/lld/LICENSE.TXT" "$OUT/licenses/llvm/LLD-LICENSE.TXT"
 printf '{"llvm": "%s", "sourceSha256": "%s"}\n' "$LLVM_VERSION" "$LLVM_SHA256" > "$DEST/sweetpad-llvm.json"
-"$DEST/ld64.lld" --version
-"$DEST/dsymutil" --version | head -2
+(exec -a ld64.lld "$DEST/llvm" --version)
+(exec -a dsymutil "$DEST/llvm" --version) | head -2
 ls -la "$DEST/llvm"

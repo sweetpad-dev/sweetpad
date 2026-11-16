@@ -64,6 +64,17 @@ def helpers(root, machine):
     return root
 
 
+def linker(root, machine):
+    """The tree build-darwin-linker.sh stages, with a stand-in binary."""
+    elf(root / package.LINKER, machine, needed=["libstdc++.so.6", "libm.so.6", "libgcc_s.so.1", "libc.so.6"], runpath=None)
+    pins = json.loads((REPO / "sweetpad-lib/ci/linux-toolchain.json").read_text())
+    (root / "libexec/sweetpad/sweetpad-llvm.json").write_text(
+        '{"llvm": "%s", "sourceSha256": "%s"}\n' % (pins["llvm"], pins["llvmSourceSha256"]))
+    (root / "licenses/llvm").mkdir(parents=True)
+    (root / "licenses/llvm/LICENSE.TXT").write_text("Apache License with LLVM Exceptions\n")
+    return root
+
+
 class LinuxReleaseContracts(unittest.TestCase):
     def test_tag_version_must_match_and_dry_runs_do_not_publish(self):
         self.assertEqual(version.resolve("1.2.3", "refs/tags/cli-v1.2.3"), "1.2.3")
@@ -92,9 +103,10 @@ class LinuxReleaseContracts(unittest.TestCase):
                 struct.pack_into("<I", data, 64, 1)
                 binary.write_bytes(data)
                 tree = helpers(root / arch / "helpers", machine)
+                tools = linker(root / arch / "linker", machine)
                 with patch.object(package.subprocess, "check_output", return_value="sweetpad 1.2.3\n"):
-                    first = package.package(binary, tree, "1.2.3", root / arch / "first")
-                    second = package.package(binary, tree, "1.2.3", root / arch / "second")
+                    first = package.package(binary, tree, tools, "1.2.3", root / arch / "first")
+                    second = package.package(binary, tree, tools, "1.2.3", root / arch / "second")
                 self.assertEqual(first["sha256"], second["sha256"])
                 self.assertEqual(first["platform"], f"linux-{arch}")
                 self.assertTrue(first["archive"].endswith(f"linux-{arch}.tar.gz"))
@@ -115,6 +127,10 @@ class LinuxReleaseContracts(unittest.TestCase):
                     self.assertIn("libexec/sweetpad/sweetpad-swift-build.json", names)
                     self.assertIn("licenses/swift-build/LICENSE.txt", names)
                     self.assertEqual(first["swiftHelpers"]["patches"], "0123")
+                    self.assertEqual(archive.getmember(package.LINKER).mode, 0o755)
+                    self.assertIn("licenses/llvm/LICENSE.TXT", names)
+                    self.assertEqual(first["darwinLinker"]["llvm"], json.loads(
+                        (REPO / "sweetpad-lib/ci/linux-toolchain.json").read_text())["llvm"])
                     self.assertEqual(archive.getmember("sweetpad-dap").linkname, "sweetpad")
                     self.assertFalse(any(n.endswith((".p12", ".cer", ".mobileprovision", ".omo")) or ".sdk/" in n for n in names))
 
@@ -168,6 +184,43 @@ class LinuxReleaseContracts(unittest.TestCase):
             record.write_text(record.read_text().replace('"swift":"', '"swift":"0.'))
             with self.assertRaisesRegex(ValueError, "swift '0."):
                 package.helper_files(tree, "arm64")
+
+    def test_the_linker_is_the_pinned_llvm_for_the_cli_architecture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tree = linker(Path(directory), 183)
+            self.assertIn(package.LINKER, package.linker_files(tree, "arm64"))
+            with self.assertRaisesRegex(ValueError, "linux-x64"):
+                package.linker_files(tree, "x64")
+            record = tree / "libexec/sweetpad/sweetpad-llvm.json"
+            record.write_text(record.read_text().replace('"llvm": "', '"llvm": "0.'))
+            with self.assertRaisesRegex(ValueError, "LLVM '0."):
+                package.linker_files(tree, "arm64")
+
+    def test_the_linker_loads_only_host_libraries_without_a_runpath(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tree = linker(Path(directory), 183)
+            binary = tree / package.LINKER
+            elf(binary, 183, needed=["libc.so.6"], runpath="$ORIGIN/../lib")
+            with self.assertRaisesRegex(ValueError, "no RUNPATH"):
+                package.linker_files(tree, "arm64")
+            elf(binary, 183, needed=["libLLVM.so.23.1", "libc.so.6"], runpath=None)
+            with self.assertRaisesRegex(ValueError, "libLLVM.so.23.1"):
+                package.linker_files(tree, "arm64")
+            elf(binary, 183, needed=["libc.so.6"], runpath=None)
+            binary.write_bytes(binary.read_bytes() + b"\0GLIBC_2.38\0")
+            with self.assertRaisesRegex(ValueError, "GLIBC_2.38"):
+                package.linker_files(tree, "arm64")
+
+    def test_the_linker_tree_holds_only_the_linker_and_its_record(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tree = linker(Path(directory), 183)
+            (tree / "libexec/sweetpad/ld64.lld").symlink_to("llvm")
+            with self.assertRaisesRegex(ValueError, "regular files"):
+                package.linker_files(tree, "arm64")
+            (tree / "libexec/sweetpad/ld64.lld").unlink()
+            elf(tree / "libexec/sweetpad/dsymutil", 183, needed=["libc.so.6"], runpath=None)
+            with self.assertRaisesRegex(ValueError, "unexpected files"):
+                package.linker_files(tree, "arm64")
 
 
 if __name__ == "__main__":

@@ -71,14 +71,18 @@ def symbol_versions(path, prefix):
     return max((tuple(int(part) for part in version.split(b".")) for version in found), default=())
 
 
+def check_file_floor(path):
+    for prefix, floor in ((b"GLIBC", GLIBC_FLOOR), (b"GLIBCXX", GLIBCXX_FLOOR)):
+        version = symbol_versions(path, prefix)
+        if version > floor:
+            wanted = ".".join(map(str, version))
+            raise ValueError(f"libexec/sweetpad/{path.name} needs {prefix.decode()}_{wanted}, newer than Debian 12's; build it on Debian 12")
+
+
 def check_host_floor(libexec):
     for path in sorted(libexec.iterdir()):
         if path.name in HELPERS or ".so" in path.name:
-            for prefix, floor in ((b"GLIBC", GLIBC_FLOOR), (b"GLIBCXX", GLIBCXX_FLOOR)):
-                version = symbol_versions(path, prefix)
-                if version > floor:
-                    wanted = ".".join(map(str, version))
-                    raise ValueError(f"libexec/sweetpad/{path.name} needs {prefix.decode()}_{wanted}, newer than Debian 12's; build the helpers on Debian 12")
+            check_file_floor(path)
 
 
 def elf_dynamic(path):
@@ -146,8 +150,45 @@ def helper_files(helpers, arch):
     return files
 
 
+LINKER = "libexec/sweetpad/llvm"
+
+
+def linker_files(linker, arch):
+    """The tree build-darwin-linker.sh stages: LLVM's multicall LLD and
+    dsymutil, its record, and LLVM's licenses."""
+    files = {}
+    for top in ("libexec", "licenses"):
+        for path in sorted((linker / top).rglob("*")):
+            if path.is_symlink() or not (path.is_file() or path.is_dir()):
+                raise ValueError(f"the linker tree must hold regular files: {path}")
+            if path.is_file():
+                files[str(path.relative_to(linker))] = path
+    expected = {LINKER, "libexec/sweetpad/sweetpad-llvm.json"}
+    if not expected <= set(files) or not any(name.startswith("licenses/llvm/") for name in files):
+        raise ValueError(f"the linker tree must hold {', '.join(sorted(expected))} and licenses/llvm")
+    extra = sorted(name for name in files if name.startswith("libexec/") and name not in expected)
+    if extra:
+        raise ValueError(f"the linker tree holds unexpected files: {', '.join(extra)}")
+    binary = linker / LINKER
+    if validate_elf(binary) != arch:
+        raise ValueError(f"{LINKER} is not built for linux-{arch}")
+    record = json.loads((linker / "libexec/sweetpad/sweetpad-llvm.json").read_text())
+    pins = json.loads((REPO / "sweetpad-lib/ci/linux-toolchain.json").read_text())
+    if (record.get("llvm"), record.get("sourceSha256")) != (pins["llvm"], pins["llvmSourceSha256"]):
+        raise ValueError(f"the linker records LLVM {record.get('llvm')!r}; the CLI pins {pins['llvm']}")
+    # It loads only host libraries, so it has no RUNPATH at all.
+    needed, runpath = elf_dynamic(binary)
+    if runpath is not None:
+        raise ValueError(f"{LINKER} must have no RUNPATH, not {runpath!r}")
+    missing = sorted(set(needed) - SYSTEM_LIBRARIES)
+    if missing:
+        raise ValueError(f"{LINKER} needs {', '.join(missing)}, which isn't a host library")
+    check_file_floor(binary)
+    return files
+
+
 def executable(name):
-    return name in ("sweetpad", *(f"libexec/sweetpad/{helper}" for helper in HELPERS)) or name.endswith(".sh")
+    return name in ("sweetpad", LINKER, *(f"libexec/sweetpad/{helper}" for helper in HELPERS)) or name.endswith(".sh")
 
 
 def source_files(repo):
@@ -167,7 +208,7 @@ def source_files(repo):
     return files
 
 
-def package(binary, helpers, version, out, repo=REPO):
+def package(binary, helpers, linker, version, out, repo=REPO):
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?", version):
         raise ValueError("invalid package version")
     arch = validate_elf(binary)
@@ -175,12 +216,13 @@ def package(binary, helpers, version, out, repo=REPO):
     binary_version = subprocess.check_output([str(binary.resolve()), "--version"], text=True).strip()
     if not valid_binary_version(binary_version, version):
         raise ValueError(f"binary version {binary_version!r} differs from package version {version!r}")
-    files = {"sweetpad": binary, **source_files(repo), **helper_files(helpers, arch)}
+    files = {"sweetpad": binary, **source_files(repo), **helper_files(helpers, arch), **linker_files(linker, arch)}
     receipt = {"packageVersion": version, "binaryVersion": binary_version,
                "platform": "linux-" + arch, "linkage": "static", "embeddedSetup": True,
                "baseline": "Static Linux CLI; Apple build toolchain setup supports Ubuntu 24.04, Debian 12/13 and Arch x64",
                "experimental": True, "appleSdkIncluded": False,
                "swiftHelpers": json.loads((helpers / "libexec/sweetpad/sweetpad-swift-build.json").read_text()),
+               "darwinLinker": json.loads((linker / "libexec/sweetpad/sweetpad-llvm.json").read_text()),
                "files": {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in sorted(files.items())}}
     out.mkdir(parents=True, exist_ok=True)
     archive = out / f"sweetpad-cli-{version}-linux-{arch}.tar.gz"
@@ -206,10 +248,10 @@ def package(binary, helpers, version, out, repo=REPO):
     return {"archive": str(archive), "sha256": checksum, **receipt}
 
 
-def debian_package(binary, helpers, version, out, revision=1, repo=REPO):
+def debian_package(binary, helpers, linker, version, out, revision=1, repo=REPO):
     arch = {"x64": "amd64", "arm64": "arm64"}[validate_elf(binary)]
     validate_static(binary)
-    shipped = helper_files(helpers, validate_elf(binary))
+    shipped = {**helper_files(helpers, validate_elf(binary)), **linker_files(linker, validate_elf(binary))}
     # Debian sorts ~ prereleases before their stable release.
     upstream = version.replace("-", "~", 1)
     if revision < 1:
@@ -248,14 +290,14 @@ def debian_package(binary, helpers, version, out, revision=1, repo=REPO):
             f"Package: sweetpad\nVersion: {deb_version}\nArchitecture: {arch}\n"
             f"Installed-Size: {installed_kib}\n"
             "Maintainer: Yevhenii Hyzyla <hyzyla@gmail.com>\nSection: devel\nPriority: optional\n"
-            # The Swift helpers link the Swift runtime statically and
-            # these system libraries dynamically.
+            # The Swift helpers and LLVM's linker load these system
+            # libraries; the Swift runtime is bundled beside them.
             "Depends: ca-certificates, python3, bash, libc6 (>= 2.36), libgcc-s1, libstdc++6, libsqlite3-0\n"
             "Homepage: https://sweetpad.hyzyla.dev\n"
             "Description: Build Apple projects with the Sweetpad CLI\n"
-            " Static CLI with embedded public setup files, and the Swift Build and\n"
-            " macro plugin binaries it runs on Linux. Apple SDKs and signing\n"
-            " material are supplied separately.\n"
+            " Static CLI with embedded public setup files, and the Swift Build,\n"
+            " macro plugin and LLVM linker binaries it runs on Linux. Apple SDKs\n"
+            " and signing material are supplied separately.\n"
         )
         (control / "control").chmod(0o644)
         for path in sorted(stage.rglob("*"), reverse=True):
@@ -278,12 +320,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--helpers", type=Path, required=True, help="output of build-swift-helpers.sh")
+    parser.add_argument("--linker", type=Path, required=True, help="output of build-darwin-linker.sh")
     parser.add_argument("--version", required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--deb", action="store_true", help="also build a Debian package")
     parser.add_argument("--deb-revision", type=int, default=1)
     args = parser.parse_args()
-    report = package(args.binary, args.helpers, args.version, args.out)
+    report = package(args.binary, args.helpers, args.linker, args.version, args.out)
     if args.deb:
-        report["debian"] = debian_package(args.binary, args.helpers, args.version, args.out, args.deb_revision)
+        report["debian"] = debian_package(args.binary, args.helpers, args.linker, args.version, args.out, args.deb_revision)
     print(json.dumps(report, indent=2))

@@ -35,7 +35,7 @@ sweetpad --version
 ```
 
 Installation requires no compiler, root access, or Sweetpad installation script.
-Swift Build and the macro plugin are in `libexec/sweetpad`. The CLI looks for them beside itself and in `../libexec/sweetpad`,
+Swift Build, the macro plugin and an LLVM linker for Apple platforms are in `libexec/sweetpad`. The CLI looks for them beside itself and in `../libexec/sweetpad`,
 so copy the folder along with the executable. They need the host's SQLite library (`libsqlite3-0` on Ubuntu and Debian).
 The CLI materializes its embedded setup files in its content-addressed user cache when needed.
 
@@ -53,7 +53,7 @@ mise use -g packslip:github.com/sweetpad-dev/sweetpad/tools/cli
 ```
 
 GHCR supplies a multi-platform CLI image at `ghcr.io/sweetpad-dev/sweetpad`.
-It contains the static executable, Swift Build and the macro plugin in `/usr/local/libexec/sweetpad`, CA certificates, and license notices.
+It contains the static executable, Swift Build, the macro plugin and the LLVM linker in `/usr/local/libexec/sweetpad`, CA certificates, and license notices.
 Docker builds can copy `/usr/local/bin/sweetpad` and `/usr/local/libexec/sweetpad` into their own image.
 The image has no Swift or Apple SDK; supply both in the build environment.
 

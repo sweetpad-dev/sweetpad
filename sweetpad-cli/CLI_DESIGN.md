@@ -4809,6 +4809,15 @@ the compiler, which starts plugins with a bare environment, needs no
 launcher. The package script refuses helpers whose RUNPATH or library needs
 reach past that folder, or that record another Swift.
 
+**LLVM's Apple linker ships beside them.** `libexec/sweetpad/llvm` is LLD
+and `dsymutil` from the pinned upstream LLVM release (23.1.5), built as one
+multicall binary that runs as the tool its argv[0] names. Swift's own LLVM
+refuses to link for iOS and has no `dsymutil`; upstream LLVM from 23.1.3
+reads SDK 27's `arm64e.x1` stubs without patches. It loads only host
+libraries and has no RUNPATH, and the package script refuses one from
+another LLVM release. Builds take it once the CLI writes the Darwin SDK
+bundle itself (SC07, SC09); until then they use the bundle's linker.
+
 **Signing has no keychain.** The identities are `.p12` files
 (`SWEETPAD_CODE_SIGN_P12`, a `:`-separated list, each file holding one
 identity or several; the passwords in `SWEETPAD_CODE_SIGN_P12_PASSWORD`,
@@ -4927,8 +4936,8 @@ and stops with `tool_missing` on any other. `doctor` reports whichever of the tw
 device commands will use.
 
 **Linux ships static ARM64 and x86_64 archives, Debian packages and a container image.**
-An archive holds the static CLI, the DAP alias, Swift Build and the macro plugin in
-`libexec/sweetpad`, a README, the device notes and licenses; the setup sources are embedded in
+An archive holds the static CLI, the DAP alias, Swift Build, the macro plugin and LLVM's
+Apple linker in `libexec/sweetpad`, a README, the device notes and licenses; the setup sources are embedded in
 the binary. It excludes Apple SDKs and signing material.
 Homebrew remains macOS only.
 The setup script provisions the separate compiler and private SDK prerequisites.

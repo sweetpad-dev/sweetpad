@@ -116,8 +116,8 @@ jobs:
           docker run --rm --platform linux/${{ matrix.docker_arch }} -v "$PWD/darwin-linker:/linker:ro" debian:12 bash -euc '
             apt-get update -qq
             DEBIAN_FRONTEND=noninteractive apt-get install -yqq libstdc++6
-            /linker/libexec/sweetpad/ld64.lld --version | grep -q "^LLD "
-            /linker/libexec/sweetpad/dsymutil --version | grep -q "LLVM version"
+            (exec -a ld64.lld /linker/libexec/sweetpad/llvm --version) | grep -q "^LLD "
+            (exec -a dsymutil /linker/libexec/sweetpad/llvm --version) | grep -q "LLVM version"
           '
       - name: Archive the linker
         run: tar -C darwin-linker -czf darwin-linker-linux-${{ matrix.arch }}.tar.gz .
@@ -129,7 +129,7 @@ jobs:
 
   package:
     name: ${{ matrix.arch }} static archive, Debian package and clean installs
-    needs: swift-helpers
+    needs: [swift-helpers, darwin-linker]
     strategy:
       fail-fast: false
       matrix:
@@ -186,6 +186,10 @@ jobs:
         with:
           name: swift-helpers-linux-${{ matrix.arch }}
           path: ${{ runner.temp }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: darwin-linker-linux-${{ matrix.arch }}
+          path: ${{ runner.temp }}
       - name: Package standalone binary and Debian package
         run: |
           VERSION="$(python3 sweetpad-cli/ci/release-version.py)"
@@ -193,8 +197,11 @@ jobs:
           HELPERS="$RUNNER_TEMP/swift-helpers"
           mkdir -p "$HELPERS"
           tar -xzf "$RUNNER_TEMP/swift-helpers-linux-${{ matrix.arch }}.tar.gz" -C "$HELPERS"
-          python3 sweetpad-cli/ci/package-linux.py --binary target/${{ matrix.target }}/release/sweetpad --helpers "$HELPERS" --version "$VERSION" --out dist --deb
-          python3 sweetpad-cli/ci/package-linux.py --binary target/${{ matrix.target }}/release/sweetpad --helpers "$HELPERS" --version "$VERSION" --out "$RUNNER_TEMP/deb-upgrade" --deb --deb-revision 2
+          LINKER="$RUNNER_TEMP/darwin-linker"
+          mkdir -p "$LINKER"
+          tar -xzf "$RUNNER_TEMP/darwin-linker-linux-${{ matrix.arch }}.tar.gz" -C "$LINKER"
+          python3 sweetpad-cli/ci/package-linux.py --binary target/${{ matrix.target }}/release/sweetpad --helpers "$HELPERS" --linker "$LINKER" --version "$VERSION" --out dist --deb
+          python3 sweetpad-cli/ci/package-linux.py --binary target/${{ matrix.target }}/release/sweetpad --helpers "$HELPERS" --linker "$LINKER" --version "$VERSION" --out "$RUNNER_TEMP/deb-upgrade" --deb --deb-revision 2
       - name: Install in a clean Ubuntu 24.04 container
         run: |
           mkdir -p "$RUNNER_TEMP/package-smoke"
