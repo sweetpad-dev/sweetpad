@@ -105,7 +105,8 @@ Each phase ships in its own release. Setup no longer needs `git`, xtool,
 Python or a sourced environment file at the end; device commands still use
 `pymobiledevice3`. The other directions considered (linking Swift Build into
 the binary, shipping Swift inside the SweetPad package or repackaging it on our
-APT feed) are dropped. A Swift package is 400 to 600 MB per architecture, and
+APT feed) are dropped. Swift 6.4.2 is a 1.1 GB download per architecture
+(3.5 GB unpacked), and
 the APT feed is served from GitHub Pages, whose sites are limited to about 1 GB.
 
 ### Phase 1: Swift Build and the macro plugin in the package
@@ -157,6 +158,21 @@ folder and removing Clang's include folder. It patches each platform's
 - [ ] SC21: Install Swift in setup: use a matching Swift on `PATH` or from swiftly, and otherwise download and verify the pinned release. Swift is never repackaged.
 - [ ] SC22: Find the toolchain, SDK and helpers without `linux-env.sh`; keep writing it for running `swift` by hand.
 - [ ] SC23: Delete `linux-setup.sh`, `linux-host-tools.sh` and the Python shim; update `CLI_DESIGN.md`, the Linux docs and `help environment`.
+
+### Phase 5: fewer system packages
+
+Each tool SweetPad needs from the host is something that can be missing
+wherever our package doesn't carry dependencies: Arch, tarball and mise
+installs, minimal containers. Installed sizes on Ubuntu 24.04: `zip` and
+`unzip` about 1 MB, `rsync` 0.8 MB, `cpio` 0.3 MB, `file` with its magic
+database 8.7 MB, `bubblewrap` 0.1 MB, and `llvm-18` about 240 MB, which
+setup installs only for `llvm-libtool-darwin`. The Swift 6.4.2 toolchain
+already ships `llvm-ar` and `ld64.lld`.
+
+- [ ] SC24: Make the `libtool` stand-in write static archives with the toolchain's `llvm-ar --format=darwin`, check the archives match `llvm-libtool-darwin`'s across the corpus, and drop `llvm-18`.
+- [ ] SC25: Do the parts of `zip`, `unzip`, `rsync`, `cpio` and `file` that builds use inside the SweetPad binary, with the `zip` crate for archives; under 1 MB together.
+- [ ] SC26: Test giving build scripts Bash as `/bin/sh` without `bubblewrap` across the corpus. If that fails, ship the 0.1 MB `bwrap` binary in the package; either way Docker stops needing `--cap-add SYS_ADMIN`.
+- [ ] SC27: Without a package that carries dependencies, have setup check what's missing and print the exact install command; `--install-system-packages` runs it with `sudo`. `doctor` shows the same list.
 
 ## Follow-up audit, 2026-11-10
 
