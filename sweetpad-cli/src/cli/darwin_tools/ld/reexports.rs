@@ -2,7 +2,7 @@
 //! Open a directly autolinked runtime first, while leaving SDK deployment
 //! redirects and explicit loading policies to the linker. No output is patched.
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub(super) fn prefer_direct_runtime(
     args: &mut Vec<String>,
@@ -35,27 +35,17 @@ pub(super) fn prefer_direct_runtime(
         _ => return,
     };
     let minimum = version(&platform[2]);
-    let mut search = Vec::new();
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        if arg == "-L" {
-            if let Some(path) = iter.next() {
-                search.push(PathBuf::from(path));
-            }
-        } else if let Some(path) = arg.strip_prefix("-L") {
-            search.push(PathBuf::from(path));
-        }
-    }
-    if let Some([_, root]) = args.windows(2).find(|a| a[0] == "-syslibroot") {
-        search.push(Path::new(root).join("usr/lib"));
-    }
+    let search = search_paths(args);
     let stub = |name: &str| {
         search
             .iter()
             .map(|p| p.join(format!("lib{name}.tbd")))
             .find(|p| p.is_file())
     };
-    let parents: Vec<_> = args
+    // An umbrella can be named on the command line or autolinked, as
+    // libswiftDarwin is: LLD 23 opens autolinked libraries in ld64's order,
+    // which puts the umbrella ahead of the runtime it reexports.
+    let parents: Vec<(String, String)> = args
         .iter()
         .filter_map(|arg| {
             [
@@ -69,8 +59,11 @@ pub(super) fn prefer_direct_runtime(
             .iter()
             .find_map(|prefix| arg.strip_prefix(prefix))
         })
-        .filter_map(&stub)
-        .filter_map(|p| std::fs::read_to_string(p).ok())
+        .chain(libraries.iter().map(String::as_str))
+        .filter_map(|name| {
+            let text = std::fs::read_to_string(stub(name)?).ok()?;
+            Some((name.to_string(), text))
+        })
         .collect();
     let mut leading = Vec::new();
     for library in libraries.intersection(markers) {
@@ -95,12 +88,45 @@ pub(super) fn prefer_direct_runtime(
         {
             continue;
         }
-        if parents.iter().any(|p| reexports(p, &install)) {
+        if parents
+            .iter()
+            .any(|(name, text)| name != library && reexports(text, &install))
+        {
             // Plain -l retains LLD's inference from weak/strong symbol references.
             leading.push(format!("-l{library}"));
         }
     }
     args.splice(0..0, leading);
+}
+
+/// The folders the linker looks for `-l` libraries in, in its order.
+fn search_paths(args: &[String]) -> Vec<PathBuf> {
+    let root = args
+        .windows(2)
+        .find(|a| a[0] == "-syslibroot")
+        .map(|a| PathBuf::from(&a[1]));
+    let mut search = Vec::new();
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        let path = if arg == "-L" {
+            iter.next().map(String::as_str)
+        } else {
+            arg.strip_prefix("-L")
+        };
+        let Some(path) = path.map(PathBuf::from) else {
+            continue;
+        };
+        // As in ld64, an absolute search path is looked up under the SDK
+        // first, which is where -L/usr/lib/swift finds the Swift runtime.
+        if let (Some(root), Ok(inner)) = (&root, path.strip_prefix("/")) {
+            search.push(root.join(inner));
+        }
+        search.push(path);
+    }
+    if let Some(root) = &root {
+        search.push(root.join("usr/lib"));
+    }
+    search
 }
 
 fn version(value: &str) -> [u32; 3] {
@@ -149,6 +175,52 @@ mod tests {
             version("17.0")
         ));
     }
+    #[test]
+    fn an_autolinked_umbrella_puts_its_reexported_runtime_first() {
+        // The stubs sit in the SDK, found through -syslibroot and an
+        // absolute -L, as Swift Build passes them.
+        let sdk = std::env::temp_dir().join(format!("sweetpad-reexports-{}", std::process::id()));
+        let dir = sdk.join("usr/lib/swift");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("libswiftDarwin.tbd"),
+            "install-name: '/usr/lib/swift/libswiftDarwin.dylib'\nreexported-libraries:\n  - targets: [ arm64e-macos ]\n    libraries: [ '/usr/lib/swift/libswift_Builtin_float.dylib' ]\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("libswift_Builtin_float.tbd"),
+            "install-name: '/usr/lib/swift/libswift_Builtin_float.dylib'\n",
+        )
+        .unwrap();
+        let base: Vec<String> = ["-platform_version", "macos", "14.0", "27.2", "-syslibroot"]
+            .iter()
+            .map(ToString::to_string)
+            .chain([sdk.display().to_string(), "-L/usr/lib/swift".to_string()])
+            .collect();
+        let set = |names: &[&str]| {
+            names
+                .iter()
+                .map(ToString::to_string)
+                .collect::<BTreeSet<_>>()
+        };
+        let mut args = base.clone();
+        prefer_direct_runtime(
+            &mut args,
+            &set(&["swiftDarwin", "swift_Builtin_float"]),
+            &set(&["swift_Builtin_float"]),
+        );
+        assert_eq!(args[0], "-lswift_Builtin_float");
+        // A runtime is not its own umbrella.
+        let mut alone = base.clone();
+        prefer_direct_runtime(
+            &mut alone,
+            &set(&["swift_Builtin_float"]),
+            &set(&["swift_Builtin_float"]),
+        );
+        assert_eq!(alone, base);
+        std::fs::remove_dir_all(&sdk).unwrap();
+    }
+
     #[test]
     fn only_actual_reexports_count() {
         let stub = "install-name: '/usr/lib/swift/Child.dylib'\nreexported-libraries:\n  - targets: [arm64-ios]\n    libraries: ['/usr/lib/swift/Child.dylib']\nexports:\n symbols: ['/usr/lib/swift/Other.dylib']";

@@ -160,7 +160,11 @@ mod tests {
         }
         // Swift Build and the macro plugin ship built, beside the binary.
         assert!(!root.join("setup/sweetpad-cli/macros").exists());
-        assert!(!root.join("setup/sweetpad-lib/ci/swift-build-linux.patch").exists());
+        assert!(
+            !root
+                .join("setup/sweetpad-lib/ci/swift-build-linux.patch")
+                .exists()
+        );
         assert_eq!(materialize(&dir.join("cache")).unwrap(), root);
     }
 
