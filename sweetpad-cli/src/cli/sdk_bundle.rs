@@ -54,18 +54,7 @@ const BASE_PARTS: [&str; 7] = [
 /// can't load. `sweetpad-macros` expands their macros instead.
 const HOST_PLUGINS: &str = "Developer/usr/lib/swift/host";
 /// What another platform keeps of its folder.
-const EXTRA_PARTS: [&str; 10] = [
-    "Info.plist",
-    "version.plist",
-    "PlatformBasicInfo.plist",
-    "Developer/SDKs",
-    "Developer/Library/Xcode/Specifications",
-    "Developer/Library/Xcode/Agents/XCTRunner.app",
-    "Developer/Library/Frameworks",
-    "Developer/Library/PrivateFrameworks",
-    "Developer/usr/lib",
-    "Library/Application Support",
-];
+const EXTRA_PARTS: [&str; 10] = super::apple_archive::select::PLATFORM_PARTS;
 /// The test frameworks linked into each base SDK's frameworks, from the
 /// platform's `Developer/Library`.
 const TEST_FRAMEWORKS: [(&str, &str); 4] = [
@@ -74,7 +63,7 @@ const TEST_FRAMEWORKS: [(&str, &str); 4] = [
     ("XCUIAutomation", "Frameworks"),
     ("XCTestCore", "PrivateFrameworks"),
 ];
-const TOOLCHAIN: &str = "Developer/Toolchains/XcodeDefault.xctoolchain";
+const TOOLCHAIN: &str = super::apple_archive::select::TOOLCHAIN;
 
 /// What a bundle is written from.
 pub(crate) struct Inputs<'a> {
@@ -104,7 +93,7 @@ pub(crate) fn write(inputs: &Inputs<'_>, out: &Path) -> Result<Value, String> {
     let developer = contents.join("Developer");
 
     let lib = format!("{TOOLCHAIN}/usr/lib");
-    for name in ["swift", "swift_static", "clang"] {
+    for name in super::apple_archive::select::TOOLCHAIN_LIBS {
         copy(&contents.join(&lib).join(name), &out.join(&lib).join(name))?;
     }
     let runtimes = copy_swift_runtimes(&contents, out)?;
@@ -512,7 +501,7 @@ fn pretty(value: &Value) -> Vec<u8> {
 /// The host Swift's Clang resource headers, from the compiler of the
 /// pinned Swift release on `PATH`.
 pub(crate) fn host_clang_headers(swift: &str) -> Result<PathBuf, String> {
-    let output = std::process::Command::new("swiftc")
+    let output = std::process::Command::new(crate::cli::linux_setup::swift::tool("swiftc"))
         .arg("-print-target-info")
         .stdin(std::process::Stdio::null())
         .output()
@@ -522,7 +511,7 @@ pub(crate) fn host_clang_headers(swift: &str) -> Result<PathBuf, String> {
     let version = info["compilerVersion"].as_str().unwrap_or_default();
     if !version.contains(&format!("Swift version {swift}")) {
         return Err(format!(
-            "the SDK needs Swift {swift} on PATH, not '{version}'"
+            "the SDK needs Swift {swift}, not '{version}'; run 'sweetpad setup' or put Swift {swift} on PATH"
         ));
     }
     let resources = info["paths"]["runtimeResourcePath"]

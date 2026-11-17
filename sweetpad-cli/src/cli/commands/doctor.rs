@@ -113,18 +113,21 @@ fn linux_check(
 }
 
 fn gather_linux(target: Target) -> Vec<Check> {
-    let setup = "run sweetpad setup --sdk /path/to/apple-sdk.tar.gz, then source ~/.config/sweetpad/linux-env.sh";
+    let setup = "run sweetpad setup --sdk /path/to/apple-sdk.tar.gz";
     let mut checks = Vec::new();
     let os = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
     checks.push(linux_host(std::env::consts::ARCH, &os));
     checks.push(linux_shell());
-    // `swift --version` leaves a `TemporaryDirectory.*` in a shared `TMPDIR`.
-    let swift = first_line(crate::cli::swiftpm::swift_version().map(|v| v.trim().to_string()))
-        .unwrap_or_else(|| "swift missing".into());
+    // The Swift setup installs or finds, the one builds use.
+    let pinned = &super::sdk::toolchain().swift;
+    let swift = crate::cli::linux_setup::swift::pinned();
     checks.push(linux_check(
         "swift",
-        swift.contains(&format!("Swift version {}", super::sdk::toolchain().swift)),
-        swift,
+        swift.is_some(),
+        swift.map_or_else(
+            || format!("Swift {pinned} missing"),
+            |swift| format!("{} ({})", swift.version, swift.bin.display()),
+        ),
         false,
         setup,
     ));
@@ -162,9 +165,13 @@ fn gather_linux(target: Target) -> Vec<Check> {
         setup,
     ));
     checks.push(darwin_linker_check(setup));
+    let libtool = crate::cli::linux_setup::libtool();
     checks.push(tool_check(
         "Darwin libtool",
-        first_line(probe("llvm-libtool-darwin", &["--version"])),
+        libtool.as_ref().and_then(|path| {
+            first_line(probe(&path.to_string_lossy(), &["--version"]))
+                .map(|version| format!("{version} ({})", path.display()))
+        }),
         Status::Fail,
         Some("rerun sweetpad setup to install llvm-libtool-darwin"),
     ));

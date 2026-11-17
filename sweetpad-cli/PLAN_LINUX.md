@@ -95,10 +95,10 @@ sweetpad setup --xcode 27.2      # installs Swift 6.4.2, downloads Xcode, import
 | --- | --- | --- |
 | Patched Swift Build (`swbuild`) | compiled on the host, about 14 minutes | in the SweetPad package |
 | Macro plugin (`sweetpad-macros`) | compiled on the host | in the SweetPad package |
-| Swift 6.4.2 toolchain | downloaded by `linux-setup.sh` | installed by setup through swiftly or a verified download; the package lists only Swift's system libraries |
-| Darwin SDK bundle | `xtool sdk build`, then Python fix-ups | written by the CLI |
-| `.xip`, `.aea` and SDK export reading | Python, plus C codecs compiled at import | the CLI |
-| Setup steps | `linux-setup.sh` behind a Python shim | the CLI |
+| Swift 6.4.2 toolchain | found on `PATH` or in swiftly, else downloaded and checked by setup | installed by setup through swiftly or a verified download; the package lists only Swift's system libraries |
+| Darwin SDK bundle | written by the CLI | written by the CLI |
+| `.xip`, `.aea` and SDK export reading | the CLI | the CLI |
+| Setup steps | the CLI | the CLI |
 
 Each phase ships in its own release. Setup no longer needs `git`, xtool,
 Python or a sourced environment file at the end; device commands still use
@@ -164,21 +164,23 @@ problem before the next release.
 
 ### Phase 3: archive reading in the CLI
 
-- [ ] SC12: Read SDK exports, xar (`.xip`), pbzx, cpio (odc and newc), Apple Archive and AEA in Rust, with the selected paths as a typed table.
-- [ ] SC13: Codecs: `flate2`, an LZMA crate and `lzfse_rust`. For LZRAVEN, test the `lzraven` crate against our conformance archives, or port the 0BSD C decoder.
-- [ ] SC14: AEA with RustCrypto HPKE, HKDF and AES and `p256`, keeping the key-host rules and `--aea-key-file` formats.
-- [ ] SC15: Port the traversal, link, size and checksum tests over the existing fixtures, and keep `--replace-sdk` keeping the old SDK until the new one imports.
-- [ ] SC16: Add a private CI job that imports a real `.xip`, the gap #363 shipped through.
-- [ ] SC17: Move `sdk export` on the Mac to the same code, then delete `linux-sdk.py`, `linux-xcode-archive.py`, `linux-archive-codecs.py`, `archive-codecs/` and their Python tests.
+- [x] SC12: Read SDK exports, xar (`.xip`), pbzx, cpio (odc and newc), Apple Archive and AEA in Rust, with the selected paths as a typed table. `apple_archive/` reads them in two passes as the Python did, `sdk_import.rs` unpacks exports and runs the import, and `apple_archive/select.rs` is the table that the import, `sdk export` and `sdk_bundle.rs` share. The XIP table of contents goes through the XML reader the package code already uses, so `roxmltree` isn't needed.
+- [x] SC13: Codecs: `flate2`, `lzma-rs`, `lz4_flex` (with Apple's `bv4` framing) and `lzfse_rust` (LZFSE and LZVN). The `lzraven` crate is an empty placeholder, so LZRAVEN is a port of liblzraven's scalar decoder (`apple_archive/lzraven.rs`, its 0BSD notice beside it and in the packages' `licenses/lzraven`). Every codec's fixture decodes to the same bytes as `raw.aar`, and on the Mac the port decodes what Apple's own encoder in libcompression writes from text, random, zeroed, mixed and executable inputs.
+- [x] SC14: AEA with RustCrypto HPKE, HKDF and AES and `p256`, keeping the key-host rules and `--aea-key-file` formats. HPKE is hand-written over `hkdf`, `p256` ECDH and `aes-gcm` and opens the RFC 9180 vector; key URLs are fetched without following redirects on their own, so each hop is checked against the approved hosts. Python's `cryptography` is no longer a host package.
+- [x] SC15: Port the traversal, link, size and checksum tests over the existing fixtures, and keep `--replace-sdk` keeping the old SDK until the new one imports. `apple_archive/tests.rs` and `sdk_import/tests.rs` cover what `test_xcode_archive.py` and `test_linux_sdk.py` did; the import takes the bundle writer as a parameter, so a test can fail it and check the old SDK stays. The sudo-free bootstrap test moved to `test_linux_host.py`.
+- [ ] SC16: Add a private CI job that imports a real `.xip`, the gap #363 shipped through. `xcode-archive-import` in `linux-apple-build.yaml` imports `~/xcode-archives/Xcode.xip` (or `SWEETPAD_XCODE_ARCHIVE`) on the private runner and checks the base SDKs are there. Still to do: put an archive on the runner and see the job pass.
+- [x] SC17: Move `sdk export` on the Mac to the same code, then delete `linux-sdk.py`, `linux-xcode-archive.py`, `linux-archive-codecs.py`, `archive-codecs/` and their Python tests. `linux-aea.py` and `linux-apple-keys.py` went too. The export also writes the App Shortcut phrase expansions itself, reading the probe's model with `appintents::nlu::read`; `linux-appintents-resources.py` stays for `linux-setup.sh`'s Mac path until SC23. `linux-setup.sh` imports with `sweetpad sdk import`, which takes a hidden `--xcode` for that path, and `setup` checks the archive in Rust before installing anything.
 
 ### Phase 4: setup in the CLI
 
-- [ ] SC18: Steps with a `status()` and `run()`, shared with `doctor`, with progress events under `--json` and typed errors.
-- [ ] SC19: Host packages through `sudo apt-get` or `pacman`, with the package lists in `linux-toolchain.json`.
-- [ ] SC20: Audit which system packages Swift and the build need, and list them as dependencies of the `sweetpad` package, so apt installs them and setup skips that step on Debian and Ubuntu. Include Swift in the container image.
-- [ ] SC21: Install Swift in setup: use a matching Swift on `PATH` or from swiftly, and otherwise download and verify the pinned release. Swift is never repackaged.
-- [ ] SC22: Find the toolchain, SDK and helpers without `linux-env.sh`; keep writing it for running `swift` by hand.
-- [ ] SC23: Delete `linux-setup.sh`, `linux-host-tools.sh` and the Python shim; update `CLI_DESIGN.md`, the Linux docs and `help environment`.
+- [x] SC18: Steps with a `status()` and `run()`, shared with `doctor`, with progress events under `--json` and typed errors. `commands/setup.rs` runs packages, Swift, `libtool`, the SDK import, the environment file and the sample build in order; each reports `ready` when its result is already there or `done` when it made it, as notes on the terminal and `setupStep` events under `-o ndjson`, and a failing step's error names it in `diagnostics[].stage`. `doctor` reads Swift and `libtool` through the same lookups (`linux_setup`).
+- [x] SC19: Host packages through `sudo apt-get` or `pacman`, with the package lists in `linux-toolchain.json`. `linux_setup/host.rs` reads `os-release`, asks `dpkg-query` or `pacman -T` what is missing, and installs only that, as root or through `sudo` (`--non-interactive` when setup can't ask). `--skip-system-packages` reports what is missing and goes on.
+- [ ] SC20: Audit which system packages Swift and the build need, and list them as dependencies of the `sweetpad` package, so apt installs them and setup skips that step on Debian and Ubuntu. Include Swift in the container image. The container image now starts from `swift:<pin>-bookworm` with `bubblewrap` and LLVM added. Still to do: the audit (build the sample in swift.org's image with only those added, then trim `hostPackages` and list them in the `.deb`); it stopped when the Mac's disk filled.
+- [ ] SC21: Install Swift in setup: use a matching Swift on `PATH` or from swiftly, and otherwise download and verify the pinned release. Swift is never repackaged. `linux_setup/swift.rs` takes the first `usr/bin` whose `swift --version` reports the pin: the `PATH`'s, swiftly's (`SWIFTLY_HOME_DIR`), then `~/swift/swift-<pin>-RELEASE`. Otherwise it downloads swift.org's tarball and signature, checks them with `gpg` in a keyring of its own, unpacks through a scratch folder with the tar crate, renames ncurses for Arch with `patchelf`, and compiles and runs a Foundation program. In a fresh `ubuntu:24.04` container, setup installed the packages, downloaded Swift and passed the signature check; the unpack then stopped when the Mac's disk filled, so a fresh host's unpack and probe still need a run.
+- [x] SC22: Find the toolchain, SDK and helpers without `linux-env.sh`; keep writing it for running `swift` by hand. The build puts the pinned Swift's `usr/bin` first on Swift Build's `PATH` and sets `LIBTOOL` to the `llvm-libtool-darwin` it finds (on `PATH`, else the newest `/usr/bin/llvm-libtool-darwin-N` or `/usr/lib/llvm-N/bin`); the SDK import asks the same Swift for its Clang headers. In the VM, `setup --sdk` with `PATH=/usr/local/bin:/usr/bin:/bin` found Swift and LLVM 18's `libtool`, imported the export and built the sample in 5 minutes 10 seconds. `linux-env.sh` now holds only `SWEETPAD_DARWIN_SDK` and Swift's folder.
+- [x] SC28: Port `apple-auth.py` to the CLI: Apple ID sign-in with SRP and two-factor codes, as XcodesLoginKit does, and the session file `sweetpad auth login` writes, keeping `--session-file` and `SWEETPAD_APPLE_SESSION_FILE`. Passwords are never stored. Written as `apple_account/` (cookie jar, private session file, SRP with `rsa::BigUint`, PBKDF2 and hashcash, the password read from `/dev/tty` with echo off, sign-in and second factor) with `test_apple_auth.py`'s cases ported, including the independent SRP server check and a pty test that the password never echoes. The session file keeps the Python format. The test account signs in with its password and an SMS code, and a second `auth login` reuses the saved session without asking. Apple's sign-in refuses some requests at random: the challenge with a 502–504, and the SRP setup with 400 `-900007`, which the same requests pass moments later. The challenge is retried, and a refused SRP setup starts over once from a clean session, since nothing secret has been sent by then; the password step is never resent. A refused password step names Apple's status, code and message.
+- [x] SC29: Port `linux-xcode-download.py` to the CLI: the Xcode release list and the signed-in download `setup --xcode` and `sdk download` run, so that path needs no Python either. `apple_account/download.rs` picks the release, reads the prerelease page, and downloads with the lock, receipt, `Range`/`If-Range` resume and `Content-Range` checks; `test_xcode_download.py`'s cases run against a canned transport. With the test account's session, `sdk download --xcode 27.2` reads the catalog and downloads the 2.0 GB archive; stopped at 653 MB, it resumes from there to the same SHA-256 (`c28b0552…`), and a third run reuses it from the receipt.
+- [x] SC23: Delete `linux-setup.sh`, `linux-host-tools.sh` and the Python shim; update `CLI_DESIGN.md`, the Linux docs and `help environment`. Also gone: `apple-auth.py`, `linux-xcode-download.py`, `linux-appintents-resources.py`, their tests, `test_linux_host.py` and `linux-setup-files.txt`; the binary embeds only the sample app. `setup --no-sdk` installs the host tools alone, which `linux-hosts.yaml` now runs with a static CLI in each distribution's container, and the Swift helpers build in swift.org's `swift:<pin>-bookworm` image. The `.deb` no longer depends on Python or bash. Neither workflow has run yet.
 
 ### Phase 5: fewer system packages
 
@@ -1213,7 +1215,8 @@ Running in the simulator stays on a Mac.
 
 ## Resuming
 
-- The VM is `sweetpad-linux` (provisioned by `ci/linux-setup.sh`). Inside it,
+- The VM is `sweetpad-linux` (an OrbStack Ubuntu 24.04 machine set up with
+  `sweetpad setup`). Inside it,
   OrbStack's view of host files lags edits: `touch` only the changed files
   before `cargo build` there. A `find … -exec touch` over the shared folder
   once hung OrbStack. Set `CARGO_TARGET_DIR=$HOME/sweetpad-target`.

@@ -15,7 +15,7 @@ Simulator checks ran on iOS 26.0 and 27.0.
 Initial physical-device checks used an iPhone 13 with iOS 27.0.1.
 The November 8 follow-up used the same phone with iOS 27.2.
 
-Install the Linux tools with `linux-setup.sh` and build the CLI on both hosts.
+Install the Linux tools with `sweetpad setup` and build the CLI on both hosts.
 The projects need their own dependencies before the suite can build them.
 The suite checks source revisions and applies the listed fixture patches.
 The separate `linux-project-prepare.py` recipe installs frozen hybrid-framework dependencies on the Mac for both build hosts.
@@ -675,20 +675,10 @@ also passes for all four fixtures, including CocoaPods. The executable audit rec
 
 ### Localized App Shortcuts
 
-Mac execution of `linux-setup.sh` exports phrase resources from the user's Xcode
-before importing them into the private Darwin SDK. The export stays outside source control.
-For an existing SDK, refresh only these resources:
-
-```bash
-python3 -B sweetpad-lib/ci/linux-appintents-resources.py \
-  --out sweetpad-lib/corpus/_linux-followups/tools/appintents-phrases.json
-orb -m sweetpad-linux bash -lc \
-  'cp "$1" "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle/appintents-phrases.json"' \
-  -- "$PWD/sweetpad-lib/corpus/_linux-followups/tools/appintents-phrases.json"
-```
-
-Add `--locale LANGUAGE` to
-export a project locale beyond the default set. The current export covers 81 locales.
+`sweetpad sdk export` on the Mac writes the phrase resources from the user's Xcode into
+the export, and `sweetpad setup --sdk` imports them into the private Darwin SDK. The export
+stays outside source control. To refresh them, export the SDK again and import it with
+`--replace-sdk`. The export covers the locales in `LOCALES` (`sdk_import.rs`).
 A missing localized resource export produces an explicit preparation error.
 
 The trainer reads localized app names and compiled AppShortcuts string tables.
@@ -808,7 +798,7 @@ The build-stage correction provides compatibility for the pinned compiler. An up
 
 The fresh build also exposed an llbuild directory-scan race during Hermes replacement.
 `swift-llbuild-directory-race.patch` handles a removed entry instead of dereferencing a failed filesystem result.
-`linux-setup.sh` installs both build-engine corrections.
+`build-swift-helpers.sh` builds Swift Build with both build-engine corrections.
 
 ### Automatic test manifests
 

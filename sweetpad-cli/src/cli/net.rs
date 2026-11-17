@@ -116,21 +116,7 @@ impl Session {
     }
 
     fn attempt(&self, request: &Request) -> Result<Response, SendFailure> {
-        let proxy = self.proxy(&request.url).map_err(|error| SendFailure {
-            error,
-            transport: false,
-        })?;
-        let mut call = minreq::Request::new(request.method.clone(), request.url.as_str())
-            .with_timeout(request.timeout_secs);
-        for (name, value) in &request.headers {
-            call = call.with_header(name.as_str(), value.as_str());
-        }
-        if let Some(body) = &request.body {
-            call = call.with_body(body.clone());
-        }
-        if let Some(proxy) = &proxy {
-            call = call.with_proxy(proxy.inner.clone());
-        }
+        let (call, proxy) = self.prepare(request)?;
         let response = call.send().map_err(|e| {
             send_error(&e, host(&request.url), proxy.as_ref(), request.timeout_secs)
         })?;
@@ -140,6 +126,41 @@ impl Session {
             headers: response.headers.clone(),
             body: response.into_bytes(),
         })
+    }
+
+    /// Send `request` once and hand back the body unread, for a download
+    /// too large to hold. The request's timeout covers the whole transfer,
+    /// body included.
+    pub(crate) fn stream(&self, request: &Request) -> Result<Streamed, CliError> {
+        let (call, proxy) = self.prepare(request).map_err(|failure| failure.error)?;
+        let response = call.send_lazy().map_err(|e| {
+            send_error(&e, host(&request.url), proxy.as_ref(), request.timeout_secs).error
+        })?;
+        Ok(Streamed {
+            status: response.status_code,
+            headers: response.headers.clone(),
+            body: response,
+        })
+    }
+
+    fn prepare(&self, request: &Request) -> Result<(minreq::Request, Option<Proxy>), SendFailure> {
+        let proxy = self.proxy(&request.url).map_err(|error| SendFailure {
+            error,
+            transport: false,
+        })?;
+        let mut call = minreq::Request::new(request.method.clone(), request.url.as_str())
+            .with_timeout(request.timeout_secs)
+            .with_follow_redirects(request.follow_redirects);
+        for (name, value) in &request.headers {
+            call = call.with_header(name.as_str(), value.as_str());
+        }
+        if let Some(body) = &request.body {
+            call = call.with_body(body.clone());
+        }
+        if let Some(proxy) = &proxy {
+            call = call.with_proxy(proxy.inner.clone());
+        }
+        Ok((call, proxy))
     }
 
     /// Send `request`, retrying a dropped connection, a timeout, a 5xx and a
@@ -187,6 +208,8 @@ pub(crate) struct Request {
     pub(crate) headers: Vec<(String, String)>,
     pub(crate) body: Option<Vec<u8>>,
     pub(crate) timeout_secs: u64,
+    /// Whether a redirect is followed, or handed back as the response.
+    pub(crate) follow_redirects: bool,
 }
 
 impl Request {
@@ -197,7 +220,15 @@ impl Request {
             headers: Vec::new(),
             body: None,
             timeout_secs: 60,
+            follow_redirects: true,
         }
+    }
+
+    /// Hand a redirect back instead of following it, for a caller that
+    /// checks where it leads.
+    pub(crate) fn without_redirects(mut self) -> Self {
+        self.follow_redirects = false;
+        self
     }
 
     pub(crate) fn header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
@@ -244,6 +275,13 @@ impl Response {
             .take(200)
             .collect()
     }
+}
+
+/// A response whose body is read as it arrives.
+pub(crate) struct Streamed {
+    pub(crate) status: u16,
+    pub(crate) headers: Vec<(String, String)>,
+    pub(crate) body: minreq::ResponseLazy,
 }
 
 /// `host[:port]` of a URL.

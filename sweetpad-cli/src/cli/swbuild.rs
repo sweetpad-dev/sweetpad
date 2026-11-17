@@ -1743,7 +1743,13 @@ impl DarwinSdk {
                 ),
             ),
             ("ARCHS", arch.to_string()),
-            ("LIBTOOL", "llvm-libtool-darwin".to_string()),
+            (
+                "LIBTOOL",
+                super::linux_setup::libtool().map_or_else(
+                    || "llvm-libtool-darwin".to_string(),
+                    |path| path.display().to_string(),
+                ),
+            ),
             ("DSYMUTIL", "dsymutil".to_string()),
             ("ONLY_ACTIVE_ARCH", "YES".to_string()),
             ("SWIFT_SDK_TOOLSETS", toolset.display().to_string()),
@@ -1883,6 +1889,9 @@ impl DarwinSdk {
         device: Option<String>,
     ) -> Vec<(String, Option<String>)> {
         let mut path = vec![tools.to_path_buf()];
+        // The pinned Swift, wherever setup found or put it, ahead of any
+        // other Swift on PATH.
+        path.extend(super::linux_setup::swift::pinned().map(|swift| swift.bin.clone()));
         path.extend(
             std::env::var_os("PATH")
                 .iter()

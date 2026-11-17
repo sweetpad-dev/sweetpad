@@ -2,8 +2,8 @@
 //! Swift Build asks its client for once per target: the identity to sign
 //! with, the provisioning profile to embed and the entitlements to sign
 //! into the product. Swift Build's console asks the program
-//! `SWEETPAD_PROVISIONING` names (a patch of sweetpad's, `linux-setup.sh`
-//! applies it), sending the target's request on standard input and reading
+//! `SWEETPAD_PROVISIONING` names (a patch of sweetpad's,
+//! `swift-build-linux.patch`), sending the target's request on standard input and reading
 //! the inputs back from standard output, each an XML property list.
 //!
 //! The identity is the one in `SWEETPAD_CODE_SIGN_P12` (see

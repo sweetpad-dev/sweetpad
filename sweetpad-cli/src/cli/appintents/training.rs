@@ -150,11 +150,11 @@ fn train(args: &Args, resources: &Path) -> Result<(), String> {
             let mut translated = metadata.clone();
             localize(&mut translated, &translations)?;
             let expansions = if let Some(resources) = &resources {
-                resources.locales.get(locale).cloned().ok_or_else(|| format!("no App Shortcuts expansions exported for locale '{locale}'; rerun ci/linux-appintents-resources.py with this locale"))?
+                resources.locales.get(locale).cloned().ok_or_else(|| format!("no App Shortcuts expansions exported for locale '{locale}'; export the SDK again on a Mac with 'sweetpad sdk export'"))?
             } else if locale == "en" {
                 Expansions::english()?
             } else {
-                return Err("localized App Shortcuts require appintents-phrases.json in the Darwin SDK; run ci/linux-appintents-resources.py on macOS and copy its export into the SDK".into());
+                return Err("localized App Shortcuts require appintents-phrases.json in the Darwin SDK; import the SDK from a 'sweetpad sdk export' made on a Mac".into());
             };
             languages.push(LanguageModel::new(locale, app, &translated, &expansions)?);
         }

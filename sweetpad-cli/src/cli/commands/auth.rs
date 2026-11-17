@@ -1,10 +1,8 @@
 //! Terminal Apple authentication and private session files for Linux downloads.
-use std::{path::PathBuf, process::Command, process::Stdio};
+use std::path::PathBuf;
 
+use crate::cli::{CliError, CommandResult, Context, Rendered, apple_account};
 use clap::{Args, Subcommand};
-use serde_json::Value;
-
-use crate::cli::{CliError, CommandResult, Context, ErrorKind, Rendered};
 
 #[derive(Debug, Args)]
 pub struct SessionArgs {
@@ -15,7 +13,7 @@ pub struct SessionArgs {
 
 #[derive(Debug, Args)]
 pub struct LoginArgs {
-    /// Apple account email. The password and two-factor code use hidden TTY input.
+    /// Apple account email. The password and verification code are asked for on the terminal.
     #[arg(long)]
     pub apple_id: String,
     #[command(flatten)]
@@ -30,51 +28,20 @@ pub enum Action {
     Logout(SessionArgs),
 }
 
-pub(super) fn helper(ctx: &Context, action: &str) -> Result<Command, CliError> {
-    let root = crate::cli::embedded::root()?.join("setup/sweetpad-lib/ci");
-    let mut command = Command::new("python3");
-    command
-        .arg(root.join("linux-xcode-download.py"))
-        .arg(action);
-    if !ctx.out.is_interactive() {
-        command.arg("--non-interactive");
-    }
-    command.stdin(Stdio::inherit()).stderr(Stdio::inherit());
-    Ok(command)
-}
-
-pub(super) fn report(command: &mut Command) -> Result<Value, CliError> {
-    let output = command.output().map_err(|error| {
-        CliError::new(format!(
-            "Apple authentication and downloads require python3: {error}"
-        ))
-        .kind(ErrorKind::ToolMissing)
-    })?;
-    let report: Value = serde_json::from_slice(&output.stdout)
-        .map_err(|_| CliError::new("Apple helper returned an invalid report"))?;
-    if !output.status.success() {
-        return Err(CliError::new(
-            report["error"]
-                .as_str()
-                .unwrap_or("Apple authentication or download failed"),
-        ));
-    }
-    Ok(report)
-}
-
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
-    let (name, session) = match action {
-        Action::Login(args) => ("login", &args.session),
-        Action::Logout(args) => ("logout", args),
+    let report = match action {
+        Action::Login(args) => {
+            let path = apple_account::session_path(args.session.session_file.as_deref());
+            let mut note = |line: &str| ctx.out.note(line);
+            apple_account::login(path, &args.apple_id, ctx.out.is_interactive(), &mut note)
+        }
+        Action::Logout(args) => {
+            apple_account::logout(&apple_account::session_path(args.session_file.as_deref()))
+        }
     };
-    let mut command = helper(ctx, name)?;
-    if let Action::Login(args) = action {
-        command.arg("--apple-id").arg(&args.apple_id);
-    }
-    if let Some(path) = &session.session_file {
-        command.arg("--session-file").arg(path);
-    }
-    Ok(Rendered::data(super::sdk::Report(report(&mut command)?)))
+    Ok(Rendered::data(super::sdk::Report(
+        report.map_err(CliError::new)?,
+    )))
 }
 
 #[cfg(test)]

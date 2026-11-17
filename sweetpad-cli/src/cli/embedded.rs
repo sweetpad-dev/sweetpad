@@ -1,4 +1,5 @@
-//! Content-addressed public resources for standalone CLI installations.
+//! The sample app `setup` builds, embedded in the binary and written to a
+//! content-addressed cache folder on first use.
 use std::{
     fmt::Write as _,
     path::{Path, PathBuf},
@@ -19,7 +20,7 @@ pub(crate) fn root() -> Result<PathBuf, CliError> {
                 .map_or_else(std::env::temp_dir, |p| p.join(".cache"))
         });
     materialize(&cache.join("sweetpad/distribution")).map_err(|e| {
-        CliError::new(format!("prepare embedded setup files: {e}")).kind(ErrorKind::ToolMissing)
+        CliError::new(format!("prepare the embedded sample app: {e}")).kind(ErrorKind::ToolMissing)
     })
 }
 
@@ -80,8 +81,8 @@ fn materialize(cache: &Path) -> Result<PathBuf, std::io::Error> {
         .mode(0o700)
         .create(cache)?;
     let metadata = cache.symlink_metadata()?;
-    // The cache contains executable bootstrap inputs. Only the invoking user
-    // may write them, even when XDG_CACHE_HOME points outside the home directory.
+    // The cache holds the project setup builds. Only the invoking user
+    // may write it, even when XDG_CACHE_HOME points outside the home directory.
     if !metadata.is_dir() || metadata.file_type().is_symlink()
         // SAFETY: geteuid has no arguments or memory preconditions.
         || metadata.uid() != unsafe { libc::geteuid() }
@@ -147,37 +148,28 @@ mod tests {
     use crate::cli::testdir::TempDir;
 
     #[test]
-    fn standalone_resources_include_bootstrap_and_sample() {
+    fn standalone_resources_include_the_sample() {
         let dir = TempDir::new("embedded-public-resources");
         let root = materialize(&dir.join("cache")).unwrap();
-        for path in [
-            "setup/sweetpad-lib/ci/linux-setup.sh",
-            "setup/sweetpad-lib/ci/apple-auth.py",
-            "setup/sweetpad-lib/ci/linux-xcode-download.py",
-            "examples/LinuxApp/LinuxApp.xcodeproj/project.pbxproj",
-        ] {
-            assert!(root.join(path).is_file(), "{path}");
-        }
-        // Swift Build and the macro plugin ship built, beside the binary.
-        assert!(!root.join("setup/sweetpad-cli/macros").exists());
         assert!(
-            !root
-                .join("setup/sweetpad-lib/ci/swift-build-linux.patch")
-                .exists()
+            root.join("examples/LinuxApp/LinuxApp.xcodeproj/project.pbxproj")
+                .is_file()
         );
+        // Swift Build and the macro plugin ship built, beside the binary.
+        assert!(!root.join("setup").exists());
         assert_eq!(materialize(&dir.join("cache")).unwrap(), root);
     }
 
     #[test]
-    fn changed_or_symlinked_bootstrap_is_never_reused() {
+    fn changed_or_symlinked_resources_are_never_reused() {
         let dir = TempDir::new("embedded-corrupt-resources");
         let cache = dir.join("cache");
         let root = materialize(&cache).unwrap();
-        let script = root.join("setup/sweetpad-lib/ci/linux-setup.sh");
-        std::fs::write(&script, "changed").unwrap();
+        let project = root.join("examples/LinuxApp/LinuxApp.xcodeproj/project.pbxproj");
+        std::fs::write(&project, "changed").unwrap();
         assert!(materialize(&cache).is_err());
-        std::fs::remove_file(&script).unwrap();
-        std::os::unix::fs::symlink("linux-sdk.py", &script).unwrap();
+        std::fs::remove_file(&project).unwrap();
+        std::os::unix::fs::symlink("other.pbxproj", &project).unwrap();
         assert!(materialize(&cache).is_err());
     }
 

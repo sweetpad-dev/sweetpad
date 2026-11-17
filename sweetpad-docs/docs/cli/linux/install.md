@@ -133,7 +133,6 @@ If a release changes the SDK import recipe or the toolchain, run setup again wit
 
 ```bash
 sweetpad setup --sdk "$HOME/apple-sdk.tar.gz"
-source "$HOME/.config/sweetpad/linux-env.sh"
 sweetpad doctor --target ios
 ```
 

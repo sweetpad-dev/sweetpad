@@ -52,7 +52,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source "$HOME/.config/sweetpad/linux-env.sh"
           sweetpad build --project MyApp.xcodeproj --scheme MyApp \
             --configuration Release --destination 'generic/platform=iOS' \
             --json --non-interactive \
@@ -69,7 +68,7 @@ jobs:
           if-no-files-found: error
 ```
 
-Each step sources the environment file that setup wrote, which selects its toolchain and SDK.
+sweetpad finds the Swift and SDK that setup installed, so the steps need no environment file.
 The tar archive keeps the products' permissions and symbolic links, which artifact uploads lose.
 On an x86_64 runner, use the `linux-x64` archive and the `X64` label. The build itself doesn't change.
 
@@ -118,7 +117,6 @@ With your Apple Distribution identity, App Store profiles, and an App Store Conn
           SWEETPAD_ASC_KEY: ${{ secrets.ASC_KEY }}
         run: |
           set -euo pipefail
-          source "$HOME/.config/sweetpad/linux-env.sh"
           sweetpad archive --project MyApp.xcodeproj --scheme MyApp \
             --configuration Release --destination 'generic/platform=iOS' \
             --upload --output-file "$RUNNER_TEMP/dist" \

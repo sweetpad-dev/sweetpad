@@ -11,7 +11,7 @@
 # Defaults to ci/fixture-linux/LinuxApp.xcodeproj, scheme LinuxApp, Debug.
 # Run it on the Mac and it reruns itself inside the OrbStack machine, where
 # /Users is mounted at the same path; run it on Linux and it builds in place.
-# The machine comes from ci/linux-setup.sh.
+# The machine needs 'sweetpad setup' run in it first.
 #
 # Knobs (env): SWEETPAD_VM, DESTINATION (generic/platform=iOS), ARCH (the
 # arch the product must be built for, arm64), EXTRA_SETTINGS ("NAME=value …",
@@ -44,7 +44,7 @@ SWIFT_DIR="$(ls -d "$HOME"/swift/swift-*-RELEASE 2>/dev/null | sort | tail -1)"
 
 for p in "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle/swift-sdk.json" \
   "$SWIFT_DIR/usr/bin/swift" "$HOME/.cargo/bin/cargo"; do
-  [ -e "$p" ] || { echo "error: missing $p; run ci/linux-setup.sh first" >&2; exit 1; }
+  [ -e "$p" ] || { echo "error: missing $p; run 'sweetpad setup' first" >&2; exit 1; }
 done
 # Swift Build derives the toolchain from the first `swift` on PATH.
 export PATH="$HOME/bin:$SWIFT_DIR/usr/bin:$HOME/.cargo/bin:$PATH"

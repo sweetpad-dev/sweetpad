@@ -4593,9 +4593,11 @@ a Mac too, which is how a build is checked against xcodebuild's. `build --show-c
 SDK setup uses `sdk export` on a Mac and `setup --sdk` on Linux: Ubuntu 24.04 or Debian 12 and 13 on ARM64 or x86_64, or Arch on x86_64.
 Export contains private Apple inputs and localized App Intents resources, without signing identities.
 Import verifies checksums and stages the SDK before replacement. It adds the Linux compiler's Clang resource headers.
-Setup discovers installed, extracted-archive, mise, or explicit source layouts and builds a sample to validate the result.
+Setup runs in the CLI as a list of steps, and each one is skipped when its result is already there: the distribution's packages through `apt-get` or `pacman` (the lists are in `linux-toolchain.json`), the pinned Swift, LLVM's `llvm-libtool-darwin`, the SDK import and a sample build. `--no-sdk` stops after the host tools, and `-o ndjson` reports each step as a `setupStep` event.
+Swift is the one on `PATH` when it is the pinned release, else swiftly's, else a swift.org download that `gpg` checks against swift.org's keys in a keyring of its own. Setup compiles and runs a Foundation program with it before going on.
+Builds, `doctor` and the SDK import find Swift and `libtool` the same way, so nothing needs to be on `PATH`. The `linux-env.sh` that setup writes is for running `swift` by hand, and it keeps a CI-selected CLI first.
+`auth login` signs in to Apple in the CLI (SRP and a two-factor code, as XcodesLoginKit does), and `sdk download` fetches Xcode archives with resume and a receipt. The session file holds Apple's cookies, never a password.
 Linux doctor uses the engine's macro lookup, checks SDK and compiler tools, and separates optional capabilities from required prerequisites.
-Generated shell configuration preserves an existing CI-selected CLI.
 Swift Build's dependency revisions are frozen in the shipped `swift-build-Package.resolved`.
 
 **Swift Build gets a PIF and a build request, never a target name.**
@@ -4733,9 +4735,16 @@ each with its reason). The Xcode version settings come from Xcode's
 `version.plist`, which the bundle keeps beside its `Developer` folder, since
 Swift Build reports 99.99.99 without one.
 
-**sweetpad writes the bundle.** `sweetpad sdk write-bundle`, a hidden
-subcommand that `linux-sdk.py` runs on import, writes it from an Xcode.app
-(`sdk_bundle.rs`). Nothing in it runs on the host: LLD and `dsymutil` are
+**sweetpad writes the bundle.** `sweetpad sdk import` writes it
+(`sdk_import.rs`, `sdk_bundle.rs`) from an Xcode.app, from an export a Mac
+made with `sdk export`, or from an Xcode `.xip`, `.aea` or Apple Archive,
+which it reads itself (`apple_archive/`). XAR, pbzx, CPIO, Apple Archive
+and AEA are hand-rolled; the block codecs are crates, except LZRAVEN, a
+port of liblzraven's decoder. An archive is read twice, once for its
+entries and once for the data the SDK takes, so a hard link can find data
+stored outside the SDK and nothing else reaches the disk. The new bundle
+moves into place only once it's whole, so a failed import keeps the SDK
+that was there. Nothing in the bundle runs on the host: LLD and `dsymutil` are
 the packaged LLVM, macros expand in `sweetpad-macros`, and the Clang headers
 are the host Swift's. So it leaves out Xcode's `prebuilt-modules` caches and
 each platform's macro plugins, which are Mach-O. The base platforms'
@@ -4953,11 +4962,10 @@ device commands will use.
 
 **Linux ships static ARM64 and x86_64 archives, Debian packages and a container image.**
 An archive holds the static CLI, the DAP alias, Swift Build, the macro plugin and LLVM's
-Apple linker in `libexec/sweetpad`, a README, the device notes and licenses; the setup sources are embedded in
-the binary. It excludes Apple SDKs and signing material.
+Apple linker in `libexec/sweetpad`, a README, the device notes and licenses; the sample app that setup builds is
+embedded in the binary. It excludes Apple SDKs and signing material.
 Homebrew remains macOS only.
-The setup script provisions the separate compiler and private SDK prerequisites.
-`SWEETPAD_SKIP_RUST=1` omits Rust for the packaged CLI.
+`sweetpad setup` installs the compiler and imports the private SDK.
 Hosted CI validates a clean Ubuntu installation. A manual private SDK job builds the
 app `project new` creates with the installed CLI, with no source checkout, developer home, network, or app build cache.
 Each archive's helpers run on Ubuntu 24.04, Debian 12 and 13, and Arch with no Swift installed.

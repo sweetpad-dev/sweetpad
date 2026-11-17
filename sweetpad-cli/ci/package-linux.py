@@ -200,11 +200,8 @@ def source_files(repo):
     for path in sorted((repo / "sweetpad-cli/macros/Sources").rglob("LICENSE*")):
         if path.is_file():
             files["licenses/macros/" + str(path.relative_to(repo / "sweetpad-cli/macros/Sources"))] = path
-    codecs = repo / "sweetpad-lib/ci/archive-codecs"
-    files["licenses/archive-codecs/README.md"] = codecs / "README.md"
-    for path in sorted(codecs.rglob("LICENSE*")):
-        if path.is_file():
-            files["licenses/archive-codecs/" + str(path.relative_to(codecs))] = path
+    # The LZRAVEN decoder is a port of liblzraven's.
+    files["licenses/lzraven/LICENSE"] = repo / "sweetpad-cli/src/cli/apple_archive/LICENSE-lzraven"
     return files
 
 
@@ -292,10 +289,10 @@ def debian_package(binary, helpers, linker, version, out, revision=1, repo=REPO)
             "Maintainer: Yevhenii Hyzyla <hyzyla@gmail.com>\nSection: devel\nPriority: optional\n"
             # The Swift helpers and LLVM's linker load these system
             # libraries; the Swift runtime is bundled beside them.
-            "Depends: ca-certificates, python3, bash, libc6 (>= 2.36), libgcc-s1, libstdc++6, libsqlite3-0\n"
+            "Depends: ca-certificates, libc6 (>= 2.36), libgcc-s1, libstdc++6, libsqlite3-0\n"
             "Homepage: https://sweetpad.hyzyla.dev\n"
             "Description: Build Apple projects with the Sweetpad CLI\n"
-            " Static CLI with embedded public setup files, and the Swift Build,\n"
+            " Static CLI with its sample app, and the Swift Build,\n"
             " macro plugin and LLVM linker binaries it runs on Linux. Apple SDKs\n"
             " and signing material are supplied separately.\n"
         )

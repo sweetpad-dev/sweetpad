@@ -215,7 +215,7 @@ These failures have a known cause:
 
 | The error says | What to do |
 | --- | --- |
-| `Could not determine path to developer directory` | The shell hasn't loaded the environment file setup wrote, so Swift isn't on `PATH`. Run `source ~/.config/sweetpad/linux-env.sh`, then `sweetpad doctor --target ios`. |
+| `Could not determine path to developer directory` | sweetpad couldn't find the pinned Swift. Run `sweetpad setup`, then `sweetpad doctor --target ios`. |
 | `swbuild was killed by SIGKILL` | The kernel's out-of-memory killer sends SIGKILL, and `journalctl -k` says if it did. If so, give the VM or container more memory. |
 | `'-allowProvisioningUpdates' is an xcodebuild flag` | After `--`, Swift Build takes only build settings (`KEY=VALUE`), `-derivedDataPath`, `-xcconfig`, `-testPlan`, `-verbose` and `-quiet`. Remove the flag from the command or from `[xcodebuild].args` in `sweetpad.toml`. |
 | `needs 'metal', Apple's Metal shader compiler, which has no Linux version` | Build that target on a Mac. [Projects and resources](linux/reference.md#projects-and-resources) lists the inputs that need macOS tools. |

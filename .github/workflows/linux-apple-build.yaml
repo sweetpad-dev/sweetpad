@@ -187,3 +187,52 @@ jobs:
             ${{ runner.temp }}/sdk-package-install/work/doctor.json
             ${{ runner.temp }}/sdk-package-install/sandbox.stderr
           if-no-files-found: error
+
+  xcode-archive-import:
+    # A real Xcode .xip at full size: Apple's XAR, pbzx, CPIO and LZRAVEN,
+    # which the fixtures only cover in miniature. The runner keeps the
+    # archive outside the checkout, at ~/xcode-archives/Xcode.xip unless
+    # the SWEETPAD_XCODE_ARCHIVE variable names another path. Neither the
+    # archive nor the SDK is uploaded.
+    runs-on: [self-hosted, Linux, "${{ inputs.package_arch == 'x64' && 'X64' || 'ARM64' }}", '${{ inputs.runner_label }}']
+    timeout-minutes: 60
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      XCODE_ARCHIVE: ${{ vars.SWEETPAD_XCODE_ARCHIVE }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build CLI
+        run: |
+          swift="$(python3 -c 'import json; print(json.load(open("sweetpad-lib/ci/linux-toolchain.json"))["swift"])')"
+          echo "SWIFT_BIN=$HOME/swift/swift-$swift-RELEASE/usr/bin" >> "$GITHUB_ENV"
+          export PATH="$HOME/.cargo/bin:$HOME/bin:$HOME/swift/swift-$swift-RELEASE/usr/bin:$PATH"
+          CARGO_TARGET_DIR="$HOME/sweetpad-target" cargo build --locked -p sweetpad-cli --bin sweetpad
+      - name: Import the Xcode archive
+        run: |
+          archive="${XCODE_ARCHIVE:-$HOME/xcode-archives/Xcode.xip}"
+          if [ ! -f "$archive" ]; then
+            echo "::error::No Xcode archive at $archive. Put a .xip there, or set SWEETPAD_XCODE_ARCHIVE."
+            exit 1
+          fi
+          export PATH="$HOME/bin:$SWIFT_BIN:$PATH"
+          out="$RUNNER_TEMP/xip-sdk"
+          rm -rf "$out"
+          "$HOME/sweetpad-target/debug/sweetpad" sdk import "$archive" --destination "$out" --json \
+            > "$RUNNER_TEMP/xip-import.json"
+          python3 - "$RUNNER_TEMP/xip-import.json" "$out" <<'PY'
+          import json, pathlib, sys
+          report = json.loads(pathlib.Path(sys.argv[1]).read_text())["data"]
+          bundle = pathlib.Path(sys.argv[2])
+          assert report["sourceFormat"] == "xip" and not report["reused"], report
+          for platform in ["iPhoneOS", "iPhoneSimulator", "MacOSX"]:
+              sdks = bundle / f"Developer/Platforms/{platform}.platform/Developer/SDKs"
+              assert any(sdks.glob(f"{platform}*.sdk/SDKSettings.json")), platform
+          assert (bundle / "swift-sdk.json").is_file()
+          print(f"Imported Xcode {report['xcodeVersion']} ({report['xcodeBuild']}) from a .xip")
+          PY
+      - name: Remove the imported SDK
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/xip-sdk"

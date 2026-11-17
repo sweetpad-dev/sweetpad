@@ -71,14 +71,14 @@ On Linux, import the archive and install the pinned tools:
 
 ```bash
 sweetpad setup --sdk "$HOME/apple-sdk.tar.gz" --json --non-interactive
-source "$HOME/.config/sweetpad/linux-env.sh"
 sweetpad doctor --target ios --json --non-interactive
 sweetpad build --project MyApp.xcodeproj --scheme MyApp \
   --destination 'generic/platform=iOS Simulator' --json --non-interactive
 ```
 
-Setup downloads the pinned public Linux tools, imports SDK files, and builds the sample app.
-It requires sudo access for system packages, or an existing root shell. Use `sudo -v` first if your account requires a password.
+Setup installs the system packages, finds or downloads the pinned Swift, imports the SDK files and builds the sample app. A step whose result is already there is skipped.
+Installing system packages takes sudo or a root shell. Run `sudo -v` first if your account needs a password.
+sweetpad finds Swift and the SDK on its own. Source `~/.config/sweetpad/linux-env.sh` only to run `swift` by hand.
 An unchanged archive reuses the installed SDK. A different archive requires `--replace-sdk`.
 The SDK stays private. The prebuilt CLI requires no Rust installation or Sweetpad source checkout.
 App signing requires your development identity and profiles, configured separately.

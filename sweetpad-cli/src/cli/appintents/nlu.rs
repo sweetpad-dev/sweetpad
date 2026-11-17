@@ -227,58 +227,111 @@ pub(super) fn ssu(bundle: &str, languages: &[LanguageModel]) -> Result<String, S
     serde_json::to_string_pretty(&json!({"apiVersion": "ssu/v1", "nlu": {"shortcuts": {"bundleIdentifier": bundle, "intents": intents}}})).map_err(|e| e.to_string())
 }
 
+/// What a shortcut model holds: its locale and app, each intent's phrases
+/// and the negative examples, phrases sorted.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Content {
+    pub locale: String,
+    pub bundle: String,
+    pub intents: std::collections::BTreeMap<String, Vec<String>>,
+    pub negatives: Vec<String>,
+}
+
+/// Read a model as Xcode's training processor writes it (`nlu.lzfse`):
+/// LZFSE around an SSUv1 FlatBuffer.
+pub(crate) fn read(packed: &[u8]) -> Result<Content, String> {
+    let mut data = Vec::new();
+    lzfse_rust::decode_bytes(packed, &mut data)
+        .map_err(|e| format!("invalid shortcut model: {e}"))?;
+    content(&data)
+}
+
+/// The content of an SSUv1 FlatBuffer, checking every offset.
+pub(crate) fn content(data: &[u8]) -> Result<Content, String> {
+    let bad = || "invalid shortcut model offset".to_string();
+    let u32_at = |at: usize| -> Result<usize, String> {
+        let bytes = data.get(at..at + 4).ok_or_else(bad)?;
+        Ok(u32::from_le_bytes(bytes.try_into().unwrap()) as usize)
+    };
+    let u16_at = |at: usize| -> Result<usize, String> {
+        let bytes = data.get(at..at + 2).ok_or_else(bad)?;
+        Ok(usize::from(u16::from_le_bytes(bytes.try_into().unwrap())))
+    };
+    // Where field `index` of the table at `at` is, if it's set.
+    let field = |at: usize, index: usize| -> Result<Option<usize>, String> {
+        // A table starts with a signed offset back to its vtable.
+        let bytes = data.get(at..at + 4).ok_or_else(bad)?;
+        let back = i64::from(i32::from_le_bytes(bytes.try_into().unwrap()));
+        let at_signed = i64::try_from(at).map_err(|_| bad())?;
+        let table = usize::try_from(at_signed - back).map_err(|_| bad())?;
+        if 4 + index * 2 >= u16_at(table)? {
+            return Ok(None);
+        }
+        let offset = u16_at(table + 4 + index * 2)?;
+        Ok((offset != 0).then_some(at + offset))
+    };
+    let reference = |at: usize, index: usize| -> Result<usize, String> {
+        let p = field(at, index)?.ok_or_else(bad)?;
+        Ok(p + u32_at(p)?)
+    };
+    let vector = |at: usize| -> Result<Vec<usize>, String> {
+        let count = u32_at(at)?;
+        if at + 4 + 4 * count > data.len() {
+            return Err("invalid shortcut model vector".into());
+        }
+        (0..count)
+            .map(|i| {
+                let p = at + 4 + 4 * i;
+                Ok(p + u32_at(p)?)
+            })
+            .collect()
+    };
+    let string = |at: usize| -> Result<String, String> {
+        let count = u32_at(at)?;
+        let bytes = data
+            .get(at + 4..at + 4 + count)
+            .ok_or("invalid shortcut model string")?;
+        String::from_utf8(bytes.to_vec()).map_err(|_| "invalid shortcut model string".into())
+    };
+    let phrases = |at: usize| -> Result<Vec<String>, String> {
+        let mut phrases = vector(at)?
+            .into_iter()
+            .map(|t| string(reference(reference(t, 1)?, 0)?))
+            .collect::<Result<Vec<_>, _>>()?;
+        phrases.sort();
+        Ok(phrases)
+    };
+    let root = u32_at(0)?;
+    if u16_at(field(root, 0)?.ok_or_else(bad)?)? != 1 {
+        return Err("unsupported shortcut model schema".into());
+    }
+    let [group] = vector(reference(root, 3)?)?[..] else {
+        return Err("a shortcut model must have one group".into());
+    };
+    let [app] = vector(reference(group, 1)?)?[..] else {
+        return Err("a shortcut model must have one app".into());
+    };
+    let mut intents = std::collections::BTreeMap::new();
+    for intent in vector(reference(app, 1)?)? {
+        let name = string(reference(intent, 0)?)?;
+        if intents
+            .insert(name, phrases(reference(intent, 2)?)?)
+            .is_some()
+        {
+            return Err("duplicate shortcut model intent".into());
+        }
+    }
+    Ok(Content {
+        locale: string(reference(root, 2)?)?,
+        bundle: string(reference(app, 0)?)?,
+        intents,
+        negatives: phrases(reference(app, 2)?)?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
-    fn u32_at(data: &[u8], at: usize) -> usize {
-        u32::from_le_bytes(data[at..at + 4].try_into().unwrap()) as usize
-    }
-    fn field(data: &[u8], at: usize, index: usize) -> usize {
-        let back = i32::from_le_bytes(data[at..at + 4].try_into().unwrap());
-        let table = usize::try_from(i64::try_from(at).unwrap() - i64::from(back)).unwrap();
-        let offset = usize::from(u16::from_le_bytes(
-            data[table + 4 + index * 2..table + 6 + index * 2]
-                .try_into()
-                .unwrap(),
-        ));
-        let p = at + offset;
-        p + u32_at(data, p)
-    }
-    fn vector(data: &[u8], at: usize) -> Vec<usize> {
-        (0..u32_at(data, at))
-            .map(|i| {
-                let p = at + 4 + i * 4;
-                p + u32_at(data, p)
-            })
-            .collect()
-    }
-    fn string(data: &[u8], at: usize) -> String {
-        String::from_utf8(data[at + 4..at + 4 + u32_at(data, at)].to_vec()).unwrap()
-    }
-    fn content(data: &[u8]) -> (String, String, BTreeMap<String, Vec<String>>, Vec<String>) {
-        let root = u32_at(data, 0);
-        let group = vector(data, field(data, root, 3))[0];
-        let app = vector(data, field(data, group, 1))[0];
-        let phrases = |at| {
-            let mut p: Vec<String> = vector(data, at)
-                .into_iter()
-                .map(|t| string(data, field(data, field(data, t, 1), 0)))
-                .collect();
-            p.sort();
-            p
-        };
-        let intents = vector(data, field(data, app, 1))
-            .into_iter()
-            .map(|t| (string(data, field(data, t, 0)), phrases(field(data, t, 2))))
-            .collect();
-        (
-            string(data, field(data, root, 2)),
-            string(data, field(data, app, 0)),
-            intents,
-            phrases(field(data, app, 2)),
-        )
-    }
     #[test]
     fn shortcut_language_model_matches_xcodes_phrases_and_negative_examples() {
         let metadata: Value = serde_json::from_str(include_str!(
@@ -290,6 +343,6 @@ mod tests {
                 .unwrap();
         let (actual, _) = model("dev.sweetpad.DataApp", &language).unwrap();
         let expected = include_bytes!("../../../fixtures/appintents/DataApp.nlu");
-        assert_eq!(content(&actual), content(expected));
+        assert_eq!(content(&actual).unwrap(), content(expected).unwrap());
     }
 }

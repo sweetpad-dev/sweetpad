@@ -384,8 +384,8 @@ def check_network(prefix, area, report):
 def check_vm(root, env, vm, report):
     listed = subprocess.run(["orb", "list", "-q"], capture_output=True, text=True)
     if listed.returncode != 0 or vm not in listed.stdout.split():
-        report.add(False, "vm", f"OrbStack machine {vm} doesn't exist; "
-                               "sweetpad-lib/ci/linux-setup.sh creates it")
+        report.add(False, "vm", f"OrbStack machine {vm} doesn't exist; create it with "
+                               f"'orb create ubuntu:noble {vm}' and run 'sweetpad setup' in it")
         return
     prefix = ["orb", "-m", vm]
     readable = subprocess.run([*prefix, "test", "-r", str(root / "e2e.env")])
