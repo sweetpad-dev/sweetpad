@@ -159,28 +159,7 @@ PY
   llvm-libtool-darwin --version
 }
 
-sweetpad_install_xtool() {
-  local arch="$(uname -m)" downloads="$HOME/downloads"
-  if [ "$("$HOME/bin/xtool" --version 2>/dev/null)" != "xtool $XTOOL_VERSION" ]; then
-    local image="$downloads/xtool-$XTOOL_VERSION-$arch.AppImage"
-    curl -fL -sS -o "$image" \
-      "https://github.com/xtool-org/xtool/releases/download/$XTOOL_VERSION/xtool-$arch.AppImage"
-    # The manifest pins a separate AppImage checksum for each host architecture.
-    echo "$XTOOL_SHA256  $image" | sha256sum -c -
-    chmod +x "$image"
-    # Extracting sidesteps FUSE, which an OrbStack machine doesn't have.
-    rm -rf "$downloads/squashfs-root" "$HOME/xtool"
-    (cd "$downloads" && "$image" --appimage-extract >/dev/null)
-    mv "$downloads/squashfs-root" "$HOME/xtool"
-    ln -sf "$HOME/xtool/AppRun" "$HOME/bin/xtool"
-  fi
-  xtool --version
-
-}
-
 if [[ "${BASH_SOURCE[0]}" = "$0" ]]; then
   SWIFT_VERSION="${SWIFT_VERSION:-$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["swift"])' "$(dirname "$0")/linux-toolchain.json")}"
-  read -r XTOOL_VERSION XTOOL_SHA256 < <(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(p["xtool"],p["xtoolSha256"][sys.argv[2]])' "$(dirname "$0")/linux-toolchain.json" "$(uname -m)")
   sweetpad_install_host_tools
-  sweetpad_install_xtool
 fi

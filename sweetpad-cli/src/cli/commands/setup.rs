@@ -98,8 +98,8 @@ pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
         .arg(script).env("SWEETPAD_SKIP_RUST", "1")
         .env("SWEETPAD_SKIP_SYSTEM_PACKAGES", if args.skip_system_packages { "1" } else { "0" })
         .env("SWIFT_VERSION", &pins.swift)
-        .env("XTOOL_VERSION", &pins.xtool)
-        .env("XTOOL_SHA256", &pins.xtool_sha256[std::env::consts::ARCH])
+        // The SDK importer writes the bundle with this binary.
+        .env("SWEETPAD_EXE", std::env::current_exe().map_err(|e| CliError::new(e.to_string()))?)
         .env("SWEETPAD_NONINTERACTIVE", if ctx.out.is_interactive() { "0" } else { "1" })
         .env("SWEETPAD_SDK_ARCHIVE", archive).env("SWEETPAD_DARWIN_SDK", &destination)
         .env("SWEETPAD_REFRESH_SDK", if args.replace_sdk { "1" } else { "0" })

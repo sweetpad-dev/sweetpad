@@ -402,35 +402,13 @@ fn gather_linux_sdk(target: Target, setup: &'static str) -> Vec<Check> {
     gather_sdk_at(target, setup, &sdk)
 }
 
-fn sdk_tool_architecture(sdk: &std::path::Path) -> Option<&'static str> {
-    use std::io::Read;
-    for relative in ["toolset/bin/orig/ld64.lld", "toolset/bin/ld64.lld"] {
-        let mut header = [0; 20];
-        if std::fs::File::open(sdk.join(relative))
-            .and_then(|mut f| f.read_exact(&mut header))
-            .is_ok()
-            && &header[..6] == b"\x7fELF\x02\x01"
-        {
-            return match u16::from_le_bytes([header[18], header[19]]) {
-                62 => Some("x86_64"),
-                183 => Some("aarch64"),
-                _ => None,
-            };
-        }
-    }
-    None
-}
-
 fn gather_sdk_at(target: Target, setup: &'static str, sdk: &std::path::Path) -> Vec<Check> {
     let mut checks = Vec::new();
     let paths = [
         "swift-sdk.json",
-        "toolset-swb.json",
         "version.plist",
         "Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/swift/bridging",
         "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h",
-        "toolset/bin/ld64.lld",
-        "toolset/bin/llvm-lib",
     ];
     let missing: Vec<_> = paths
         .iter()
@@ -449,17 +427,6 @@ fn gather_sdk_at(target: Target, setup: &'static str, sdk: &std::path::Path) -> 
         setup,
     ));
     checks.push(extra_platforms(sdk));
-    let host_arch = sdk_tool_architecture(sdk);
-    checks.push(linux_check(
-        "SDK host tools",
-        host_arch == Some(std::env::consts::ARCH),
-        host_arch.map_or_else(
-            || "linker host architecture unavailable".into(),
-            |arch| format!("{arch}; host {}", std::env::consts::ARCH),
-        ),
-        host_arch.is_none(),
-        "import the SDK export on this host with sweetpad sdk import ARCHIVE --replace",
-    ));
     checks.push(linux_check("Localized App Intents", sdk.join("appintents-phrases.json").is_file(),
         "Localized shortcut phrase resources".into(), true,
         "export SDK resources on your Mac with sweetpad sdk export; only localized shortcut training needs these resources"));
@@ -975,42 +942,11 @@ mod tests {
     }
 
     #[test]
-    fn doctor_rejects_sdk_tools_for_another_host_architecture() {
-        let root = crate::cli::testdir::TempDir::new("doctor-sdk-host");
-        let linker = root.join("toolset/bin/orig/ld64.lld");
-        std::fs::create_dir_all(linker.parent().unwrap()).unwrap();
-        for machine in [62_u16, 183] {
-            let mut header = [0; 20];
-            header[..6].copy_from_slice(b"\x7fELF\x02\x01");
-            header[18..].copy_from_slice(&machine.to_le_bytes());
-            std::fs::write(&linker, header).unwrap();
-            let checks = gather_sdk_at(Target::Ios, "setup", &root.join(""));
-            let check = checks.iter().find(|c| c.name == "SDK host tools").unwrap();
-            let native = if cfg!(target_arch = "x86_64") {
-                62
-            } else {
-                183
-            };
-            assert_eq!(
-                check.status,
-                if machine == native {
-                    Status::Ok
-                } else {
-                    Status::Fail
-                }
-            );
-        }
-    }
-
-    #[test]
     fn legacy_sdk_without_localized_phrases_gets_a_warning() {
         let root = crate::cli::testdir::TempDir::new("doctor-legacy-sdk");
         for name in [
             "swift-sdk.json",
-            "toolset-swb.json",
             "version.plist",
-            "toolset/bin/ld64.lld",
-            "toolset/bin/llvm-lib",
             "Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/swift/bridging",
             "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h",
         ] {

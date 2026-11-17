@@ -83,5 +83,4 @@ jobs:
             printf '\''import Foundation\nprint("SwiftPM host probe: " + ProcessInfo.processInfo.operatingSystemVersionString)\n'\'' > Sources/main.swift
             swift build --jobs 2
             .build/debug/HostProbe
-            xtool --version
           '

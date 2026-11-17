@@ -124,7 +124,7 @@ fn selected_developer_dir() -> PathBuf {
 }
 
 /// Where the Darwin Swift SDK bundle is: `SWEETPAD_DARWIN_SDK`, else the one
-/// `xtool sdk install` writes. It has the Apple SDKs and Xcode's runtime
+/// `sweetpad setup` imports. It has the Apple SDKs and Xcode's runtime
 /// libraries, and stands in for Xcode on a host without one.
 #[must_use]
 pub fn darwin_sdk_bundle() -> PathBuf {

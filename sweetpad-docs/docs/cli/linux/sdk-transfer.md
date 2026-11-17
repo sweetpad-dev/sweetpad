@@ -119,7 +119,7 @@ Apple decides when a session expires. Sign in again to replace the secret, and u
 ### Other locations
 
 `--sdk-path` and `--env-file` put the SDK and the environment file somewhere else, for example one per CI runner.
-With Swift 6.4.2 and xtool 1.21.0 already on `PATH`, `sweetpad sdk import` imports an archive without the rest of setup.
+With Swift 6.4.2 already on `PATH`, `sweetpad sdk import` imports an archive without the rest of setup.
 
 ## Read the doctor report
 

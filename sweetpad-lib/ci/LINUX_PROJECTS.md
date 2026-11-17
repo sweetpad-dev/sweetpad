@@ -388,13 +388,7 @@ Use `--only mastodon` or `--only swiftfin` to select one project.
 Use `--derived-data PATH` for another package cache and `--check` to validate without writing.
 The helper checks the manifest's exact dependency revisions before applying patches.
 
-The SDK importer now includes versioned Swift back-deployment libraries from the user's Xcode.
-For an existing SDK installation, run this command from the repository root inside the Linux VM:
-
-```bash
-python3 -B sweetpad-lib/ci/linux-sdk-platforms.py \
-  /Applications/Xcode.app "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle" --runtime-only
-```
+The SDK includes the versioned Swift back-deployment libraries from the user's Xcode.
 
 Swift Build scans the app's Mach-O dependencies and embeds the needed Apple libraries.
 The CLI selects the extracted Apple toolchain and disables obsolete bitcode stripping.
@@ -529,9 +523,9 @@ A local Git fixture verifies remote alias builds and custom DerivedData lookup.
 Action configurations also come from the selected graph; both CLI backends
 honor a remote scheme's Release default in a custom DerivedData directory.
 
-`linux-sdk-platforms.py` imports tvOS, watchOS, and visionOS SDKs from the user's Xcode.
-It copies platform metadata, SDK data, testing frameworks, and companion stubs.
-It also extends Swift SDK target-triple metadata. The CLI selects Apple compiler resources
+`sweetpad sdk write-bundle` also copies the tvOS, watchOS, and visionOS SDKs from the user's Xcode.
+It takes their platform metadata, SDK data, testing frameworks, and companion stubs,
+and adds their target triples to the Swift SDK metadata. The CLI selects Apple compiler resources
 and the LLD driver for these platforms, scoped to the destination SDK.
 
 The following corpus schemes now build on Linux:

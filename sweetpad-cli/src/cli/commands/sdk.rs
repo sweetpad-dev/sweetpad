@@ -16,6 +16,28 @@ pub enum Action {
     Export(ExportArgs),
     /// Import a private SDK export or Xcode archive on ARM64 or x86_64 Linux.
     Import(ImportArgs),
+    /// Write a Darwin SDK bundle from an unpacked Xcode.app; 'sdk import' runs this.
+    #[command(hide = true)]
+    WriteBundle(WriteBundleArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct WriteBundleArgs {
+    /// The unpacked Xcode.app.
+    #[arg(long)]
+    pub xcode: PathBuf,
+    /// The bundle folder to create; it must not exist.
+    #[arg(long)]
+    pub out: PathBuf,
+    /// App Intents phrase resources from 'sdk export'.
+    #[arg(long)]
+    pub appintents_phrases: Option<PathBuf>,
+    /// The macOS build the SDK came from.
+    #[arg(long)]
+    pub build_machine_os_build: Option<String>,
+    /// Clang resource headers to use instead of the host Swift's.
+    #[arg(long)]
+    pub clang_headers: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -67,8 +89,6 @@ pub(super) struct Report(pub Value);
 pub(super) struct Toolchain {
     pub swift: String,
     pub swift_build: String,
-    pub xtool: String,
-    pub xtool_sha256: std::collections::BTreeMap<String, String>,
 }
 
 pub(super) fn toolchain() -> &'static Toolchain {
@@ -98,6 +118,8 @@ impl Render for Report {
             "SDK export plan"
         } else if data["configured"] == true {
             "Linux setup complete"
+        } else if data.get("bundlePath").is_some() {
+            "SDK bundle written"
         } else if data["reused"] == true {
             "SDK already imported"
         } else if data.get("archive").is_some() {
@@ -156,11 +178,18 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     if let Action::Download(args) = action {
         return Ok(Rendered::data(Report(download(ctx, args)?)));
     }
+    if let Action::WriteBundle(args) = action {
+        return write_bundle(args).map(|report| Rendered::data(Report(report)));
+    }
     let helpers = crate::cli::embedded::root()?.join("setup");
     let mut cmd = Command::new("python3");
     cmd.arg(helpers.join("sweetpad-lib/ci/linux-sdk.py"));
+    // The importer writes the bundle with this binary's 'sdk write-bundle'.
+    if let Ok(exe) = std::env::current_exe() {
+        cmd.env("SWEETPAD_EXE", exe);
+    }
     match action {
-        Action::Download(_) => unreachable!("download handled above"),
+        Action::Download(_) | Action::WriteBundle(_) => unreachable!("handled above"),
         Action::Export(args) => {
             cmd.arg("export")
                 .arg("--xcode")
@@ -202,6 +231,21 @@ pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
         ));
     }
     Ok(Rendered::data(Report(report)))
+}
+
+fn write_bundle(args: &WriteBundleArgs) -> Result<Value, CliError> {
+    let clang_headers = match &args.clang_headers {
+        Some(path) => path.clone(),
+        None => crate::cli::sdk_bundle::host_clang_headers(&toolchain().swift)
+            .map_err(|e| CliError::new(e).kind(ErrorKind::ToolMissing))?,
+    };
+    let inputs = crate::cli::sdk_bundle::Inputs {
+        xcode: &args.xcode,
+        clang_headers: &clang_headers,
+        phrases: args.appintents_phrases.as_deref(),
+        build_machine_os_build: args.build_machine_os_build.as_deref(),
+    };
+    crate::cli::sdk_bundle::write(&inputs, &args.out).map_err(CliError::new)
 }
 
 pub(super) fn default_sdk() -> PathBuf {

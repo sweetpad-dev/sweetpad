@@ -446,7 +446,7 @@ mod tests {
         )
     }
 
-    /// A platforms folder with the SDKs as xtool lays them out: the SDK under
+    /// A platforms folder with the SDKs as Xcode lays them out: the SDK under
     /// its plain name, and a link to it under each versioned one.
     fn platforms(dir: &TempDir) -> PathBuf {
         let folder = dir.join("Platforms");

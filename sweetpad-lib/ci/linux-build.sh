@@ -42,7 +42,7 @@ DESTINATION="${DESTINATION:-generic/platform=iOS}"
 ARCH="${ARCH:-arm64}"
 SWIFT_DIR="$(ls -d "$HOME"/swift/swift-*-RELEASE 2>/dev/null | sort | tail -1)"
 
-for p in "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle/toolset-swb.json" \
+for p in "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle/swift-sdk.json" \
   "$SWIFT_DIR/usr/bin/swift" "$HOME/.cargo/bin/cargo"; do
   [ -e "$p" ] || { echo "error: missing $p; run ci/linux-setup.sh first" >&2; exit 1; }
 done

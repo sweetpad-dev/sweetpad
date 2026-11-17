@@ -2,10 +2,5 @@
   "swift": "6.4.2",
   "swiftBuild": "6.4.0",
   "llvm": "23.1.5",
-  "llvmSourceSha256": "fb50b1eac93ddeb3aa8dab4cfe324dff74f4a9c2bdee6160c9e36188f8d06a6e",
-  "xtool": "1.21.0",
-  "xtoolSha256": {
-    "aarch64": "470d55880379de9696a048f4293a0b05a7fc43beba423ffe6c294a4975dcebf7",
-    "x86_64": "e2277e59bb2fda9b487cbc77ad080ea2b0370bb740ac0f02cc42fa28a272d3a5"
-  }
+  "llvmSourceSha256": "fb50b1eac93ddeb3aa8dab4cfe324dff74f4a9c2bdee6160c9e36188f8d06a6e"
 }

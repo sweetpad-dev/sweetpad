@@ -254,8 +254,8 @@ class ArchiveTests(unittest.TestCase):
         sdk=load("linux-sdk")
         installed=self.root/"sdk";installed.mkdir();(installed/"swift-sdk.json").write_text("{}");(installed/"sentinel").write_text("keep")
         from types import SimpleNamespace
-        args=SimpleNamespace(archive=FIXTURES/"odc-pbzx.xip",destination=installed,replace=True,xtool="fixture-xtool")
-        with patch.object(sdk.platform,"system",return_value="Linux"), patch.object(sdk.platform,"machine",return_value="aarch64"), patch.object(sdk.subprocess,"check_output",return_value="xtool "+sdk.VERSIONS["xtool"]):
+        args=SimpleNamespace(archive=FIXTURES/"odc-pbzx.xip",destination=installed,replace=True)
+        with patch.object(sdk.platform,"system",return_value="Linux"), patch.object(sdk.platform,"machine",return_value="aarch64"):
             with self.assertRaisesRegex(ValueError,"Missing required platform"):
                 sdk.import_sdk(args)
         self.assertEqual((installed/"sentinel").read_text(),"keep")

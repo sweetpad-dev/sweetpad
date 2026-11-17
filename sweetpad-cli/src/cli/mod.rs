@@ -58,6 +58,7 @@ pub mod rawmode;
 pub mod render;
 pub mod resolve;
 pub mod scaffold;
+pub mod sdk_bundle;
 pub mod signals;
 pub mod simctl;
 pub mod state;

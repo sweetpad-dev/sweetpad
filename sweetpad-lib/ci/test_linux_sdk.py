@@ -107,7 +107,7 @@ class SDKTests(unittest.TestCase):
         archive = self.archive()
         destination = self.root / "personal"; destination.mkdir()
         (destination / "keep").write_text("keep")
-        args = SimpleNamespace(archive=archive, destination=destination, replace=True, xtool="xtool")
+        args = SimpleNamespace(archive=archive, destination=destination, replace=True)
         with patch.object(sdk.platform, "system", return_value="Linux"), patch.object(sdk.platform, "machine", return_value="aarch64"):
             with self.assertRaisesRegex(ValueError, "not a Darwin SDK"):
                 sdk.import_sdk(args)
@@ -118,9 +118,9 @@ class SDKTests(unittest.TestCase):
         destination = self.root / "existing-sdk"; destination.mkdir()
         (destination / "important").write_text("previous SDK")
         (destination / "swift-sdk.json").write_text("{}")
-        args = SimpleNamespace(archive=archive, destination=destination, replace=True, xtool="xtool")
+        args = SimpleNamespace(archive=archive, destination=destination, replace=True)
         with patch.object(sdk.platform, "system", return_value="Linux"), patch.object(sdk.platform, "machine", return_value="aarch64"), \
-             patch.object(sdk.subprocess, "check_output", return_value="xtool 1.21.0\n"), \
+             patch.dict(os.environ, {"SWEETPAD_EXE": "sweetpad"}), \
              patch.object(sdk.subprocess, "run", side_effect=OSError("builder failed")):
             with self.assertRaisesRegex(OSError, "builder failed"):
                 sdk.import_sdk(args)
@@ -151,60 +151,62 @@ class SDKTests(unittest.TestCase):
                     manifest = sdk.unpack_xcode_archive(archive, self.root / name, SimpleNamespace())
                 self.assertEqual(manifest, {"xcodeVersion": "27.2", "xcodeBuild": "fixture", "buildMachineOSBuild": build})
 
-    def test_import_supplies_linux_compiler_resource_headers(self):
-        resource = self.root / "linux-swift"
-        include = resource / "clang/include"; include.mkdir(parents=True)
-        (include / "stddef.h").write_text("Linux compiler header")
-        bundle = self.root / "sdk"
-        with patch.object(sdk.subprocess, "check_output", return_value=json.dumps({"compilerVersion": "Swift version 6.4.2", "paths": {"runtimeResourcePath": str(resource)}})):
-            sdk.copy_host_clang_headers(bundle, lambda a, b: shutil.copytree(a, b, dirs_exist_ok=True))
-        target = bundle / "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h"
-        self.assertEqual(target.read_text(), "Linux compiler header")
+    def test_the_bundle_is_written_by_the_sweetpad_that_runs_the_import(self):
+        phrases = self.root / "appintents-phrases.json"; phrases.write_text("{}")
+        for given, expected in [
+            ((phrases, "25C56"), ["--appintents-phrases", str(phrases), "--build-machine-os-build", "25C56"]),
+            ((self.root / "absent.json", None), []),
+        ]:
+            with self.subTest(given=given), patch.dict(os.environ, {"SWEETPAD_EXE": "/opt/sweetpad/bin/sweetpad"}), \
+                 patch.object(sdk.subprocess, "run") as run:
+                sdk.write_bundle(Path("/x/Xcode.app"), Path("/w/darwin.artifactbundle"), *given)
+            self.assertEqual(run.call_args.args[0], [
+                "/opt/sweetpad/bin/sweetpad", "sdk", "write-bundle", "--xcode", "/x/Xcode.app",
+                "--out", "/w/darwin.artifactbundle", "--json", *expected])
+        with patch.dict(os.environ, {"SWEETPAD_EXE": "", "PATH": ""}):
+            with self.assertRaisesRegex(ValueError, "needs the sweetpad CLI"):
+                sdk.sweetpad_exe()
 
-    def test_import_rejects_an_incompatible_host_compiler(self):
-        with patch.object(sdk.subprocess, "check_output", return_value=json.dumps({"compilerVersion": "Swift version 6.3.4"})):
-            with self.assertRaisesRegex(ValueError, "requires Swift 6.4.2"):
-                sdk.copy_host_clang_headers(self.root / "sdk", shutil.copytree)
-
-    def test_supplement_preserves_patched_manifest_contents_and_source_modes(self):
-        xcode, bundle = self.root / "Xcode.app", self.root / "sdk"
+    def test_an_xcode_app_import_is_reused_until_xcode_changes(self):
+        xcode = self.root / "Xcode.app"
         (xcode / "Contents").mkdir(parents=True)
-        (xcode / "Contents/version.plist").write_bytes(b"version")
-        patched = plistlib.dumps({"DefaultProperties": {"ALTERNATE_LINKER": "lld", "CODESIGN": "true"}})
-        for platform, mode in zip(sdk.BASE_PLATFORMS, [0o444, 0o640, 0o644]):
-            relative = Path("Developer/Platforms") / (platform + ".platform") / "Info.plist"
-            source, target = xcode / "Contents" / relative, bundle / relative
-            source.parent.mkdir(parents=True); target.parent.mkdir(parents=True)
-            source.write_bytes(plistlib.dumps({"DefaultProperties": {}})); source.chmod(mode)
-            target.write_bytes(patched); target.chmod(0o666)
-        with patch.object(sdk.subprocess, "run"), patch.object(sdk, "copy_host_clang_headers"):
-            sdk.supplement(xcode, bundle, self.root / "absent-phrases.json")
-        for platform, mode in zip(sdk.BASE_PLATFORMS, [0o444, 0o640, 0o644]):
-            target = bundle / "Developer/Platforms" / (platform + ".platform") / "Info.plist"
-            self.assertEqual(target.read_bytes(), patched)
-            self.assertEqual(target.stat().st_mode & 0o777, mode)
+        def version(build):
+            (xcode / "Contents/version.plist").write_bytes(plistlib.dumps(
+                {"CFBundleShortVersionString": "27.2", "ProductBuildVersion": build}))
+        version("27B52")
+        destination = self.root / "xcode-sdk"
+        args = SimpleNamespace(xcode=xcode, destination=destination, replace=False,
+                               appintents_phrases=None, build_machine_os_build=None)
 
-    def test_legacy_sdk_reuse_checks_linker_host_not_target_architecture(self):
-        bundle = self.root / "installed"
-        linker = bundle / "toolset/bin/orig/ld64.lld"
-        linker.parent.mkdir(parents=True)
-        for machine, expected in [(183, "aarch64"), (62, "x86_64")]:
-            header = bytearray(20)
-            header[:6] = b"\x7fELF\x02\x01"
-            header[18:20] = machine.to_bytes(2, "little")
-            linker.write_bytes(header)
-            self.assertEqual(sdk.sdk_host_architecture(bundle), expected)
+        def write(xcode, bundle, phrases, build_machine):
+            for name in ["swift-sdk.json", "version.plist",
+                         "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h"]:
+                path = bundle / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text("{}")
+
+        with patch.object(sdk.platform, "system", return_value="Linux"), patch.object(sdk.platform, "machine", return_value="aarch64"), \
+             patch.object(sdk, "write_bundle", side_effect=write) as written:
+            first = sdk.import_sdk(args)
+            again = sdk.import_sdk(args)
+            version("27C10")
+            with self.assertRaisesRegex(ValueError, "already exists"):
+                sdk.import_sdk(args)
+        self.assertEqual(written.call_count, 1)
+        self.assertFalse(first["reused"])
+        self.assertTrue(again["reused"])
+        receipt = json.loads((destination / "sweetpad-sdk.json").read_text())
+        self.assertEqual((receipt["sourceFormat"], receipt["xcodeBuild"]), ("xcode-app", "27B52"))
+        self.assertNotIn("archiveSha256", receipt)
 
     def cached_sdk(self, archive):
         destination = self.root / "cached-sdk"
-        for name in ["swift-sdk.json", "toolset-swb.json", "toolset/bin/ld64.lld", "version.plist",
+        for name in ["swift-sdk.json", "version.plist",
                      "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h",
                      "appintents-phrases.json", "keep"]:
             path = destination / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(b"cached data")
         receipt = {"archiveSha256": sdk.digest(archive), "hostArchitecture": "aarch64",
                    "importerVersion": sdk.IMPORTER_VERSION, "toolchain": dict(sdk.VERSIONS)}
         (destination / "sweetpad-sdk.json").write_text(json.dumps(receipt))
-        args = SimpleNamespace(archive=archive, destination=destination, replace=False, xtool="xtool")
+        args = SimpleNamespace(archive=archive, destination=destination, replace=False)
         return args, receipt
 
     def test_current_recipe_reuses_sdk_without_rebuilding(self):

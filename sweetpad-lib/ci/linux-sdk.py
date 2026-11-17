@@ -17,9 +17,9 @@ import tempfile
 
 CI = Path(__file__).resolve().parent
 PINS = json.loads((CI / "linux-toolchain.json").read_text())
-VERSIONS = {key: PINS[key] for key in ("swift", "swiftBuild", "xtool")}
+VERSIONS = {key: PINS[key] for key in ("swift", "swiftBuild")}
 # Bump when SDK construction changes; the export archive format stays separate.
-IMPORTER_VERSION = 2
+IMPORTER_VERSION = 3
 BASE_PLATFORMS = ("iPhoneOS", "iPhoneSimulator", "MacOSX")
 EXTRA_PLATFORMS = ("AppleTVOS", "AppleTVSimulator", "WatchOS", "WatchSimulator", "XROS", "XRSimulator")
 
@@ -267,7 +267,7 @@ def unpack_xcode_archive(archive, work, args):
     xcode = module.extract(archive, work, getattr(args, "aea_key_file", None), getattr(args, "aea_public_key_file", None),
                           progress=lambda message: print(message, file=sys.stderr, flush=True))
     version = plistlib.loads((xcode / "Contents/version.plist").read_bytes())
-    # Check the baseline inputs before invoking any SDK builder.
+    # Check the baseline inputs before writing the bundle.
     export_roots(xcode)
     # No Mac takes part, so Xcode's own build machine stands in for one.
     info_path = xcode / "Contents/Info.plist"
@@ -276,57 +276,30 @@ def unpack_xcode_archive(archive, work, args):
             "buildMachineOSBuild": info.get("BuildMachineOSBuild")}
 
 
-def copy_host_clang_headers(bundle, copy_tree):
-    # `xtool sdk build` deliberately removes Xcode's Clang include directory.
-    # Its install operation normally supplies the Linux compiler's headers.
-    target = json.loads(subprocess.check_output(["swift", "-print-target-info"], text=True))
-    if "Swift version " + VERSIONS["swift"] not in target.get("compilerVersion", ""):
-        raise ValueError("SDK import requires Swift " + VERSIONS["swift"] + " on PATH")
-    host_include = Path(target["paths"]["runtimeResourcePath"]) / "clang/include"
-    if not (host_include / "stddef.h").is_file():
-        raise ValueError(f"Linux Swift Clang resource headers are missing: {host_include}")
-    resource_include = bundle / "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include"
-    copy_tree(host_include, resource_include)
+def sweetpad_exe():
+    # The CLI that runs this script says which binary it is, so the bundle
+    # comes from the same release.
+    exe = os.environ.get("SWEETPAD_EXE") or shutil.which("sweetpad")
+    if not exe:
+        raise ValueError("SDK import needs the sweetpad CLI; set SWEETPAD_EXE or put sweetpad on PATH")
+    return exe
 
 
-def preserve_platform_manifest_modes(xcode, bundle):
-    # xtool rewrites these manifests with Linux build properties. Keep those
-    # contents while restoring the archive's permissions, even under umask 0000.
-    for root in (bundle / "Developer/Platforms").iterdir():
-        source = xcode / "Contents/Developer/Platforms" / root.name / "Info.plist"
-        target = root / "Info.plist"
-        if source.is_file() and target.is_file() and not target.is_symlink():
-            shutil.copymode(source, target)
+def write_bundle(xcode, bundle, phrases, build_machine):
+    command = [sweetpad_exe(), "sdk", "write-bundle", "--xcode", str(xcode), "--out", str(bundle), "--json"]
+    if phrases and phrases.is_file():
+        command += ["--appintents-phrases", str(phrases)]
+    if build_machine:
+        command += ["--build-machine-os-build", build_machine]
+    subprocess.run(command, check=True, stdout=sys.stderr)
 
 
-def write_build_machine(bundle, build):
-    # Swift Build leaves BuildMachineOSBuild out of an app's Info.plist without
-    # MAC_OS_X_PRODUCT_BUILD_VERSION, which sweetpad sets from this file.
-    if build:
-        (bundle / "build-machine.plist").write_bytes(plistlib.dumps({"BuildMachineOSBuild": build}))
-
-
-def supplement(xcode, bundle, phrases, build_machine=None):
-    subprocess.run([sys.executable, str(CI / "linux-sdk-platforms.py"), str(xcode), str(bundle)],
-                   check=True, stdout=sys.stderr)
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("sweetpad_platforms", CI / "linux-sdk-platforms.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    copy_host_clang_headers(bundle, module.copy_tree)
+def xcode_app_source(xcode):
     contents = xcode / "Contents"
-    module.copy_tree(contents / "version.plist", bundle / "version.plist")
-    relative = Path("Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/swift")
-    module.copy_tree(contents / relative, bundle / relative)
-    for root in (bundle / "Developer/Platforms").iterdir():
-        for part in ("version.plist", "Library/Application Support/MessagesApplicationExtensionStub"):
-            source = contents / "Developer/Platforms" / root.name / part
-            if source.exists():
-                module.copy_tree(source, root / part)
-    preserve_platform_manifest_modes(xcode, bundle)
-    if phrases.is_file():
-        shutil.copyfile(phrases, bundle / "appintents-phrases.json")
-    write_build_machine(bundle, build_machine)
+    version = plistlib.loads((contents / "version.plist").read_bytes())
+    info = plistlib.loads((contents / "Info.plist").read_bytes()) if (contents / "Info.plist").is_file() else {}
+    return {"xcodeVersion": version["CFBundleShortVersionString"], "xcodeBuild": version["ProductBuildVersion"],
+            "buildMachineOSBuild": info.get("BuildMachineOSBuild")}
 
 
 def import_sdk(args):
@@ -343,58 +316,58 @@ def import_sdk(args):
         return import_locked(args)
 
 
-def sdk_host_architecture(bundle):
-    # xtool wraps the linker in a shell script. Older receipts omit the host;
-    # inspect the actual ELF behind the wrapper before reusing those SDKs.
-    for relative in ("toolset/bin/orig/ld64.lld", "toolset/bin/ld64.lld"):
-        try:
-            with (bundle / relative).open("rb") as source:
-                header = source.read(20)
-        except OSError:
-            continue
-        if header[:6] == b"\x7fELF\x02\x01":
-            return {62: "x86_64", 183: "aarch64"}.get(int.from_bytes(header[18:20], "little"))
-    return None
-
-
 def import_locked(args):
-    archive = args.archive.resolve()
-    inspected = inspect_archive(archive)
-    checksum = inspected["archiveSha256"]
-    source_format = inspected.get("sourceFormat", "sweetpad-export")
     destination = args.destination.absolute()
+    xcode = getattr(args, "xcode", None)
+    if xcode:
+        # An Xcode.app this host can read, as on a Mac's OrbStack machine.
+        xcode = xcode.absolute()
+        source = xcode_app_source(xcode)
+        source_format, checksum = "xcode-app", None
+    else:
+        archive = args.archive.resolve()
+        inspected = inspect_archive(archive)
+        checksum = inspected["archiveSha256"]
+        source_format = inspected.get("sourceFormat", "sweetpad-export")
     if destination.is_symlink():
         raise ValueError("SDK destination must not be a symbolic link")
     if destination.exists() and not (destination / "swift-sdk.json").is_file():
         raise ValueError("Existing destination is not a Darwin SDK; select an empty destination")
     receipt_path = destination / "sweetpad-sdk.json"
     receipt = json.loads(receipt_path.read_text()) if receipt_path.is_file() else {}
-    required = ("swift-sdk.json", "toolset-swb.json", "toolset/bin/ld64.lld", "version.plist",
+    required = ("swift-sdk.json", "version.plist",
                 "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h")
     if source_format == "sweetpad-export" or receipt.get("localizedAppIntents"):
         required += ("appintents-phrases.json",)
+    if xcode:
+        same_source = receipt.get("sourceFormat") == source_format and receipt.get("xcodeBuild") == source["xcodeBuild"]
+    else:
+        same_source = receipt.get("archiveSha256") == checksum
     recipe_current = receipt.get("importerVersion") == IMPORTER_VERSION and receipt.get("toolchain") == VERSIONS
-    if destination.exists() and receipt.get("archiveSha256") == checksum and receipt.get("hostArchitecture", sdk_host_architecture(destination)) == platform.machine() and recipe_current and not args.replace and all((destination / p).is_file() for p in required):
-        return {"sdkPath": str(destination), "archiveSha256": checksum, "importerVersion": IMPORTER_VERSION, "reused": True}
+    if destination.exists() and same_source and receipt.get("hostArchitecture") == platform.machine() and recipe_current and not args.replace and all((destination / p).is_file() for p in required):
+        source_id = {"archiveSha256": checksum} if checksum else {"xcodeBuild": source["xcodeBuild"]}
+        return {"sdkPath": str(destination), **source_id, "importerVersion": IMPORTER_VERSION, "reused": True}
     if destination.exists() and not args.replace:
-        if receipt.get("archiveSha256") == checksum and not recipe_current:
+        if same_source and not recipe_current:
             raise ValueError("SDK import recipe or toolchain changed; use --replace with sdk import, or --replace-sdk with setup, to rebuild the existing SDK")
         raise ValueError("SDK destination already exists; use --replace with sdk import, or --replace-sdk with setup, to replace it after a successful import")
-    xtool = args.xtool or shutil.which("xtool") or str(Path.home() / "bin/xtool")
-    if subprocess.check_output([xtool, "--version"], text=True).strip() != "xtool " + VERSIONS["xtool"]:
-        raise ValueError("SDK import requires xtool " + VERSIONS["xtool"] + "; run sweetpad setup --sdk ARCHIVE")
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".sweetpad-sdk-", dir=destination.parent) as work:
         work = Path(work)
-        require_space(work, inspected["requiredFreeBytes"])
-        manifest = unpack_verified(archive, work) if source_format == "sweetpad-export" else unpack_xcode_archive(archive, work, args)
-        subprocess.run([xtool, "sdk", "build", str(work / "Xcode.app"), str(work)],
-                       check=True, stdout=sys.stderr)
-        bundle = work / "darwin.xtoolsdk"
-        supplement(work / "Xcode.app", bundle, work / "appintents-phrases.json", manifest.get("buildMachineOSBuild"))
-        receipt = {"archiveSha256": checksum, "importerVersion": IMPORTER_VERSION, "xcodeBuild": manifest["xcodeBuild"],
-                   "xcodeVersion": manifest["xcodeVersion"], "toolchain": VERSIONS, "hostArchitecture": platform.machine(),
+        if xcode:
+            phrases = getattr(args, "appintents_phrases", None)
+            build_machine = getattr(args, "build_machine_os_build", None) or source["buildMachineOSBuild"]
+        else:
+            require_space(work, inspected["requiredFreeBytes"])
+            source = unpack_verified(archive, work) if source_format == "sweetpad-export" else unpack_xcode_archive(archive, work, args)
+            xcode, phrases, build_machine = work / "Xcode.app", work / "appintents-phrases.json", source.get("buildMachineOSBuild")
+        bundle = work / "darwin.artifactbundle"
+        write_bundle(xcode, bundle, phrases, build_machine)
+        receipt = {"importerVersion": IMPORTER_VERSION, "xcodeBuild": source["xcodeBuild"],
+                   "xcodeVersion": source["xcodeVersion"], "toolchain": VERSIONS, "hostArchitecture": platform.machine(),
                    "sourceFormat": source_format, "localizedAppIntents": (bundle / "appintents-phrases.json").is_file()}
+        if checksum:
+            receipt = {"archiveSha256": checksum, **receipt}
         (bundle / "sweetpad-sdk.json").write_text(json.dumps(receipt, indent=2) + "\n")
         backup = work / "previous-sdk"
         if destination.exists():
@@ -416,9 +389,12 @@ def main():
     export.add_argument("--output", type=Path, required=True)
     export.add_argument("--dry-run", action="store_true")
     install = commands.add_parser("import")
-    install.add_argument("--archive", type=Path, required=True)
+    source = install.add_mutually_exclusive_group(required=True)
+    source.add_argument("--archive", type=Path)
+    source.add_argument("--xcode", type=Path)
     install.add_argument("--destination", type=Path, default=Path.home() / ".swiftpm/swift-sdks/darwin.artifactbundle")
-    install.add_argument("--xtool")
+    install.add_argument("--appintents-phrases", type=Path)
+    install.add_argument("--build-machine-os-build")
     install.add_argument("--replace", action="store_true")
     install.add_argument("--aea-key-file", type=Path)
     install.add_argument("--aea-public-key-file", type=Path)

@@ -4724,14 +4724,25 @@ those files until it ends, and a second build there waits for it with a
 note: Swift Build's database takes one build at a time, and the second
 would otherwise rewrite the first one's inputs.
 
-**The Darwin SDK replaces Xcode.** xtool's bundle (`SWEETPAD_DARWIN_SDK`)
-has the Apple SDKs, Xcode's runtime libraries and an `ld64.lld` that writes
-Mach-O. The engine names its platforms in `XCODE_EXTRA_PLATFORM_FOLDERS`,
-adds a toolset with the cross-import overlay flag, the linker stand-in and
-the macro plugin, and overrides the settings that would start an Xcode-only
-step (`DarwinSdk::overrides` lists each with its reason). The Xcode version
-settings come from Xcode's `version.plist`, which `linux-setup.sh` copies
-beside the bundle, since Swift Build reports 99.99.99 without one.
+**The Darwin SDK replaces Xcode.** The bundle (`SWEETPAD_DARWIN_SDK`) has
+the Apple SDKs and Xcode's runtime libraries. The engine names its platforms
+in `XCODE_EXTRA_PLATFORM_FOLDERS`, adds a toolset with the cross-import
+overlay flag, the linker stand-in and the macro plugin, and overrides the
+settings that would start an Xcode-only step (`DarwinSdk::overrides` lists
+each with its reason). The Xcode version settings come from Xcode's
+`version.plist`, which the bundle keeps beside its `Developer` folder, since
+Swift Build reports 99.99.99 without one.
+
+**sweetpad writes the bundle.** `sweetpad sdk write-bundle`, a hidden
+subcommand that `linux-sdk.py` runs on import, writes it from an Xcode.app
+(`sdk_bundle.rs`). Nothing in it runs on the host: LLD and `dsymutil` are
+the packaged LLVM, macros expand in `sweetpad-macros`, and the Clang headers
+are the host Swift's. So it leaves out Xcode's `prebuilt-modules` caches and
+each platform's macro plugins, which are Mach-O. The base platforms'
+manifests get the settings a build without Xcode needs; the other platforms
+are copied as they are. An import writes a receipt, `sweetpad-sdk.json`,
+whose `importerVersion` changes whenever the layout does, and setup reuses a
+bundle only while the receipt matches.
 
 **The engine's additions sit above the user's settings.** Some overrides
 add to a setting rather than set it: `-fuse-ld=lld` in `OTHER_LDFLAGS` for
@@ -5129,8 +5140,8 @@ quiet. `parse_line` is pure and unit-tested without Xcode.
 
 Linux packages select the host architecture from the ELF header: ARM64 uses
 `linux-arm64`, and x86_64 uses `linux-x64`. Setup selects the matching Swift
-compiler and pinned xtool checksum. SDK receipts record the host architecture
-so a transferred SDK cannot silently reuse another host's tools.
+compiler. SDK receipts record the host architecture, and an import on a
+host of another architecture writes the bundle again instead of reusing it.
 
 iPhone device destinations use ARM64 independently of the Linux host.
 Swift Build and compiler macros run on the host. CI builds both packages and

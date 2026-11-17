@@ -12,8 +12,9 @@
 //! product locator finds the app.
 //!
 //! Off macOS there is no Xcode to take the SDKs from. They come from a Darwin
-//! Swift SDK bundle (`xtool sdk install` makes one from an Xcode.app), with
-//! its linker, and a few settings stand in for tools that only run on macOS.
+//! Swift SDK bundle, which `sweetpad sdk write-bundle` writes from an
+//! Xcode.app (see [`super::sdk_bundle`]), and a few settings stand in for
+//! tools that only run on macOS.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
@@ -1087,7 +1088,7 @@ fn tools_dir(inputs: &Path, bundle: &Path) -> Result<PathBuf, CliError> {
 
 /// The files of a Darwin SDK bundle that change when it's imported from
 /// another Xcode.
-const SDK_IDENTITY: [&str; 3] = ["info.json", "darwin-sdk-version.txt", "version.plist"];
+const SDK_IDENTITY: [&str; 2] = ["sweetpad-sdk.json", "version.plist"];
 
 /// A short hash of this binary (its version, path, size and time) and of
 /// the Darwin SDK in `bundle` (its path and [`SDK_IDENTITY`]).
@@ -1628,13 +1629,13 @@ fn parameters(
 }
 
 /// Where the Darwin Swift SDK bundle is: `SWEETPAD_DARWIN_SDK`, else the one
-/// `xtool sdk install` writes.
+/// `sweetpad setup` imports.
 pub(super) fn darwin_sdk_bundle() -> PathBuf {
     sweetpad_lib::xcode::darwin_sdk_bundle()
 }
 
-/// A Darwin Swift SDK bundle: the Apple SDKs, Xcode's runtime libraries and a
-/// linker that writes Mach-O, which stand in for Xcode where there is none.
+/// A Darwin Swift SDK bundle: the Apple SDKs and Xcode's runtime libraries,
+/// which stand in for Xcode where there is none.
 struct DarwinSdk {
     bundle: PathBuf,
 }
@@ -1671,7 +1672,7 @@ impl DarwinSdk {
             return Ok(None);
         }
         let bundle = darwin_sdk_bundle();
-        if !bundle.join("toolset-swb.json").is_file() {
+        if !bundle.join("swift-sdk.json").is_file() {
             return Err(CliError::new(format!(
                 "no Darwin Swift SDK at {}, which a build for Apple platforms needs without Xcode",
                 bundle.display()
@@ -1690,10 +1691,11 @@ impl DarwinSdk {
     ///
     /// - `CODE_SIGNING_ALLOWED=NO`, unless the build is signed (see
     ///   [`Self::signs`]). A signed build sets `CODESIGN=codesign`, the
-    ///   stand-in, over the bundle's `true`, which leaves signing to xtool.
-    /// - `SWIFT_SDK_TOOLSETS`: the bundle's linker, which links for Apple
-    ///   platforms where the toolchain's own refuses to, and `toolset`, with
-    ///   what a build here needs on top (see [`toolset`]).
+    ///   stand-in, over the `true` the bundle's platforms set, which skips
+    ///   signing.
+    /// - `SWIFT_SDK_TOOLSETS`: the linker stand-in, which links for Apple
+    ///   platforms where the toolchain's own refuses to, and the compiler
+    ///   options a build here needs (see [`toolset`]).
     /// - `LM_SKIP_METADATA_EXTRACTION`: enable the portable App Intents
     ///   registration and language-model processors.
     /// - `SWIFT_STDLIB_TOOL_STRIP_BITCODE` and
@@ -1744,14 +1746,7 @@ impl DarwinSdk {
             ("LIBTOOL", "llvm-libtool-darwin".to_string()),
             ("DSYMUTIL", "dsymutil".to_string()),
             ("ONLY_ACTIVE_ARCH", "YES".to_string()),
-            (
-                "SWIFT_SDK_TOOLSETS",
-                format!(
-                    "{} {}",
-                    self.bundle.join("toolset-swb.json").display(),
-                    toolset.display()
-                ),
-            ),
+            ("SWIFT_SDK_TOOLSETS", toolset.display().to_string()),
             ("LM_SKIP_METADATA_EXTRACTION", "NO".to_string()),
             ("GENERATE_INTERMEDIATE_TEXT_BASED_STUBS", "NO".to_string()),
             ("SWIFT_STDLIB_TOOL_STRIP_BITCODE", "NO".to_string()),
@@ -1887,7 +1882,7 @@ impl DarwinSdk {
         fallback: bool,
         device: Option<String>,
     ) -> Vec<(String, Option<String>)> {
-        let mut path = vec![tools.to_path_buf(), self.bundle.join("toolset/bin")];
+        let mut path = vec![tools.to_path_buf()];
         path.extend(
             std::env::var_os("PATH")
                 .iter()
@@ -3335,13 +3330,17 @@ mod tests {
         let bundle = dir.join("darwin.artifactbundle");
         std::fs::create_dir_all(&bundle).unwrap();
         std::fs::write(&exe, "one build").unwrap();
-        std::fs::write(bundle.join("info.json"), r#"{"xcodeVersion":"27.1"}"#).unwrap();
+        std::fs::write(bundle.join("sweetpad-sdk.json"), r#"{"xcodeBuild":"27A1"}"#).unwrap();
         let first = tools_fingerprint(&exe, &bundle);
         assert_eq!(first, tools_fingerprint(&exe, &bundle));
         std::fs::write(&exe, "a newer build").unwrap();
         let rebuilt = tools_fingerprint(&exe, &bundle);
         assert_ne!(first, rebuilt, "a new binary at the same path");
-        std::fs::write(bundle.join("info.json"), r#"{"xcodeVersion":"27.2"}"#).unwrap();
+        std::fs::write(
+            bundle.join("sweetpad-sdk.json"),
+            r#"{"xcodeBuild":"27B52"}"#,
+        )
+        .unwrap();
         assert_ne!(
             rebuilt,
             tools_fingerprint(&exe, &bundle),

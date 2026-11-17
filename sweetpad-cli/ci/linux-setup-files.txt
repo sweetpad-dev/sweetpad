@@ -5,7 +5,6 @@ sweetpad-lib/ci/linux-sdk.py
 sweetpad-lib/ci/apple-auth.py
 sweetpad-lib/ci/linux-xcode-download.py
 sweetpad-lib/ci/linux-toolchain.json
-sweetpad-lib/ci/linux-sdk-platforms.py
 sweetpad-lib/ci/linux-appintents-resources.py
 sweetpad-lib/ci/appintents_model.py
 sweetpad-cli/fixtures/appintents/extract.actionsdata
