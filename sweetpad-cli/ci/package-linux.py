@@ -245,6 +245,18 @@ def package(binary, helpers, linker, version, out, repo=REPO):
     return {"archive": str(archive), "sha256": checksum, **receipt}
 
 
+def debian_depends(repo=REPO):
+    """The libraries the Swift helpers and LLVM's linker load, then the host
+    packages `sweetpad setup` would install, so that apt installs them and
+    setup finds them ready. LLVM is versioned on Ubuntu and not on Debian."""
+    hosts = json.loads((repo / "sweetpad-lib/ci/linux-toolchain.json").read_text())["hostPackages"]
+    depends = ["ca-certificates", "libc6 (>= 2.36)", "libgcc-s1", "libstdc++6", "libsqlite3-0"]
+    depends += [name for name in hosts["apt"] if name not in depends]
+    llvm = hosts["aptLlvm"]
+    depends.append(f"{llvm['ubuntu']} | {llvm['debian']}")
+    return depends
+
+
 def debian_package(binary, helpers, linker, version, out, revision=1, repo=REPO):
     arch = {"x64": "amd64", "arm64": "arm64"}[validate_elf(binary)]
     validate_static(binary)
@@ -287,9 +299,7 @@ def debian_package(binary, helpers, linker, version, out, revision=1, repo=REPO)
             f"Package: sweetpad\nVersion: {deb_version}\nArchitecture: {arch}\n"
             f"Installed-Size: {installed_kib}\n"
             "Maintainer: Yevhenii Hyzyla <hyzyla@gmail.com>\nSection: devel\nPriority: optional\n"
-            # The Swift helpers and LLVM's linker load these system
-            # libraries; the Swift runtime is bundled beside them.
-            "Depends: ca-certificates, libc6 (>= 2.36), libgcc-s1, libstdc++6, libsqlite3-0\n"
+            f"Depends: {', '.join(debian_depends(repo))}\n"
             "Homepage: https://sweetpad.hyzyla.dev\n"
             "Description: Build Apple projects with the Sweetpad CLI\n"
             " Static CLI with its sample app, and the Swift Build,\n"

@@ -1,10 +1,12 @@
 # Static CLI, its Swift Build and macro plugin helpers, the pinned Swift and
 # license notices. No Apple SDKs. swift.org's Debian 12 image carries the
 # compiler and the system libraries it and the helpers load; the CLI itself
-# is static, and 'sweetpad setup' finds this Swift on PATH.
+# is static, and 'sweetpad setup' finds this Swift on PATH. HOST_PACKAGES is
+# the APT list from linux-toolchain.json, so setup finds them all installed.
 ARG SWIFT_VERSION
 FROM swift:${SWIFT_VERSION}-bookworm
 ARG TARGETARCH
+ARG HOST_PACKAGES
 ARG VERSION
 ARG REVISION
 LABEL org.opencontainers.image.source="https://github.com/sweetpad-dev/sweetpad" \
@@ -12,8 +14,9 @@ LABEL org.opencontainers.image.source="https://github.com/sweetpad-dev/sweetpad"
       org.opencontainers.image.description="Sweetpad CLI with Swift Build and the pinned Swift; Apple SDKs supplied separately" \
       org.opencontainers.image.version=$VERSION \
       org.opencontainers.image.revision=$REVISION
-RUN apt-get update -qq \
-    && apt-get install -y --no-install-recommends ca-certificates bubblewrap llvm libsqlite3-0 libstdc++6 \
+RUN test -n "$HOST_PACKAGES" \
+    && apt-get update -qq \
+    && apt-get install -y --no-install-recommends $HOST_PACKAGES libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 COPY linux-${TARGETARCH}/bin/ /usr/local/bin/
 COPY linux-${TARGETARCH}/libexec/ /usr/local/libexec/

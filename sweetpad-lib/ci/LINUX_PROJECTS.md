@@ -734,7 +734,7 @@ bash sweetpad-lib/ci/linux-framework-tools.sh
 python3 -B sweetpad-lib/ci/linux-clean-checks.py --out /path/to/fresh-output
 ```
 
-The execution audit records ELF, script, and Mach-O attempts with `strace`.
+The execution audit records ELF, script, and Mach-O attempts with `strace`. Setup doesn't install `strace`, so install it before an audited run, with `sudo apt-get install strace` or `sudo pacman -S strace`.
 It captures temporary executable headers before SwiftPM removes its manifest binaries.
 Mach-O attempts and uninspectable successful executions fail the audit, even after a successful build.
 This audit evaluates build provenance. It is not a security sandbox and does not change binfmt registration.

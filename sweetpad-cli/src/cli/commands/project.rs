@@ -530,7 +530,7 @@ fn gather(container: &Container) -> Result<Info, CliError> {
             // manifests rather than under-reporting what the workspace holds.
             let members = sweetpad_core::package_members::resolve_workspace(
                 &ws,
-                &sweetpad_core::package_members::Toolchain::default(),
+                &crate::cli::swiftpm::manifest_toolchain(),
             );
             Ok(Info {
                 kind: "workspace",
@@ -551,7 +551,7 @@ fn gather(container: &Container) -> Result<Info, CliError> {
             })?;
             let members = sweetpad_core::package_members::resolve_project(
                 &proj,
-                &sweetpad_core::package_members::Toolchain::default(),
+                &crate::cli::swiftpm::manifest_toolchain(),
             );
             Ok(Info {
                 kind: "project",

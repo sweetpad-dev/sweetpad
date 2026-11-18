@@ -791,7 +791,7 @@ fn swift_package(
         out.use_color_stderr(),
     );
     // A git prompt for credentials would wait unseen behind the spinner.
-    let mut swift = Command::new("swift");
+    let mut swift = Command::new(crate::cli::swiftpm::swift_program());
     swift
         .arg("package")
         .arg("--package-path")

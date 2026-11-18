@@ -3,7 +3,7 @@
 Linux fails, to tell a Linux gap from a project that doesn't build at all.
 
     ci/linux-sweep.py [--out DIR] [--only SUBSTRING] [--force] [--xcode] [--jobs N]
-                      [--darwin-sdk VM_PATH] [--derived-data VM_DIR]
+                      [--darwin-sdk VM_PATH] [--derived-data VM_DIR] [--container NAME]
 
 Runs on the Mac. Each scheme builds its Debug configuration, whatever its
 case, in the OrbStack machine
@@ -19,6 +19,11 @@ watchOS 9, which many corpus pins set. A scheme that fails on that builds
 again on both hosts with every deployment target set to iOS 18's
 generation, and its result says so. The setting covers every target, so
 the minimums themselves would lower the ones a project sets higher.
+
+With --container, the Linux builds run instead in that Docker container,
+with the sweetpad and Swift its own `sweetpad setup` put in place, so a
+sweep can check a host that has only the packages setup installs. The
+container sees the corpus at the same path as the Mac.
 
 Each result is a JSON file under OUT (default corpus/_linux-sweep), one per
 scheme, and a scheme that already has one is skipped unless --force.
@@ -105,6 +110,7 @@ exec "$HOME/sweetpad-target/debug/sweetpad" "$@"
 """
 DARWIN_SDK = None
 DERIVED_DATA = None
+CONTAINER = None
 
 
 def containers():
@@ -198,7 +204,9 @@ def build(where, path, scheme, dest, log, settings=(), action="build"):
         settings = ["-derivedDataPath", f"{DERIVED_DATA}/{slugify(os.path.relpath(path, CORPUS))}", *settings]
     if settings:
         args += ["--", *settings]
-    if where == "linux":
+    if where == "linux" and CONTAINER:
+        command = ["docker", "exec", CONTAINER, "sweetpad", *args]
+    elif where == "linux":
         command = ["orb", "-m", VM, "env", f"SWEEP_DARWIN_SDK={DARWIN_SDK or ''}",
                    "bash", "-c", VM_BUILD, "sweetpad", *args]
     else:
@@ -319,9 +327,10 @@ def main():
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--darwin-sdk", help="Darwin SDK bundle in the VM to build against")
     parser.add_argument("--derived-data", help="VM folder for each container's DerivedData")
+    parser.add_argument("--container", help="Docker container to build in, instead of the VM")
     args = parser.parse_args()
-    global DARWIN_SDK, DERIVED_DATA
-    DARWIN_SDK, DERIVED_DATA = args.darwin_sdk, args.derived_data
+    global DARWIN_SDK, DERIVED_DATA, CONTAINER
+    DARWIN_SDK, DERIVED_DATA, CONTAINER = args.darwin_sdk, args.derived_data, args.container
     args.xcode = args.xcode or args.xcode_all
     os.makedirs(args.out, exist_ok=True)
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:

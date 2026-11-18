@@ -57,3 +57,15 @@ class ReleaseVersionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DebianDependsTests(unittest.TestCase):
+    def test_every_host_package_is_a_dependency_once(self):
+        import json
+        hosts = json.loads((package.REPO / "sweetpad-lib/ci/linux-toolchain.json").read_text())["hostPackages"]
+        depends = package.debian_depends()
+        names = [entry.split(" ")[0] for entry in depends]
+        self.assertEqual(len(names), len(set(names)))
+        for name in hosts["apt"]:
+            self.assertIn(name, names)
+        self.assertEqual(depends[-1], f"{hosts['aptLlvm']['ubuntu']} | {hosts['aptLlvm']['debian']}")

@@ -27,7 +27,7 @@ pub fn capture_env(
     cwd: Option<&Path>,
     env: &[(String, String)],
 ) -> Result<String, CliError> {
-    let mut cmd = Command::new(program);
+    let mut cmd = Command::new(program_path(program));
     cmd.args(args)
         .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .stdout(Stdio::piped())
@@ -82,7 +82,7 @@ pub fn run_captured(
     args: &[&str],
     cwd: Option<&Path>,
 ) -> Result<CapturedRun, CliError> {
-    let mut cmd = Command::new(program);
+    let mut cmd = Command::new(program_path(program));
     cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
@@ -122,7 +122,7 @@ pub fn stream_env(
     cwd: Option<&Path>,
     env: &[(String, String)],
 ) -> Result<(), CliError> {
-    let mut cmd = Command::new(program);
+    let mut cmd = Command::new(program_path(program));
     cmd.args(args)
         .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
     if let Some(dir) = cwd {
@@ -151,7 +151,7 @@ pub fn run(
     cwd: Option<&Path>,
     quiet: bool,
 ) -> Result<bool, CliError> {
-    let mut cmd = Command::new(program);
+    let mut cmd = Command::new(program_path(program));
     cmd.args(args)
         .stdout(if quiet {
             Stdio::null()
@@ -177,7 +177,7 @@ pub fn run_quiet_within(
     args: &[&str],
     limit: std::time::Duration,
 ) -> Result<Option<bool>, CliError> {
-    let mut child = Command::new(program)
+    let mut child = Command::new(program_path(program))
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -253,7 +253,7 @@ fn stream_with(
     mut on_line: impl FnMut(&str),
     build: bool,
 ) -> Result<std::process::ExitStatus, CliError> {
-    let mut cmd = Command::new(program);
+    let mut cmd = Command::new(program_path(program));
     cmd.args(args);
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
@@ -613,7 +613,7 @@ pub(crate) fn read_lines_lossy(reader: impl std::io::Read, mut on_line: &mut imp
 /// child never competes for the terminal's keys). A child that only ever gets a
 /// forwarded SIGINT uses [`spawn_piped_forwarded`] instead.
 pub fn spawn_piped(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<Child, CliError> {
-    let mut cmd = Command::new(program);
+    let mut cmd = Command::new(program_path(program));
     cmd.args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -628,7 +628,7 @@ pub fn spawn_piped(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<C
 /// ([`crate::cli::signals::set_forward_child`]) ends with a SIGINT, such as the
 /// log follow's `log stream`; see [`default_sigint`].
 pub fn spawn_piped_forwarded(program: &str, args: &[&str]) -> Result<Child, CliError> {
-    let mut cmd = Command::new(program);
+    let mut cmd = Command::new(program_path(program));
     cmd.args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -675,7 +675,7 @@ pub fn spawn_piped_both_env(
     cwd: Option<&Path>,
     env: &[(String, String)],
 ) -> Result<Child, CliError> {
-    let mut cmd = Command::new(program);
+    let mut cmd = Command::new(program_path(program));
     cmd.args(args)
         .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .stdin(Stdio::null())
@@ -700,7 +700,7 @@ pub fn spawn_piped_group(
 ) -> Result<(Child, std::fs::File, TmpdirLeftovers), CliError> {
     use std::os::unix::process::CommandExt;
 
-    let mut cmd = Command::new(program);
+    let mut cmd = Command::new(program_path(program));
     let (reader, out, err) = merged_output_pipe(program)?;
     cmd.args(args)
         .stdin(Stdio::null())
@@ -729,7 +729,7 @@ pub fn spawn_group_inherit(
 ) -> Result<Child, CliError> {
     use std::os::unix::process::CommandExt;
 
-    let mut cmd = Command::new(program);
+    let mut cmd = Command::new(program_path(program));
     cmd.args(args).stdin(Stdio::null()).process_group(0);
     default_sigint(&mut cmd);
     if quiet_stdout {
@@ -741,12 +741,24 @@ pub fn spawn_group_inherit(
     cmd.spawn().map_err(|e| spawn_error(program, &e))
 }
 
+/// Where to find `program`: on Linux, Swift's own tools come from the pinned
+/// Swift wherever setup found or put it, which needn't be on `PATH`.
+pub(crate) fn program_path(program: &str) -> std::path::PathBuf {
+    if cfg!(target_os = "linux") && matches!(program, "swift" | "swiftc") {
+        crate::cli::linux_setup::swift::tool(program)
+    } else {
+        std::path::PathBuf::from(program)
+    }
+}
+
 /// The error for a `program` that could not be spawned. A missing tool names
 /// what provides it.
 pub(crate) fn spawn_error(program: &str, e: &std::io::Error) -> CliError {
     if e.kind() == std::io::ErrorKind::NotFound {
         let hint = match program {
-            "swift" if !cfg!(target_os = "macos") => " (install a Swift toolchain from swift.org)",
+            "swift" if !cfg!(target_os = "macos") => {
+                " (run 'sweetpad setup' to install the pinned Swift)"
+            }
             "xcrun" | "xcodebuild" | "xcode-select" | "swift" | "simctl" => {
                 " (Xcode command-line tools are required)"
             }

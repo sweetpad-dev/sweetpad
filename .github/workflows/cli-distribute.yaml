@@ -78,6 +78,7 @@ jobs:
           docker buildx build --platform linux/amd64,linux/arm64 \
             --build-arg "VERSION=${RELEASE_TAG#cli-v}" --build-arg "REVISION=$(git rev-parse HEAD)" \
             --build-arg "SWIFT_VERSION=$(jq -r .swift sweetpad-lib/ci/linux-toolchain.json)" \
+            --build-arg "HOST_PACKAGES=$(jq -r '.hostPackages.apt + [.hostPackages.aptLlvm.debian] | join(" ")' sweetpad-lib/ci/linux-toolchain.json)" \
             --tag "ghcr.io/sweetpad-dev/sweetpad:${RELEASE_TAG#cli-v}" \
             --tag ghcr.io/sweetpad-dev/sweetpad:latest --provenance=mode=max --sbom=true --push image
       - name: Smoke-test published image

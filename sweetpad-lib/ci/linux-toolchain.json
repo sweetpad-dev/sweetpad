@@ -11,28 +11,22 @@
       "build-essential",
       "ca-certificates",
       "cpio",
-      "curl",
       "file",
       "git",
       "gnupg",
-      "libc6-dev",
       "libcurl4-openssl-dev",
       "libedit2",
       "libncurses-dev",
       "libpython3-dev",
-      "libsqlite3-dev",
-      "libssl-dev",
+      "libsqlite3-0",
       "libxml2-dev",
-      "libyaml-dev",
       "libz3-dev",
       "pkg-config",
       "python3",
       "rsync",
-      "strace",
       "tzdata",
       "unzip",
       "zip",
-      "xz-utils",
       "zlib1g-dev"
     ],
     "aptLlvm": {
@@ -52,7 +46,6 @@
       "gnupg",
       "libedit",
       "libxml2-legacy",
-      "libyaml",
       "llvm",
       "ncurses",
       "openssl",
@@ -61,13 +54,11 @@
       "python",
       "rsync",
       "sqlite",
-      "strace",
       "tzdata",
       "unzip",
-      "xz",
+      "z3",
       "zip",
-      "zlib",
-      "z3"
+      "zlib"
     ]
   }
 }

@@ -175,6 +175,20 @@ pub fn manifest(container: &Container) -> Result<Manifest, CliError> {
     manifest_at(&dir)
 }
 
+/// The `swift` to run: on Linux the pinned Swift wherever setup found or put
+/// it, which needn't be on `PATH`; elsewhere the one on `PATH`.
+pub(crate) fn swift_program() -> PathBuf {
+    process::program_path("swift")
+}
+
+/// The toolchain that reads package manifests, with [`swift_program`].
+pub(crate) fn manifest_toolchain() -> Toolchain {
+    Toolchain {
+        swift: Some(swift_program()),
+        developer_dir: None,
+    }
+}
+
 /// Evaluate the `Package.swift` at an explicit directory — e.g. a resolved
 /// dependency checkout, so `dependency add` can read the package's real products
 /// before linking them.
@@ -185,7 +199,7 @@ pub fn manifest(container: &Container) -> Result<Manifest, CliError> {
 pub fn manifest_at(package_path: &Path) -> Result<Manifest, CliError> {
     let dump = sweetpad_core::package_members::dump_manifest(
         package_path,
-        &Toolchain::default(),
+        &manifest_toolchain(),
         Stdio::inherit(),
     )
     .map_err(dump_error)?;
@@ -198,7 +212,7 @@ pub fn manifest_at(package_path: &Path) -> Result<Manifest, CliError> {
 /// scheme files included), and its targets.
 pub fn package_names(container: &Container) -> Result<PackageNames, CliError> {
     let dir = package_dir(container).unwrap_or_else(|| PathBuf::from("."));
-    sweetpad_core::package_members::standalone(&dir, &Toolchain::default(), Stdio::inherit())
+    sweetpad_core::package_members::standalone(&dir, &manifest_toolchain(), Stdio::inherit())
         .map_err(dump_error)
 }
 
@@ -327,7 +341,7 @@ pub fn swift_major_version() -> Option<u32> {
 #[must_use]
 pub fn swift_version() -> Option<String> {
     let scratch = ScratchDir::new("sweetpad-swift-version").ok()?;
-    let output = Command::new("swift")
+    let output = Command::new(swift_program())
         .arg("--version")
         .env("TMPDIR", scratch.as_os_str())
         .stdout(Stdio::piped())

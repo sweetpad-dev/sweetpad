@@ -587,7 +587,7 @@ fn schemes_in(container: &Container, derived_data: Option<&Path>) -> Result<Vec<
             .map(|w| {
                 let members = sweetpad_core::package_members::resolve_workspace_in(
                     &w,
-                    &sweetpad_core::package_members::Toolchain::default(),
+                    &crate::cli::swiftpm::manifest_toolchain(),
                     derived_data,
                 );
                 w.merged_schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(
@@ -599,7 +599,7 @@ fn schemes_in(container: &Container, derived_data: Option<&Path>) -> Result<Vec<
             .map(|proj| {
                 let members = sweetpad_core::package_members::resolve_project_in(
                     &proj,
-                    &sweetpad_core::package_members::Toolchain::default(),
+                    &crate::cli::swiftpm::manifest_toolchain(),
                     derived_data,
                 );
                 proj.schemes_with_packages(&sweetpad_core::package_members::scheme_pairs(&members))
