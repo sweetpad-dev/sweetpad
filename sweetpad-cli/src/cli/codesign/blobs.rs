@@ -123,16 +123,19 @@ pub(super) struct Directory<'a> {
 impl Directory<'_> {
     /// Detached resource signatures hash the complete Info.plist once. They
     /// have neither Mach-O executable segments nor a code-page size.
-    pub fn build_unpaged(&self, code: &[u8]) -> Vec<u8> {
-        let header_size = if self.team.is_some() { 52 } else { 48 };
-        let version = if self.team.is_some() {
-            0x2_0200
+    pub fn build_unpaged(&self, code: &[u8], pre_encrypt: bool) -> Vec<u8> {
+        let (header_size, version) = if pre_encrypt {
+            (RUNTIME_HEADER_SIZE, RUNTIME_VERSION as usize)
+        } else if self.team.is_some() {
+            (52, 0x2_0200)
         } else {
-            0x2_0100
+            (48, 0x2_0100)
         };
         let slots = self.special.iter().map(|(n, _)| *n).max().unwrap_or(0);
         let team_offset = header_size + self.identifier.len() + 1;
-        let hash_offset = team_offset + self.team.map_or(0, |t| t.len() + 1) + 32 * slots;
+        let after_names = team_offset + self.team.map_or(0, |t| t.len() + 1);
+        let hash_offset = after_names + 32 * (slots + usize::from(pre_encrypt));
+        let digest = sha256(code);
         let mut out = Vec::new();
         for value in [
             CODE_DIRECTORY as usize,
@@ -149,14 +152,22 @@ impl Directory<'_> {
         }
         out.extend_from_slice(&[32, 2, 0, 0]);
         out.extend_from_slice(&[0; 8]); // spare and scatter offset
-        if self.team.is_some() {
-            out.extend_from_slice(&u32::try_from(team_offset).unwrap_or(0).to_be_bytes());
+        if self.team.is_some() || pre_encrypt {
+            let offset = if self.team.is_some() { team_offset } else { 0 };
+            out.extend_from_slice(&u32::try_from(offset).unwrap_or(0).to_be_bytes());
+        }
+        if pre_encrypt {
+            out.resize(RUNTIME_HEADER_SIZE - 4, 0);
+            out.extend_from_slice(&u32::try_from(after_names).unwrap_or(0).to_be_bytes());
         }
         out.extend_from_slice(self.identifier.as_bytes());
         out.push(0);
         if let Some(team) = self.team {
             out.extend_from_slice(team.as_bytes());
             out.push(0);
+        }
+        if pre_encrypt {
+            out.extend_from_slice(&digest);
         }
         for slot in (1..=slots).rev() {
             let hash = self
@@ -166,7 +177,7 @@ impl Directory<'_> {
                 .map_or([0; 32], |(_, hash)| hash.sha256);
             out.extend_from_slice(&hash);
         }
-        out.extend_from_slice(&sha256(code));
+        out.extend_from_slice(&digest);
         out
     }
 

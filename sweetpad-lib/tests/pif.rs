@@ -123,6 +123,7 @@ impl TemporaryFixture {
             if repository == "tuist-fixtures" {
                 for patch in [
                     "tuist-single-target-watch.patch",
+                    "tuist-static-tests-info-plist.patch",
                     "tuist-static-tests-module-search.patch",
                 ] {
                     restore_project_metadata(&destination, patch);

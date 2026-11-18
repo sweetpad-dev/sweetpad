@@ -32,6 +32,7 @@ mod embedded_binary;
 mod extract_loc_strings;
 mod ld;
 mod lipo;
+pub(crate) use lipo::is_static_archive;
 mod strip;
 mod xcrun;
 

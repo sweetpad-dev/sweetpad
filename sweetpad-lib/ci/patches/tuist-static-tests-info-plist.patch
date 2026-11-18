@@ -1,0 +1,29 @@
+--- a/examples/xcode/generated_ios_app_with_static_libraries/Modules/A/Project.swift
++++ b/examples/xcode/generated_ios_app_with_static_libraries/Modules/A/Project.swift
+@@ -26,7 +26,7 @@
+             destinations: .iOS,
+             product: .unitTests,
+             bundleId: "dev.tuist.ATests",
+-            infoPlist: nil,
++            infoPlist: .default,
+             sources: "Tests/**",
+             dependencies: [
+                 .target(name: "A"),
+--- a/examples/xcode/generated_ios_app_with_static_libraries/Modules/A/A.xcodeproj/project.pbxproj
++++ b/examples/xcode/generated_ios_app_with_static_libraries/Modules/A/A.xcodeproj/project.pbxproj
+@@ -424,6 +424,7 @@
+ 		5142C7B14DA0FCE1CC76068E /* Debug */ = {
+ 			isa = XCBuildConfiguration;
+ 			buildSettings = {
++				GENERATE_INFOPLIST_FILE = YES;
+ 				CODE_SIGN_IDENTITY = "iPhone Developer";
+ 				FRAMEWORK_SEARCH_PATHS = (
+ 					"$(inherited)",
+@@ -470,6 +471,7 @@
+ 		9D7FFBB5F08B0BE2A6445CEF /* Release */ = {
+ 			isa = XCBuildConfiguration;
+ 			buildSettings = {
++				GENERATE_INFOPLIST_FILE = YES;
+ 				CODE_SIGN_IDENTITY = "iPhone Developer";
+ 				FRAMEWORK_SEARCH_PATHS = (
+ 					"$(inherited)",

@@ -167,9 +167,20 @@ fn is_prelinked(path: &Path) -> bool {
         return false;
     }
     let mut magic = [0; 8];
-    std::fs::File::open(path)
-        .and_then(|mut file| file.read_exact(&mut magic))
-        .is_ok_and(|()| &magic == b"!<arch>\n")
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return false;
+    };
+    if file.read_exact(&mut magic).is_err() {
+        return false;
+    }
+    if &magic == b"!<arch>\n" {
+        return true;
+    }
+    if !matches!(&magic[..4], b"\xca\xfe\xba\xbe" | b"\xca\xfe\xba\xbf") {
+        return false;
+    }
+    let mut data = magic.to_vec();
+    file.read_to_end(&mut data).is_ok() && super::is_static_archive(path, &data)
 }
 
 #[cfg(test)]

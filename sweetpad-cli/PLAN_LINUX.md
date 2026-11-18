@@ -12,7 +12,9 @@ that xtool extracts from the user's own Xcode.app. Xcode tools that Linux
 doesn't have are replaced by the sweetpad binary itself, started under the
 tool's name. lld links. Nothing calls Xcode or xcodebuild at build time.
 
-The patched corpus builds 127 of 128 current schemes with Swift 6.4.2 and SDK 27.2.
+The earlier patched corpus built 127 of 128 schemes with Swift 6.4.2 and SDK 27.2.
+The November 18 follow-up rebuilt all 29 failures from the 105-scheme installation
+sweep. See [corpus verification](#corpus-failures-verified-2026-11-18).
 Of the original 35 failures, 33 now pass on both hosts. One obsolete watch extension
 scheme merged into its app, and the deliberately missing package remains a negative test.
 Test-only schemes use `test build`; the summary records each action.
@@ -145,22 +147,43 @@ folder and removing Clang's include folder. It patches each platform's
 - [x] SC10: Match the reference apart from chosen differences; pass the corpus, device install and hybrid-app checks; bump `IMPORTER_VERSION`. `IMPORTER_VERSION` is 3. An export of Xcode 27.2 (27B52) from the Mac (854 MB, `xcode-27B52-export.tar.gz` beside the reference record) imported in the VM in 38 seconds, to 129,984 entries and 3.7 GB, and `sdk-tree.py compare` against the reference finds nothing past the chosen differences: xtool's `toolset*`, `OpenAppleMacrosServer`, `darwin-sdk-version.txt`, each platform's `usr/bin/swift-plugin-server` and `usr/lib/swift/host`; `libimg4.tbd` in the tvOS, watchOS and visionOS SDKs keeping Xcode's own link target, `./libimage4.tbd`; and `swift-sdk.json`'s key order, whose triples are equal. An import from the Xcode.app itself also keeps 13 empty framework folders in the macOS SDK, which an export doesn't carry. The corpus sweep (`corpus/_linux-sweep-sc10`) builds the same 76 of 105 schemes as SC07, with the same failures; RevenueCatUI's first error names another file of the same `init(stringRepresentation:)` clash. `linux-sweep-compare.py` finds no difference across the 89 Mach-O products. `fixture-linux` built for iOS, signed on the Mac, installs and launches on the iPhone 13, with `DTXcode`, `DTXcodeBuild`, `DTPlatformBuild` and `BuildMachineOSBuild` from the bundle. `doctor` reports no problem, and `check-linux-gaps.py` and `linux-package-linking-checks.py --worker` pass. `linux-clean-checks.py` prepares and builds `react-native-mmkv`, `react-native-template` and `ionic-conference-app` fresh in Release, with no macOS executable run. `flutter-samples` passes the same way: `linux-flutter-snapshot.py` builds Flutter 3.47.9's pinned Dart as a Linux ARM64 `gen_snapshot` for iOS in 3 minutes, and the fresh Release build compiles the app's AOT code with it, to an arm64 `App.framework`, with no macOS executable run.
 - [x] SC11: Remove xtool from setup, `linux-toolchain.json`, `doctor` and the docs. Setup no longer installs it and the pins have no `xtool` or `xtoolSha256`. `doctor` drops "SDK host tools", which read the architecture of xtool's linker, and no longer asks for `toolset-swb.json` or `toolset/bin`. The linking checks run the packaged LLVM as their raw linker. `linux-sdk-platforms.py` and its tests are gone, with the Rust tests covering what they did. An SDK imported by importer version 2 still builds, since nothing reads its toolset; `setup` asks for `--replace-sdk` to write it again. The private runner's SDK is such an SDK until it is imported again.
 
-### Corpus failures, 2026-11-16
+### Corpus failures, verified 2026-11-18
 
-The SC06 sweeps (`corpus/_linux-sweep-xtool`, `corpus/_linux-sweep-llvm23`,
-local) built 76 of 105 schemes, against 127 of 128 recorded earlier. The 29
-failures are the same with both linkers. This checkout has none of the
-local `corpus/_*` projects, and the sweep may not have applied the pinned
-compatibility patches, so sort each group into a sweetpad gap or a setup
-problem before the next release.
+The SC20 container sweep built 76 of 105 schemes. A targeted follow-up in the
+ARM64 Ubuntu VM built all 29 that had failed, using the same schemes, actions
+and destinations, Swift 6.4.2 and SDK 27.2. It reused SC10's per-project
+DerivedData. The other 76 schemes retain their earlier results. Local reports
+are in `corpus/_linux-sweep-sc20/` and `corpus/_linux-sweep-cf-final/`.
 
-- [ ] CF01: `codesign` stand-in rejects `--generate-pre-encrypt-hashes` (9 schemes: Tuist `generated_ios_app_with_static_frameworks` A, B, C, App, App-Workspace, AppTestsSupport; `generated_ios_app_with_static_framework_with_xcstrings` App, App-Workspace, StaticFramework).
-- [ ] CF02: NetNewsWire's x86_64 simulator slice of each app and extension misses `RSCore` symbols at link (`undefined symbol: $s6RSCore15CoalescingQueue…`), and `AccountTests` fails to link (6 schemes: NetNewsWire, NetNewsWire-iOS, NetNewsWire Share Extension, NetNewsWire iOS Share Extension, NetNewsWire iOS Intents Extension, AccountTests).
-- [ ] CF03: Ice Cubes' RevenueCat package fails to compile: `invalid redeclaration of synthesized memberwise 'init(stringRepresentation:)'` in `PaywallColor.swift`, and `ambiguous use` of it in `CustomerCenterConfigData.swift` (6 schemes: IceCubesApp, its Action, Widgets, Notifications and Share extensions, RevenueCatUI). Check whether a corpus patch covers it.
-- [ ] CF04: Tuist `generated_ios_app_with_dynamic_frameworks_linking_static_frameworks`: no `GoogleMobileAds.xcframework` (App, DynamicFrameworkA), a missing `module.modulemap` (DynamicFrameworkB), and `scheme target 'CasePaths' isn't in the workspace PIF` (App-Workspace). Likely unfetched dependencies.
-- [ ] CF05: Tuist `generated_ios_app_with_spm_dependencies`: "The file doesn't exist" (App) and `scheme target 'BigInt' isn't in the workspace PIF` (App-Workspace).
-- [ ] CF06: Tuist `generated_ios_app_with_static_libraries` App-Workspace: "Cannot code sign because the target does not have an Info.plist file".
-- [ ] CF07: Tuist `generated_ios_app_with_watchapp2` App-Workspace: `codesign` can't read `WatchAppUITests`, which wasn't built.
+- [x] CF01: All nine Tuist static-framework schemes build. Swift Build signs
+  the archive in the framework with `--generate-pre-encrypt-hashes`. The
+  signer writes a detached CodeDirectory with the archive hash in both code
+  slots. The ad hoc signature files match Apple's and pass native strict verification.
+- [x] CF02: NetNewsWire's five app and extension schemes build for generic macOS
+  or iOS Simulator, and `AccountTests` links with `test build`. A package
+  object produced by `ld -r` can be a universal file with an archive in each
+  slice. The linker wrapper now force-loads all its members,
+  so the package framework exports the target's symbols on both architectures.
+  The test bundle linked and signed. Generating its test manifest still reports
+  an unsupported product name, `$(EXECUTABLE_NAME)`.
+- [x] CF03: All six Ice Cubes schemes build after applying the existing
+  RevenueCat patch to the resolved checkout in the Linux sweep's DerivedData.
+  After resolution, run `linux-corpus-patches.py --resolved-only --derived-data
+  ROOT/ice-cubes_IceCubesApp.xcodeproj` on the build host, where `ROOT` is
+  the sweep's `--derived-data` directory.
+- [x] CF04: All four Tuist dynamic-framework schemes build. In the fixture
+  directory, use the corpus generator (Tuist 4.158.2) for both `tuist install`
+  and `tuist generate --no-open`. This restores the binary frameworks, checkout
+  module maps and generated CasePaths project.
+- [x] CF05: Both Tuist SwiftPM schemes build after the same preparation restores
+  BigInt and the other dependency projects. Corpus setup now checks that the
+  workspace's generated dependency projects still exist before it reuses them.
+- [x] CF06: The static-library workspace builds with the pinned fixture patch
+  that gives the ATests bundle an Info.plist. Its Tuist manifest and generated
+  project both include the fix.
+- [x] CF07: The watch workspace builds with its source-free UI test target.
+  For this bundle Apple signs the Info.plist even though it names a missing
+  executable. The Linux signer produces the same detached signature.
 
 ### Phase 3: archive reading in the CLI
 
