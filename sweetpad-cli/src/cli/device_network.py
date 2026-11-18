@@ -170,6 +170,61 @@ async def connection(profile):
         yield rsd
 
 
+def offers_dvt(rsd):
+    from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
+    return DvtProvider.RSD_SERVICE_NAME in rsd.peer_info["Services"]
+
+
+async def developer_image_mounted(rsd):
+    from pymobiledevice3.services.mobile_image_mounter import MobileImageMounterService, image_type_for_device
+    async with MobileImageMounterService(rsd) as mounter:
+        return await mounter.is_image_mounted(image_type_for_device(rsd))
+
+
+async def mount_developer_image(rsd):
+    from pymobiledevice3.exceptions import AlreadyMountedError, DeveloperModeIsNotEnabledError
+    from pymobiledevice3.services.mobile_image_mounter import auto_mount
+    try:
+        await auto_mount(rsd)
+    except AlreadyMountedError:
+        # Another client can finish the mount after this RSD handshake.
+        pass
+    except DeveloperModeIsNotEnabledError as exc:
+        raise RuntimeError("Enable Developer Mode on the iPhone and unlock it before retrying") from exc
+
+
+@asynccontextmanager
+async def developer_connection(profile):
+    async with connection(profile) as rsd:
+        if await developer_image_mounted(rsd):
+            if offers_dvt(rsd):
+                yield rsd
+                return
+        else:
+            await mount_developer_image(rsd)
+
+    # RSD advertises service ports at handshake. After a mount, the original
+    # service table is stale, and the phone can take a moment to publish DVT.
+    last_error = None
+    for delay in (0, 1, 2, 4, 8):
+        if delay:
+            await asyncio.sleep(delay)
+        async with AsyncExitStack() as stack:
+            try:
+                rsd = await stack.enter_async_context(connection(profile))
+            except (ConnectionError, TimeoutError) as exc:
+                last_error = exc
+                continue
+            last_error = None
+            if offers_dvt(rsd):
+                yield rsd
+                return
+    if last_error is not None:
+        raise ConnectionError(f"Could not reconnect to the iPhone after mounting its developer disk image: {last_error}") from last_error
+    raise RuntimeError("Developer disk image is mounted but the iPhone has not advertised "
+                       "Instruments services. Unlock the iPhone and retry.")
+
+
 def device_values(rsd, connection_type="Network"):
     values = {k: rsd.all_values.get(k, "") for k in
               ("DeviceName", "ProductType", "ProductVersion", "DeviceClass")}
@@ -357,8 +412,11 @@ async def main(request):
         return await discover_devices(configured, timeout)
     profile = next((p for p in configured if p["udid"] == request["device"]), None)
     if profile is None:
-        raise ValueError("device is absent from SWEETPAD_DEVICE_NETWORK_CONFIG")
-    async with connection(profile) as rsd:
+        source = "SWEETPAD_DEVICE_NETWORK_CONFIG" if "SWEETPAD_DEVICE_NETWORK_CONFIG" in os.environ else "the connected USB devices"
+        raise ValueError(f"device is absent from {source}")
+    needs_dvt = request["action"] in ("launch", "console", "logs", "processes", "terminate")
+    connect = developer_connection if needs_dvt else connection
+    async with connect(profile) as rsd:
         return await perform(rsd, request)
 
 

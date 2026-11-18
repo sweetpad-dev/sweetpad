@@ -42,9 +42,14 @@ It exposes only the explicit read-only compiler and private SDK prerequisites; S
 
 Pull requests run ARM64 release packaging and the clean-container check on a hosted runner.
 Tag releases publish both macOS and Linux archives only after their packaging jobs pass.
-Manual release runs can select only Linux and invoke the private SDK integration workflow.
-That workflow requires a provisioned Apple-hardware runner and never uploads SDK or signing files.
+Keep private Apple SDKs out of CI, including manual runs and tag releases. Run any
+private SDK validation locally under the applicable license. The
+[Xcode and Apple SDKs Agreement](https://www.apple.com/legal/sla/docs/xcode.pdf)
+restricts execution of Apple software to Apple-branded products running macOS.
 A dry run does not publish a release or update Homebrew.
+The November 19 ARM64 dry run built the Swift helpers on Debian 12, installed the
+tarball on a clean Ubuntu 24.04 host, upgraded and removed the Debian package, and
+built a fresh iOS device app offline using the packaged helpers and a read-only SDK.
 The release remains experimental. Apple test execution and simulator operation require macOS.
 Linux device debugging remains unsupported.
 Optional `.omo` work and dependency-size cleanup remain deferred.
@@ -164,8 +169,9 @@ are in `corpus/_linux-sweep-sc20/` and `corpus/_linux-sweep-cf-final/`.
   object produced by `ld -r` can be a universal file with an archive in each
   slice. The linker wrapper now force-loads all its members,
   so the package framework exports the target's symbols on both architectures.
-  The test bundle linked and signed. Generating its test manifest still reports
-  an unsupported product name, `$(EXECUTABLE_NAME)`.
+  The test bundle linked and signed. The generated simulator test manifest points to
+  `Debug-iphonesimulator/AccountTests.xctest`. SwiftPM references the executable
+  in its PIF, so the manifest resolves the wrapper from the package target’s build settings.
 - [x] CF03: All six Ice Cubes schemes build after applying the existing
   RevenueCat patch to the resolved checkout in the Linux sweep's DerivedData.
   After resolution, run `linux-corpus-patches.py --resolved-only --derived-data
@@ -278,7 +284,7 @@ they do not establish physical-device execution for these changes.
 
 ### Signing, tests, and devices
 
-- [ ] D01: Mount the developer disk image after a phone reboot or first connection before opening developer services. Needs hardware (`device_network.py::DvtProvider`).
+- [x] D01: Linux prepares the developer disk image before opening Instruments. On an iPhone 13 running iOS 27.2.1, the image survived a reboot and two USB process queries succeeded. After removing only the developer image and confirming it was absent, SweetPad mounted the original 27.2.52.0 image and completed a physical Instruments process query. A second query reused the mount. The cold check used USB. The Wi-Fi adapter uses the same preparation code.
 - [x] D02: Preserve simulator entitlements through ad-hoc signing and validate Keychain/App Groups on a Mac (`swbuild.rs::DarwinSdk::overrides`, `codesign/provisioning.rs`). A simulator build is signed ad hoc as Xcode signs it, with its entitlements in `__entitlements` and `__ents_der`. For a test app with an App Group and two keychain groups, both entitlement files and both sections match Xcode 27.2's byte for byte. In an iOS 27 simulator, the app reaches its App Group container and both keychain groups, and is refused an App Group and a keychain group it doesn't list, exactly as Xcode's build is. The delivery fixture's app, widget and watch extension carry their entitlements and pass `codesign --verify --deep --strict`.
 - [x] D03: Match provisioning devices, manual profiles, entitlement values, and certificate validity (`codesign/provisioning.rs`, `codesign/identity.rs`). A device build takes only a development or ad hoc profile listing its device; a named profile is checked for expiry, app ID, certificate and device; entitlement values are checked against the profile; expired identities are skipped and named as expired.
 - [x] D04: Verify watchOS profile platform matching (`codesign/provisioning.rs`). A watch target takes a profile naming iOS or watchOS. Apple's App Store profiles for a watch app and its WatchKit extension list `iOS`, `xrOS` and `visionOS`, as for any iOS app.
@@ -294,7 +300,7 @@ they do not establish physical-device execution for these changes.
 
 ### Packaging, CI, and docs
 
-- [ ] P01: Run ARM64 packaging on main pushes and define private SDK validation for tag releases (`linux-arm64-package.yaml`, `cli-release.yaml`). Main pushes now run package checks; private SDK tag-release gating remains open.
+- [x] P01: Run ARM64 packaging on main pushes. Linux release CI gates on packaging and clean-install checks. Private Apple SDK checks stay local for all releases.
 - [x] P02: Give Linux self-update instructions that do not require the macOS-only Homebrew formula (`commands/self_update.rs`).
 - [x] P03: Replace setup resources without stale files; embed them in the standalone CLI and describe native package upgrades, PATH setup, and removal.
 - [x] P04: Reject development-stamped binaries in actual tag-release packages (`ci/package-linux.py`).

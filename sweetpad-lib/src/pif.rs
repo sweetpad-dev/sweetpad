@@ -42,8 +42,7 @@ pub struct Package {
     /// Settings per configuration name, `Debug` and `Release`.
     configurations: Vec<(String, Vec<Assignment>)>,
     default_configuration: Option<String>,
-    /// The targets a build compiles, in PIF order: no tests, no dynamic
-    /// variants, no product aggregates.
+    /// The compiled targets in PIF order, including tests when reading a test build.
     pub targets: Vec<Target>,
     /// Each product's name and the targets it builds.
     pub products: Vec<(String, Vec<String>)>,
@@ -200,8 +199,25 @@ fn literal(text: &str) -> String {
 /// directory and the scratch path holding the remote checkouts. Edges to the
 /// targets of skipped packages are dropped.
 #[must_use]
-#[allow(clippy::too_many_lines)]
 pub fn parse(pif: &[Json], skip: &[PathBuf]) -> Vec<Package> {
+    parse_packages(pif, skip, None)
+}
+
+/// File the packages from a completed test build, including the test products
+/// SwiftPM emits only when their package is a root.
+/// Return each compiled target's GUID and its owning manifest for settings lookup.
+pub fn register_test_packages(container: &Path, pif: &[Json]) -> HashMap<String, PathBuf> {
+    let mut owners = HashMap::new();
+    register(container, parse_packages(pif, &[], Some(&mut owners)));
+    owners
+}
+
+#[allow(clippy::too_many_lines)]
+fn parse_packages(
+    pif: &[Json],
+    skip: &[PathBuf],
+    mut manifest_owners: Option<&mut HashMap<String, PathBuf>>,
+) -> Vec<Package> {
     let skip: Vec<PathBuf> = skip.iter().map(|d| project::standardize(d)).collect();
     let targets: HashMap<&str, &Json> = pif
         .iter()
@@ -216,8 +232,8 @@ pub fn parse(pif: &[Json], skip: &[PathBuf]) -> Vec<Package> {
         .values()
         .filter_map(|t| t["dynamicTargetVariantGuid"].as_str())
         .collect();
-    // A target is kept when it belongs to a local package and is compiled
-    // into the app: a library or executable, not a test bundle.
+    // Indexing uses the compiled dependencies. A test manifest also needs
+    // the selected package test products and their owning manifests.
     let mut kept: HashMap<&str, String> = HashMap::new();
     let mut packages = Vec::new();
     for object in pif.iter().filter(|o| o["type"] == "project") {
@@ -260,8 +276,13 @@ pub fn parse(pif: &[Json], skip: &[PathBuf]) -> Vec<Package> {
             let Some(product_type) = target["productTypeIdentifier"].as_str() else {
                 continue;
             };
-            if dynamic.contains(target_guid) || product_type.contains("test") {
+            if dynamic.contains(target_guid)
+                || (manifest_owners.is_none() && product_type.contains("test"))
+            {
                 continue;
+            }
+            if let Some(owners) = manifest_owners.as_deref_mut() {
+                owners.insert(target_guid.to_owned(), package.manifest());
             }
             kept.insert(target_guid, name.clone());
             package.targets.push(Target {

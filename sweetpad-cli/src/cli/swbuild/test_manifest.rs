@@ -3,7 +3,7 @@
 //! Selection comes from the scheme, never from every bundle left in Products.
 //! Unsupported testing policies produce a precise note after a successful build.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
@@ -322,12 +322,61 @@ fn target(
     Ok(result)
 }
 
+/// SwiftPM's scheme name can select a PIF target named `<name>-product`.
+/// Resolve it in its owning package, using the exact target Swift Build used.
+struct TargetSettings<'a> {
+    pif: &'a [Value],
+    package_manifests: HashMap<String, PathBuf>,
+    cache: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+impl TargetSettings<'_> {
+    fn get(
+        &mut self,
+        plan: &BuildPlan<'_>,
+        name: &str,
+    ) -> Result<&BTreeMap<String, String>, String> {
+        if !self.cache.contains_key(name) {
+            let package = pif_target(self.pif, name).and_then(|target| {
+                let owner = self.package_manifests.get(target["guid"].as_str()?)?;
+                Some((target["name"].as_str()?, owner.as_path()))
+            });
+            let (target_name, manifest) = package.map_or((name, None), |(n, p)| (n, Some(p)));
+            let values = xcodebuild::test_target_settings(plan, target_name, manifest)
+                .map_err(|e| e.to_string())?;
+            self.cache.insert(name.into(), values);
+        }
+        Ok(&self.cache[name])
+    }
+
+    fn product_name(
+        &mut self,
+        plan: &BuildPlan<'_>,
+        name: &str,
+        target: &Value,
+    ) -> Result<String, String> {
+        let reference = target["productReference"]["name"]
+            .as_str()
+            .ok_or("product has no filename")?;
+        if reference.contains("$(") || reference.contains("${") {
+            // A package test's reference names its executable. The manifest
+            // points to the enclosing wrapper, including its extension.
+            return self
+                .get(plan, name)?
+                .get("FULL_PRODUCT_NAME")
+                .filter(|s| !s.is_empty())
+                .cloned()
+                .ok_or_else(|| format!("test product '{name}' has no resolved filename"));
+        }
+        Ok(reference.into())
+    }
+}
+
 fn expand_selection(
     plan: &BuildPlan<'_>,
     selected: &Selection,
     name: &str,
-    ui: bool,
-    settings_cache: &mut BTreeMap<String, BTreeMap<String, String>>,
+    settings_cache: &mut TargetSettings<'_>,
 ) -> Result<Selection, String> {
     let mut expanded = selected.clone();
     let expansion_name = selected.expansion_target.as_deref().unwrap_or(name);
@@ -336,22 +385,8 @@ fn expand_selection(
         .values()
         .chain(selected.arguments.iter())
         .any(|v| v.contains('$'));
-    for target in [
-        ui.then_some(name),
-        needs_expansion.then_some(expansion_name),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        if !settings_cache.contains_key(target) {
-            settings_cache.insert(
-                target.to_string(),
-                xcodebuild::test_target_settings(plan, target).map_err(|e| e.to_string())?,
-            );
-        }
-    }
     if needs_expansion {
-        let settings = &settings_cache[expansion_name];
+        let settings = settings_cache.get(plan, expansion_name)?;
         expanded.environment = selected
             .environment
             .iter()
@@ -375,16 +410,15 @@ fn expand_selection(
 
 fn selected_targets(
     plan: &BuildPlan<'_>,
-    pif: &[Value],
     selected: &Selection,
     products: &Path,
     configuration: &str,
     simulator: bool,
-    settings_cache: &mut BTreeMap<String, BTreeMap<String, String>>,
+    settings_cache: &mut TargetSettings<'_>,
 ) -> Result<Vec<Plist>, String> {
     let mut targets = Vec::new();
     for name in &selected.names {
-        let pif_target = pif_target(pif, name)
+        let pif_target = pif_target(settings_cache.pif, name)
             .ok_or_else(|| format!("test target '{name}' is absent from the built PIF"))?;
         let kind = pif_target["productTypeIdentifier"]
             .as_str()
@@ -393,23 +427,22 @@ fn selected_targets(
         if !ui && kind != "com.apple.product-type.bundle.unit-test" {
             return Err(format!("'{name}' is not a test product"));
         }
-        let basename = pif_target["productReference"]["name"]
-            .as_str()
-            .ok_or("test product has no filename")?;
-        let bundle = locate(products, configuration, basename)?;
-        let expanded = expand_selection(plan, selected, name, ui, settings_cache)?;
+        let basename = settings_cache.product_name(plan, name, pif_target)?;
+        let bundle = locate(products, configuration, &basename)?;
+        let expanded = expand_selection(plan, selected, name, settings_cache)?;
         let ui_app = if ui {
-            let app_name = settings_cache[name]
+            let app_name = settings_cache
+                .get(plan, name)?
                 .get("TEST_TARGET_NAME")
                 .filter(|s| !s.is_empty())
+                .cloned()
                 .ok_or_else(|| format!("UI test target '{name}' has no TEST_TARGET_NAME"))?;
-            let app_target = super::pif_target(pif, app_name).ok_or_else(|| {
+            let app_target = super::pif_target(settings_cache.pif, &app_name).ok_or_else(|| {
                 format!("UI target application '{app_name}' is absent from the built PIF")
             })?;
-            let basename = app_target["productReference"]["name"]
-                .as_str()
-                .ok_or("UI target app has no product filename")?;
-            if Path::new(basename).file_name().and_then(|s| s.to_str()) != Some(basename) {
+            let basename = settings_cache.product_name(plan, &app_name, app_target)?;
+            if Path::new(&basename).file_name().and_then(|s| s.to_str()) != Some(basename.as_str())
+            {
                 return Err("invalid UI app product filename".into());
             }
             Some(products.join(configuration).join(basename))
@@ -475,13 +508,16 @@ pub(super) fn write(plan: &BuildPlan<'_>, invocation: &Invocation) -> Result<Pat
     let plan_metadata = selections.first().and_then(|s| s.plan.clone());
     let products = &invocation.locations.products;
     let mut configurations = Vec::new();
-    let mut settings_cache = BTreeMap::new();
+    let mut settings_cache = TargetSettings {
+        pif: &pif,
+        package_manifests: sweetpad_lib::pif::register_test_packages(&invocation.container, &pif),
+        cache: BTreeMap::new(),
+    };
     for mut selected in selections {
         selected.names.sort();
         selected.names.dedup();
         let targets = selected_targets(
             plan,
-            &pif,
             &selected,
             products,
             &configuration,
@@ -779,6 +815,61 @@ mod tests {
         assert_eq!(selected.arguments, [r#"--name "two words""#]);
         assert_eq!(selected.skipped["Tests"], ["Tests/slow"]);
         assert_eq!(selected.only["Tests"], ["Tests/fast"]);
+    }
+
+    #[test]
+    fn package_test_manifest_locates_the_wrapper_even_when_the_executable_has_another_name() {
+        use crate::cli::resolve::Container;
+        use serde_json::json;
+
+        let root = TempDir::new("package-test-wrapper");
+        let container = Container::Project(root.join("App.xcodeproj"));
+        let plan = BuildPlan {
+            action: xcodebuild::BuildAction::BuildForTesting,
+            container: &container,
+            scheme: "AccountTests",
+            configuration: "Debug",
+            destination: Some("generic/platform=iOS Simulator"),
+            sdk: None,
+            clean: false,
+            hot: false,
+            hot_entitlements: None,
+            result_bundle: None,
+            passthrough: &[],
+        };
+        let package = root.join("Account");
+        let pif = [
+            json!({"type":"project","contents":{"guid":"PACKAGE:account","projectName":"Account",
+                "projectDirectory": package, "targets":["test-signature"]}}),
+            json!({"type":"target","signature":"test-signature","contents":{
+            "guid":"PACKAGE-PRODUCT:account_AccountTests.AccountTests","name":"AccountTests-product",
+            "productTypeIdentifier":"com.apple.product-type.bundle.unit-test",
+            "productReference":{"name":"$(EXECUTABLE_NAME)"},
+            "buildConfigurations":[{"name":"Debug","buildSettings":{
+                "TARGET_NAME":"AccountTests","PRODUCT_NAME":"$(TARGET_NAME)Wrapper","EXECUTABLE_NAME":"TestBinary"
+            }}]}}),
+        ];
+        let mut settings = TargetSettings {
+            pif: &pif,
+            package_manifests: sweetpad_lib::pif::register_test_packages(container.path(), &pif),
+            cache: BTreeMap::new(),
+        };
+        let configuration = "Debug-iphonesimulator";
+        let bundle = root.join(configuration).join("AccountTestsWrapper.xctest");
+        std::fs::create_dir_all(&bundle).unwrap();
+        std::fs::write(bundle.join("TestBinary"), []).unwrap();
+        let info = dict([("CFBundleExecutable", text("TestBinary"))]);
+        std::fs::write(bundle.join("Info.plist"), plist::to_xml(&info)).unwrap();
+        let selected = Selection {
+            names: vec!["AccountTests".into()],
+            ..Selection::default()
+        };
+        let targets =
+            selected_targets(&plan, &selected, &root, configuration, true, &mut settings).unwrap();
+        assert_eq!(
+            plist::string(&targets[0], "TestBundlePath"),
+            Some("__TESTROOT__/Debug-iphonesimulator/AccountTestsWrapper.xctest")
+        );
     }
 
     #[test]
