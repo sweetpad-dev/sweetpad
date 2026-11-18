@@ -34,6 +34,7 @@ use crate::cli::xcodebuild::{self, BuildAction, BuildPlan, CommandPreview};
 use crate::cli::{CliError, ErrorKind, process};
 
 mod host_macros;
+mod project_plugins;
 pub(crate) mod scheme_actions;
 mod test_manifest;
 
@@ -658,7 +659,6 @@ impl Invocation {
                 Some(&self.locations.folder),
                 test_plan_name(plan.passthrough),
             )?;
-            let names = target_names(&targets);
             let missing: Vec<&String> = targets
                 .iter()
                 .filter(|target| scheme_pif_target(&pif, target).is_none())
@@ -688,7 +688,7 @@ impl Invocation {
                 let dumped = self.dump_package_pif(&root, out)?;
                 sweetpad_lib::workspace_pif::add_package_root(&mut pif, &dumped, &root);
             }
-            warn_project_plugins(&pif, &names, out);
+            project_plugins::prepare(self, &mut pif, &targets, &packages, out)?;
         }
         let host_tools = if self.tools.is_some() {
             host_macros::prepare(
@@ -760,12 +760,21 @@ impl Invocation {
                 .join("SweetPad/PackageRoots")
                 .join(sweetpad_lib::derived_data::container_hash(root))
         };
+        self.dump_pif_in(root, &scratch, out)
+    }
+
+    fn dump_pif_in(
+        &self,
+        root: &Path,
+        scratch: &Path,
+        out: &Output,
+    ) -> Result<Vec<Value>, CliError> {
         // Xcode builds a dynamic library product as a framework in
         // `PackageFrameworks`, which an app embeds; SwiftPM's own builds
         // make a dylib unless asked otherwise.
         let stdout = swift_package(
             root,
-            &scratch,
+            scratch,
             &["--experimental-build-dylibs-as-frameworks", "dump-pif"],
             self.package_sysroot.is_some(),
             self.package_sysroot.as_deref(),
@@ -811,6 +820,7 @@ fn swift_package(
         .arg(scratch)
         .args(command)
         .env("GIT_TERMINAL_PROMPT", "0");
+    super::codesign::hide_from_package_plugins(&mut swift);
     if apple {
         // pkg-config runs on the host, but its headers belong to the
         // destination SDK. Keep host macro builds outside this environment.
@@ -958,18 +968,6 @@ fn same_pins(a: &[u8], b: &[u8]) -> bool {
         Some(pins.clone())
     };
     pins(a).is_some_and(|a| Some(a) == pins(b))
-}
-
-/// Swift Build runs a package target's build-tool plugins, which SwiftPM
-/// evaluates, but not a project target's, which Xcode evaluates itself.
-fn warn_project_plugins(pif: &[Value], names: &[String], out: &Output) {
-    for (target, plugin) in sweetpad_lib::workspace_pif::project_target_plugins(pif, names) {
-        out.warn(&format!(
-            "'{target}' runs the build-tool plugin '{plugin}', which Swift Build runs only \
-             for package targets; this build skips the plugin's commands and the files they \
-             generate"
-        ));
-    }
 }
 
 /// Take the settings the engine adds to rather than sets, `$(inherited)

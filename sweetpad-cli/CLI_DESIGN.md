@@ -4654,18 +4654,19 @@ and `ReferencedContainer` name (a test plan's `identifier` and
 workspace can each have a `Core`. The name is what's left for a package
 entry and for a reference without an ID.
 
-**Build-tool plugins run for package targets only.** SwiftPM evaluates a
-package target's plugins while it prints the PIF and gives each command to
-Swift Build as a custom task. The task names the tool where SwiftPM's own
-build would put it, under `<scratch>/out/Products/Debug-<platform>`, so
-`retarget_plugin_tools` renames that folder to
-`${BUILD_DIR}/${CONFIGURATION}-<platform>`, where this build makes the tool
-(Xcode's PIF names it the same way). Xcode evaluates a project target's
-plugins itself through `XcodeProjectPlugin`, which no Linux toolchain ships,
-and hands Swift Build their commands as script phases. The emitter keeps
-the target's dependency on the plugin product, as Xcode's PIF does, so the
-tool still builds. The engine warns for each such plugin in the build's
-target graph that its commands are skipped.
+**SwiftPM evaluates build-tool plugins for package and project targets.**
+For each project target with an attached plugin in the selected build graph,
+SweetPad writes a package manifest in DerivedData. It lists the target’s
+source and resource files and uses the workspace’s package dependencies and
+pins. Links to the project files let the plugin read project configuration.
+SwiftPM runs the plugin’s `BuildToolPlugin` entry point. A plugin that needs
+Xcode’s separate `XcodeProjectPlugin` entry point still requires Xcode.
+
+SweetPad adds the resulting commands to the project target, including
+commands SwiftPM places on a resource bundle. Generated sources join the
+target’s Sources phase and generated resources join its Resources phase.
+Host tools use `${BUILD_DIR}/${CONFIGURATION}-<platform>`, so Debug and
+Release each run the tool that the workspace builds for that configuration.
 
 **A tool Linux doesn't have blocks the build.** Swift Build reports
 `unable to spawn process 'metal' (No such file or directory)` against the

@@ -206,6 +206,7 @@ pub fn parse(pif: &[Json], skip: &[PathBuf]) -> Vec<Package> {
 /// File the packages from a completed test build, including the test products
 /// SwiftPM emits only when their package is a root.
 /// Return each compiled target's GUID and its owning manifest for settings lookup.
+#[must_use]
 pub fn register_test_packages(container: &Path, pif: &[Json]) -> HashMap<String, PathBuf> {
     let mut owners = HashMap::new();
     register(container, parse_packages(pif, &[], Some(&mut owners)));
@@ -401,7 +402,7 @@ fn guids(dependencies: &Json) -> Vec<&str> {
 }
 
 /// Every file reference in a group tree, by GUID, as an absolute path.
-fn file_paths(tree: &Json, dir: &Path) -> HashMap<String, PathBuf> {
+pub(crate) fn file_paths(tree: &Json, dir: &Path) -> HashMap<String, PathBuf> {
     fn visit(node: &Json, parent: &Path, dir: &Path, out: &mut HashMap<String, PathBuf>) {
         let path = node["path"].as_str().unwrap_or_default();
         let here = match node["sourceTree"].as_str() {

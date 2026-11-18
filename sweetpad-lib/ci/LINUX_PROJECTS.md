@@ -741,9 +741,8 @@ This audit evaluates build provenance. It is not a security sandbox and does not
 All four fresh hybrid Release builds pass. A separate fresh MMKV Debug build also passes without the retired fixture shim.
 
 The Ubuntu x64 and ARM64 workflow runs library tests, Clippy, formatting, and Python regressions without Apple SDKs.
-The manual `linux-apple-build.yaml` workflow requires a provisioned Apple-hardware Linux runner with its private SDK and Flutter compiler.
-It runs fresh builds, automatic manifest checks, and the dynamic-package export regression.
-Local equivalents pass. The ARM64 release validation also invokes this workflow through a manually selected private SDK runner.
+Fresh hybrid builds, manifest checks, and the dynamic-package export regression can run locally.
+For the release package, use the [local Mac launcher](#run-the-private-package-check-from-macos).
 
 ### Package evaluation and linker controls
 
@@ -832,7 +831,6 @@ An absent plan name fails explicitly.
 python3 -B sweetpad-lib/ci/linux-test-plan-checks.py --out /path/to/fresh-plan-report --simulator SIMULATOR_UDID
 ```
 
-The manual Linux integration workflow also builds this fixture and validates its generated manifests.
 The local report remains under `corpus/_linux-followups/validation/remaining-2026-11-08`.
 No phone, account resources, or optional `.omo` artifacts form part of this follow-up.
 
@@ -862,8 +860,36 @@ The source-free sample exercises SwiftUI Entry and State macros through this lau
 The release workflow waits for verified macOS and Linux packages before publishing a CLI tag.
 Both archives include SHA-256 sidecars and build-provenance attestations.
 A manual Linux-only dry run skips macOS signing, release publication, and the Homebrew update.
-Its optional private SDK job also runs the frozen hybrid builds, automatic manifests, and package export controls.
-No public pull-request trigger runs code on the private SDK runner.
+All Linux release CI checks use public inputs. Private SDK validation runs on demand from a Mac.
 
 Local release reports are under `corpus/_linux-followups/validation/release-arm64-2026-11-08`.
 Optional `.omo` artifacts and dependency-size cleanup remain deferred.
+
+### Run the private package check from macOS
+
+From the repository root, run the readiness check:
+
+```bash
+./sweetpad-cli/ci/check-local-linux-release.sh --check
+```
+
+The launcher uses your local OrbStack machine named `sweetpad-linux`.
+It verifies the archive checksum and host architecture, checks for the packaged helpers,
+starts the pinned Linux Swift compiler, and probes bubblewrap permissions.
+The sample build starts only when you omit `--check`:
+
+```bash
+./sweetpad-cli/ci/check-local-linux-release.sh
+```
+
+The launcher looks for one ARM64 release tarball in `dist/`, then in
+`target/arm64-release-check/verified/dist/`. To select another archive,
+pass its path after the optional `--check` flag. Keep the matching
+`<archive>.sha256` alongside it. Set `SWEETPAD_LINUX_VM` for another Mac-local
+OrbStack machine with the same architecture as the archive.
+
+The guest needs Python 3 with tar extraction filters, `file`, and `bubblewrap`.
+It reads the Swift version from `sweetpad-lib/ci/linux-toolchain.json` and uses
+`~/swift/swift-<version>-RELEASE` and `~/.swiftpm/swift-sdks/darwin.artifactbundle`.
+During a full check, the launcher prints the Mac-accessible result directory under
+`~/OrbStack/<machine>/`. Each run keeps its own `summary.json`, sandbox logs, and built sample app.

@@ -97,7 +97,7 @@ pub fn manifest(packages: &[Package]) -> String {
 }
 
 /// The `.package(…)` that declares `package`.
-fn dependency(package: &Package) -> Option<String> {
+pub(super) fn dependency(package: &Package) -> Option<String> {
     let (location, requirement) = match package {
         Package::Local(path) => {
             return Some(format!(
@@ -133,8 +133,22 @@ fn dependency(package: &Package) -> Option<String> {
 }
 
 /// `text` as a Swift string literal.
-fn literal(text: &str) -> String {
-    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
+pub(super) fn literal(text: &str) -> String {
+    let mut value = String::from("\"");
+    for c in text.chars() {
+        match c {
+            '\\' | '"' => {
+                value.push('\\');
+                value.push(c);
+            }
+            c if c.is_control() => {
+                let _ = write!(value, "\\u{{{:x}}}", u32::from(c));
+            }
+            c => value.push(c),
+        }
+    }
+    value.push('"');
+    value
 }
 
 /// Add the package projects in `dumped`, the PIF `swift package dump-pif`

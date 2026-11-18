@@ -63,6 +63,14 @@ pub fn identity_configured() -> bool {
 /// and no build needs.
 const ASC_KEY_VARIABLE: &str = "SWEETPAD_ASC_KEY";
 
+/// SwiftPM executes package manifests and build-tool plugins while dumping PIF.
+pub(crate) fn hide_from_package_plugins(command: &mut std::process::Command) {
+    command
+        .env_remove(ASC_KEY_VARIABLE)
+        .env_remove(identity::PASSWORD_VARIABLE)
+        .env_remove(identity::PASSWORD_FILE_VARIABLE);
+}
+
 /// Keeps the signing secrets out of the environment a build passes its
 /// tasks. Swift Build hands its environment to every script phase and
 /// plugin, as Xcode does, and a script that prints its environment would

@@ -36,7 +36,7 @@ These build on Linux:
 - Asset catalogs, storyboards, XIBs, String Catalogs, and strings files
 - Core Data models and common mapping models
 - SwiftData, Predicate, Preview, SwiftUI Entry, and TipKit macros
-- Build-tool plugins on package targets, such as SwiftLint or SwiftGen
+- Build-tool plugins on package targets and Xcode project targets. For project targets, SweetPad runs the SwiftPM `BuildToolPlugin` entry point. The plugin and its tools must run on Linux.
 - App Intents metadata and shortcut language models
 - Icon Composer icons, as static light, dark, and tinted images
 - Sticker packs with PNG, GIF, and JPEG stickers
@@ -44,7 +44,7 @@ These build on Linux:
 These don't:
 
 - Metal shaders, Core ML model classes, SceneKit assets, and RealityKit assets, which need Apple's own tools. The build stops and names the tool and the file.
-- Build-tool plugins on Xcode project targets. Xcode runs those itself, so the build warns and goes on without their files.
+- Plugin commands implemented only in the `XcodeProjectPlugin` entry point. These require Xcode.
 - Sticker sequences, localized sticker-pack strings, Icon Composer's glass and material effects, and advanced Core Data mapping expressions.
 
 Linux file names are case-sensitive and a Mac's usually aren't.
