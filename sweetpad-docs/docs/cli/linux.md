@@ -28,7 +28,7 @@ The validated setup is a Linux VM on Apple hardware, with Apple's SDKs from your
 Then, as you need them:
 
 - [GitHub Actions for iOS](linux/github-actions.md) builds, tests, and uploads from a Linux runner.
-- [React Native](linux/react-native.md) and [Flutter](linux/flutter.md) apps need extra preparation.
+- [React Native](linux/react-native.md) apps need extra preparation.
 - [macOS apps in CI](linux/macos-ci.md) covers Mac apps built on Linux.
 - [How it works](linux/how-it-works.md) explains the build pipeline.
 - [Support and configuration](linux/reference.md) lists what works and the environment variables.

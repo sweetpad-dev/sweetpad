@@ -127,4 +127,4 @@ With your Apple Distribution identity, App Store profiles, and an App Store Conn
 The step ends when Apple accepts or rejects the build, and a rejection fails the job.
 Each upload needs a new build number, which the run number supplies here.
 
-React Native and Flutter apps need their own preparation first; see the [React Native](react-native.md) and [Flutter](flutter.md) guides.
+React Native apps need their own preparation first; see the [React Native](react-native.md) guide.

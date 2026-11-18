@@ -103,7 +103,7 @@ Core compilation, resources, development signing, and physical iPhone USB/Wi-Fi 
 The standalone CLI passes installation in clean containers for both host architectures.
 Simulator operation and Apple test execution still require a Mac with Xcode.
 Distribution IPA export, Linux device debugging, and device readiness inspection remain unsupported.
-Flutter AOT requires the separately built Linux ARM64 iOS snapshot compiler.
+Flutter apps aren't supported, since Flutter ships its iOS snapshot compiler only for macOS.
 The tested React Native Hermes compiler requires OrbStack's x86 translation in this ARM64 environment.
 Other Linux architectures, including 32-bit x86, are not release targets.
 Public host-toolchain checks cover Ubuntu, Debian, and Arch. Private SDK app builds cover these distributions separately.

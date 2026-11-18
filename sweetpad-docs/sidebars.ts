@@ -57,7 +57,6 @@ const sidebars: SidebarsConfig = {
         'cli/linux/ubuntu-usb',
         'cli/linux/github-actions',
         'cli/linux/react-native',
-        'cli/linux/flutter',
         'cli/linux/macos-ci',
         'cli/linux/how-it-works',
         'cli/linux/reference',
