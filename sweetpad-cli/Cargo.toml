@@ -28,6 +28,7 @@ toml_edit.workspace = true
 libc.workspace = true
 png.workspace = true
 flate2.workspace = true
+zip.workspace = true
 flatbuffers.workspace = true
 moxcms.workspace = true
 hayro.workspace = true

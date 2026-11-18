@@ -76,7 +76,7 @@ sweetpad doctor --target ios
 
 Use `--xcode 27.2` in place of `--sdk` to download that release; a beta needs its name, as in `--xcode '27.3 beta'`.
 
-Setup installs the system packages and the pinned Swift toolchain.
+Setup checks the host packages and prints the command to install any that are missing. Add `--install-system-packages` to let setup run the package manager.
 When Swift 6.4.2 is already on `PATH` or installed with swiftly, setup uses it; otherwise it downloads the release from swift.org and checks its signature.
 It then imports the SDK and builds a sample iPhone app to check the result.
 Swift Build, the macro plugin and the LLVM linker ship prebuilt in the SweetPad package.
@@ -87,15 +87,20 @@ Setup also writes `~/.config/sweetpad/linux-env.sh`, which puts Swift on `PATH` 
 Setup skips every step whose result is already installed and current, so it's safe to run again.
 To switch to another archive or Xcode release, add `--replace-sdk`. The old SDK stays until the new one imports.
 
-With `--json` or `--non-interactive`, or when stderr isn't a terminal, sudo can't ask for a password.
+When installing packages with `--json` or `--non-interactive`, or when stderr isn't a terminal, sudo can't ask for a password.
 Configure passwordless sudo or run `sudo -v` first.
 `--skip-system-packages` uses the packages already installed instead.
 
+Swift supplies the Darwin archiver. SweetPad reads Xcode's cpio archives directly and
+includes the ZIP, file identification and local rsync operations used by SwiftPM, Flutter
+and CocoaPods. Build scripts can use a system utility installed on `PATH` for additional options.
+
 ### Containers
 
-Ubuntu and Debian builds run Xcode's scripts through bubblewrap, so that `/bin/sh` is Bash.
-Docker must allow mount namespaces, for example with `--cap-add SYS_ADMIN --security-opt seccomp=unconfined`.
-Where that isn't allowed, use a VM. `sweetpad doctor` checks it.
+The SweetPad image uses Bash for `/bin/sh`, including scripts launched by CocoaPods.
+It runs with Docker's default capabilities. In a custom build image, install Bash and set
+`RUN ln -sf bash /bin/sh` in the Dockerfile. On native Linux hosts where `/bin/sh` is
+another shell, the packaged bubblewrap helper maps it to Bash for the build.
 
 ### CI with a saved Apple session
 
@@ -121,7 +126,7 @@ Apple decides when a session expires. Sign in again to replace the secret, and u
 `--sdk-path` and `--env-file` put the SDK and the environment file somewhere else, for example one per CI runner.
 An SDK outside the default location needs `SWEETPAD_DARWIN_SDK` set to it, which the environment file does.
 With Swift 6.4.2 installed, `sweetpad sdk import` imports an archive without the rest of setup.
-`sweetpad setup --no-sdk` installs the host packages and Swift alone, for a machine that builds no Apple apps yet.
+`sweetpad setup --no-sdk` checks the host packages and installs Swift, for a machine that builds no Apple apps yet.
 
 ## Read the doctor report
 

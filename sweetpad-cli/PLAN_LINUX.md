@@ -215,10 +215,10 @@ database 8.7 MB, `bubblewrap` 0.1 MB, and `llvm-18` about 240 MB, which
 setup installs only for `llvm-libtool-darwin`. The Swift 6.4.2 toolchain
 already ships `llvm-ar` and `ld64.lld`.
 
-- [ ] SC24: Make the `libtool` stand-in write static archives with the toolchain's `llvm-ar --format=darwin`, check the archives match `llvm-libtool-darwin`'s across the corpus, and drop `llvm-18`.
-- [ ] SC25: Do the parts of `zip`, `unzip`, `rsync`, `cpio` and `file` that builds use inside the SweetPad binary, with the `zip` crate for archives; under 1 MB together.
-- [ ] SC26: Test giving build scripts Bash as `/bin/sh` without `bubblewrap` across the corpus. If that fails, ship the 0.1 MB `bwrap` binary in the package; either way Docker stops needing `--cap-add SYS_ADMIN`.
-- [ ] SC27: Without a package that carries dependencies, have setup check what's missing and print the exact install command; `--install-system-packages` runs it with `sudo`. `doctor` shows the same list.
+- [x] SC24: Swift Build's libtool stand-in creates indexed Darwin archives with the pinned Swift toolchain's `llvm-ar`. All 105 schemes built on Linux both on the provisioned host and with the removed host tools hidden and Bash as the system shell. All 98 static archives from that run were byte-identical to the output of Ubuntu's `llvm-libtool-darwin-18` on the same file lists. The package, container and setup no longer request a distribution LLVM package.
+- [x] SC25: IPA export and notarization write ZIPs in-process. Minimal hosts get the build scripts' ZIP, unzip, local rsync and Mach-O file identification operations. Xcode import already reads cpio in-process. The stripped ARM64 musl release grew by about 0.20 MB including the other phase 5 changes. Sixteen real Flutter and CocoaPods rsync calls matched system rsync in contents, permissions and symlinks. SwiftPM's Cordova XCFramework matched after extraction and overwrite.
+- [x] SC26: A generated CocoaPods resource script failed under Dash and passed under Bash. The Linux release now carries Debian's bubblewrap helper and license for hosts with another system shell. The container image uses Bash as `/bin/sh`. A fresh Ubuntu container with Docker's default capabilities built the iOS sample, including a nested Bash script and a build phase using all four utility fallbacks.
+- [x] SC27: Setup checks the host package list before installing Swift and prints a copyable APT or pacman command when packages are missing. Only `--install-system-packages` runs the package manager. The existing `--skip-system-packages` flag still continues past missing packages. On a fresh non-root Ubuntu host, setup and doctor reported the same command, and only the opt-in path invoked sudo.
 
 ## Follow-up audit, 2026-11-10
 

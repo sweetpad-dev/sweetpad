@@ -13,6 +13,7 @@ use crate::cli::linux_setup::{self, host, swift};
 use crate::cli::{CliError, CommandResult, Context, ErrorKind, Rendered};
 
 #[derive(Debug, Args)]
+#[allow(clippy::struct_excessive_bools)] // independent setup options
 #[command(group(
     clap::ArgGroup::new("source")
         .required(true)
@@ -30,7 +31,10 @@ pub struct SetupArgs {
     pub no_sdk: bool,
     #[command(flatten)]
     pub session: super::auth::SessionArgs,
-    /// Use existing host packages instead of installing them with APT or pacman.
+    /// Install missing host packages with APT or pacman (uses sudo unless root).
+    #[arg(long, conflicts_with = "skip_system_packages")]
+    pub install_system_packages: bool,
+    /// Continue setup even if some host packages are missing.
     #[arg(long)]
     pub skip_system_packages: bool,
     /// AEA symmetric key or Apple FCS private key file, for offline decryption.
@@ -170,11 +174,12 @@ pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
                 host.packages.len()
             )));
         }
-        if args.skip_system_packages {
-            return Ok(Outcome::Ready(format!(
-                "skipped; missing {}",
-                missing.join(" ")
-            )));
+        if !args.install_system_packages {
+            let detail = host::missing_detail(manager, &missing);
+            if args.skip_system_packages {
+                return Ok(Outcome::Ready(format!("Skipped. {detail}")));
+            }
+            return Err(CliError::new(detail).kind(ErrorKind::ToolMissing));
         }
         host::install(&host, &missing, interactive).map_err(CliError::new)?;
         Ok(Outcome::Done(format!(
@@ -194,15 +199,12 @@ pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
         Ok(Outcome::Done(installed.bin.display().to_string()))
     })?;
 
-    steps.run("libtool", "Darwin libtool", |_| {
-        linux_setup::libtool()
+    steps.run("archiver", "Darwin archiver", |_| {
+        linux_setup::archiver()
             .map(|path| Outcome::Ready(path.display().to_string()))
             .ok_or_else(|| {
-                CliError::new(
-                    "llvm-libtool-darwin isn't installed. Install your distribution's LLVM \
-                     package, or run setup without --skip-system-packages",
-                )
-                .kind(ErrorKind::ToolMissing)
+                CliError::new("The pinned Swift toolchain is missing llvm-ar")
+                    .kind(ErrorKind::ToolMissing)
             })
     })?;
 

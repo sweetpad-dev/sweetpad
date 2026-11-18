@@ -17,6 +17,7 @@ LABEL org.opencontainers.image.source="https://github.com/sweetpad-dev/sweetpad"
 RUN test -n "$HOST_PACKAGES" \
     && apt-get update -qq \
     && apt-get install -y --no-install-recommends $HOST_PACKAGES libstdc++6 \
+    && ln -sf bash /bin/sh \
     && rm -rf /var/lib/apt/lists/*
 COPY linux-${TARGETARCH}/bin/ /usr/local/bin/
 COPY linux-${TARGETARCH}/libexec/ /usr/local/libexec/

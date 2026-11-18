@@ -11,8 +11,6 @@ use serde::Deserialize;
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HostPackages {
     pub(crate) apt: Vec<String>,
-    /// The LLVM package for `llvm-libtool-darwin`, by distribution.
-    pub(crate) apt_llvm: BTreeMap<String, String>,
     pub(crate) pacman: Vec<String>,
 }
 
@@ -89,20 +87,14 @@ pub(crate) fn detect(
         ncursesw: false,
         warnings: Vec::new(),
     };
-    let apt = |llvm: &str| {
-        let mut packages = pins.apt.clone();
-        packages.extend(pins.apt_llvm.get(llvm).cloned());
-        packages.sort();
-        packages
-    };
     match (id, version) {
         ("ubuntu", "24.04") => {
             host.manager = Some(Manager::Apt);
-            host.packages = apt("ubuntu");
+            host.packages.clone_from(&pins.apt);
         }
         ("debian", "12" | "13") => {
             host.manager = Some(Manager::Apt);
-            host.packages = apt("debian");
+            host.packages.clone_from(&pins.apt);
             host.swift_platform = format!("debian{version}");
         }
         ("arch", _) => {
@@ -127,7 +119,7 @@ pub(crate) fn detect(
         }
         _ => host.warnings.push(format!(
             "{} is untested. Setup uses the packages already installed: install a C/C++ \
-             toolchain, LLVM, bubblewrap and Swift's runtime libraries with your package \
+             toolchain, Bash and Swift's runtime libraries with your package \
              manager. It tries the Ubuntu 24.04 Swift release.",
             host.name
         )),
@@ -169,6 +161,17 @@ pub(crate) fn missing_packages(host: &Host) -> Result<Vec<String>, String> {
         .stderr(Stdio::null())
         .output()
         .map_err(|error| format!("Couldn't list installed packages: {error}."))?;
+    let missing_status = match manager {
+        Manager::Apt => 1,
+        Manager::Pacman => 127,
+    };
+    if !output.status.success() && output.status.code() != Some(missing_status) {
+        return Err(format!(
+            "{} package query failed ({})",
+            manager.name(),
+            output.status
+        ));
+    }
     let text = String::from_utf8_lossy(&output.stdout);
     Ok(match manager {
         // Installed packages show as `ii`; packages dpkg has never heard of
@@ -177,7 +180,7 @@ pub(crate) fn missing_packages(host: &Host) -> Result<Vec<String>, String> {
             let installed: Vec<&str> = text
                 .lines()
                 .filter_map(|line| line.split_once(' '))
-                .filter(|(_, status)| status.starts_with("ii"))
+                .filter(|(_, status)| status.as_bytes().get(1) == Some(&b'i'))
                 .map(|(name, _)| name.split(':').next().unwrap_or(name))
                 .collect();
             host.packages
@@ -189,6 +192,24 @@ pub(crate) fn missing_packages(host: &Host) -> Result<Vec<String>, String> {
         // `pacman -T` prints the dependencies that are not satisfied.
         Manager::Pacman => text.lines().map(str::to_string).collect(),
     })
+}
+
+/// A command the user can paste to install the packages the probe found.
+pub(crate) fn missing_detail(manager: Manager, packages: &[String]) -> String {
+    // SAFETY: geteuid has no preconditions.
+    let prefix = if unsafe { libc::geteuid() } == 0 {
+        ""
+    } else {
+        "sudo "
+    };
+    let command = match manager {
+        Manager::Apt => format!("{prefix}apt-get update && {prefix}apt-get install"),
+        Manager::Pacman => format!("{prefix}pacman -S --needed"),
+    };
+    format!(
+        "Missing host packages. Run '{command} {}'.",
+        packages.join(" ")
+    )
 }
 
 /// Install `packages` with the host's package manager, through `sudo`
@@ -280,13 +301,13 @@ mod tests {
         .unwrap();
         assert_eq!(host.manager, Some(Manager::Apt));
         assert_eq!(host.swift_platform, "ubuntu24.04");
-        assert!(host.packages.contains(&"llvm-18".to_string()));
-        assert!(host.packages.contains(&"bubblewrap".to_string()));
+        assert!(!host.packages.contains(&"llvm-18".to_string()));
+        assert!(host.packages.contains(&"bash".to_string()));
         assert_eq!(host.name, "Ubuntu 24.04.3 LTS");
 
         let host = detect("ID=debian\nVERSION_ID=\"13\"\n", "aarch64", &pins()).unwrap();
         assert_eq!(host.swift_platform, "debian13-aarch64");
-        assert!(host.packages.contains(&"llvm".to_string()));
+        assert!(!host.packages.contains(&"llvm".to_string()));
 
         let host = detect("ID=arch\n", "x86_64", &pins()).unwrap();
         assert_eq!(host.manager, Some(Manager::Pacman));

@@ -97,19 +97,15 @@ fn materialize(cache: &Path) -> Result<PathBuf, std::io::Error> {
     if destination.exists() {
         return verify(&destination);
     }
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let stage = cache.join(format!(".stage-{}-{nonce}", std::process::id()));
+    let scratch = sweetpad_core::scratch::ScratchDir::new_in(cache, ".stage")?;
+    let stage = scratch.join("sample");
     std::fs::DirBuilder::new().mode(0o700).create(&stage)?;
-    let cleanup = Staged(stage);
     for (name, bytes) in FILES {
-        let path = cleanup.0.join(name);
+        let path = stage.join(name);
         std::fs::create_dir_all(path.parent().unwrap())?;
         std::fs::write(path, bytes)?;
     }
-    match std::fs::rename(&cleanup.0, &destination) {
+    match std::fs::rename(&stage, &destination) {
         Ok(()) => Ok(destination),
         Err(_) if destination.exists() => verify(&destination),
         Err(error) => Err(error),
@@ -131,14 +127,6 @@ fn verify(directory: &Path) -> Result<PathBuf, std::io::Error> {
             "cached setup files are incomplete or modified; remove {} and retry",
             directory.display()
         )))
-    }
-}
-
-struct Staged(PathBuf);
-
-impl Drop for Staged {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

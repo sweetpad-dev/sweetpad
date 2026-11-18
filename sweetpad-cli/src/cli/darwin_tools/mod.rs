@@ -30,6 +30,7 @@ mod ditto;
 mod dsymutil;
 mod embedded_binary;
 mod extract_loc_strings;
+pub(crate) mod host;
 mod ld;
 mod lipo;
 pub(crate) use lipo::is_static_archive;
@@ -46,6 +47,7 @@ pub const TOOLS: &[&str] = &[
     "ditto",
     "embeddedBinaryValidationUtility",
     "ld64.lld",
+    "llvm-libtool-darwin",
     "lipo",
     "strip",
     "xcrun",
@@ -69,6 +71,7 @@ pub fn main(tool: &str, args: &[String]) -> Option<ExitCode> {
         "embeddedBinaryValidationUtility" => return Some(embedded_binary::main(args)),
         "ld64.lld" => return Some(ld::main(args)),
         "dsymutil" => return Some(dsymutil::main(args)),
+        "llvm-libtool-darwin" => ld::libtool::main(args),
         "lipo" => lipo::main(args),
         "strip" => strip::main(args),
         "extractLocStrings" => extract_loc_strings::main(args),
@@ -89,7 +92,7 @@ pub fn main(tool: &str, args: &[String]) -> Option<ExitCode> {
                         .ok_or_else(|| format!("chmod exited with {s}"))
                 })
         }
-        _ => return None,
+        _ => host::main(tool, args)?,
     };
     Some(match result {
         Ok(()) => ExitCode::SUCCESS,

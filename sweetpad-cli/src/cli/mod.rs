@@ -1162,6 +1162,36 @@ pub fn run(argv: &[String]) -> ExitCode {
         return ExitCode::SUCCESS;
     };
 
+    #[cfg(target_os = "linux")]
+    if matches!(
+        &resource,
+        Resource::Build { .. }
+            | Resource::Test { .. }
+            | Resource::Archive { .. }
+            | Resource::App { .. }
+            | Resource::Run(_)
+            | Resource::Dependency { .. }
+            | Resource::Clean(_)
+    ) {
+        match darwin_tools::host::fallback_path() {
+            Ok(Some(path)) => {
+                // SAFETY: as for DEVELOPER_DIR above, dispatch has not started any workers.
+                unsafe {
+                    std::env::set_var("PATH", path);
+                }
+            }
+            Ok(None) => {}
+            Err(e) => {
+                return render_result(
+                    &ctx,
+                    Err(CliError::new(format!(
+                        "cannot prepare build utilities: {e}"
+                    ))),
+                );
+            }
+        }
+    }
+
     let result = match resource {
         // Scheme/project/app carry their targeting per action (a sibling like
         // `project new` or `app open-url` consumes none), so their `run`s set

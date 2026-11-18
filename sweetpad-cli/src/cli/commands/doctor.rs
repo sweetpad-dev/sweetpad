@@ -117,6 +117,7 @@ fn gather_linux(target: Target) -> Vec<Check> {
     let mut checks = Vec::new();
     let os = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
     checks.push(linux_host(std::env::consts::ARCH, &os));
+    checks.push(linux_packages());
     checks.push(linux_shell());
     // The Swift setup installs or finds, the one builds use.
     let pinned = &super::sdk::toolchain().swift;
@@ -165,15 +166,15 @@ fn gather_linux(target: Target) -> Vec<Check> {
         setup,
     ));
     checks.push(darwin_linker_check(setup));
-    let libtool = crate::cli::linux_setup::libtool();
+    let archiver = crate::cli::linux_setup::archiver();
     checks.push(tool_check(
-        "Darwin libtool",
-        libtool.as_ref().and_then(|path| {
+        "Darwin archiver",
+        archiver.as_ref().and_then(|path| {
             first_line(probe(&path.to_string_lossy(), &["--version"]))
                 .map(|version| format!("{version} ({})", path.display()))
         }),
         Status::Fail,
-        Some("rerun sweetpad setup to install llvm-libtool-darwin"),
+        Some("install the pinned Swift toolchain with llvm-ar"),
     ));
     let macros = crate::cli::swbuild::macro_plugin().unwrap_or_default();
     checks.push(linux_check(
@@ -320,6 +321,28 @@ fn extra_platforms(sdk: &std::path::Path) -> Check {
     )
 }
 
+fn linux_packages() -> Check {
+    use crate::cli::linux_setup::host;
+    let result = host::current(&super::sdk::toolchain().host_packages).and_then(|host| {
+        let Some(manager) = host.manager else {
+            return Ok((Status::Warn, format!("No package list for {}", host.name)));
+        };
+        let missing = host::missing_packages(&host)?;
+        Ok(if missing.is_empty() {
+            (Status::Ok, format!("all {} installed", host.packages.len()))
+        } else {
+            (Status::Fail, host::missing_detail(manager, &missing))
+        })
+    });
+    let (status, detail) = result.unwrap_or_else(|error| (Status::Fail, error));
+    Check {
+        name: "Host packages",
+        status,
+        detail,
+        hint: None,
+    }
+}
+
 fn linux_shell() -> Check {
     let result = crate::cli::swbuild::darwin_shell_command(
         std::path::Path::new("/bin/sh"),
@@ -347,7 +370,7 @@ fn linux_shell() -> Check {
         ok,
         detail,
         false,
-        "install Bash and bubblewrap; containers must allow mount namespaces (SYS_ADMIN and an appropriate seccomp policy), or use a Linux VM",
+        "use the SweetPad container image, or install Bash and the shell helper from the SweetPad package",
     )
 }
 
@@ -484,12 +507,7 @@ fn gather_sdk_at(target: Target, setup: &'static str, sdk: &std::path::Path) -> 
 fn gather_linux_optional(target: Target) -> Vec<Check> {
     use super::sdk::home;
     let mut checks = Vec::new();
-    checks.push(tool_check(
-        "IPA export (zip)",
-        first_line(probe("zip", &["-v"])),
-        Status::Warn,
-        Some("install zip to export development IPAs"),
-    ));
+
     let free = probe("df", &["-Pk", &home().to_string_lossy()]).and_then(|s| {
         s.lines()
             .last()?

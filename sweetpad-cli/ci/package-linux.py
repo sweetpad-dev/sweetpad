@@ -145,6 +145,15 @@ def helper_files(helpers, arch):
     for key in ("swiftBuild", "swift"):
         if record.get(key) != pins[key]:
             raise ValueError(f"helpers record {key} {record.get(key)!r}; the CLI pins {pins[key]}")
+    wrapper = helpers / "libexec/sweetpad/bwrap"
+    if not wrapper.is_file() or validate_elf(wrapper) != arch or "licenses/bubblewrap/copyright" not in files:
+        raise ValueError("missing matching bubblewrap binary or license")
+    check_file_floor(wrapper)
+    needed, runpath = elf_dynamic(wrapper)
+    if runpath is not None:
+        raise ValueError(f"unexpected bubblewrap RUNPATH: {runpath}")
+    if set(needed) - SYSTEM_LIBRARIES - {"libcap.so.2", "libselinux.so.1"}:
+        raise ValueError(f"unexpected bubblewrap dependencies: {needed}")
     check_helper_linkage(helpers / "libexec/sweetpad")
     check_host_floor(helpers / "libexec/sweetpad")
     return files
@@ -188,7 +197,7 @@ def linker_files(linker, arch):
 
 
 def executable(name):
-    return name in ("sweetpad", LINKER, *(f"libexec/sweetpad/{helper}" for helper in HELPERS)) or name.endswith(".sh")
+    return name in ("sweetpad", LINKER, "libexec/sweetpad/bwrap", *(f"libexec/sweetpad/{helper}" for helper in HELPERS)) or name.endswith(".sh")
 
 
 def source_files(repo):
@@ -248,12 +257,10 @@ def package(binary, helpers, linker, version, out, repo=REPO):
 def debian_depends(repo=REPO):
     """The libraries the Swift helpers and LLVM's linker load, then the host
     packages `sweetpad setup` would install, so that apt installs them and
-    setup finds them ready. LLVM is versioned on Ubuntu and not on Debian."""
+    setup finds them ready."""
     hosts = json.loads((repo / "sweetpad-lib/ci/linux-toolchain.json").read_text())["hostPackages"]
     depends = ["ca-certificates", "libc6 (>= 2.36)", "libgcc-s1", "libstdc++6", "libsqlite3-0"]
     depends += [name for name in hosts["apt"] if name not in depends]
-    llvm = hosts["aptLlvm"]
-    depends.append(f"{llvm['ubuntu']} | {llvm['debian']}")
     return depends
 
 

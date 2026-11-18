@@ -76,7 +76,7 @@ sweetpad build --project MyApp.xcodeproj --scheme MyApp \
   --destination 'generic/platform=iOS Simulator' --json --non-interactive
 ```
 
-Setup installs the system packages, finds or downloads the pinned Swift, imports the SDK files and builds the sample app. A step whose result is already there is skipped.
+Setup checks the system packages (add `--install-system-packages` to install any that are missing), finds or downloads the pinned Swift, imports the SDK files and builds the sample app. A step whose result is already there is skipped.
 Installing system packages takes sudo or a root shell. Run `sudo -v` first if your account needs a password.
 sweetpad finds Swift and the SDK on its own. Source `~/.config/sweetpad/linux-env.sh` only to run `swift` by hand.
 An unchanged archive reuses the installed SDK. A different archive requires `--replace-sdk`.

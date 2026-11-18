@@ -12,7 +12,7 @@ use crate::cli::codesign::installer::Installer;
 use crate::cli::codesign::{self, resign};
 use crate::cli::pkg;
 use crate::cli::property_list::{self as plist, Plist};
-use crate::cli::{CliError, Context, ErrorKind, process};
+use crate::cli::{CliError, Context, ErrorKind};
 use sweetpad_core::scratch::ScratchDir;
 
 /// How to export: the flags, or an ExportOptions.plist in their place.
@@ -114,12 +114,12 @@ pub(crate) fn export(
         .map_err(|e| CliError::new(format!("can't create {}: {e}", export_dir.display())))?;
     match mac_output {
         None => {
-            let file = file.display().to_string();
-            let mut contents = vec!["-qryX", file.as_str(), "Payload"];
+            let mut contents = vec![Path::new("Payload")];
             if method == Some(resign::Method::AppStoreConnect) {
-                contents.extend(apple_content(archive, &stage)?);
+                contents.extend(apple_content(archive, &stage)?.into_iter().map(Path::new));
             }
-            process::capture("zip", &contents, Some(&stage))?;
+            crate::cli::zip::create(&file, &stage, &contents)
+                .map_err(|e| CliError::new(format!("cannot write {}: {e}", file.display())))?;
         }
         Some(MacOutput::App) => copy_tree(&staged, &file)?,
         Some(MacOutput::DeveloperId) => {

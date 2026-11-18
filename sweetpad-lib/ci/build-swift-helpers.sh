@@ -144,6 +144,14 @@ for package in libncurses6 libtinfo6; do
 done
 mkdir -p "$OUT/licenses/swift"
 cp "$(dirname "$(dirname "$(dirname "$RUNTIME")")")/share/swift/LICENSE.txt" "$OUT/licenses/swift/LICENSE.txt"
+# The release build installs Debian 12's shell helper in this image. A
+# development build can also use bwrap from PATH on a non-Bash host.
+if [ -x /usr/bin/bwrap ] && [ -f /usr/share/doc/bubblewrap/copyright ]; then
+  install -m 755 /usr/bin/bwrap "$LIBEXEC/bwrap"
+  install -Dm644 /usr/share/doc/bubblewrap/copyright "$OUT/licenses/bubblewrap/copyright"
+  cp /usr/share/common-licenses/LGPL-2 "$OUT/licenses/bubblewrap/"
+  dpkg-query -W -f='${Version}\n' bubblewrap > "$OUT/licenses/bubblewrap/debian-version"
+fi
 find "$OUT/libexec" "$OUT/licenses" -type d -exec chmod 755 {} +
 find "$OUT/libexec" "$OUT/licenses" -type f ! -perm -u+x -exec chmod 644 {} +
 du -sh "$LIBEXEC"

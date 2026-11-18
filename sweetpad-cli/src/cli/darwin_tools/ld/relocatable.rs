@@ -10,24 +10,13 @@ use std::process::Command;
 
 pub(super) fn archive(args: &[String]) -> Result<(), String> {
     let request = Request::parse(args)?;
-    let tool = llvm_ar().ok_or("no llvm-ar on PATH for '-r'; the Swift toolchain has one")?;
-    // `q` appends, so an archive from the last build would keep its members;
-    // and unlike `r`, it keeps two objects that share a file name.
-    let _ = std::fs::remove_file(&request.output);
-    let inputs = request.output.with_extension("o.ar-inputs");
-    super::super::write(&inputs, response_file(&request.inputs).as_bytes())?;
-    let status = Command::new(&tool)
-        .args(["qcsD", "--format=darwin"])
-        .arg(&request.output)
-        .arg(format!("@{}", inputs.display()))
-        .status()
-        .map_err(|e| format!("couldn't run {}: {e}", tool.display()))?;
-    let _ = std::fs::remove_file(&inputs);
-    if !status.success() {
-        return Err(format!("{} exited with {status}", tool.display()));
-    }
+    let scratch = scratch(&request.output)?;
+    write_archive(&scratch, &request.output, &request.inputs, "qcsD")?;
     if let Some(path) = &request.dependency_info {
-        super::super::write(path, &dependency_info(&request.inputs, &request.output))?;
+        super::super::write(
+            path,
+            &dependency_info("sweetpad ld64.lld -r", &request.inputs, &request.output),
+        )?;
     }
     Ok(())
 }
@@ -77,13 +66,37 @@ impl Request {
     }
 }
 
-/// The Swift toolchain's `llvm-ar`, the first on `PATH`.
-fn llvm_ar() -> Option<PathBuf> {
-    std::env::var_os("PATH")
-        .iter()
-        .flat_map(std::env::split_paths)
-        .map(|dir| dir.join("llvm-ar"))
-        .find(|candidate| candidate.is_file())
+/// Stage beside the output so a failed or repeated build never appends to
+/// the old archive and a successful one can replace it atomically.
+pub(super) fn scratch(output: &Path) -> Result<sweetpad_core::scratch::ScratchDir, String> {
+    let dir = output
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    sweetpad_core::scratch::ScratchDir::new_in(dir, ".sweetpad-ar").map_err(|e| e.to_string())
+}
+
+pub(super) fn write_archive(
+    scratch: &Path,
+    output: &Path,
+    members: &[PathBuf],
+    flags: &str,
+) -> Result<(), String> {
+    let inputs = scratch.join("inputs.rsp");
+    super::super::write(&inputs, response_file(members).as_bytes())?;
+    let archive = scratch.join("output.a");
+    // Swift Build puts the pinned toolchain before the system tools on PATH.
+    let status = Command::new("llvm-ar")
+        .args([flags, "--format=darwin"])
+        .arg(&archive)
+        .arg(format!("@{}", inputs.display()))
+        .status()
+        .map_err(|e| format!("llvm-ar: {e}"))?;
+    if !status.success() {
+        return Err(format!("llvm-ar exited with {status}"));
+    }
+    std::fs::rename(archive, output).map_err(|e| format!("{}: {e}", output.display()))
 }
 
 /// `paths` as an `llvm-ar` response file, quoted as a GNU command line is.
@@ -100,9 +113,10 @@ fn response_file(paths: &[PathBuf]) -> String {
 
 /// ld64's dependency info: a version record, then a record per input and
 /// one for the output, each an opcode byte and a NUL-terminated path.
-fn dependency_info(inputs: &[PathBuf], output: &Path) -> Vec<u8> {
+pub(super) fn dependency_info(version: &str, inputs: &[PathBuf], output: &Path) -> Vec<u8> {
     let mut data = vec![0x00];
-    data.extend_from_slice(b"sweetpad ld64.lld -r\0");
+    data.extend_from_slice(version.as_bytes());
+    data.push(0);
     for (opcode, path) in inputs
         .iter()
         .map(|p| (0x10, p.as_path()))
@@ -168,7 +182,7 @@ mod tests {
             response_file(&inputs),
             "\"/b/my \\\"x\\\".o\"\n\"/b/c.o\"\n"
         );
-        let info = dependency_info(&inputs[1..], Path::new("/b/Kit.o"));
+        let info = dependency_info("sweetpad ld64.lld -r", &inputs[1..], Path::new("/b/Kit.o"));
         assert_eq!(info, b"\0sweetpad ld64.lld -r\0\x10/b/c.o\0\x40/b/Kit.o\0");
     }
 

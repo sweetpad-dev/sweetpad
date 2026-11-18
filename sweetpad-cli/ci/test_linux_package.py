@@ -68,4 +68,4 @@ class DebianDependsTests(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)))
         for name in hosts["apt"]:
             self.assertIn(name, names)
-        self.assertEqual(depends[-1], f"{hosts['aptLlvm']['ubuntu']} | {hosts['aptLlvm']['debian']}")
+        self.assertNotIn("llvm-18", names)

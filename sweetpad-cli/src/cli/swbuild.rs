@@ -186,7 +186,7 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
     let detail = recorded
         .as_ref()
         .map_or_else(String::new, |p| format!("; full log: {}", p.display()));
-    let killer = killed_by(status, program == "bwrap");
+    let killer = killed_by(status, Path::new(&program).ends_with("bwrap"));
     if killer.is_some() {
         // Its tasks outlive it, with nothing left to finish or stop them.
         process::stop_leftovers();
@@ -359,25 +359,31 @@ pub(crate) fn darwin_shell_command(
     program: &Path,
     arguments: &[String],
 ) -> Result<(String, Vec<String>), CliError> {
+    use std::os::unix::fs::MetadataExt as _;
     let program = program.to_string_lossy().into_owned();
     if !cfg!(target_os = "linux") {
         return Ok((program, arguments.to_vec()));
     }
     let shell = std::fs::canonicalize("/bin/sh").map_err(|e| CliError::new(e.to_string()))?;
     let bash = std::fs::canonicalize("/bin/bash").map_err(|e| CliError::new(e.to_string()))?;
-    if shell == bash {
+    let identity = |path: &Path| std::fs::metadata(path).map(|m| (m.dev(), m.ino()));
+    if shell == bash || identity(&shell).is_ok_and(|id| identity(&bash).ok() == Some(id)) {
         return Ok((program, arguments.to_vec()));
     }
-    if super::darwin_tools::find_program("bwrap").is_none() {
+    let wrapper = std::env::current_exe()
+        .ok()
+        .and_then(|exe| sweetpad_lib::xcode::packaged_helper_beside(&exe, "bwrap"))
+        .or_else(|| super::linux_setup::on_path("bwrap"));
+    let Some(wrapper) = wrapper else {
         return Err(
             CliError::new("building Xcode scripts on Linux needs 'bubblewrap' and Bash")
                 .kind(ErrorKind::ToolMissing)
                 .tip(Some(
-                    "install Bash and bubblewrap with your distribution's package manager"
+                    "install the SweetPad Linux package with its libexec/sweetpad/bwrap helper, or install bubblewrap"
                         .to_string(),
                 )),
         );
-    }
+    };
     let mut args = vec![
         "--die-with-parent".into(),
         "--bind".into(),
@@ -395,7 +401,7 @@ pub(crate) fn darwin_shell_command(
         program,
     ];
     args.extend(arguments.iter().cloned());
-    Ok(("bwrap".into(), args))
+    Ok((wrapper.display().to_string(), args))
 }
 
 /// Everything a `swbuild build` needs: the command, its environment, and the
@@ -558,6 +564,11 @@ impl Invocation {
         }
         if let Some(tools) = &tools {
             let tool = |name: &str| tools.join(name).display().to_string();
+            for (key, value) in &mut overrides {
+                if key == "LIBTOOL" || key.starts_with("LIBTOOL[sdk=") {
+                    *value = tool("llvm-libtool-darwin");
+                }
+            }
             overrides.insert("CHMOD".to_string(), tool("sweetpad-chmod"));
             overrides.insert("ASSETCATALOG_EXEC".to_string(), tool("actool"));
         }
@@ -1743,13 +1754,7 @@ impl DarwinSdk {
                 ),
             ),
             ("ARCHS", arch.to_string()),
-            (
-                "LIBTOOL",
-                super::linux_setup::libtool().map_or_else(
-                    || "llvm-libtool-darwin".to_string(),
-                    |path| path.display().to_string(),
-                ),
-            ),
+            ("LIBTOOL", "llvm-libtool-darwin".to_string()),
             ("DSYMUTIL", "dsymutil".to_string()),
             ("ONLY_ACTIVE_ARCH", "YES".to_string()),
             ("SWIFT_SDK_TOOLSETS", toolset.display().to_string()),

@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 mod autolink;
+pub(super) mod libtool;
 mod reexports;
 mod relocatable;
 mod response;

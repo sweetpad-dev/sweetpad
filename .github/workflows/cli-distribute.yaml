@@ -78,13 +78,14 @@ jobs:
           docker buildx build --platform linux/amd64,linux/arm64 \
             --build-arg "VERSION=${RELEASE_TAG#cli-v}" --build-arg "REVISION=$(git rev-parse HEAD)" \
             --build-arg "SWIFT_VERSION=$(jq -r .swift sweetpad-lib/ci/linux-toolchain.json)" \
-            --build-arg "HOST_PACKAGES=$(jq -r '.hostPackages.apt + [.hostPackages.aptLlvm.debian] | join(" ")' sweetpad-lib/ci/linux-toolchain.json)" \
+            --build-arg "HOST_PACKAGES=$(jq -r '.hostPackages.apt | join(" ")' sweetpad-lib/ci/linux-toolchain.json)" \
             --tag "ghcr.io/sweetpad-dev/sweetpad:${RELEASE_TAG#cli-v}" \
             --tag ghcr.io/sweetpad-dev/sweetpad:latest --provenance=mode=max --sbom=true --push image
       - name: Smoke-test published image
         run: |
           docker run --rm "ghcr.io/sweetpad-dev/sweetpad:${RELEASE_TAG#cli-v}" --version
           docker run --rm --entrypoint /usr/local/libexec/sweetpad/swbuild "ghcr.io/sweetpad-dev/sweetpad:${RELEASE_TAG#cli-v}" --version
+          docker run --rm --entrypoint /bin/sh "ghcr.io/sweetpad-dev/sweetpad:${RELEASE_TAG#cli-v}" -c 'a=(1 2); [[ ${#a[@]} == 2 ]]'
           docker run --rm --entrypoint swift "ghcr.io/sweetpad-dev/sweetpad:${RELEASE_TAG#cli-v}" --version
       - name: Remove registry credentials
         if: always()

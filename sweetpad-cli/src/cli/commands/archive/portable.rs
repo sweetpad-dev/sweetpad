@@ -57,22 +57,7 @@ pub(super) fn run(
     if args.show_command {
         return Ok(Rendered::data(ArchivePreview {
             archive: Some(swbuild::command(&plan)?),
-            // A macOS export is signed and packaged in-process: no command.
-            export: (!args.no_export && parsed.platform != "macosx").then(|| {
-                xcodebuild::CommandPreview {
-                    program: "zip",
-                    args: vec![
-                        "-yr".into(),
-                        out_dir
-                            .join("export")
-                            .join(format!("{scheme}.ipa"))
-                            .display()
-                            .to_string(),
-                        "Payload".into(),
-                    ],
-                    cwd: None,
-                }
-            }),
+            export: None, // Export runs in-process.
             generated_plist: None,
             export_method: exporting
                 .as_ref()
@@ -144,18 +129,9 @@ pub(super) fn export_existing(
 ) -> CommandResult {
     let settings = export::settings(&args.export)?;
     if args.show_command {
-        let mac = archived_app(archive).is_ok_and(|app| app.join("Contents").is_dir());
         return Ok(Rendered::data(ArchivePreview {
             archive: None,
-            export: (!mac).then(|| xcodebuild::CommandPreview {
-                program: "zip",
-                args: vec![
-                    "-qryX".into(),
-                    export_dir.join("<App>.ipa").display().to_string(),
-                    "Payload".into(),
-                ],
-                cwd: None,
-            }),
+            export: None,
             generated_plist: None,
             export_method: settings.method,
             upload: settings.upload,

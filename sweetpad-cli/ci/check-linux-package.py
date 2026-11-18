@@ -97,6 +97,10 @@ def check(archive, out):
     doctor = json.loads(invoke("linux-doctor-missing-tools", [binary, "doctor", "--target", "ios", "--json"], success=False).stdout)
     assert doctor["ok"] and doctor["data"]["summary"]["problems"] > 0
     checks = {c["name"]: c for c in doctor["data"]["checks"]}
+    missing = invoke("missing-host-packages", [binary, "setup", "--no-sdk", "--json"], success=False)
+    message = json.loads(missing.stderr)["error"]["message"]
+    assert checks["Host packages"]["status"] == "problem", checks["Host packages"]
+    assert checks["Host packages"]["detail"] == message and "apt-get install" in message, message
     assert checks["Swift Build"]["status"] == "ok", checks["Swift Build"]
     assert checks["Swift Build"]["detail"].startswith(str(prefix / "libexec/sweetpad/swbuild")), checks["Swift Build"]
     assert checks["Macro plugin"]["status"] == "ok", checks["Macro plugin"]

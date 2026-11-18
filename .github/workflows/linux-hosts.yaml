@@ -65,7 +65,7 @@ jobs:
               pacman -Syu --noconfirm
               pacman -S --needed --noconfirm ca-certificates
             fi
-            sweetpad setup --no-sdk --non-interactive
+            sweetpad setup --no-sdk --install-system-packages --non-interactive
             # A second run finds everything in place.
             sweetpad setup --no-sdk --non-interactive -o ndjson | grep -q "\"status\":\"ready\""
             source "$HOME/.config/sweetpad/linux-env.sh"

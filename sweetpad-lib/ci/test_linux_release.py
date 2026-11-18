@@ -53,6 +53,9 @@ def helpers(root, machine):
     libexec = root / "libexec/sweetpad"
     for name in package.HELPERS:
         elf(libexec / name, machine, needed=["libswiftCore.so", "libc.so.6"])
+    elf(libexec / "bwrap", machine, needed=["libselinux.so.1", "libcap.so.2", "libc.so.6"], runpath=None)
+    (root / "licenses/bubblewrap").mkdir(parents=True)
+    (root / "licenses/bubblewrap/copyright").write_text("LGPL-2+\n")
     elf(libexec / "libswiftCore.so", machine, needed=["libstdc++.so.6"])
     (libexec / "SwiftBuild_SWBCore.resources").mkdir()
     (libexec / "SwiftBuild_SWBCore.resources/Core.xcspec").write_text("(\n)\n")
@@ -119,7 +122,8 @@ class LinuxReleaseContracts(unittest.TestCase):
                     self.assertEqual(first["linkage"], "static")
                     self.assertTrue(first["embeddedSetup"])
                     self.assertTrue(archive.getmember("sweetpad-dap").issym())
-                    for helper in package.HELPERS:
+                    self.assertIn("licenses/bubblewrap/copyright", names)
+                    for helper in (*package.HELPERS, "bwrap"):
                         self.assertEqual(archive.getmember(f"libexec/sweetpad/{helper}").mode, 0o755)
                     self.assertEqual(archive.getmember("libexec/sweetpad/SwiftBuild_SWBCore.resources/Core.xcspec").mode, 0o644)
                     self.assertEqual(archive.getmember("libexec/sweetpad/libswiftCore.so").mode, 0o644)

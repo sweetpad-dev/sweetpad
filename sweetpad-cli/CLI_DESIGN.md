@@ -4593,7 +4593,7 @@ a Mac too, which is how a build is checked against xcodebuild's. `build --show-c
 SDK setup uses `sdk export` on a Mac and `setup --sdk` on Linux: Ubuntu 24.04 or Debian 12 and 13 on ARM64 or x86_64, or Arch on x86_64.
 Export contains private Apple inputs and localized App Intents resources, without signing identities.
 Import verifies checksums and stages the SDK before replacement. It adds the Linux compiler's Clang resource headers.
-Setup runs in the CLI as a list of steps, and each one is skipped when its result is already there: the distribution's packages through `apt-get` or `pacman` (the lists are in `linux-toolchain.json`), the pinned Swift, LLVM's `llvm-libtool-darwin`, the SDK import and a sample build. `--no-sdk` stops after the host tools, and `-o ndjson` reports each step as a `setupStep` event.
+Setup runs in the CLI as a list of steps, and each one is skipped when its result is already there: the distribution's packages (setup prints the install command, and `--install-system-packages` runs it), the pinned Swift and its `llvm-ar`, the SDK import and a sample build. `--no-sdk` stops after the host tools, and `-o ndjson` reports each step as a `setupStep` event.
 Swift is the one on `PATH` when it is the pinned release, else swiftly's, else a swift.org download that `gpg` checks against swift.org's keys in a keyring of its own. Setup compiles and runs a Foundation program with it before going on.
 Builds, `doctor` and the SDK import find Swift and `libtool` the same way, so nothing needs to be on `PATH`. The `linux-env.sh` that setup writes is for running `swift` by hand, and it keeps a CI-selected CLI first.
 `auth login` signs in to Apple in the CLI (SRP and a two-factor code, as XcodesLoginKit does), and `sdk download` fetches Xcode archives with resume and a receipt. The session file holds Apple's cookies, never a password.
@@ -4908,8 +4908,8 @@ cover companion targets that use another Apple SDK in the same request.
 Modern standalone simulator apps and the migrated corpus watch apps build on both hosts.
 Runtime and device-signing checks remain unverified for the additional platforms.
 
-**Script phases use Bash in a private mount.** Bubblewrap maps the real `/bin/sh` target to Bash
-for the build process. The host's shell configuration is unchanged. SDK C++ headers come from
+**Script phases use Bash.** The container image installs Bash as `/bin/sh`. On a host with
+another system shell, the packaged bubblewrap helper maps `/bin/sh` to Bash for the build. The host's shell configuration is unchanged. SDK C++ headers come from
 its Xcode toolchain. `xcrun clang` translates Apple deployment flags into a Darwin target
 and selects the SDK linker when linking.
 
