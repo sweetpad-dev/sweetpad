@@ -14,15 +14,19 @@ pub(crate) fn read_member(
     wanted: impl Fn(&str) -> bool,
 ) -> Result<Option<(String, Vec<u8>)>, String> {
     let mut zip = open(path)?;
-    let Some(name) = zip
-        .file_names()
-        .find(|name| wanted(name))
-        .map(str::to_owned)
-    else {
+    let mut member = None;
+    for (index, name) in zip.file_names().enumerate() {
+        let name = name.map_err(|e| format!("{}: {e}", path.display()))?;
+        if wanted(&name) {
+            member = Some((index, name.into_owned()));
+            break;
+        }
+    }
+    let Some((index, name)) = member else {
         return Ok(None);
     };
     let mut data = Vec::new();
-    zip.by_name(&name)
+    zip.by_index(index)
         .map_err(|e| e.to_string())?
         .read_to_end(&mut data)
         .map_err(|e| format!("{name}: {e}"))?;
