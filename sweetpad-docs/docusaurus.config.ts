@@ -50,6 +50,7 @@ const redirects = Object.entries({
   ...vscodeRedirects,
   ...foldedPages,
   '/docs/intro': '/docs',
+  '/docs/cli/linux/how-it-works': '/blog/2026/11/21/build-xcode-projects-on-linux',
 }).map(([from, to]) => ({ from, to }));
 
 const config: Config = {
@@ -135,21 +136,10 @@ const config: Config = {
           editUrl:
             'https://github.com/sweetpad-dev/sweetpad/edit/main/sweetpad-docs/',
         },
-        // blog: {
-        //   showReadingTime: true,
-        //   feedOptions: {
-        //     type: ['rss', 'atom'],
-        //     xslt: true,
-        //   },
-        //   // Please change this to your repo.
-        //   // Remove this to remove the "edit this page" links.
-        //   editUrl:
-        //     'https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/',
-        //   // Useful options to enforce blogging best practices
-        //   onInlineTags: 'warn',
-        //   onInlineAuthors: 'warn',
-        //   onUntruncatedBlogPosts: 'warn',
-        // },
+        blog: {
+          // Zero hides the "Recent posts" sidebar on blog pages.
+          blogSidebarCount: 0,
+        },
         theme: {
           customCss: './src/css/custom.css',
         },

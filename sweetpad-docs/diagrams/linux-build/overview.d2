@@ -1,0 +1,14 @@
+project: "Xcode project\nand scheme" {class: input}
+cli: "SweetPad writes\nthe build\ndescription" {class: sweetpad}
+build: "Swift Build" {class: box}
+compile: "swiftc, Clang,\nand LLD" {class: box}
+tools: "SweetPad’s\nactool, ibtool,\nand codesign" {class: sweetpad}
+sdk: "Apple SDK\nfrom Xcode" {class: input}
+app: "MyApp.app" {class: output}
+
+project -> cli -> build
+build -> compile
+build -> tools
+sdk -> compile
+compile -> app
+tools -> app

@@ -4,8 +4,11 @@ sidebar_label: Install the CLI
 
 # Install SweetPad on Linux
 
-The CLI is a static executable for x64 or ARM64 Linux, with Swift Build, the macro plugin and an LLVM linker for Apple platforms in a `libexec/sweetpad` folder beside it.
-It doesn't include Apple's SDKs or the Swift toolchain. [Set up the Apple toolchain](sdk-transfer.md) after installing it.
+Choose a package for the machine that runs SweetPad. An x86_64 Linux host uses the x64 package even when it builds an ARM64 iPhone app. The CLI itself is static. The packaged Swift Build driver uses the host's SQLite library.
+
+This guide describes the package layout with `libexec/sweetpad/`. It contains Swift Build, the macro plugin, and LLVM tools for Apple targets. The tarballs from CLI 0.1.26 and 0.1.27 use an older layout. For a pinned release, check its included README before following the setup instructions. [SweetPad releases](https://github.com/sweetpad-dev/sweetpad/releases)
+
+After installation, [run setup](sdk-transfer.md) to install the Linux Swift compiler and import your Apple SDKs. The prebuilt package requires no Rust toolchain or source checkout.
 
 | Method | Use it for |
 | --- | --- |
@@ -53,17 +56,19 @@ Removing it keeps your toolchain, SDK, signing files, and configuration.
 
 ## Debian package
 
+Run these commands in Bash. At the prompt, enter the release number without the `cli-v` prefix.
+
 ```bash
-CLI_VERSION=0.1.26
+read -r -p 'SweetPad release number: ' CLI_VERSION
 CLI_ARCH="$(dpkg --print-architecture)"
 BASE="https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION"
 curl -fLO "$BASE/sweetpad_$CLI_VERSION-1_$CLI_ARCH.deb"
 curl -fLO "$BASE/sweetpad_$CLI_VERSION-1_$CLI_ARCH.deb.sha256"
-sha256sum -c "sweetpad_$CLI_VERSION-1_$CLI_ARCH.deb.sha256"
+sha256sum -c "sweetpad_$CLI_VERSION-1_$CLI_ARCH.deb.sha256" || exit 1
 sudo apt-get install "./sweetpad_$CLI_VERSION-1_$CLI_ARCH.deb"
 ```
 
-To upgrade, install the next release's package the same way.
+APT installs the host packages listed as dependencies of the selected release. With the current package, that includes the tools and libraries that setup checks. To upgrade, install the next release’s package the same way.
 
 ## Packslip or Mise
 
@@ -81,49 +86,51 @@ With a [Mise that supports Packslip](https://mise.jdx.dev/dev-tools/backends/pac
 mise use -g packslip:github.com/sweetpad-dev/sweetpad/tools/cli
 ```
 
-Drop `-g` and add `@0.1.26` to pin a version for one project, and use `mise upgrade` to upgrade.
+For a project pin, omit `-g` and append `@VERSION` to the tool name, replacing `VERSION` with your release number. Use `mise upgrade` to upgrade.
 
 ## Container image
 
-The image at `ghcr.io/sweetpad-dev/sweetpad` holds the CLI and its Swift helpers, for `linux/amd64` and `linux/arm64`.
-Copy both into your own build image, which supplies the Apple toolchain:
+The current image recipe for `ghcr.io/sweetpad-dev/sweetpad` starts from Debian with the pinned Linux Swift compiler. It adds the CLI, packaged helpers, and host dependencies for `linux/amd64` and `linux/arm64`. Supply the private SDK at runtime.
+For a tag with packaged helpers, pass its numeric version as the Docker build argument `SWEETPAD_VERSION`. Copy the helpers with the CLI so it can find the matching build tools.
 
 ```dockerfile
-FROM ghcr.io/sweetpad-dev/sweetpad:0.1.26 AS sweetpad
+ARG SWEETPAD_VERSION
+FROM ghcr.io/sweetpad-dev/sweetpad:${SWEETPAD_VERSION} AS sweetpad
 FROM ubuntu:24.04
 COPY --from=sweetpad /usr/local/bin/sweetpad /usr/local/bin/sweetpad
 COPY --from=sweetpad /usr/local/libexec/sweetpad /usr/local/libexec/sweetpad
 RUN ln -s sweetpad /usr/local/bin/sweetpad-dap
-RUN apt-get update && apt-get install -y ca-certificates python3 bash libsqlite3-0
+RUN apt-get update && apt-get install -y ca-certificates python3 bash libsqlite3-0 \
+    && ln -sf bash /bin/sh
 ```
 
-Run `sweetpad setup` in that image, and bring the SDK and signing files in only when the job runs.
+If you copy just the CLI and helpers into Ubuntu as above, the Swift compiler stays in the first image. To prepare the public host tools in the Ubuntu image, run `sweetpad setup --no-sdk --install-system-packages` as root. For local Apple builds, make your private SDK available when you run the container. Point `SWEETPAD_DARWIN_SDK` at the mounted bundle. Supply signing files only for signed builds.
 
 ## Tarball
 
+In Bash, enter the release number without the `cli-v` prefix. The commands verify the archive and keep the extracted CLI and helpers together.
+
 ```bash
-CLI_VERSION=0.1.26
+read -r -p 'SweetPad release number: ' CLI_VERSION
 case "$(uname -m)" in
   aarch64|arm64) CLI_ARCH=arm64 ;;
   x86_64|amd64) CLI_ARCH=x64 ;;
+  *) echo "Unsupported Linux architecture" >&2; exit 1 ;;
 esac
 BASE="https://github.com/sweetpad-dev/sweetpad/releases/download/cli-v$CLI_VERSION"
 curl -fLO "$BASE/sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz"
 curl -fLO "$BASE/sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz.sha256"
-sha256sum -c "sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz.sha256"
-mkdir sweetpad-cli
-tar -xzf "sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz" -C sweetpad-cli
-install -Dm755 sweetpad-cli/sweetpad "$HOME/.local/bin/sweetpad"
-ln -sfn sweetpad "$HOME/.local/bin/sweetpad-dap"
-rm -rf "$HOME/.local/libexec/sweetpad"
-mkdir -p "$HOME/.local/libexec"
-cp -R sweetpad-cli/libexec/sweetpad "$HOME/.local/libexec/sweetpad"
+sha256sum -c "sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz.sha256" || exit 1
+release_dir="$HOME/.local/share/sweetpad/releases/$CLI_VERSION-linux-$CLI_ARCH"
+mkdir -p "$release_dir" "$HOME/.local/bin"
+tar -xzf "sweetpad-cli-$CLI_VERSION-linux-$CLI_ARCH.tar.gz" -C "$release_dir"
+ln -sfn "$release_dir/sweetpad" "$HOME/.local/bin/sweetpad"
+ln -sfn "$release_dir/sweetpad-dap" "$HOME/.local/bin/sweetpad-dap"
+export PATH="$HOME/.local/bin:$PATH"
+sweetpad --version
 ```
 
-Make sure `~/.local/bin` is on your `PATH`.
-SweetPad finds its helpers in `../libexec/sweetpad` next to the `bin` folder, so keep the two together.
-Swift Build needs the host's SQLite library: install `libsqlite3-0` on Ubuntu and Debian, or `sqlite` on Arch.
-To upgrade, install the next release's tarball the same way.
+Keep the extracted directory intact. SweetPad follows the link to its executable and looks beside it for the matching helpers. Swift Build needs `libsqlite3-0` on Ubuntu and Debian, or `sqlite` on Arch. To switch versions, repeat the procedure with the new release number.
 
 ## Upgrade
 
@@ -137,4 +144,4 @@ sweetpad doctor --target ios
 ```
 
 Setup in older releases compiled Swift Build into `~/src/swift-build*` and linked it from `~/bin`.
-Rerun setup once to drop those from the environment file, then delete the folders.
+After upgrading from that layout, rerun setup to regenerate the environment file. Start a fresh shell so old helper overrides do not take precedence over the packaged tools.

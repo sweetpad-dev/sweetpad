@@ -58,7 +58,6 @@ const sidebars: SidebarsConfig = {
         'cli/linux/github-actions',
         'cli/linux/react-native',
         'cli/linux/macos-ci',
-        'cli/linux/how-it-works',
         'cli/linux/reference',
       ],
     },

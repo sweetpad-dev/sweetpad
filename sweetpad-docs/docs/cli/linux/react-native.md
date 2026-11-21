@@ -4,35 +4,44 @@ sidebar_label: React Native
 
 # React Native iPhone apps on Linux
 
-SweetPad builds the iOS workspace after JavaScript dependencies, native code generation, and Pods are ready.
-It does not replace those preparation steps.
+Build the iOS workspace after installing JavaScript dependencies, generating native code, and installing Pods. The workspace contains the app and the generated Pods targets that the app links against.
+
+## Use your own app
+
+On Linux, install the [CLI](install.md) and [Apple toolchain](sdk-transfer.md). Prepare the Node, Ruby, code-generation, and Pod dependencies your app declares. A preparation script that calls a macOS-only tool can require a Mac for that step.
+
+From the app directory, build the generated workspace. Replace the workspace and scheme names with yours.
+
+```bash
+sweetpad build --workspace ios/MyApp.xcworkspace --scheme MyApp \
+  --configuration Release --destination 'generic/platform=iOS' \
+  --json --non-interactive -- CODE_SIGNING_ALLOWED=NO
+```
+
+If your project uses Hermes, make sure its compiler runs on the Linux host. The [template build](#build-the-ios-workspace) shows how to select it with `HERMES_CLI_PATH`.
+
+## Prepare the validated example
 
 The validated examples use React Native 0.85.3 with Hermes.
 The MMKV example also uses NitroModules 0.35.9.
 Release products pass iPhone startup checks, and MMKV passes storage and relaunch checks.
 
 :::info Prerequisites
-Complete [Ubuntu and USB setup](ubuntu-usb.md) first.
 The pinned Hermes compiler is a Linux x86_64 executable.
 The validated ARM64 environment runs it through OrbStack's Linux binary translation.
 :::
 
-## Prepare the validated example
-
 The repository includes a pinned preparation recipe for the community template.
-It captures dependency locks and applies the same scene-lifecycle compatibility patch to native and Linux controls.
+The recipe pins dependency versions and applies the scene-lifecycle patch used when testing the example on both macOS and Linux.
 
-Get the matching helper sources:
+On Linux, start in a SweetPad source checkout matching the CLI build you are testing. Run these commands from the repository root.
 
 ```bash
-git clone --branch cli-v0.1.19 --depth 1 https://github.com/sweetpad-dev/sweetpad.git "$HOME/src/sweetpad"
-cd "$HOME/src/sweetpad"
 bash sweetpad-lib/ci/linux-framework-tools.sh
 source "$HOME/.cache/sweetpad/framework-tools/env.sh"
 ```
 
-The helper installs Node 24.22.2, Ruby 3.4.8, Bundler 4.0.20, and the frozen JavaScript tools.
-Its files stay in a private tool directory.
+The helper downloads Node 24.22.2, builds Ruby 3.4.8, and installs Bundler 4.0.20 and the locked JavaScript tools. By default it installs under `~/.cache/sweetpad/framework-tools`. Sourcing its environment file puts those tools on your shell’s PATH.
 
 Prepare a fresh template checkout:
 
@@ -69,7 +78,7 @@ sweetpad build --workspace "$APP_ROOT/ios/HelloWorld.xcworkspace" \
 
 This unsigned build verifies compilation.
 For the phone, configure [development signing](signing-and-testing.md#configure-development-signing).
-Remove the unsigned setting. Then rebuild.
+Remove `CODE_SIGNING_ALLOWED=NO` and rebuild.
 
 Install and launch the resulting app using [the USB workflow](ubuntu-usb.md#build-install-and-launch).
 Use the product path from JSON output rather than assuming a bundle name.
@@ -81,17 +90,15 @@ The validated Release app launches without a Metro server.
 
 Debug builds need a reachable Metro server.
 Start it from the app directory. Configure the iPhone's bundle-server address for your network.
-The VM's loopback address is not the phone's loopback address.
+Use an address the phone can reach. On the phone, `localhost` refers to the phone itself.
 
-Keep the host compiler and target artifacts distinct.
-The Hermes compiler must execute on Linux; the app and embedded frameworks must target iOS.
+Hermes runs during the build to compile JavaScript to bytecode. Its compiler must execute on Linux. The app and embedded frameworks must target iOS.
 
 ## MMKV
 
 The same preparation recipe supports the separate MMKV example:
 
 ```bash
-cd "$HOME/src/sweetpad"
 python3 -B sweetpad-lib/ci/linux-project-prepare.py \
   --only react-native-mmkv \
   --corpus-root "$HOME/sweetpad-examples" \
@@ -100,24 +107,10 @@ python3 -B sweetpad-lib/ci/linux-project-prepare.py \
   --out "$HOME/sweetpad-examples/mmkv-preparation.json"
 ```
 
-Its workspace is in the example's iOS directory, and its scheme is MmkvExample.
+Use `example/ios/MmkvExample.xcworkspace` and the `MmkvExample` scheme under the prepared MMKV checkout.
 Its Hermes compiler comes from the repository-root dependency directory.
 
-The current build path does not need the former MMKV debug-thunk fixture shim.
-The Swift Build that ships with SweetPad includes the fix for these generated C++ bridge helpers.
-This covers the pinned compiler and example; other Swift/C++ combinations can expose different issues.
-
-## Use your own app
-
-Prepare your app's declared Node, Ruby, code-generation, and Pod dependencies.
-Then pass its workspace and scheme to the same build command.
-Adjust the Hermes path for your package layout.
-
-The pinned recipe is a reference workflow, not a generator for arbitrary React Native applications.
-Other versions and native modules need their own validation.
-A preparation script that requires macOS can still require a Mac before Linux compilation.
-
-When you compare native and Linux products, keep the same source and dependency locks.
+When SweetPad merges the Swift-generated C++ header, it corrects two recursive generic bridge helpers used by the pinned MMKV example. The example therefore builds without the old Podfile patch for debug thunks.
 
 ## Troubleshooting
 
@@ -129,4 +122,4 @@ When you compare native and Linux products, keep the same source and dependency 
 | The app cannot load JavaScript | Check Release bundling or the Debug Metro address. |
 | The SDK reports a scene-lifecycle failure | Check the app's scene adoption; the pinned template needs its explicit compatibility patch. |
 
-The [CI guide](github-actions.md) explains where preparation belongs in a Linux build job.
+In GitHub Actions, prepare the dependencies before the Ubuntu build step and pass the generated workspace with `--workspace`. See the [Ubuntu workflow](github-actions.md#build-an-unsigned-iphone-app-on-ubuntu).

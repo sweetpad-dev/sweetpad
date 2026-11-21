@@ -4,37 +4,35 @@ sidebar_label: Linux overview
 
 # Build iPhone apps on Linux
 
-SweetPad builds an Xcode project on Linux, signs it, and installs it on an iPhone.
-It also exports release builds, uploads them to App Store Connect, and notarizes Developer ID apps.
-The commands, project, scheme, and build settings are the same as on a Mac:
-
-```bash
-sweetpad build --project MyApp.xcodeproj --scheme MyApp \
-  --destination 'generic/platform=iOS' --json --non-interactive
-```
+SweetPad can compile an Xcode project on Linux and produce an iPhone app. An unsigned build needs three things on the Linux host: the SweetPad CLI, a Linux Swift compiler, and Apple SDKs from your copy of Xcode.
 
 :::warning Experimental
-The CLI runs on ARM64 and x86_64 Linux. The Apple toolchain installs on Ubuntu 24.04, Debian 12 and 13, and Arch Linux on x86_64.
-The validated setup is a Linux VM on Apple hardware, with Apple's SDKs from your own Xcode.
+The validated environment is a Linux VM on Apple hardware. Setup supports Ubuntu 24.04 and Debian 12 or 13 on ARM64 and x86_64. It also supports Arch Linux on x86_64. See [supported hosts](linux/sdk-transfer.md#supported-hosts).
 :::
 
 ## Start here
 
-1. [Install the CLI](linux/install.md).
-2. [Set up the Apple toolchain](linux/sdk-transfer.md) from your Mac's Xcode or an Xcode download.
-3. [Set up signing](linux/signing-and-testing.md) with your development identity and profiles.
-4. [Connect an iPhone](linux/ubuntu-usb.md) over USB or Wi-Fi, then build, install, and launch.
+1. [Install the CLI](linux/install.md) for your Linux host architecture.
+2. [Set up the Apple toolchain](linux/sdk-transfer.md). Use an Xcode download on Linux or an SDK export from an existing Mac installation of Xcode. Setup imports the SDK and checks it by building an unsigned sample app.
+3. From your own project, build for a generic iPhone. Replace the project and scheme names in this example.
 
-Then, as you need them:
+```bash
+sweetpad build --project MyApp.xcodeproj --scheme MyApp \
+  --destination 'generic/platform=iOS' --json --non-interactive \
+  -- CODE_SIGNING_ALLOWED=NO
+```
 
-- [GitHub Actions for iOS](linux/github-actions.md) builds, tests, and uploads from a Linux runner.
-- [React Native](linux/react-native.md) apps need extra preparation.
-- [macOS apps in CI](linux/macos-ci.md) covers Mac apps built on Linux.
-- [How it works](linux/how-it-works.md) explains the build pipeline.
-- [Support and configuration](linux/reference.md) lists what works and the environment variables.
+The destination selects the iPhone SDK and CPU architecture. You can compile without a connected phone or signing identity. The JSON field `data.productPath` gives the path to the app.
 
-## What stays on a Mac
+## Choose your next step
 
-The iOS Simulator and running Apple tests need macOS with Xcode.
-Linux builds the test products and their test manifest, and a Mac runs them without compiling them again.
-Debugging an app on a device from Linux isn't supported.
+| Goal | What you need |
+| --- | --- |
+| Run on an iPhone | [Configure development signing](linux/signing-and-testing.md#configure-development-signing), then [pair the phone, install, and launch](linux/ubuntu-usb.md). |
+| Run iOS tests | Linux can [build test products](linux/signing-and-testing.md#build-test-products). A Mac with Xcode runs them on a simulator or phone. |
+| Distribute an app | [Archive and export](linux/signing-and-testing.md#archive-and-distribute) with the identity and profiles for your distribution method. |
+| Build an iPhone app in GitHub Actions | Use the [Ubuntu workflow](linux/github-actions.md). |
+| Build a macOS app on Linux | [Compile and export for a macOS destination](linux/macos-ci.md). |
+| Build a React Native workspace | [Prepare JavaScript dependencies, generated code, and Pods](linux/react-native.md) before compiling. |
+
+The iOS Simulator, Apple test execution, and running macOS apps require a Mac. SweetPad does not support debugging an iPhone from Linux. See [how Linux builds work](/blog/2026/11/21/build-xcode-projects-on-linux) and the [support reference](linux/reference.md) for project and resource limits.
