@@ -61,22 +61,36 @@ esac
 cleanup() {
   perl -e 'alarm shift; exec @ARGV' 30 xcrun simctl shutdown "$UDID" >/dev/null 2>&1 || true
   perl -e 'alarm shift; exec @ARGV' 30 xcrun simctl delete "$UDID" >/dev/null 2>&1 || true
+  if [ -n "${selfcheck_log:-}" ]; then rm -f "$selfcheck_log"; fi
 }
+selfcheck_log=
 trap cleanup EXIT
+selfcheck_log=$(mktemp)
 DEST="platform=iOS Simulator,id=$UDID"
 echo "  $DEST"
-xcrun simctl boot "$UDID"
-perl -e 'alarm shift; exec @ARGV' 600 xcrun simctl bootstatus "$UDID" -b \
-  || fail "simulator $UDID failed to boot (10-minute timeout)"
+boot_simulator() {
+  perl -e 'alarm shift; exec @ARGV' 600 xcrun simctl bootstatus "$UDID" -b \
+    || fail "simulator $UDID failed to boot (10-minute timeout)"
+}
+boot_simulator
 
 # `app run --hot --hot-selfcheck` exits 0 only on a confirmed `.injected` whose
 # new code demonstrably ran (nonce observed in the unified log).
 run_selfcheck() {
   local mode="$1"
   section "hot reload self-check — iOS Simulator, $mode recompiler"
-  "$BIN" app run --project "$APP" --scheme SweetpadCIApp --destination "$DEST" \
-    --hot --hot-recompiler "$mode" --hot-selfcheck "$SRC" \
-    || fail "simulator/$mode: injection self-check failed"
+  local args=(app run --project "$APP" --scheme SweetpadCIApp --destination "$DEST"
+    --hot --hot-recompiler "$mode" --hot-selfcheck "$SRC")
+  if ! "$BIN" "${args[@]}" 2>&1 | tee "$selfcheck_log"; then
+    # CoreSimulator can report a completed boot while app installation is wedged.
+    grep -Fq "'xcrun simctl install' didn't finish within" "$selfcheck_log" \
+      || fail "simulator/$mode: injection self-check failed"
+    echo "  Install timed out. Restarting test simulator $UDID and retrying $mode once."
+    perl -e 'alarm shift; exec @ARGV' 60 xcrun simctl shutdown "$UDID" \
+      || fail "simulator $UDID failed to shut down for install recovery"
+    boot_simulator
+    "$BIN" "${args[@]}" || fail "simulator/$mode: injection self-check failed after restart"
+  fi
   echo "  ✓ simulator/$mode injected"
 }
 
