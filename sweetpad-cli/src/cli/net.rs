@@ -284,6 +284,23 @@ pub(crate) struct Streamed {
     pub(crate) body: minreq::ResponseLazy,
 }
 
+/// `body` as the server meant it: gunzipped when `headers` say
+/// `Content-Encoding: gzip`. swift.org sends its key file that way whatever
+/// encodings the request accepts.
+pub(crate) fn decoded<'a>(
+    headers: &[(String, String)],
+    body: impl std::io::Read + 'a,
+) -> Box<dyn std::io::Read + 'a> {
+    let gzip = headers.iter().any(|(name, value)| {
+        name.eq_ignore_ascii_case("content-encoding") && value.trim().eq_ignore_ascii_case("gzip")
+    });
+    if gzip {
+        Box::new(flate2::read::MultiGzDecoder::new(body))
+    } else {
+        Box::new(body)
+    }
+}
+
 /// `host[:port]` of a URL.
 pub(crate) fn host(url: &str) -> &str {
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
@@ -398,6 +415,31 @@ fn send_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_body_is_gunzipped_only_when_its_headers_say_gzip() {
+        use std::io::{Read, Write};
+
+        let key = b"-----BEGIN PGP PUBLIC KEY BLOCK-----";
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        encoder.write_all(key).unwrap();
+        let gzipped = encoder.finish().unwrap();
+        let read = |headers: &[(String, String)], body: &[u8]| {
+            let mut out = Vec::new();
+            decoded(headers, body).read_to_end(&mut out).unwrap();
+            out
+        };
+
+        let gzip = [("Content-Encoding".to_string(), " GZIP ".to_string())];
+        assert_eq!(read(&gzip, &gzipped), key);
+        // A release tarball is gzip data with no such header and stays as sent.
+        let plain = [(
+            "content-type".to_string(),
+            "application/octet-stream".to_string(),
+        )];
+        assert_eq!(read(&plain, &gzipped), gzipped);
+        assert_eq!(read(&[], key), key);
+    }
 
     #[test]
     fn no_proxy_exempts_the_host_and_the_hosts_under_an_entry() {

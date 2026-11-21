@@ -673,9 +673,10 @@ mod tests {
         }
     }
 
-    /// Apple's own encoder, in libcompression.
+    /// Apple's own encoder, in libcompression, or `None` where the host's
+    /// libcompression has no LZRAVEN encoder, as on macOS 15.
     #[cfg(target_os = "macos")]
-    fn apple_encode(data: &[u8]) -> Vec<u8> {
+    fn apple_encode(data: &[u8]) -> Option<Vec<u8>> {
         #[link(name = "compression")]
         unsafe extern "C" {
             fn compression_encode_buffer(
@@ -699,14 +700,17 @@ mod tests {
                 0xD05,
             )
         };
-        assert!(n > 0, "Apple's LZRAVEN encoder failed");
         out.truncate(n);
-        out
+        (n > 0).then_some(out)
     }
 
     #[cfg(target_os = "macos")]
     #[test]
     fn decodes_what_apples_encoder_writes() {
+        // Nothing to decode against where the host has no encoder.
+        if apple_encode(b"a").is_none() {
+            return;
+        }
         let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
         let mut random = |n: usize| -> Vec<u8> {
             (0..n)
@@ -740,7 +744,7 @@ mod tests {
             }
         }
         for data in inputs {
-            let packed = apple_encode(&data);
+            let packed = apple_encode(&data).expect("Apple's LZRAVEN encoder failed");
             assert!(
                 decode(&packed, data.len()).unwrap() == data,
                 "{} bytes",

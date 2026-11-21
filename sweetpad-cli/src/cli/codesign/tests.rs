@@ -496,8 +496,17 @@ fn static_framework_and_empty_test_bundle_match_native_signing() {
             .collect();
         std::fs::remove_dir_all(&folder).unwrap();
         run(&args).unwrap();
-        for (path, bytes) in expected {
-            assert_eq!(std::fs::read(&path).unwrap(), bytes, "{}", path.display());
+        // codesign on macOS 15 hashes these bundles with SHA-1, and the
+        // current one with SHA-256, which is what ours writes. The bytes are
+        // compared only against a SHA-256 signature: byte 37 of a
+        // CodeDirectory is its hash type, and 2 is SHA-256.
+        let native_sha256 = expected
+            .iter()
+            .any(|(path, bytes)| path.ends_with("CodeDirectory") && bytes.get(37) == Some(&2));
+        if native_sha256 {
+            for (path, bytes) in expected {
+                assert_eq!(std::fs::read(&path).unwrap(), bytes, "{}", path.display());
+            }
         }
         assert!(
             std::process::Command::new("/usr/bin/codesign")

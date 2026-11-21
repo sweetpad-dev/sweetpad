@@ -184,19 +184,20 @@ pub(crate) fn install(
 fn fetch(url: &str, path: &Path) -> Result<(), String> {
     let session = crate::cli::net::Session::from_env();
     let request = crate::cli::net::Request::new(minreq::Method::Get, url).timeout(6 * 3600);
-    let mut response = session.stream(&request).map_err(|e| e.to_string())?;
+    let response = session.stream(&request).map_err(|e| e.to_string())?;
     if !(200..300).contains(&response.status) {
         return Err(format!(
             "Downloading {url} failed (HTTP {}).",
             response.status
         ));
     }
+    let mut body = crate::cli::net::decoded(&response.headers, response.body);
     let partial = path.with_extension("part");
     let failed = |e: std::io::Error| format!("Couldn't write {}: {e}.", partial.display());
     let mut output = fs::File::create(&partial).map_err(failed)?;
     let mut buffer = vec![0u8; 1024 * 1024];
     loop {
-        let read = match response.body.read(&mut buffer) {
+        let read = match body.read(&mut buffer) {
             Ok(0) => break,
             Ok(read) => read,
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,

@@ -187,10 +187,13 @@ pub fn linux_helper(name: &str, override_var: &str) -> Option<PathBuf> {
 pub fn packaged_helper_beside(exe: &Path, name: &str) -> Option<PathBuf> {
     let exe = exe.canonicalize().ok()?;
     let dir = exe.parent()?;
-    [dir.join("libexec/sweetpad"), dir.parent()?.join("libexec/sweetpad")]
-        .into_iter()
-        .map(|folder| folder.join(name))
-        .find(|candidate| candidate.is_file())
+    [
+        dir.join("libexec/sweetpad"),
+        dir.parent()?.join("libexec/sweetpad"),
+    ]
+    .into_iter()
+    .map(|folder| folder.join(name))
+    .find(|candidate| candidate.is_file())
 }
 
 /// The `swiftc` flags a build on the Darwin SDK adds to the SDK's own, in
