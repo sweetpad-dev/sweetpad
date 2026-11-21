@@ -81,8 +81,7 @@
     "vscode-languageclient": {
       "brace-expansion": "^2.0.3"
     },
-    "@babel/core": "^7.29.6",
-    "vite": "^8.0.16"
+    "@babel/core": "^7.29.6"
   },
   "contributes": {
     "taskDefinitions": [
