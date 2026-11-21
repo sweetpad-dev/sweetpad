@@ -63,6 +63,14 @@ pub fn identity_configured() -> bool {
 /// and no build needs.
 const ASC_KEY_VARIABLE: &str = "SWEETPAD_ASC_KEY";
 
+/// SwiftPM executes package manifests and build-tool plugins while dumping PIF.
+pub(crate) fn hide_from_package_plugins(command: &mut std::process::Command) {
+    command
+        .env_remove(ASC_KEY_VARIABLE)
+        .env_remove(identity::PASSWORD_VARIABLE)
+        .env_remove(identity::PASSWORD_FILE_VARIABLE);
+}
+
 /// Keeps the signing secrets out of the environment a build passes its
 /// tasks. Swift Build hands its environment to every script phase and
 /// plugin, as Xcode does, and a script that prints its environment would
@@ -305,6 +313,7 @@ struct Options {
     /// file: what an export signs with.
     entitlements_data: Option<Vec<u8>>,
     der_entitlements: bool,
+    pre_encrypt: bool,
     preserve: Vec<String>,
     flags: u32,
     timestamp: Timestamp,
@@ -347,6 +356,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     inline.map_or_else(|| value(flag, &mut args), Ok)?,
                 ));
             }
+            "--generate-pre-encrypt-hashes" => options.pre_encrypt = true,
             "--generate-entitlement-der" => options.der_entitlements = true,
             "--preserve-metadata" => {
                 let list = inline.map_or_else(|| value(flag, &mut args), Ok)?;
@@ -488,22 +498,13 @@ impl Signer<'_> {
                 ));
             }
         };
-        let Some(executable) = &layout.executable else {
-            if bundle.extension().is_some_and(|s| s == "bundle")
-                && plist::string(&layout.info, "CFBundlePackageType") == Some("BNDL")
-            {
-                return self.sign_resource_bundle(&layout, &identifier);
-            }
-            return Err(format!(
-                "{} names no CFBundleExecutable",
-                layout.info_path.display()
-            ));
-        };
-        let executable_path = layout.root.join(executable);
-        let code = std::fs::read(&executable_path)
-            .map_err(|e| format!("couldn't read {}: {e}", executable_path.display()))?;
-        let dual = code_hashes(&code).contains(&CodeHash::Sha1);
-        let resources = resources::code_resources(&layout.root, executable, layout.flavor, dual)?;
+        let code = layout.code(bundle)?;
+        if code.detached {
+            return self.sign_detached(&layout, &identifier, code.name, &code.bytes);
+        }
+        self.check_macho_options()?;
+        let dual = code_hashes(&code.bytes).contains(&CodeHash::Sha1);
+        let resources = resources::code_resources(&layout.root, code.name, layout.flavor, dual)?;
         let folder = layout.root.join("_CodeSignature");
         std::fs::create_dir_all(&folder)
             .and_then(|()| std::fs::write(folder.join("CodeResources"), &resources))
@@ -513,17 +514,22 @@ impl Signer<'_> {
             info: SlotHash::of(&layout.info_bytes),
             resources: SlotHash::of(&resources),
         };
-        self.sign_file(&layout.root.join(executable), Some(&binding))
+        self.sign_macho(&layout.root.join(code.name), &code.bytes, Some(&binding))
     }
 
-    /// Resource-only bundles keep detached signature files and hash their
-    /// Info.plist as a single unpaged code slot, as Apple's codesign does.
-    fn sign_resource_bundle(&self, layout: &Layout, identifier: &str) -> Result<(), String> {
+    /// Resource bundles and static frameworks seal the Info.plist or archive
+    /// as one unpaged slot, with the signature beside the resources.
+    fn sign_detached(
+        &self,
+        layout: &Layout,
+        identifier: &str,
+        executable: &str,
+        code: &[u8],
+    ) -> Result<(), String> {
         // Apple's codesign ignores executable entitlements for a bundle
         // without executable code, even when Swift Build supplies an xcent.
         let info = layout.info_bytes.as_slice();
-        let resources =
-            resources::code_resources(&layout.root, "Info.plist", layout.flavor, false)?;
+        let resources = resources::code_resources(&layout.root, executable, layout.flavor, false)?;
         let requirements = blobs::requirements(identifier, self.identity)?;
         let directory = Directory {
             identifier,
@@ -543,7 +549,7 @@ impl Signer<'_> {
                 (blobs::SPECIAL_RESOURCES, SlotHash::of(&resources)),
             ],
         }
-        .build_unpaged(info);
+        .build_unpaged(code, self.options.pre_encrypt);
         let signature = self.cms(&[(CodeHash::Sha256, directory.clone())])?;
         let folder = layout.root.join("_CodeSignature");
         std::fs::create_dir_all(&folder)
@@ -563,7 +569,19 @@ impl Signer<'_> {
     fn sign_file(&self, path: &Path, bundle: Option<&Bundle>) -> Result<(), String> {
         let data =
             std::fs::read(path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
-        let mut slices = macho::split(&data).map_err(|e| format!("{}: {e}", path.display()))?;
+        self.check_macho_options()?;
+        self.sign_macho(path, &data, bundle)
+    }
+
+    fn check_macho_options(&self) -> Result<(), String> {
+        if self.options.pre_encrypt {
+            return Err("pre-encryption hashes for Mach-O executables are unsupported".into());
+        }
+        Ok(())
+    }
+
+    fn sign_macho(&self, path: &Path, data: &[u8], bundle: Option<&Bundle>) -> Result<(), String> {
+        let mut slices = macho::split(data).map_err(|e| format!("{}: {e}", path.display()))?;
         // An ad hoc identifier carries one UUID for every slice: the arm64
         // slice's, else the first's.
         let uuid = slices
@@ -572,7 +590,7 @@ impl Signer<'_> {
             .or_else(|| slices.first())
             .and_then(|s| macho::Layout::parse(&s.data).ok())
             .and_then(|layout| layout.uuid);
-        let hashes = code_hashes(&data);
+        let hashes = code_hashes(data);
         for slice in &mut slices {
             slice.data = self
                 .sign_slice(&slice.data, path, bundle, uuid, hashes)

@@ -12,7 +12,7 @@
   {
     "checkout": "tuist-fixtures",
     "commit": "a5c5bbf867ba2dfc9d2ca5ec198e9ddbf1b0e963",
-    "patches": ["tuist-static-tests-module-search.patch", "tuist-single-target-watch.patch"],
+    "patches": ["tuist-static-tests-module-search.patch", "tuist-static-tests-info-plist.patch", "tuist-single-target-watch.patch"],
     "retiredSchemes": [
       {
         "container": "examples/xcode/generated_ios_app_with_watchapp2/App.xcworkspace",

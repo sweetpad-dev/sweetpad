@@ -161,7 +161,7 @@ pub fn launch(
             "launch", device, bundle, args, env, suspended,
         ));
     }
-    command_line()?;
+    prepare_developer_services(device)?;
     let args = launch_args(device, bundle, args, env, suspended);
     process::capture(
         BINARY,
@@ -188,7 +188,7 @@ pub fn launch_console(
             Err(CliError::new("network device console failed"))
         };
     }
-    command_line()?;
+    prepare_developer_services(device)?;
     let mut args = launch_args(device, bundle, args, env, false);
     args.insert(args.len() - 1, "--stream".into());
     process::stream(
@@ -209,7 +209,7 @@ pub fn spawn_console(
             "console", device, bundle, args, env, false,
         ));
     }
-    command_line()?;
+    prepare_developer_services(device)?;
     let mut args = launch_args(device, bundle, args, env, false);
     args.insert(args.len() - 1, "--stream".into());
     process::spawn_piped_both_env(
@@ -238,6 +238,13 @@ fn network_launch(
         })
         .collect();
     serde_json::json!({"action": action, "device": device, "bundle": bundle, "args": args, "env": env, "suspended": suspended})
+}
+
+/// The pinned CLI chooses the image for the selected OS and treats an
+/// already-mounted image as success. Each subsequent DVT command connects anew.
+fn prepare_developer_services(device: &str) -> Result<(), CliError> {
+    command_line()?;
+    process::capture(BINARY, &["mounter", "auto-mount", "--udid", device], None).map(|_| ())
 }
 
 fn launch_args(

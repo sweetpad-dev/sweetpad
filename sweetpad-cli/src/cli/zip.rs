@@ -1,195 +1,279 @@
-//! Reading one member out of a zip file (an `.ipa`), without unpacking the
-//! rest: the central directory names every member and where it starts, so
-//! only that member's bytes are read. Stored and deflated members, and the
-//! zip64 records an archive past 4 GB carries, are understood.
+//! ZIP files used by IPA export, notarization and SwiftPM binary artifacts.
 
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::fs::{self, File};
+use std::io::{self, Read};
+use std::os::unix::fs::MetadataExt as _;
 use std::path::Path;
 
-const END: u32 = 0x0605_4b50;
-const END64: u32 = 0x0606_4b50;
-const END64_LOCATOR: u32 = 0x0706_4b50;
-const CENTRAL: u32 = 0x0201_4b50;
-const LOCAL: u32 = 0x0403_4b50;
+use ::zip::{DateTime, ZipArchive, ZipWriter, write::SimpleFileOptions};
+use sweetpad_core::scratch::ScratchDir;
 
-fn u16_at(data: &[u8], at: usize) -> u16 {
-    u16::from_le_bytes([data[at], data[at + 1]])
-}
-
-fn u32_at(data: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(data[at..at + 4].try_into().unwrap_or([0; 4]))
-}
-
-fn u64_at(data: &[u8], at: usize) -> u64 {
-    u64::from_le_bytes(data[at..at + 8].try_into().unwrap_or([0; 8]))
-}
-
-/// One central-directory record.
-struct Member {
-    name: String,
-    method: u16,
-    compressed: u64,
-    size: u64,
-    offset: u64,
-}
-
-/// The first member whose name `wanted` accepts, with its uncompressed
-/// bytes, or `None` when no member matches.
+/// Read only the requested member, including archives with ZIP64 offsets.
 pub(crate) fn read_member(
     path: &Path,
     wanted: impl Fn(&str) -> bool,
 ) -> Result<Option<(String, Vec<u8>)>, String> {
-    let mut file = File::open(path).map_err(|e| format!("can't open {}: {e}", path.display()))?;
-    let members = central_directory(&mut file)
-        .map_err(|e| format!("{} isn't a zip file: {e}", path.display()))?;
-    let Some(member) = members.into_iter().find(|m| wanted(&m.name)) else {
+    let mut zip = open(path)?;
+    let Some(name) = zip
+        .file_names()
+        .find(|name| wanted(name))
+        .map(str::to_owned)
+    else {
         return Ok(None);
     };
-    let mut header = [0u8; 30];
-    file.seek(SeekFrom::Start(member.offset))
-        .map_err(|e| e.to_string())?;
-    file.read_exact(&mut header).map_err(|e| e.to_string())?;
-    if u32_at(&header, 0) != LOCAL {
-        return Err(format!(
-            "{}: {} has no local header",
-            path.display(),
-            member.name
-        ));
-    }
-    let skip = u64::from(u16_at(&header, 26)) + u64::from(u16_at(&header, 28));
-    file.seek(SeekFrom::Current(i64::try_from(skip).unwrap_or(0)))
-        .map_err(|e| e.to_string())?;
-    let mut raw = vec![0u8; usize::try_from(member.compressed).map_err(|e| e.to_string())?];
-    file.read_exact(&mut raw).map_err(|e| e.to_string())?;
-    let data = match member.method {
-        0 => raw,
-        8 => {
-            let mut out = Vec::with_capacity(usize::try_from(member.size).unwrap_or(0));
-            flate2::read::DeflateDecoder::new(raw.as_slice())
-                .read_to_end(&mut out)
-                .map_err(|e| format!("{}: {} doesn't inflate: {e}", path.display(), member.name))?;
-            out
-        }
-        other => {
-            return Err(format!(
-                "{}: {} uses compression method {other}, which sweetpad can't read",
-                path.display(),
-                member.name
-            ));
-        }
-    };
-    Ok(Some((member.name, data)))
+    let mut data = Vec::new();
+    zip.by_name(&name)
+        .map_err(|e| e.to_string())?
+        .read_to_end(&mut data)
+        .map_err(|e| format!("{name}: {e}"))?;
+    Ok(Some((name, data)))
 }
 
-fn central_directory(file: &mut File) -> Result<Vec<Member>, String> {
-    let length = file.seek(SeekFrom::End(0)).map_err(|e| e.to_string())?;
-    let tail_length = length.min(66_000);
-    let mut tail = vec![0u8; usize::try_from(tail_length).unwrap_or(0)];
-    file.seek(SeekFrom::Start(length - tail_length))
-        .map_err(|e| e.to_string())?;
-    file.read_exact(&mut tail).map_err(|e| e.to_string())?;
-    let end = (0..tail.len().saturating_sub(21))
-        .rev()
-        .find(|&at| u32_at(&tail, at) == END)
-        .ok_or("no end of central directory record")?;
-    let mut count = u64::from(u16_at(&tail, end + 10));
-    let mut size = u64::from(u32_at(&tail, end + 12));
-    let mut offset = u64::from(u32_at(&tail, end + 16));
-    if (count == 0xFFFF || size == 0xFFFF_FFFF || offset == 0xFFFF_FFFF)
-        && end >= 20
-        && u32_at(&tail, end - 20) == END64_LOCATOR
-    {
-        let at = u64_at(&tail, end - 20 + 8);
-        let mut record = [0u8; 56];
-        file.seek(SeekFrom::Start(at)).map_err(|e| e.to_string())?;
-        file.read_exact(&mut record).map_err(|e| e.to_string())?;
-        if u32_at(&record, 0) != END64 {
-            return Err("a broken zip64 end record".into());
+pub(crate) fn open(path: &Path) -> Result<ZipArchive<File>, String> {
+    let file = File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    ZipArchive::new(file).map_err(|e| format!("{} isn't a readable zip file: {e}", path.display()))
+}
+
+/// SwiftPM extracts binary artifacts into a fresh directory. Stage the
+/// members first, then publish the directory only after validating its links.
+pub(crate) fn extract(
+    zip: &mut ZipArchive<File>,
+    directory: &Path,
+    overwrite: bool,
+) -> io::Result<()> {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let parent = directory
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    fs::create_dir_all(parent)?;
+    let scratch = ScratchDir::new_in(parent, ".sweetpad-unzip")?;
+    let staged = scratch.join("artifact");
+    fs::create_dir(&staged)?;
+    let staged = staged.canonicalize()?;
+    let mut links = Vec::new();
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i)?;
+        let name = entry
+            .enclosed_name()
+            .filter(|p| {
+                p.components().all(|c| {
+                    matches!(
+                        c,
+                        std::path::Component::Normal(_) | std::path::Component::CurDir
+                    )
+                })
+            })
+            .ok_or_else(|| io::Error::other("invalid ZIP member path"))?;
+        let path = staged.join(name);
+        if entry.is_dir() {
+            fs::create_dir_all(&path)?;
+            continue;
         }
-        count = u64_at(&record, 32);
-        size = u64_at(&record, 40);
-        offset = u64_at(&record, 48);
-    }
-    let mut directory = vec![0u8; usize::try_from(size).map_err(|e| e.to_string())?];
-    file.seek(SeekFrom::Start(offset))
-        .map_err(|e| e.to_string())?;
-    file.read_exact(&mut directory).map_err(|e| e.to_string())?;
-    let mut members = Vec::new();
-    let mut at = 0;
-    for _ in 0..count {
-        if at + 46 > directory.len() || u32_at(&directory, at) != CENTRAL {
-            return Err("a broken central directory".into());
-        }
-        let method = u16_at(&directory, at + 10);
-        let mut compressed = u64::from(u32_at(&directory, at + 20));
-        let mut uncompressed = u64::from(u32_at(&directory, at + 24));
-        let name_length = usize::from(u16_at(&directory, at + 28));
-        let extra_length = usize::from(u16_at(&directory, at + 30));
-        let comment_length = usize::from(u16_at(&directory, at + 32));
-        let mut local = u64::from(u32_at(&directory, at + 42));
-        let name_end = at + 46 + name_length;
-        let extra_end = name_end + extra_length;
-        if extra_end > directory.len() {
-            return Err("a broken central directory".into());
-        }
-        let name = String::from_utf8_lossy(&directory[at + 46..name_end]).into_owned();
-        // A zip64 extra field holds, in order, whichever of the three
-        // sizes overflowed.
-        let mut extra = name_end;
-        while extra + 4 <= extra_end {
-            let id = u16_at(&directory, extra);
-            let length = usize::from(u16_at(&directory, extra + 2));
-            if id == 1 {
-                let mut field = extra + 4;
-                for value in [&mut uncompressed, &mut compressed, &mut local] {
-                    if *value == 0xFFFF_FFFF && field + 8 <= extra + 4 + length {
-                        *value = u64_at(&directory, field);
-                        field += 8;
-                    }
-                }
+        fs::create_dir_all(
+            path.parent()
+                .ok_or_else(|| io::Error::other("missing parent"))?,
+        )?;
+        if entry.is_symlink() {
+            let mut target = String::new();
+            entry.take(4097).read_to_string(&mut target)?;
+            if target.len() > 4096 || Path::new(&target).is_absolute() {
+                return Err(io::Error::other("invalid ZIP symlink"));
             }
-            extra += 4 + length;
+            links.push((path, target));
+        } else {
+            let mut file = File::create_new(&path)?;
+            io::copy(&mut entry, &mut file)?;
+            if let Some(mode) = entry.unix_mode() {
+                file.set_permissions(fs::Permissions::from_mode(mode & 0o777))?;
+            }
         }
-        members.push(Member {
-            name,
-            method,
-            compressed,
-            size: uncompressed,
-            offset: local,
-        });
-        at = extra_end + comment_length;
     }
-    Ok(members)
+    // No file writes follow symlinks supplied by the archive.
+    for (path, target) in &links {
+        symlink(target, path)?;
+    }
+    for (path, _) in links {
+        if !path.canonicalize()?.starts_with(&staged) {
+            return Err(io::Error::other("ZIP link leaves artifact"));
+        }
+    }
+    publish(&staged, directory, overwrite)
+}
+
+/// Merge Flutter's separately downloaded archives into its cache. Recurse
+/// only through real destination directories, never through existing links.
+fn publish(source: &Path, dest: &Path, overwrite: bool) -> io::Result<()> {
+    let existing = match fs::symlink_metadata(dest) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return fs::rename(source, dest),
+        Err(e) => return Err(e),
+    };
+    if fs::symlink_metadata(source)?.is_dir() && existing.is_dir() {
+        for child in fs::read_dir(source)? {
+            let child = child?;
+            publish(&child.path(), &dest.join(child.file_name()), overwrite)?;
+        }
+        return Ok(());
+    }
+    if !overwrite || existing.is_dir() || fs::symlink_metadata(source)?.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            dest.display().to_string(),
+        ));
+    }
+    fs::rename(source, dest)
+}
+
+/// Write a complete archive beside its destination before publishing it.
+pub(crate) fn create(output: &Path, root: &Path, names: &[&Path]) -> io::Result<()> {
+    let parent = output
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let scratch = ScratchDir::new_in(parent, ".sweetpad-zip")?;
+    let staged = scratch.join("output");
+    let mut zip = ZipWriter::new(File::create(&staged)?);
+    for name in names {
+        if name
+            .components()
+            .any(|c| !matches!(c, std::path::Component::Normal(_)))
+        {
+            return Err(io::Error::other(format!(
+                "expected a relative archive member: {}",
+                name.display()
+            )));
+        }
+        let input = root.join(name);
+        if fs::symlink_metadata(&input)?.is_dir()
+            && parent.canonicalize()?.starts_with(input.canonicalize()?)
+        {
+            return Err(io::Error::other(
+                "cannot write an archive inside its input directory",
+            ));
+        }
+        append(&mut zip, root, name)?;
+    }
+    zip.finish()?;
+    fs::rename(staged, output)
+}
+
+fn append(zip: &mut ZipWriter<File>, root: &Path, name: &Path) -> io::Result<()> {
+    let path = root.join(name);
+    let meta = fs::symlink_metadata(&path)?;
+    let name_str = name
+        .to_str()
+        .ok_or_else(|| io::Error::other("archive path is not UTF-8"))?;
+    let mut options = SimpleFileOptions::default()
+        .unix_permissions(meta.mode())
+        .large_file(meta.len() >= u64::from(u32::MAX));
+    if let Some(time) = modified_time(&meta) {
+        options = options.last_modified_time(time);
+    }
+    if meta.is_symlink() {
+        let target = fs::read_link(path)?;
+        zip.add_symlink(
+            name_str,
+            target
+                .to_str()
+                .ok_or_else(|| io::Error::other("link target is not UTF-8"))?,
+            options,
+        )?;
+    } else if meta.is_dir() {
+        zip.add_directory(name_str, options)?;
+        let mut children = fs::read_dir(path)?
+            .map(|entry| entry.map(|e| e.file_name()))
+            .collect::<io::Result<Vec<_>>>()?;
+        children.sort();
+        for child in children {
+            append(zip, root, &name.join(child))?;
+        }
+    } else if meta.is_file() {
+        zip.start_file(name_str, options)?;
+        io::copy(&mut File::open(path)?, zip)?;
+    } else {
+        return Err(io::Error::other(format!(
+            "unsupported file type: {}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+fn modified_time(meta: &fs::Metadata) -> Option<DateTime> {
+    let time = meta.mtime();
+    let mut tm = std::mem::MaybeUninit::uninit();
+    // SAFETY: localtime_r initializes tm on success, using the supplied timestamp.
+    if unsafe { libc::localtime_r(&raw const time, tm.as_mut_ptr()) }.is_null() {
+        return None;
+    }
+    let tm = unsafe { tm.assume_init() };
+    DateTime::from_date_and_time(
+        (tm.tm_year + 1900).try_into().ok()?,
+        (tm.tm_mon + 1).try_into().ok()?,
+        tm.tm_mday.try_into().ok()?,
+        tm.tm_hour.try_into().ok()?,
+        tm.tm_min.try_into().ok()?,
+        tm.tm_sec.try_into().ok()?,
+    )
+    .ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::{PermissionsExt, symlink};
 
     #[test]
-    fn reads_a_stored_and_a_deflated_member() {
-        let dir = crate::cli::testdir::TempDir::new("zip-read");
-        std::fs::create_dir_all(dir.join("Payload/App.app")).unwrap();
-        std::fs::write(dir.join("Payload/App.app/Info.plist"), "plist ".repeat(200)).unwrap();
-        std::fs::write(dir.join("Payload/App.app/tiny"), "x").unwrap();
-        let ipa = dir.join("App.ipa");
-        let status = std::process::Command::new("zip")
-            .args(["-qr", ipa.to_str().unwrap(), "Payload"])
-            .current_dir(&*dir)
-            .status()
+    fn invalid_bundle_links_leave_existing_output_alone() {
+        let dir = crate::cli::testdir::TempDir::new("zip-invalid-link");
+        let archive = dir.join("invalid.zip");
+        let mut zip = ZipWriter::new(File::create(&archive).unwrap());
+        zip.add_symlink("link", "../../outside", SimpleFileOptions::default())
             .unwrap();
-        assert!(status.success());
-        let (name, data) = read_member(&ipa, |n| n.ends_with("App.app/Info.plist"))
-            .unwrap()
-            .unwrap();
-        assert_eq!(name, "Payload/App.app/Info.plist");
-        assert_eq!(data, "plist ".repeat(200).into_bytes());
-        let (_, tiny) = read_member(&ipa, |n| n.ends_with("/tiny"))
-            .unwrap()
-            .unwrap();
-        assert_eq!(tiny, b"x");
-        assert!(read_member(&ipa, |n| n == "missing").unwrap().is_none());
-        assert!(read_member(&dir.join("Payload/App.app/tiny"), |_| true).is_err());
+        zip.finish().unwrap();
+        let dest = dir.join("output");
+        fs::create_dir(&dest).unwrap();
+        fs::write(dest.join("keep"), b"keep").unwrap();
+        assert!(extract(&mut open(&archive).unwrap(), &dest, true).is_err());
+        assert_eq!(fs::read(dest.join("keep")).unwrap(), b"keep");
+        assert!(dest.join("link").symlink_metadata().is_err());
+    }
+
+    #[test]
+    fn app_round_trip_preserves_links_modes_and_empty_directories() {
+        let dir = crate::cli::testdir::TempDir::new("zip-app");
+        fs::create_dir_all(dir.join("App.app/Empty")).unwrap();
+        fs::write(dir.join("App.app/bin"), b"content").unwrap();
+        fs::set_permissions(dir.join("App.app/bin"), fs::Permissions::from_mode(0o755)).unwrap();
+        symlink("bin", dir.join("App.app/link")).unwrap();
+        let archive = dir.join("App.zip");
+        create(&archive, &dir, &[Path::new("App.app")]).unwrap();
+        assert_eq!(
+            read_member(&archive, |name| name.ends_with("/bin"))
+                .unwrap()
+                .unwrap()
+                .1,
+            b"content"
+        );
+        let mut zip = open(&archive).unwrap();
+        assert_eq!(
+            zip.by_name("App.app/bin").unwrap().unix_mode().unwrap() & 0o777,
+            0o755
+        );
+        assert!(zip.by_name("App.app/link").unwrap().is_symlink());
+        assert!(zip.by_name("App.app/Empty/").unwrap().is_dir());
+        let dest = dir.join("output");
+        extract(&mut zip, &dest, false).unwrap();
+        fs::write(dest.join("keep"), b"unrelated").unwrap();
+        fs::write(dest.join("App.app/bin"), b"old").unwrap();
+        extract(&mut zip, &dest, true).unwrap();
+        assert_eq!(fs::read(dest.join("keep")).unwrap(), b"unrelated");
+        assert_eq!(
+            fs::read_link(dest.join("App.app/link")).unwrap(),
+            Path::new("bin")
+        );
+        assert_eq!(fs::read(dest.join("App.app/link")).unwrap(), b"content");
+        assert!(read_member(&archive, |n| n == "absent").unwrap().is_none());
     }
 }

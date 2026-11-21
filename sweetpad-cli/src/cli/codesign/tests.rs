@@ -455,6 +455,70 @@ fn a_bundle_around_sha1_code_seals_its_files_with_sha1_too() {
     assert_same_signature(&ours.join("Legacy"), &expected.join("Legacy"), None);
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn static_framework_and_empty_test_bundle_match_native_signing() {
+    let dir = TempDir::new("sweetpad-detached-signatures");
+    for (name, kind) in [("Kit.framework", "FMWK"), ("Kit.xctest", "BNDL")] {
+        let bundle = dir.join(name);
+        std::fs::create_dir(&bundle).unwrap();
+        let info = format!(
+            r#"<plist version="1.0"><dict>
+            <key>CFBundlePackageType</key><string>{kind}</string>
+            <key>CFBundleExecutable</key><string>Kit</string>
+            <key>CFBundleIdentifier</key><string>dev.sweetpad.Kit</string>
+            </dict></plist>"#
+        );
+        std::fs::write(bundle.join("Info.plist"), info).unwrap();
+        let mut args = vec!["-s".into(), "-".into()];
+        if kind == "FMWK" {
+            std::fs::write(bundle.join("Kit"), b"!<arch>\n").unwrap();
+            args.push("--generate-pre-encrypt-hashes".into());
+        }
+        args.push(bundle.display().to_string());
+        let native = std::process::Command::new("/usr/bin/codesign")
+            .args(&args)
+            .output()
+            .unwrap();
+        assert!(
+            native.status.success(),
+            "{}",
+            String::from_utf8_lossy(&native.stderr)
+        );
+        let folder = bundle.join("_CodeSignature");
+        let expected: Vec<_> = std::fs::read_dir(&folder)
+            .unwrap()
+            .map(|entry| {
+                let path = entry.unwrap().path();
+                let bytes = std::fs::read(&path).unwrap();
+                (path, bytes)
+            })
+            .collect();
+        std::fs::remove_dir_all(&folder).unwrap();
+        run(&args).unwrap();
+        // codesign on macOS 15 hashes these bundles with SHA-1, and the
+        // current one with SHA-256, which is what ours writes. The bytes are
+        // compared only against a SHA-256 signature: byte 37 of a
+        // CodeDirectory is its hash type, and 2 is SHA-256.
+        let native_sha256 = expected
+            .iter()
+            .any(|(path, bytes)| path.ends_with("CodeDirectory") && bytes.get(37) == Some(&2));
+        if native_sha256 {
+            for (path, bytes) in expected {
+                assert_eq!(std::fs::read(&path).unwrap(), bytes, "{}", path.display());
+            }
+        }
+        assert!(
+            std::process::Command::new("/usr/bin/codesign")
+                .args(["--verify", "--strict"])
+                .arg(&bundle)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+}
+
 #[test]
 fn resource_bundles_match_native_detached_signatures() {
     let identity = fixture_identity();

@@ -34,6 +34,7 @@ png = "0.18"
 # Gzip, for the image pixels in the actool stand-in's Assets.car; png already
 # depends on it.
 flate2 = "1"
+zip = { version = "2.6.1", default-features = false, features = ["deflate-flate2", "flate2"] }
 # App Shortcuts' NLU model uses FlatBuffers; use the standard runtime.
 flatbuffers = "25.12.19"
 # ICC color conversion for calibrated Interface Builder colors (already used by image).
@@ -56,7 +57,26 @@ aes = "0.8"
 rc2 = "0.8"
 # ES256 for App Store Connect API tokens: ECDSA over P-256 with a PKCS#8 key,
 # a standard algorithm with a de-facto crate, not worth hand-rolling.
-p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pkcs8", "pem", "std"] }
+p256 = { version = "0.13", default-features = false, features = ["ecdh", "ecdsa", "pkcs8", "pem", "std"] }
+# Apple's SDK archives, read on Linux and written on the Mac: the SDK export
+# is a tar.gz, and an Xcode .xip or .aea holds XAR (an XML table), pbzx and
+# Apple Archive, all Apple's and hand-rolled, around standard block codecs —
+# LZFSE and LZVN, LZMA (xz), LZ4 and zlib — read with pure-Rust decoders.
+# LZRAVEN has no crate and is ported (apple_archive/lzraven.rs). AEA is
+# RustCrypto's HKDF, HMAC, AES-CTR and P-256 ECDSA; Apple's key envelope is
+# RFC 9180 HPKE over P-256 ECDH and AES-GCM, and its signing keys may come as
+# X.509 certificates.
+tar = { version = "0.4", default-features = false }
+lzfse_rust = "0.2"
+lzma-rs = "0.3"
+lz4_flex = { version = "0.11", default-features = false, features = ["safe-decode", "std"] }
+sha1 = "0.10"
+sha2 = "0.10"
+hmac = "0.12"
+hkdf = "0.12"
+ctr = "0.9"
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+x509-cert = { version = "0.2", default-features = false }
 # The system calls: the account's home, name and cache directory, read the
 # way Xcode's tools read them (getpwuid_r, confstr), and the raw-input flags
 # the CLI's interactive rebuild session flips.

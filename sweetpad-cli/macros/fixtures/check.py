@@ -5,6 +5,9 @@ plugins expand them to, recorded in expected/. Needs Xcode (macOS).
     check.py            build the plugin, then compare
     check.py --record   record Xcode's expansions into expected/
 
+--fixtures picks another folder of fixtures, with its own expected/, and
+--modules, --sdk and --target what it's compiled with.
+
 Each fixture is its own module. An expansion is keyed by its mangled name,
 which the compiler gives each one from its place in the source, so the
 fixture and the expansions it's recorded with change together.
@@ -18,13 +21,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PACKAGE = os.path.dirname(HERE)
 # The modules sweetpad build hands the plugin (MACRO_MODULES in swbuild.rs).
 MODULES = "FoundationMacros,PreviewsMacros,SwiftDataMacros"
+SDK = "iphonesimulator"
+TARGET = "arm64-apple-ios26.0-simulator"
 
 
 def expansions(fixture, plugin):
-    sdk = subprocess.run(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"],
+    sdk = subprocess.run(["xcrun", "--sdk", SDK, "--show-sdk-path"],
                          capture_output=True, text=True, check=True).stdout.strip()
     command = ["xcrun", "swiftc", "-typecheck", "-sdk", sdk,
-               "-target", "arm64-apple-ios26.0-simulator", "-swift-version", "6",
+               "-target", TARGET, "-swift-version", "6",
                "-module-name", os.path.splitext(fixture)[0],
                "-Xfrontend", "-dump-macro-expansions", fixture]
     if plugin:
@@ -49,14 +54,18 @@ def expansions(fixture, plugin):
 
 
 def main():
-    global HERE, MODULES
+    global HERE, MODULES, SDK, TARGET
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--record", action="store_true")
     parser.add_argument("--fixtures", default=HERE)
     parser.add_argument("--modules", default=MODULES)
+    parser.add_argument("--sdk", default=SDK)
+    parser.add_argument("--target", default=TARGET)
     args = parser.parse_args()
     HERE = os.path.abspath(args.fixtures)
     MODULES = args.modules
+    SDK = args.sdk
+    TARGET = args.target
     record = args.record
     plugin = None
     if not record:

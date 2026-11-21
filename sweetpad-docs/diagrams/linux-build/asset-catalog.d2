@@ -1,0 +1,8 @@
+catalog: "Assets.xcassets" {class: input}
+tool: "SweetPad’s actool" {class: sweetpad}
+compiler: "swiftc compiles\nGeneratedAssetSymbols.swift" {class: box}
+bundle: "MyApp.app" {class: output}
+
+catalog -> tool
+tool -> compiler: "when symbols\nare enabled"
+tool -> bundle: Assets.car

@@ -11,11 +11,12 @@
 # Defaults to ci/fixture-linux/LinuxApp.xcodeproj, scheme LinuxApp, Debug.
 # Run it on the Mac and it reruns itself inside the OrbStack machine, where
 # /Users is mounted at the same path; run it on Linux and it builds in place.
-# The machine comes from ci/linux-setup.sh.
+# The machine needs 'sweetpad setup' run in it first.
 #
 # Knobs (env): SWEETPAD_VM, DESTINATION (generic/platform=iOS), ARCH (the
 # arch the product must be built for, arm64), EXTRA_SETTINGS ("NAME=value …",
-# passed after '--').
+# passed after '--'), SWEETPAD_LLVM (LLVM's multicall linker in the machine,
+# in place of the one ci/build-darwin-linker.sh builds).
 set -euo pipefail
 
 if [ "$(uname -s)" = Darwin ]; then
@@ -26,7 +27,7 @@ if [ "$(uname -s)" = Darwin ]; then
     args+=("$arg")
   done
   vars=()
-  for v in DESTINATION ARCH EXTRA_SETTINGS; do
+  for v in DESTINATION ARCH EXTRA_SETTINGS SWEETPAD_LLVM; do
     [ -n "${!v:-}" ] && vars+=("$v=${!v}")
   done
   exec orb -m "${SWEETPAD_VM:-sweetpad-linux}" env ${vars[@]+"${vars[@]}"} bash "$self" ${args[@]+"${args[@]}"}
@@ -41,9 +42,9 @@ DESTINATION="${DESTINATION:-generic/platform=iOS}"
 ARCH="${ARCH:-arm64}"
 SWIFT_DIR="$(ls -d "$HOME"/swift/swift-*-RELEASE 2>/dev/null | sort | tail -1)"
 
-for p in "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle/toolset-swb.json" \
+for p in "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle/swift-sdk.json" \
   "$SWIFT_DIR/usr/bin/swift" "$HOME/.cargo/bin/cargo"; do
-  [ -e "$p" ] || { echo "error: missing $p; run ci/linux-setup.sh first" >&2; exit 1; }
+  [ -e "$p" ] || { echo "error: missing $p; run 'sweetpad setup' first" >&2; exit 1; }
 done
 # Swift Build derives the toolchain from the first `swift` on PATH.
 export PATH="$HOME/bin:$SWIFT_DIR/usr/bin:$HOME/.cargo/bin:$PATH"
@@ -58,6 +59,10 @@ SWEETPAD="$CARGO_TARGET_DIR/debug/sweetpad"
 # The binary finds Swift Build and the macro plugin in libexec/sweetpad beside
 # it, as the package's does; the script reuses its cache when nothing changed.
 bash "$REPO/sweetpad-lib/ci/build-swift-helpers.sh" "$CARGO_TARGET_DIR/debug"
+# And LLVM's Apple linker, built once from the pinned release, which takes
+# cmake, ninja and a C++ compiler.
+[ -n "${SWEETPAD_LLVM:-}" ] || [ -f "$CARGO_TARGET_DIR/debug/libexec/sweetpad/llvm" ] ||
+  bash "$REPO/sweetpad-lib/ci/build-darwin-linker.sh" "$CARGO_TARGET_DIR/debug"
 
 section "sweetpad build $SCHEME ($CONFIGURATION, $DESTINATION)"
 build() {

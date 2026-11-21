@@ -1,0 +1,46 @@
+=== __swiftmacro_4main12NotGenerableV5value5GuidefMp_.swift
+
+=== __swiftmacro_4main8BadGuide9GenerablefMe_.swift
+extension BadGuide: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+    }
+}
+=== __swiftmacro_4main8BadGuide9GenerablefMm_.swift
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    FoundationModels.GenerationSchema(
+        type: Self.self,
+        properties: [
+
+        ]
+    )
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    let explicitNil = false
+    var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+    return GeneratedContent(
+        properties: properties,
+        uniquingKeysWith: { _, second in
+            second
+        }
+    )
+    func addProperty(name: String, value: some Generable) {
+      properties.append((name: name, value: value))
+    }
+    func addProperty(name: String, value: (some Generable)?) {
+      if explicitNil || value != nil {
+        properties.append((name: name, value: value))
+      }
+    }
+}
+
+nonisolated struct PartiallyGenerated: Identifiable, nonisolated FoundationModels.ConvertibleFromGeneratedContent {
+    var id: GenerationID
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.id = content.id ?? GenerationID()
+    }
+}
+=== __swiftmacro_4main8BadGuideV8computed0C0fMp_.swift
+
+=== diagnostic
+Guide-errors.swift:10:5: error: '@Guide' can only be used with a stored property. (from macro 'Guide')

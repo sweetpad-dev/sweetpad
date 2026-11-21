@@ -15,7 +15,7 @@ Simulator checks ran on iOS 26.0 and 27.0.
 Initial physical-device checks used an iPhone 13 with iOS 27.0.1.
 The November 8 follow-up used the same phone with iOS 27.2.
 
-Install the Linux tools with `linux-setup.sh` and build the CLI on both hosts.
+Install the Linux tools with `sweetpad setup` and build the CLI on both hosts.
 The projects need their own dependencies before the suite can build them.
 The suite checks source revisions and applies the listed fixture patches.
 The separate `linux-project-prepare.py` recipe installs frozen hybrid-framework dependencies on the Mac for both build hosts.
@@ -388,13 +388,7 @@ Use `--only mastodon` or `--only swiftfin` to select one project.
 Use `--derived-data PATH` for another package cache and `--check` to validate without writing.
 The helper checks the manifest's exact dependency revisions before applying patches.
 
-The SDK importer now includes versioned Swift back-deployment libraries from the user's Xcode.
-For an existing SDK installation, run this command from the repository root inside the Linux VM:
-
-```bash
-python3 -B sweetpad-lib/ci/linux-sdk-platforms.py \
-  /Applications/Xcode.app "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle" --runtime-only
-```
+The SDK includes the versioned Swift back-deployment libraries from the user's Xcode.
 
 Swift Build scans the app's Mach-O dependencies and embeds the needed Apple libraries.
 The CLI selects the extracted Apple toolchain and disables obsolete bitcode stripping.
@@ -529,9 +523,9 @@ A local Git fixture verifies remote alias builds and custom DerivedData lookup.
 Action configurations also come from the selected graph; both CLI backends
 honor a remote scheme's Release default in a custom DerivedData directory.
 
-`linux-sdk-platforms.py` imports tvOS, watchOS, and visionOS SDKs from the user's Xcode.
-It copies platform metadata, SDK data, testing frameworks, and companion stubs.
-It also extends Swift SDK target-triple metadata. The CLI selects Apple compiler resources
+`sweetpad sdk write-bundle` also copies the tvOS, watchOS, and visionOS SDKs from the user's Xcode.
+It takes their platform metadata, SDK data, testing frameworks, and companion stubs,
+and adds their target triples to the Swift SDK metadata. The CLI selects Apple compiler resources
 and the LLD driver for these platforms, scoped to the destination SDK.
 
 The following corpus schemes now build on Linux:
@@ -681,20 +675,10 @@ also passes for all four fixtures, including CocoaPods. The executable audit rec
 
 ### Localized App Shortcuts
 
-Mac execution of `linux-setup.sh` exports phrase resources from the user's Xcode
-before importing them into the private Darwin SDK. The export stays outside source control.
-For an existing SDK, refresh only these resources:
-
-```bash
-python3 -B sweetpad-lib/ci/linux-appintents-resources.py \
-  --out sweetpad-lib/corpus/_linux-followups/tools/appintents-phrases.json
-orb -m sweetpad-linux bash -lc \
-  'cp "$1" "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle/appintents-phrases.json"' \
-  -- "$PWD/sweetpad-lib/corpus/_linux-followups/tools/appintents-phrases.json"
-```
-
-Add `--locale LANGUAGE` to
-export a project locale beyond the default set. The current export covers 81 locales.
+`sweetpad sdk export` on the Mac writes the phrase resources from the user's Xcode into
+the export, and `sweetpad setup --sdk` imports them into the private Darwin SDK. The export
+stays outside source control. To refresh them, export the SDK again and import it with
+`--replace-sdk`. The export covers the locales in `LOCALES` (`sdk_import.rs`).
 A missing localized resource export produces an explicit preparation error.
 
 The trainer reads localized app names and compiled AppShortcuts string tables.
@@ -750,16 +734,15 @@ bash sweetpad-lib/ci/linux-framework-tools.sh
 python3 -B sweetpad-lib/ci/linux-clean-checks.py --out /path/to/fresh-output
 ```
 
-The execution audit records ELF, script, and Mach-O attempts with `strace`.
+The execution audit records ELF, script, and Mach-O attempts with `strace`. Setup doesn't install `strace`, so install it before an audited run, with `sudo apt-get install strace` or `sudo pacman -S strace`.
 It captures temporary executable headers before SwiftPM removes its manifest binaries.
 Mach-O attempts and uninspectable successful executions fail the audit, even after a successful build.
 This audit evaluates build provenance. It is not a security sandbox and does not change binfmt registration.
 All four fresh hybrid Release builds pass. A separate fresh MMKV Debug build also passes without the retired fixture shim.
 
 The Ubuntu x64 and ARM64 workflow runs library tests, Clippy, formatting, and Python regressions without Apple SDKs.
-The manual `linux-apple-build.yaml` workflow requires a provisioned Apple-hardware Linux runner with its private SDK and Flutter compiler.
-It runs fresh builds, automatic manifest checks, and the dynamic-package export regression.
-Local equivalents pass. The ARM64 release validation also invokes this workflow through a manually selected private SDK runner.
+Fresh hybrid builds, manifest checks, and the dynamic-package export regression can run locally.
+For the release package, use the [local Mac launcher](#run-the-private-package-check-from-macos).
 
 ### Package evaluation and linker controls
 
@@ -814,7 +797,7 @@ The build-stage correction provides compatibility for the pinned compiler. An up
 
 The fresh build also exposed an llbuild directory-scan race during Hermes replacement.
 `swift-llbuild-directory-race.patch` handles a removed entry instead of dereferencing a failed filesystem result.
-`linux-setup.sh` installs both build-engine corrections.
+`build-swift-helpers.sh` builds Swift Build with both build-engine corrections.
 
 ### Automatic test manifests
 
@@ -848,7 +831,6 @@ An absent plan name fails explicitly.
 python3 -B sweetpad-lib/ci/linux-test-plan-checks.py --out /path/to/fresh-plan-report --simulator SIMULATOR_UDID
 ```
 
-The manual Linux integration workflow also builds this fixture and validates its generated manifests.
 The local report remains under `corpus/_linux-followups/validation/remaining-2026-11-08`.
 No phone, account resources, or optional `.omo` artifacts form part of this follow-up.
 
@@ -878,8 +860,36 @@ The source-free sample exercises SwiftUI Entry and State macros through this lau
 The release workflow waits for verified macOS and Linux packages before publishing a CLI tag.
 Both archives include SHA-256 sidecars and build-provenance attestations.
 A manual Linux-only dry run skips macOS signing, release publication, and the Homebrew update.
-Its optional private SDK job also runs the frozen hybrid builds, automatic manifests, and package export controls.
-No public pull-request trigger runs code on the private SDK runner.
+All Linux release CI checks use public inputs. Private SDK validation runs on demand from a Mac.
 
 Local release reports are under `corpus/_linux-followups/validation/release-arm64-2026-11-08`.
 Optional `.omo` artifacts and dependency-size cleanup remain deferred.
+
+### Run the private package check from macOS
+
+From the repository root, run the readiness check:
+
+```bash
+./sweetpad-cli/ci/check-local-linux-release.sh --check
+```
+
+The launcher uses your local OrbStack machine named `sweetpad-linux`.
+It verifies the archive checksum and host architecture, checks for the packaged helpers,
+starts the pinned Linux Swift compiler, and probes bubblewrap permissions.
+The sample build starts only when you omit `--check`:
+
+```bash
+./sweetpad-cli/ci/check-local-linux-release.sh
+```
+
+The launcher looks for one ARM64 release tarball in `dist/`, then in
+`target/arm64-release-check/verified/dist/`. To select another archive,
+pass its path after the optional `--check` flag. Keep the matching
+`<archive>.sha256` alongside it. Set `SWEETPAD_LINUX_VM` for another Mac-local
+OrbStack machine with the same architecture as the archive.
+
+The guest needs Python 3 with tar extraction filters, `file`, and `bubblewrap`.
+It reads the Swift version from `sweetpad-lib/ci/linux-toolchain.json` and uses
+`~/swift/swift-<version>-RELEASE` and `~/.swiftpm/swift-sdks/darwin.artifactbundle`.
+During a full check, the launcher prints the Mac-accessible result directory under
+`~/OrbStack/<machine>/`. Each run keeps its own `summary.json`, sandbox logs, and built sample app.

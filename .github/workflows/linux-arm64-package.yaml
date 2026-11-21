@@ -46,18 +46,18 @@ jobs:
         uses: actions/cache@v4
         with:
           path: swift-helpers
-          key: swift-helpers-${{ matrix.arch }}-${{ hashFiles('sweetpad-lib/ci/build-swift-helpers.sh', 'sweetpad-lib/ci/swift-helpers-NOTICE.md', 'sweetpad-lib/ci/swift-build-*.patch', 'sweetpad-lib/ci/swift-llbuild-*.patch', 'sweetpad-lib/ci/swift-build-Package.resolved', 'sweetpad-lib/ci/linux-toolchain.json', 'sweetpad-lib/ci/linux-host-tools.sh', 'sweetpad-cli/macros/**') }}
-      # Debian 12 has the oldest glibc the package supports, and the
-      # runtime libraries come from swift.org's Debian 12 toolchain.
+          key: swift-helpers-${{ matrix.arch }}-${{ hashFiles('sweetpad-lib/ci/build-swift-helpers.sh', 'sweetpad-lib/ci/swift-helpers-NOTICE.md', 'sweetpad-lib/ci/swift-build-*.patch', 'sweetpad-lib/ci/swift-llbuild-*.patch', 'sweetpad-lib/ci/swift-build-Package.resolved', 'sweetpad-lib/ci/linux-toolchain.json', 'sweetpad-cli/macros/**') }}
+      - name: Read the pinned Swift
+        id: swift
+        run: echo "version=$(jq -r .swift sweetpad-lib/ci/linux-toolchain.json)" >> "$GITHUB_OUTPUT"
+      # Debian 12 has the oldest glibc the package supports. swift.org's
+      # image for it holds the pinned release, whose runtime libraries ship.
       - name: Build on Debian 12 against the pinned Swift
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          docker run --rm --platform linux/${{ matrix.docker_arch }} -v "$PWD:/src" debian:12 bash -euc '
+          docker run --rm --platform linux/${{ matrix.docker_arch }} -v "$PWD:/src" "swift:${{ steps.swift.outputs.version }}-bookworm" bash -euc '
             apt-get update -qq
-            DEBIAN_FRONTEND=noninteractive apt-get install -yqq python3 ca-certificates patchelf
-            SWIFT_VERSION="$(python3 -c "import json; print(json.load(open(\"/src/sweetpad-lib/ci/linux-toolchain.json\"))[\"swift\"])")"
-            . /src/sweetpad-lib/ci/linux-host-tools.sh
-            sweetpad_install_host_tools
+            DEBIAN_FRONTEND=noninteractive apt-get install -yqq python3 ca-certificates patchelf git bubblewrap
             git config --global --add safe.directory "*"
             bash /src/sweetpad-lib/ci/build-swift-helpers.sh /src/swift-helpers
             chown -R "$(stat -c %u:%g /src)" /src/swift-helpers
@@ -66,7 +66,8 @@ jobs:
         run: |
           docker run --rm --platform linux/${{ matrix.docker_arch }} -v "$PWD/swift-helpers:/helpers:ro" debian:12 bash -euc '
             apt-get update -qq
-            DEBIAN_FRONTEND=noninteractive apt-get install -yqq libsqlite3-0 libstdc++6
+            DEBIAN_FRONTEND=noninteractive apt-get install -yqq libsqlite3-0 libstdc++6 libcap2 libselinux1
+            /helpers/libexec/sweetpad/bwrap --version
             ! command -v swift
             /helpers/libexec/sweetpad/swbuild --version
             /helpers/libexec/sweetpad/sweetpad-macros --help > /dev/null
@@ -79,9 +80,57 @@ jobs:
           path: swift-helpers-linux-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
 
+  darwin-linker:
+    name: ${{ matrix.arch }} LLD and dsymutil
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: arm64, runner: ubuntu-24.04-arm, docker_arch: arm64}
+          - {arch: x64, runner: ubuntu-24.04, docker_arch: amd64}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read the pinned LLVM
+        id: pin
+        run: echo "llvm=$(jq -r '.llvm + "-" + .llvmSourceSha256[0:12]' sweetpad-lib/ci/linux-toolchain.json)" >> "$GITHUB_OUTPUT"
+      # LLVM takes about an hour to build here, so the staged output is
+      # cached by the pinned release and the script that builds it.
+      - name: Restore the linker built from the same inputs
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: darwin-linker
+          key: darwin-linker-${{ matrix.arch }}-${{ steps.pin.outputs.llvm }}-${{ hashFiles('sweetpad-lib/ci/build-darwin-linker.sh') }}
+      - name: Build on Debian 12 from the pinned LLVM release
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          docker run --rm --platform linux/${{ matrix.docker_arch }} -v "$PWD:/src" debian:12 bash -euc '
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -yqq --no-install-recommends cmake ninja-build g++ python3 xz-utils curl ca-certificates binutils
+            bash /src/sweetpad-lib/ci/build-darwin-linker.sh /src/darwin-linker
+            chown -R "$(stat -c %u:%g /src)" /src/darwin-linker
+          '
+      - name: Check both tools start on Debian 12
+        run: |
+          docker run --rm --platform linux/${{ matrix.docker_arch }} -v "$PWD/darwin-linker:/linker:ro" debian:12 bash -euc '
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -yqq libstdc++6
+            (exec -a ld64.lld /linker/libexec/sweetpad/llvm --version) | grep -q "^LLD "
+            (exec -a dsymutil /linker/libexec/sweetpad/llvm --version) | grep -q "LLVM version"
+          '
+      - name: Archive the linker
+        run: tar -C darwin-linker -czf darwin-linker-linux-${{ matrix.arch }}.tar.gz .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: darwin-linker-linux-${{ matrix.arch }}
+          path: darwin-linker-linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
   package:
     name: ${{ matrix.arch }} static archive, Debian package and clean installs
-    needs: swift-helpers
+    needs: [swift-helpers, darwin-linker]
     strategy:
       fail-fast: false
       matrix:
@@ -109,24 +158,19 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install build dependencies
-        run: sudo apt-get update -qq && sudo apt-get install -y musl-tools cmake ninja-build perl pkg-config dpkg-dev apt-utils gnupg python3-cryptography
+        run: sudo apt-get update -qq && sudo apt-get install -y musl-tools cmake ninja-build perl pkg-config dpkg-dev apt-utils gnupg
       - name: Install pinned Rust
         run: |
           rustup show
           rustup target add ${{ matrix.target }}
-      - name: Validate SDK archive safety and bootstrap syntax
+      - name: Test the packaging and release scripts
         run: |
-          python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_sdk.py
-          python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_sdk_platforms.py
-          python3 -m unittest discover -s sweetpad-lib/ci -p test_apple_auth.py
-          python3 -m unittest discover -s sweetpad-lib/ci -p test_xcode_download.py
-          python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_host.py
-          python3 -m unittest discover -s sweetpad-lib/ci -p test_xcode_archive.py
           python3 -m unittest discover -s sweetpad-lib/ci -p test_linux_release.py
+          python3 -m unittest discover -s sweetpad-lib/ci -p test_sdk_tree.py
           python3 -m unittest discover -s sweetpad-cli/ci -p test_linux_package.py
           python3 -m unittest discover -s sweetpad-cli/ci -p test_linux_apt.py
           python3 -m unittest discover -s sweetpad-cli/ci -p test_device_discovery.py
-          bash -n sweetpad-lib/ci/linux-setup.sh sweetpad-lib/ci/linux-host-tools.sh sweetpad-lib/ci/build-swift-helpers.sh
+          bash -n sweetpad-lib/ci/build-swift-helpers.sh sweetpad-lib/ci/build-darwin-linker.sh
       - uses: Swatinem/rust-cache@v2
       - name: Check static CLI and HTTPS
         run: |
@@ -138,6 +182,10 @@ jobs:
         with:
           name: swift-helpers-linux-${{ matrix.arch }}
           path: ${{ runner.temp }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: darwin-linker-linux-${{ matrix.arch }}
+          path: ${{ runner.temp }}
       - name: Package standalone binary and Debian package
         run: |
           VERSION="$(python3 sweetpad-cli/ci/release-version.py)"
@@ -145,8 +193,11 @@ jobs:
           HELPERS="$RUNNER_TEMP/swift-helpers"
           mkdir -p "$HELPERS"
           tar -xzf "$RUNNER_TEMP/swift-helpers-linux-${{ matrix.arch }}.tar.gz" -C "$HELPERS"
-          python3 sweetpad-cli/ci/package-linux.py --binary target/${{ matrix.target }}/release/sweetpad --helpers "$HELPERS" --version "$VERSION" --out dist --deb
-          python3 sweetpad-cli/ci/package-linux.py --binary target/${{ matrix.target }}/release/sweetpad --helpers "$HELPERS" --version "$VERSION" --out "$RUNNER_TEMP/deb-upgrade" --deb --deb-revision 2
+          LINKER="$RUNNER_TEMP/darwin-linker"
+          mkdir -p "$LINKER"
+          tar -xzf "$RUNNER_TEMP/darwin-linker-linux-${{ matrix.arch }}.tar.gz" -C "$LINKER"
+          python3 sweetpad-cli/ci/package-linux.py --binary target/${{ matrix.target }}/release/sweetpad --helpers "$HELPERS" --linker "$LINKER" --version "$VERSION" --out dist --deb
+          python3 sweetpad-cli/ci/package-linux.py --binary target/${{ matrix.target }}/release/sweetpad --helpers "$HELPERS" --linker "$LINKER" --version "$VERSION" --out "$RUNNER_TEMP/deb-upgrade" --deb --deb-revision 2
       - name: Install in a clean Ubuntu 24.04 container
         run: |
           mkdir -p "$RUNNER_TEMP/package-smoke"

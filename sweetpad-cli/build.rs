@@ -7,23 +7,12 @@ fn main() {
     emit_version();
 }
 
-/// Keep the full public bootstrap and sample in the executable. Release
-/// installers only need to place the binary and command alias on PATH.
+/// Keep the sample app `setup` builds in the executable, so an installed
+/// sweetpad needs nothing but its own files.
 fn embed_setup_resources() {
     let manifest = env::var("CARGO_MANIFEST_DIR").unwrap();
     let repo = Path::new(&manifest).parent().unwrap();
-    let list = repo.join("sweetpad-cli/ci/linux-setup-files.txt");
-    println!("cargo:rerun-if-changed={}", list.display());
     let mut files = Vec::new();
-    for line in fs::read_to_string(&list)
-        .expect("read public setup file list")
-        .lines()
-    {
-        let line = line.trim();
-        if !line.is_empty() && !line.starts_with('#') {
-            files.push((format!("setup/{line}"), repo.join(line)));
-        }
-    }
     let sample = repo.join("sweetpad-lib/ci/fixture-linux");
     collect_resources(
         &sample,
@@ -38,7 +27,7 @@ fn embed_setup_resources() {
     for (name, source) in files {
         assert!(
             source.symlink_metadata().unwrap().file_type().is_file(),
-            "public setup inputs must be regular files: {}",
+            "embedded resources must be regular files: {}",
             source.display()
         );
         println!("cargo:rerun-if-changed={}", source.display());

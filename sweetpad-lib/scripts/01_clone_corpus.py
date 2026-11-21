@@ -37,6 +37,7 @@ import re
 import shutil
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -198,14 +199,37 @@ def pick_tuist_fixtures(repo_root: Path) -> list[tuple[str, Path]]:
     return picks
 
 
+def generated_projects_present(fixture_dir: Path) -> bool:
+    if not any(fixture_dir.glob("*.xcodeproj/project.pbxproj")):
+        return False
+    if not (fixture_dir / "Tuist/Package.swift").is_file():
+        return True
+    # Tuist writes dependency projects under its disposable .build directory.
+    # The top-level project and workspace survive removal of this cache.
+    workspaces = list(fixture_dir.glob("*.xcworkspace/contents.xcworkspacedata"))
+    if not workspaces:
+        return False
+    for workspace in workspaces:
+        try:
+            refs = ET.parse(workspace).iter("FileRef")
+        except (ET.ParseError, OSError):
+            return False
+        for ref in refs:
+            path = ref.get("location", "").removeprefix("group:")
+            if path.startswith("Tuist/.build/") and path.endswith(".xcodeproj"):
+                if not (fixture_dir / path / "project.pbxproj").is_file():
+                    return False
+    return True
+
+
 def run_tuist_generate(fixture_dir: Path) -> tuple[bool, str]:
     tuist = shutil.which("tuist")
     if not tuist:
         return False, "tuist not on PATH"
     try:
-        # Some fixtures use Package.swift only (no tuist), and `tuist install`
-        # is a no-op then; ignore install failures, fail loudly on generate.
-        common.run([tuist, "install"], cwd=fixture_dir, check=False, quiet=False)
+        install = common.run([tuist, "install"], cwd=fixture_dir, check=False, capture=True)
+        if install.returncode and (fixture_dir / "Tuist/Package.swift").is_file():
+            return False, (install.stdout + install.stderr)[-2000:]
         cp = common.run([tuist, "generate", "--no-open"], cwd=fixture_dir,
                         check=False, capture=True, quiet=False)
         if cp.returncode != 0:
@@ -316,7 +340,7 @@ def process_project(
     # still records the previous host's success.
     already_generated = {
         fx["path"]: fx for fx in entry.get("fixtures_selected", [])
-        if fx.get("generated") and any((dest / fx["path"]).glob("*.xcodeproj"))
+        if fx.get("generated") and generated_projects_present(dest / fx["path"])
     } if project.slug == "tuist-fixtures" else {}
     if project.slug == "tuist-fixtures" and not skip_tuist:
         picks = pick_tuist_fixtures(dest)

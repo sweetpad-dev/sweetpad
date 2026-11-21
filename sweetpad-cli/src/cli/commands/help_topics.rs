@@ -188,7 +188,11 @@ Linux builds (Swift Build, where there is no Xcode):
   SWEETPAD_APPLE_SESSION_FILE
                             the Apple session 'auth login' saves and
                             'setup --xcode' and 'sdk download' use
-                            ('--session-file')
+                            ('--session-file'; default
+                            ~/.local/state/sweetpad/apple-session.json)
+  SWIFTLY_HOME_DIR          where setup and builds look for swiftly's
+                            toolchains when the Swift on PATH isn't the
+                            pinned one (default ~/.local/share/swiftly)
 
 App Store Connect ('upload', 'notarize', 'archive --upload' and
 'archive --notarize'):

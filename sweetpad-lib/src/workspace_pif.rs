@@ -31,9 +31,11 @@ use crate::xcode_hash::{md5_hex, sha256_base64};
 use crate::xcspec;
 
 mod packages;
+pub mod project_plugins;
 pub use packages::{
     Package, add_package_root, add_packages, manifest, packages, retarget_plugin_tools,
 };
+pub use project_plugins::project_target_plugins;
 
 /// The PIF `xcodebuild -dumpPIF` prints for a `.xcworkspace` or an
 /// `.xcodeproj`: a workspace object, then each project followed by its
@@ -105,60 +107,6 @@ pub fn project_target_guid(pif: &[Json], project: &Path, identifier: &str) -> Op
     pif.iter()
         .any(|o| o["type"] == "target" && o["contents"]["guid"] == guid.as_str())
         .then_some(guid)
-}
-
-/// The build-tool plugins that project targets run in a build of `roots`
-/// and the targets they depend on, as target and plugin names, from a
-/// workspace's PIF with its packages added. Xcode evaluates such a plugin
-/// itself and gives Swift Build its commands, so only a package target's
-/// plugins, which SwiftPM evaluates, run without Xcode. A plugin dependency
-/// is one on a package product SwiftPM emits as an aggregate target.
-#[must_use]
-pub fn project_target_plugins(pif: &[Json], roots: &[String]) -> Vec<(String, String)> {
-    let targets: HashMap<&str, &Json> = pif
-        .iter()
-        .filter(|o| o["type"] == "target")
-        .filter_map(|o| Some((o["contents"]["guid"].as_str()?, &o["contents"])))
-        .collect();
-    let mut queue: VecDeque<&Json> = targets
-        .values()
-        .filter(|t| {
-            t["name"]
-                .as_str()
-                .is_some_and(|n| roots.iter().any(|r| r == n))
-        })
-        .copied()
-        .collect();
-    let mut seen = HashSet::new();
-    let mut out = Vec::new();
-    while let Some(target) = queue.pop_front() {
-        let guid = target["guid"].as_str().unwrap_or_default();
-        if !seen.insert(guid) {
-            continue;
-        }
-        for dep in target["dependencies"].as_array().into_iter().flatten() {
-            let Some(dep_target) = dep["guid"].as_str().and_then(|g| targets.get(g)) else {
-                continue;
-            };
-            let plugin = dep["guid"]
-                .as_str()
-                .is_some_and(|g| g.starts_with("PACKAGE-PRODUCT:"))
-                && dep_target["type"] == "aggregate";
-            if plugin && !guid.starts_with("PACKAGE-") {
-                // SwiftPM names the aggregate `<plugin>-product`.
-                let name = dep["name"].as_str().unwrap_or_else(|| {
-                    let name = dep_target["name"].as_str().unwrap_or_default();
-                    name.strip_suffix("-product").unwrap_or(name)
-                });
-                out.push((
-                    target["name"].as_str().unwrap_or_default().to_string(),
-                    name.to_string(),
-                ));
-            }
-            queue.push_back(dep_target);
-        }
-    }
-    out
 }
 
 /// The workspace a container stands for.

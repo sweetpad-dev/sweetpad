@@ -124,7 +124,7 @@ fn selected_developer_dir() -> PathBuf {
 }
 
 /// Where the Darwin Swift SDK bundle is: `SWEETPAD_DARWIN_SDK`, else the one
-/// `xtool sdk install` writes. It has the Apple SDKs and Xcode's runtime
+/// `sweetpad setup` imports. It has the Apple SDKs and Xcode's runtime
 /// libraries, and stands in for Xcode on a host without one.
 #[must_use]
 pub fn darwin_sdk_bundle() -> PathBuf {
@@ -138,12 +138,12 @@ pub fn darwin_sdk_bundle() -> PathBuf {
 }
 
 /// Apple's macro plugins that `sweetpad-macros` stands in for. Xcode has
-/// them as macOS libraries. The Darwin SDK's plugin server lacks
-/// `SwiftDataMacros` and has `#Preview` only for SwiftUI views, and the
-/// toolchain's own `FoundationMacros` names `FoundationEssentials` in its
-/// expansions, which the SDK's Foundation doesn't have.
+/// them as macOS libraries. The toolchain's own `FoundationMacros` names
+/// `FoundationEssentials` in its expansions, which the SDK's Foundation
+/// doesn't have.
 pub const DARWIN_MACRO_MODULES: &[&str] = &[
     "FoundationMacros",
+    "FoundationModelsMacros",
     "PreviewsMacros",
     "SwiftDataMacros",
     "SwiftUIMacros",
@@ -187,10 +187,13 @@ pub fn linux_helper(name: &str, override_var: &str) -> Option<PathBuf> {
 pub fn packaged_helper_beside(exe: &Path, name: &str) -> Option<PathBuf> {
     let exe = exe.canonicalize().ok()?;
     let dir = exe.parent()?;
-    [dir.join("libexec/sweetpad"), dir.parent()?.join("libexec/sweetpad")]
-        .into_iter()
-        .map(|folder| folder.join(name))
-        .find(|candidate| candidate.is_file())
+    [
+        dir.join("libexec/sweetpad"),
+        dir.parent()?.join("libexec/sweetpad"),
+    ]
+    .into_iter()
+    .map(|folder| folder.join(name))
+    .find(|candidate| candidate.is_file())
 }
 
 /// The `swiftc` flags a build on the Darwin SDK adds to the SDK's own, in

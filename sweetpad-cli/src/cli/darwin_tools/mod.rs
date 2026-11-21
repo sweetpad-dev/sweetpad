@@ -12,8 +12,9 @@
 //!   static library with Swift sources (see [`ditto`]);
 //! - `embeddedBinaryValidationUtility`, which checks each app extension an
 //!   app embeds (see [`embedded_binary`]);
-//! - `ld64.lld`, in front of xtool's linker, which loads whole the archives
-//!   xtool makes in place of relocatable objects (see [`ld`]);
+//! - `ld64.lld`, in front of LLVM's linker, which makes a static archive
+//!   for `ld -r` and loads such archives whole (see [`ld`]);
+//! - `dsymutil`, in front of LLVM's (see [`dsymutil`]);
 //! - `xcrun`, which run scripts start tools through and ask about an SDK
 //!   with (see [`xcrun`]);
 //! - `cc`, which preprocesses an Info.plist for an Apple target with Clang
@@ -29,8 +30,10 @@ mod ditto;
 mod dsymutil;
 mod embedded_binary;
 mod extract_loc_strings;
+pub(crate) mod host;
 mod ld;
 mod lipo;
+pub(crate) use lipo::is_static_archive;
 mod strip;
 mod xcrun;
 
@@ -44,6 +47,7 @@ pub const TOOLS: &[&str] = &[
     "ditto",
     "embeddedBinaryValidationUtility",
     "ld64.lld",
+    "llvm-libtool-darwin",
     "lipo",
     "strip",
     "xcrun",
@@ -52,8 +56,8 @@ pub const TOOLS: &[&str] = &[
     "dsymutil",
 ];
 
-/// The name of the link to the Darwin SDK's own linker, beside the stand-in
-/// for it, which runs it (see [`ld`]).
+/// The names of the links to LLVM's linker and `dsymutil`, beside the
+/// stand-ins for them, which run them (see [`ld`] and [`dsymutil`]).
 pub const SDK_LINKER: &str = "sdk-ld64.lld";
 pub const SDK_DSYMUTIL: &str = "sdk-dsymutil";
 
@@ -67,6 +71,7 @@ pub fn main(tool: &str, args: &[String]) -> Option<ExitCode> {
         "embeddedBinaryValidationUtility" => return Some(embedded_binary::main(args)),
         "ld64.lld" => return Some(ld::main(args)),
         "dsymutil" => return Some(dsymutil::main(args)),
+        "llvm-libtool-darwin" => ld::libtool::main(args),
         "lipo" => lipo::main(args),
         "strip" => strip::main(args),
         "extractLocStrings" => extract_loc_strings::main(args),
@@ -87,7 +92,7 @@ pub fn main(tool: &str, args: &[String]) -> Option<ExitCode> {
                         .ok_or_else(|| format!("chmod exited with {s}"))
                 })
         }
-        _ => return None,
+        _ => host::main(tool, args)?,
     };
     Some(match result {
         Ok(()) => ExitCode::SUCCESS,

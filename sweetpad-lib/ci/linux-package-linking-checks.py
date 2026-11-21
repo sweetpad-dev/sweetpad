@@ -37,12 +37,14 @@ def objects(out, compiler, sdk, env=None):
 def worker(args):
     bundle = Path.home()/'.swiftpm/swift-sdks/darwin.artifactbundle'
     sdk = bundle/'Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk'
-    raw = bundle/'toolset/bin/ld64.lld'
-    args.out.mkdir(parents=True,exist_ok=True)
+    # LLVM's multicall binary, which runs as LLD under the name ld64.lld.
+    llvm = Path(os.environ.get('SWEETPAD_LLVM') or Path.home()/'sweetpad-target/debug/libexec/sweetpad/llvm')
+    raw = args.out/'raw/ld64.lld'
+    raw.parent.mkdir(parents=True,exist_ok=True)
     args.sdk_version = json.loads((sdk/'SDKSettings.json').read_text())['Version']
     if not (args.out/'entry.o').exists():
         objects(args.out,[Path.home()/'swift/swift-6.4.2-RELEASE/usr/bin/clang'],sdk)
-    for name,target in [('ld64.lld',Path.home()/'sweetpad-target/debug/sweetpad'),('sdk-ld64.lld',raw)]:
+    for name,target in [('ld64.lld',Path.home()/'sweetpad-target/debug/sweetpad'),('sdk-ld64.lld',llvm),('raw/ld64.lld',llvm)]:
         link = args.out/name
         link.unlink(missing_ok=True); link.symlink_to(target)
     archive = args.out/'Package module ü.o'

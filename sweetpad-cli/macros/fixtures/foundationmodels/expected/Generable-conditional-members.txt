@@ -1,0 +1,213 @@
+=== __swiftmacro_4main16ConditionalCases9GenerablefMe_.swift
+extension ConditionalCases: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        let type: String = try content.value(forProperty: "type")
+        switch type {
+        #if os(macOS)
+        case "platform":
+            self = .platform(try content.value(forProperty: "value"))
+        #endif
+        case "fallback":
+            self = .fallback
+        default:
+            if #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) {
+                throw FoundationModels.GeneratedContent.ParsingError(rawContent: content.jsonString, debugDescription: "Unexpected type \"\(type)\" for \(Self.self)")
+            } else {
+                throw FoundationModels.LanguageModelSession.GenerationError.decodingFailure(FoundationModels.LanguageModelSession.GenerationError.Context(debugDescription: "Unexpected type \"\(type)\" for \(Self.self)"))
+            }
+        }
+    }
+}
+=== __swiftmacro_4main16ConditionalCases9GenerablefMm_.swift
+nonisolated enum PartiallyGenerated: nonisolated FoundationModels.ConvertibleFromGeneratedContent {
+    #if os(macOS)
+    case platform(String.PartiallyGenerated?)
+    #endif
+    case fallback
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        let type: String = try content.value(forProperty: "type")
+        switch type {
+        #if os(macOS)
+        case "platform":
+            self = .platform(try content.value(forProperty: "value"))
+        #endif
+        case "fallback":
+            self = .fallback
+        default:
+            if #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) {
+                throw FoundationModels.GeneratedContent.ParsingError(rawContent: content.jsonString, debugDescription: "Unexpected type \"\(type)\" for \(Self.self)")
+            } else {
+                throw FoundationModels.LanguageModelSession.GenerationError.decodingFailure(FoundationModels.LanguageModelSession.GenerationError.Context(debugDescription: "Unexpected type \"\(type)\" for \(Self.self)"))
+            }
+        }
+    }
+}
+
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    var properties = [any Generable.Type]()
+    #if os(macOS)
+    properties.append(DiscriminatedPlatform.self)
+    #endif
+    properties.append(DiscriminatedFallback.self)
+    return FoundationModels.GenerationSchema(type: Self.self, anyOf: properties)
+}
+
+#if os(macOS)
+private nonisolated struct DiscriminatedPlatform: nonisolated FoundationModels.Generable {
+    @Guide(.constant("platform"))
+    let type: String
+    let value: String
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.type = try content.value(forProperty: "type")
+        self.value = try content.value(forProperty: "value")
+    }
+    nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+        FoundationModels.GenerationSchema(
+            type: Self.self,
+            properties: [
+                FoundationModels.GenerationSchema.Property(name: "type", type: String.self, guides: [.constant("platform")]),
+                FoundationModels.GenerationSchema.Property(name: "value", type: String.self)
+            ]
+        )
+    }
+    nonisolated var generatedContent: GeneratedContent {
+        let explicitNil = false
+        var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+        addProperty(name: "type", value: self.type)
+        addProperty(name: "value", value: self.value)
+        return GeneratedContent(
+            properties: properties,
+            uniquingKeysWith: { _, second in
+                second
+            }
+        )
+        func addProperty(name: String, value: some Generable) {
+          properties.append((name: name, value: value))
+        }
+        func addProperty(name: String, value: (some Generable)?) {
+          if explicitNil || value != nil {
+            properties.append((name: name, value: value))
+          }
+        }
+    }
+}
+#endif
+
+private nonisolated struct DiscriminatedFallback: nonisolated FoundationModels.Generable {
+    @Guide(.constant("fallback"))
+    let type: String
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.type = try content.value(forProperty: "type")
+    }
+    nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+        FoundationModels.GenerationSchema(
+            type: Self.self,
+            properties: [
+                FoundationModels.GenerationSchema.Property(name: "type", type: String.self, guides: [.constant("fallback")])
+            ]
+        )
+    }
+    nonisolated var generatedContent: GeneratedContent {
+        let explicitNil = false
+        var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+        addProperty(name: "type", value: self.type)
+        return GeneratedContent(
+            properties: properties,
+            uniquingKeysWith: { _, second in
+                second
+            }
+        )
+        func addProperty(name: String, value: some Generable) {
+          properties.append((name: name, value: value))
+        }
+        func addProperty(name: String, value: (some Generable)?) {
+          if explicitNil || value != nil {
+            properties.append((name: name, value: value))
+          }
+        }
+    }
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    switch self {
+    #if os(macOS)
+    case .platform(let value):
+    GeneratedContent(
+        properties: [
+            "type": "platform",
+            "value": value
+        ]
+    )
+    #endif
+    case .fallback:
+    GeneratedContent(
+        properties: [
+            "type": "fallback",
+
+        ]
+    )
+    }
+}
+=== __swiftmacro_4main16ConditionalCasesO21DiscriminatedFallback33_5175EFB931C584803D431EB521CF8A39LLV4type5GuidefMp_.swift
+
+=== __swiftmacro_4main16ConditionalCasesO21DiscriminatedPlatform33_5175EFB931C584803D431EB521CF8A39LLV4type5GuidefMp_.swift
+
+=== __swiftmacro_4main21ConditionalProperties9GenerablefMe_.swift
+extension ConditionalProperties: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        #if os(macOS)
+        self.platform = try content.value(forProperty: "platform")
+        #endif
+        self.value = try content.value(forProperty: "value")
+    }
+}
+=== __swiftmacro_4main21ConditionalProperties9GenerablefMm_.swift
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    var properties = [FoundationModels.GenerationSchema.Property]()
+    #if os(macOS)
+    properties.append(FoundationModels.GenerationSchema.Property(name: "platform", type: String.self))
+    #endif
+    properties.append(FoundationModels.GenerationSchema.Property(name: "value", type: Int.self))
+    return FoundationModels.GenerationSchema(
+        type: Self.self,
+        properties: properties
+    )
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    let explicitNil = false
+    var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+    #if os(macOS)
+    addProperty(name: "platform", value: self.platform)
+    #endif
+    addProperty(name: "value", value: self.value)
+    return GeneratedContent(
+        properties: properties,
+        uniquingKeysWith: { _, second in
+            second
+        }
+    )
+    func addProperty(name: String, value: some Generable) {
+      properties.append((name: name, value: value))
+    }
+    func addProperty(name: String, value: (some Generable)?) {
+      if explicitNil || value != nil {
+        properties.append((name: name, value: value))
+      }
+    }
+}
+
+nonisolated struct PartiallyGenerated: Identifiable, nonisolated FoundationModels.ConvertibleFromGeneratedContent {
+    var id: GenerationID
+    #if os(macOS)
+    var platform: String.PartiallyGenerated?
+    #endif
+    var value: Int.PartiallyGenerated?
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.id = content.id ?? GenerationID()
+        #if os(macOS)
+        self.platform = try content.value(forProperty: "platform")
+        #endif
+        self.value = try content.value(forProperty: "value")
+    }
+}

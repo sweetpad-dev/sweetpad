@@ -1,28 +1,40 @@
-//! Linux bootstrap over the public setup sources embedded in the CLI.
-use std::path::PathBuf;
+//! `sweetpad setup`: make a Linux machine build for Apple platforms. Each
+//! step checks whether its result is already there and skips when it is,
+//! so running setup again is cheap.
+use std::fmt::Write as _;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use clap::Args;
-use serde_json::json;
+use serde_json::{Value, json};
 
-use super::sdk::{Report, default_sdk, home};
+use super::sdk::{ImportArgs, Report, default_sdk, home};
+use crate::cli::linux_setup::{self, host, swift};
 use crate::cli::{CliError, CommandResult, Context, ErrorKind, Rendered};
 
 #[derive(Debug, Args)]
+#[allow(clippy::struct_excessive_bools)] // independent setup options
+#[command(group(
+    clap::ArgGroup::new("source")
+        .required(true)
+        .args(["sdk_archive", "xcode", "no_sdk"]),
+))]
 pub struct SetupArgs {
     /// Sweetpad SDK export with its checksum, or a private Xcode .xip/.aea archive.
-    #[arg(
-        long = "sdk",
-        required_unless_present = "xcode",
-        conflicts_with = "xcode"
-    )]
+    #[arg(long = "sdk")]
     pub sdk_archive: Option<PathBuf>,
     /// Download this Xcode release from Apple, then import its SDKs.
-    #[arg(long, required_unless_present = "sdk_archive")]
+    #[arg(long)]
     pub xcode: Option<String>,
+    /// Set up the host packages and Swift only, without a Darwin SDK.
+    #[arg(long)]
+    pub no_sdk: bool,
     #[command(flatten)]
     pub session: super::auth::SessionArgs,
-    /// Use existing host packages instead of installing them with APT or pacman.
+    /// Install missing host packages with APT or pacman (uses sudo unless root).
+    #[arg(long, conflicts_with = "skip_system_packages")]
+    pub install_system_packages: bool,
+    /// Continue setup even if some host packages are missing.
     #[arg(long)]
     pub skip_system_packages: bool,
     /// AEA symmetric key or Apple FCS private key file, for offline decryption.
@@ -37,20 +49,75 @@ pub struct SetupArgs {
     /// Replace a different SDK after successful import.
     #[arg(long)]
     pub replace_sdk: bool,
-    /// Override the embedded public setup sources with this source root.
-    #[arg(long)]
-    pub setup_dir: Option<PathBuf>,
-    /// Generated shell environment file (default: ~/.config/sweetpad/linux-env.sh).
+    /// Shell environment file for running Swift by hand (default: ~/.config/sweetpad/linux-env.sh).
     #[arg(long)]
     pub env_file: Option<PathBuf>,
 }
 
+/// One setup step's outcome: what it found or did.
+enum Outcome {
+    Ready(String),
+    Done(String),
+}
+
+/// Reports each step as it starts and ends: notes on the terminal, events
+/// under `-o ndjson`, and a list in the final report.
+struct Steps<'a> {
+    ctx: &'a Context,
+    done: Vec<Value>,
+}
+
+impl Steps<'_> {
+    fn run(
+        &mut self,
+        id: &str,
+        title: &str,
+        step: impl FnOnce(&mut dyn FnMut(&str)) -> Result<Outcome, CliError>,
+    ) -> Result<(), CliError> {
+        let ctx = self.ctx;
+        ctx.out
+            .ndjson_event(&json!({"event": "setupStep", "step": id, "status": "started"}));
+        let mut note = |line: &str| {
+            ctx.out.note(line);
+            ctx.out
+                .ndjson_event(&json!({"event": "setupProgress", "step": id, "message": line}));
+        };
+        let outcome = step(&mut note).map_err(|error| {
+            ctx.out.ndjson_event(
+                &json!({"event": "setupStep", "step": id, "status": "failed", "message": error.to_string()}),
+            );
+            let diagnostics = vec![json!({"stage": id})];
+            error.diagnostics(diagnostics)
+        })?;
+        let (status, detail) = match outcome {
+            Outcome::Ready(detail) => ("ready", detail),
+            Outcome::Done(detail) => ("done", detail),
+        };
+        ctx.out.note(&format!("{title}: {detail}"));
+        let record = json!({"step": id, "status": status, "detail": detail});
+        ctx.out.ndjson_event(
+            &json!({"event": "setupStep", "step": id, "status": status, "detail": detail}),
+        );
+        self.done.push(record);
+        Ok(())
+    }
+}
+
+#[allow(clippy::too_many_lines)] // the steps, in order
 pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
     if !cfg!(target_os = "linux") || !cfg!(any(target_arch = "aarch64", target_arch = "x86_64")) {
         return Err(
-            CliError::new("sweetpad setup requires ARM64 or x86_64 Linux").kind(ErrorKind::Usage),
+            CliError::new("sweetpad setup runs on ARM64 or x86_64 Linux").kind(ErrorKind::Usage),
         );
     }
+    let pins = super::sdk::toolchain();
+    let host =
+        host::current(&pins.host_packages).map_err(|e| CliError::new(e).kind(ErrorKind::Usage))?;
+    for warning in &host.warnings {
+        ctx.out.warn(warning);
+    }
+    // The Xcode download and the archive check fail before anything is
+    // installed.
     let downloaded = args
         .xcode
         .as_ref()
@@ -74,147 +141,168 @@ pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
             downloaded
                 .as_ref()
                 .and_then(|data| data["archive"].as_str())
-                .map(std::path::Path::new)
+                .map(Path::new)
         })
-        .ok_or_else(|| {
-            CliError::new("Supply --sdk ARCHIVE or --xcode VERSION").kind(ErrorKind::Usage)
-        })?
-        .canonicalize()
-        .map_err(|e| CliError::new(format!("read SDK archive: {e}")))?;
-    let root = setup_root(args.setup_dir.as_deref())?;
-    let script = root.join("sweetpad-lib/ci/linux-setup.sh");
-    if !script.is_file() {
-        return Err(
-            CliError::new("Setup sources are missing from the selected source root")
-                .kind(ErrorKind::ToolMissing),
-        );
+        .map(|archive| {
+            archive
+                .canonicalize()
+                .map_err(|e| CliError::new(format!("Couldn't read {}: {e}", archive.display())))
+        })
+        .transpose()?;
+    if let Some(archive) = &archive {
+        crate::cli::sdk_import::check(archive, &pins.sdk_toolchain()).map_err(CliError::new)?;
     }
     let destination = std::path::absolute(args.sdk_path.clone().unwrap_or_else(default_sdk))
         .map_err(|e| CliError::new(format!("resolve SDK destination: {e}")))?;
-    let pins = super::sdk::toolchain();
-    // Python redirects every bootstrap progress line to stderr, so stdout stays JSON-safe.
-    let mut bootstrap = Command::new("python3");
-    bootstrap.args(["-c", "import subprocess,sys; sys.exit(subprocess.call(['bash',sys.argv[1]],stdout=sys.stderr))"])
-        .arg(script).env("SWEETPAD_SKIP_RUST", "1")
-        .env("SWEETPAD_SKIP_SYSTEM_PACKAGES", if args.skip_system_packages { "1" } else { "0" })
-        .env("SWIFT_VERSION", &pins.swift)
-        .env("XTOOL_VERSION", &pins.xtool)
-        .env("XTOOL_SHA256", &pins.xtool_sha256[std::env::consts::ARCH])
-        .env("SWEETPAD_NONINTERACTIVE", if ctx.out.is_interactive() { "0" } else { "1" })
-        .env("SWEETPAD_SDK_ARCHIVE", archive).env("SWEETPAD_DARWIN_SDK", &destination)
-        .env("SWEETPAD_REFRESH_SDK", if args.replace_sdk { "1" } else { "0" })
-        .stdin(Stdio::inherit()).stdout(Stdio::inherit()).stderr(Stdio::inherit());
-    if let Some(path) = &args.aea_key_file {
-        bootstrap.env("SWEETPAD_AEA_KEY_FILE", path);
+    let interactive = ctx.out.is_interactive();
+    let mut steps = Steps {
+        ctx,
+        done: Vec::new(),
+    };
+
+    steps.run("packages", "Host packages", |_| {
+        let Some(manager) = host.manager else {
+            return Ok(Outcome::Ready(format!(
+                "using what is installed on {}",
+                host.name
+            )));
+        };
+        let missing = host::missing_packages(&host).map_err(CliError::new)?;
+        if missing.is_empty() {
+            return Ok(Outcome::Ready(format!(
+                "all {} installed",
+                host.packages.len()
+            )));
+        }
+        if !args.install_system_packages {
+            let detail = host::missing_detail(manager, &missing);
+            if args.skip_system_packages {
+                return Ok(Outcome::Ready(format!("Skipped. {detail}")));
+            }
+            return Err(CliError::new(detail).kind(ErrorKind::ToolMissing));
+        }
+        host::install(&host, &missing, interactive).map_err(CliError::new)?;
+        Ok(Outcome::Done(format!(
+            "installed {} with {}",
+            missing.join(" "),
+            manager.name()
+        )))
+    })?;
+
+    steps.run("swift", &format!("Swift {}", pins.swift), |note| {
+        if let Some(found) = swift::find(&pins.swift) {
+            swift::probe(&found, &host).map_err(CliError::new)?;
+            return Ok(Outcome::Ready(found.bin.display().to_string()));
+        }
+        let installed = swift::install(&host, &pins.swift, note)
+            .map_err(|e| CliError::new(e).kind(ErrorKind::ToolMissing))?;
+        Ok(Outcome::Done(installed.bin.display().to_string()))
+    })?;
+
+    steps.run("archiver", "Darwin archiver", |_| {
+        linux_setup::archiver()
+            .map(|path| Outcome::Ready(path.display().to_string()))
+            .ok_or_else(|| {
+                CliError::new("The pinned Swift toolchain is missing llvm-ar")
+                    .kind(ErrorKind::ToolMissing)
+            })
+    })?;
+
+    let mut imported = Value::Null;
+    if let Some(archive) = &archive {
+        steps.run("sdk", "Darwin SDK", |note| {
+            let report = super::sdk::import(
+                &ImportArgs {
+                    archive: Some(archive.clone()),
+                    xcode: None,
+                    appintents_phrases: None,
+                    build_machine_os_build: None,
+                    install_path: Some(destination.clone()),
+                    replace: args.replace_sdk,
+                    aea_key_file: args.aea_key_file.clone(),
+                    aea_public_key_file: args.aea_public_key_file.clone(),
+                },
+                note,
+            )
+            .map_err(CliError::new)?;
+            let detail = destination.display().to_string();
+            let reused = report["reused"] == true;
+            imported = report;
+            Ok(if reused {
+                Outcome::Ready(detail)
+            } else {
+                Outcome::Done(detail)
+            })
+        })?;
     }
-    if let Some(path) = &args.aea_public_key_file {
-        bootstrap.env("SWEETPAD_AEA_PUBLIC_KEY_FILE", path);
-    }
-    run_bootstrap(&mut bootstrap, ctx.out.is_json() || ctx.out.is_ndjson())?;
+
     let env_file = std::path::absolute(
         args.env_file
             .clone()
             .unwrap_or_else(|| home().join(".config/sweetpad/linux-env.sh")),
     )
     .map_err(|e| CliError::new(format!("resolve environment file: {e}")))?;
-    std::fs::create_dir_all(env_file.parent().unwrap())
-        .map_err(|e| CliError::new(e.to_string()))?;
-    std::fs::write(&env_file, environment_contents(&destination))
-        .map_err(|e| CliError::new(e.to_string()))?;
-    let sample = validate_sample(&root, &destination)?;
-    Ok(Rendered::data(Report(
-        json!({"configured": true, "sdkPath": destination,
-        "environmentFile": env_file, "sampleBuild": sample, "setupSourcePath": root,
+    let swift_bin = swift::find(&pins.swift).map(|found| found.bin);
+    steps.run("environment", "Environment file", |_| {
+        std::fs::create_dir_all(env_file.parent().unwrap_or(Path::new("/")))
+            .and_then(|()| {
+                std::fs::write(
+                    &env_file,
+                    environment_contents(
+                        archive.as_ref().map(|_| destination.as_path()),
+                        swift_bin.as_deref(),
+                    ),
+                )
+            })
+            .map_err(|e| CliError::new(format!("Couldn't write {}: {e}", env_file.display())))?;
+        Ok(Outcome::Done(env_file.display().to_string()))
+    })?;
+
+    let mut sample = Value::Null;
+    if archive.is_some() {
+        steps.run("sample", "Sample build", |_| {
+            sample = validate_sample(&destination)?;
+            Ok(Outcome::Done("an iOS app built".into()))
+        })?;
+    }
+    let done = steps.done;
+    Ok(Rendered::data(Report(json!({
+        "configured": true,
+        "host": host.name,
+        "steps": done,
+        "sdkPath": archive.as_ref().map(|_| &destination),
+        "sdk": imported,
+        "environmentFile": env_file,
+        "sampleBuild": sample,
         "download": downloaded,
-        "nextStep": "Source the environment file, then run sweetpad doctor --target ios"}),
-    )))
+        "nextStep": if archive.is_some() {
+            "Run sweetpad doctor --target ios, then build your project with sweetpad build"
+        } else {
+            "Import a Darwin SDK with sweetpad setup --sdk ARCHIVE to build for Apple platforms"
+        },
+    }))))
 }
 
-fn run_bootstrap(command: &mut Command, machine: bool) -> Result<(), CliError> {
-    let missing = |error| {
-        CliError::new(format!(
-            "start Linux setup: {error}; install python3 before running setup"
-        ))
-        .kind(ErrorKind::ToolMissing)
-    };
-    if machine {
-        let output = command
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .map_err(missing)?;
-        if !output.status.success() {
-            return Err(bootstrap_error(&String::from_utf8_lossy(&output.stderr)));
-        }
-    } else if !command.status().map_err(missing)?.success() {
-        return Err(CliError::new(
-            "Linux setup failed. Review the diagnostics and rerun the same command.",
-        ));
+/// `linux-env.sh`, for running `swift` by hand: sweetpad finds the SDK and
+/// Swift on its own. Swift's folder holds no `sweetpad`, so prepending it
+/// keeps the caller's choice of CLI.
+fn environment_contents(sdk: Option<&Path>, swift_bin: Option<&Path>) -> String {
+    let quote = |path: &Path| format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"));
+    let mut text = String::from("# Generated by sweetpad setup.\n");
+    if let Some(sdk) = sdk {
+        let _ = writeln!(text, "export SWEETPAD_DARWIN_SDK={}", quote(sdk));
     }
-    Ok(())
-}
-
-fn bootstrap_error(stderr: &str) -> CliError {
-    let tail = String::from_utf8_lossy(&stderr.as_bytes()[stderr.len().saturating_sub(16_384)..])
-        .into_owned();
-    let reason = tail.lines().rev().find_map(|line| {
-        serde_json::from_str::<serde_json::Value>(line)
-            .ok()
-            .and_then(|value| value["error"].as_str().map(str::to_string))
-    });
-    CliError::new(reason.map_or_else(
-        || "Linux setup failed. Review the bootstrap diagnostics.".into(),
-        |reason| format!("Linux setup failed: {reason}"),
-    ))
-    .diagnostics(vec![json!({"stage":"bootstrap","message":tail})])
-}
-
-fn setup_root(explicit: Option<&std::path::Path>) -> Result<PathBuf, CliError> {
-    let valid = |p: &std::path::Path| {
-        p.join("sweetpad-lib/ci/linux-setup.sh").is_file()
-            && p.join("sweetpad-lib/ci/linux-sdk.py").is_file()
-            && p.join("sweetpad-lib/ci/linux-toolchain.json").is_file()
-    };
-    if let Some(path) = explicit {
-        return valid(path).then(|| path.to_path_buf()).ok_or_else(|| {
-            CliError::new("The --setup-dir source root is missing public setup files.")
-                .kind(ErrorKind::ToolMissing)
-        });
+    if let Some(bin) = swift_bin {
+        let _ = writeln!(text, "export PATH={}\":$PATH\"", quote(bin));
     }
-    Ok(crate::cli::embedded::root()?.join("setup"))
+    text
 }
 
-fn environment_contents(sdk: &std::path::Path) -> String {
-    let quoted = sdk.to_string_lossy().replace('\'', "'\\''");
-    let swift = &super::sdk::toolchain().swift;
-    // Swift's directory contains no CLI. Preserve the caller's selected CLI
-    // before adding the directory of the Darwin libtool links. Swift Build and
-    // the macro plugin come from the package, beside the sweetpad binary.
-    format!(
-        "# Generated by sweetpad setup.\nexport SWEETPAD_DARWIN_SDK='{quoted}'\nexport PATH=\"$HOME/swift/swift-{swift}-RELEASE/usr/bin:$PATH:$HOME/bin\"\n"
-    )
-}
-
-fn validate_sample(
-    root: &std::path::Path,
-    sdk: &std::path::Path,
-) -> Result<serde_json::Value, CliError> {
-    let source_example = root.join("sweetpad-lib/ci/fixture-linux");
-    let packaged_example = root.parent().unwrap_or(root).join("examples/LinuxApp");
-    let project = if source_example.is_dir() {
-        source_example
-    } else {
-        packaged_example
-    }
-    .join("LinuxApp.xcodeproj");
-    let derived = home().join(".cache/sweetpad/setup-validation");
-    let path = format!(
-        "{}/bin:{}/swift/swift-{swift}-RELEASE/usr/bin:{}",
-        home().display(),
-        home().display(),
-        std::env::var("PATH").unwrap_or_default(),
-        swift = super::sdk::toolchain().swift
-    );
+/// Build the bundled sample app for iOS, the check that the toolchain, SDK
+/// and Swift Build work together.
+fn validate_sample(sdk: &Path) -> Result<Value, CliError> {
+    let project = crate::cli::embedded::root()?.join("examples/LinuxApp/LinuxApp.xcodeproj");
+    let derived = linux_setup::cache_dir().join("setup-validation");
     let result = Command::new(std::env::current_exe().map_err(|e| CliError::new(e.to_string()))?)
         .args(["build", "--project"])
         .arg(project)
@@ -230,7 +318,6 @@ fn validate_sample(
         ])
         .arg(derived)
         .args(["ARCHS=arm64", "CODE_SIGNING_ALLOWED=NO"])
-        .env("PATH", path)
         .env("SWEETPAD_DARWIN_SDK", sdk)
         .stdin(Stdio::null())
         .stderr(Stdio::piped())
@@ -294,49 +381,18 @@ mod tests {
     }
 
     #[test]
-    fn machine_setup_errors_retain_the_migration_flag_and_stage() {
-        let error = bootstrap_error(
-            "setup progress\n{\"error\":\"SDK already exists; use --replace-sdk\"}\n",
+    fn environment_puts_swift_first_and_quotes_sdk_paths() {
+        let text = environment_contents(
+            Some(Path::new("/private/SDK's directory")),
+            Some(Path::new("/opt/swift/usr/bin")),
         );
-        let value = error.json();
-        assert!(value["message"].as_str().unwrap().contains("--replace-sdk"));
-        assert_eq!(value["diagnostics"][0]["stage"], "bootstrap");
-    }
-
-    fn sources(path: &std::path::Path) {
-        for file in [
-            "sweetpad-lib/ci/linux-setup.sh",
-            "sweetpad-lib/ci/linux-sdk.py",
-            "sweetpad-lib/ci/linux-toolchain.json",
-        ] {
-            let p = path.join(file);
-            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-            std::fs::write(p, "fixture").unwrap();
-        }
-    }
-
-    #[test]
-    fn explicit_public_sources_are_supported() {
-        let dir = TempDir::new("setup-source-override");
-        sources(&dir);
-        assert_eq!(setup_root(Some(&dir)).unwrap(), dir.join(""));
-    }
-
-    #[test]
-    fn explicit_incomplete_source_never_falls_back() {
-        let dir = TempDir::new("setup-source");
-        sources(&dir.join("source"));
-        assert!(setup_root(Some(&dir.join("missing"))).is_err());
-    }
-
-    #[test]
-    fn environment_preserves_cli_and_quotes_sdk_paths() {
-        let text = environment_contents(std::path::Path::new("/private/SDK's directory"));
         assert!(text.contains("SDK'\\''s directory"));
-        assert!(!text.contains(".local/bin"));
-        assert!(text.contains("$PATH:$HOME/bin"));
-        assert!(!text.contains("SWEETPAD_SWBUILD"));
-        assert!(!text.contains("SWEETPAD_MACROS"));
+        assert!(text.contains("export PATH='/opt/swift/usr/bin'\":$PATH\""));
+        assert!(!text.contains("$HOME/bin"));
+        assert_eq!(
+            environment_contents(None, None),
+            "# Generated by sweetpad setup.\n"
+        );
     }
 
     #[test]
@@ -351,7 +407,11 @@ mod tests {
         }
         let env_file = dir.join("environment.sh");
         let sdk = dir.join("SDK's directory");
-        std::fs::write(&env_file, environment_contents(&sdk)).unwrap();
+        std::fs::write(
+            &env_file,
+            environment_contents(Some(&sdk), Some(&dir.join("swift/usr/bin"))),
+        )
+        .unwrap();
         let output = Command::new("bash")
             .args([
                 "-c",

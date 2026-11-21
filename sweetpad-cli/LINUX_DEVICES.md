@@ -12,6 +12,12 @@ If every configured device fails, the command reports those failures instead of 
 Both values must be positive numbers of at most 3600 seconds.
 Live logs and console streams retain their streaming behavior. Use the CLI's bounded log options for automation.
 
+After a reboot or first connection, unlock the iPhone and enable Developer Mode.
+Before an Instruments operation, the USB and Wi-Fi adapters check the mounted
+image, mount one for the phone’s iOS version if needed, and reconnect to
+discover the new services. The first mount can need internet access
+to download the image and personalize it through Apple.
+
 ## Python setup
 
 Create a private Python environment and install the pinned dependency:

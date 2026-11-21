@@ -12,8 +12,9 @@
 //! product locator finds the app.
 //!
 //! Off macOS there is no Xcode to take the SDKs from. They come from a Darwin
-//! Swift SDK bundle (`xtool sdk install` makes one from an Xcode.app), with
-//! its linker, and a few settings stand in for tools that only run on macOS.
+//! Swift SDK bundle, which `sweetpad sdk write-bundle` writes from an
+//! Xcode.app (see [`super::sdk_bundle`]), and a few settings stand in for
+//! tools that only run on macOS.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
@@ -33,6 +34,7 @@ use crate::cli::xcodebuild::{self, BuildAction, BuildPlan, CommandPreview};
 use crate::cli::{CliError, ErrorKind, process};
 
 mod host_macros;
+mod project_plugins;
 pub(crate) mod scheme_actions;
 mod test_manifest;
 
@@ -185,7 +187,7 @@ pub fn run(plan: &BuildPlan<'_>, out: &Output) -> Result<Option<buildlog::BuildS
     let detail = recorded
         .as_ref()
         .map_or_else(String::new, |p| format!("; full log: {}", p.display()));
-    let killer = killed_by(status, program == "bwrap");
+    let killer = killed_by(status, Path::new(&program).ends_with("bwrap"));
     if killer.is_some() {
         // Its tasks outlive it, with nothing left to finish or stop them.
         process::stop_leftovers();
@@ -358,25 +360,31 @@ pub(crate) fn darwin_shell_command(
     program: &Path,
     arguments: &[String],
 ) -> Result<(String, Vec<String>), CliError> {
+    use std::os::unix::fs::MetadataExt as _;
     let program = program.to_string_lossy().into_owned();
     if !cfg!(target_os = "linux") {
         return Ok((program, arguments.to_vec()));
     }
     let shell = std::fs::canonicalize("/bin/sh").map_err(|e| CliError::new(e.to_string()))?;
     let bash = std::fs::canonicalize("/bin/bash").map_err(|e| CliError::new(e.to_string()))?;
-    if shell == bash {
+    let identity = |path: &Path| std::fs::metadata(path).map(|m| (m.dev(), m.ino()));
+    if shell == bash || identity(&shell).is_ok_and(|id| identity(&bash).ok() == Some(id)) {
         return Ok((program, arguments.to_vec()));
     }
-    if super::darwin_tools::find_program("bwrap").is_none() {
+    let wrapper = std::env::current_exe()
+        .ok()
+        .and_then(|exe| sweetpad_lib::xcode::packaged_helper_beside(&exe, "bwrap"))
+        .or_else(|| super::linux_setup::on_path("bwrap"));
+    let Some(wrapper) = wrapper else {
         return Err(
             CliError::new("building Xcode scripts on Linux needs 'bubblewrap' and Bash")
                 .kind(ErrorKind::ToolMissing)
                 .tip(Some(
-                    "install Bash and bubblewrap with your distribution's package manager"
+                    "install the SweetPad Linux package with its libexec/sweetpad/bwrap helper, or install bubblewrap"
                         .to_string(),
                 )),
         );
-    }
+    };
     let mut args = vec![
         "--die-with-parent".into(),
         "--bind".into(),
@@ -394,7 +402,7 @@ pub(crate) fn darwin_shell_command(
         program,
     ];
     args.extend(arguments.iter().cloned());
-    Ok(("bwrap".into(), args))
+    Ok((wrapper.display().to_string(), args))
 }
 
 /// Everything a `swbuild build` needs: the command, its environment, and the
@@ -414,8 +422,8 @@ struct Invocation {
     /// The folder of links that run this binary as the Xcode tools it stands
     /// in for, on a host without Xcode's.
     tools: Option<PathBuf>,
-    /// The Darwin SDK's linker, which the linker stand-in runs.
-    linker: Option<PathBuf>,
+    /// LLVM's multicall binary, which the linker and `dsymutil` stand-ins run.
+    llvm: Option<PathBuf>,
     /// Where the toolset a host without Xcode needs goes (see [`toolset`]).
     toolset: Option<PathBuf>,
     /// The plugin for Apple's macros that the Darwin SDK has none for (see
@@ -557,6 +565,11 @@ impl Invocation {
         }
         if let Some(tools) = &tools {
             let tool = |name: &str| tools.join(name).display().to_string();
+            for (key, value) in &mut overrides {
+                if key == "LIBTOOL" || key.starts_with("LIBTOOL[sdk=") {
+                    *value = tool("llvm-libtool-darwin");
+                }
+            }
             overrides.insert("CHMOD".to_string(), tool("sweetpad-chmod"));
             overrides.insert("ASSETCATALOG_EXEC".to_string(), tool("actool"));
         }
@@ -589,7 +602,7 @@ impl Invocation {
             program: swbuild_program()?,
             args: swbuild_args(plan, &parameters_file, &pif),
             cwd: xcodebuild::working_dir(plan.container),
-            linker: host.as_ref().map(|h| h.bundle.join("toolset/bin/ld64.lld")),
+            llvm: host.as_ref().map(|_| darwin_linker()).transpose()?,
             macros: host.as_ref().and_then(|_| macro_plugin()),
             package_sysroot: host.as_ref().map(|h| h.sdk_root(&sdk)).transpose()?,
             env: host
@@ -646,7 +659,6 @@ impl Invocation {
                 Some(&self.locations.folder),
                 test_plan_name(plan.passthrough),
             )?;
-            let names = target_names(&targets);
             let missing: Vec<&String> = targets
                 .iter()
                 .filter(|target| scheme_pif_target(&pif, target).is_none())
@@ -676,7 +688,7 @@ impl Invocation {
                 let dumped = self.dump_package_pif(&root, out)?;
                 sweetpad_lib::workspace_pif::add_package_root(&mut pif, &dumped, &root);
             }
-            warn_project_plugins(&pif, &names, out);
+            project_plugins::prepare(self, &mut pif, &targets, &packages, out)?;
         }
         let host_tools = if self.tools.is_some() {
             host_macros::prepare(
@@ -709,7 +721,7 @@ impl Invocation {
         write(&self.pif, &Value::Array(pif))?;
         write(&self.parameters_file, &self.parameters)?;
         if let Some(tools) = &self.tools {
-            link_tools(tools, self.linker.as_deref())?;
+            link_tools(tools, self.llvm.as_deref())?;
         }
         if let (Some(path), Some(tools)) = (&self.toolset, &self.tools) {
             write_changed(path, toolset(tools, self.macros.as_deref()).as_bytes())?;
@@ -748,12 +760,21 @@ impl Invocation {
                 .join("SweetPad/PackageRoots")
                 .join(sweetpad_lib::derived_data::container_hash(root))
         };
+        self.dump_pif_in(root, &scratch, out)
+    }
+
+    fn dump_pif_in(
+        &self,
+        root: &Path,
+        scratch: &Path,
+        out: &Output,
+    ) -> Result<Vec<Value>, CliError> {
         // Xcode builds a dynamic library product as a framework in
         // `PackageFrameworks`, which an app embeds; SwiftPM's own builds
         // make a dylib unless asked otherwise.
         let stdout = swift_package(
             root,
-            &scratch,
+            scratch,
             &["--experimental-build-dylibs-as-frameworks", "dump-pif"],
             self.package_sysroot.is_some(),
             self.package_sysroot.as_deref(),
@@ -790,7 +811,7 @@ fn swift_package(
         out.use_color_stderr(),
     );
     // A git prompt for credentials would wait unseen behind the spinner.
-    let mut swift = Command::new("swift");
+    let mut swift = Command::new(crate::cli::swiftpm::swift_program());
     swift
         .arg("package")
         .arg("--package-path")
@@ -799,6 +820,7 @@ fn swift_package(
         .arg(scratch)
         .args(command)
         .env("GIT_TERMINAL_PROMPT", "0");
+    super::codesign::hide_from_package_plugins(&mut swift);
     if apple {
         // pkg-config runs on the host, but its headers belong to the
         // destination SDK. Keep host macro builds outside this environment.
@@ -948,18 +970,6 @@ fn same_pins(a: &[u8], b: &[u8]) -> bool {
     pins(a).is_some_and(|a| Some(a) == pins(b))
 }
 
-/// Swift Build runs a package target's build-tool plugins, which SwiftPM
-/// evaluates, but not a project target's, which Xcode evaluates itself.
-fn warn_project_plugins(pif: &[Value], names: &[String], out: &Output) {
-    for (target, plugin) in sweetpad_lib::workspace_pif::project_target_plugins(pif, names) {
-        out.warn(&format!(
-            "'{target}' runs the build-tool plugin '{plugin}', which Swift Build runs only \
-             for package targets; this build skips the plugin's commands and the files they \
-             generate"
-        ));
-    }
-}
-
 /// Take the settings the engine adds to rather than sets, `$(inherited)
 /// <addition>`, such as tvOS's `-fuse-ld=lld`, out of `overrides`. They go
 /// in the build's top settings level, above the user's command-line
@@ -1087,7 +1097,7 @@ fn tools_dir(inputs: &Path, bundle: &Path) -> Result<PathBuf, CliError> {
 
 /// The files of a Darwin SDK bundle that change when it's imported from
 /// another Xcode.
-const SDK_IDENTITY: [&str; 3] = ["info.json", "darwin-sdk-version.txt", "version.plist"];
+const SDK_IDENTITY: [&str; 2] = ["sweetpad-sdk.json", "version.plist"];
 
 /// A short hash of this binary (its version, path, size and time) and of
 /// the Darwin SDK in `bundle` (its path and [`SDK_IDENTITY`]).
@@ -1128,14 +1138,15 @@ const STALE_TOOLS: std::time::Duration = std::time::Duration::from_secs(24 * 60 
 /// `ibtool`, the Interface Builder compiler (see [`super::ibtool`]), `momc`,
 /// the Core Data model compiler (see [`super::momc`]), `xcstringstool`, the
 /// String Catalog compiler (see [`super::xcstringstool`]), and the small
-/// Darwin tools like `lipo` (see [`super::darwin_tools`]), with the Darwin
-/// SDK's `linker` beside them for the linker stand-in to run.
+/// Darwin tools like `lipo` (see [`super::darwin_tools`]), with LLVM's
+/// multicall binary, `llvm`, beside them for the linker and `dsymutil`
+/// stand-ins to run.
 ///
 /// The links are made in a folder of their own that is then renamed to
 /// `dir`, so a build running at the same time never finds one missing. A
 /// `dir` that already holds them all stays as it is. Folders beside it,
 /// for another sweetpad or SDK, go once they're a day old.
-fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
+fn link_tools(dir: &Path, llvm: Option<&Path>) -> Result<(), CliError> {
     let fail = |e: std::io::Error| {
         CliError::new(format!(
             "couldn't link the stand-ins for Xcode's tools into {}: {e}",
@@ -1143,7 +1154,7 @@ fn link_tools(dir: &Path, linker: Option<&Path>) -> Result<(), CliError> {
         ))
     };
     let exe = std::env::current_exe().map_err(fail)?;
-    let links = stand_in_links(&exe, linker);
+    let links = stand_in_links(&exe, llvm);
     let intact = |dir: &Path| {
         links
             .iter()
@@ -1201,12 +1212,9 @@ fn remove_stale_tools(current: &Path) {
 }
 
 /// The stand-ins' names and what each links to: this binary, `exe`, for
-/// Xcode's tools, and the Darwin SDK's `linker` and its `dsymutil`.
-fn stand_in_links(exe: &Path, linker: Option<&Path>) -> Vec<(&'static str, PathBuf)> {
-    let dsymutil = linker
-        .and_then(Path::parent)
-        .map(|p| p.join("dsymutil"))
-        .filter(|p| p.is_file());
+/// Xcode's tools, and `llvm`, LLVM's multicall binary, for the linker and
+/// `dsymutil` the stand-ins for those run.
+fn stand_in_links(exe: &Path, llvm: Option<&Path>) -> Vec<(&'static str, PathBuf)> {
     [
         "actool",
         "ibtool",
@@ -1224,9 +1232,40 @@ fn stand_in_links(exe: &Path, linker: Option<&Path>) -> Vec<(&'static str, PathB
     .iter()
     .chain(super::darwin_tools::TOOLS)
     .map(|tool| (*tool, exe.to_path_buf()))
-    .chain(linker.map(|l| (super::darwin_tools::SDK_LINKER, l.to_path_buf())))
-    .chain(dsymutil.map(|p| (super::darwin_tools::SDK_DSYMUTIL, p)))
+    .chain(llvm.into_iter().flat_map(|llvm| {
+        [
+            super::darwin_tools::SDK_LINKER,
+            super::darwin_tools::SDK_DSYMUTIL,
+        ]
+        .map(|name| (name, llvm.to_path_buf()))
+    }))
     .collect()
+}
+
+/// LLVM's multicall binary with LLD and `dsymutil`, which links and makes
+/// dSYMs for Apple targets: `SWEETPAD_LLVM`, else the one the Linux package
+/// installed with this binary. Swift's own LLD refuses to link for iOS.
+pub(crate) fn darwin_linker() -> Result<PathBuf, CliError> {
+    std::env::var_os("SWEETPAD_LLVM")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|exe| sweetpad_lib::xcode::packaged_helper_beside(&exe, "llvm"))
+        })
+        .ok_or_else(|| {
+            CliError::new("LLVM's Apple linker isn't installed with sweetpad")
+                .kind(ErrorKind::ToolMissing)
+                .tip(Some(
+                    "sweetpad's Linux archive and Debian package ship it as llvm in \
+                     libexec/sweetpad beside the binary. If you replaced only the sweetpad \
+                     binary, also replace the libexec/sweetpad folder from the same release, \
+                     or reinstall from the archive or the .deb. SWEETPAD_LLVM can point at \
+                     an LLVM 23.1.3 or later built with LLD and dsymutil as one multicall \
+                     binary"
+                        .to_string(),
+                ))
+        })
 }
 
 /// The `swbuild` to run: `SWEETPAD_SWBUILD`, else the one the Linux package
@@ -1599,13 +1638,13 @@ fn parameters(
 }
 
 /// Where the Darwin Swift SDK bundle is: `SWEETPAD_DARWIN_SDK`, else the one
-/// `xtool sdk install` writes.
+/// `sweetpad setup` imports.
 pub(super) fn darwin_sdk_bundle() -> PathBuf {
     sweetpad_lib::xcode::darwin_sdk_bundle()
 }
 
-/// A Darwin Swift SDK bundle: the Apple SDKs, Xcode's runtime libraries and a
-/// linker that writes Mach-O, which stand in for Xcode where there is none.
+/// A Darwin Swift SDK bundle: the Apple SDKs and Xcode's runtime libraries,
+/// which stand in for Xcode where there is none.
 struct DarwinSdk {
     bundle: PathBuf,
 }
@@ -1642,7 +1681,7 @@ impl DarwinSdk {
             return Ok(None);
         }
         let bundle = darwin_sdk_bundle();
-        if !bundle.join("toolset-swb.json").is_file() {
+        if !bundle.join("swift-sdk.json").is_file() {
             return Err(CliError::new(format!(
                 "no Darwin Swift SDK at {}, which a build for Apple platforms needs without Xcode",
                 bundle.display()
@@ -1661,10 +1700,11 @@ impl DarwinSdk {
     ///
     /// - `CODE_SIGNING_ALLOWED=NO`, unless the build is signed (see
     ///   [`Self::signs`]). A signed build sets `CODESIGN=codesign`, the
-    ///   stand-in, over the bundle's `true`, which leaves signing to xtool.
-    /// - `SWIFT_SDK_TOOLSETS`: the bundle's linker, which links for Apple
-    ///   platforms where the toolchain's own refuses to, and `toolset`, with
-    ///   what a build here needs on top (see [`toolset`]).
+    ///   stand-in, over the `true` the bundle's platforms set, which skips
+    ///   signing.
+    /// - `SWIFT_SDK_TOOLSETS`: the linker stand-in, which links for Apple
+    ///   platforms where the toolchain's own refuses to, and the compiler
+    ///   options a build here needs (see [`toolset`]).
     /// - `LM_SKIP_METADATA_EXTRACTION`: enable the portable App Intents
     ///   registration and language-model processors.
     /// - `SWIFT_STDLIB_TOOL_STRIP_BITCODE` and
@@ -1715,14 +1755,7 @@ impl DarwinSdk {
             ("LIBTOOL", "llvm-libtool-darwin".to_string()),
             ("DSYMUTIL", "dsymutil".to_string()),
             ("ONLY_ACTIVE_ARCH", "YES".to_string()),
-            (
-                "SWIFT_SDK_TOOLSETS",
-                format!(
-                    "{} {}",
-                    self.bundle.join("toolset-swb.json").display(),
-                    toolset.display()
-                ),
-            ),
+            ("SWIFT_SDK_TOOLSETS", toolset.display().to_string()),
             ("LM_SKIP_METADATA_EXTRACTION", "NO".to_string()),
             ("GENERATE_INTERMEDIATE_TEXT_BASED_STUBS", "NO".to_string()),
             ("SWIFT_STDLIB_TOOL_STRIP_BITCODE", "NO".to_string()),
@@ -1858,7 +1891,10 @@ impl DarwinSdk {
         fallback: bool,
         device: Option<String>,
     ) -> Vec<(String, Option<String>)> {
-        let mut path = vec![tools.to_path_buf(), self.bundle.join("toolset/bin")];
+        let mut path = vec![tools.to_path_buf()];
+        // The pinned Swift, wherever setup found or put it, ahead of any
+        // other Swift on PATH.
+        path.extend(super::linux_setup::swift::pinned().map(|swift| swift.bin.clone()));
         path.extend(
             std::env::var_os("PATH")
                 .iter()
@@ -3306,13 +3342,17 @@ mod tests {
         let bundle = dir.join("darwin.artifactbundle");
         std::fs::create_dir_all(&bundle).unwrap();
         std::fs::write(&exe, "one build").unwrap();
-        std::fs::write(bundle.join("info.json"), r#"{"xcodeVersion":"27.1"}"#).unwrap();
+        std::fs::write(bundle.join("sweetpad-sdk.json"), r#"{"xcodeBuild":"27A1"}"#).unwrap();
         let first = tools_fingerprint(&exe, &bundle);
         assert_eq!(first, tools_fingerprint(&exe, &bundle));
         std::fs::write(&exe, "a newer build").unwrap();
         let rebuilt = tools_fingerprint(&exe, &bundle);
         assert_ne!(first, rebuilt, "a new binary at the same path");
-        std::fs::write(bundle.join("info.json"), r#"{"xcodeVersion":"27.2"}"#).unwrap();
+        std::fs::write(
+            bundle.join("sweetpad-sdk.json"),
+            r#"{"xcodeBuild":"27B52"}"#,
+        )
+        .unwrap();
         assert_ne!(
             rebuilt,
             tools_fingerprint(&exe, &bundle),

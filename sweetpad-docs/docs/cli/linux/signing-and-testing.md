@@ -9,21 +9,25 @@ Running Apple tests still needs a Mac.
 
 ## Configure development signing
 
-Export your Apple Development certificate and its private key from Keychain Access as a P12 file, and collect the provisioning profiles for the app and each extension.
-Then point SweetPad at them and enter the password at a prompt:
+On Linux, put your Apple Development identity in `~/signing/development.p12` and the provisioning profiles in `~/signing/profiles/`. Include a profile for the app and each extension. The P12 contains the certificate and private key used to sign the code. The profiles specify the permitted bundle identifiers, entitlements, certificates, and devices.
+
+If your identity is in Keychain Access on a Mac, export the certificate **with its private key** as a password-protected P12. Transfer it privately to Linux.
+
+In Bash on Linux, set the paths and enter the P12 password at the prompt.
 
 ```bash
 export SWEETPAD_CODE_SIGN_P12="$HOME/signing/development.p12"
 export SWEETPAD_PROVISIONING_PROFILES="$HOME/signing/profiles"
-read -r -s -p 'P12 password: ' SWEETPAD_CODE_SIGN_P12_PASSWORD; printf '\n'
+read -r -s -p 'P12 password: ' SWEETPAD_CODE_SIGN_P12_PASSWORD
+printf '\n'
 export SWEETPAD_CODE_SIGN_P12_PASSWORD
 
 sweetpad build --project MyApp.xcodeproj --scheme MyApp \
   --destination 'generic/platform=iOS' --json --non-interactive
 ```
 
-The signer picks a matching profile from that folder, and only one that lists the device when the destination names one.
-Without the variable, it looks where Xcode keeps profiles.
+The signer selects a matching profile from that folder. A generic iOS destination has no device ID, so check that the development profile includes the iPhone you intend to use. When the destination names a device, SweetPad checks its ID during profile selection.
+If you omit `SWEETPAD_PROVISIONING_PROFILES`, SweetPad searches the standard Xcode profile directories.
 Build scripts, plugins, and scheme actions don't see the password or the App Store Connect key in their environment.
 
 `sweetpad doctor --target ios` lists the identities and profiles it finds.
@@ -32,47 +36,12 @@ Simulator builds need no signing.
 
 ### CocoaPods
 
-CocoaPods writes `/usr/bin/codesign` into its embed-frameworks scripts, and Linux has no such file, so a signed build fails in "[CP] Embed Pods Frameworks".
-After each `pod install`, point the scripts at SweetPad's signer:
+A generated CocoaPods script can call `/usr/bin/codesign` directly. On Linux, that path can cause a signed build to fail in the “[CP] Embed Pods Frameworks” phase.
+If your generated scripts contain this absolute path, point them at the signer on the build's PATH. Repeat the change after regenerating the scripts.
 
 ```bash
 sed -i 's|/usr/bin/codesign|codesign|' "ios/Pods/Target Support Files"/*/*-frameworks.sh
 ```
-
-## Build test products
-
-```bash
-sweetpad test build --project MyApp.xcodeproj --scheme MyApp \
-  --destination 'generic/platform=iOS Simulator' --json --non-interactive \
-  -- -derivedDataPath "$HOME/builds/MyAppTests" CODE_SIGNING_ALLOWED=NO
-```
-
-The JSON output's `xctestrunPath` names the test manifest that a Mac runs.
-When the manifest needs something Linux can't write, such as code coverage or sanitizers, the path is null and `xctestrunNote` says why.
-Add `-testPlan Smoke` after `--` to use another test plan from the scheme.
-
-For an iPhone, build with `generic/platform=iOS` and signing for the app, its tests, and the UI test runner.
-Unit tests on a device need a host app.
-
-## Run the tests on a Mac
-
-Copy the whole Products folder to the Mac as a tar archive, which keeps permissions and symbolic links:
-
-```bash
-tar -C "$HOME/builds/MyAppTests/Build" -czf MyAppTests.tar.gz Products
-```
-
-On the Mac, extract it and run the manifest from `xctestrunPath`:
-
-```bash
-tar -xzf MyAppTests.tar.gz
-sweetpad test run --project MyApp.xcodeproj --scheme MyApp \
-  --xctestrun Products/prebuilt.xctestrun --on SIMULATOR_UDID --json --non-interactive
-```
-
-This runs the Linux-built products without compiling them again.
-Paths the build put into test environment variables and arguments are changed to the Mac's project and products folders.
-Use the phone's UDID for signed iPhone products.
 
 ## Archive and distribute
 
@@ -115,3 +84,38 @@ sweetpad archive --project MyApp.xcodeproj --scheme MyApp \
 
 [Archive and distribute](../archive.md#uploading-to-app-store-connect) covers the key and the upload options.
 `sweetpad doctor --network` checks that Apple's services answer from the machine.
+
+## Build test products
+
+```bash
+sweetpad test build --project MyApp.xcodeproj --scheme MyApp --configuration Debug \
+  --destination 'generic/platform=iOS Simulator' --json --non-interactive \
+  -- -derivedDataPath "$HOME/builds/MyAppTests" CODE_SIGNING_ALLOWED=NO
+```
+
+Read `data.xctestrunPath` in the build report. It gives the generated manifest for this scheme, configuration, and platform.
+When the manifest needs something Linux can't write, such as code coverage or sanitizers, the path is null and `data.xctestrunNote` explains why. A successful compile alone does not guarantee a runnable manifest.
+Add `-testPlan Smoke` after `--` to use another test plan from the scheme.
+
+For an iPhone, build with `generic/platform=iOS` and signing for the app, its tests, and the UI test runner.
+Unit tests on a device need a host app.
+
+## Run the tests on a Mac
+
+Copy the whole Products folder to the Mac as a tar archive, which keeps permissions and symbolic links:
+
+```bash
+tar -C "$HOME/builds/MyAppTests/Build" -czf MyAppTests.tar.gz Products
+```
+
+Copy the archive to a Mac with a compatible Xcode and simulator runtime. From the same project revision, extract the archive. Use the filename from `data.xctestrunPath` under the extracted `Products/` directory. For the example above with the Debug configuration, run:
+
+```bash
+tar -xzf MyAppTests.tar.gz
+sweetpad test run --project MyApp.xcodeproj --scheme MyApp \
+  --xctestrun Products/MyApp-Debug-iphonesimulator.xctestrun --on SIMULATOR_UDID --json --non-interactive
+```
+
+This runs the Linux-built products without compiling them again.
+Paths the build put into test environment variables and arguments are changed to the Mac's project and products folders.
+Use the phone's UDID for signed iPhone products.

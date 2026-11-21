@@ -293,6 +293,78 @@ fn create(
     Ok(layout(&slices))
 }
 
+pub(super) fn file_description(path: &Path, data: &[u8]) -> String {
+    if data.starts_with(b"!<arch>\n") {
+        return "current ar archive".into();
+    }
+    let Ok((fat, parts)) = slices(path, data) else {
+        return "data".into();
+    };
+    let mut descriptions = Vec::new();
+    for part in parts {
+        let kind = match part
+            .data
+            .get(12..16)
+            .and_then(|v| v.try_into().ok())
+            .map(u32::from_le_bytes)
+        {
+            Some(1) => "object",
+            Some(2) => "executable",
+            Some(6) => "dynamically linked shared library",
+            Some(8) => "bundle",
+            Some(10) => "dSYM companion file",
+            _ => "binary",
+        };
+        descriptions.push(format!(
+            "Mach-O {} {} {kind}",
+            if part.cputype & 0x0100_0000 != 0 {
+                "64-bit"
+            } else {
+                "32-bit"
+            },
+            part.arch()
+        ));
+    }
+    if fat {
+        format!("Mach-O universal binary: {}", descriptions.join(", "))
+    } else {
+        descriptions.join("")
+    }
+}
+
+/// The requested architecture from a universal libtool input. Thin
+/// objects and LLVM bitcode pass directly to the archiver.
+pub(super) fn archive_slice<'a>(
+    path: &Path,
+    data: &'a [u8],
+    arch: &str,
+) -> Result<Option<&'a [u8]>, String> {
+    let wanted = arch_named(arch)?;
+    // LLVM bitcode (raw or wrapped) is indexed by llvm-ar.
+    if matches!(data.get(..4), Some(b"BC\xc0\xde" | b"\xde\xc0\x17\x0b")) {
+        return Ok(Some(data));
+    }
+    if data == b"!<arch>\n" {
+        return Ok(None);
+    }
+    let (_, parts) = slices(path, data)?;
+    Ok(parts
+        .into_iter()
+        .find(|part| part.is(wanted))
+        .map(|part| part.data))
+}
+
+/// A thin archive, or a universal file containing archives for every architecture.
+pub(crate) fn is_static_archive(path: &Path, data: &[u8]) -> bool {
+    data.starts_with(b"!<arch>\n")
+        || (matches!(
+            data.get(..4),
+            Some(b"\xca\xfe\xba\xbe" | b"\xca\xfe\xba\xbf")
+        ) && slices(path, data).is_ok_and(|(fat, slices)| {
+            fat && !slices.is_empty() && slices.iter().all(|s| s.data.starts_with(b"!<arch>\n"))
+        }))
+}
+
 /// A file's slices, and whether it's fat.
 fn slices<'a>(path: &Path, data: &'a [u8]) -> Result<(bool, Vec<Slice<'a>>), String> {
     let be = |at: usize| -> Option<u32> {
@@ -327,7 +399,9 @@ fn slices<'a>(path: &Path, data: &'a [u8]) -> Result<(bool, Vec<Slice<'a>>), Str
                 )
             };
             let start = usize::try_from(offset).map_err(|_| truncated())?;
-            let end = start + usize::try_from(size).map_err(|_| truncated())?;
+            let end = start
+                .checked_add(usize::try_from(size).map_err(|_| truncated())?)
+                .ok_or_else(truncated)?;
             slices.push(Slice {
                 cputype: be(at).ok_or_else(truncated)?,
                 cpusubtype: be(at + 4).ok_or_else(truncated)?,
@@ -584,11 +658,40 @@ mod tests {
     }
 
     #[test]
+    fn universal_archives_are_distinct_from_universal_object_files() {
+        let intel = archive(&macho("x86_64", 1));
+        let path = Path::new("Kit.o");
+        let intel = slices(path, &intel).unwrap();
+        let arm = macho("arm64", 2);
+        let lib = archive(&arm);
+        for (data, expected) in [(&lib, true), (&arm, false)] {
+            let fat = create(
+                &[(path, intel.clone()), (path, slices(path, data).unwrap())],
+                &[],
+            )
+            .unwrap();
+            assert_eq!(is_static_archive(path, &fat), expected);
+        }
+    }
+
+    #[test]
     fn a_static_library_has_its_members_architecture() {
         let lib = archive(&macho("arm64", 0));
         let (fat, parsed) = slices(Path::new("lib.a"), &lib).unwrap();
         assert!(!fat);
         assert_eq!(names(&parsed), "arm64");
+    }
+
+    #[test]
+    fn libtool_selects_matching_objects_and_rejects_non_objects() {
+        let path = Path::new("input.o");
+        let arm = macho("arm64", 0);
+        assert_eq!(
+            archive_slice(path, &arm, "arm64").unwrap(),
+            Some(arm.as_slice())
+        );
+        assert!(archive_slice(path, &arm, "x86_64").unwrap().is_none());
+        assert!(archive_slice(path, b"text", "arm64").is_err());
     }
 
     #[test]

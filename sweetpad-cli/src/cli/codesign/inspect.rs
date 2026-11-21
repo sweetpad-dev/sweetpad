@@ -5,22 +5,25 @@
 
 use std::fmt::Write as _;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::bundle::Layout;
 use super::{blobs, crypto, macho};
 
 pub(super) fn display(path: &Path) -> Result<(), String> {
-    let executable = if path.is_dir() {
+    let (executable, text) = if path.is_dir() {
         let layout = Layout::of(path)?;
-        layout
-            .root
-            .join(layout.executable.ok_or("bundle has no executable")?)
+        let code = layout.code(path)?;
+        let text = if code.detached {
+            signature_requirements(&detached_signature(&layout.root)?)
+        } else {
+            requirements(&code.bytes)
+        }?;
+        (layout.root.join(code.name), text)
     } else {
-        path.to_path_buf()
+        let data = std::fs::read(path).map_err(|e| e.to_string())?;
+        (path.to_path_buf(), requirements(&data)?)
     };
-    let data = std::fs::read(&executable).map_err(|e| e.to_string())?;
-    let text = requirements(&data)?;
     eprintln!("Executable={}", executable.display());
     std::io::stdout()
         .write_all(text.as_bytes())
@@ -34,6 +37,22 @@ pub(super) fn requirements(data: &[u8]) -> Result<String, String> {
     let signature = layout
         .signature(&slice.data)
         .ok_or("code object is not signed at all")?;
+    signature_requirements(signature)
+}
+
+fn detached_signature(root: &Path) -> Result<Vec<u8>, String> {
+    let folder = root.join("_CodeSignature");
+    let read = |name| {
+        std::fs::read(folder.join(name))
+            .map_err(|e| format!("couldn't read {}: {e}", folder.join(name).display()))
+    };
+    Ok(blobs::superblob(vec![
+        (blobs::SLOT_CODE_DIRECTORY, read("CodeDirectory")?),
+        (blobs::SLOT_REQUIREMENTS, read("CodeRequirements")?),
+    ]))
+}
+
+fn signature_requirements(signature: &[u8]) -> Result<String, String> {
     let mut text = String::new();
     let mut designated = false;
     if let Some(set) = slot(signature, blobs::SLOT_REQUIREMENTS)? {
@@ -72,27 +91,23 @@ fn preferred(slices: &[macho::Slice]) -> Option<&macho::Slice> {
 /// code, the preferred slice's first.
 pub(super) fn designated(path: &Path) -> Result<(Vec<u8>, String), String> {
     let unsigned = || "code object is not signed at all".to_string();
-    let (executable, detached) = if path.is_dir() {
+    let data = if path.is_dir() {
         let layout = Layout::of(path)?;
-        match layout.executable {
-            Some(executable) => (layout.root.join(executable), None),
-            None => (PathBuf::new(), Some(layout.root.join("_CodeSignature"))),
+        let code = layout.code(path)?;
+        if code.detached {
+            let signature = detached_signature(&layout.root)?;
+            let hash = cdhash(&signature)?;
+            let set = slot(&signature, blobs::SLOT_REQUIREMENTS)?.ok_or_else(unsigned)?;
+            let explicit = requirement_set(set)?
+                .into_iter()
+                .find_map(|(kind, text)| (kind == 3).then_some(text));
+            let text = explicit.unwrap_or_else(|| format!("cdhash H\"{}\"", crypto::hex(&hash)));
+            return Ok((hash, text));
         }
+        code.bytes.into_owned()
     } else {
-        (path.to_path_buf(), None)
+        std::fs::read(path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?
     };
-    if let Some(folder) = detached {
-        let directory = std::fs::read(folder.join("CodeDirectory")).map_err(|_| unsigned())?;
-        let hash = directory_hash(&directory)?;
-        let set = std::fs::read(folder.join("CodeRequirements")).map_err(|_| unsigned())?;
-        let explicit = requirement_set(&set)?
-            .into_iter()
-            .find_map(|(kind, text)| (kind == 3).then_some(text));
-        let text = explicit.unwrap_or_else(|| format!("cdhash H\"{}\"", crypto::hex(&hash)));
-        return Ok((hash, text));
-    }
-    let data = std::fs::read(&executable)
-        .map_err(|e| format!("couldn't read {}: {e}", executable.display()))?;
     let slices = macho::split(&data).map_err(|_| unsigned())?;
     let first = preferred(&slices).ok_or_else(unsigned)?;
     let mut ordered = vec![first];

@@ -43,6 +43,11 @@ let package = Package(
             exclude: ["LICENSE.md"]
         ),
         .target(
+            name: "FoundationModelsMacros",
+            dependencies: ["OpenAppleMacrosBase", .product(name: "SwiftDiagnostics", package: "swift-syntax")],
+            exclude: ["LICENSE.md", "README.md"]
+        ),
+        .target(
             name: "SwiftUIMacros",
             dependencies: ["OpenAppleMacrosBase", .product(name: "SwiftDiagnostics", package: "swift-syntax")],
             exclude: ["LICENSE.md", "README.md"]
@@ -80,6 +85,7 @@ let package = Package(
             name: "sweetpad-macros",
             dependencies: [
                 "FoundationMacros",
+                "FoundationModelsMacros",
                 "PreviewsMacros",
                 "SwiftDataMacros",
                 "SwiftUIMacros",

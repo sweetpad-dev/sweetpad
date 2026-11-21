@@ -14,7 +14,7 @@ use crate::cli::appstore::key::{ApiKey, KeyArgs};
 use crate::cli::appstore::notary::{self, Progress, Submission};
 use crate::cli::codesign::staple;
 use crate::cli::output::Output;
-use crate::cli::{CliError, CommandResult, Context, ErrorKind, Render, Rendered, net, process};
+use crate::cli::{CliError, CommandResult, Context, ErrorKind, Render, Rendered, net};
 use sweetpad_core::scratch::ScratchDir;
 
 #[derive(Debug, Clone, Default, Args)]
@@ -252,11 +252,8 @@ pub(crate) fn zip_app(app: &Path, dir: &Path) -> Result<PathBuf, CliError> {
         .ok_or_else(|| CliError::new(format!("{} has no name", app.display())))?;
     let parent = app.parent().unwrap_or(Path::new("."));
     let zip = dir.join(Path::new(name).with_extension("zip"));
-    process::capture(
-        "zip",
-        &["-qry", &zip.display().to_string(), &name.to_string_lossy()],
-        Some(parent),
-    )?;
+    crate::cli::zip::create(&zip, parent, &[Path::new(name)])
+        .map_err(|e| CliError::new(format!("cannot write {}: {e}", zip.display())))?;
     Ok(zip)
 }
 

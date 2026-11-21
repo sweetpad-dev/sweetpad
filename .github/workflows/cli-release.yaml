@@ -11,19 +11,6 @@ on:
         type: choice
         options: [all, linux]
         default: all
-      validate_sdk:
-        description: Validate the Linux package with a private Apple SDK runner
-        type: boolean
-        default: false
-      sdk_package_arch:
-        description: Host architecture of the private SDK runner
-        type: choice
-        options: [arm64, x64]
-        default: arm64
-      sdk_runner_label:
-        description: Label of the provisioned private SDK runner
-        type: string
-        default: sweetpad-linux
 
 permissions:
   contents: write
@@ -36,18 +23,6 @@ jobs:
   linux:
     name: Linux release packages
     uses: ./.github/workflows/linux-arm64-package.yaml
-  sdk-validation:
-    name: Private SDK install validation
-    if: github.event_name == 'workflow_dispatch' && inputs.validate_sdk
-    needs: linux
-    permissions:
-      contents: read
-      actions: read
-    uses: ./.github/workflows/linux-apple-build.yaml
-    with:
-      artifact_run_id: ${{ github.run_id }}
-      runner_label: ${{ inputs.sdk_runner_label }}
-      package_arch: ${{ inputs.sdk_package_arch }}
   release:
     if: inputs.platform != 'linux' && inputs.platform != 'linux-arm64'
     outputs:
@@ -155,10 +130,8 @@ jobs:
         run: |
           set -euo pipefail
           ln -sf sweetpad dist/sweetpad-dap
-          mkdir -p dist/licenses/archive-codecs/lzfse dist/licenses/archive-codecs/lzraven
-          cp sweetpad-lib/ci/archive-codecs/README.md dist/licenses/archive-codecs/
-          cp sweetpad-lib/ci/archive-codecs/lzfse/LICENSE dist/licenses/archive-codecs/lzfse/
-          cp sweetpad-lib/ci/archive-codecs/lzraven/LICENSE dist/licenses/archive-codecs/lzraven/
+          mkdir -p dist/licenses/lzraven
+          cp sweetpad-cli/src/cli/apple_archive/LICENSE-lzraven dist/licenses/lzraven/LICENSE
           tar -C dist -czf "$TARBALL" sweetpad sweetpad-dap licenses
           echo "SHA256=$(shasum -a 256 "$TARBALL" | cut -d' ' -f1)" >> "$GITHUB_ENV"
           tar -tvzf "$TARBALL"

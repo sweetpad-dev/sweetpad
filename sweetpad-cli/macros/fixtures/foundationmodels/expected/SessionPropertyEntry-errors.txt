@@ -1,0 +1,69 @@
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE11missingType0cD5EntryfMa_.swift
+{
+    get {
+        self[__Key_missingType.self]
+    }
+    set {
+        self[__Key_missingType.self] = newValue
+    }
+    _modify {
+        yield &self[__Key_missingType.self]
+    }
+}
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE11missingType0cD5EntryfMp_.swift
+
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE12__Key_shared33_A6E5DB4D3C4BB78FC6334F0FEF601407LLV12defaultValue02__cd12EntryDefaultS0fMa_.swift
+{
+    get {
+        0
+    }
+}
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE14missingDefault0cD5EntryfMa_.swift
+{
+    get {
+        self[__Key_missingDefault.self]
+    }
+    set {
+        self[__Key_missingDefault.self] = newValue
+    }
+    _modify {
+        yield &self[__Key_missingDefault.self]
+    }
+}
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE14missingDefault0cD5EntryfMp_.swift
+
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE6shared0cD5EntryfMa_.swift
+
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE6shared0cD5EntryfMp_.swift
+private struct __Key_shared: FoundationModels.SessionPropertyKey {
+    @FoundationModels.__SessionPropertyEntryDefaultValue
+    static var defaultValue: Int = 0
+}
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE8computed0cD5EntryfMa_.swift
+
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE8computed0cD5EntryfMp_.swift
+
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE9immutable0cD5EntryfMa_.swift
+
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE9immutable0cD5EntryfMp_.swift
+
+=== diagnostic
+SessionPropertyEntry-errors.swift:5:31: error: expansion of macro 'SessionPropertyEntry()' did not produce a non-observing accessor (such as 'get') as expected
+=== diagnostic
+SessionPropertyEntry-errors.swift:5:31: error: extensions must not contain stored properties
+=== diagnostic
+SessionPropertyEntry-errors.swift:5:5: error: '@SessionPropertyEntry' can only be applied to a 'var' declaration (from macro 'SessionPropertyEntry ')
+=== diagnostic
+SessionPropertyEntry-errors.swift:6:31: error: Property missing a default value (from macro 'SessionPropertyEntry ')
+=== diagnostic
+SessionPropertyEntry-errors.swift:6:31: error: type annotation missing in pattern
+=== diagnostic
+SessionPropertyEntry-errors.swift:7:31: error: Property missing a default value (from macro 'SessionPropertyEntry ')
+=== diagnostic
+SessionPropertyEntry-errors.swift:8:27: error: '@SessionPropertyEntry' cannot be applied to a static member (from macro 'SessionPropertyEntry ')
+=== diagnostic
+SessionPropertyEntry-errors.swift:8:38: error: expansion of macro 'SessionPropertyEntry()' did not produce a non-observing accessor (such as 'get') as expected
+=== diagnostic
+SessionPropertyEntry-errors.swift:9:31: error: Property missing a default value (from macro 'SessionPropertyEntry ')
+=== diagnostic
+SessionPropertyEntry-errors.swift:9:45: error: '@SessionPropertyEntry' can only be applied to a stored property (from macro 'SessionPropertyEntry ')

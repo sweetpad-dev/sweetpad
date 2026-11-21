@@ -35,7 +35,7 @@ sweetpad --version
 ```
 
 Installation requires no compiler, root access, or Sweetpad installation script.
-Swift Build and the macro plugin are in `libexec/sweetpad`. The CLI looks for them beside itself and in `../libexec/sweetpad`,
+Swift Build, the macro plugin and an LLVM linker for Apple platforms are in `libexec/sweetpad`. The CLI looks for them beside itself and in `../libexec/sweetpad`,
 so copy the folder along with the executable. They need the host's SQLite library (`libsqlite3-0` on Ubuntu and Debian).
 The CLI materializes its embedded setup files in its content-addressed user cache when needed.
 
@@ -53,7 +53,7 @@ mise use -g packslip:github.com/sweetpad-dev/sweetpad/tools/cli
 ```
 
 GHCR supplies a multi-platform CLI image at `ghcr.io/sweetpad-dev/sweetpad`.
-It contains the static executable, Swift Build and the macro plugin in `/usr/local/libexec/sweetpad`, CA certificates, and license notices.
+It contains the static executable, Swift Build, the macro plugin and the LLVM linker in `/usr/local/libexec/sweetpad`, CA certificates, and license notices.
 Docker builds can copy `/usr/local/bin/sweetpad` and `/usr/local/libexec/sweetpad` into their own image.
 The image has no Swift or Apple SDK; supply both in the build environment.
 
@@ -71,14 +71,14 @@ On Linux, import the archive and install the pinned tools:
 
 ```bash
 sweetpad setup --sdk "$HOME/apple-sdk.tar.gz" --json --non-interactive
-source "$HOME/.config/sweetpad/linux-env.sh"
 sweetpad doctor --target ios --json --non-interactive
 sweetpad build --project MyApp.xcodeproj --scheme MyApp \
   --destination 'generic/platform=iOS Simulator' --json --non-interactive
 ```
 
-Setup downloads the pinned public Linux tools, imports SDK files, and builds the sample app.
-It requires sudo access for system packages, or an existing root shell. Use `sudo -v` first if your account requires a password.
+Setup checks the system packages (add `--install-system-packages` to install any that are missing), finds or downloads the pinned Swift, imports the SDK files and builds the sample app. A step whose result is already there is skipped.
+Installing system packages takes sudo or a root shell. Run `sudo -v` first if your account needs a password.
+sweetpad finds Swift and the SDK on its own. Source `~/.config/sweetpad/linux-env.sh` only to run `swift` by hand.
 An unchanged archive reuses the installed SDK. A different archive requires `--replace-sdk`.
 The SDK stays private. The prebuilt CLI requires no Rust installation or Sweetpad source checkout.
 App signing requires your development identity and profiles, configured separately.
@@ -103,7 +103,7 @@ Core compilation, resources, development signing, and physical iPhone USB/Wi-Fi 
 The standalone CLI passes installation in clean containers for both host architectures.
 Simulator operation and Apple test execution still require a Mac with Xcode.
 Distribution IPA export, Linux device debugging, and device readiness inspection remain unsupported.
-Flutter AOT requires the separately built Linux ARM64 iOS snapshot compiler.
+Flutter apps aren't supported, since Flutter ships its iOS snapshot compiler only for macOS.
 The tested React Native Hermes compiler requires OrbStack's x86 translation in this ARM64 environment.
 Other Linux architectures, including 32-bit x86, are not release targets.
 Public host-toolchain checks cover Ubuntu, Debian, and Arch. Private SDK app builds cover these distributions separately.

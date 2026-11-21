@@ -113,18 +113,22 @@ fn linux_check(
 }
 
 fn gather_linux(target: Target) -> Vec<Check> {
-    let setup = "run sweetpad setup --sdk /path/to/apple-sdk.tar.gz, then source ~/.config/sweetpad/linux-env.sh";
+    let setup = "run sweetpad setup --sdk /path/to/apple-sdk.tar.gz";
     let mut checks = Vec::new();
     let os = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
     checks.push(linux_host(std::env::consts::ARCH, &os));
+    checks.push(linux_packages());
     checks.push(linux_shell());
-    // `swift --version` leaves a `TemporaryDirectory.*` in a shared `TMPDIR`.
-    let swift = first_line(crate::cli::swiftpm::swift_version().map(|v| v.trim().to_string()))
-        .unwrap_or_else(|| "swift missing".into());
+    // The Swift setup installs or finds, the one builds use.
+    let pinned = &super::sdk::toolchain().swift;
+    let swift = crate::cli::linux_setup::swift::pinned();
     checks.push(linux_check(
         "swift",
-        swift.contains(&format!("Swift version {}", super::sdk::toolchain().swift)),
-        swift,
+        swift.is_some(),
+        swift.map_or_else(
+            || format!("Swift {pinned} missing"),
+            |swift| format!("{} ({})", swift.version, swift.bin.display()),
+        ),
         false,
         setup,
     ));
@@ -161,11 +165,16 @@ fn gather_linux(target: Target) -> Vec<Check> {
         false,
         setup,
     ));
+    checks.push(darwin_linker_check(setup));
+    let archiver = crate::cli::linux_setup::archiver();
     checks.push(tool_check(
-        "Darwin libtool",
-        first_line(probe("llvm-libtool-darwin", &["--version"])),
+        "Darwin archiver",
+        archiver.as_ref().and_then(|path| {
+            first_line(probe(&path.to_string_lossy(), &["--version"]))
+                .map(|version| format!("{version} ({})", path.display()))
+        }),
         Status::Fail,
-        Some("rerun sweetpad setup to install llvm-libtool-darwin"),
+        Some("install the pinned Swift toolchain with llvm-ar"),
     ));
     let macros = crate::cli::swbuild::macro_plugin().unwrap_or_default();
     checks.push(linux_check(
@@ -185,6 +194,45 @@ fn gather_linux(target: Target) -> Vec<Check> {
     checks.extend(gather_linux_sdk(target, setup));
     checks.extend(gather_linux_optional(target));
     checks
+}
+
+/// LLVM's multicall binary that links and makes dSYMs for Apple targets,
+/// started as `ld64.lld`, the name it picks LLD by.
+fn darwin_linker_check(setup: &'static str) -> Check {
+    use std::os::unix::process::CommandExt as _;
+    let Ok(llvm) = crate::cli::swbuild::darwin_linker() else {
+        return linux_check(
+            "Darwin linker",
+            false,
+            "llvm missing from libexec/sweetpad".into(),
+            false,
+            setup,
+        );
+    };
+    let version = Command::new(&llvm)
+        .arg0("ld64.lld")
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .and_then(|out| {
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .next()
+                .map(str::to_string)
+        });
+    linux_check(
+        "Darwin linker",
+        version.is_some(),
+        version.map_or_else(
+            || format!("{} cannot start", llvm.display()),
+            |v| format!("{v} ({})", llvm.display()),
+        ),
+        false,
+        setup,
+    )
 }
 
 /// Whether `swbuild` was built from the Swift Build version and patches this
@@ -273,6 +321,28 @@ fn extra_platforms(sdk: &std::path::Path) -> Check {
     )
 }
 
+fn linux_packages() -> Check {
+    use crate::cli::linux_setup::host;
+    let result = host::current(&super::sdk::toolchain().host_packages).and_then(|host| {
+        let Some(manager) = host.manager else {
+            return Ok((Status::Warn, format!("No package list for {}", host.name)));
+        };
+        let missing = host::missing_packages(&host)?;
+        Ok(if missing.is_empty() {
+            (Status::Ok, format!("all {} installed", host.packages.len()))
+        } else {
+            (Status::Fail, host::missing_detail(manager, &missing))
+        })
+    });
+    let (status, detail) = result.unwrap_or_else(|error| (Status::Fail, error));
+    Check {
+        name: "Host packages",
+        status,
+        detail,
+        hint: None,
+    }
+}
+
 fn linux_shell() -> Check {
     let result = crate::cli::swbuild::darwin_shell_command(
         std::path::Path::new("/bin/sh"),
@@ -300,7 +370,7 @@ fn linux_shell() -> Check {
         ok,
         detail,
         false,
-        "install Bash and bubblewrap; containers must allow mount namespaces (SYS_ADMIN and an appropriate seccomp policy), or use a Linux VM",
+        "use the SweetPad container image, or install Bash and the shell helper from the SweetPad package",
     )
 }
 
@@ -362,35 +432,13 @@ fn gather_linux_sdk(target: Target, setup: &'static str) -> Vec<Check> {
     gather_sdk_at(target, setup, &sdk)
 }
 
-fn sdk_tool_architecture(sdk: &std::path::Path) -> Option<&'static str> {
-    use std::io::Read;
-    for relative in ["toolset/bin/orig/ld64.lld", "toolset/bin/ld64.lld"] {
-        let mut header = [0; 20];
-        if std::fs::File::open(sdk.join(relative))
-            .and_then(|mut f| f.read_exact(&mut header))
-            .is_ok()
-            && &header[..6] == b"\x7fELF\x02\x01"
-        {
-            return match u16::from_le_bytes([header[18], header[19]]) {
-                62 => Some("x86_64"),
-                183 => Some("aarch64"),
-                _ => None,
-            };
-        }
-    }
-    None
-}
-
 fn gather_sdk_at(target: Target, setup: &'static str, sdk: &std::path::Path) -> Vec<Check> {
     let mut checks = Vec::new();
     let paths = [
         "swift-sdk.json",
-        "toolset-swb.json",
         "version.plist",
         "Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/swift/bridging",
         "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h",
-        "toolset/bin/ld64.lld",
-        "toolset/bin/llvm-lib",
     ];
     let missing: Vec<_> = paths
         .iter()
@@ -409,17 +457,6 @@ fn gather_sdk_at(target: Target, setup: &'static str, sdk: &std::path::Path) -> 
         setup,
     ));
     checks.push(extra_platforms(sdk));
-    let host_arch = sdk_tool_architecture(sdk);
-    checks.push(linux_check(
-        "SDK host tools",
-        host_arch == Some(std::env::consts::ARCH),
-        host_arch.map_or_else(
-            || "linker host architecture unavailable".into(),
-            |arch| format!("{arch}; host {}", std::env::consts::ARCH),
-        ),
-        host_arch.is_none(),
-        "import the SDK export on this host with sweetpad sdk import ARCHIVE --replace",
-    ));
     checks.push(linux_check("Localized App Intents", sdk.join("appintents-phrases.json").is_file(),
         "Localized shortcut phrase resources".into(), true,
         "export SDK resources on your Mac with sweetpad sdk export; only localized shortcut training needs these resources"));
@@ -464,27 +501,13 @@ fn gather_sdk_at(target: Target, setup: &'static str, sdk: &std::path::Path) -> 
             setup,
         ));
     }
-    let linker = sdk.join("toolset/bin/ld64.lld");
-    let linker_version = linker.to_str().and_then(|p| probe(p, &["--version"]));
-    checks.push(linux_check(
-        "Darwin linker",
-        linker_version.is_some(),
-        first_line(linker_version).unwrap_or_else(|| "cannot start linker".into()),
-        false,
-        setup,
-    ));
     checks
 }
 
 fn gather_linux_optional(target: Target) -> Vec<Check> {
     use super::sdk::home;
     let mut checks = Vec::new();
-    checks.push(tool_check(
-        "IPA export (zip)",
-        first_line(probe("zip", &["-v"])),
-        Status::Warn,
-        Some("install zip to export development IPAs"),
-    ));
+
     let free = probe("df", &["-Pk", &home().to_string_lossy()]).and_then(|s| {
         s.lines()
             .last()?
@@ -944,42 +967,11 @@ mod tests {
     }
 
     #[test]
-    fn doctor_rejects_sdk_tools_for_another_host_architecture() {
-        let root = crate::cli::testdir::TempDir::new("doctor-sdk-host");
-        let linker = root.join("toolset/bin/orig/ld64.lld");
-        std::fs::create_dir_all(linker.parent().unwrap()).unwrap();
-        for machine in [62_u16, 183] {
-            let mut header = [0; 20];
-            header[..6].copy_from_slice(b"\x7fELF\x02\x01");
-            header[18..].copy_from_slice(&machine.to_le_bytes());
-            std::fs::write(&linker, header).unwrap();
-            let checks = gather_sdk_at(Target::Ios, "setup", &root.join(""));
-            let check = checks.iter().find(|c| c.name == "SDK host tools").unwrap();
-            let native = if cfg!(target_arch = "x86_64") {
-                62
-            } else {
-                183
-            };
-            assert_eq!(
-                check.status,
-                if machine == native {
-                    Status::Ok
-                } else {
-                    Status::Fail
-                }
-            );
-        }
-    }
-
-    #[test]
     fn legacy_sdk_without_localized_phrases_gets_a_warning() {
         let root = crate::cli::testdir::TempDir::new("doctor-legacy-sdk");
         for name in [
             "swift-sdk.json",
-            "toolset-swb.json",
             "version.plist",
-            "toolset/bin/ld64.lld",
-            "toolset/bin/llvm-lib",
             "Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/swift/bridging",
             "Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/stddef.h",
         ] {

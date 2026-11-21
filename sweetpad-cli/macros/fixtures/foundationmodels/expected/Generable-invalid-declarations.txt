@@ -1,0 +1,18 @@
+=== __swiftmacro_4main10ActorValue9GenerablefMe_.swift
+
+=== __swiftmacro_4main10ActorValue9GenerablefMm_.swift
+
+=== __swiftmacro_4main5Empty9GenerablefMe_.swift
+
+=== __swiftmacro_4main5Empty9GenerablefMm_.swift
+
+=== __swiftmacro_4main9Reference9GenerablefMe_.swift
+
+=== __swiftmacro_4main9Reference9GenerablefMm_.swift
+
+=== diagnostic
+Generable-invalid-declarations.swift:3:1: error: '@Generable' can only be used on structs and enums. (from macro 'Generable')
+=== diagnostic
+Generable-invalid-declarations.swift:6:1: error: '@Generable' can only be used on structs and enums. (from macro 'Generable')
+=== diagnostic
+Generable-invalid-declarations.swift:9:1: error: Generable enums must have at least one case. (from macro 'Generable')

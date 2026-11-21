@@ -28,6 +28,7 @@ toml_edit.workspace = true
 libc.workspace = true
 png.workspace = true
 flate2.workspace = true
+zip.workspace = true
 flatbuffers.workspace = true
 moxcms.workspace = true
 hayro.workspace = true
@@ -39,6 +40,17 @@ aes.workspace = true
 rc2.workspace = true
 p256.workspace = true
 unicode-normalization.workspace = true
+tar.workspace = true
+lzfse_rust.workspace = true
+lzma-rs.workspace = true
+lz4_flex.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+hmac.workspace = true
+hkdf.workspace = true
+ctr.workspace = true
+aes-gcm.workspace = true
+x509-cert.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 minreq = { workspace = true, features = ["https-rustls-probe"] }

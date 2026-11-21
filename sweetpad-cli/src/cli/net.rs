@@ -116,21 +116,7 @@ impl Session {
     }
 
     fn attempt(&self, request: &Request) -> Result<Response, SendFailure> {
-        let proxy = self.proxy(&request.url).map_err(|error| SendFailure {
-            error,
-            transport: false,
-        })?;
-        let mut call = minreq::Request::new(request.method.clone(), request.url.as_str())
-            .with_timeout(request.timeout_secs);
-        for (name, value) in &request.headers {
-            call = call.with_header(name.as_str(), value.as_str());
-        }
-        if let Some(body) = &request.body {
-            call = call.with_body(body.clone());
-        }
-        if let Some(proxy) = &proxy {
-            call = call.with_proxy(proxy.inner.clone());
-        }
+        let (call, proxy) = self.prepare(request)?;
         let response = call.send().map_err(|e| {
             send_error(&e, host(&request.url), proxy.as_ref(), request.timeout_secs)
         })?;
@@ -140,6 +126,41 @@ impl Session {
             headers: response.headers.clone(),
             body: response.into_bytes(),
         })
+    }
+
+    /// Send `request` once and hand back the body unread, for a download
+    /// too large to hold. The request's timeout covers the whole transfer,
+    /// body included.
+    pub(crate) fn stream(&self, request: &Request) -> Result<Streamed, CliError> {
+        let (call, proxy) = self.prepare(request).map_err(|failure| failure.error)?;
+        let response = call.send_lazy().map_err(|e| {
+            send_error(&e, host(&request.url), proxy.as_ref(), request.timeout_secs).error
+        })?;
+        Ok(Streamed {
+            status: response.status_code,
+            headers: response.headers.clone(),
+            body: response,
+        })
+    }
+
+    fn prepare(&self, request: &Request) -> Result<(minreq::Request, Option<Proxy>), SendFailure> {
+        let proxy = self.proxy(&request.url).map_err(|error| SendFailure {
+            error,
+            transport: false,
+        })?;
+        let mut call = minreq::Request::new(request.method.clone(), request.url.as_str())
+            .with_timeout(request.timeout_secs)
+            .with_follow_redirects(request.follow_redirects);
+        for (name, value) in &request.headers {
+            call = call.with_header(name.as_str(), value.as_str());
+        }
+        if let Some(body) = &request.body {
+            call = call.with_body(body.clone());
+        }
+        if let Some(proxy) = &proxy {
+            call = call.with_proxy(proxy.inner.clone());
+        }
+        Ok((call, proxy))
     }
 
     /// Send `request`, retrying a dropped connection, a timeout, a 5xx and a
@@ -187,6 +208,8 @@ pub(crate) struct Request {
     pub(crate) headers: Vec<(String, String)>,
     pub(crate) body: Option<Vec<u8>>,
     pub(crate) timeout_secs: u64,
+    /// Whether a redirect is followed, or handed back as the response.
+    pub(crate) follow_redirects: bool,
 }
 
 impl Request {
@@ -197,7 +220,15 @@ impl Request {
             headers: Vec::new(),
             body: None,
             timeout_secs: 60,
+            follow_redirects: true,
         }
+    }
+
+    /// Hand a redirect back instead of following it, for a caller that
+    /// checks where it leads.
+    pub(crate) fn without_redirects(mut self) -> Self {
+        self.follow_redirects = false;
+        self
     }
 
     pub(crate) fn header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
@@ -243,6 +274,30 @@ impl Response {
             .chars()
             .take(200)
             .collect()
+    }
+}
+
+/// A response whose body is read as it arrives.
+pub(crate) struct Streamed {
+    pub(crate) status: u16,
+    pub(crate) headers: Vec<(String, String)>,
+    pub(crate) body: minreq::ResponseLazy,
+}
+
+/// `body` as the server meant it: gunzipped when `headers` say
+/// `Content-Encoding: gzip`. swift.org sends its key file that way whatever
+/// encodings the request accepts.
+pub(crate) fn decoded<'a>(
+    headers: &[(String, String)],
+    body: impl std::io::Read + 'a,
+) -> Box<dyn std::io::Read + 'a> {
+    let gzip = headers.iter().any(|(name, value)| {
+        name.eq_ignore_ascii_case("content-encoding") && value.trim().eq_ignore_ascii_case("gzip")
+    });
+    if gzip {
+        Box::new(flate2::read::MultiGzDecoder::new(body))
+    } else {
+        Box::new(body)
     }
 }
 
@@ -360,6 +415,31 @@ fn send_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_body_is_gunzipped_only_when_its_headers_say_gzip() {
+        use std::io::{Read, Write};
+
+        let key = b"-----BEGIN PGP PUBLIC KEY BLOCK-----";
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        encoder.write_all(key).unwrap();
+        let gzipped = encoder.finish().unwrap();
+        let read = |headers: &[(String, String)], body: &[u8]| {
+            let mut out = Vec::new();
+            decoded(headers, body).read_to_end(&mut out).unwrap();
+            out
+        };
+
+        let gzip = [("Content-Encoding".to_string(), " GZIP ".to_string())];
+        assert_eq!(read(&gzip, &gzipped), key);
+        // A release tarball is gzip data with no such header and stays as sent.
+        let plain = [(
+            "content-type".to_string(),
+            "application/octet-stream".to_string(),
+        )];
+        assert_eq!(read(&plain, &gzipped), gzipped);
+        assert_eq!(read(&[], key), key);
+    }
 
     #[test]
     fn no_proxy_exempts_the_host_and_the_hosts_under_an_entry() {

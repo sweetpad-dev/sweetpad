@@ -48,7 +48,11 @@ def main():
         ('objc-required', '_$sSo8NSObjectC10ObjectiveCE4hash4intoys6HasherVz_tF', 'swiftObjectiveC', False, []),
         ('core-audio-weak', '__swift_FORCE_LOAD_$_swiftCoreAudio', 'swiftCoreAudio', True, []),
     ]
-    run(['orb','-m',args.vm,'ln','-s',remote_sdk+'/toolset/bin/ld64.lld',args.out/'sdk-ld64.lld'])
+    # LLVM's multicall binary in the machine, which runs as LLD under the name ld64.lld.
+    remote_llvm = run(['orb','-m',args.vm,'sh','-c','printf %s "${SWEETPAD_LLVM:-$HOME/sweetpad-target/debug/libexec/sweetpad/llvm}"']).stdout
+    (args.out/'raw').mkdir()
+    run(['orb','-m',args.vm,'ln','-s',remote_llvm,args.out/'sdk-ld64.lld'])
+    run(['orb','-m',args.vm,'ln','-s',remote_llvm,args.out/'raw/ld64.lld'])
     records = []
     for minimum in ['15.1','17.6','18.0','27.0']:
         for label, symbol, library, weak, extra in cases:
@@ -64,7 +68,7 @@ def main():
             native, linux = Path(str(stem)+'-native.dylib'), Path(str(stem)+'-linux.dylib')
             native_command = ['xcrun','ld',*common,'-syslibroot',sdk,obj,'-L'+str(sdk/'usr/lib/swift'),'-lSystem',*extra,'-o',native]
             remote_platform = remote_sdk+'/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk'
-            linux_command = ['orb','-m',args.vm,remote_sdk+'/toolset/bin/ld64.lld',*common,'-syslibroot',remote_platform,obj,
+            linux_command = ['orb','-m',args.vm,args.out/'raw/ld64.lld',*common,'-syslibroot',remote_platform,obj,
                 '-L'+remote_platform+'/usr/lib/swift','-lSystem',*extra,'-o',linux]
             wrapped = Path(str(stem)+'-wrapped.dylib')
             wrapped_command = linux_command.copy()

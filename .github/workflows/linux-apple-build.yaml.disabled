@@ -1,0 +1,238 @@
+name: Linux Apple SDK integration
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: Optional run with verified Linux package artifacts
+        type: string
+        default: ''
+      package_arch:
+        description: Package host architecture (arm64 or x64)
+        type: string
+        default: arm64
+      runner_label:
+        description: Label of the provisioned private SDK runner
+        type: string
+        default: sweetpad-linux
+  workflow_call:
+    inputs:
+      artifact_run_id:
+        type: string
+        default: ''
+      package_arch:
+        type: string
+        default: arm64
+      runner_label:
+        type: string
+        default: sweetpad-linux
+permissions:
+  contents: read
+  actions: read
+jobs:
+  hybrid-builds:
+    # The Apple SDK stays on a provisioned Apple-hardware Linux runner.
+    # Never upload or distribute it as a workflow artifact.
+    runs-on: [self-hosted, Linux, "${{ inputs.package_arch == 'x64' && 'X64' || 'ARM64' }}", '${{ inputs.runner_label }}']
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Read pinned compiler version
+        run: |
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import json
+          from pathlib import Path
+          pins = json.loads(Path('sweetpad-lib/ci/linux-toolchain.json').read_text())
+          print('SWEETPAD_SWIFT_VERSION=' + pins['swift'])
+          PY
+      - name: Download verified Linux package
+        if: inputs.artifact_run_id != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: cli-tarball-linux-${{ inputs.package_arch }}
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/release-package
+      - name: Validate package with isolated home and private SDK
+        if: inputs.artifact_run_id != ''
+        env:
+          PACKAGE_ROOT: ${{ runner.temp }}/release-package
+        run: |
+          export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
+          python3 sweetpad-cli/ci/check-linux-sdk-install.py \
+            --archive "$(find "$PACKAGE_ROOT" -maxdepth 1 -name '*.tar.gz')" \
+            --out "$RUNNER_TEMP/sdk-package-install" \
+            --swift "$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE" \
+            --sdk "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle"
+      - name: Build CLI
+        run: |
+          export PATH="$HOME/.cargo/bin:$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
+          CARGO_TARGET_DIR="$HOME/sweetpad-target" cargo build --locked -p sweetpad-cli --bin sweetpad
+      # The checkout's sweetpad finds Swift Build and the macro plugin in
+      # libexec/sweetpad beside it, as the package's does. The build caches
+      # by the pins and patches, so an unchanged runner reuses it.
+      - name: Build Swift Build and the macro plugin
+        run: |
+          export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
+          bash sweetpad-lib/ci/build-swift-helpers.sh "$HOME/sweetpad-target/debug"
+      # It links and makes dSYMs with LLVM's multicall binary from the same
+      # folder: the one the given package run built, else the one from the
+      # latest successful package run on main, else one built here from the
+      # pinned release, which needs cmake, ninja and a C++ compiler.
+      - name: Find a package run with LLVM's Apple linker
+        id: linker-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.artifact_run_id }}
+        run: |
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/linux-arm64-package.yaml/runs?branch=main&status=success&per_page=1" \
+              | python3 -c 'import json, sys; runs = json.load(sys.stdin)["workflow_runs"]; print(runs[0]["id"] if runs else "")' || true)"
+          fi
+          echo "id=$RUN_ID" >> "$GITHUB_OUTPUT"
+      - name: Download LLVM's Apple linker
+        if: steps.linker-run.outputs.id != ''
+        # A run from before the linker shipped has no such artifact.
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: darwin-linker-linux-${{ inputs.package_arch }}
+          run-id: ${{ steps.linker-run.outputs.id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}
+      - name: Install LLVM's Apple linker
+        run: |
+          ARCHIVE="$RUNNER_TEMP/darwin-linker-linux-${{ inputs.package_arch }}.tar.gz"
+          DEST="$HOME/sweetpad-target/debug"
+          PINNED="$(python3 -c 'import json; print(json.load(open("sweetpad-lib/ci/linux-toolchain.json"))["llvm"])')"
+          if [ -f "$ARCHIVE" ]; then
+            tar -xzf "$ARCHIVE" -C "$DEST"
+          fi
+          BUILT="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["llvm"])' "$DEST/libexec/sweetpad/sweetpad-llvm.json" 2>/dev/null || true)"
+          if [ "$BUILT" != "$PINNED" ]; then
+            bash sweetpad-lib/ci/build-darwin-linker.sh "$DEST"
+          fi
+      - name: Install frozen framework tools
+        if: inputs.package_arch == 'arm64'
+        run: bash sweetpad-lib/ci/linux-framework-tools.sh
+      - name: Check script, clean, and Linux app routing regressions
+        run: |
+          export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
+          python3 sweetpad-cli/ci/check-linux-gaps.py \
+            --binary "$HOME/sweetpad-target/debug/sweetpad" \
+            --out "$RUNNER_TEMP/linux-gaps"
+      - name: Fresh Linux dependency and Release build checks
+        if: inputs.package_arch == 'arm64'
+        run: python3 -B sweetpad-lib/ci/linux-clean-checks.py --out "$RUNNER_TEMP/linux-clean"
+      - name: Generate manifests for Linux XCTest and Swift Testing products
+        run: |
+          export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
+          mkdir -p "$RUNNER_TEMP/linux-clean/reports"
+          python3 -B sweetpad-lib/ci/linux-exec-audit.py --out "$RUNNER_TEMP/linux-clean/reports/test-build-audit" -- \
+            "$HOME/sweetpad-target/debug/sweetpad" test build \
+            --project "$PWD/sweetpad-lib/ci/fixture-test-manifest/ManifestProbe.xcodeproj" \
+            --scheme ManifestProbe --configuration Debug --destination 'generic/platform=iOS Simulator,arch=arm64' \
+            --json --non-interactive -- -derivedDataPath "$RUNNER_TEMP/manifest-products" \
+            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO > "$RUNNER_TEMP/linux-clean/reports/test-build.json"
+          python3 - "$RUNNER_TEMP/linux-clean/reports/test-build.json" <<'PYCODE'
+          import json, pathlib, plistlib, sys
+          result = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          assert result['ok'] and result['data']['built']
+          path = pathlib.Path(result['data']['xctestrunPath'])
+          targets = plistlib.loads(path.read_bytes())['TestConfigurations'][0]['TestTargets']
+          assert {t['BlueprintName'] for t in targets} == {'LogicXCTests', 'LogicSwiftTests'}
+          assert all(t['EnvironmentVariables']['MANIFEST_VALUE'] == 'Linux tests ü' for t in targets)
+          PYCODE
+      - name: Generate mixed UI and logic test-plan manifests
+        run: |
+          export PATH="$HOME/bin:$HOME/swift/swift-${SWEETPAD_SWIFT_VERSION}-RELEASE/usr/bin:$PATH"
+          "$HOME/sweetpad-target/debug/sweetpad" test build \
+            --project "$PWD/sweetpad-lib/ci/fixture-test-plans/TestPlanProbe.xcodeproj" \
+            --scheme TestPlanProbe --destination 'generic/platform=iOS Simulator,arch=arm64' --json --non-interactive \
+            -- -derivedDataPath "$RUNNER_TEMP/plan-products" ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
+            > "$RUNNER_TEMP/linux-clean/reports/test-plan-build.json"
+          python3 - "$RUNNER_TEMP/linux-clean/reports/test-plan-build.json" <<'PYCODE'
+          import json, pathlib, plistlib, sys
+          result = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          assert result['ok'] and result['data']['built']
+          manifest = plistlib.loads(pathlib.Path(result['data']['xctestrunPath']).read_bytes())
+          assert {c['Name'] for c in manifest['TestConfigurations']} == {'French', 'English'}
+          for configuration in manifest['TestConfigurations']:
+              targets = {t['BlueprintName']: t for t in configuration['TestTargets']}
+              assert set(targets) == {'ProbeUITests', 'PlanLogicTests'}
+              assert targets['ProbeUITests']['IsUITestBundle']
+              assert targets['ProbeUITests']['UITargetAppPath'].endswith('/Probe.app')
+              assert all(t['EnvironmentVariables']['PLAN_PRODUCT'] == 'ProbeUITests' for t in targets.values())
+          PYCODE
+      - name: Retain public dynamic-package APIs through response files
+        run: python3 -B sweetpad-lib/ci/linux-package-linking-checks.py --worker --out "$RUNNER_TEMP/linux-clean/reports/package-linking"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linux-execution-and-build-reports
+          path: |
+            ${{ runner.temp }}/linux-gaps/summary.json
+            ${{ runner.temp }}/linux-gaps/*.stdout
+            ${{ runner.temp }}/linux-gaps/*.stderr
+            ${{ runner.temp }}/linux-gaps/scheme-actions.ndjson
+            ${{ runner.temp }}/linux-clean/summary.json
+            ${{ runner.temp }}/linux-clean/reports/
+            ${{ runner.temp }}/sdk-package-install/summary.json
+            ${{ runner.temp }}/sdk-package-install/work/build.json
+            ${{ runner.temp }}/sdk-package-install/work/doctor.json
+            ${{ runner.temp }}/sdk-package-install/sandbox.stderr
+          if-no-files-found: error
+
+  xcode-archive-import:
+    # A real Xcode .xip at full size: Apple's XAR, pbzx, CPIO and LZRAVEN,
+    # which the fixtures only cover in miniature. The runner keeps the
+    # archive outside the checkout, at ~/xcode-archives/Xcode.xip unless
+    # the SWEETPAD_XCODE_ARCHIVE variable names another path. Neither the
+    # archive nor the SDK is uploaded.
+    runs-on: [self-hosted, Linux, "${{ inputs.package_arch == 'x64' && 'X64' || 'ARM64' }}", '${{ inputs.runner_label }}']
+    timeout-minutes: 60
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      XCODE_ARCHIVE: ${{ vars.SWEETPAD_XCODE_ARCHIVE }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build CLI
+        run: |
+          swift="$(python3 -c 'import json; print(json.load(open("sweetpad-lib/ci/linux-toolchain.json"))["swift"])')"
+          echo "SWIFT_BIN=$HOME/swift/swift-$swift-RELEASE/usr/bin" >> "$GITHUB_ENV"
+          export PATH="$HOME/.cargo/bin:$HOME/bin:$HOME/swift/swift-$swift-RELEASE/usr/bin:$PATH"
+          CARGO_TARGET_DIR="$HOME/sweetpad-target" cargo build --locked -p sweetpad-cli --bin sweetpad
+      - name: Import the Xcode archive
+        run: |
+          archive="${XCODE_ARCHIVE:-$HOME/xcode-archives/Xcode.xip}"
+          if [ ! -f "$archive" ]; then
+            echo "::error::No Xcode archive at $archive. Put a .xip there, or set SWEETPAD_XCODE_ARCHIVE."
+            exit 1
+          fi
+          export PATH="$HOME/bin:$SWIFT_BIN:$PATH"
+          out="$RUNNER_TEMP/xip-sdk"
+          rm -rf "$out"
+          "$HOME/sweetpad-target/debug/sweetpad" sdk import "$archive" --destination "$out" --json \
+            > "$RUNNER_TEMP/xip-import.json"
+          python3 - "$RUNNER_TEMP/xip-import.json" "$out" <<'PY'
+          import json, pathlib, sys
+          report = json.loads(pathlib.Path(sys.argv[1]).read_text())["data"]
+          bundle = pathlib.Path(sys.argv[2])
+          assert report["sourceFormat"] == "xip" and not report["reused"], report
+          for platform in ["iPhoneOS", "iPhoneSimulator", "MacOSX"]:
+              sdks = bundle / f"Developer/Platforms/{platform}.platform/Developer/SDKs"
+              assert any(sdks.glob(f"{platform}*.sdk/SDKSettings.json")), platform
+          assert (bundle / "swift-sdk.json").is_file()
+          print(f"Imported Xcode {report['xcodeVersion']} ({report['xcodeBuild']}) from a .xip")
+          PY
+      - name: Remove the imported SDK
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/xip-sdk"

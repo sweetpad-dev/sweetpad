@@ -3,7 +3,7 @@
 #![allow(clippy::print_stderr)]
 
 mod metadata;
-mod nlu;
+pub(crate) mod nlu;
 mod training;
 mod validation;
 

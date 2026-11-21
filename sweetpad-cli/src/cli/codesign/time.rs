@@ -36,7 +36,7 @@ pub(super) fn now_iso8601() -> String {
 }
 
 /// `time` as an ASN.1 UTCTime: `YYMMDDhhmmssZ`.
-pub(super) fn utc_time(time: SystemTime) -> String {
+pub(crate) fn utc_time(time: SystemTime) -> String {
     let (year, month, day, hour, minute, second) = civil(time);
     format!(
         "{:02}{month:02}{day:02}{hour:02}{minute:02}{second:02}Z",

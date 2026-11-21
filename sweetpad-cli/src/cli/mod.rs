@@ -28,6 +28,8 @@ use sweetpad_core::xcodebuild_args;
 
 pub mod actool;
 pub mod appintents;
+pub(crate) mod apple_account;
+pub mod apple_archive;
 pub mod appstore;
 pub(crate) mod bom;
 pub mod buildlog;
@@ -42,6 +44,7 @@ pub mod ibtool;
 pub mod inject;
 pub mod intentbuilderc;
 pub mod keyed_archive;
+pub(crate) mod linux_setup;
 pub mod mapc;
 pub mod merge;
 pub mod momc;
@@ -58,6 +61,8 @@ pub mod rawmode;
 pub mod render;
 pub mod resolve;
 pub mod scaffold;
+pub mod sdk_bundle;
+pub mod sdk_import;
 pub mod signals;
 pub mod simctl;
 pub mod state;
@@ -1156,6 +1161,36 @@ pub fn run(argv: &[String]) -> ExitCode {
         render_root_help(ctx.out.use_color(), false);
         return ExitCode::SUCCESS;
     };
+
+    #[cfg(target_os = "linux")]
+    if matches!(
+        &resource,
+        Resource::Build { .. }
+            | Resource::Test { .. }
+            | Resource::Archive { .. }
+            | Resource::App { .. }
+            | Resource::Run(_)
+            | Resource::Dependency { .. }
+            | Resource::Clean(_)
+    ) {
+        match darwin_tools::host::fallback_path() {
+            Ok(Some(path)) => {
+                // SAFETY: as for DEVELOPER_DIR above, dispatch has not started any workers.
+                unsafe {
+                    std::env::set_var("PATH", path);
+                }
+            }
+            Ok(None) => {}
+            Err(e) => {
+                return render_result(
+                    &ctx,
+                    Err(CliError::new(format!(
+                        "cannot prepare build utilities: {e}"
+                    ))),
+                );
+            }
+        }
+    }
 
     let result = match resource {
         // Scheme/project/app carry their targeting per action (a sibling like

@@ -4593,9 +4593,11 @@ a Mac too, which is how a build is checked against xcodebuild's. `build --show-c
 SDK setup uses `sdk export` on a Mac and `setup --sdk` on Linux: Ubuntu 24.04 or Debian 12 and 13 on ARM64 or x86_64, or Arch on x86_64.
 Export contains private Apple inputs and localized App Intents resources, without signing identities.
 Import verifies checksums and stages the SDK before replacement. It adds the Linux compiler's Clang resource headers.
-Setup discovers installed, extracted-archive, mise, or explicit source layouts and builds a sample to validate the result.
+Setup runs in the CLI as a list of steps, and each one is skipped when its result is already there: the distribution's packages (setup prints the install command, and `--install-system-packages` runs it), the pinned Swift and its `llvm-ar`, the SDK import and a sample build. `--no-sdk` stops after the host tools, and `-o ndjson` reports each step as a `setupStep` event.
+Swift is the one on `PATH` when it is the pinned release, else swiftly's, else a swift.org download that `gpg` checks against swift.org's keys in a keyring of its own. Setup compiles and runs a Foundation program with it before going on.
+Builds, `doctor` and the SDK import find Swift and `libtool` the same way, so nothing needs to be on `PATH`. The `linux-env.sh` that setup writes is for running `swift` by hand, and it keeps a CI-selected CLI first.
+`auth login` signs in to Apple in the CLI (SRP and a two-factor code, as XcodesLoginKit does), and `sdk download` fetches Xcode archives with resume and a receipt. The session file holds Apple's cookies, never a password.
 Linux doctor uses the engine's macro lookup, checks SDK and compiler tools, and separates optional capabilities from required prerequisites.
-Generated shell configuration preserves an existing CI-selected CLI.
 Swift Build's dependency revisions are frozen in the shipped `swift-build-Package.resolved`.
 
 **Swift Build gets a PIF and a build request, never a target name.**
@@ -4652,18 +4654,19 @@ and `ReferencedContainer` name (a test plan's `identifier` and
 workspace can each have a `Core`. The name is what's left for a package
 entry and for a reference without an ID.
 
-**Build-tool plugins run for package targets only.** SwiftPM evaluates a
-package target's plugins while it prints the PIF and gives each command to
-Swift Build as a custom task. The task names the tool where SwiftPM's own
-build would put it, under `<scratch>/out/Products/Debug-<platform>`, so
-`retarget_plugin_tools` renames that folder to
-`${BUILD_DIR}/${CONFIGURATION}-<platform>`, where this build makes the tool
-(Xcode's PIF names it the same way). Xcode evaluates a project target's
-plugins itself through `XcodeProjectPlugin`, which no Linux toolchain ships,
-and hands Swift Build their commands as script phases. The emitter keeps
-the target's dependency on the plugin product, as Xcode's PIF does, so the
-tool still builds. The engine warns for each such plugin in the build's
-target graph that its commands are skipped.
+**SwiftPM evaluates build-tool plugins for package and project targets.**
+For each project target with an attached plugin in the selected build graph,
+SweetPad writes a package manifest in DerivedData. It lists the target’s
+source and resource files and uses the workspace’s package dependencies and
+pins. Links to the project files let the plugin read project configuration.
+SwiftPM runs the plugin’s `BuildToolPlugin` entry point. A plugin that needs
+Xcode’s separate `XcodeProjectPlugin` entry point still requires Xcode.
+
+SweetPad adds the resulting commands to the project target, including
+commands SwiftPM places on a resource bundle. Generated sources join the
+target’s Sources phase and generated resources join its Resources phase.
+Host tools use `${BUILD_DIR}/${CONFIGURATION}-<platform>`, so Debug and
+Release each run the tool that the workspace builds for that configuration.
 
 **A tool Linux doesn't have blocks the build.** Swift Build reports
 `unable to spawn process 'metal' (No such file or directory)` against the
@@ -4724,14 +4727,32 @@ those files until it ends, and a second build there waits for it with a
 note: Swift Build's database takes one build at a time, and the second
 would otherwise rewrite the first one's inputs.
 
-**The Darwin SDK replaces Xcode.** xtool's bundle (`SWEETPAD_DARWIN_SDK`)
-has the Apple SDKs, Xcode's runtime libraries and an `ld64.lld` that writes
-Mach-O. The engine names its platforms in `XCODE_EXTRA_PLATFORM_FOLDERS`,
-adds a toolset with the cross-import overlay flag, the linker stand-in and
-the macro plugin, and overrides the settings that would start an Xcode-only
-step (`DarwinSdk::overrides` lists each with its reason). The Xcode version
-settings come from Xcode's `version.plist`, which `linux-setup.sh` copies
-beside the bundle, since Swift Build reports 99.99.99 without one.
+**The Darwin SDK replaces Xcode.** The bundle (`SWEETPAD_DARWIN_SDK`) has
+the Apple SDKs and Xcode's runtime libraries. The engine names its platforms
+in `XCODE_EXTRA_PLATFORM_FOLDERS`, adds a toolset with the cross-import
+overlay flag, the linker stand-in and the macro plugin, and overrides the
+settings that would start an Xcode-only step (`DarwinSdk::overrides` lists
+each with its reason). The Xcode version settings come from Xcode's
+`version.plist`, which the bundle keeps beside its `Developer` folder, since
+Swift Build reports 99.99.99 without one.
+
+**sweetpad writes the bundle.** `sweetpad sdk import` writes it
+(`sdk_import.rs`, `sdk_bundle.rs`) from an Xcode.app, from an export a Mac
+made with `sdk export`, or from an Xcode `.xip`, `.aea` or Apple Archive,
+which it reads itself (`apple_archive/`). XAR, pbzx, CPIO, Apple Archive
+and AEA are hand-rolled; the block codecs are crates, except LZRAVEN, a
+port of liblzraven's decoder. An archive is read twice, once for its
+entries and once for the data the SDK takes, so a hard link can find data
+stored outside the SDK and nothing else reaches the disk. The new bundle
+moves into place only once it's whole, so a failed import keeps the SDK
+that was there. Nothing in the bundle runs on the host: LLD and `dsymutil` are
+the packaged LLVM, macros expand in `sweetpad-macros`, and the Clang headers
+are the host Swift's. So it leaves out Xcode's `prebuilt-modules` caches and
+each platform's macro plugins, which are Mach-O. The base platforms'
+manifests get the settings a build without Xcode needs; the other platforms
+are copied as they are. An import writes a receipt, `sweetpad-sdk.json`,
+whose `importerVersion` changes whenever the layout does, and setup reuses a
+bundle only while the receipt matches.
 
 **The engine's additions sit above the user's settings.** Some overrides
 add to a setting rather than set it: `-fuse-ld=lld` in `OTHER_LDFLAGS` for
@@ -4809,6 +4830,20 @@ the compiler, which starts plugins with a bare environment, needs no
 launcher. The package script refuses helpers whose RUNPATH or library needs
 reach past that folder, or that record another Swift.
 
+**LLVM's Apple linker ships beside them.** `libexec/sweetpad/llvm` is LLD
+and `dsymutil` from the pinned upstream LLVM release (23.1.5), built as one
+multicall binary that runs as the tool its argv[0] names. Swift's own LLVM
+refuses to link for iOS and has no `dsymutil`; upstream LLVM from 23.1.3
+reads SDK 27's `arm64e.x1` stubs without patches. It loads only host
+libraries and has no RUNPATH, and the package script refuses one from
+another LLVM release. Builds link and make dSYMs with it (`SWEETPAD_LLVM`
+overrides it), through the `ld64.lld` and `dsymutil` stand-ins, which
+start it under those names. The Darwin SDK bundle's linker is unused. LLD
+can't make the relocatable object `ld -r` asks for, which Swift Build
+still runs for each package target, so the stand-in writes a static
+archive of its objects in its place with the Swift toolchain's `llvm-ar`,
+and the final link loads each such archive whole.
+
 **Signing has no keychain.** The identities are `.p12` files
 (`SWEETPAD_CODE_SIGN_P12`, a `:`-separated list, each file holding one
 identity or several; the passwords in `SWEETPAD_CODE_SIGN_P12_PASSWORD`,
@@ -4874,8 +4909,8 @@ cover companion targets that use another Apple SDK in the same request.
 Modern standalone simulator apps and the migrated corpus watch apps build on both hosts.
 Runtime and device-signing checks remain unverified for the additional platforms.
 
-**Script phases use Bash in a private mount.** Bubblewrap maps the real `/bin/sh` target to Bash
-for the build process. The host's shell configuration is unchanged. SDK C++ headers come from
+**Script phases use Bash.** The container image installs Bash as `/bin/sh`. On a host with
+another system shell, the packaged bubblewrap helper maps `/bin/sh` to Bash for the build. The host's shell configuration is unchanged. SDK C++ headers come from
 its Xcode toolchain. `xcrun clang` translates Apple deployment flags into a Darwin target
 and selects the SDK linker when linking.
 
@@ -4927,12 +4962,11 @@ and stops with `tool_missing` on any other. `doctor` reports whichever of the tw
 device commands will use.
 
 **Linux ships static ARM64 and x86_64 archives, Debian packages and a container image.**
-An archive holds the static CLI, the DAP alias, Swift Build and the macro plugin in
-`libexec/sweetpad`, a README, the device notes and licenses; the setup sources are embedded in
-the binary. It excludes Apple SDKs and signing material.
+An archive holds the static CLI, the DAP alias, Swift Build, the macro plugin and LLVM's
+Apple linker in `libexec/sweetpad`, a README, the device notes and licenses; the sample app that setup builds is
+embedded in the binary. It excludes Apple SDKs and signing material.
 Homebrew remains macOS only.
-The setup script provisions the separate compiler and private SDK prerequisites.
-`SWEETPAD_SKIP_RUST=1` omits Rust for the packaged CLI.
+`sweetpad setup` installs the compiler and imports the private SDK.
 Hosted CI validates a clean Ubuntu installation. A manual private SDK job builds the
 app `project new` creates with the installed CLI, with no source checkout, developer home, network, or app build cache.
 Each archive's helpers run on Ubuntu 24.04, Debian 12 and 13, and Arch with no Swift installed.
@@ -5115,8 +5149,8 @@ quiet. `parse_line` is pure and unit-tested without Xcode.
 
 Linux packages select the host architecture from the ELF header: ARM64 uses
 `linux-arm64`, and x86_64 uses `linux-x64`. Setup selects the matching Swift
-compiler and pinned xtool checksum. SDK receipts record the host architecture
-so a transferred SDK cannot silently reuse another host's tools.
+compiler. SDK receipts record the host architecture, and an import on a
+host of another architecture writes the bundle again instead of reusing it.
 
 iPhone device destinations use ARM64 independently of the Linux host.
 Swift Build and compiler macros run on the host. CI builds both packages and

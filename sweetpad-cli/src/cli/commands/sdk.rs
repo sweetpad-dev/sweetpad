@@ -1,6 +1,5 @@
 //! Export private Apple inputs and import them with the pinned Linux tools.
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 use clap::{Args, Subcommand};
 use serde::Deserialize;
@@ -16,6 +15,28 @@ pub enum Action {
     Export(ExportArgs),
     /// Import a private SDK export or Xcode archive on ARM64 or x86_64 Linux.
     Import(ImportArgs),
+    /// Write a Darwin SDK bundle from an unpacked Xcode.app; 'sdk import' runs this.
+    #[command(hide = true)]
+    WriteBundle(WriteBundleArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct WriteBundleArgs {
+    /// The unpacked Xcode.app.
+    #[arg(long)]
+    pub xcode: PathBuf,
+    /// The bundle folder to create; it must not exist.
+    #[arg(long)]
+    pub out: PathBuf,
+    /// App Intents phrase resources from 'sdk export'.
+    #[arg(long)]
+    pub appintents_phrases: Option<PathBuf>,
+    /// The macOS build the SDK came from.
+    #[arg(long)]
+    pub build_machine_os_build: Option<String>,
+    /// Clang resource headers to use instead of the host Swift's.
+    #[arg(long)]
+    pub clang_headers: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -45,7 +66,17 @@ pub struct ExportArgs {
 #[derive(Debug, Args)]
 pub struct ImportArgs {
     /// Sweetpad export with its checksum, or a private Xcode .xip/.aea archive.
-    pub archive: PathBuf,
+    #[arg(required_unless_present = "xcode", conflicts_with = "xcode")]
+    pub archive: Option<PathBuf>,
+    /// An unpacked Xcode.app this host can read, instead of an archive.
+    #[arg(long, hide = true)]
+    pub xcode: Option<PathBuf>,
+    /// With --xcode: the App Intents phrase resources exported from it.
+    #[arg(long, hide = true, requires = "xcode")]
+    pub appintents_phrases: Option<PathBuf>,
+    /// With --xcode: the macOS build to record as the build machine.
+    #[arg(long, hide = true, requires = "xcode")]
+    pub build_machine_os_build: Option<String>,
     /// SDK destination (default: ~/.swiftpm/swift-sdks/darwin.artifactbundle).
     #[arg(long = "destination")]
     pub install_path: Option<PathBuf>,
@@ -64,14 +95,13 @@ pub(super) struct Report(pub Value);
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct Toolchain {
+pub(crate) struct Toolchain {
     pub swift: String,
     pub swift_build: String,
-    pub xtool: String,
-    pub xtool_sha256: std::collections::BTreeMap<String, String>,
+    pub host_packages: crate::cli::linux_setup::host::HostPackages,
 }
 
-pub(super) fn toolchain() -> &'static Toolchain {
+pub(crate) fn toolchain() -> &'static Toolchain {
     static PINS: std::sync::LazyLock<Toolchain> = std::sync::LazyLock::new(|| {
         serde_json::from_str(include_str!(
             "../../../../sweetpad-lib/ci/linux-toolchain.json"
@@ -98,6 +128,8 @@ impl Render for Report {
             "SDK export plan"
         } else if data["configured"] == true {
             "Linux setup complete"
+        } else if data.get("bundlePath").is_some() {
+            "SDK bundle written"
         } else if data["reused"] == true {
             "SDK already imported"
         } else if data.get("archive").is_some() {
@@ -141,67 +173,92 @@ impl Render for Report {
 }
 
 pub(super) fn download(ctx: &Context, args: &DownloadArgs) -> Result<Value, CliError> {
-    let mut command = super::auth::helper(ctx, "download")?;
-    command.arg("--xcode").arg(&args.xcode);
-    if let Some(path) = &args.session.session_file {
-        command.arg("--session-file").arg(path);
-    }
-    if let Some(path) = &args.output_file {
-        command.arg("--output-file").arg(path);
-    }
-    super::auth::report(&mut command)
+    let explicit = args.session.session_file.is_some();
+    let path = crate::cli::apple_account::session_path(args.session.session_file.as_deref());
+    let mut note = |line: &str| ctx.out.note(line);
+    crate::cli::apple_account::download_xcode(
+        path,
+        explicit,
+        &args.xcode,
+        args.output_file.as_deref(),
+        &mut note,
+    )
+    .map_err(CliError::new)
 }
 
 pub fn run(ctx: &mut Context, action: &Action) -> CommandResult {
     if let Action::Download(args) = action {
         return Ok(Rendered::data(Report(download(ctx, args)?)));
     }
-    let helpers = crate::cli::embedded::root()?.join("setup");
-    let mut cmd = Command::new("python3");
-    cmd.arg(helpers.join("sweetpad-lib/ci/linux-sdk.py"));
-    match action {
-        Action::Download(_) => unreachable!("download handled above"),
-        Action::Export(args) => {
-            cmd.arg("export")
-                .arg("--xcode")
-                .arg(&args.xcode)
-                .arg("--output")
-                .arg(&args.output_file);
-            if args.dry_run {
-                cmd.arg("--dry-run");
-            }
-        }
-        Action::Import(args) => {
-            cmd.arg("import").arg("--archive").arg(&args.archive);
-            cmd.arg("--destination")
-                .arg(args.install_path.clone().unwrap_or_else(default_sdk));
-            if args.replace {
-                cmd.arg("--replace");
-            }
-            if let Some(path) = &args.aea_key_file {
-                cmd.arg("--aea-key-file").arg(path);
-            }
-            if let Some(path) = &args.aea_public_key_file {
-                cmd.arg("--aea-public-key-file").arg(path);
-            }
-        }
+    if let Action::WriteBundle(args) = action {
+        return write_bundle(args).map(|report| Rendered::data(Report(report)));
     }
-    let output = cmd
-        .stdin(Stdio::null())
-        .stderr(Stdio::inherit())
-        .output()
-        .map_err(|e| {
-            CliError::new(format!("SDK preparation requires python3: {e}"))
-                .kind(ErrorKind::ToolMissing)
-        })?;
-    let report: Value = serde_json::from_slice(&output.stdout)
-        .map_err(|e| CliError::new(format!("SDK helper returned an invalid report: {e}")))?;
-    if !output.status.success() {
-        return Err(CliError::new(
-            report["error"].as_str().unwrap_or("SDK preparation failed"),
-        ));
+    let pins = toolchain();
+    let report = match action {
+        Action::Download(_) | Action::WriteBundle(_) => unreachable!("handled above"),
+        Action::Export(args) => crate::cli::sdk_import::export(
+            &args.xcode,
+            &args.output_file,
+            args.dry_run,
+            &pins.sdk_toolchain(),
+            &mut |message| ctx.out.note(message),
+        ),
+        Action::Import(args) => import(args, &mut |message| ctx.out.note(message)),
     }
+    .map_err(CliError::new)?;
     Ok(Rendered::data(Report(report)))
+}
+
+impl Toolchain {
+    pub(crate) fn sdk_toolchain(&self) -> crate::cli::sdk_import::Toolchain<'_> {
+        crate::cli::sdk_import::Toolchain {
+            swift: &self.swift,
+            swift_build: &self.swift_build,
+        }
+    }
+}
+
+pub(super) fn import(args: &ImportArgs, progress: &mut dyn FnMut(&str)) -> Result<Value, String> {
+    let pins = toolchain();
+    let keys = crate::cli::apple_archive::Keys::read(
+        args.aea_key_file.as_deref(),
+        args.aea_public_key_file.as_deref(),
+    )?;
+    let source = match (&args.archive, &args.xcode) {
+        (_, Some(xcode)) => crate::cli::sdk_import::Source::Xcode(xcode),
+        (Some(archive), None) => crate::cli::sdk_import::Source::Archive(archive),
+        (None, None) => return Err("Supply an SDK archive or --xcode".into()),
+    };
+    let clang_headers = crate::cli::sdk_bundle::host_clang_headers(&pins.swift)?;
+    let destination = args.install_path.clone().unwrap_or_else(default_sdk);
+    crate::cli::sdk_import::import(
+        &crate::cli::sdk_import::Import {
+            source,
+            destination: &destination,
+            replace: args.replace,
+            keys: &keys,
+            phrases: args.appintents_phrases.as_deref(),
+            build_machine_os_build: args.build_machine_os_build.as_deref(),
+            toolchain: pins.sdk_toolchain(),
+            clang_headers: &clang_headers,
+        },
+        progress,
+    )
+}
+
+fn write_bundle(args: &WriteBundleArgs) -> Result<Value, CliError> {
+    let clang_headers = match &args.clang_headers {
+        Some(path) => path.clone(),
+        None => crate::cli::sdk_bundle::host_clang_headers(&toolchain().swift)
+            .map_err(|e| CliError::new(e).kind(ErrorKind::ToolMissing))?,
+    };
+    let inputs = crate::cli::sdk_bundle::Inputs {
+        xcode: &args.xcode,
+        clang_headers: &clang_headers,
+        phrases: args.appintents_phrases.as_deref(),
+        build_machine_os_build: args.build_machine_os_build.as_deref(),
+    };
+    crate::cli::sdk_bundle::write(&inputs, &args.out).map_err(CliError::new)
 }
 
 pub(super) fn default_sdk() -> PathBuf {

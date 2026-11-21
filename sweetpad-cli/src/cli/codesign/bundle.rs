@@ -3,6 +3,7 @@
 //! `MacOS`; a versioned framework in the version `Versions/Current` points
 //! at, its Info.plist in `Resources`.
 
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 use super::plist::{self, Plist};
@@ -27,6 +28,13 @@ pub(super) struct Layout {
     /// The executable's path relative to `root`, when it has one.
     pub executable: Option<String>,
     pub flavor: Flavor,
+}
+
+/// The file whose bytes form a bundle's code slots.
+pub(super) struct BundleCode<'a> {
+    pub name: &'a str,
+    pub bytes: Cow<'a, [u8]>,
+    pub detached: bool,
 }
 
 impl Layout {
@@ -67,6 +75,39 @@ impl Layout {
             executable,
             flavor,
         })
+    }
+
+    pub fn code(&self, bundle: &Path) -> Result<BundleCode<'_>, String> {
+        let resource_bundle = bundle
+            .extension()
+            .is_some_and(|s| s == "bundle" || s == "xctest")
+            && plist::string(&self.info, "CFBundlePackageType") == Some("BNDL");
+        if let Some(name) = &self.executable {
+            let path = self.root.join(name);
+            match std::fs::read(&path) {
+                Ok(bytes) => {
+                    return Ok(BundleCode {
+                        name,
+                        detached: crate::cli::darwin_tools::is_static_archive(&path, &bytes),
+                        bytes: Cow::Owned(bytes),
+                    });
+                }
+                Err(e) if resource_bundle && e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(format!("couldn't read {}: {e}", path.display())),
+            }
+        }
+        if resource_bundle {
+            // A source-free XCTest bundle can name an executable it never built.
+            return Ok(BundleCode {
+                name: "Info.plist",
+                bytes: Cow::Borrowed(&self.info_bytes),
+                detached: true,
+            });
+        }
+        Err(format!(
+            "{} names no CFBundleExecutable",
+            self.info_path.display()
+        ))
     }
 }
 

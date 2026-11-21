@@ -1,0 +1,39 @@
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE15__Key_qualified33_976C4CD2146CE0F6122D812456B7D3C2LLV12defaultValue02__cd12EntryDefaultR0fMa_.swift
+{
+    get {
+        false
+    }
+}
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE9qualified0cD5EntryfMa_.swift
+{
+    get {
+        self[__Key_qualified.self]
+    }
+    set {
+        self[__Key_qualified.self] = newValue
+    }
+    _modify {
+        yield &self[__Key_qualified.self]
+    }
+}
+=== __swiftmacro_16FoundationModels21SessionPropertyValuesC4mainE9qualified0cD5EntryfMp_.swift
+private struct __Key_qualified: FoundationModels.SessionPropertyKey {
+    @FoundationModels.__SessionPropertyEntryDefaultValue
+    static var defaultValue: Bool = false
+}
+=== __swiftmacro_4main12WrongContextV5value20SessionPropertyEntryfMa_.swift
+{
+    get {
+        self[__Key_value.self]
+    }
+    set {
+        self[__Key_value.self] = newValue
+    }
+    _modify {
+        yield &self[__Key_value.self]
+    }
+}
+=== __swiftmacro_4main12WrongContextV5value20SessionPropertyEntryfMp_.swift
+
+=== diagnostic
+SessionPropertyEntry-wrong-context.swift:5:5: error: '@SessionPropertyEntry' macro can only attach to var declarations inside extensions of SessionPropertyValues (from macro 'SessionPropertyEntry ')

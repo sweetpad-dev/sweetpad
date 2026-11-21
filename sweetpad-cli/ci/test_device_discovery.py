@@ -5,7 +5,7 @@ import importlib.util
 import io
 from pathlib import Path
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 SPEC=importlib.util.spec_from_file_location("device_network",Path(__file__).parents[1]/"src/cli/device_network.py")
 network=importlib.util.module_from_spec(SPEC)
@@ -42,6 +42,81 @@ class DiscoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(network.action_timeout({"action":"logs"},{}))
         for bad in ["0","-1","nan","inf","3601"]:
             with self.assertRaises(ValueError): network.configured_timeout(bad,"timeout")
+
+
+class DeveloperConnectionTests(unittest.IsolatedAsyncioTestCase):
+    def sessions(self, *states):
+        self.opened = []
+        self.closed = []
+        states = iter(states)
+
+        @asynccontextmanager
+        async def connect(profile):
+            state = next(states)
+            if isinstance(state, Exception):
+                raise state
+            self.opened.append(profile["udid"])
+            try:
+                yield state
+            finally:
+                self.closed.append(state)
+
+        self.mount = AsyncMock()
+        for mock in (patch.object(network, "connection", connect),
+                     patch.object(network, "offers_dvt", lambda state: state in ("ready", "advertised_without_image")),
+                     patch.object(network, "developer_image_mounted", AsyncMock(side_effect=lambda state: state not in ("cold", "advertised_without_image"))),
+                     patch.object(network, "mount_developer_image", self.mount),
+                     patch.object(asyncio, "sleep", new_callable=AsyncMock)):
+            mock.start()
+            self.addCleanup(mock.stop)
+
+    async def test_ready_phone_keeps_its_authenticated_session(self):
+        self.sessions("ready")
+        async with network.developer_connection({"udid": "phone"}) as rsd:
+            self.assertEqual(rsd, "ready")
+        self.mount.assert_not_awaited()
+        self.assertEqual(self.closed, ["ready"])
+
+    async def test_cold_phone_mounts_once_and_waits_for_a_fresh_service_table(self):
+        self.sessions("cold", ConnectionResetError("restarting"), "publishing", "ready")
+        async with network.developer_connection({"udid": "phone"}) as rsd:
+            self.assertEqual(rsd, "ready")
+            self.assertEqual(self.closed, ["cold", "publishing"])
+        self.mount.assert_awaited_once_with("cold")
+        self.assertEqual(self.opened, ["phone"] * 3)
+
+    async def test_advertised_instruments_port_does_not_prove_image_is_mounted(self):
+        self.sessions("advertised_without_image", "ready")
+        async with network.developer_connection({"udid": "phone"}) as rsd:
+            self.assertEqual(rsd, "ready")
+        self.mount.assert_awaited_once_with("advertised_without_image")
+
+    async def test_mounted_phone_waits_for_service_publication_without_remounting(self):
+        self.sessions("publishing", "ready")
+        async with network.developer_connection({"udid": "phone"}) as rsd:
+            self.assertEqual(rsd, "ready")
+        self.mount.assert_not_awaited()
+
+    async def test_mount_failure_prevents_the_device_action(self):
+        self.sessions("cold")
+        self.mount.side_effect = RuntimeError("Developer Mode is disabled")
+        with self.assertRaisesRegex(RuntimeError, "Developer Mode"):
+            async with network.developer_connection({"udid": "phone"}):
+                self.fail("opened developer services after a mount failure")
+
+    async def test_missing_service_after_mount_is_bounded(self):
+        self.sessions(*["cold"] * 6)
+        with self.assertRaisesRegex(RuntimeError, "has not advertised"):
+            async with network.developer_connection({"udid": "phone"}):
+                self.fail("opened an unadvertised service")
+        self.mount.assert_awaited_once()
+
+    async def test_dvt_action_failure_does_not_replay_the_action(self):
+        self.sessions("cold", "ready")
+        with self.assertRaises(ConnectionResetError):
+            async with network.developer_connection({"udid": "phone"}):
+                raise ConnectionResetError("lost after launch")
+        self.assertEqual(self.opened, ["phone", "phone"])
 
 
 class RequestTimeoutTests(unittest.TestCase):

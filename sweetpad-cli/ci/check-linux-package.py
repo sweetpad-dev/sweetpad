@@ -75,14 +75,14 @@ def check(archive, out):
     invoke("sdk-download-help", [binary, "sdk", "download", "--help"])
     invoke("auth-help", [binary, "auth", "--help"])
     invoke("setup-help", [binary, "setup", "--help"])
-    # Exercise both embedded Python helpers without credentials or network access.
+    # Sign-in and downloads refuse cleanly without credentials or network access.
     missing_session = out / "missing-apple-session.json"
     auth_login = invoke("auth-no-session", [binary, "auth", "login", "--apple-id", "synthetic@example.com",
                                             "--session-file", missing_session, "--json"], success=False)
-    assert "non-interactive" in json.loads(auth_login.stderr)["error"]["message"]
+    assert "needs a terminal" in json.loads(auth_login.stderr)["error"]["message"]
     for name, arguments in [("download-no-session", ["sdk", "download"]), ("setup-xcode-no-session", ["setup"])]:
         response = invoke(name, [binary, *arguments, "--xcode", "27.3 beta", "--session-file", missing_session, "--json"], success=False)
-        assert "No Apple session file exists" in json.loads(response.stderr)["error"]["message"]
+        assert "no Apple session file" in json.loads(response.stderr)["error"]["message"]
     logged_out = invoke("auth-logout-empty", [binary, "auth", "logout", "--session-file", missing_session, "--json"])
     assert json.loads(logged_out.stdout)["data"]["loggedOut"] is True
     assert not missing_session.exists()
@@ -91,12 +91,16 @@ def check(archive, out):
     invalid_sdk.with_name(invalid_sdk.name + ".sha256").write_text(f"{hashlib.sha256(invalid_sdk.read_bytes()).hexdigest()}  {invalid_sdk.name}\n")
     raw_setup=invoke("raw-setup-source-discovery", [extracted / "sweetpad", "setup", "--sdk", invalid_sdk, "--json"], success=False)
     raw_error=json.loads(raw_setup.stderr)["error"]
-    assert "Expected a Sweetpad SDK export" in raw_error["message"] and raw_error["diagnostics"][0]["stage"] == "bootstrap"
+    assert "Expected a Sweetpad SDK export" in raw_error["message"]
     installed_setup=invoke("standalone-setup-source-discovery", [binary, "setup", "--sdk", invalid_sdk, "--json"], success=False)
     assert "Expected a Sweetpad SDK export" in json.loads(installed_setup.stderr)["error"]["message"]
     doctor = json.loads(invoke("linux-doctor-missing-tools", [binary, "doctor", "--target", "ios", "--json"], success=False).stdout)
     assert doctor["ok"] and doctor["data"]["summary"]["problems"] > 0
     checks = {c["name"]: c for c in doctor["data"]["checks"]}
+    missing = invoke("missing-host-packages", [binary, "setup", "--no-sdk", "--json"], success=False)
+    message = json.loads(missing.stderr)["error"]["message"]
+    assert checks["Host packages"]["status"] == "problem", checks["Host packages"]
+    assert checks["Host packages"]["detail"] == message and "apt-get install" in message, message
     assert checks["Swift Build"]["status"] == "ok", checks["Swift Build"]
     assert checks["Swift Build"]["detail"].startswith(str(prefix / "libexec/sweetpad/swbuild")), checks["Swift Build"]
     assert checks["Macro plugin"]["status"] == "ok", checks["Macro plugin"]
@@ -111,16 +115,13 @@ def check(archive, out):
                     "--destination", "generic/platform=iOS Simulator", "--json"], success=False)
     error = json.loads(result.stderr)
     assert error["ok"] is False and any(s in error["error"]["message"].lower() for s in ["sdk", "swift", "swbuild"])
-    setup = next((home / ".cache/sweetpad/distribution").glob("*/setup/sweetpad-lib/ci/linux-setup.sh"))
-    invoke("setup-syntax", ["/bin/bash", "-n", setup])
-    assert not (setup.parents[2] / "sweetpad-cli/macros").exists()
     assert shutil.which("swift", path=env["PATH"]) is None
     report = {"passed": True, "archiveSha256": expected[0], "binarySha256": manifest["files"]["sweetpad"],
               "binaryVersion": manifest["binaryVersion"], "emptyHome": True, "developerEnvironmentInherited": False,
               "sdkAvailable": False, "sourceCheckoutRequired": False, "installedPrefix": str(prefix),
               "checks": ["checksum", "manifest hashes", "single-binary install", "static linkage", "version", "DAP alias", "help", "device guide",
-                         "embedded setup files", "packaged Swift helpers in the prefix", "embedded authentication and download helpers", "non-interactive Apple sessions",
-                         "project schemes", "missing-toolchain diagnostic", "bundled setup syntax", "SDK state preserved"]}
+                         "packaged Swift helpers in the prefix", "non-interactive Apple sessions",
+                         "project schemes", "missing-toolchain diagnostic", "SDK state preserved"]}
     (out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 

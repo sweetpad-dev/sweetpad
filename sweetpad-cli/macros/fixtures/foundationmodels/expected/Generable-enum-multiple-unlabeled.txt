@@ -1,0 +1,106 @@
+=== __swiftmacro_4main11Coordinates9GenerablefMe_.swift
+extension Coordinates: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        let type: String = try content.value(forProperty: "type")
+        switch type {
+        case "point":
+            self = .point(
+                try content.value(forProperty: "value"),
+                try content.value(forProperty: "value1")
+            )
+        default:
+            if #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) {
+                throw FoundationModels.GeneratedContent.ParsingError(rawContent: content.jsonString, debugDescription: "Unexpected type \"\(type)\" for \(Self.self)")
+            } else {
+                throw FoundationModels.LanguageModelSession.GenerationError.decodingFailure(FoundationModels.LanguageModelSession.GenerationError.Context(debugDescription: "Unexpected type \"\(type)\" for \(Self.self)"))
+            }
+        }
+    }
+}
+=== __swiftmacro_4main11Coordinates9GenerablefMm_.swift
+nonisolated enum PartiallyGenerated: nonisolated FoundationModels.ConvertibleFromGeneratedContent {
+    case point(Int.PartiallyGenerated?, Int.PartiallyGenerated?)
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        let type: String = try content.value(forProperty: "type")
+        switch type {
+        case "point":
+            self = .point(
+                try content.value(forProperty: "value"),
+                try content.value(forProperty: "value1")
+            )
+        default:
+            if #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) {
+                throw FoundationModels.GeneratedContent.ParsingError(rawContent: content.jsonString, debugDescription: "Unexpected type \"\(type)\" for \(Self.self)")
+            } else {
+                throw FoundationModels.LanguageModelSession.GenerationError.decodingFailure(FoundationModels.LanguageModelSession.GenerationError.Context(debugDescription: "Unexpected type \"\(type)\" for \(Self.self)"))
+            }
+        }
+    }
+}
+
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    FoundationModels.GenerationSchema(
+        type: Self.self,
+        anyOf: [
+            DiscriminatedPoint.self
+        ]
+    )
+}
+
+private nonisolated struct DiscriminatedPoint: nonisolated FoundationModels.Generable {
+    @Guide(.constant("point"))
+    let type: String
+    let value: Int
+    let value1: Int
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.type = try content.value(forProperty: "type")
+        self.value = try content.value(forProperty: "value")
+        self.value1 = try content.value(forProperty: "value1")
+    }
+    nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+        FoundationModels.GenerationSchema(
+            type: Self.self,
+            properties: [
+                FoundationModels.GenerationSchema.Property(name: "type", type: String.self, guides: [.constant("point")]),
+                FoundationModels.GenerationSchema.Property(name: "value", type: Int.self),
+                FoundationModels.GenerationSchema.Property(name: "value1", type: Int.self)
+            ]
+        )
+    }
+    nonisolated var generatedContent: GeneratedContent {
+        let explicitNil = false
+        var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+        addProperty(name: "type", value: self.type)
+        addProperty(name: "value", value: self.value)
+        addProperty(name: "value1", value: self.value1)
+        return GeneratedContent(
+            properties: properties,
+            uniquingKeysWith: { _, second in
+                second
+            }
+        )
+        func addProperty(name: String, value: some Generable) {
+          properties.append((name: name, value: value))
+        }
+        func addProperty(name: String, value: (some Generable)?) {
+          if explicitNil || value != nil {
+            properties.append((name: name, value: value))
+          }
+        }
+    }
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    switch self {
+    case .point(let value, let value1):
+        GeneratedContent(
+            properties: [
+                "type": "point",
+                "value": value,
+                "value1": value1
+            ]
+        )
+    }
+}
+=== __swiftmacro_4main11CoordinatesO18DiscriminatedPoint33_CA77E009D91558C958BA80FDCF185162LLV4type5GuidefMp_.swift
+

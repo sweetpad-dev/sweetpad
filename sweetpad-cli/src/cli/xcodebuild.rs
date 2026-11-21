@@ -2229,8 +2229,13 @@ pub fn target_settings(
 pub(super) fn test_target_settings(
     plan: &BuildPlan<'_>,
     target: &str,
+    package: Option<&Path>,
 ) -> Result<BTreeMap<String, String>, CliError> {
     let mut options = settings_options(plan)?;
+    if let Some(manifest) = package {
+        options.project = Some(manifest.to_owned());
+        options.workspace = None;
+    }
     options.scheme = None;
     options.target = Some(target.to_string());
     sweetpad_core::build_settings::resolve_build_settings(&options)

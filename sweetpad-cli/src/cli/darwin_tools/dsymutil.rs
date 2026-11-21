@@ -3,6 +3,7 @@
 //! SDK interfaces while retaining interfaces owned by the application.
 
 use std::io::{BufRead, BufReader};
+use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
@@ -20,8 +21,11 @@ pub(super) fn main(args: &[String]) -> ExitCode {
 }
 
 fn run(args: &[String]) -> Result<u8, String> {
-    let tool = backend().ok_or("no LLVM dsymutil beside the SDK linker or on PATH")?;
+    let tool = backend().ok_or("no LLVM dsymutil beside this one; sweetpad links it there")?;
+    // By name, as the linker stand-in does: see `ld::main`.
     let status = Command::new(tool)
+        .arg0("dsymutil")
+        .args(linker_choice(args))
         .args(args)
         .status()
         .map_err(|e| e.to_string())?;
@@ -47,21 +51,21 @@ fn run(args: &[String]) -> Result<u8, String> {
     Ok(code)
 }
 
+/// The DWARF linker to ask for: Apple's, the classic one, unless the caller
+/// names one. LLVM 23 defaults to its parallel linker, which leaves
+/// `DW_AT_GNU_dwo_id` on each Clang module's unit, and Xcode's `dwarfdump`
+/// then takes those units for split DWARF and looks for `.dwo` files.
+fn linker_choice(args: &[String]) -> Option<&'static str> {
+    (!args.iter().any(|a| a.starts_with("--linker"))).then_some("--linker=classic")
+}
+
+/// LLVM's `dsymutil`, linked beside this one by the engine.
 fn backend() -> Option<PathBuf> {
-    let beside = std::env::args_os()
+    std::env::args_os()
         .next()
         .map(PathBuf::from)
         .and_then(|p| p.parent().map(|p| p.join(super::SDK_DSYMUTIL)))
-        .and_then(|p| p.canonicalize().ok());
-    if beside.is_some() {
-        return beside;
-    }
-    let me = std::env::current_exe().ok()?.canonicalize().ok()?;
-    std::env::var_os("PATH")
-        .iter()
-        .flat_map(std::env::split_paths)
-        .map(|p| p.join("dsymutil"))
-        .find(|p| p.is_file() && p.canonicalize().ok().as_ref() != Some(&me))
+        .and_then(|p| p.canonicalize().ok())
 }
 
 /// Swift Build emits one bundle per invocation. Inspection, flat output,
@@ -221,6 +225,17 @@ fn omit_sdk_interfaces(bundle: &Path, roots: &[PathBuf]) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::cli::testdir::TempDir;
+
+    #[test]
+    fn asks_for_the_classic_dwarf_linker_unless_one_is_named() {
+        let args = |list: &[&str]| list.iter().map(ToString::to_string).collect::<Vec<_>>();
+        assert_eq!(
+            linker_choice(&args(&["App", "-o", "App.dSYM"])),
+            Some("--linker=classic")
+        );
+        assert_eq!(linker_choice(&args(&["--linker=parallel", "App"])), None);
+        assert_eq!(linker_choice(&args(&["--linker", "parallel", "App"])), None);
+    }
 
     #[test]
     fn metadata_uses_the_nearest_bundle_and_preserves_other_keys() {

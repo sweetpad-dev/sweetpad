@@ -68,6 +68,7 @@ static FORWARDED: AtomicBool = AtomicBool::new(false);
 /// settings to re-assert after a SIGCONT. Pointers are written once (leaked
 /// boxes) and updated in place while `RAW_ACTIVE` is false.
 static RAW_ACTIVE: AtomicBool = AtomicBool::new(false);
+static RAW_FD: AtomicI32 = AtomicI32::new(libc::STDIN_FILENO);
 static RAW_TERMIOS: AtomicPtr<libc::termios> = AtomicPtr::new(std::ptr::null_mut());
 static RAW_APPLIED: AtomicPtr<libc::termios> = AtomicPtr::new(std::ptr::null_mut());
 
@@ -196,6 +197,13 @@ pub fn take_forwarded() -> bool {
 /// [`crate::cli::rawmode::RawMode::enable`] *before* the terminal is actually
 /// flipped, so a signal in the gap restores idempotently.
 pub fn set_raw(original: libc::termios, applied: libc::termios) {
+    set_raw_on(libc::STDIN_FILENO, original, applied);
+}
+
+/// [`set_raw`] for a terminal open on `fd`, such as `/dev/tty` while a
+/// password is read with echo off.
+pub fn set_raw_on(fd: libc::c_int, original: libc::termios, applied: libc::termios) {
+    RAW_FD.store(fd, Ordering::Release);
     store_termios(&RAW_TERMIOS, original);
     store_termios(&RAW_APPLIED, applied);
     RAW_ACTIVE.store(true, Ordering::Release);
@@ -301,7 +309,7 @@ extern "C" fn handle(sig: libc::c_int) {
         if !ptr.is_null() {
             // Safety: restoring a termios the main thread stashed.
             unsafe {
-                libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, ptr);
+                libc::tcsetattr(RAW_FD.load(Ordering::Acquire), libc::TCSANOW, ptr);
             }
         }
     }
@@ -344,7 +352,7 @@ extern "C" fn handle_tstp(_sig: libc::c_int) {
         if !ptr.is_null() {
             // Safety: restoring the stashed termios.
             unsafe {
-                libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, ptr);
+                libc::tcsetattr(RAW_FD.load(Ordering::Acquire), libc::TCSANOW, ptr);
             }
         }
     }
@@ -374,7 +382,7 @@ extern "C" fn handle_cont(_sig: libc::c_int) {
         if !ptr.is_null() {
             // Safety: re-applying the raw termios the main thread stashed.
             unsafe {
-                libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, ptr);
+                libc::tcsetattr(RAW_FD.load(Ordering::Acquire), libc::TCSANOW, ptr);
             }
         }
     }

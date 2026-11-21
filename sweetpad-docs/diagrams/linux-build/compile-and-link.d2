@@ -1,0 +1,11 @@
+sources: "Greeting.swift\nContentView.swift" {class: input}
+sdk: "iPhoneOS SDK" {class: input}
+compiler: "swiftc" {class: box}
+linker: "LLD" {class: box}
+app: "MyApp executable" {class: output}
+
+sources -> compiler
+sdk -> compiler: "SwiftUI\ninterface"
+compiler -> linker: "object\nfiles"
+sdk -> linker: framework stubs
+linker -> app

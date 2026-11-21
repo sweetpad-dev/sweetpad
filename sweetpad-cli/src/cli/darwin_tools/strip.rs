@@ -75,8 +75,14 @@ fn translate(args: &[String]) -> Result<Vec<String>, String> {
             "-R" => out.push(format!("--strip-symbols={}", super::value(arg, &mut it)?)),
             "-u" => out.push("--keep-undefined".to_string()),
             // Symbols the dynamic linker binds stay either way, and the rest
-            // only quiet Apple's own warnings.
-            "-r" | "-no_uuid" | "-no_split_info" | "-no_code_signature_warning" => {}
+            // only quiet Apple's own warnings. '-no_atom_info', which Swift
+            // Build passes when it copies an embedded framework, drops
+            // Apple's linker's LC_ATOM_INFO, which LLD doesn't write.
+            "-r"
+            | "-no_uuid"
+            | "-no_split_info"
+            | "-no_code_signature_warning"
+            | "-no_atom_info" => {}
             flag if flag.starts_with('-') => {
                 return Err(format!("unsupported option: {flag}"));
             }
@@ -110,6 +116,28 @@ mod tests {
                 "App",
                 "-o",
                 "out"
+            ])
+        );
+    }
+
+    #[test]
+    fn an_embedded_frameworks_copy_strips_as_llvm_strip_does() {
+        assert_eq!(
+            translate(&args(&[
+                "-D",
+                "-S",
+                "-no_atom_info",
+                "In/Alamofire",
+                "-o",
+                "App.app/Frameworks/Alamofire.framework/Alamofire"
+            ]))
+            .unwrap(),
+            args(&[
+                "-D",
+                "-S",
+                "In/Alamofire",
+                "-o",
+                "App.app/Frameworks/Alamofire.framework/Alamofire"
             ])
         );
     }

@@ -17,7 +17,7 @@ orb -m sweetpad-linux python3 -B \
   "$PWD/sweetpad-lib/ci/linux-corpus-patches.py" --resolved-only
 ```
 
-Use `--derived-data PATH` for another Ice Cubes package cache.
+For a sweep with `--derived-data ROOT`, pass `--derived-data ROOT/ice-cubes_IceCubesApp.xcodeproj` to the patch script on the build host after resolving Ice Cubes' packages. Each fresh DerivedData has its own RevenueCat checkout.
 Use `--skip-resolved` before package resolution. Use `--check` to validate without writing.
 The script checks every source revision and accepts patches that are already applied.
 
@@ -31,7 +31,7 @@ The script checks every source revision and accepts patches that are already app
 | RevenueCat | Move the private designated initializer into the primary type. This suppresses the conflicting synthesized initializer. |
 | NetNewsWire | Make the outer closure's existing strong capture explicit. Keep the inner weak capture. |
 | NetNewsWire keychain query | Remove return-value and match-limit options from `SecItemDelete`. Both app-hosted controls pass all 92 AccountTests. |
-| Tuist static libraries | Declare the prebuilt C module dependency for ATests and include its Swift module search path. |
+| Tuist static libraries | Declare the prebuilt C module dependency for ATests and include its Swift module search path. Generate the test bundle’s Info.plist so it can be signed. |
 | Alamofire, Kingfisher, Tuist watch apps | Merge extension code, assets, dependencies, and framework embedding into each watch app target. |
 
 The watch migrations preserve each app's storyboard and interface controllers.

@@ -26,10 +26,13 @@ def worker(args):
     bundle = Path.home() / ".swiftpm/swift-sdks/darwin.artifactbundle"
     sdk = bundle / "Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
     compiler = Path.home() / "swift/swift-6.4.2-RELEASE/usr/bin/clang"
-    linker = bundle / "toolset/bin/ld64.lld"
+    # LLVM's multicall binary, which runs as LLD under the name ld64.lld.
+    llvm = Path(os.environ.get("SWEETPAD_LLVM") or Path.home() / "sweetpad-target/debug/libexec/sweetpad/llvm")
+    linker = args.out / "raw/ld64.lld"
+    linker.parent.mkdir(parents=True, exist_ok=True)
     wrapper = args.out / "ld64.lld"
     for path, target in [(wrapper, Path.home() / "sweetpad-target/debug/sweetpad"),
-                         (args.out / "sdk-ld64.lld", linker)]:
+                         (args.out / "sdk-ld64.lld", llvm), (linker, llvm)]:
         path.unlink(missing_ok=True)
         path.symlink_to(target)
     return compiler, sdk, [("raw", linker), ("wrapped", wrapper)]

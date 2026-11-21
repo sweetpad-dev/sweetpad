@@ -245,7 +245,7 @@ fn build_macro(
     configuration: &str,
 ) -> Result<PathBuf, CliError> {
     let configuration = swiftpm::configuration_arg(configuration);
-    let output = Command::new("swift")
+    let output = Command::new(crate::cli::swiftpm::swift_program())
         .args(["build", "--build-system", "native", "--package-path"])
         .arg(root)
         .arg("--scratch-path")

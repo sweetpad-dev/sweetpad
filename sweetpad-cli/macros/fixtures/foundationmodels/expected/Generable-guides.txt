@@ -1,0 +1,61 @@
+=== __swiftmacro_4main6Person9GenerablefMe_.swift
+extension Person: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.name = try content.value(forProperty: "name")
+        self.age = try content.value(forProperty: "age")
+        self.aliases = try content.value(forProperty: "aliases")
+    }
+}
+=== __swiftmacro_4main6Person9GenerablefMm_.swift
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    FoundationModels.GenerationSchema(
+        type: Self.self,
+        description: "A person",
+        properties: [
+            FoundationModels.GenerationSchema.Property(name: "name", description: "Full name", type: String.self),
+            FoundationModels.GenerationSchema.Property(name: "age", type: Int.self, guides: [.range(0 ... 130)]),
+            FoundationModels.GenerationSchema.Property(name: "aliases", description: "Nicknames", type: [String].self, guides: [.minimumCount(1), .maximumCount(3)])
+        ]
+    )
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    let explicitNil = false
+    var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+    addProperty(name: "name", value: self.name)
+    addProperty(name: "age", value: self.age)
+    addProperty(name: "aliases", value: self.aliases)
+    return GeneratedContent(
+        properties: properties,
+        uniquingKeysWith: { _, second in
+            second
+        }
+    )
+    func addProperty(name: String, value: some Generable) {
+      properties.append((name: name, value: value))
+    }
+    func addProperty(name: String, value: (some Generable)?) {
+      if explicitNil || value != nil {
+        properties.append((name: name, value: value))
+      }
+    }
+}
+
+nonisolated struct PartiallyGenerated: Identifiable, nonisolated FoundationModels.ConvertibleFromGeneratedContent {
+    var id: GenerationID
+    var name: String.PartiallyGenerated?
+    var age: Int.PartiallyGenerated?
+    var aliases: [String].PartiallyGenerated?
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.id = content.id ?? GenerationID()
+        self.name = try content.value(forProperty: "name")
+        self.age = try content.value(forProperty: "age")
+        self.aliases = try content.value(forProperty: "aliases")
+    }
+}
+=== __swiftmacro_4main6PersonV3age5GuidefMp_.swift
+
+=== __swiftmacro_4main6PersonV4name5GuidefMp_.swift
+
+=== __swiftmacro_4main6PersonV7aliases5GuidefMp_.swift
+

@@ -1,0 +1,16 @@
+=== __swiftmacro_4main5OtherO21SessionPropertyValuesV5value0cD5EntryfMa_.swift
+{
+    get {
+        self[__Key_value.self]
+    }
+    set {
+        self[__Key_value.self] = newValue
+    }
+    _modify {
+        yield &self[__Key_value.self]
+    }
+}
+=== __swiftmacro_4main5OtherO21SessionPropertyValuesV5value0cD5EntryfMp_.swift
+
+=== diagnostic
+SessionPropertyEntry-module-prefix.swift:9:5: error: '@SessionPropertyEntry' macro can only attach to var declarations inside extensions of SessionPropertyValues (from macro 'SessionPropertyEntry ')

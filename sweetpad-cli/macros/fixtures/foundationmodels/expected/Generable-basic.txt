@@ -1,0 +1,49 @@
+=== __swiftmacro_4main6Person9GenerablefMe_.swift
+extension Person: nonisolated FoundationModels.Generable {
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.name = try content.value(forProperty: "name")
+        self.age = try content.value(forProperty: "age")
+    }
+}
+=== __swiftmacro_4main6Person9GenerablefMm_.swift
+nonisolated static var generationSchema: FoundationModels.GenerationSchema {
+    FoundationModels.GenerationSchema(
+        type: Self.self,
+        properties: [
+            FoundationModels.GenerationSchema.Property(name: "name", type: String.self),
+            FoundationModels.GenerationSchema.Property(name: "age", type: Int.self)
+        ]
+    )
+}
+
+nonisolated var generatedContent: GeneratedContent {
+    let explicitNil = false
+    var properties = [(name: String, value: any ConvertibleToGeneratedContent)]()
+    addProperty(name: "name", value: self.name)
+    addProperty(name: "age", value: self.age)
+    return GeneratedContent(
+        properties: properties,
+        uniquingKeysWith: { _, second in
+            second
+        }
+    )
+    func addProperty(name: String, value: some Generable) {
+      properties.append((name: name, value: value))
+    }
+    func addProperty(name: String, value: (some Generable)?) {
+      if explicitNil || value != nil {
+        properties.append((name: name, value: value))
+      }
+    }
+}
+
+nonisolated struct PartiallyGenerated: Identifiable, nonisolated FoundationModels.ConvertibleFromGeneratedContent {
+    var id: GenerationID
+    var name: String.PartiallyGenerated?
+    var age: Int.PartiallyGenerated?
+    nonisolated init(_ content: FoundationModels.GeneratedContent) throws {
+        self.id = content.id ?? GenerationID()
+        self.name = try content.value(forProperty: "name")
+        self.age = try content.value(forProperty: "age")
+    }
+}
