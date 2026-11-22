@@ -38,7 +38,12 @@ terminal is restored and child processes are reaped.
 
 ## JSON output
 
-`-o json` (or `--json`) returns the whole command as one envelope on stdout:
+With `-o json` (or `--json`), SweetPad writes the final result to stdout.
+`sweetpad build --json >result.json 2>build.log` saves the JSON on success and failure. Warnings go to stderr.
+
+**Migrating from 0.1.28.** Scripts that read build errors from stderr must now read stdout on every exit.
+Keep the exit status and parse the result even when the command exits nonzero.
+A completed test run with failing tests now sets `ok` to `false`. Its summary stays in `data`.
 
 ```console
 $ sweetpad scheme list -o json
@@ -56,8 +61,8 @@ $ sweetpad scheme list -o json
 }
 ```
 
-Three fields, always: `schema` for the envelope version, `ok` for whether the command executed, and
-`data` for the payload. Errors take the same shape on stderr, with `error` in place of `data`:
+Both envelopes include the format version in `schema`. When `ok` is true, `data` contains the result.
+When `ok` is false, `error` describes the failure.
 
 ```console
 $ sweetpad build --on "nope-does-not-exist" -o json
@@ -74,9 +79,8 @@ get past it: the flag to pass, or where to build instead.
 `usage_error` goes with exit 2 when SweetPad parses a flag but won't take it, such as `--failed` on
 `test build` or `--on` together with `--destination`. It also covers an argument no project could
 make valid, such as `archive --on toaster` or a `pbxproj membership add` that names no file. SweetPad
-checks these before it looks for a project, so you get the same answer from any directory. A flag
-that doesn't parse at all also exits 2, but prints the argument parser's plain-text error, even under
-`-o json`.
+checks these before it looks for a project, so you get the same answer from any directory.
+When SweetPad recognizes JSON mode, an unknown flag also produces a `usage_error` envelope and exit 2.
 
 A command that would ask a question at a terminal also exits 2 when it can't ask, and names the flag
 that answers it. Examples are `derived-data purge` or `simulator delete` without `--yes`, and
@@ -85,8 +89,9 @@ It exits 4, because whether you need `--scheme` depends on how many schemes the 
 
 :::warning
 
-`"ok": true` means "the command executed", not "the outcome was good". A red test suite exits 3 and
-reports its failures inside `data` with a perfectly valid envelope. Check the payload's own status, which for tests is `data.passed`, rather than the envelope.
+A failed test run exits 3 with `ok: false` and `error.code: "build_failure"`. If the run produced a summary,
+the same envelope includes `data.passed: false` and the available test details. Diagnostic commands such as
+`doctor` can return a completed report with `ok: true` and a nonzero exit when they find problems.
 
 :::
 
@@ -102,9 +107,9 @@ $ sweetpad build -o ndjson
 {"data":{"built":true,"configuration":"Debug","destination":"platform=iOS Simulator,id=F92801F8-…","durationMs":2451,"errors":0,"productPath":"/…/MyApp.app","scheme":"MyApp","warnings":0},"event":"result","ok":true}
 ```
 
-Every line has an `event` field. The last one is always `"event":"result"` and carries the same
-`ok`/`data` pair the one-shot envelope would have, so a consumer can stream progress and still get a
-single authoritative answer at the end.
+Every line has an `event` field. The last one is always `"event":"result"`. Read its `ok`, `error`, and
+`data` fields the same way as the one-shot JSON envelope. A failed test suite includes its
+available test report in `data` and exits 3. NDJSON also writes the error envelope to stderr.
 
 Use `ndjson` for the long-running verbs (`build`, `test`, `app logs`) and plain `json` for anything
 that returns immediately.

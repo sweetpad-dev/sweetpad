@@ -1,7 +1,7 @@
 //! Enforces the `--json` envelope contract across the non-streaming commands.
 //!
-//! Under `--json`, a command's stdout must be EITHER one `{schema, ok:true, data}`
-//! value, or empty with a `{schema, ok:false, error:{code}}` envelope on stderr.
+//! Under `--json`, a command's stdout must be one `{schema, ok:true, data}`
+//! value or one `{schema, ok:false, error:{code}}` value.
 //! A stray `println!`, a forgotten payload, or a bare (un-enveloped) value would
 //! all break the single-value parse below — so this is the regression net for the
 //! "render once, centrally" design.
@@ -58,19 +58,8 @@ fn parse_stdout(out: &Output, args: &[&str]) -> Value {
         .unwrap_or_else(|e| panic!("{args:?}: stdout is not one JSON value ({e}):\n{stdout:?}"))
 }
 
-/// The error envelope is the *last* line of stderr, compact by design — earlier
-/// lines may legitimately be warnings (config typos, ambiguity notes), which
-/// the documented contract keeps out of the machine-parsed envelope itself.
-fn parse_stderr_error(out: &Output, args: &[&str]) -> Value {
-    let stderr = String::from_utf8(out.stderr.clone()).unwrap();
-    let last = stderr
-        .lines()
-        .rev()
-        .find(|l| !l.trim().is_empty())
-        .unwrap_or_default();
-    let v: Value = serde_json::from_str(last.trim()).unwrap_or_else(|e| {
-        panic!("{args:?}: stderr's last line is not a JSON error envelope ({e}):\n{stderr:?}")
-    });
+fn parse_error(out: &Output, args: &[&str]) -> Value {
+    let v = parse_stdout(out, args);
     assert_eq!(v["schema"], 1, "{args:?}: error envelope schema");
     assert_eq!(v["ok"], Value::Bool(false), "{args:?}: error envelope ok");
     assert!(
@@ -132,7 +121,7 @@ fn success_payloads_are_enveloped() {
 
 /// Tool-backed commands shell to `simctl`/`xcrun`/`devicectl`. With Xcode they
 /// succeed; without it they emit a `tool_missing` error envelope. Either way the
-/// invariant holds: stdout is one success value, or empty with an error on stderr.
+/// invariant holds: stdout is exactly one result.
 #[test]
 fn tool_backed_commands_are_enveloped_or_error() {
     let home = tmp("tool-home");
@@ -145,11 +134,11 @@ fn tool_backed_commands_are_enveloped_or_error() {
     ];
     for args in commands {
         let out = sweetpad(args, &cwd, &home);
-        let stdout = String::from_utf8(out.stdout.clone()).unwrap();
-        if stdout.trim().is_empty() {
-            parse_stderr_error(&out, args); // errored → must be an error envelope
+        let v = parse_stdout(&out, args);
+        if v["ok"] == false {
+            assert!(!out.status.success());
+            parse_error(&out, args); // errored → must be an error envelope
         } else {
-            let v = parse_stdout(&out, args);
             assert_eq!(v["schema"], 1, "{args:?}");
             assert_eq!(v["ok"], Value::Bool(true), "{args:?}");
             assert!(v.get("data").is_some(), "{args:?}");
@@ -176,19 +165,15 @@ fn doctor_leaves_nothing_in_tmpdir() {
 }
 
 /// An unresolved target under `--json --non-interactive` is the canonical error
-/// path: empty stdout, a `target_resolution` error envelope on stderr, exit 4.
+/// path: a `target_resolution` error envelope on stdout, exit 4.
 #[test]
 fn unresolved_target_is_an_error_envelope() {
     let home = tmp("err-home");
     let cwd = tmp("err-cwd"); // empty dir → no project to discover
     let args: &[&str] = &["scheme", "list", "--json", "--non-interactive"];
     let out = sweetpad(args, &cwd, &home);
-    let stdout = String::from_utf8(out.stdout.clone()).unwrap();
-    assert!(
-        stdout.trim().is_empty(),
-        "error path must not write to stdout, got {stdout:?}"
-    );
-    let err = parse_stderr_error(&out, args);
+    assert!(out.stderr.is_empty(), "{out:?}");
+    let err = parse_error(&out, args);
     assert_eq!(err["error"]["code"], "target_resolution");
     assert_eq!(out.status.code(), Some(4), "target resolution → exit 4");
 }
@@ -201,12 +186,8 @@ fn bare_json_outside_a_project_is_an_error_envelope() {
     let cwd = tmp("bare-cwd"); // empty dir → no project to discover
     let args: &[&str] = &["--json"];
     let out = sweetpad(args, &cwd, &home);
-    let stdout = String::from_utf8(out.stdout.clone()).unwrap();
-    assert!(
-        stdout.trim().is_empty(),
-        "bare --json must not write text to stdout, got {stdout:?}"
-    );
-    let err = parse_stderr_error(&out, args);
+    assert!(out.stderr.is_empty(), "{out:?}");
+    let err = parse_error(&out, args);
     assert_eq!(err["error"]["code"], "target_resolution");
     assert_eq!(out.status.code(), Some(4));
 }
@@ -219,13 +200,29 @@ fn app_run_rejects_json() {
     let cwd = tmp("apprun-cwd");
     let args: &[&str] = &["app", "run", "--json"];
     let out = sweetpad(args, &cwd, &home);
-    let stdout = String::from_utf8(out.stdout.clone()).unwrap();
-    assert!(
-        stdout.trim().is_empty(),
-        "app run --json must not emit a success payload, got {stdout:?}"
-    );
+    assert!(out.stderr.is_empty(), "{out:?}");
     assert!(!out.status.success(), "app run --json must exit non-zero");
-    parse_stderr_error(&out, args);
+    parse_error(&out, args);
+}
+
+#[test]
+fn json_usage_errors_include_unrecognized_flags() {
+    let home = tmp("parse-home");
+    let cwd = tmp("parse-cwd");
+    for mode in [vec!["--json"], vec!["-o", "json"], vec!["--output=json"]] {
+        let args = [mode.as_slice(), &["build", "--unknown-option"]].concat();
+        let out = sweetpad(&args, &cwd, &home);
+        assert_eq!(out.status.code(), Some(2));
+        let err = parse_error(&out, &args);
+        assert_eq!(err["error"]["code"], "usage_error");
+        assert!(
+            err["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("--unknown-option")
+        );
+        assert!(out.stderr.is_empty());
+    }
 }
 
 /// A command line clap parses but the command refuses on its own is a usage
@@ -304,7 +301,7 @@ fn a_refused_flag_is_a_usage_error() {
         let json_args = [&args[..tail], &["--json"], &args[tail..]].concat();
         let out = sweetpad(&json_args, &cwd, &home);
         assert_eq!(out.status.code(), Some(2), "{json_args:?}: {out:?}");
-        let err = parse_stderr_error(&out, &json_args);
+        let err = parse_error(&out, &json_args);
         assert_eq!(err["error"]["code"], "usage_error", "{json_args:?}");
     }
 
@@ -316,7 +313,7 @@ fn a_refused_flag_is_a_usage_error() {
         let out = sweetpad(args, &cwd, &home);
         assert_eq!(out.status.code(), Some(2), "{args:?}: {out:?}");
         assert_eq!(
-            parse_stderr_error(&out, args)["error"]["code"],
+            parse_error(&out, args)["error"]["code"],
             "usage_error",
             "{args:?}"
         );
@@ -445,7 +442,7 @@ fn a_prompt_off_a_terminal_is_a_usage_error() {
         let json_args = [*args, &["--json"]].concat();
         let out = sweetpad(&json_args, &cwd, &home);
         assert_eq!(out.status.code(), Some(2), "{json_args:?}: {out:?}");
-        let err = parse_stderr_error(&out, &json_args);
+        let err = parse_error(&out, &json_args);
         assert_eq!(err["error"]["code"], "usage_error", "{json_args:?}");
     }
     assert_eq!(

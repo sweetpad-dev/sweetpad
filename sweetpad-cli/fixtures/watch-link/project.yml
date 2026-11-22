@@ -1,0 +1,33 @@
+name: WatchLink
+options:
+  bundleIdPrefix: dev.sweetpad
+  deploymentTarget:
+    watchOS: "11.0"
+packages:
+  ValueKit:
+    path: ValueKit
+settings:
+  base:
+    GENERATE_INFOPLIST_FILE: YES
+    SWIFT_VERSION: "5.0"
+targets:
+  WatchProbe:
+    type: framework
+    platform: watchOS
+    sources: [Probe]
+    dependencies:
+      - package: ValueKit
+  WatchTests:
+    type: bundle.unit-test
+    platform: watchOS
+    sources: [Tests]
+    dependencies:
+      - target: WatchProbe
+      - package: ValueKit
+schemes:
+  WatchProbe:
+    build:
+      targets:
+        WatchProbe: all
+    test:
+      targets: [WatchTests]

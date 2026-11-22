@@ -22,12 +22,12 @@ projects. This skill covers the everyday flows and how to discover the rest.
 ## Read results correctly
 
 - Success is `{"schema":N,"ok":true,"data":{…}}` on stdout. Errors are
-  `{"schema":1,"ok":false,"error":{"code":…,"message":…}}` on stderr, where
+  `{"schema":1,"ok":false,"error":{"code":…,"message":…}}` on stdout, where
   `code` is one of: `generic`, `usage_error`, `build_failure`,
   `target_resolution`, `tool_missing`, `user_cancel`.
-- `ok: true` means "the command ran", not "the outcome was good". A failing test
-  run still reports `ok: true` with `data.passed: false` — read the payload's own
-  status field, not just `ok`.
+- A failing test run exits 3 with `ok: false`. Read the available test summary
+  from `data` in the same envelope. A completed diagnostic report such as
+  `doctor` can have `ok: true` and exit nonzero when it finds problems.
 - Exit codes: `0` ok · `1` generic · `2` bad flags, or a flag a prompt needs
   off a terminal (`--yes`, `--product`) · `3` build/test failure ·
   `4` target resolution (unknown scheme/destination) · `5` missing tool ·

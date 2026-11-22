@@ -499,7 +499,7 @@ fn a_purge_without_yes_off_a_terminal_is_a_usage_error() {
     );
     let json = sweetpad(&[&args[..], &["--json"]].concat(), &cwd, &home, None);
     assert_eq!(json.status.code(), Some(2), "{json:?}");
-    let envelope: Value = serde_json::from_slice(&json.stderr).unwrap();
+    let envelope: Value = serde_json::from_slice(&json.stdout).unwrap();
     assert_eq!(envelope["error"]["code"], "usage_error", "{envelope}");
     assert!(
         folder.join("Build/built.txt").exists(),

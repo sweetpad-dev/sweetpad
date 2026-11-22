@@ -38,7 +38,7 @@ def check(binary, out):
         (out / (name + ".stderr")).write_text(result.stderr)
         if (result.returncode == 0) != success:
             raise AssertionError(f"{name}: exit {result.returncode}; see {out / (name + '.stderr')}")
-        return json.loads(result.stdout if success else result.stderr)
+        return json.loads(result.stdout)
 
     build = ["build", *common, "--destination", "generic/platform=iOS Simulator,arch=arm64", "--", "ARCHS=arm64", "CODE_SIGNING_ALLOWED=NO"]
     built=invoke("script-build", build)["data"]

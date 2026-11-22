@@ -21,20 +21,6 @@ fn executable(path: &Path) -> bool {
         .is_ok_and(|info| info.is_file() && info.permissions().mode() & 0o111 != 0)
 }
 
-/// `$XDG_CACHE_HOME/sweetpad`, by default `~/.cache/sweetpad`.
-pub(crate) fn cache_dir() -> PathBuf {
-    std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| {
-            std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_default()
-                .join(".cache")
-        })
-        .join("sweetpad")
-}
-
 /// The Darwin archiver in the pinned Swift toolchain.
 pub(crate) fn archiver() -> Option<PathBuf> {
     swift::pinned()

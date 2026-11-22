@@ -164,6 +164,88 @@ fn json_and_ndjson_report_the_same_build_result() {
     }
 }
 
+/// Read a failed XCTest run through the CLI, including the per-test evidence
+/// that callers use to annotate CI failures.
+#[test]
+fn failed_test_run_matches_json_and_ndjson_results() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = tmp("failed-tests-home");
+    let cwd = tmp("failed-tests-cwd");
+    let bin = cwd.join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    let xcodebuild = bin.join("xcodebuild");
+    std::fs::write(
+        &xcodebuild,
+        r#"#!/bin/sh
+while [ "$#" -gt 1 ]; do
+    if [ "$1" = -resultBundlePath ]; then mkdir -p "$2"; exit 65; fi
+    shift
+done
+exit 1
+"#,
+    )
+    .unwrap();
+    let xcrun = bin.join("xcrun");
+    std::fs::write(
+        &xcrun,
+        r#"#!/bin/sh
+[ "$1 $2 $3 $4" = 'xcresulttool get test-results summary' ] || exit 1
+echo '{"result":"Failed","totalTestCount":2,"passedTests":1,"failedTests":1,"testFailures":[{"testName":"testSum","targetName":"MathTests","failureText":"expected 4"}]}'
+"#,
+    ).unwrap();
+    for tool in [xcodebuild, xcrun] {
+        std::fs::set_permissions(tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let run = |format| {
+        let out = command_in(
+            &home,
+            &cwd,
+            &[
+                "test",
+                "run",
+                "--project",
+                project().to_str().unwrap(),
+                "--scheme",
+                "SweetpadCIMac",
+                "--configuration",
+                "Debug",
+                "--destination",
+                "platform=macOS",
+                "-o",
+                format,
+            ],
+        )
+        .output()
+        .unwrap();
+        assert_eq!(out.status.code(), Some(3), "{out:?}");
+        out
+    };
+    let json = run("json");
+    let envelope: Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(envelope["ok"], false);
+    assert_eq!(envelope["error"]["code"], "build_failure");
+    assert_eq!(envelope["data"]["passed"], false);
+    assert_eq!(envelope["data"]["passedTests"], 1);
+    assert_eq!(envelope["data"]["failedTests"], 1);
+    assert_eq!(envelope["data"]["failures"][0]["test"], "testSum");
+    assert_eq!(envelope["data"]["failures"][0]["message"], "expected 4");
+    let streamed = run("ndjson");
+    let events: Vec<Value> = std::str::from_utf8(&streamed.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(events.iter().filter(|v| v["event"] == "result").count(), 1);
+    let last = events.last().unwrap();
+    assert_eq!(last["event"], "result");
+    for field in ["ok", "error", "data"] {
+        assert_eq!(last[field], envelope[field], "{field}");
+    }
+    let diagnostic: Value = serde_json::from_slice(&streamed.stderr).unwrap();
+    assert_eq!(diagnostic["error"], envelope["error"]);
+}
+
 const BROKEN: &str = "\
 CompileSwift normal arm64 /src/App/ContentView.swift (in target 'SweetpadCIMac' from project 'SweetpadCIApp')
 /src/App/ContentView.swift:17:19: error: cannot find 'undefinedSymbol' in scope
@@ -488,8 +570,12 @@ fn a_streamed_compile_error_still_reaches_the_machine_modes() {
     for mode in [["-o", "json"], ["-o", "ndjson"]] {
         let out = build_with_stub(mode[1], BROKEN, 65, &mode);
         assert_eq!(out.status.code(), Some(3), "{mode:?}: {out:?}");
-        let stderr = String::from_utf8(out.stderr).unwrap();
-        let envelope: Value = serde_json::from_str(stderr.lines().last().unwrap()).unwrap();
+        let envelope: Value = if mode[1] == "ndjson" {
+            let text = String::from_utf8(out.stderr).unwrap();
+            serde_json::from_str(text.lines().last().unwrap()).unwrap()
+        } else {
+            serde_json::from_slice(&out.stdout).unwrap()
+        };
         assert_eq!(envelope["ok"], false, "{mode:?}");
         assert_eq!(envelope["error"]["code"], "build_failure", "{mode:?}");
         assert!(
@@ -522,8 +608,7 @@ xcodebuild: error: Timed out waiting for all destinations matching the provided 
 fn a_destination_errors_headline_is_one_line() {
     let out = build_with_stub("destination", DESTINATION_TIMEOUT, 70, &["-o", "json"]);
     assert_eq!(out.status.code(), Some(3), "{out:?}");
-    let stderr = String::from_utf8(out.stderr).unwrap();
-    let envelope: Value = serde_json::from_str(stderr.lines().last().unwrap()).unwrap();
+    let envelope: Value = serde_json::from_slice(&out.stdout).unwrap();
     let message = envelope["error"]["message"].as_str().unwrap();
     assert!(!message.contains('\n'), "{message}");
     assert!(
@@ -612,8 +697,12 @@ fn a_device_destination_error_ends_on_a_device_info_tip() {
     for mode in [["-o", "json"], ["-o", "ndjson"]] {
         let out = build(&format!("device-{}", mode[1]), &mode);
         assert_eq!(out.status.code(), Some(3), "{mode:?}: {out:?}");
-        let stderr = String::from_utf8(out.stderr).unwrap();
-        let envelope: Value = serde_json::from_str(stderr.lines().last().unwrap()).unwrap();
+        let envelope: Value = if mode[1] == "ndjson" {
+            let text = String::from_utf8(out.stderr).unwrap();
+            serde_json::from_str(text.lines().last().unwrap()).unwrap()
+        } else {
+            serde_json::from_slice(&out.stdout).unwrap()
+        };
         assert_eq!(envelope["error"]["tip"], tip, "{mode:?}");
     }
 }
@@ -686,8 +775,7 @@ fn a_destination_error_closes_on_the_failure_banner() {
 #[test]
 fn a_destination_error_off_a_device_gets_no_tip() {
     let out = build_with_stub("mac", DESTINATION_TIMEOUT, 70, &["-o", "json"]);
-    let stderr = String::from_utf8(out.stderr).unwrap();
-    let envelope: Value = serde_json::from_str(stderr.lines().last().unwrap()).unwrap();
+    let envelope: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(envelope["error"].get("tip").is_none(), "{envelope}");
 }
 
@@ -843,7 +931,8 @@ fn the_hot_default_yields_to_no_logs_detach_and_wait_for_debugger() {
     assert_eq!(out.status.code(), Some(3), "{out:?}");
     let stderr = String::from_utf8(out.stderr).unwrap();
     assert!(!stderr.contains("hot reload off"), "{stderr}");
-    assert!(stderr.contains("\"code\":\"build_failure\""), "{stderr}");
+    let envelope: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(envelope["error"]["code"], "build_failure");
 
     let out = hot_default_run("typed-hot", &["--hot", "--no-logs"], false);
     assert_eq!(out.status.code(), Some(2), "{out:?}");
@@ -931,12 +1020,11 @@ fn a_blocked_build_names_the_flag_in_the_run_session_too() {
 fn a_blocked_builds_error_object_carries_the_way_past() {
     let out = build_with_stub("blocked-json", BLOCKED, 65, &["--json"]);
     assert_eq!(out.status.code(), Some(3), "{out:?}");
-    let stderr = String::from_utf8(out.stderr).unwrap();
-    let envelope: serde_json::Value = serde_json::from_str(stderr.trim()).unwrap();
+    let envelope: Value = serde_json::from_slice(&out.stdout).unwrap();
     let blocker = envelope["error"]["blocker"].as_str().unwrap_or_default();
     assert!(
         blocker.contains("retry with '-- -skipPackagePluginValidation'"),
-        "{stderr}"
+        "{envelope}"
     );
 }
 

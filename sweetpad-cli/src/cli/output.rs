@@ -267,24 +267,21 @@ impl Output {
         }
     }
 
-    /// Render an error. JSON/ndjson modes emit a structured object (the
-    /// flattened message) to stderr. Human mode prints a red `error:` prefix
-    /// with the operation [`headline`](CliError::headline) in bold; any
-    /// underlying [`detail`](CliError::detail) follows on the next line, dimmed
-    /// and indented two spaces — so "what we were doing" reads at a glance and
-    /// the raw tool output sits quietly beneath it. A failure the terminal
-    /// already shows ([`CliError::shown`]) prints nothing in human mode but
-    /// its [`tip`](CliError::tip), which closes the output either way.
+    /// Write the one-shot failure result. A completed test run can also
+    /// supply its report so callers keep the counts and individual failures.
+    pub(super) fn json_error(err: &CliError, report: Option<serde_json::Value>) {
+        let mut envelope = serde_json::json!({"schema": 1, "ok": false, "error": err.json()});
+        if let Some(data) = report {
+            envelope["data"] = data;
+        }
+        println!("{envelope}");
+    }
+
+    /// Report a diagnostic on stderr. The dispatcher owns the final stdout result.
     pub fn error(&self, err: &CliError) {
-        if self.json || self.ndjson {
-            let payload = serde_json::json!({
-                "schema": 1,
-                "ok": false,
-                "error": err.json(),
-            });
-            if let Ok(s) = serde_json::to_string(&payload) {
-                let _ = writeln!(std::io::stderr(), "{s}");
-            }
+        if self.ndjson {
+            let payload = serde_json::json!({"schema": 1, "ok": false, "error": err.json()});
+            let _ = writeln!(std::io::stderr(), "{payload}");
             return;
         }
         let stderr = std::io::stderr();

@@ -138,7 +138,7 @@ fn download_with(
     };
     let destination = match output {
         Some(path) => path.to_path_buf(),
-        None => download::default_destination(release.path.rsplit('/').next().unwrap_or_default()),
+        None => download::default_destination(release.path.rsplit('/').next().unwrap_or_default())?,
     };
     let destination = std::path::absolute(&destination).unwrap_or(destination);
     download::download(

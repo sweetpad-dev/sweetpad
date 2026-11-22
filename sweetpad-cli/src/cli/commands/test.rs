@@ -995,11 +995,17 @@ fn test(ctx: &mut Context, args: &RunArgs) -> CommandResult {
         coverage,
         result_bundle: bundle.display().to_string(),
     };
+    Ok(test_result(report, passed))
+}
+
+fn test_result(report: impl Render + 'static, passed: bool) -> Rendered {
     if passed {
-        Ok(Rendered::data(report))
+        Rendered::data(report)
     } else {
-        // A red suite still renders its summary, but exits 3 (build/test failure).
-        Ok(Rendered::data_with_exit(report, 3))
+        Rendered::Failed {
+            payload: Box::new(report),
+            error: CliError::new("Test run failed").kind(ErrorKind::BuildFailure),
+        }
     }
 }
 
@@ -2600,11 +2606,7 @@ fn spm_test(ctx: &mut Context, resolved: &resolve::Resolved, args: &RunArgs) -> 
     )?;
 
     let report = SpmTestReport { passed };
-    if passed {
-        Ok(Rendered::data(report))
-    } else {
-        Ok(Rendered::data_with_exit(report, 3))
-    }
+    Ok(test_result(report, passed))
 }
 
 #[cfg(test)]

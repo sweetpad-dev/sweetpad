@@ -235,14 +235,26 @@ fn load_with_fingerprint(
         }
     }
 
-    let cache_path =
-        cache_override.map_or_else(|| default_cache_path(xcspec_root), Path::to_path_buf);
+    let cache_path = match cache_override {
+        Some(path) => Some(path.to_path_buf()),
+        None => default_cache_path(xcspec_root).ok(),
+    };
 
-    let catalog = if let Some(catalog) = read_valid_cache(&cache_path, fingerprint) {
+    let catalog = if let Some(catalog) = cache_path
+        .as_deref()
+        .and_then(|path| read_valid_cache(path, fingerprint, cache_override.is_none()))
+    {
         catalog
     } else {
         let catalog = xcspec::load_catalog(xcspec_root, sdksettings_root).map_err(Error::Build)?;
-        let _ = write_cache(&cache_path, &serialize(&catalog, fingerprint));
+        if let Some(path) = cache_path {
+            let bytes = serialize(&catalog, fingerprint);
+            if cache_override.is_some() {
+                let _ = write_cache(&path, &bytes);
+            } else {
+                let _ = crate::cache::write_file(&path, &bytes);
+            }
+        }
         catalog
     };
 
@@ -252,8 +264,13 @@ fn load_with_fingerprint(
 
 /// Read `path` and return its catalog only if it deserializes cleanly and its
 /// stored fingerprint matches `fingerprint`. Any miss → `None` (rebuild).
-fn read_valid_cache(path: &Path, fingerprint: u64) -> Option<Catalog> {
-    let bytes = fs::read(path).ok()?;
+fn read_valid_cache(path: &Path, fingerprint: u64, managed: bool) -> Option<Catalog> {
+    let bytes = if managed {
+        crate::cache::read_file(path, u64::MAX)
+    } else {
+        fs::read(path)
+    }
+    .ok()?;
     let (catalog, stored) = deserialize(&bytes).ok()?;
     (stored == fingerprint).then_some(catalog)
 }
@@ -264,8 +281,12 @@ fn read_valid_cache(path: &Path, fingerprint: u64) -> Option<Catalog> {
 
 /// Default cache file for a given xcspec root:
 /// `<cache-dir>/sweetpad/catalog-v<format>-<hash>.bin`.
-fn default_cache_path(xcspec_root: &Path) -> PathBuf {
-    cache_path_in(&cache_dir().join("sweetpad"), xcspec_root, FORMAT_VERSION)
+fn default_cache_path(xcspec_root: &Path) -> io::Result<PathBuf> {
+    let root = std::env::var_os("SWEETPAD_CACHE_DIR").map_or_else(crate::cache::root, |base| {
+        PathBuf::from(base).join("sweetpad")
+    });
+    crate::cache::prepare(&root, Path::new(""))?;
+    Ok(cache_path_in(&root, xcspec_root, FORMAT_VERSION))
 }
 
 /// The cache file under `dir` for `xcspec_root` in `format`. The hash is
@@ -279,21 +300,6 @@ fn cache_path_in(dir: &Path, xcspec_root: &Path, format: u8) -> PathBuf {
     let canonical = fs::canonicalize(xcspec_root).unwrap_or_else(|_| xcspec_root.to_path_buf());
     let key = fnv1a(canonical.to_string_lossy().as_bytes(), FNV_OFFSET);
     dir.join(format!("catalog-v{format}-{key:016x}.bin"))
-}
-
-/// Base cache directory: `$SWEETPAD_CACHE_DIR`, else `$XDG_CACHE_HOME`, else
-/// `$HOME/.cache`, else the platform temp dir.
-fn cache_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os("SWEETPAD_CACHE_DIR") {
-        return PathBuf::from(dir);
-    }
-    if let Some(dir) = std::env::var_os("XDG_CACHE_HOME") {
-        return PathBuf::from(dir);
-    }
-    if let Some(home) = std::env::var_os("HOME") {
-        return PathBuf::from(home).join(".cache");
-    }
-    std::env::temp_dir()
 }
 
 fn write_cache(path: &Path, bytes: &[u8]) -> io::Result<()> {

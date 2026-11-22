@@ -334,15 +334,10 @@ pub(crate) fn select_release(downloads: &[Value], version: &str) -> Result<Relea
 }
 
 /// `$XDG_CACHE_HOME/sweetpad/downloads/<filename>`.
-pub(crate) fn default_destination(filename: &str) -> PathBuf {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_default();
-    let cache = std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .filter(|root| root.is_absolute())
-        .unwrap_or_else(|| home.join(".cache"));
-    cache.join("sweetpad/downloads").join(filename)
+pub(crate) fn default_destination(filename: &str) -> Result<PathBuf, String> {
+    sweetpad_lib::cache::prepare(&sweetpad_lib::cache::root(), Path::new("downloads"))
+        .map(|dir| dir.join(filename))
+        .map_err(|e| format!("prepare download directory: {e}"))
 }
 
 fn digest_file(path: &Path) -> Result<String, String> {

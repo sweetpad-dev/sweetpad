@@ -16,6 +16,7 @@
 extern crate self as sweetpad_lib;
 
 pub mod bplist;
+pub mod cache;
 pub mod catalog_cache;
 pub mod compiler_args;
 pub mod condition;
