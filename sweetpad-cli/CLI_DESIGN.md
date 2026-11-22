@@ -307,13 +307,13 @@ builds it with real `xcodebuild`.
 
 - Success: `{"schema": 1, "ok": true, "data": …}` on **stdout**,
   pretty-printed. Errors: `{"schema": 1, "ok": false, "error": {code,
-  message}}` on **stderr**, compact single-line by design (robust to scrape
-  even when child-process stderr interleaves). A build failure adds the
+  message}}` on **stdout**, compact on one line. A build failure adds the
   parsed `diagnostics`; a failure that points at a next command adds it as
   `tip`, which human output prints as its closing `tip:` line even when the
   streamed log already showed the error.
-- **`ok` means "the command executed"**, not "the outcome was good": a red
-  test suite is `ok: true` with `data.passed: false` (exit 3), `doctor` with
+- A red test suite returns `ok: false` and `error.code: "build_failure"` (exit 3).
+  Its report stays in the same envelope under `data`, including `data.passed: false`.
+  A completed diagnostic report can identify problems: `doctor` with
   problems is `ok: true` with per-check statuses (exit 1), `device info` on a
   device that is not ready is `ok: true` with `data.ready: false` (exit 1),
   `format --check` reports findings in `data` (exit 3). Every such payload
@@ -330,8 +330,7 @@ builds it with real `xcodebuild`.
   `log stream` NDJSON events (one JSON object per line, no envelope; on macOS,
   captured stdout/stderr lines are `{"source":"stdout",…}`), except under
   `--exits`, whose finite report takes the envelope like any other;
-  `completions` ignores it. Clap usage errors (exit 2) print clap's human
-  text on stderr regardless of `--json`.
+  `completions` ignores it. Clap usage errors produce a `usage_error` envelope when JSON mode is recognized.
 
 ### The NDJSON stream (`-o ndjson`)
 
@@ -390,8 +389,7 @@ simulator) exits 1 instead of 0, since the app may still be running. A
 session already exiting non-zero keeps its code and prints the stop's error
 too (`quit_result`).
 
-Exit 2 has two sources. clap reports what it can't parse, in its own text
-even under `--json`. The command reports what it parses but refuses: a flag
+Exit 2 has two sources. clap reports what it can't parse. The command reports what it parses but refuses: a flag
 on a verb it means nothing to (`test build --failed`, `build diagnostics
 --clean`), two flags that can't go together (`--on` with `--destination`,
 `--gh-annotations` with `-o json`, `app debug --batch` with `-o json`,
@@ -953,8 +951,8 @@ Notes / heuristics:
   for its members, and a local package's for its products. Scheme files for
   other targets don't stand in the way, so `scheme list`, `settings show` and
   the build's product lookup agree on the set `xcodebuild -list` prints.
-- `test run` exits non-zero on failures; the `--json` summary lands on stdout
-  and the failure error on stderr, so both are independently consumable.
+- A failed test suite exits 3. The JSON envelope and final NDJSON result both include
+  `ok: false`, `error.code: "build_failure"`, and the available summary in `data` on stdout.
 - simulator inline logs use a best-effort `processImagePath CONTAINS` log
   predicate; may need refinement per app.
 - New deps (under the `cli` feature only): `clap_complete`, `dialoguer`, `libc`
@@ -4754,15 +4752,12 @@ are copied as they are. An import writes a receipt, `sweetpad-sdk.json`,
 whose `importerVersion` changes whenever the layout does, and setup reuses a
 bundle only while the receipt matches.
 
-**The engine's additions sit above the user's settings.** Some overrides
-add to a setting rather than set it: `-fuse-ld=lld` in `OTHER_LDFLAGS` for
-tvOS, watchOS and visionOS, and the Swift library and header search paths.
-Swift Build stacks a request's levels as command-line settings, then the
-`-xcconfig` file, then the environment config, so an addition among the
-command-line settings is lost to a user's `OTHER_LDFLAGS=-ObjC` or to an
-xcconfig that sets the flags without `$(inherited)`. The additions go in the
-environment-config table instead, where `$(inherited)` takes in everything
-below: `-ObjC -fuse-ld=lld`.
+**Linker selection and search paths.** For tvOS, watchOS and visionOS, the
+engine sets `ALTERNATE_LINKER=lld` for the target SDK. Swift Build then passes
+`-use-ld=lld` to Swift and `-fuse-ld=lld` to Clang. Projects can supply their
+own `OTHER_LDFLAGS`. The engine appends the Swift library and header search
+paths in the environment-config table. At that level, `$(inherited)` includes
+the project's settings, command-line overrides and the user's `-xcconfig` file.
 
 **A stand-in is the sweetpad binary under the tool's name.** The engine
 links the binary into the stand-ins' folder under each name, puts the folder

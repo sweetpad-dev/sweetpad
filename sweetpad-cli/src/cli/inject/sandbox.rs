@@ -14,6 +14,7 @@
 //! hand-rolled. Any failure falls back to no override — the built-product
 //! preflight then refuses with its usual guidance instead of guessing.
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use crate::cli::process;
@@ -49,7 +50,7 @@ pub fn plan(
     configuration: &str,
 ) -> Result<SandboxPlan, String> {
     plan_in(
-        super::client::cache_root().as_deref(),
+        &sweetpad_lib::cache::root(),
         entitlements,
         user_file,
         keep,
@@ -58,10 +59,9 @@ pub fn plan(
     )
 }
 
-/// [`plan`] against the hot-reload cache at `cache_root` (`None` when there is
-/// no home directory to put one in).
+/// [`plan`] with an explicit SweetPad cache root.
 fn plan_in(
-    cache_root: Option<&Path>,
+    cache_root: &Path,
     entitlements: Option<&Path>,
     user_file: Option<&Path>,
     keep: bool,
@@ -86,7 +86,6 @@ fn plan_in(
     if !sandboxed(source)? {
         return Ok(SandboxPlan::Unneeded);
     }
-    let cache_root = cache_root.ok_or("no home directory for the hot-reload cache")?;
     strip(source, cache_root, project_key, configuration).map(SandboxPlan::Override)
 }
 
@@ -118,11 +117,16 @@ fn strip(
     project_key: &str,
     configuration: &str,
 ) -> Result<PathBuf, String> {
-    let dir = cache_root
-        .join("entitlements")
-        .join(super::client::fnv1a_hex(project_key.as_bytes()));
-    std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
-    let dest = dir.join(format!("{configuration}-nosandbox.entitlements"));
+    let relative =
+        Path::new("hot-reload/entitlements").join(super::client::fnv1a_hex(project_key.as_bytes()));
+    let dir = sweetpad_lib::cache::prepare(cache_root, &relative).map_err(|e| e.to_string())?;
+    let filename = format!("{configuration}-nosandbox.entitlements");
+    if Path::new(&filename).file_name() != Some(filename.as_ref()) {
+        return Err(format!("invalid configuration name: {configuration}"));
+    }
+    let scratch =
+        sweetpad_lib::scratch::ScratchDir::new_in(&dir, ".stage").map_err(|e| e.to_string())?;
+    let dest = scratch.join("copy.entitlements");
     std::fs::copy(source, &dest)
         .map_err(|e| format!("copy {} → {}: {e}", source.display(), dest.display()))?;
     // Normalize to XML so the result is inspectable regardless of the
@@ -133,7 +137,11 @@ fn strip(
     // existing key fails and Set on a missing one does too.
     let _ = plist_buddy(&dest, "Delete :com.apple.security.get-task-allow");
     plist_buddy(&dest, "Add :com.apple.security.get-task-allow bool true")?;
-    Ok(dest)
+    std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| e.to_string())?;
+    let published = dir.join(filename);
+    std::fs::rename(dest, &published).map_err(|e| e.to_string())?;
+    Ok(published)
 }
 
 /// Run `plutil <flags> <file>`, mapping failure to a sentence.
@@ -198,7 +206,10 @@ mod tests {
         let cache = dir.join("cache");
         let source = temp_plist(&dir, "strip-src.entitlements", SANDBOXED);
         let dest = strip(&source, &cache, "/work/App.xcodeproj#test-strip", "Debug").unwrap();
-        assert!(dest.starts_with(cache.join("entitlements")), "{dest:?}");
+        assert!(
+            dest.starts_with(cache.join("hot-reload/entitlements")),
+            "{dest:?}"
+        );
         assert!(dest.ends_with("Debug-nosandbox.entitlements"), "{dest:?}");
         let text = std::fs::read_to_string(&dest).unwrap();
         assert!(!text.contains("app-sandbox"), "{text}");
@@ -217,14 +228,7 @@ mod tests {
         let dir = TempDir::new("sweetpad-sandbox");
         let cache = dir.join("cache");
         let plan = |entitlements, user_file, keep, project_key| {
-            plan_in(
-                Some(&cache),
-                entitlements,
-                user_file,
-                keep,
-                project_key,
-                "Debug",
-            )
+            plan_in(&cache, entitlements, user_file, keep, project_key, "Debug")
         };
         let sandboxed_file = temp_plist(&dir, "plan-sandboxed.entitlements", SANDBOXED);
         let plain_file = temp_plist(&dir, "plan-plain.entitlements", UNSANDBOXED);
@@ -259,8 +263,5 @@ mod tests {
         );
         let err = plan(None, Some(Path::new("/nonexistent.plist")), false, "/k").unwrap_err();
         assert!(err.contains("does not exist"), "{err}");
-        // With no home for the cache, a sandboxed file can't be stripped.
-        let err = plan_in(None, Some(&sandboxed_file), None, false, "/k", "Debug").unwrap_err();
-        assert!(err.contains("hot-reload cache"), "{err}");
     }
 }

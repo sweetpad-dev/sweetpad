@@ -3,10 +3,11 @@
 
 use std::ffi::OsStr;
 use std::io;
+use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-/// A fresh, empty directory, removed with everything in it when this drops.
+/// A fresh, owner-only directory, removed with everything in it when this drops.
 /// It derefs to its path.
 pub struct ScratchDir(PathBuf);
 
@@ -26,7 +27,7 @@ impl ScratchDir {
         loop {
             let n = MADE.fetch_add(1, Ordering::Relaxed);
             let dir = parent.join(format!("{prefix}-{}-{n}", std::process::id()));
-            match std::fs::create_dir(&dir) {
+            match std::fs::DirBuilder::new().mode(0o700).create(&dir) {
                 Ok(()) => return Ok(Self(dir)),
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(e) => return Err(e),

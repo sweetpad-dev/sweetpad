@@ -4,7 +4,7 @@
 
 use std::fs;
 use std::io::{Read, Write};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -110,71 +110,125 @@ pub(crate) fn release_url(version: &str, platform: &str) -> String {
     )
 }
 
-/// Download, verify and unpack Swift `version` for `host` into
-/// [`install_dir`], then make sure it compiles and runs a program.
+fn download_dir(cache: &Path) -> std::io::Result<PathBuf> {
+    sweetpad_lib::cache::prepare(cache, Path::new("swift"))
+}
+
+/// Keep the lock file in place so a new arrival always locks the same inode.
+fn install_lock(path: &Path, note: &mut dyn FnMut(&str)) -> Result<fs::File, String> {
+    let file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|e| format!("Couldn't open {}: {e}.", path.display()))?;
+    match file.try_lock() {
+        Ok(()) => {}
+        Err(fs::TryLockError::WouldBlock) => {
+            note(&format!(
+                "Waiting for another Swift setup ({})",
+                path.display()
+            ));
+            file.lock()
+                .map_err(|e| format!("Couldn't lock {}: {e}.", path.display()))?;
+        }
+        Err(fs::TryLockError::Error(e)) => {
+            return Err(format!("Couldn't lock {}: {e}.", path.display()));
+        }
+    }
+    Ok(file)
+}
+
+/// Return the verified toolchain and whether this call installed it.
 pub(crate) fn install(
     host: &Host,
     version: &str,
     note: &mut dyn FnMut(&str),
-) -> Result<Swift, String> {
-    let target = install_dir(version);
-    if fs::symlink_metadata(&target).is_ok() && !target.join("usr/bin/swift").is_file() {
+) -> Result<(Swift, bool), String> {
+    install_at(
+        &install_dir(version),
+        &sweetpad_lib::cache::root(),
+        host,
+        version,
+        note,
+    )
+}
+
+fn install_at(
+    target: &Path,
+    cache: &Path,
+    host: &Host,
+    version: &str,
+    note: &mut dyn FnMut(&str),
+) -> Result<(Swift, bool), String> {
+    let parent = target.parent().unwrap_or(Path::new("/"));
+    fs::create_dir_all(parent)
+        .map_err(|e| format!("Couldn't create {}: {e}.", parent.display()))?;
+    let _install = install_lock(&parent.join(format!(".swift-{version}-RELEASE.lock")), note)?;
+    // Another setup may have finished while we waited, even with a different cache.
+    if target.join("usr/bin/swift").is_file() {
+        // Older Arch installs may still need the ncurses adjustment.
+        if host.ncursesw && reports(&target.join("usr/bin"), version).is_none() {
+            use_ncursesw(&target.join("usr"))?;
+        }
+        return check_toolchain(target, version, host).map(|swift| (swift, false));
+    }
+    if fs::symlink_metadata(target).is_ok() {
         return Err(format!(
             "{} holds an incomplete Swift. Move it aside and run setup again.",
             target.display()
         ));
     }
-    if !target.join("usr/bin/swift").is_file() {
-        let gpg = super::on_path("gpg").ok_or_else(|| {
-            "Verifying the Swift download needs gpg. Install gnupg, or install Swift \
-             yourself (for example with swiftly) and run setup again."
-                .to_string()
-        })?;
-        let parent = target.parent().unwrap_or(Path::new("/"));
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Couldn't create {}: {e}.", parent.display()))?;
-        let downloads = super::cache_dir().join("swift");
-        fs::create_dir_all(&downloads)
-            .map_err(|e| format!("Couldn't create {}: {e}.", downloads.display()))?;
-        // The tarball, and the toolchain unpacked beside it.
-        let needed = 5 * 1024 * 1024 * 1024;
-        let free = crate::cli::apple_archive::free_space(parent)?;
-        if free < needed {
-            return Err(format!(
-                "Installing Swift needs 5 GiB free in {}, and {} GiB is.",
-                parent.display(),
-                free / (1 << 20) / 1024
-            ));
-        }
-        let url = release_url(version, &host.swift_platform);
-        let name = url.rsplit('/').next().unwrap_or_default().to_string();
-        let archive = downloads.join(&name);
-        let signature = downloads.join(format!("{name}.sig"));
-        let keys = downloads.join("swift-keys.asc");
-        if !archive.is_file() {
-            note(&format!("Downloading {url}"));
-            fetch(&url, &archive)?;
-        }
-        fetch(&format!("{url}.sig"), &signature)?;
-        fetch("https://www.swift.org/keys/all-keys.asc", &keys)?;
-        note("Checking the download against swift.org's signing keys");
-        verify(&gpg, &keys, &signature, &archive, &downloads)?;
-        note(&format!("Unpacking Swift {version}"));
-        unpack(&archive, &target)?;
-        let _ = fs::remove_file(&archive);
-        let _ = fs::remove_file(&signature);
+    let gpg = super::on_path("gpg").ok_or_else(|| {
+        "Verifying the Swift download needs gpg. Install gnupg, or install Swift \
+         yourself (for example with swiftly) and run setup again."
+            .to_string()
+    })?;
+    let downloads = download_dir(cache).map_err(|e| e.to_string())?;
+    let needed = 5 * 1024 * 1024 * 1024;
+    let free = crate::cli::apple_archive::free_space(parent)?;
+    if free < needed {
+        return Err(format!(
+            "Installing Swift needs 5 GiB free in {}, and {} GiB is.",
+            parent.display(),
+            free / (1 << 20) / 1024
+        ));
     }
-    if host.ncursesw {
-        use_ncursesw(&target.join("usr"))?;
+    let url = release_url(version, &host.swift_platform);
+    let name = url.rsplit('/').next().unwrap_or_default();
+    let archive = downloads.join(name);
+    // Different installation destinations can share one XDG download cache.
+    let _download = install_lock(&downloads.join(format!(".{name}.lock")), note)?;
+    let work = sweetpad_core::scratch::ScratchDir::new_in(&downloads, ".verify")
+        .map_err(|e| format!("Couldn't create a folder in {}: {e}.", downloads.display()))?;
+    let signature = work.join("release.sig");
+    let keys = work.join("swift-keys.asc");
+    if !archive.is_file() {
+        note(&format!("Downloading {url}"));
+        fetch(&url, &archive)?;
     }
+    fetch(&format!("{url}.sig"), &signature)?;
+    fetch("https://www.swift.org/keys/all-keys.asc", &keys)?;
+    note("Checking the download against swift.org's signing keys");
+    verify(&gpg, &keys, &signature, &archive, &work)?;
+    note(&format!("Unpacking Swift {version}"));
+    let swift = unpack(&archive, target, version, host)?;
+    let _ = fs::remove_file(&archive);
+    Ok((swift, true))
+}
+
+fn check_toolchain(root: &Path, version: &str, host: &Host) -> Result<Swift, String> {
+    let bin = root.join("usr/bin");
     let swift = Swift {
-        version: reports(&target.join("usr/bin"), version).ok_or_else(|| {
+        version: reports(&bin, version).ok_or_else(|| {
             format!(
                 "The Swift in {} doesn't start, or isn't version {version}.",
-                target.display()
+                root.display()
             )
         })?,
-        bin: target.join("usr/bin"),
+        bin,
     };
     probe(&swift, host)?;
     Ok(swift)
@@ -219,11 +273,10 @@ fn verify(
     work: &Path,
 ) -> Result<(), String> {
     let keyring = work.join(".gnupg");
-    let _ = fs::remove_dir_all(&keyring);
-    fs::create_dir_all(&keyring)
+    fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&keyring)
         .map_err(|e| format!("Couldn't create {}: {e}.", keyring.display()))?;
-    fs::set_permissions(&keyring, fs::Permissions::from_mode(0o700))
-        .map_err(|e| format!("Couldn't secure {}: {e}.", keyring.display()))?;
     let run = |args: &[&std::ffi::OsStr]| {
         Command::new(gpg)
             .arg("--batch")
@@ -241,7 +294,6 @@ fn verify(
             archive.as_os_str(),
         ])
     });
-    let _ = fs::remove_dir_all(&keyring);
     match verified {
         Ok(output) if output.status.success() => Ok(()),
         Ok(output) => {
@@ -257,43 +309,46 @@ fn verify(
 
 /// Unpack the release `archive` into `target`, through a folder beside it,
 /// so a failure never leaves a toolchain that looks usable.
-fn unpack(archive: &Path, target: &Path) -> Result<(), String> {
+fn unpack(archive: &Path, target: &Path, version: &str, host: &Host) -> Result<Swift, String> {
     let parent = target.parent().unwrap_or(Path::new("/"));
     let stage = sweetpad_core::scratch::ScratchDir::new_in(parent, ".sweetpad-toolchain")
         .map_err(|e| format!("Couldn't create a folder in {}: {e}.", parent.display()))?;
-    let result = (|| {
-        let file = fs::File::open(archive)
-            .map_err(|e| format!("Couldn't read {}: {e}.", archive.display()))?;
-        let mut tar =
-            tar::Archive::new(flate2::read::GzDecoder::new(std::io::BufReader::new(file)));
-        tar.set_preserve_permissions(true);
-        tar.set_preserve_mtime(true);
-        tar.unpack(&stage)
-            .map_err(|e| format!("Couldn't unpack {}: {}.", archive.display(), chain(&e)))?;
-        let mut top = fs::read_dir(&stage)
-            .map_err(|e| e.to_string())?
-            .filter_map(Result::ok)
-            .map(|entry| entry.path());
-        let (Some(root), None) = (top.next(), top.next()) else {
-            return Err(format!(
-                "{} doesn't hold one toolchain folder.",
-                archive.display()
-            ));
-        };
-        if !root.join("usr/bin/swift").is_file() {
-            return Err(format!("{} holds no usr/bin/swift.", archive.display()));
-        }
-        if fs::symlink_metadata(target).is_ok() {
-            return Err(format!(
-                "{} appeared while Swift was unpacking. Move it aside and run setup again.",
-                target.display()
-            ));
-        }
-        fs::rename(&root, target)
-            .map_err(|e| format!("Couldn't move Swift to {}: {e}.", target.display()))
-    })();
-    drop(stage);
-    result
+    let file = fs::File::open(archive)
+        .map_err(|e| format!("Couldn't read {}: {e}.", archive.display()))?;
+    let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(std::io::BufReader::new(file)));
+    tar.set_preserve_permissions(true);
+    tar.set_preserve_mtime(true);
+    tar.unpack(&stage)
+        .map_err(|e| format!("Couldn't unpack {}: {}.", archive.display(), chain(&e)))?;
+    let mut top = fs::read_dir(&stage)
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path());
+    let (Some(root), None) = (top.next(), top.next()) else {
+        return Err(format!(
+            "{} doesn't hold one toolchain folder.",
+            archive.display()
+        ));
+    };
+    if !root.join("usr/bin/swift").is_file() {
+        return Err(format!("{} holds no usr/bin/swift.", archive.display()));
+    }
+    if host.ncursesw {
+        use_ncursesw(&root.join("usr"))?;
+    }
+    let checked = check_toolchain(&root, version, host)?;
+    if fs::symlink_metadata(target).is_ok() {
+        return Err(format!(
+            "{} appeared while Swift was unpacking. Move it aside and run setup again.",
+            target.display()
+        ));
+    }
+    fs::rename(&root, target)
+        .map_err(|e| format!("Couldn't move Swift to {}: {e}.", target.display()))?;
+    Ok(Swift {
+        bin: target.join("usr/bin"),
+        version: checked.version,
+    })
 }
 
 /// `error` with the errors that caused it, which tar's own message leaves
@@ -420,6 +475,137 @@ pub(crate) fn probe(swift: &Swift, host: &Host) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_host() -> Host {
+        use crate::cli::linux_setup::host::{HostPackages, detect};
+        detect(
+            "ID=ubuntu\nVERSION_ID=24.04",
+            "x86_64",
+            &HostPackages::default(),
+        )
+        .unwrap()
+    }
+
+    fn release_fixture(path: &Path, compiler: &[u8]) {
+        let gzip = flate2::write::GzEncoder::new(
+            fs::File::create(path).unwrap(),
+            flate2::Compression::fast(),
+        );
+        let mut tar = tar::Builder::new(gzip);
+        for (name, bytes) in [
+            (
+                "release/usr/bin/swift",
+                b"#!/bin/sh\necho 'Swift version 6.4.2'\n".as_slice(),
+            ),
+            ("release/usr/bin/swiftc", compiler),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_mode(0o755);
+            header.set_size(bytes.len() as u64);
+            tar.append_data(&mut header, name, bytes).unwrap();
+        }
+        tar.into_inner().unwrap().finish().unwrap();
+    }
+
+    #[test]
+    fn a_waiting_install_reuses_the_verified_toolchain() {
+        let dir = crate::cli::testdir::TempDir::new("swift-install-race");
+        let target = dir.join("swift-6.4.2-RELEASE");
+        let archive = dir.join("release.tar.gz");
+        let lock = install_lock(
+            &dir.join(".swift-6.4.2-RELEASE.lock"),
+            &mut |_| unreachable!(),
+        )
+        .unwrap();
+        let (waiting, started_wait) = std::sync::mpsc::channel();
+        // Reusing the installation must work without accessing any download cache.
+        let unavailable_cache = dir.join("unavailable-cache");
+        fs::write(&unavailable_cache, b"").unwrap();
+        let other_target = target.clone();
+        let waiter = std::thread::spawn(move || {
+            install_at(
+                &other_target,
+                &unavailable_cache,
+                &test_host(),
+                "6.4.2",
+                &mut |msg| {
+                    assert!(msg.starts_with("Waiting for another Swift setup"), "{msg}");
+                    waiting.send(()).unwrap();
+                },
+            )
+        });
+        started_wait
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap();
+
+        // A failed compiler probe leaves the destination free for a retry.
+        release_fixture(&archive, b"#!/bin/sh\nexit 1\n");
+        assert!(unpack(&archive, &target, "6.4.2", &test_host()).is_err());
+        assert!(!target.exists());
+        release_fixture(
+            &archive,
+            b"#!/bin/sh\nprintf '#!/bin/sh\\nexit 0\\n' > \"$3\" && chmod +x \"$3\"\n",
+        );
+        let winner = unpack(&archive, &target, "6.4.2", &test_host()).unwrap();
+        drop(lock);
+        let (reused, installed) = waiter.join().unwrap().unwrap();
+        assert!(!installed);
+        assert_eq!(winner, reused);
+        assert_eq!(winner.bin, target.join("usr/bin"));
+    }
+
+    #[test]
+    fn catalog_then_setup_with_group_write_umask() {
+        const CHILD: &str = "SWEETPAD_TEST_CATALOG_THEN_SETUP";
+        if std::env::var_os(CHILD).is_none() {
+            let home = crate::cli::testdir::TempDir::new("catalog-setup");
+            let outcome = Command::new("sh")
+                .args(["-c", "umask 0002; exec \"$@\"", "sh"])
+                .arg(std::env::current_exe().unwrap())
+                .arg("--exact")
+                .arg(std::thread::current().name().unwrap())
+                .env(CHILD, "1")
+                .env("HOME", &*home)
+                .env_remove("XDG_CACHE_HOME")
+                .env_remove("SWEETPAD_CACHE_DIR")
+                .output()
+                .unwrap();
+            assert!(outcome.status.success(), "{outcome:?}");
+            assert!(home.join(".cache/sweetpad/swift").is_dir());
+            return;
+        }
+        let root = sweetpad_lib::cache::root();
+        assert!(!root.exists());
+        let specs = root.parent().unwrap().parent().unwrap().join("specs");
+        fs::create_dir(&specs).unwrap();
+        sweetpad_lib::catalog_cache::load_cached_or_build(&specs, None, None).unwrap();
+        assert!(
+            fs::read_dir(&root)
+                .unwrap()
+                .flatten()
+                .any(|entry| entry.file_name().to_string_lossy().starts_with("catalog-v"))
+        );
+        crate::cli::embedded::root().unwrap();
+        let swift = download_dir(&root).unwrap();
+        for directory in [root.join("distribution"), root, swift] {
+            assert_eq!(
+                directory.metadata().unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+        }
+    }
+
+    #[test]
+    fn first_swift_download_creates_private_cache_directories() {
+        let dir = crate::cli::testdir::TempDir::new("swift-cache");
+        let cache = dir.join(".cache/sweetpad");
+        let swift = download_dir(&cache).unwrap();
+        for path in [&cache, &swift] {
+            assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o700);
+        }
+        fs::set_permissions(&cache, fs::Permissions::from_mode(0o775)).unwrap();
+        assert!(download_dir(&cache).is_err());
+    }
 
     #[test]
     fn release_urls_name_the_platform_folder_without_dots() {

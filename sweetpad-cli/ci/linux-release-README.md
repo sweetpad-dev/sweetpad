@@ -81,6 +81,7 @@ Installing system packages takes sudo or a root shell. Run `sudo -v` first if yo
 sweetpad finds Swift and the SDK on its own. Source `~/.config/sweetpad/linux-env.sh` only to run `swift` by hand.
 An unchanged archive reuses the installed SDK. A different archive requires `--replace-sdk`.
 The SDK stays private. The prebuilt CLI requires no Rust installation or Sweetpad source checkout.
+
 App signing requires your development identity and profiles, configured separately.
 
 CLI 0.1.22 also accepts private Xcode `.xip` downloads directly:
@@ -108,6 +109,12 @@ The tested React Native Hermes compiler requires OrbStack's x86 translation in t
 Other Linux architectures, including 32-bit x86, are not release targets.
 Public host-toolchain checks cover Ubuntu, Debian, and Arch. Private SDK app builds cover these distributions separately.
 Additional distributions remain unverified.
+
+The Linux packages workflow can also build the iOS device sample and the watchOS Simulator
+test fixture on the provisioned ARM64 runner. Select `private_sdk` when starting a manual run,
+or set the repository variable `SWEETPAD_PRIVATE_SDK_CI=true` to enable it on package builds
+pushed to `main`. The check uses the package from the same run and verifies the arm64 Mach-O
+types of the watch package framework and XCTest bundle.
 
 Run `sweetpad help linux-devices` for pairing and bounded logs.
 See the [Linux guide](https://sweetpad.hyzyla.dev/docs/cli/linux) for build setup and current limitations.

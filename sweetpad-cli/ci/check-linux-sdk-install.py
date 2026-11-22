@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the packaged example with a fresh home and explicit read-only tools.
+"""Build the iOS sample and watchOS test fixture with the packaged CLI and a fresh home.
 
 Bubblewrap exposes no developer home, source checkout, signing files, or app
 build cache. The private SDK and the public compiler are prerequisites; Swift
@@ -22,6 +22,8 @@ def check(args):
     unpacked, work = out / "unpacked", out / "work"
     unpacked.mkdir()
     work.mkdir()
+    fixture = Path(__file__).resolve().parent.parent / "fixtures/watch-link"
+    shutil.copytree(fixture, work / "WatchLink", ignore=shutil.ignore_patterns(".build", "xcuserdata"))
     with tarfile.open(args.archive) as source:
         source.extractall(unpacked, filter="data")
     manifest = json.loads((unpacked / "manifest.json").read_text())
@@ -42,6 +44,7 @@ def check(args):
                 "--setenv", "SWEETPAD_DARWIN_SDK", "/opt/darwin-sdk",
                 "--setenv", "LANG", "C.UTF-8", "--setenv", "NO_COLOR", "1"]
     script = '''set -eu
+umask 0002
 mkdir -p "$HOME"
 mkdir -p "$HOME/.local/bin"
 # A link on PATH to the unpacked archive, which keeps libexec/sweetpad beside
@@ -60,11 +63,20 @@ mv /work/LinuxApp /work/Example
 sweetpad build --project /work/Example/LinuxApp.xcodeproj --scheme LinuxApp \
   --destination 'generic/platform=iOS' --json --non-interactive -- \
   -derivedDataPath /work/DerivedData CODE_SIGNING_ALLOWED=NO > /work/build.json
+sweetpad test build --project /work/WatchLink/WatchLink.xcodeproj --scheme WatchProbe \
+  --destination 'generic/platform=watchOS Simulator,arch=arm64' --json --non-interactive -- \
+  -derivedDataPath /work/WatchDerivedData CODE_SIGNING_ALLOWED=NO OTHER_LDFLAGS=-lz > /work/watch-build.json
 '''
     result = subprocess.run([*command, "/bin/bash", "-c", script], capture_output=True, text=True, timeout=600)
     (out / "sandbox.stdout").write_text(result.stdout)
     (out / "sandbox.stderr").write_text(result.stderr)
-    result.check_returncode()
+    if result.returncode:
+        for name in ("build.json", "watch-build.json"):
+            envelope = work / name
+            if envelope.exists():
+                print(envelope.read_text())
+        print(result.stderr)
+        result.check_returncode()
     build = json.loads((work / "build.json").read_text())
     assert build["ok"] and build["data"]["built"]
     product = work / Path(build["data"]["productPath"]).relative_to("/work")
@@ -72,6 +84,17 @@ sweetpad build --project /work/Example/LinuxApp.xcodeproj --scheme LinuxApp \
     assert executable.is_file()
     description = subprocess.check_output(["file", str(executable)], text=True).strip()
     assert "Mach-O" in description and "arm64" in description
+    watch = json.loads((work / "watch-build.json").read_text())
+    assert watch["ok"] and watch["data"]["built"], watch
+    products = work / "WatchDerivedData/Build/Products/Debug-watchsimulator"
+    watch_binaries = {}
+    for name, kind in [
+        ("PackageFrameworks/ValueKit.framework/ValueKit", "shared library"),
+        ("WatchTests.xctest/WatchTests", "bundle"),
+    ]:
+        info = subprocess.check_output(["file", "-b", str(products / name)], text=True).strip()
+        assert all(word in info for word in ("Mach-O", "arm64", kind)), (name, info)
+        watch_binaries[name] = info
     doctor = {c["name"]: c for c in json.loads((work / "doctor.json").read_text())["data"]["checks"]}
     for name in ("Swift Build", "Swift Build service", "Swift Build patches", "Macro plugin"):
         assert doctor[name]["status"] == "ok", doctor[name]
@@ -80,13 +103,14 @@ sweetpad build --project /work/Example/LinuxApp.xcodeproj --scheme LinuxApp \
               "developerHomeVisible": False, "networkAvailable": False, "appBuildCacheReused": False,
               "toolchainsReadOnly": True, "sdkReadOnly": True, "signingMaterialAvailable": False,
               "installedBinarySha256": manifest["files"]["sweetpad"], "packagedSwiftHelpers": True,
-              "product": str(product), "executableDescription": description,
+              "watchSimulatorBinaries": watch_binaries, "product": str(product), "executableDescription": description,
               "scope": "Fresh app build from the installed release artifact; compiler and SDK installation are explicit prerequisites."}
     (out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
     if not args.keep_build_cache:
-        for relative in ["Build/Intermediates.noindex", "ModuleCache.noindex", "SDKStatCaches.noindex", "Index.noindex"]:
-            shutil.rmtree(work / "DerivedData" / relative, ignore_errors=True)
+        for build_dir in ["DerivedData", "WatchDerivedData"]:
+            for relative in ["Build/Intermediates.noindex", "ModuleCache.noindex", "SDKStatCaches.noindex", "Index.noindex"]:
+                shutil.rmtree(work / build_dir / relative, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -158,16 +158,10 @@ pub fn data(out: &Output) -> Value {
     value["data"].clone()
 }
 
-/// The error of the envelope on stderr's last line.
+/// The error from the one-shot JSON result.
 pub fn error(out: &Output) -> Value {
-    let text = String::from_utf8_lossy(&out.stderr);
-    let last = text
-        .lines()
-        .rev()
-        .find(|l| !l.trim().is_empty())
-        .unwrap_or("");
-    let value: Value = serde_json::from_str(last)
-        .unwrap_or_else(|e| panic!("stderr's last line is no error envelope ({e}):\n{text}"));
+    let value: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(value["ok"], false, "{value}");
     value["error"].clone()
 }
 

@@ -13,7 +13,6 @@ const TOOLS: &[&str] = &["file", "rsync", "unzip", "zip"];
 #[cfg(target_os = "linux")]
 pub(crate) fn fallback_path() -> io::Result<Option<std::ffi::OsString>> {
     use std::hash::{Hash, Hasher};
-    use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 
     let missing: Vec<_> = TOOLS
         .iter()
@@ -26,23 +25,10 @@ pub(crate) fn fallback_path() -> io::Result<Option<std::ffi::OsString>> {
     let mut hash = std::hash::DefaultHasher::new();
     exe.hash(&mut hash);
     let key = format!("{:016x}", hash.finish());
-    let cache = std::path::absolute(crate::cli::linux_setup::cache_dir())?;
-    let host = cache.join("host-tools");
-    let dir = host.join(key);
-    for path in [&cache, &host, &dir] {
-        fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(path)?;
-        let meta = path.symlink_metadata()?;
-        // SAFETY: geteuid has no preconditions.
-        if !meta.is_dir() || meta.uid() != unsafe { libc::geteuid() } || meta.mode() & 0o022 != 0 {
-            return Err(io::Error::other(format!(
-                "build utility cache must be owned by the current user and writable only by that user: {}",
-                path.display()
-            )));
-        }
-    }
+    let dir = sweetpad_lib::cache::prepare(
+        &sweetpad_lib::cache::root(),
+        &Path::new("host-tools").join(key),
+    )?;
     for tool in missing {
         let link = dir.join(tool);
         if let Err(e) = std::os::unix::fs::symlink(&exe, &link)

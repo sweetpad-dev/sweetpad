@@ -194,9 +194,14 @@ pub fn run(ctx: &mut Context, args: &SetupArgs) -> CommandResult {
             swift::probe(&found, &host).map_err(CliError::new)?;
             return Ok(Outcome::Ready(found.bin.display().to_string()));
         }
-        let installed = swift::install(&host, &pins.swift, note)
+        let (swift, installed) = swift::install(&host, &pins.swift, note)
             .map_err(|e| CliError::new(e).kind(ErrorKind::ToolMissing))?;
-        Ok(Outcome::Done(installed.bin.display().to_string()))
+        let path = swift.bin.display().to_string();
+        Ok(if installed {
+            Outcome::Done(path)
+        } else {
+            Outcome::Ready(path)
+        })
     })?;
 
     steps.run("archiver", "Darwin archiver", |_| {
@@ -302,7 +307,9 @@ fn environment_contents(sdk: Option<&Path>, swift_bin: Option<&Path>) -> String 
 /// and Swift Build work together.
 fn validate_sample(sdk: &Path) -> Result<Value, CliError> {
     let project = crate::cli::embedded::root()?.join("examples/LinuxApp/LinuxApp.xcodeproj");
-    let derived = linux_setup::cache_dir().join("setup-validation");
+    let derived =
+        sweetpad_lib::cache::prepare(&sweetpad_lib::cache::root(), Path::new("setup-validation"))
+            .map_err(|e| CliError::new(format!("prepare setup build directory: {e}")))?;
     let result = Command::new(std::env::current_exe().map_err(|e| CliError::new(e.to_string()))?)
         .args(["build", "--project"])
         .arg(project)
@@ -337,15 +344,13 @@ fn validate_sample(sdk: &Path) -> Result<Value, CliError> {
 }
 
 fn sample_build_error(stdout: &[u8], stderr: &[u8]) -> CliError {
-    // CLI error envelopes go to stderr; successful reports go to stdout.
-    let report = serde_json::from_slice::<serde_json::Value>(stdout)
-        .or_else(|_| serde_json::from_slice(stderr))
-        .unwrap_or_else(|_| {
-            json!({
-                "stdout": String::from_utf8_lossy(&stdout[stdout.len().saturating_sub(16_384)..]),
-                "stderr": String::from_utf8_lossy(&stderr[stderr.len().saturating_sub(16_384)..])
-            })
-        });
+    // The sample build runs this same CLI and writes its envelope to stdout.
+    let report = serde_json::from_slice::<serde_json::Value>(stdout).unwrap_or_else(|_| {
+        json!({
+            "stdout": String::from_utf8_lossy(&stdout[stdout.len().saturating_sub(16_384)..]),
+            "stderr": String::from_utf8_lossy(&stderr[stderr.len().saturating_sub(16_384)..])
+        })
+    });
     let reason = report["error"]["message"].as_str().unwrap_or(
         "the child build returned no structured error; run sweetpad doctor --target ios",
     );
@@ -368,7 +373,10 @@ mod tests {
             "tip": "read full build log: /tmp/sample-build.log",
             "diagnostics": [{"message": "bwrap: Creating new namespace failed"}]
         }});
-        let error = sample_build_error(b"", &serde_json::to_vec(&report).unwrap());
+        let error = sample_build_error(
+            &serde_json::to_vec(&report).unwrap(),
+            b"warning: build diagnostic",
+        );
         assert!(error.to_string().contains("/tmp/sample-build.log"));
         assert_eq!(error.error_kind(), ErrorKind::BuildFailure);
         assert_eq!(

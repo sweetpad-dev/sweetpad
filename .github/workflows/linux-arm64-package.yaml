@@ -24,6 +24,11 @@ on:
       - ".github/workflows/cli-release.yaml"
       - ".github/workflows/cli-distribute.yaml"
   workflow_dispatch:
+    inputs:
+      private_sdk:
+        description: Build the iOS and watchOS fixtures on the provisioned SDK runner
+        type: boolean
+        default: false
   workflow_call:
 permissions:
   contents: read
@@ -293,3 +298,29 @@ jobs:
           name: linux-helpers-${{ matrix.arch }}-${{ strategy.job-index }}
           path: ${{ runner.temp }}/helpers/run/*
           if-no-files-found: warn
+
+  private-sdk:
+    name: iOS device and watchOS simulator package builds
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.private_sdk) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SWEETPAD_PRIVATE_SDK_CI == 'true')
+    needs: package
+    runs-on: [self-hosted, Linux, ARM64, sweetpad-linux]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: cli-tarball-linux-arm64
+          path: dist
+      - name: Build and inspect the linked Mach-O products
+        run: |
+          version=$(jq -r .swift sweetpad-lib/ci/linux-toolchain.json)
+          archives=(dist/*.tar.gz)
+          test "${#archives[@]}" -eq 1
+          python3 sweetpad-cli/ci/check-linux-sdk-install.py \
+            --archive "${archives[0]}" --out "$RUNNER_TEMP/sdk-check-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --swift "$HOME/swift/swift-$version-RELEASE" \
+            --sdk "$HOME/.swiftpm/swift-sdks/darwin.artifactbundle"

@@ -971,11 +971,10 @@ fn same_pins(a: &[u8], b: &[u8]) -> bool {
 }
 
 /// Take the settings the engine adds to rather than sets, `$(inherited)
-/// <addition>`, such as tvOS's `-fuse-ld=lld`, out of `overrides`. They go
+/// <addition>`, such as the Swift library search path, out of `overrides`. They go
 /// in the build's top settings level, above the user's command-line
 /// settings and `-xcconfig` file (which Swift Build places above command-line
-/// settings), so their `$(inherited)` holds whatever the user set:
-/// `OTHER_LDFLAGS=-ObjC` builds with `-ObjC -fuse-ld=lld`.
+/// settings), so their `$(inherited)` holds whatever the user set.
 fn take_additions(overrides: &mut BTreeMap<String, String>) -> BTreeMap<String, String> {
     let names: Vec<String> = overrides
         .iter()
@@ -997,6 +996,7 @@ fn scope_darwin_settings(overrides: &mut BTreeMap<String, String>, sdk: &str) {
         "SWIFT_SDK_TOOLSETS",
         "SWIFT_RESOURCE_DIR",
         "CLANG_RESOURCE_DIR",
+        "ALTERNATE_LINKER",
         "OTHER_LDFLAGS",
         "LIBRARY_SEARCH_PATHS",
         "SYSTEM_HEADER_SEARCH_PATHS",
@@ -1799,7 +1799,8 @@ impl DarwinSdk {
                     "CLANG_RESOURCE_DIR".into(),
                     resources.join("clang").display().to_string(),
                 ),
-                ("OTHER_LDFLAGS".into(), "$(inherited) -fuse-ld=lld".into()),
+                // Swift Build selects the flag spelling for the active linker driver.
+                ("ALTERNATE_LINKER".into(), "lld".into()),
             ]);
         }
         settings
@@ -2975,7 +2976,8 @@ mod tests {
                 settings["CLANG_RESOURCE_DIR"]
                     .ends_with("XcodeDefault.xctoolchain/usr/lib/swift/clang")
             );
-            assert_eq!(settings["OTHER_LDFLAGS"], "$(inherited) -fuse-ld=lld");
+            assert_eq!(settings["ALTERNATE_LINKER"], "lld");
+            assert!(!settings.contains_key("OTHER_LDFLAGS"));
             scope_darwin_settings(&mut settings, platform);
             assert!(!settings.contains_key("SWIFT_RESOURCE_DIR"));
             assert!(settings.contains_key(&format!("SWIFT_RESOURCE_DIR[sdk={platform}*]")));
@@ -2993,8 +2995,8 @@ mod tests {
     fn the_settings_the_engine_adds_to_go_above_the_users() {
         let mut overrides: BTreeMap<String, String> = [
             (
-                "OTHER_LDFLAGS[sdk=appletvsimulator*]",
-                "$(inherited) -fuse-ld=lld",
+                "SYSTEM_HEADER_SEARCH_PATHS[sdk=appletvsimulator*]",
+                "$(inherited) /sdk/include",
             ),
             (
                 "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]",
@@ -3010,7 +3012,7 @@ mod tests {
             additions.keys().collect::<Vec<_>>(),
             [
                 "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]",
-                "OTHER_LDFLAGS[sdk=appletvsimulator*]"
+                "SYSTEM_HEADER_SEARCH_PATHS[sdk=appletvsimulator*]"
             ]
         );
         assert_eq!(
@@ -3094,10 +3096,8 @@ mod tests {
         assert!(settings.keys().all(|key| key.contains("[sdk=")));
         assert!(!settings.contains_key("ARCHS[sdk=iphonesimulator*]"));
         assert_eq!(settings["ARCHS[sdk=watchsimulator*]"], "arm64");
-        assert_eq!(
-            settings["OTHER_LDFLAGS[sdk=watchsimulator*]"],
-            "$(inherited) -fuse-ld=lld"
-        );
+        assert_eq!(settings["ALTERNATE_LINKER[sdk=watchsimulator*]"], "lld");
+        assert!(!settings.contains_key("OTHER_LDFLAGS[sdk=watchsimulator*]"));
         assert!(settings["SWIFT_RESOURCE_DIR[sdk=watchsimulator*]"].ends_with("usr/lib/swift"));
         assert!(settings.contains_key("SWIFT_SDK_TOOLSETS[sdk=watchsimulator*]"));
     }
@@ -3274,8 +3274,8 @@ mod tests {
         };
         let overrides = BTreeMap::from([("A".to_string(), "1".to_string())]);
         let additions = BTreeMap::from([(
-            "OTHER_LDFLAGS[sdk=appletvos*]".to_string(),
-            "$(inherited) -fuse-ld=lld".to_string(),
+            "SYSTEM_HEADER_SEARCH_PATHS[sdk=appletvos*]".to_string(),
+            "$(inherited) /sdk/include".to_string(),
         )]);
         let p = parameters(
             "Debug",
@@ -3293,8 +3293,8 @@ mod tests {
         );
         assert_eq!(p["overrides"]["commandLine"]["table"]["A"], "1");
         assert_eq!(
-            p["overrides"]["environmentConfig"]["table"]["OTHER_LDFLAGS[sdk=appletvos*]"],
-            "$(inherited) -fuse-ld=lld"
+            p["overrides"]["environmentConfig"]["table"]["SYSTEM_HEADER_SEARCH_PATHS[sdk=appletvos*]"],
+            "$(inherited) /sdk/include"
         );
         let none = BTreeMap::new();
         let mac = parameters(

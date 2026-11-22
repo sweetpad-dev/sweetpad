@@ -121,7 +121,7 @@ pub struct GlobalArgs {
     #[arg(long, value_name = "DIR", global = true, env = "DEVELOPER_DIR")]
     pub developer_dir: Option<std::path::PathBuf>,
 
-    /// Output format. 'json' is the one-shot envelope; 'ndjson' streams one
+    /// Output format. 'json' writes one success or error envelope to stdout. 'ndjson' streams one
     /// JSON event per line from the long-running verbs (build, test, logs) and
     /// ends with a '{"event":"result", …}' line. Wins over '--json'.
     #[arg(short = 'o', long = "output", global = true, value_enum)]
@@ -1068,6 +1068,12 @@ pub fn run(argv: &[String]) -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             let err = hint_tail_flag(hint_output_file(err, argv), argv);
+            if err.use_stderr() && machine_output_mode(&head) == Some(OutputMode::Json) {
+                let usage =
+                    CliError::new(err.render().to_string().trim_end()).kind(ErrorKind::Usage);
+                output::Output::json_error(&usage, None);
+                return ExitCode::from(usage.error_kind().exit_code());
+            }
             let _ = err.print();
             return ExitCode::from(if err.use_stderr() { 2 } else { 0 });
         }
@@ -1079,8 +1085,7 @@ pub fn run(argv: &[String]) -> ExitCode {
         && let Err(e) = std::env::set_current_dir(dir)
     {
         let err = CliError::new(format!("cannot change directory to {}: {e}", dir.display()));
-        render_early_error(&out, &err);
-        return ExitCode::from(err.error_kind().exit_code());
+        return render_error(&out, &err, None);
     }
     // `--developer-dir` pins the Xcode every spawned tool uses (xcrun,
     // xcodebuild, simctl all honor DEVELOPER_DIR).
@@ -1094,8 +1099,7 @@ pub fn run(argv: &[String]) -> ExitCode {
              reserve for the envelope/event stream; use --gh-annotations with human output",
         )
         .kind(ErrorKind::Usage);
-        render_early_error(&out, &err);
-        return ExitCode::from(err.error_kind().exit_code());
+        return render_error(&out, &err, None);
     }
     let config = match config::Config::load() {
         Ok(c) => c,
@@ -1964,56 +1968,44 @@ fn stdout_wants_color(argv: &[String]) -> bool {
     forced || std::io::stdout().is_terminal()
 }
 
-/// The single success/error render site: human view, the JSON envelope
-/// (`json_value` wraps the payload's data in `{schema, ok, data}`), or — under
-/// `-o ndjson` — the terminal `{"event":"result","ok":true,"data":…}` line
-/// closing the event stream. Also maps errors to exit codes.
-/// Mirror [`render_result`]'s error path for failures raised before a
-/// `Context` exists (`-C` chdir, flag conflicts): the ndjson stream's
-/// documented contract — it ends with a `{"event":"result",…}` line — must
-/// hold for these errors too.
-fn render_early_error(out: &output::Output, err: &CliError) {
-    out.ndjson_event(&serde_json::json!({
-        "event": "result",
-        "ok": false,
-        "error": err.json(),
-    }));
-    out.error(err);
-}
-
+/// Render a command once and preserve its exit status in every output mode.
 fn render_result(ctx: &Context, result: CommandResult) -> ExitCode {
-    match result {
-        Ok(Rendered::Data { payload, exit }) => {
-            if ctx.out.is_ndjson() {
-                ctx.out.ndjson_event(&serde_json::json!({
-                    "event": "result",
-                    "ok": true,
-                    "data": payload.json(),
-                }));
-            } else if ctx.out.is_json() {
-                ctx.out.json_value(&payload.json());
-            } else {
-                payload.human(&ctx.out);
+    let (payload, exit) = match result {
+        Ok(Rendered::Data { payload, exit }) => (payload, exit),
+        Ok(Rendered::Failed { payload, error }) => {
+            if ctx.out.is_json() || ctx.out.is_ndjson() {
+                return render_error(&ctx.out, &error, Some(payload.json()));
             }
-            ExitCode::from(exit)
+            (payload, error.error_kind().exit_code())
         }
-        // The command streamed its own output (or self-emitted); nothing to render.
-        Ok(Rendered::Streamed) => ExitCode::SUCCESS,
-        Err(e) => early_error(&ctx.out, &e),
+        Ok(Rendered::Streamed) => return ExitCode::SUCCESS,
+        Err(e) => return render_error(&ctx.out, &e, None),
+    };
+    if ctx.out.is_json() || ctx.out.is_ndjson() {
+        ctx.out.result_value(&payload.json());
+    } else {
+        payload.human(&ctx.out);
     }
+    ExitCode::from(exit)
 }
 
 /// Render an error with the full output contract — usable before a `Context`
 /// exists (the pre-dispatch gates). Under ndjson the stream must still end
 /// with exactly one terminal result line on stdout; the compact envelope on
 /// stderr stays the machine-parsed error surface.
-fn early_error(out: &output::Output, e: &CliError) -> ExitCode {
-    out.ndjson_event(&serde_json::json!({
-        "event": "result",
-        "ok": false,
-        "error": e.json(),
-    }));
-    out.error(e);
+fn render_error(out: &output::Output, e: &CliError, report: Option<serde_json::Value>) -> ExitCode {
+    if out.is_json() {
+        output::Output::json_error(e, report);
+    } else {
+        if out.is_ndjson() {
+            let mut event = serde_json::json!({"event": "result", "ok": false, "error": e.json()});
+            if let Some(data) = report {
+                event["data"] = data;
+            }
+            out.ndjson_event(&event);
+        }
+        out.error(e);
+    }
     ExitCode::from(e.error_kind().exit_code())
 }
 

@@ -191,16 +191,10 @@ fn stdout_json(out: &Output) -> Value {
     value["data"].clone()
 }
 
-/// The error envelope on stderr's last line.
-fn stderr_error(out: &Output) -> Value {
-    let text = String::from_utf8_lossy(&out.stderr);
-    let last = text
-        .lines()
-        .rev()
-        .find(|l| !l.trim().is_empty())
-        .unwrap_or("");
-    let value: Value = serde_json::from_str(last)
-        .unwrap_or_else(|e| panic!("stderr's last line is no error envelope ({e}):\n{text}"));
+/// The error from the one-shot JSON result.
+fn json_error(out: &Output) -> Value {
+    let value: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(value["ok"], false, "{value}");
     value["error"].clone()
 }
 
@@ -383,7 +377,7 @@ fn a_digest_that_no_longer_matches_sends_nothing() {
             ],
         );
         assert_eq!(out.status.code(), Some(1), "{out:?}");
-        let error = stderr_error(&out);
+        let error = json_error(&out);
         let message = error["message"].as_str().unwrap();
         assert!(message.contains("nothing was sent"), "{message}");
         assert!(message.contains("--dry-run' again"), "{message}");
@@ -403,7 +397,7 @@ fn submit_without_a_flag_is_a_usage_error_pointing_at_the_dry_run() {
         &["feedback", "submit", "entry.txt", "-o", "json"],
     );
     assert_eq!(out.status.code(), Some(2), "{out:?}");
-    let error = stderr_error(&out);
+    let error = json_error(&out);
     assert_eq!(error["code"], "usage_error");
     let message = error["message"].as_str().unwrap();
     assert!(
@@ -438,7 +432,7 @@ fn malformed_reports_are_usage_errors_that_name_the_problem() {
         argv.extend_from_slice(&["--dry-run", "-o", "json"]);
         let out = sweetpad(&home, &stub.url, &argv);
         assert_eq!(out.status.code(), Some(2), "{args:?}: {out:?}");
-        let error = stderr_error(&out);
+        let error = json_error(&out);
         assert_eq!(error["code"], "usage_error", "{args:?}");
         error["message"].as_str().unwrap().to_string()
     };
@@ -509,7 +503,7 @@ fn off_on_and_status_round_trip_and_keep_the_rest_of_the_config() {
         argv.extend_from_slice(&["-o", "json"]);
         let out = sweetpad(&home, &stub.url, &argv);
         assert_eq!(out.status.code(), Some(1), "{out:?}");
-        let message = stderr_error(&out)["message"].as_str().unwrap().to_string();
+        let message = json_error(&out)["message"].as_str().unwrap().to_string();
         assert!(message.contains("turned off"), "{message}");
     }
     let help = sweetpad(&home, &stub.url, &["help", "feedback"]);
@@ -578,7 +572,7 @@ fn a_send_that_cant_connect_is_reported_in_words() {
         ],
     );
     assert_eq!(out.status.code(), Some(1), "{out:?}");
-    let error = stderr_error(&out);
+    let error = json_error(&out);
     assert_eq!(error["code"], "generic");
     let message = error["message"].as_str().unwrap();
     assert!(
@@ -611,7 +605,7 @@ fn a_report_the_server_refuses_is_an_error() {
         ],
     );
     assert_eq!(out.status.code(), Some(1), "{out:?}");
-    let message = stderr_error(&out)["message"].as_str().unwrap().to_string();
+    let message = json_error(&out)["message"].as_str().unwrap().to_string();
     assert!(
         message.starts_with("the report was not accepted"),
         "{message}"
@@ -661,7 +655,7 @@ fn an_https_send_asks_the_proxy_in_https_proxy_for_a_tunnel() {
         "me:secret, as Basic credentials"
     );
     assert_eq!(out.status.code(), Some(1), "{out:?}");
-    let message = stderr_error(&out)["message"].as_str().unwrap().to_string();
+    let message = json_error(&out)["message"].as_str().unwrap().to_string();
     assert_eq!(
         message,
         format!(
@@ -689,7 +683,7 @@ fn the_lower_case_variable_wins_and_a_proxy_asking_for_credentials_says_how() {
     assert_eq!(connect.request_line, "CONNECT sentry.invalid:443 HTTP/1.1");
     assert_eq!(connect.header("Proxy-Authorization"), None);
     assert_eq!(out.status.code(), Some(1), "{out:?}");
-    let message = stderr_error(&out)["message"].as_str().unwrap().to_string();
+    let message = json_error(&out)["message"].as_str().unwrap().to_string();
     assert_eq!(
         message,
         format!(
@@ -714,7 +708,7 @@ fn no_proxy_sends_around_the_proxy() {
 
     proxy.assert_nothing_received();
     assert_eq!(out.status.code(), Some(1), "{out:?}");
-    let message = stderr_error(&out)["message"].as_str().unwrap().to_string();
+    let message = json_error(&out)["message"].as_str().unwrap().to_string();
     assert!(
         message.starts_with("couldn't send the report: can't reach sentry.invalid"),
         "{message}"
@@ -730,7 +724,7 @@ fn a_proxy_sweetpad_cant_use_is_refused_without_echoing_it() {
         &[("HTTPS_PROXY", "socks5://me:secret@127.0.0.1:1080")],
     );
     assert_eq!(out.status.code(), Some(1), "{out:?}");
-    let message = stderr_error(&out)["message"].as_str().unwrap().to_string();
+    let message = json_error(&out)["message"].as_str().unwrap().to_string();
     assert_eq!(
         message,
         "HTTPS_PROXY names a proxy sweetpad can't use, so nothing was sent. It takes an HTTP \

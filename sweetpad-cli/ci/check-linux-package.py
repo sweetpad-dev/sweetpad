@@ -79,10 +79,10 @@ def check(archive, out):
     missing_session = out / "missing-apple-session.json"
     auth_login = invoke("auth-no-session", [binary, "auth", "login", "--apple-id", "synthetic@example.com",
                                             "--session-file", missing_session, "--json"], success=False)
-    assert "needs a terminal" in json.loads(auth_login.stderr)["error"]["message"]
+    assert "needs a terminal" in json.loads(auth_login.stdout)["error"]["message"]
     for name, arguments in [("download-no-session", ["sdk", "download"]), ("setup-xcode-no-session", ["setup"])]:
         response = invoke(name, [binary, *arguments, "--xcode", "27.3 beta", "--session-file", missing_session, "--json"], success=False)
-        assert "no Apple session file" in json.loads(response.stderr)["error"]["message"]
+        assert "no Apple session file" in json.loads(response.stdout)["error"]["message"]
     logged_out = invoke("auth-logout-empty", [binary, "auth", "logout", "--session-file", missing_session, "--json"])
     assert json.loads(logged_out.stdout)["data"]["loggedOut"] is True
     assert not missing_session.exists()
@@ -90,15 +90,15 @@ def check(archive, out):
     invalid_sdk.write_bytes(b"not an SDK archive")
     invalid_sdk.with_name(invalid_sdk.name + ".sha256").write_text(f"{hashlib.sha256(invalid_sdk.read_bytes()).hexdigest()}  {invalid_sdk.name}\n")
     raw_setup=invoke("raw-setup-source-discovery", [extracted / "sweetpad", "setup", "--sdk", invalid_sdk, "--json"], success=False)
-    raw_error=json.loads(raw_setup.stderr)["error"]
+    raw_error=json.loads(raw_setup.stdout)["error"]
     assert "Expected a Sweetpad SDK export" in raw_error["message"]
     installed_setup=invoke("standalone-setup-source-discovery", [binary, "setup", "--sdk", invalid_sdk, "--json"], success=False)
-    assert "Expected a Sweetpad SDK export" in json.loads(installed_setup.stderr)["error"]["message"]
+    assert "Expected a Sweetpad SDK export" in json.loads(installed_setup.stdout)["error"]["message"]
     doctor = json.loads(invoke("linux-doctor-missing-tools", [binary, "doctor", "--target", "ios", "--json"], success=False).stdout)
     assert doctor["ok"] and doctor["data"]["summary"]["problems"] > 0
     checks = {c["name"]: c for c in doctor["data"]["checks"]}
     missing = invoke("missing-host-packages", [binary, "setup", "--no-sdk", "--json"], success=False)
-    message = json.loads(missing.stderr)["error"]["message"]
+    message = json.loads(missing.stdout)["error"]["message"]
     assert checks["Host packages"]["status"] == "problem", checks["Host packages"]
     assert checks["Host packages"]["detail"] == message and "apt-get install" in message, message
     assert checks["Swift Build"]["status"] == "ok", checks["Swift Build"]
@@ -113,7 +113,7 @@ def check(archive, out):
     assert value["ok"] and "LinuxApp" in json.dumps(value["data"])
     result = invoke("missing-toolchain", [binary, "build", "--project", project, "--scheme", "LinuxApp",
                     "--destination", "generic/platform=iOS Simulator", "--json"], success=False)
-    error = json.loads(result.stderr)
+    error = json.loads(result.stdout)
     assert error["ok"] is False and any(s in error["error"]["message"].lower() for s in ["sdk", "swift", "swbuild"])
     assert shutil.which("swift", path=env["PATH"]) is None
     report = {"passed": True, "archiveSha256": expected[0], "binarySha256": manifest["files"]["sweetpad"],

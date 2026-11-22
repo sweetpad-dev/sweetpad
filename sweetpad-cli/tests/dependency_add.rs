@@ -185,9 +185,9 @@ fn a_failed_local_add_keeps_no_backup_and_names_a_path() {
 
 /// `swift --version` writes the driver's version to stderr with no trailing
 /// newline (Swift 6.4). Under `--json` that must not reach sweetpad's stderr,
-/// where it would run into the error envelope.
+/// where callers expect only diagnostics.
 #[test]
-fn json_stderr_holds_only_the_error_envelope() {
+fn json_failure_captures_swift_driver_chatter() {
     use std::os::unix::fs::PermissionsExt;
 
     let home = tmp("envelope-home");
@@ -224,8 +224,8 @@ fn json_stderr_holds_only_the_error_envelope() {
     let out = sweetpad(&args, &app, &home, &bin);
     assert!(!out.status.success(), "expected the stub's add to fail");
     let stderr = String::from_utf8(out.stderr).unwrap();
-    let envelope: serde_json::Value = serde_json::from_str(&stderr)
-        .unwrap_or_else(|e| panic!("stderr is not one JSON document ({e}): {stderr:?}"));
+    assert!(!stderr.contains("swift-driver version"), "{stderr}");
+    let envelope: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(envelope["ok"], serde_json::Value::Bool(false));
     assert!(envelope["error"]["code"].is_string(), "{envelope}");
 }
@@ -408,10 +408,15 @@ fn an_add_off_a_terminal_without_products_and_targets_is_a_usage_error() {
     ] {
         let out = sweetpad(args, &app, &home, &bin);
         assert_eq!(out.status.code(), Some(2), "{args:?}: {out:?}");
-        let stderr = String::from_utf8_lossy(&out.stderr);
+        let output = if args.contains(&"--json") {
+            &out.stdout
+        } else {
+            &out.stderr
+        };
+        let message = String::from_utf8_lossy(output);
         assert!(
-            stderr.contains("pass --product and --target"),
-            "{args:?}: {stderr}"
+            message.contains("pass --product and --target"),
+            "{args:?}: {message}"
         );
         assert_eq!(
             std::fs::read_to_string(app.join("Package.swift")).unwrap(),
@@ -420,7 +425,7 @@ fn an_add_off_a_terminal_without_products_and_targets_is_a_usage_error() {
         );
     }
     let json = sweetpad(&["dep", "add", "../Dep", "--json"], &app, &home, &bin);
-    let envelope: serde_json::Value = serde_json::from_slice(&json.stderr).unwrap();
+    let envelope: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
     assert_eq!(envelope["error"]["code"], "usage_error", "{envelope}");
     assert!(
         !log.exists(),

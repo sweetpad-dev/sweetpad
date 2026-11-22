@@ -385,15 +385,14 @@ it lists.
 | 5    | A required tool is missing (xcodebuild, simctl, …).                  |
 | 6    | Cancelled by you: a declined prompt, or Ctrl-C during a run's build. |
 
-With `-o json`, results arrive as a one-shot envelope `{"schema": 1, "ok": true, "data": …}`; errors
-go to stderr as `{"schema": 1, "ok": false, "error": {"code", "message"}}` where the code mirrors the
+With `-o json`, stdout contains one result envelope. Success uses `{"schema": 1, "ok": true, "data": …}`.
+Errors use `{"schema": 1, "ok": false, "error": {"code", "message"}}` where the code mirrors the
 exit-code taxonomy. `-o ndjson` streams one JSON event per line and ends with a result event, which helps
 for long commands like builds where you want progress as it happens.
 
 :::tip
 
-`"ok": true` means "the command executed", not "the outcome was good". A red test suite exits with
-code 3 and reports its failures inside `data`, so check the payload rather than the envelope.
+A failed test suite exits with code 3. The JSON envelope and final NDJSON result both contain `ok: false`, the error, and the available test summary in `data`.
 
 :::
 

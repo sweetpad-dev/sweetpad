@@ -6,6 +6,7 @@
 //! that stream their own output live (or haven't migrated yet) return
 //! [`Rendered::Streamed`] and the dispatcher renders nothing for them.
 
+use crate::cli::CliError;
 use crate::cli::output::Output;
 
 /// A renderable command payload. `human` writes the human view through `out`'s
@@ -14,7 +15,7 @@ use crate::cli::output::Output;
 pub trait Render {
     /// Human-mode rendering. Free to use `out.line`/`out.item`/`out.use_color()`.
     fn human(&self, out: &Output);
-    /// The `data` field of the success envelope. Pure; no I/O.
+    /// The `data` field of the result envelope. Pure; no I/O.
     fn json(&self) -> serde_json::Value;
 }
 
@@ -25,10 +26,18 @@ pub trait Render {
 ///   [`Rendered::Streamed`]; the dispatcher emits nothing for them.
 ///
 /// The `exit` on `Data` lets a command render its report *and* exit non-zero
-/// (e.g. `doctor` with problems, a red `test` suite) without a separate error
+/// (e.g. `doctor` with problems) without a separate error
 /// path — process exit is a dispatch concern, not part of the `Render` trait.
 pub enum Rendered {
-    Data { payload: Box<dyn Render>, exit: u8 },
+    Data {
+        payload: Box<dyn Render>,
+        exit: u8,
+    },
+    /// A failed command that also produced a report for the caller.
+    Failed {
+        payload: Box<dyn Render>,
+        error: CliError,
+    },
     Streamed,
 }
 

@@ -299,8 +299,9 @@ job archives it as a build artifact. Use it rather than `-- -resultBundlePath`, 
 refuses because it passes its own.
 
 For the machine-readable form, `-o json` returns the run as a single envelope and `-o ndjson` streams
-one event per line as tests finish. In both cases a successful envelope means the command ran, and the
-pass/fail counts are inside the payload, under `data.passed`.
+one event per line as tests finish. A failed run exits 3 in both modes. The JSON envelope and the final
+NDJSON `result` event on stdout both carry `ok: false`, `error.code: "build_failure"`, and the
+available test summary under `data`. NDJSON also writes a compact error envelope to stderr.
 
 Each finished test streams as `{"event":"test","status":"passed","name":…}`, with `failed` or
 `skipped` in place of `passed`. XCTest and Swift Testing tests both stream, in serial and parallel

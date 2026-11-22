@@ -188,49 +188,27 @@ fn bundled_client_for(sdk: &str) -> &'static [u8] {
 
 /// Materialize a bundled client to a content-addressed path under the cache and
 /// return it. A new sweetpad release (new bytes) lands in a fresh directory;
-/// stale ones are simply ignored. Idempotent: an existing file of the right size
-/// is reused without rewriting.
+/// stale ones are simply ignored.
 fn materialize_bundled_client(bytes: &'static [u8]) -> Result<PathBuf, String> {
-    let root = cache_root().ok_or("could not resolve the cache directory")?;
-    materialize_client(bytes, &root)
+    materialize_client(bytes, &sweetpad_lib::cache::root())
 }
 
-/// Write `bytes` (the embedded client) to a content-addressed path under
-/// `cache_root` and return it. Split from [`materialize_bundled_client`] so tests
-/// can drive it with arbitrary bytes and a temp root. Idempotent: an existing
-/// file of the right size is reused; different bytes hash to a fresh directory.
 fn materialize_client(bytes: &[u8], cache_root: &Path) -> Result<PathBuf, String> {
     if bytes.is_empty() {
         return Err("no injection client is bundled in this build".into());
     }
-    let dir = cache_root.join(fnv1a_hex(bytes));
+    let dir =
+        sweetpad_lib::cache::prepare(cache_root, &Path::new("hot-reload").join(fnv1a_hex(bytes)))
+            .map_err(|e| format!("prepare injection client cache: {e}"))?;
     let dylib = dir.join("SweetpadInjectionClient.dylib");
-    if std::fs::metadata(&dylib).map(|m| m.len()).ok() == Some(bytes.len() as u64) {
+    if sweetpad_lib::cache::read_file(&dylib, bytes.len() as u64)
+        .is_ok_and(|cached| cached == bytes)
+    {
         return Ok(dylib);
     }
-    std::fs::create_dir_all(&dir).map_err(|e| format!("create client cache dir: {e}"))?;
-    // Write to a temp path then rename, so a concurrent session never observes a
-    // half-written dylib at the final path. The temp name carries our pid: with
-    // a fixed name, two concurrent processes would write through the same file
-    // and one could rename the other's half-written inode into place.
-    let tmp = dir.join(format!(
-        ".SweetpadInjectionClient.dylib.tmp.{}",
-        std::process::id()
-    ));
-    std::fs::write(&tmp, bytes).map_err(|e| format!("write injection client: {e}"))?;
-    std::fs::rename(&tmp, &dylib).map_err(|e| format!("install injection client: {e}"))?;
+    sweetpad_lib::cache::write_file(&dylib, bytes)
+        .map_err(|e| format!("install injection client: {e}"))?;
     Ok(dylib)
-}
-
-/// Root of the hot-reload cache: `~/.cache/sweetpad/hot-reload/`. The caller
-/// appends a content key (the bundled client) or a project key (the stripped
-/// entitlements, [`super::sandbox`]).
-pub(super) fn cache_root() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .filter(|p| !p.as_os_str().is_empty())
-        .or_else(|| sweetpad_core::paths::home_dir().map(|h| h.join(".cache")))?;
-    Some(base.join("sweetpad").join("hot-reload"))
 }
 
 /// FNV-1a (64-bit) of `bytes` as lowercase hex — a tiny, dependency-free,
@@ -413,6 +391,15 @@ mod tests {
 
         // Same bytes → same content-addressed path, reused.
         assert_eq!(materialize_client(bytes, &root).unwrap(), p1);
+        std::fs::write(&p1, vec![0; bytes.len()]).unwrap();
+        materialize_client(bytes, &root).unwrap();
+        assert_eq!(std::fs::read(&p1).unwrap(), bytes);
+        let other = root.join("other");
+        std::fs::write(&other, bytes).unwrap();
+        std::fs::remove_file(&p1).unwrap();
+        std::os::unix::fs::symlink(&other, &p1).unwrap();
+        materialize_client(bytes, &root).unwrap();
+        assert!(p1.symlink_metadata().unwrap().is_file());
         // Different bytes → a different directory.
         let p3 = materialize_client(b"other-client-bytes", &root).unwrap();
         assert_ne!(p1.parent(), p3.parent());

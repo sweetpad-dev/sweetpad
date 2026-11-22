@@ -248,14 +248,9 @@ A run session ('sweetpad run' at a terminal) exits 6 when Ctrl-C stops one
 of its builds, even if the app ran before. Quitting ('q', or Ctrl-C or Ctrl-D
 at the prompt) exits 0 once the app has run. If it never ran, the exit is 3
 when the last build failed, or 1 when the app built but didn't launch. Under --json, errors are
-'{\"schema\":1,\"ok\":false,\"error\":{code,message}}' on stderr, where 'code'
-is the same taxonomy: generic, usage_error, build_failure, target_resolution,
-tool_missing, user_cancel. A flag clap can't parse is reported in clap's own
-text, even under --json.
-
-'ok: true' means \"the command executed\", not \"the outcome was good\": a red
-test suite exits 3 with 'data.passed: false'; read the payload's own status
-field.",
+'{\"schema\":1,\"ok\":false,\"error\":{code,message}}' on stdout. Read 'error.code' for the error class and
+the process exit status for the numeric code. A test run that reports
+failures exits 3 with 'ok: false' and keeps its summary in 'data'.",
     },
     Topic {
         name: "destinations",
