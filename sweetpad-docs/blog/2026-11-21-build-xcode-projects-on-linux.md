@@ -10,6 +10,12 @@ SweetPad is a command-line tool for building, running, and testing Xcode project
 
 <!-- truncate -->
 
+:::warning Apple SDK license
+The build needs the iPhone SDK from Xcode, and Apple licenses that SDK with conditions on where it runs.
+
+Using an Apple SDK on hardware that Apple didn’t make may violate your agreement with Apple. Apple’s standard terms limit execution to Apple-branded hardware running macOS. Before you import the SDK, check that your terms permit the machine you build on. See the [Xcode and Apple SDKs Agreement](https://www.apple.com/legal/sla/docs/xcode.pdf).
+:::
+
 On Linux, SweetPad reads the Xcode project, describes it to Swift Build, and lets Swift Build run the build. The Linux Swift compiler, Clang, and LLD produce the iPhone code against the SDK imported from Xcode. SweetPad stands in for the Xcode tools that compile resources and sign the app.
 
 <ThemedImage
@@ -155,11 +161,3 @@ Two builds that share a DerivedData folder run one after the other. The second p
 ## Next steps
 
 To see the greeting on a phone, [build with development signing](/docs/cli/linux/signing-and-testing#configure-development-signing), then [install the signed app](/docs/cli/linux/ubuntu-usb#build-install-and-launch). For iOS tests, Linux can build the test bundles and write the manifest Xcode needs to [run them on a Mac](/docs/cli/linux/signing-and-testing#run-the-tests-on-a-mac).
-
-## Apple’s license terms
-
-The build needs the iPhone SDK from Xcode, and Apple licenses that SDK with conditions on where it runs.
-
-:::warning Apple SDK license
-Using an Apple SDK on hardware that Apple didn’t make may violate your agreement with Apple. Apple’s standard terms limit execution to Apple-branded hardware running macOS. Before you import the SDK, check that your terms permit the machine you build on. See the [Xcode and Apple SDKs Agreement](https://www.apple.com/legal/sla/docs/xcode.pdf).
-:::
