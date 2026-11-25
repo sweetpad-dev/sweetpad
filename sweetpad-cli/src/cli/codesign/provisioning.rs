@@ -153,13 +153,7 @@ pub(super) fn answer(
     }
     merge(&mut entitlements, project);
     if let Some(profile) = &profile {
-        for key in ["aps-environment", "com.apple.developer.aps-environment"] {
-            if plist::get(&entitlements, key).is_some()
-                && let Some(value) = plist::get(&profile.entitlements, key)
-            {
-                plist::set(&mut entitlements, key, value.clone());
-            }
-        }
+        profile.apply_capabilities(&mut entitlements, mac);
     }
     if !mac || profile.is_some() {
         plist::set(
@@ -485,6 +479,21 @@ pub(super) fn check_entitlements(
     Ok(())
 }
 
+/// A signed App Clip identifies exactly one full app, including its App ID prefix.
+pub(crate) fn check_clip_parent(entitlements: &Plist, host_id: &str) -> Result<(), String> {
+    let key = "com.apple.developer.parent-application-identifiers";
+    if let Some(Plist::Array(parents)) = plist::get(entitlements, key)
+        && let [Plist::String(parent)] = parents.as_slice()
+        && parent == host_id
+    {
+        return Ok(());
+    }
+    Err(format!(
+        "The {key} entitlement of an App Clip must match the application-identifier entitlement \
+         ('{host_id}') of its containing parent app."
+    ))
+}
+
 /// Whether a profile has to grant entitlement `key`.
 fn provisioned(key: &str) -> bool {
     (key.starts_with("com.apple.developer.") && key != "com.apple.developer.team-identifier")
@@ -636,6 +645,26 @@ impl Profile {
 }
 
 impl Profile {
+    /// Xcode takes the requested push environment from the profile. It also
+    /// signs an iOS host with its registered App Clip association, even when
+    /// the project has no entitlements file or this build embeds no Clip.
+    pub(super) fn apply_capabilities(&self, entitlements: &mut Plist, mac: bool) {
+        for key in ["aps-environment", "com.apple.developer.aps-environment"] {
+            if plist::get(entitlements, key).is_some()
+                && let Some(value) = plist::get(&self.entitlements, key)
+            {
+                plist::set(entitlements, key, value.clone());
+            }
+        }
+        let clips = "com.apple.developer.associated-appclip-app-identifiers";
+        if !mac
+            && plist::get(entitlements, clips).is_none()
+            && let Some(value) = plist::get(&self.entitlements, clips)
+        {
+            plist::set(entitlements, clips, value.clone());
+        }
+    }
+
     /// The application identifier it allows, with its team: exact, or a
     /// prefix ending in `*`. A macOS profile names it with Apple's prefix.
     pub fn application_identifier(&self) -> Option<&str> {

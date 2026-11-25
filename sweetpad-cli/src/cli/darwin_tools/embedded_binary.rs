@@ -2,16 +2,16 @@
 //! Info.plist> [-signing-cert <name>]`, which Swift Build runs on each app
 //! extension, App Clip or watch app it embeds in an app.
 //!
-//! It makes the checks of Xcode's that hold without signing: an error when
-//! the embedded bundle's identifier doesn't start with the app's, and a
-//! warning when its `CFBundleVersion`, or else its
-//! `CFBundleShortVersionString`, differs from the app's or is missing. The messages are
-//! Xcode's, on stderr, where Swift Build reads them.
+//! Checks the embedded bundle's identifier and versions against its host.
+//! A device App Clip must also name its host in its signed entitlements.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use sweetpad_lib::derived_data::plist_strings;
+
+use crate::cli::codesign::{provisioning::check_clip_parent, resign::signed_entitlements};
+use crate::cli::property_list as plist;
 
 pub(super) fn main(args: &[String]) -> ExitCode {
     match validate(args) {
@@ -36,7 +36,6 @@ fn validate(args: &[String]) -> Result<Vec<String>, String> {
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "-info-plist-path" => host_plist = Some(PathBuf::from(super::value(arg, &mut it)?)),
-            // Nothing is signed during the build here.
             "-signing-cert" => {
                 super::value(arg, &mut it)?;
             }
@@ -54,7 +53,19 @@ fn validate(args: &[String]) -> Result<Vec<String>, String> {
         ));
     }
     let own = plist_strings(&info_plist(&embedded));
-    Ok(check(&own, &host)?.into_iter().collect())
+    let warning = check(&own, &host)?;
+    if embedded
+        .parent()
+        .is_some_and(|dir| dir.ends_with("AppClips"))
+        && own
+            .iter()
+            .any(|(k, v)| k == "DTPlatformName" && v == "iphoneos")
+        && let Some(app) = host_plist.parent()
+        && let Some(host_id) = plist::string(&signed_entitlements(app)?, "application-identifier")
+    {
+        check_clip_parent(&signed_entitlements(&embedded)?, host_id)?;
+    }
+    Ok(warning.into_iter().collect())
 }
 
 /// A bundle's Info.plist: at its root on iOS, in `Contents` on macOS.

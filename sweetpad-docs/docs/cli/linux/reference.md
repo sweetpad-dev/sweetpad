@@ -8,7 +8,7 @@ sidebar_label: Support and configuration
 
 | Operation | On Linux |
 | --- | --- |
-| Build iOS apps, extensions, and widgets | Supported. |
+| Build iOS apps, extensions, widgets, and App Clips | Supported. App Clips embed in their host and can be exported in a development-signed IPA. |
 | Build macOS apps | Supported. Running them needs a Mac. |
 | Build tvOS, watchOS, and visionOS simulator targets | Builds and links. Running them and device signing are untested. |
 | Build Mac Catalyst targets | Untested. |

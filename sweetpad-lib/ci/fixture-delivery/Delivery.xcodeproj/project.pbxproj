@@ -11,6 +11,7 @@
 		1767D6861271A76B6A685D67 /* DeliveryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE2857443B0F2678AE8E2E6B /* DeliveryApp.swift */; };
 		18C3B4B68C4C7D49A656C636 /* DeliveryWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D6DB43B64FE333E4423ACF10 /* DeliveryWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		28C8A9B24024AA01EC1CDF56 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 787770103BFE1EEC0AA281B9 /* Assets.xcassets */; };
+		2D7E245A315DDE12EEA0B7A6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 787770103BFE1EEC0AA281B9 /* Assets.xcassets */; };
 		2F0659BA97AEEEBAB7F5C789 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 787770103BFE1EEC0AA281B9 /* Assets.xcassets */; };
 		2F920C745BA412A0F4BB88A6 /* DeliveryWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C1745C2A8762C8B9CEB4608 /* DeliveryWidget.swift */; };
 		4094B33B25AE89A0F9757B40 /* DeliveryKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2BB7D8BE893070FB3A27298D /* DeliveryKit.framework */; };
@@ -20,13 +21,18 @@
 		4E148B05AA156DC2E01D5BC8 /* DeliveryKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2BB7D8BE893070FB3A27298D /* DeliveryKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		4EBB519487E625CF30EF27AE /* DeliveryKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC3F738A7B82970DE911D9B1 /* DeliveryKit.swift */; };
 		51055E2CE488DC2FE207355C /* DeliveryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE2857443B0F2678AE8E2E6B /* DeliveryApp.swift */; };
+		5CD49DD94BDFF656F7C7DF31 /* DeliveryClip.app in Embed App Clips */ = {isa = PBXBuildFile; fileRef = B145D1CDAFEBF029DFF75E31 /* DeliveryClip.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		5D76E5D70A6BB0C40D615233 /* DeliveryClipInvocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC607C42011920F61BB35F5A /* DeliveryClipInvocationTests.swift */; };
 		61D1F00500B2972D9A98135E /* Stickers.xcstickers in Resources */ = {isa = PBXBuildFile; fileRef = 9D33BFE8597B90CB36E4C97C /* Stickers.xcstickers */; };
 		7F95D6040E32E6B70F1374E6 /* DeliveryWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C1745C2A8762C8B9CEB4608 /* DeliveryWidget.swift */; };
 		8A1EF9D22F9303B250D0D749 /* DeliveryKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = B66A42A93FB081CD43CD1B60 /* DeliveryKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		8D39D4D04B38808627D960BC /* DeliveryWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 5979151531102AEB88B7E8F6 /* DeliveryWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A4162E428FDBCEA3F0023984 /* DeliveryClipApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CF5AF1040C832FE730AE8C7 /* DeliveryClipApp.swift */; };
 		B76280CEC8B62D45615F35A0 /* DeliveryWatchExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AF48D7A1CAEC2F21D8A38498 /* DeliveryWatchExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		BFD831851B8A12D17915EF27 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 787770103BFE1EEC0AA281B9 /* Assets.xcassets */; };
 		C7EF64F40FDDEE294F27BD85 /* DeliveryKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B66A42A93FB081CD43CD1B60 /* DeliveryKit.framework */; };
 		E561AFCF774A6AB4057C2100 /* DeliveryStickers.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D1287DA92E32BB492EB4CB25 /* DeliveryStickers.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		FAD9FE1625C7E81AB3D33C84 /* DeliveryClipApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CF5AF1040C832FE730AE8C7 /* DeliveryClipApp.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,6 +42,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = EAC9D63AA5CE8D3638F64DBC;
 			remoteInfo = "DeliveryKit-macOS";
+		};
+		08F1056EC823BCF23D0346EB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 21C744D40939B74039A1F09A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 803F0E1FDD05666ADCEA3BB6;
+			remoteInfo = DeliveryClip;
 		};
 		18953895144B34320B1DA4EA /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -82,6 +95,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		0CA75BE903753F11072AD79F /* Embed App Clips */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/AppClips";
+			dstSubfolderSpec = 16;
+			files = (
+				5CD49DD94BDFF656F7C7DF31 /* DeliveryClip.app in Embed App Clips */,
+			);
+			name = "Embed App Clips";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		0D2F3ED49B89AA2BCB0E3546 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -152,15 +176,20 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0CF5AF1040C832FE730AE8C7 /* DeliveryClipApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryClipApp.swift; sourceTree = "<group>"; };
 		1C1745C2A8762C8B9CEB4608 /* DeliveryWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryWidget.swift; sourceTree = "<group>"; };
 		2BB7D8BE893070FB3A27298D /* DeliveryKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = DeliveryKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		370D888A79CF5A5B88E95C16 /* DeliveryWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = DeliveryWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C94C267C58152EE05CC1460 /* Delivery.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Delivery.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5979151531102AEB88B7E8F6 /* DeliveryWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DeliveryWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		621B1EE5B559BF2721CF7B6B /* DeliveryClipHost.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = DeliveryClipHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		72DB0E592997B54DF54148EF /* DeliveryClipInvocationTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = DeliveryClipInvocationTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		787770103BFE1EEC0AA281B9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9D33BFE8597B90CB36E4C97C /* Stickers.xcstickers */ = {isa = PBXFileReference; lastKnownFileType = folder.stickers; path = Stickers.xcstickers; sourceTree = "<group>"; };
 		A9ECB32CE271D35448EFAD50 /* ExtensionDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionDelegate.swift; sourceTree = "<group>"; };
+		AC607C42011920F61BB35F5A /* DeliveryClipInvocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryClipInvocationTests.swift; sourceTree = "<group>"; };
 		AF48D7A1CAEC2F21D8A38498 /* DeliveryWatchExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DeliveryWatchExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B145D1CDAFEBF029DFF75E31 /* DeliveryClip.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = DeliveryClip.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B66A42A93FB081CD43CD1B60 /* DeliveryKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = DeliveryKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		D1287DA92E32BB492EB4CB25 /* DeliveryStickers.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = DeliveryStickers.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		D6DB43B64FE333E4423ACF10 /* DeliveryWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DeliveryWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -190,11 +219,23 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		46E4A25F660D78537974EE8B /* ClipInvocation */ = {
+			isa = PBXGroup;
+			children = (
+				AC607C42011920F61BB35F5A /* DeliveryClipInvocationTests.swift */,
+			);
+			name = ClipInvocation;
+			path = Tests/ClipInvocation;
+			sourceTree = "<group>";
+		};
 		4859C233927CBB8905C82A51 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				FA2EEE2E34BA921D8564E63F /* Delivery.app */,
 				4C94C267C58152EE05CC1460 /* Delivery.app */,
+				B145D1CDAFEBF029DFF75E31 /* DeliveryClip.app */,
+				621B1EE5B559BF2721CF7B6B /* DeliveryClipHost.app */,
+				72DB0E592997B54DF54148EF /* DeliveryClipInvocationTests.xctest */,
 				B66A42A93FB081CD43CD1B60 /* DeliveryKit.framework */,
 				2BB7D8BE893070FB3A27298D /* DeliveryKit.framework */,
 				D1287DA92E32BB492EB4CB25 /* DeliveryStickers.appex */,
@@ -228,6 +269,8 @@
 			isa = PBXGroup;
 			children = (
 				49C8DB629548C0D1F3BDBBB1 /* App */,
+				F4A6C818BF3EABA544DE4601 /* ClipFixture */,
+				46E4A25F660D78537974EE8B /* ClipInvocation */,
 				DDC3C12180570BD72A98D13B /* Kit */,
 				EEA065C54EEC82625DF72944 /* Resources */,
 				EB1C413333764B1A1EEA4B61 /* Stickers */,
@@ -282,6 +325,15 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		F4A6C818BF3EABA544DE4601 /* ClipFixture */ = {
+			isa = PBXGroup;
+			children = (
+				0CF5AF1040C832FE730AE8C7 /* DeliveryClipApp.swift */,
+			);
+			name = ClipFixture;
+			path = Sources/ClipFixture;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -319,6 +371,24 @@
 			productReference = B66A42A93FB081CD43CD1B60 /* DeliveryKit.framework */;
 			productType = "com.apple.product-type.framework";
 		};
+		803F0E1FDD05666ADCEA3BB6 /* DeliveryClip */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 04D59661A733011211AE683A /* Build configuration list for PBXNativeTarget "DeliveryClip" */;
+			buildPhases = (
+				AE3C234C498D9FBD13796A48 /* Sources */,
+				3E43656309D676623CB95044 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DeliveryClip;
+			packageProductDependencies = (
+			);
+			productName = DeliveryClip;
+			productReference = B145D1CDAFEBF029DFF75E31 /* DeliveryClip.app */;
+			productType = "com.apple.product-type.application.on-demand-install-capable";
+		};
 		8BF3C697D7985E242B8733E1 /* DeliveryWidget-iOS */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 424406539D529365FB51046B /* Build configuration list for PBXNativeTarget "DeliveryWidget-iOS" */;
@@ -335,6 +405,26 @@
 			productName = "DeliveryWidget-iOS";
 			productReference = 370D888A79CF5A5B88E95C16 /* DeliveryWidget.appex */;
 			productType = "com.apple.product-type.app-extension";
+		};
+		8EB084D969CD05F5628341EC /* DeliveryClipHost */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 259D9A1C4145AFAC9A94494F /* Build configuration list for PBXNativeTarget "DeliveryClipHost" */;
+			buildPhases = (
+				D55AEE97C6C5EC14554CE718 /* Sources */,
+				3DD4A25E032535B3CE013AA4 /* Resources */,
+				0CA75BE903753F11072AD79F /* Embed App Clips */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3BE3672DF3283C608DAEFD8D /* PBXTargetDependency */,
+			);
+			name = DeliveryClipHost;
+			packageProductDependencies = (
+			);
+			productName = DeliveryClipHost;
+			productReference = 621B1EE5B559BF2721CF7B6B /* DeliveryClipHost.app */;
+			productType = "com.apple.product-type.application";
 		};
 		937F393F995B70C60EAF5B3C /* Delivery-iOS */ = {
 			isa = PBXNativeTarget;
@@ -438,6 +528,23 @@
 			productReference = D1287DA92E32BB492EB4CB25 /* DeliveryStickers.appex */;
 			productType = "com.apple.product-type.app-extension.messages-sticker-pack";
 		};
+		E93FFF218BCFC59C5FA29BB9 /* DeliveryClipInvocationTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E2102B60039A5EAC59357CFF /* Build configuration list for PBXNativeTarget "DeliveryClipInvocationTests" */;
+			buildPhases = (
+				843D3CA180DDAD7C00C4DDA0 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DeliveryClipInvocationTests;
+			packageProductDependencies = (
+			);
+			productName = DeliveryClipInvocationTests;
+			productReference = 72DB0E592997B54DF54148EF /* DeliveryClipInvocationTests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		EAC9D63AA5CE8D3638F64DBC /* DeliveryKit-macOS */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 785C5098391161FBC5E76172 /* Build configuration list for PBXNativeTarget "DeliveryKit-macOS" */;
@@ -470,7 +577,13 @@
 					4FE0DC1FB6E3AE5CDB3CBE9E = {
 						ProvisioningStyle = Automatic;
 					};
+					803F0E1FDD05666ADCEA3BB6 = {
+						ProvisioningStyle = Automatic;
+					};
 					8BF3C697D7985E242B8733E1 = {
+						ProvisioningStyle = Automatic;
+					};
+					8EB084D969CD05F5628341EC = {
 						ProvisioningStyle = Automatic;
 					};
 					937F393F995B70C60EAF5B3C = {
@@ -486,6 +599,9 @@
 						ProvisioningStyle = Automatic;
 					};
 					D1D83178C493CAC47045CC40 = {
+						ProvisioningStyle = Automatic;
+					};
+					E93FFF218BCFC59C5FA29BB9 = {
 						ProvisioningStyle = Automatic;
 					};
 					EAC9D63AA5CE8D3638F64DBC = {
@@ -507,6 +623,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				E93FFF218BCFC59C5FA29BB9 /* DeliveryClipInvocationTests */,
+				8EB084D969CD05F5628341EC /* DeliveryClipHost */,
+				803F0E1FDD05666ADCEA3BB6 /* DeliveryClip */,
 				4FE0DC1FB6E3AE5CDB3CBE9E /* DeliveryKit-iOS */,
 				EAC9D63AA5CE8D3638F64DBC /* DeliveryKit-macOS */,
 				8BF3C697D7985E242B8733E1 /* DeliveryWidget-iOS */,
@@ -534,6 +653,22 @@
 			buildActionMask = 2147483647;
 			files = (
 				160690DB67082D6A5A41CFC8 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3DD4A25E032535B3CE013AA4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2D7E245A315DDE12EEA0B7A6 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3E43656309D676623CB95044 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BFD831851B8A12D17915EF27 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -580,6 +715,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		843D3CA180DDAD7C00C4DDA0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5D76E5D70A6BB0C40D615233 /* DeliveryClipInvocationTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AE3C234C498D9FBD13796A48 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A4162E428FDBCEA3F0023984 /* DeliveryClipApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B8C806074034D6BA28504C7C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -612,6 +763,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D55AEE97C6C5EC14554CE718 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FAD9FE1625C7E81AB3D33C84 /* DeliveryClipApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -624,6 +783,11 @@
 			isa = PBXTargetDependency;
 			target = 8BF3C697D7985E242B8733E1 /* DeliveryWidget-iOS */;
 			targetProxy = 7414B35F4CE4BC0F3A6DE905 /* PBXContainerItemProxy */;
+		};
+		3BE3672DF3283C608DAEFD8D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 803F0E1FDD05666ADCEA3BB6 /* DeliveryClip */;
+			targetProxy = 08F1056EC823BCF23D0346EB /* PBXContainerItemProxy */;
 		};
 		490411BF201BDB675C049C3C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -862,6 +1026,62 @@
 			};
 			name = Debug;
 		};
+		708C23400A4FFE3F74D4028D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Delivery Host";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID)";
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_APP_PROFILE)";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		75218BDF84A8E8FC07ECD663 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.sweetpad.tests.clip-invocation";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7DE3B05495A96EB81C7EBD52 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.sweetpad.tests.clip-invocation";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		86041C76859B2173807FB723 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -882,6 +1102,30 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
+		};
+		86C4C33113E35491D17A9E10 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "Entitlements/Clip-iOS.entitlements";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Supporting/Clip-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Delivery Clip";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).Clip";
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_CLIP_PROFILE)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
 		};
 		9FD49DC2F77C2B8C20608370 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -932,6 +1176,28 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
+		};
+		B7FBBE082DCFC30E53C29941 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Delivery Host";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID)";
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_APP_PROFILE)";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
 		};
 		C2522E4E85918F618D3905AA /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -1081,6 +1347,30 @@
 			};
 			name = Debug;
 		};
+		DCC4E3183994D4CBF05E1333 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "Entitlements/Clip-iOS.entitlements";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Supporting/Clip-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Delivery Clip";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DELIVERY_BUNDLE_ID).Clip";
+				PROVISIONING_PROFILE_SPECIFIER = "$(DELIVERY_CLIP_PROFILE)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		E54426CF4C2105D811BDDF00 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1171,11 +1461,29 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		04D59661A733011211AE683A /* Build configuration list for PBXNativeTarget "DeliveryClip" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DCC4E3183994D4CBF05E1333 /* Debug */,
+				86C4C33113E35491D17A9E10 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		065A80F0DC9F4049860DD29B /* Build configuration list for PBXNativeTarget "Delivery-iOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B57840AAB4FB65353561ABD2 /* Debug */,
 				9FD49DC2F77C2B8C20608370 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		259D9A1C4145AFAC9A94494F /* Build configuration list for PBXNativeTarget "DeliveryClipHost" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				708C23400A4FFE3F74D4028D /* Debug */,
+				B7FBBE082DCFC30E53C29941 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -1257,6 +1565,15 @@
 			buildConfigurations = (
 				13DD8C9326256172BFD2F704 /* Debug */,
 				EDE815EE86B984752ADE94EF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E2102B60039A5EAC59357CFF /* Build configuration list for PBXNativeTarget "DeliveryClipInvocationTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				75218BDF84A8E8FC07ECD663 /* Debug */,
+				7DE3B05495A96EB81C7EBD52 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
