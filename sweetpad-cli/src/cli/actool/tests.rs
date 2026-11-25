@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 use super::catalog::Catalog;
 use super::symbols::{self, Frameworks, Options};
@@ -105,6 +106,8 @@ fn probe_catalog(dir: &Path) -> Catalog {
 fn options(extensions: bool, frameworks: Frameworks) -> Options {
     Options {
         bundle_id: "dev.sweetpad.Probe".into(),
+        api: symbols::ResourceApi::System,
+        mac_catalyst: false,
         extensions,
         frameworks,
         target_devices: vec!["iphone".into(), "ipad".into()],
@@ -143,7 +146,9 @@ fn symbols_match_actool_in_every_mode() {
         uikit: false,
         swiftui: true,
     };
-    for (mode, opts) in [
+    let back_deployed: Value =
+        serde_json::from_str(&fixture("expected/back-deployed-sha256.json")).unwrap();
+    for (mode, mut opts) in [
         ("extensions", options(true, Frameworks::default())),
         ("no-extensions", options(false, Frameworks::default())),
         ("swiftui", options(true, swiftui)),
@@ -159,6 +164,32 @@ fn symbols_match_actool_in_every_mode() {
             &fixture("expected/symbols.h"),
             &format!("{mode} header"),
         );
+        opts.api = symbols::ResourceApi::BackDeployed;
+        let swift = symbols::generate(&catalogs, &opts).swift;
+        assert_eq!(
+            format!("{:x}", Sha256::digest(swift.as_bytes())),
+            back_deployed[mode].as_str().unwrap(),
+            "iOS 15.6 {mode} output differs from Xcode's actool",
+        );
+    }
+}
+
+#[test]
+fn catalyst_keeps_ipad_only_assets_as_thinnable_resources() {
+    let dir = TempDir::new("sweetpad-actool-catalyst");
+    let catalog = probe_catalog(&dir);
+    let mut opts = options(true, Frameworks::default());
+    opts.target_devices = vec!["mac".into()];
+    opts.mac_catalyst = true;
+    for api in [
+        symbols::ResourceApi::BackDeployed,
+        symbols::ResourceApi::System,
+    ] {
+        opts.api = api;
+        let swift = symbols::generate(std::slice::from_ref(&catalog), &opts).swift;
+        assert!(swift.contains(r#"ImageResource(thinnableName: "PadOnly""#));
+        assert!(swift.contains(r#"ColorResource(name: "MacOnly""#));
+        assert!(!swift.contains("PhoneOnly"));
     }
 }
 
@@ -854,6 +885,76 @@ fn platform_args(catalog: &Path, out: &Path, platform: &str) -> Args {
     ]
     .into();
     Args::parse(&command_line)
+}
+
+#[test]
+fn only_the_size_class_axes_used_by_targeted_images_widen_the_catalog() {
+    let temp = TempDir::new("sweetpad-actool-size-classes");
+    let catalog = temp.join("Sizes.xcassets");
+    let set = catalog.join("Pin.imageset");
+    std::fs::create_dir_all(&set).unwrap();
+    std::fs::write(set.join("pin.png"), png_of(8, [0, 0, 255, 255])).unwrap();
+    let base = json!({"idiom": "universal", "scale": "1x", "filename": "pin.png"});
+    for (horizontal, vertical) in [
+        (None, None),
+        (Some("compact"), None),
+        (None, Some("regular")),
+        (Some("compact"), Some("regular")),
+    ] {
+        let mut entries = vec![base.clone()];
+        let mut slot = base.clone();
+        if let Some(value) = horizontal {
+            slot["width-class"] = json!(value);
+        }
+        if let Some(value) = vertical {
+            slot["height-class"] = json!(value);
+        }
+        if slot != base {
+            entries.push(slot);
+        }
+        // Xcode represents the default by omitting the axis. Invalid selectors
+        // must never become extra copies of the default rendition.
+        for value in ["any", "unsupported"] {
+            let mut invalid = base.clone();
+            invalid["width-class"] = json!(value);
+            entries.push(invalid);
+        }
+        write_json(&set.join("Contents.json"), &json!({"images": entries}));
+        for platform in [
+            "iphoneos",
+            "iphonesimulator",
+            "xros",
+            "xrsimulator",
+            "macosx",
+            "appletvsimulator",
+            "watchsimulator",
+        ] {
+            let out = temp.join(platform);
+            compile::compile(&platform_args(&catalog, &out, platform)).unwrap();
+            let records = renditions(&out.join("Assets.car"));
+            let supported = matches!(
+                platform,
+                "iphoneos" | "iphonesimulator" | "xros" | "xrsimulator"
+            );
+            let width = horizontal.is_some() && supported;
+            let height = vertical.is_some() && supported;
+            let mut slots = Vec::new();
+            for (key, _, _) in records {
+                assert_eq!(key.contains_key(&20), width, "{platform} horizontal axis");
+                assert_eq!(key.contains_key(&21), height, "{platform} vertical axis");
+                slots.push((
+                    key.get(&20).copied().unwrap_or(0),
+                    key.get(&21).copied().unwrap_or(0),
+                ));
+            }
+            slots.sort_unstable();
+            let mut expected = vec![(0, 0)];
+            if width || height {
+                expected.push((u16::from(width), 2 * u16::from(height)));
+            }
+            assert_eq!(slots, expected, "{platform} {horizontal:?} {vertical:?}");
+        }
+    }
 }
 
 #[test]

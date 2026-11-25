@@ -9,6 +9,7 @@ use serde_json::Value;
 
 use super::car::{Appearance, Bitmap, Car, Part, Variant};
 use super::catalog::Catalog;
+use super::catalog::SizeClasses;
 use super::raster::{self, Rgba};
 use super::vector::{Drawing, Format};
 use super::write;
@@ -59,6 +60,7 @@ pub(super) fn compile<'a>(
                         appearance,
                         scale: 1,
                         idiom,
+                        size_classes: SizeClasses::ANY,
                     },
                     0,
                     1,

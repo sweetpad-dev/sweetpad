@@ -274,7 +274,7 @@ pub(super) fn prepare(objects: &mut Objects, names: &Names) {
     appkit_layout_cache(objects);
     layout_cache::prepare(objects);
     appkit_tables(objects);
-    intern_strings(objects);
+    intern_values(objects);
 }
 
 fn appkit_layout_cache(objects: &mut Objects) {
@@ -758,18 +758,20 @@ fn top_level_proxies(objects: &mut Objects) {
     }
 }
 
-fn intern_strings(objects: &mut Objects) {
-    // NSString value sharing is an encoder optimization, not object identity
-    // on which UIKit relies. Intern equal values in both archives.
-    let mut strings = BTreeMap::new();
+fn intern_values(objects: &mut Objects) {
+    // Xcode can share equal NSStrings and the NSShadow values in attributed
+    // runs, or archive a copy per run. Compare their class and all their fields.
+    let mut values = BTreeMap::new();
     let mut aliases = BTreeMap::new();
     for (index, object) in objects
         .iter()
         .enumerate()
-        .filter(|(_, o)| o.class == "NSString")
+        .filter(|(_, o)| matches!(o.class.as_str(), "NSString" | "NSShadow"))
     {
-        let key = format!("{:?}", object.values);
-        let first = *strings.entry(key).or_insert(index);
+        let mut fields: Vec<_> = object.values.iter().collect();
+        fields.sort_by(|a, b| a.0.cmp(&b.0));
+        let key = (object.class.clone(), format!("{fields:?}"));
+        let first = *values.entry(key).or_insert(index);
         aliases.insert(index, first);
     }
     for object in objects {

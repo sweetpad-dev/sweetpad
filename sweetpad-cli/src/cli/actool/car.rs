@@ -28,6 +28,7 @@ use crate::cli::bom::Bom;
 use std::collections::BTreeSet;
 use std::io::Write as _;
 
+use super::catalog::{SizeClass, SizeClasses};
 use super::photo::{Format as PhotoFormat, Photo};
 use super::raster::Rgba;
 use super::vector::Format;
@@ -146,6 +147,7 @@ pub struct Variant {
     /// CoreUI's idiom: 0 universal, 1 iPhone, 2 iPad, 3 TV, 4 CarPlay,
     /// 5 Watch, 6 marketing.
     pub idiom: u16,
+    pub size_classes: SizeClasses,
 }
 
 /// An image's pixels as CoreUI keeps them: premultiplied BGRA, row by row.
@@ -271,37 +273,13 @@ pub enum Family {
     Mac,
 }
 
-impl Family {
-    /// CoreUI's attribute ids, in the order a rendition key holds them:
-    /// appearance 7, localization 13, scale 12, idiom 15, subtype 16,
-    /// identifier 17, element 1, part 2, size 3, layer 11, with app icons
-    /// dimension 9, an icon's size index, and with symbols dimension 9,
-    /// deployment target 25, glyph weight 26 and glyph size 27.
-    fn key_format(self, kinds: Kinds) -> &'static [u32] {
-        match (self, kinds.glyphs, kinds.icons) {
-            (Family::Ios, false, false) => &[7, 13, 12, 15, 16, 17, 1, 2],
-            (Family::Ios, false, true) => &[7, 13, 12, 15, 16, 9, 17, 1, 2],
-            (Family::Ios, true, _) => &[7, 13, 12, 15, 16, 26, 27, 9, 25, 17, 1, 2],
-            (Family::Mac, false, false) => &[7, 13, 1, 2, 3, 17, 11, 12],
-            (Family::Mac, false, true) => &[7, 13, 1, 2, 3, 17, 9, 11, 12],
-            (Family::Mac, true, _) => &[7, 13, 1, 2, 3, 17, 9, 11, 12, 25, 26, 27],
-        }
-    }
-}
-
-/// The kinds of rendition a catalog has that widen its keys.
-#[derive(Debug, Clone, Copy)]
-struct Kinds {
-    glyphs: bool,
-    icons: bool,
-}
-
 /// The attributes of a rendition's key, the ones the stand-in sets.
 #[derive(Debug, Clone, Copy, Default)]
 struct Key {
     appearance: Appearance,
     scale: u16,
     idiom: u16,
+    size_classes: SizeClasses,
     /// A device class within the idiom, like 1792 for the iPhone XR.
     subtype: u16,
     /// An app icon size's index.
@@ -314,9 +292,8 @@ struct Key {
 }
 
 impl Key {
-    fn bytes(&self, family: Family, kinds: Kinds) -> Vec<u8> {
-        family
-            .key_format(kinds)
+    fn bytes(&self, family: Family, format: &[u32]) -> Vec<u8> {
+        format
             .iter()
             .flat_map(|attribute| {
                 let value: u16 = match attribute {
@@ -326,6 +303,8 @@ impl Key {
                     16 => self.subtype,
                     9 => self.dimension,
                     17 => self.identifier,
+                    20 => self.size_classes.horizontal as u16,
+                    21 => self.size_classes.vertical as u16,
                     1 => ELEMENT,
                     2 => self.part,
                     25 => self.deployment,
@@ -646,6 +625,7 @@ impl Car {
             appearance: Appearance::Any,
             scale: 1,
             idiom,
+            size_classes: SizeClasses::ANY,
         };
         self.add(
             Key {
@@ -817,16 +797,53 @@ impl Car {
         self.renditions.push((key, rendition));
     }
 
-    /// Whether any rendition is a symbol's or an app icon's, which widen
-    /// the key format.
-    fn kinds(&self) -> Kinds {
-        Kinds {
-            glyphs: self.facets.iter().any(|f| f.symbol),
-            icons: self.facets.iter().any(|f| f.part == Part::Icon)
-                || self
+    /// CoreUI uses one key format for the whole catalog. Each size-class axis
+    /// is present only when a rendition selects a value on that axis (20 for
+    /// width, 21 for height). Symbols add weight, size and deployment target
+    /// (26, 27, 25). Symbols and icons both use dimension (9).
+    fn key_format(&self) -> Vec<u32> {
+        let glyphs = self.facets.iter().any(|f| f.symbol);
+        let icons = self.facets.iter().any(|f| f.part == Part::Icon)
+            || self
+                .renditions
+                .iter()
+                .any(|(key, _)| key.part == Part::Icon as u16);
+        match self.family {
+            Family::Ios => {
+                let mut format = vec![7, 13, 12, 15, 16];
+                if glyphs {
+                    format.extend([26, 27, 9, 25]);
+                } else if icons {
+                    format.push(9);
+                }
+                if self
                     .renditions
                     .iter()
-                    .any(|(key, _)| key.part == Part::Icon as u16),
+                    .any(|(key, _)| key.size_classes.horizontal != SizeClass::Any)
+                {
+                    format.push(20);
+                }
+                if self
+                    .renditions
+                    .iter()
+                    .any(|(key, _)| key.size_classes.vertical != SizeClass::Any)
+                {
+                    format.push(21);
+                }
+                format.extend([17, 1, 2]);
+                format
+            }
+            Family::Mac => {
+                let mut format = vec![7, 13, 1, 2, 3, 17];
+                if icons || glyphs {
+                    format.push(9);
+                }
+                format.extend([11, 12]);
+                if glyphs {
+                    format.extend([25, 26, 27]);
+                }
+                format
+            }
         }
     }
 
@@ -846,12 +863,11 @@ impl Car {
         let index = bom.add(header);
         bom.variable("CARHEADER", index);
 
-        let kinds = self.kinds();
-        let format = self.family.key_format(kinds);
+        let format = self.key_format();
         let renditions = self
             .renditions
             .iter()
-            .map(|(key, rendition)| (key.bytes(self.family, kinds), rendition.clone()))
+            .map(|(key, rendition)| (key.bytes(self.family, &format), rendition.clone()))
             .collect();
         bom.tree("RENDITIONS", renditions, Keys::Fixed(2 * format.len()));
         let facets = self
@@ -885,7 +901,7 @@ impl Car {
         bom.tree("APPEARANCEKEYS", appearances, Keys::Variable);
 
         let mut key_format = b"tmfk".to_vec();
-        for value in [0, count(format.len())].iter().chain(format) {
+        for value in [0, count(format.len())].iter().chain(&format) {
             key_format.extend_from_slice(&value.to_le_bytes());
         }
         let index = bom.add(key_format);
@@ -898,7 +914,7 @@ impl Car {
         metadata.extend_from_slice(&padded(b"sweetpad", 256));
         let index = bom.add(metadata);
         bom.variable("EXTENDED_METADATA", index);
-        bom.tree("BITMAPKEYS", self.bitmap_keys(kinds), Keys::Inline);
+        bom.tree("BITMAPKEYS", self.bitmap_keys(&format), Keys::Inline);
         bom.finish()
     }
 
@@ -906,8 +922,7 @@ impl Car {
     /// a mask with a bit set for each value its renditions take, or every
     /// bit for the attributes CoreUI doesn't narrow by: appearance,
     /// identifier, element and part.
-    fn bitmap_keys(&self, kinds: Kinds) -> Vec<(Vec<u8>, Vec<u8>)> {
-        let format = self.family.key_format(kinds);
+    fn bitmap_keys(&self, format: &[u32]) -> Vec<(Vec<u8>, Vec<u8>)> {
         self.facets
             .iter()
             .map(|facet| {
@@ -917,7 +932,7 @@ impl Car {
                     .iter()
                     .filter(|(k, _)| k.identifier == facet.identifier)
                 {
-                    let values = key.bytes(self.family, kinds);
+                    let values = key.bytes(self.family, format);
                     for (mask, value) in masks.iter_mut().zip(values.chunks(2)) {
                         let value = u16::from_le_bytes([value[0], value[1]]);
                         *mask |= 1u32.checked_shl(u32::from(value)).unwrap_or(u32::MAX);
@@ -947,6 +962,7 @@ fn key(identifier: u16, variant: Variant) -> Key {
         appearance: variant.appearance,
         scale: variant.scale,
         idiom: variant.idiom,
+        size_classes: variant.size_classes,
         identifier,
         ..Key::default()
     }
@@ -1266,6 +1282,7 @@ pub(super) mod tests {
         appearance: Appearance::Any,
         scale: 1,
         idiom: 0,
+        size_classes: SizeClasses::ANY,
     };
 
     #[test]

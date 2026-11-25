@@ -247,24 +247,29 @@ impl Encoder<'_> {
             };
             self.graph.set(object, "UIDataDetectorTypes", value);
         }
-        let text = element.attr("text").unwrap_or("");
-        let string = self.text(element, "text", text);
-        self.graph.set(object, "UIText", string);
-        let font = self.font(element.child("fontDescription"))?;
-        let paragraph = self.graph.object("NSMutableParagraphStyle");
-        self.graph.set(paragraph, "NSTabStops", Value::Nil);
-        let font_key = self.graph.string("NSFont");
-        let paragraph_key = self.graph.string("NSParagraphStyle");
-        let attributes = self.graph.dictionary(
-            "NSDictionary",
-            &[(font_key, font), (paragraph_key, paragraph)],
-        );
-        let styled = self.graph.object("NSAttributedString");
-        let plain = self.graph.string(text);
-        self.graph.set(styled, "NSString", plain);
-        self.graph.set(styled, "NSAttributes", attributes);
-        self.graph.set(object, "UIAttributedText", styled);
-        self.graph.set(object, "UIFont", font);
+        if let Some(attributed) = keyed(element, "attributedString", "attributedText") {
+            let styled = self.attributed_text(attributed, None)?;
+            self.graph.set(object, "UIAttributedText", styled.archive);
+        } else {
+            let text = element.attr("text").unwrap_or("");
+            let string = self.text(element, "text", text);
+            self.graph.set(object, "UIText", string);
+            let font = self.font(element.child("fontDescription"))?;
+            let paragraph = self.graph.object("NSMutableParagraphStyle");
+            self.graph.set(paragraph, "NSTabStops", Value::Nil);
+            let font_key = self.graph.string("NSFont");
+            let paragraph_key = self.graph.string("NSParagraphStyle");
+            let attributes = self.graph.dictionary(
+                "NSDictionary",
+                &[(font_key, font), (paragraph_key, paragraph)],
+            );
+            let styled = self.graph.object("NSAttributedString");
+            let plain = self.graph.string(text);
+            self.graph.set(styled, "NSString", plain);
+            self.graph.set(styled, "NSAttributes", attributes);
+            self.graph.set(object, "UIAttributedText", styled);
+            self.graph.set(object, "UIFont", font);
+        }
         self.graph.set(
             object,
             "UITextAlignment",

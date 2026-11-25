@@ -69,8 +69,9 @@ pub struct Entry {
     pub appearance: bool,
     /// Its appearances, as `(appearance, value)`: `("luminosity", "dark")`.
     pub appearances: Vec<(String, String)>,
+    pub size_classes: SizeClasses,
     /// Whether it varies by something else the stand-in doesn't compile:
-    /// a display gamut, locale, size class, memory or graphics class, or a
+    /// a display gamut, locale, memory or graphics class, or a
     /// device subtype, which only a watchOS app icon's slots read.
     pub other_traits: bool,
     /// The device a watchOS app icon slot is for, like `44mm`.
@@ -79,6 +80,44 @@ pub struct Entry {
     pub role: Option<String>,
     /// A data set file's type: `universal-type-identifier`.
     pub type_identifier: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[repr(u16)]
+pub enum SizeClass {
+    #[default]
+    Any = 0,
+    Compact = 1,
+    Regular = 2,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SizeClasses {
+    pub horizontal: SizeClass,
+    pub vertical: SizeClass,
+}
+
+impl SizeClasses {
+    pub const ANY: Self = Self {
+        horizontal: SizeClass::Any,
+        vertical: SizeClass::Any,
+    };
+
+    fn read(entry: &Value) -> Option<Self> {
+        let axis = |key: &str| match entry.get(key) {
+            None => Some(SizeClass::Any),
+            Some(value) => match value.as_str()? {
+                // Xcode represents the Any slot by omitting the axis.
+                "compact" => Some(SizeClass::Compact),
+                "regular" => Some(SizeClass::Regular),
+                _ => None,
+            },
+        };
+        Some(Self {
+            horizontal: axis("width-class")?,
+            vertical: axis("height-class")?,
+        })
+    }
 }
 
 /// One entry of a color set's `Contents.json`.
@@ -275,7 +314,7 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
                         .unwrap_or("universal")
                         .to_string(),
                     appearances: appearances(e),
-                    other_traits: other_traits(e),
+                    other_traits: other_traits(e) || SizeClasses::read(e) != Some(SizeClasses::ANY),
                     color: e.get("color").cloned(),
                 })
                 .collect();
@@ -294,12 +333,17 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
             } else {
                 Kind::Image
             };
-            (kind, idioms(&images), files(&images), has)
+            (
+                kind,
+                idioms(&images),
+                files(&images, extension == "imageset"),
+                has,
+            )
         }
         "dataset" => {
             let data = entries("data");
             let has = data.iter().any(|e| e.get("filename").is_some());
-            (Kind::Data, idioms(&data), files(&data), has)
+            (Kind::Data, idioms(&data), files(&data, false), has)
         }
         "icon" => (Kind::AppIcon, Vec::new(), Vec::new(), true),
         _ => (Kind::Other, Vec::new(), Vec::new(), true),
@@ -346,42 +390,40 @@ fn appearances(entry: &Value) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Whether an entry varies by a trait other than idiom, scale and
-/// appearance.
+/// Whether an entry uses a slot selector the compiler cannot represent.
 fn other_traits(entry: &Value) -> bool {
     entry
         .get("display-gamut")
         .and_then(Value::as_str)
         .is_some_and(|g| g != "sRGB")
-        || [
-            "locale",
-            "width-class",
-            "height-class",
-            "memory",
-            "graphics-feature-set",
-            "subtype",
-        ]
-        .iter()
-        .any(|k| entry.get(*k).is_some())
+        || ["locale", "memory", "graphics-feature-set", "subtype"]
+            .iter()
+            .any(|k| entry.get(*k).is_some())
 }
 
 /// An image, app icon or data set's entries, as the stand-in uses them.
-fn files(entries: &[Value]) -> Vec<Entry> {
+fn files(entries: &[Value], image_set: bool) -> Vec<Entry> {
     let text = |e: &Value, key: &str| e.get(key).and_then(Value::as_str).map(str::to_string);
     entries
         .iter()
-        .map(|e| Entry {
-            filename: text(e, "filename"),
-            idiom: text(e, "idiom").unwrap_or_else(|| "universal".to_string()),
-            scale: text(e, "scale"),
-            size: text(e, "size"),
-            platform: text(e, "platform"),
-            appearance: e.get("appearances").is_some(),
-            appearances: appearances(e),
-            other_traits: other_traits(e),
-            subtype: text(e, "subtype"),
-            role: text(e, "role"),
-            type_identifier: text(e, "universal-type-identifier"),
+        .map(|e| {
+            let size_classes = SizeClasses::read(e);
+            Entry {
+                filename: text(e, "filename"),
+                idiom: text(e, "idiom").unwrap_or_else(|| "universal".to_string()),
+                scale: text(e, "scale"),
+                size: text(e, "size"),
+                platform: text(e, "platform"),
+                appearance: e.get("appearances").is_some(),
+                appearances: appearances(e),
+                size_classes: size_classes.unwrap_or_default(),
+                other_traits: other_traits(e)
+                    || size_classes.is_none()
+                    || (!image_set && size_classes != Some(SizeClasses::ANY)),
+                subtype: text(e, "subtype"),
+                role: text(e, "role"),
+                type_identifier: text(e, "universal-type-identifier"),
+            }
         })
         .collect()
 }

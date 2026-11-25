@@ -154,7 +154,16 @@ fn catalogs(args: &Args) -> Vec<Catalog> {
 
 fn generate_symbols(args: &Args) -> Result<(), String> {
     let frameworks = args.values("--generate-asset-symbol-framework-support");
+    let platform = args.value("--platform");
+    let mac_catalyst =
+        platform == Some("macosx") && args.value("--ui-framework-family") == Some("uikit");
     let options = Options {
+        mac_catalyst,
+        api: symbols::ResourceApi::for_target(
+            platform,
+            args.value("--minimum-deployment-target"),
+            mac_catalyst,
+        ),
         bundle_id: args
             .value("--bundle-identifier")
             .unwrap_or_default()

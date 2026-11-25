@@ -317,7 +317,8 @@ impl Encoder<'_> {
                 }
                 let color = if let Some(color) = keyed(state, "color", key) {
                     self.color(color)?
-                } else if self.document.child("dependencies").is_none() {
+                } else if value == 0 && self.document.child("dependencies").is_none() {
+                    // Other states inherit the normal state's color in UIKit.
                     self.system_color("blackColor", Fallback::White(0.0, 1.0))
                 } else {
                     continue;

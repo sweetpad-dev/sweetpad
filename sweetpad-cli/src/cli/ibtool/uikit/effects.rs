@@ -183,18 +183,21 @@ impl Encoder<'_> {
                 }
                 other => return Err(format!("unsupported runtime attribute type {other:?}")),
             };
-            let key = self.graph.string(
-                attribute
-                    .attr("keyPath")
-                    .ok_or("a runtime attribute has no key path")?,
-            );
-            let pair = self.graph.object("UINibKeyValuePair");
-            self.graph.set(pair, "UIObject", object);
-            self.graph.set(pair, "UIValue", value);
-            self.graph.set(pair, "UIKeyPath", key);
-            self.key_value_pairs.push(pair);
+            let key = attribute
+                .attr("keyPath")
+                .ok_or("a runtime attribute has no key path")?;
+            self.runtime_property(object, key, value);
         }
         Ok(())
+    }
+
+    pub(super) fn runtime_property(&mut self, object: Id, path: &str, value: Id) {
+        let key = self.graph.string(path);
+        let pair = self.graph.object("UINibKeyValuePair");
+        self.graph.set(pair, "UIObject", object);
+        self.graph.set(pair, "UIValue", value);
+        self.graph.set(pair, "UIKeyPath", key);
+        self.key_value_pairs.push(pair);
     }
 
     pub fn document_tint(&mut self, object: Id, element: &Element) -> Result<(), String> {

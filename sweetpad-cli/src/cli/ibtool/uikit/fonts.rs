@@ -13,6 +13,21 @@ impl Encoder<'_> {
         description: Option<&Element>,
         default_size: f64,
     ) -> Result<Id, String> {
+        self.archive_font(description, default_size, None)
+    }
+
+    /// UIKit supplies this descriptor when an attributed label has no font
+    /// in any run. Interface Builder's explicit system font uses other options.
+    pub(super) fn attributed_label_default_font(&mut self) -> Result<Id, String> {
+        self.archive_font(None, 17.0, Some(0))
+    }
+
+    fn archive_font(
+        &mut self,
+        description: Option<&Element>,
+        default_size: f64,
+        descriptor_options: Option<i64>,
+    ) -> Result<Id, String> {
         let kind = description.and_then(|d| d.attr("type")).unwrap_or("system");
         let weight = description.and_then(|d| d.attr("weight"));
         let style = description.and_then(|d| d.attr("style"));
@@ -79,9 +94,9 @@ impl Encoder<'_> {
                 size,
             )
         };
-        let descriptor = style
-            .is_none()
-            .then(|| self.font_descriptor(description, usage, override_usage, size));
+        let descriptor = style.is_none().then(|| {
+            self.font_descriptor(description, usage, override_usage, size, descriptor_options)
+        });
         let name = self.graph.string(name);
         let mut values = vec![("UIFontName", Value::Object(name))];
         if let Some(descriptor) = descriptor {
@@ -110,6 +125,7 @@ impl Encoder<'_> {
         usage: &str,
         override_usage: Option<&str>,
         size: f64,
+        options: Option<i64>,
     ) -> Id {
         let custom = description.and_then(|d| d.attr("name"));
         let kind = description.and_then(|d| d.attr("type")).unwrap_or("system");
@@ -156,11 +172,11 @@ impl Encoder<'_> {
                 ("UIFontDescriptorAttributes", Value::Object(attributes)),
                 (
                     "UIFontDescriptorOptions",
-                    Value::Int(if custom.is_some() {
+                    Value::Int(options.unwrap_or(if custom.is_some() {
                         2_147_483_648
                     } else {
                         2_147_517_444
-                    }),
+                    })),
                 ),
             ],
         )

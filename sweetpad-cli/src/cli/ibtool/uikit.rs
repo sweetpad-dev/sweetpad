@@ -13,9 +13,11 @@ use sweetpad_lib::xcscheme::Element;
 use super::nib::{Graph, Id, Value, doubles};
 use super::{Options, custom_class};
 mod accessibility;
+mod attributed;
 mod calibrated;
 mod configuration;
 mod controls;
+mod date_picker;
 mod effects;
 mod fonts;
 mod framework_views;
@@ -147,6 +149,9 @@ fn view_class(element: &Element) -> Result<&'static str, String> {
         "pageControl" => Ok("UIPageControl"),
         "segmentedControl" => Ok("UISegmentedControl"),
         "textView" => Ok("UITextView"),
+        "datePicker" => Ok("UIDatePicker"),
+        "collectionViewLayout" => Ok("UICollectionViewLayout"),
+        "collectionViewFlowLayout" => Ok("UICollectionViewFlowLayout"),
         "searchBar" => Ok("UISearchBar"),
         "toolbar" => Ok("UIToolbar"),
         "tabBar" => Ok("UITabBar"),
@@ -536,6 +541,10 @@ impl<'a> Encoder<'a> {
         for child in &element.children {
             match child.name.as_str() {
                 "gestureRecognizers" if child.children.is_empty() => {}
+                "attributedString"
+                    if matches!(element.name.as_str(), "textView" | "label")
+                        && child.attr("key") == Some("attributedText") => {}
+                "locale" | "date" if element.name == "datePicker" => {}
                 "rect"
                 | "autoresizingMask"
                 | "subviews"
@@ -553,6 +562,7 @@ impl<'a> Encoder<'a> {
                 | "inset"
                 | "tableViewCellContentView"
                 | "collectionViewFlowLayout"
+                | "collectionViewLayout"
                 | "sections"
                 | "prototypes"
                 | "cells"
@@ -650,6 +660,7 @@ impl<'a> Encoder<'a> {
                 }
             }
             "imageView" => self.image_view(element, object)?,
+            "datePicker" => self.date_picker(element, object)?,
             "button" => self.button(element, object)?,
             "textField" => self.text_field(element, object)?,
             "switch" => self.switch(element, object, [x, y, width, height])?,
@@ -1177,27 +1188,41 @@ impl<'a> Encoder<'a> {
     }
 
     fn label(&mut self, element: &Element, object: Id) -> Result<(), String> {
-        let text = element
-            .attr("text")
-            .map(str::to_string)
-            .or_else(|| keyed(element, "string", "text").map(|string| string.text.clone()));
-        if let Some(text) = text {
-            let text = self.text(element, "text", &text);
-            self.graph.set(object, "UIText", text);
-        }
-        let description = keyed(element, "fontDescription", "fontDescription");
-        let size = description
-            .map(|d| number(d, "pointSize"))
-            .transpose()?
-            .flatten()
-            .unwrap_or(17.0);
-        let font = self.font(description)?;
-        self.graph.set(object, "UIFont", font);
-        let color = match keyed(element, "color", "textColor") {
-            Some(color) => self.color(color)?,
-            None => self.system_color("labelColor", Fallback::White(0.0, 1.0)),
+        let line_break = match element.attr("lineBreakMode") {
+            None | Some("tailTruncation") => 4,
+            Some("wordWrap") => 0,
+            Some("characterWrap") => 1,
+            Some("clip") => 2,
+            Some("headTruncation") => 3,
+            Some("middleTruncation") => 5,
+            Some(other) => return Err(format!("the line break mode {other} is unknown")),
         };
-        self.graph.set(object, "UITextColor", color);
+        let offset = keyed(element, "size", "shadowOffset");
+        let shadow_offset = match offset {
+            Some(offset) => [
+                number(offset, "width")?.unwrap_or(0.0),
+                number(offset, "height")?.unwrap_or(0.0),
+            ],
+            None => [0.0, -1.0],
+        };
+        let shadow_color = keyed(element, "color", "shadowColor")
+            .map(|c| self.color(c))
+            .transpose()?;
+        if let Some(color) = shadow_color {
+            self.graph.set(object, "UIShadowColor", color);
+        }
+        self.graph
+            .set(object, "UIShadowOffset", doubles(&shadow_offset));
+
+        let size = self.label_text(
+            element,
+            object,
+            &attributed::LabelStyle {
+                line_break,
+                shadow_color,
+                shadow_offset,
+            },
+        )?;
         if let Some(color) = keyed(element, "color", "highlightedColor") {
             let color = self.color(color)?;
             self.graph.set(object, "UIHighlightedColor", color);
@@ -1212,8 +1237,6 @@ impl<'a> Encoder<'a> {
             self.graph
                 .set(object, "UIAdjustsFontForContentSizeCategory", true);
         }
-        self.graph
-            .set(object, "UIShadowOffset", doubles(&[0.0, -1.0]));
         let baseline = match element.attr("baselineAdjustment") {
             Some("alignBaselines") => 0_i64,
             None | Some("alignCenters") => 1,
@@ -1239,27 +1262,9 @@ impl<'a> Encoder<'a> {
             #[allow(clippy::cast_possible_truncation)]
             self.graph.set(object, "UIMinimumFontSize", minimum as f32);
         }
-        let line_break = match element.attr("lineBreakMode") {
-            None | Some("tailTruncation") => 4,
-            Some("wordWrap") => 0,
-            Some("characterWrap") => 1,
-            Some("clip") => 2,
-            Some("headTruncation") => 3,
-            Some("middleTruncation") => 5,
-            Some(other) => return Err(format!("the line break mode {other} is unknown")),
-        };
         if line_break != 4 {
             self.graph.set(object, "UILineBreakMode", line_break);
         }
-        let alignment = match element.attr("textAlignment") {
-            None | Some("left") => 0,
-            Some("natural") => 4,
-            Some("center") => 1,
-            Some("right") => 2,
-            Some("justified") => 3,
-            Some(other) => return Err(format!("the text alignment {other} is unknown")),
-        };
-        self.graph.set(object, "UITextAlignment", alignment);
         let scale = match (number(element, "minimumScaleFactor")?, minimum_size) {
             (Some(factor), _) => Some(factor),
             (None, Some(minimum)) => Some(minimum / size),
@@ -1269,14 +1274,83 @@ impl<'a> Encoder<'a> {
             #[allow(clippy::cast_possible_truncation)]
             self.graph.set(object, "UIMinimumScaleFactor", scale as f32);
         }
+        Ok(())
+    }
+
+    fn label_text(
+        &mut self,
+        element: &Element,
+        object: Id,
+        style: &attributed::LabelStyle,
+    ) -> Result<f64, String> {
+        let uses_attributed = yes(element, "usesAttributedText");
+        let attributed = keyed(element, "attributedString", "attributedText");
+        let styled = attributed
+            .filter(|_| uses_attributed)
+            .map(|string| self.attributed_text(string, Some(style)))
+            .transpose()?;
+        if let Some(styled) = &styled {
+            // Even in Base.lproj, the label's plain mirror of its rich text is an NSString.
+            let text = self.graph.string(&styled.text);
+            self.graph.set(object, "UIText", text);
+            self.graph.set(object, "UIAttributedText", styled.archive);
+        } else if let Some(text) = element
+            .attr("text")
+            .or_else(|| keyed(element, "string", "text").map(|s| s.text.as_str()))
+        {
+            let text = self.text(element, "text", text);
+            self.graph.set(object, "UIText", text);
+        } else if uses_attributed || attributed.is_some() {
+            self.graph.set(object, "UIText", Value::Nil);
+        }
+        let description = keyed(element, "fontDescription", "fontDescription");
+        let (font, size) = match styled.as_ref().and_then(|s| s.font) {
+            Some((font, size)) => (Value::Object(font), size),
+            None if styled.is_some() => {
+                (Value::Object(self.attributed_label_default_font()?), 17.0)
+            }
+            None if uses_attributed => (Value::Nil, 17.0),
+            None => (
+                Value::Object(self.font(description)?),
+                description
+                    .map(|d| number(d, "pointSize"))
+                    .transpose()?
+                    .flatten()
+                    .unwrap_or(17.0),
+            ),
+        };
+        self.graph.set(object, "UIFont", font);
+        let color = match (
+            styled.as_ref().and_then(|s| s.color),
+            keyed(element, "color", "textColor"),
+        ) {
+            (Some(color), _) => color,
+            (None, Some(color)) => self.color(color)?,
+            (None, None) => self.system_color("labelColor", Fallback::White(0.0, 1.0)),
+        };
+        self.graph.set(object, "UITextColor", color);
+        let alignment = match element.attr("textAlignment") {
+            None | Some("left") => 0,
+            Some("natural") => 4,
+            Some("center") => 1,
+            Some("right") => 2,
+            Some("justified") => 3,
+            Some(other) => return Err(format!("the text alignment {other} is unknown")),
+        };
+        self.graph.set(
+            object,
+            "UITextAlignment",
+            styled.as_ref().map_or(alignment, |s| s.alignment),
+        );
         self.graph.set(
             object,
             "UIDisableUpdateTextColorOnTraitCollectionChange",
-            !element
-                .children_named("nil")
-                .any(|e| e.attr("key") == Some("textColor")),
+            !uses_attributed
+                && !element
+                    .children_named("nil")
+                    .any(|e| e.attr("key") == Some("textColor")),
         );
-        Ok(())
+        Ok(size)
     }
 
     pub fn text(&mut self, element: &Element, key: &str, text: &str) -> Id {
