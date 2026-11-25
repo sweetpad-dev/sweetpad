@@ -1337,6 +1337,53 @@ fn an_export_refuses_a_profile_of_another_kind_or_a_missing_one() {
 }
 
 #[test]
+fn a_signed_app_clip_must_name_exactly_its_host() {
+    let host = "TESTTEAM01.dev.sweetpad.app";
+    let parent = Plist::String(host.into());
+    let other = Plist::String("TESTTEAM01.dev.sweetpad.other".into());
+    let check = |parents| {
+        let rights = Plist::Dict(vec![(
+            "com.apple.developer.parent-application-identifiers".into(),
+            Plist::Array(parents),
+        )]);
+        provisioning::check_clip_parent(&rights, host)
+    };
+    assert!(check(vec![parent.clone()]).is_ok());
+    assert!(check(vec![other.clone()]).is_err());
+    assert!(check(vec![parent, other]).is_err());
+    assert!(provisioning::check_clip_parent(&Plist::Dict(vec![]), host).is_err());
+}
+
+#[test]
+fn export_restores_the_profiles_app_clip_association_to_an_ad_hoc_archive() {
+    let mut profile =
+        provisioning::find_named(kind_profiles(), "Sweetpad Kinds app-store").unwrap();
+    let key = "com.apple.developer.associated-appclip-app-identifiers";
+    let clip = Plist::Array(vec![Plist::String(
+        "TESTTEAM01.dev.sweetpad.kinds.app.Clip".into(),
+    )]);
+    plist::set(&mut profile.entitlements, key, clip.clone());
+    let export = |archived| {
+        resign::transform(
+            archived,
+            &profile,
+            "TESTTEAM01",
+            "dev.sweetpad.kinds.app",
+            false,
+            resign::Method::AppStoreConnect,
+        )
+    };
+    let signed = export(Plist::Dict(vec![])).unwrap();
+    assert_eq!(plist::get(&signed, key), Some(&clip));
+
+    let other = Plist::Array(vec![Plist::String(
+        "TESTTEAM01.dev.sweetpad.other.Clip".into(),
+    )]);
+    let mismatch = export(Plist::Dict(vec![(key.into(), other)])).unwrap_err();
+    assert!(mismatch.contains(key), "{mismatch}");
+}
+
+#[test]
 #[allow(clippy::too_many_lines)] // one table of entitlements per method
 fn export_entitlements_move_to_the_profile_and_team() {
     let profiles = kind_profiles();

@@ -1110,7 +1110,14 @@ Clippy with `-D warnings`, formatting and diff checks also pass.
 - [x] App extensions and widgets: an `embeddedBinaryValidationUtility`
       stand-in makes Xcode's checks (bundle ID prefix, matching versions);
       a widget built here registers in the simulator
-- [ ] App Clips
+- [x] App Clips. The [delivery fixture](../sweetpad-lib/ci/fixture-delivery/README.md#app-clips)
+      builds a host with an embedded Clip on Linux and with Xcode. Both hosts
+      launch on an iPhone simulator, and each installed Clip displays a fresh
+      HTTPS invocation URL in XCTest. The Release device archives and Linux
+      development IPA match on host/Clip entitlements and bundle metadata.
+      Apple's tools verify both signatures, their provisioning profiles, and
+      both archive dSYMs. Both engines reject a signed Clip missing its parent
+      entitlement.
 - [x] Test targets: `test build` adds the selected test plan's targets, or
       the scheme's testables, as `build-for-testing` does, and leaves the
       testing frameworks out of the host app like Xcode 27. The bundle passes

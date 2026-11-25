@@ -127,12 +127,9 @@ pub(super) fn plan_with(
     let app = &request.app;
     let info = read_info(app)?;
     let mac = app.join("Contents").is_dir();
+    let default_platform = if mac { "macosx" } else { "iphoneos" };
     let platform =
-        provisioning::platform(plist::string(&info, "DTPlatformName").unwrap_or(if mac {
-            "macosx"
-        } else {
-            "iphoneos"
-        }));
+        provisioning::platform(plist::string(&info, "DTPlatformName").unwrap_or(default_platform));
     let archived = archived(app)?;
     let team = match (
         &request.team,
@@ -162,7 +159,7 @@ pub(super) fn plan_with(
         if is_provisioned(&path) {
             let id = bundle_id(&path)?;
             let bundle = bundle.insert(id);
-            let archived = archived_entitlements(&path)?;
+            let archived = signed_entitlements(&path)?;
             // A Developer ID app embeds a profile only for what Apple grants
             // through one, or when ExportOptions names one.
             let provisioned = request.method != Method::DeveloperId
@@ -184,6 +181,9 @@ pub(super) fn plan_with(
             } else {
                 unprovisioned(archived, &team)
             };
+            if path.parent() == Some(app.join("AppClips").as_path()) {
+                provisioning::check_clip_parent(&signed, &format!("{team}.{}", bundle_id(app)?))?;
+            }
             let icloud = "com.apple.developer.icloud-container-environment";
             if let Some(environment) = &request.icloud_environment
                 && plist::get(&signed, icloud).is_some()
@@ -387,7 +387,8 @@ fn archived(bundle: &Path) -> Result<Option<blobs::Existing>, String> {
     Ok(layout.signature(&slice.data).and_then(blobs::read_existing))
 }
 
-fn archived_entitlements(bundle: &Path) -> Result<Plist, String> {
+/// The entitlements in the code signature of a bundle's main executable.
+pub(crate) fn signed_entitlements(bundle: &Path) -> Result<Plist, String> {
     match archived(bundle)?.and_then(|e| e.entitlements) {
         Some(xml) => plist::parse(&xml),
         None => Ok(Plist::Dict(Vec::new())),
@@ -523,13 +524,7 @@ pub(super) fn transform(
         let allow = granted("get-task-allow").unwrap_or(Plist::Bool(false));
         plist::set(&mut entitlements, "get-task-allow", allow);
     }
-    for key in ["aps-environment", "com.apple.developer.aps-environment"] {
-        if plist::get(&entitlements, key).is_some()
-            && let Some(value) = granted(key)
-        {
-            plist::set(&mut entitlements, key, value);
-        }
-    }
+    profile.apply_capabilities(&mut entitlements, mac);
     if let Some(value) = granted("beta-reports-active") {
         plist::set(&mut entitlements, "beta-reports-active", value);
     }
