@@ -11,6 +11,7 @@ import tempfile
 
 CELL = Path("UI/Editor/OpeningHours/Cells/MWMOpeningHoursTimeSelectorTableViewCell.xib")
 NAVIGATION = Path("Classes/CustomViews/NavigationDashboard/Views/NavigationControlView.xib")
+WIDGET = Path("CoMapsWidgetExtension/Assets.xcassets")
 FIXTURES = Path(__file__).resolve().parents[1]
 CATALOGS = FIXTURES / "actool/resources"
 IOS_TARGET = ["--target-device", "iphone", "--target-device", "ipad", "--minimum-deployment-target", "15.6"]
@@ -76,6 +77,8 @@ def compile_resources(binary, checkout, out):
         raise SystemExit("Empty compiled CoMaps catalog")
     # Pass the original catalog to Xcode so UIKit can compare the same named images.
     shutil.make_archive(str(out / "CoMapsImages"), "zip", maps, "Images.xcassets")
+    compile_image_bundle(out / "LinuxWidget.bundle", [maps / WIDGET], binary)
+    shutil.make_archive(str(out / "CoMapsWidget"), "zip", maps, WIDGET)
     compile_variant_bundle(out / "LinuxVariants.bundle", binary)
     compile_image_bundle(out / "LinuxPDFMasks.bundle", [CATALOGS / "PdfMasks.xcassets"], binary)
 

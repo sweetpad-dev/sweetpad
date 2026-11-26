@@ -107,6 +107,16 @@ pub fn masters(bytes: &[u8], sizing: Sizing) -> Result<Vec<Glyph>, String> {
         })
     };
     let regular_medium = measured("Regular-M");
+    let layer_flags = element("Symbols").map_or(0, layer_flags);
+    // The detached master still needs the template's layer colors, opacities
+    // and clear-behind instructions when CoreUI selects a rendering mode.
+    let mut styles = String::new();
+    for node in document
+        .descendants()
+        .filter(|n| n.has_tag_name((SVG_NAMESPACE, "style")))
+    {
+        write_node(node, &mut styles, 0);
+    }
     // A variable template draws an ultralight, a regular and a black master
     // that CoreUI interpolates into the other weights, which takes outlines
     // drawn with the same commands.
@@ -135,8 +145,8 @@ pub fn masters(bytes: &[u8], sizing: Sizing) -> Result<Vec<Glyph>, String> {
             let (left, right, against) = match (own("left"), own("right")) {
                 (Some(l), Some(r)) => (Some(l), Some(r), &outline),
                 _ => (
-                    guide("left-margin"),
-                    guide("right-margin"),
+                    guide("left-margin-Regular-M").or_else(|| guide("left-margin")),
+                    guide("right-margin-Regular-M").or_else(|| guide("right-margin")),
                     regular_medium.as_ref().unwrap_or(&outline),
                 ),
             };
@@ -146,7 +156,7 @@ pub fn masters(bytes: &[u8], sizing: Sizing) -> Result<Vec<Glyph>, String> {
             glyphs.push(Glyph {
                 weight,
                 size,
-                svg: standalone(group, &outline, sizing.scale).into_bytes(),
+                svg: standalone(group, &outline, sizing.scale, &styles).into_bytes(),
                 point_size: sizing.point_size,
                 sizes: &[],
                 baseline: points(outline.bottom - baseline),
@@ -156,6 +166,7 @@ pub fn masters(bytes: &[u8], sizing: Sizing) -> Result<Vec<Glyph>, String> {
                 padding: points(PADDING),
                 template_version,
                 interpolatable,
+                layer_flags,
             });
         }
     }
@@ -174,6 +185,19 @@ pub fn masters(bytes: &[u8], sizing: Sizing) -> Result<Vec<Glyph>, String> {
         glyphs[i].sizes = sizing.sizes;
     }
     Ok(glyphs)
+}
+
+/// CoreUI advertises the layers used by the symbol as a whole on every master.
+fn layer_flags(symbols: Node) -> u32 {
+    symbols
+        .descendants()
+        .filter_map(|n| n.attribute("class"))
+        .flat_map(str::split_ascii_whitespace)
+        .fold(0, |flags, class| match class.split_once('-') {
+            Some(("multicolor", _)) => flags | 1,
+            Some(("hierarchical", _)) => flags | 2,
+            _ => flags,
+        })
 }
 
 /// A master's outline: its bounds in template units, and the transform from
@@ -396,7 +420,7 @@ fn points(units: f64, scale: f64) -> f32 {
 /// A master's group as an SVG of its own: its outline's bounds in points as
 /// the view box, and the group's children drawn through a transform that
 /// scales them to points and moves the outline to the origin.
-fn standalone(group: Node, outline: &Outline, scale: f64) -> String {
+fn standalone(group: Node, outline: &Outline, scale: f64, styles: &str) -> String {
     let t = outline.transform;
     let (sx, ky, kx, sy, tx, ty) = (
         f64::from(t.sx),
@@ -416,17 +440,31 @@ fn standalone(group: Node, outline: &Outline, scale: f64) -> String {
     ];
     let mut out = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg version=\"1.1\" \
-         xmlns=\"{SVG_NAMESPACE}\" viewBox=\"0 0 {} {}\"><g id=\"s\" \
-         transform=\"matrix({})\">",
+         xmlns=\"{SVG_NAMESPACE}\" viewBox=\"0 0 {} {}\">",
         number((outline.right - outline.left) * scale),
         number((outline.bottom - outline.top) * scale),
-        matrix.map(number).join(" "),
     );
-    for child in group.children() {
-        write_node(child, &mut out, 0);
+    if !styles.is_empty() {
+        let _ = write!(out, "<defs>{styles}</defs>");
     }
+    let _ = write!(
+        out,
+        "<g id=\"s\" transform=\"matrix({})\">",
+        matrix.map(number).join(" ")
+    );
+    write_children(group, &mut out, 0);
     out.push_str("</g></svg>");
     out
+}
+
+fn write_children(node: Node, out: &mut String, depth: usize) {
+    // All stylesheets are already in the standalone SVG's defs, in document order.
+    for child in node
+        .children()
+        .filter(|n| !n.has_tag_name((SVG_NAMESPACE, "style")))
+    {
+        write_node(child, out, depth);
+    }
 }
 
 /// A number the way Xcode writes one, like C's `%g`: six significant
@@ -542,9 +580,7 @@ fn write_node(node: Node, out: &mut String, depth: usize) {
     }
     if node.has_children() {
         out.push('>');
-        for child in node.children() {
-            write_node(child, out, depth + 1);
-        }
+        write_children(node, out, depth + 1);
         let _ = write!(out, "</{name}>");
     } else {
         out.push_str("/>");
@@ -627,6 +663,22 @@ fn escape(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_annotations_on_symbol_shapes_advertise_color_layers() {
+        for (class, expected) in [
+            ("monochrome-0", 0),
+            ("monochrome-0 multicolor-1:custom", 1),
+            ("hierarchical-0:secondary", 2),
+            ("multicolor-0:white hierarchical-1:primary", 3),
+        ] {
+            let svg = format!(
+                r#"<g><style>.multicolor-0:white{{fill:white}}</style><g><path class="{class}"/></g></g>"#
+            );
+            let document = Document::parse(&svg).unwrap();
+            assert_eq!(layer_flags(document.root_element()), expected, "{class}");
+        }
+    }
 
     fn fixture(name: &str) -> Vec<u8> {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

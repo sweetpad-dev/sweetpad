@@ -1132,6 +1132,81 @@ fn a_symbol_set_goes_in_as_the_masters_its_template_draws() {
 }
 
 #[test]
+fn a_symbol_sets_rendering_intent_selects_its_coreui_mode() {
+    let dir = TempDir::new("sweetpad-actool-symbol-intents");
+    let catalog = dir.join("Intents.xcassets");
+    let cases = [
+        ("automatic", 0),
+        ("template", 1),
+        ("multicolor", 2),
+        ("hierarchical", 3),
+        ("palette", 4),
+        ("monochrome", 0),
+    ];
+    for (name, _) in cases {
+        write_json(
+            &catalog.join(format!("{name}.symbolset/Contents.json")),
+            &json!({"properties": {"symbol-rendering-intent": name}}),
+        );
+    }
+    let parsed = Catalog::read(&catalog);
+    let modes: std::collections::BTreeMap<_, _> = parsed
+        .assets()
+        .into_iter()
+        .map(|(_, asset)| (asset.name.as_str(), asset.symbol.unwrap() as u32))
+        .collect();
+    assert_eq!(modes, cases.into());
+}
+
+#[test]
+fn layered_symbol_masters_retain_their_styles_intent_and_shared_margins() {
+    let dir = TempDir::new("sweetpad-actool-symbol-layers");
+    let catalog = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures/actool/resources/LayeredSymbols.xcassets");
+    let out = dir.join("out");
+    compile::compile(&platform_args(&catalog, &out, "iphonesimulator")).unwrap();
+    let data = std::fs::read(out.join("Assets.car")).unwrap();
+    let (rows, _) = super::car::tests::Store::read(&data).tree("RENDITIONS");
+    assert_eq!(rows.len(), 2);
+    for (_, row) in rows {
+        let word = |at| u32::from_le_bytes(row[at..at + 4].try_into().unwrap());
+        let end = 184 + word(168) as usize;
+        let mut fields = std::collections::BTreeMap::new();
+        let mut at = 184;
+        while at < end {
+            fields.insert(word(at), at + 8);
+            at += 8 + word(at + 4) as usize;
+        }
+        // Xcode records multicolor intent (2) and both layer flags (3)
+        // even though these two static masters cannot interpolate.
+        let modes = fields[&1019];
+        assert_eq!((word(modes + 4), word(modes + 8)), (2, 3));
+        let metrics = fields[&1018];
+        for (offset, expected) in [(20, 0.85), (28, 1.7)] {
+            assert!((f32::from_bits(word(metrics + offset)) - expected).abs() < 1e-5);
+        }
+        let svg = std::str::from_utf8(&row[end + 12..]).unwrap();
+        let document = resvg::usvg::roxmltree::Document::parse(svg).unwrap();
+        let css = document
+            .descendants()
+            .find(|n| n.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        for rule in [
+            "-sfsymbols-clear-behind:true",
+            "fill:#227744",
+            "fill:#FFAA33",
+        ] {
+            assert!(
+                css.contains(rule),
+                "{rule} missing from the standalone master"
+            );
+        }
+    }
+}
+
+#[test]
 fn a_set_that_preserves_vector_data_says_so_on_its_bitmaps() {
     let dir = TempDir::new("sweetpad-actool-preserved");
     let catalog = template_catalog(&dir);

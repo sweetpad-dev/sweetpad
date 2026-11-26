@@ -64,6 +64,8 @@ final class Scene: UIResponder, UIWindowSceneDelegate {
             checkImageDirections(linux: linux, xcode: xcode, on: controller)
             checkPDFMasks(linuxMasks: variants("LinuxPDFMasks"), xcodeMasks: variants("XcodePDFMasks"),
                           xcodeCoMaps: variants("XcodeCoMaps"))
+            checkCustomSymbols(xcode: variants("XcodeCoMaps"), linuxWidget: variants("LinuxWidget"),
+                               xcodeWidget: variants("XcodeWidget"))
             print("CoMaps resources and variant bundles passed")
             fflush(stdout)
             exit(0)

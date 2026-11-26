@@ -28,7 +28,7 @@ use crate::cli::bom::Bom;
 use std::collections::BTreeSet;
 use std::io::Write as _;
 
-use super::catalog::{ImageDirection, SizeClass, SizeClasses};
+use super::catalog::{ImageDirection, SizeClass, SizeClasses, SymbolRendering};
 use super::photo::{Format as PhotoFormat, Photo};
 use super::raster::Rgba;
 use super::vector::Format;
@@ -290,6 +290,8 @@ pub struct Glyph {
     /// Whether the template is a variable one, whose ultralight, regular
     /// and black masters CoreUI interpolates into the other weights.
     pub interpolatable: bool,
+    /// Bit 0 for multicolor layers and bit 1 for hierarchical layers.
+    pub layer_flags: u32,
 }
 
 /// The platform a catalog is for, which decides the key format.
@@ -770,7 +772,14 @@ impl Car {
     }
 
     /// One master of the symbol `identifier`, from the template file `name`.
-    pub fn glyph(&mut self, name: &str, identifier: u16, variant: Variant, glyph: &Glyph) {
+    pub fn glyph(
+        &mut self,
+        name: &str,
+        identifier: u16,
+        variant: Variant,
+        glyph: &Glyph,
+        mode: SymbolRendering,
+    ) {
         let mut metrics = Vec::new();
         for value in [if glyph.interpolatable { 7 } else { 3 }, glyph.point_size] {
             metrics.extend_from_slice(&u32::to_le_bytes(value));
@@ -798,8 +807,8 @@ impl Car {
             1019,
             &[
                 &1u32.to_le_bytes(),
-                &u32::from(glyph.interpolatable).to_le_bytes(),
-                &0u32.to_le_bytes(),
+                &(mode as u32).to_le_bytes(),
+                &glyph.layer_flags.to_le_bytes(),
             ],
         ));
         let header = Header {
@@ -1513,6 +1522,7 @@ pub(super) mod tests {
             padding: f32::from_bits(0x3f94_c000),
             template_version: 0.0,
             interpolatable: false,
+            layer_flags: 0,
         }
     }
 
@@ -1520,7 +1530,13 @@ pub(super) mod tests {
     fn a_glyph_is_written_as_xcode_writes_it() {
         let mut car = Car::new(Family::Ios, "ios", "17.0");
         let id = car.symbol("Legacy").unwrap();
-        car.glyph("legacy.svg", id, ANY, &legacy_regular_medium());
+        car.glyph(
+            "legacy.svg",
+            id,
+            ANY,
+            &legacy_regular_medium(),
+            SymbolRendering::Automatic,
+        );
         let data = car.write(0);
         let store = Store::read(&data);
         let (renditions, _) = store.tree("RENDITIONS");
@@ -1579,7 +1595,13 @@ pub(super) mod tests {
                 sizes: &[],
                 ..legacy_regular_medium()
             };
-            car.glyph("variable.svg", symbol, ANY, &glyph);
+            car.glyph(
+                "variable.svg",
+                symbol,
+                ANY,
+                &glyph,
+                SymbolRendering::Automatic,
+            );
         }
         let data = car.write(0);
         let keys = Store::read(&data).inline_tree("BITMAPKEYS");
@@ -1647,7 +1669,13 @@ pub(super) mod tests {
     fn a_mac_cars_keys_widen_for_symbols_too() {
         let mut car = Car::new(Family::Mac, "macosx", "14.0");
         let id = car.symbol("Legacy").unwrap();
-        car.glyph("legacy.svg", id, ANY, &legacy_regular_medium());
+        car.glyph(
+            "legacy.svg",
+            id,
+            ANY,
+            &legacy_regular_medium(),
+            SymbolRendering::Automatic,
+        );
         let data = car.write(0);
         assert_eq!(
             Store::read(&data).variable("KEYFORMAT"),

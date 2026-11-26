@@ -47,11 +47,33 @@ pub struct Asset {
     /// other sizes, besides the bitmaps drawn from them:
     /// `preserves-vector-representation`.
     pub preserves_vector: bool,
-    /// A symbol set rather than an image set.
-    pub symbol: bool,
+    /// A symbol set's preferred rendering mode.
+    pub symbol: Option<SymbolRendering>,
     /// Whether actool would compile anything for it: a color with a value,
     /// an image with a file.
     pub has_content: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u32)]
+pub enum SymbolRendering {
+    Automatic = 0,
+    Template = 1,
+    Multicolor = 2,
+    Hierarchical = 3,
+    Palette = 4,
+}
+
+impl SymbolRendering {
+    fn read(contents: Option<&Value>) -> Self {
+        match contents.and_then(|c| c.pointer("/properties/symbol-rendering-intent")?.as_str()) {
+            Some("template") => Self::Template,
+            Some("multicolor") => Self::Multicolor,
+            Some("hierarchical") => Self::Hierarchical,
+            Some("palette") => Self::Palette,
+            _ => Self::Automatic,
+        }
+    }
 }
 
 /// One entry of an image or app icon set's `Contents.json`.
@@ -178,7 +200,7 @@ impl Catalog {
                     colors: Vec::new(),
                     rendering: None,
                     preserves_vector: false,
-                    symbol: false,
+                    symbol: None,
                     has_content: true,
                 })],
                 ..Folder::default()
@@ -382,7 +404,7 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
         colors: color_entries,
         rendering,
         preserves_vector,
-        symbol: extension == "symbolset",
+        symbol: (extension == "symbolset").then(|| SymbolRendering::read(contents.as_ref())),
         has_content,
     }
 }

@@ -16,7 +16,7 @@ use serde_json::{Map, Value, json};
 use super::car::{
     Appearance, Bitmap, Car, ColorSpace, Family, Glyph, Part, Rendering, Source, Variant,
 };
-use super::catalog::{Asset, Catalog, Entry, Kind, SizeClasses, qualified_name};
+use super::catalog::{Asset, Catalog, Entry, Kind, SizeClasses, SymbolRendering, qualified_name};
 use super::photo::Photo;
 use super::uti;
 use super::vector::{Drawing, Format};
@@ -707,8 +707,10 @@ fn add_assets<'a>(
         let name = qualified_name(&chain, asset);
         let added = match asset.kind {
             Kind::Color => add_color(car, &name, asset, devices, platform),
-            Kind::Image if asset.symbol => add_symbol(car, &name, asset, devices, platform),
-            Kind::Image => add_image(car, &name, asset, devices, platform),
+            Kind::Image => match asset.symbol {
+                Some(mode) => add_symbol(car, &name, asset, devices, platform, mode),
+                None => add_image(car, &name, asset, devices, platform),
+            },
             Kind::Data => add_data(car, &name, asset, devices, platform),
             Kind::AppIcon | Kind::Other => false,
         };
@@ -1000,6 +1002,7 @@ fn add_symbol(
     asset: &Asset,
     devices: &[String],
     platform: &str,
+    mode: SymbolRendering,
 ) -> bool {
     let sizing = glyph::Sizing::of(platform);
     let symbols: Vec<(Variant, &str, Vec<Glyph>)> = ordered(&asset.entries, |e| &e.idiom)
@@ -1026,7 +1029,7 @@ fn add_symbol(
     };
     for (variant, filename, glyphs) in symbols {
         for glyph in &glyphs {
-            car.glyph(filename, identifier, variant, glyph);
+            car.glyph(filename, identifier, variant, glyph, mode);
         }
     }
     true

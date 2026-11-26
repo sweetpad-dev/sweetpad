@@ -1,5 +1,6 @@
 """Type-check the original CoMaps calls and load the Linux-built nib and catalog in UIKit."""
 import argparse
+from itertools import zip_longest
 import json
 from pathlib import Path
 import platform
@@ -8,7 +9,7 @@ import shutil
 import subprocess
 import tempfile
 
-from compile import CATALOGS, NAVIGATION, compile_image_bundle, compile_variant_bundle, write_bundle_info
+from compile import CATALOGS, NAVIGATION, WIDGET, compile_image_bundle, compile_variant_bundle, write_bundle_info
 
 HERE = Path(__file__).resolve().parent
 BUNDLE_ID = "dev.sweetpad.CoMapsProbe"
@@ -40,6 +41,25 @@ def rendition_manifest(bundle):
                   for row in rows if row.get("AssetType") in {"Image", "Vector"})
 
 
+def compare_symbol_catalog(linux, native_rows, catalog, count):
+    def glyphs(rows):
+        fields = ["Name", "Glyph Weight", "Glyph Size", "Idiom", "Scale", "Reference Point Size",
+                  "Available Sizes", "Template Version", "Interpolatable", "Glyph RenderingMode",
+                  "Contains Hierarchical Layers", "Contains Multicolor Layers"]
+        return sorted(tuple(row.get(key) for key in fields) for row in rows if row.get("AssetType") == "Vector Glyph")
+
+    expected = glyphs(native_rows)
+    actual = glyphs(json.loads(xcrun("assetutil", "--info", linux / "Assets.car")))
+    names = sorted({row[0] for row in expected})
+    sources = sorted(path.stem for path in catalog.rglob("*.symbolset"))
+    if len(sources) != count or names != sources:
+        raise SystemExit(f"Expected {count} named CoMaps symbols in {catalog}, got {names} from {sources}")
+    for actual_row, expected_row in zip_longest(actual, expected):
+        if actual_row != expected_row:
+            raise SystemExit(f"Symbol rendition differs in {catalog}:\nXcode: {expected_row}\nLinux: {actual_row}")
+    return names
+
+
 def compile_comaps_reference(resources, app):
     shutil.unpack_archive(resources / "CoMapsImages.zip", app.parent)
     catalog = app.parent / "Images.xcassets"
@@ -56,6 +76,16 @@ def compile_comaps_reference(resources, app):
     if len(names) != len(sets) or not {"ic_booking_plus", "ic_booking_minus"}.issubset(names):
         raise SystemExit(f"Expected all {len(sets)} CoMaps PDF sets including both booking controls, got {names}")
     (app / "CoMapsPDFs.json").write_text(json.dumps(names))
+    app_symbols = compare_symbol_catalog(app, rows, catalog, 55)
+    shutil.unpack_archive(resources / "CoMapsWidget.zip", app.parent)
+    widget_catalog = app.parent / WIDGET
+    native_widget = app / "XcodeWidget.bundle"
+    linux_widget = app / "LinuxWidget.bundle"
+    compile_image_bundle(native_widget, [widget_catalog])
+    shutil.copytree(resources / linux_widget.name, linux_widget)
+    widget_rows = json.loads(xcrun("assetutil", "--info", native_widget / "Assets.car"))
+    widget_symbols = compare_symbol_catalog(linux_widget, widget_rows, widget_catalog, 1)
+    (app / "CoMapsSymbols.json").write_text(json.dumps({"app": app_symbols, "widget": widget_symbols}))
     return len(names)
 
 
@@ -91,7 +121,7 @@ def check(resources, simctl, simulator):
             print(f"CoMaps calls type-check for iOS {target}", flush=True)
             subprocess.run(["xcrun", "--sdk", "iphonesimulator", *swift, "-parse-as-library", HERE / "PickerApp.swift",
                             HERE / "ResourceVariants.swift", HERE / "ImageDirection.swift", HERE / "NavigationControl.swift",
-                            HERE / "PDFMasks.swift",
+                            HERE / "PDFMasks.swift", HERE / "CustomSymbols.swift",
                             "-sdk", sim_sdk,
                             "-target", f"{platform.machine()}-apple-ios{target}-simulator", "-o", app / "CoMapsProbe"], check=True)
             with (app / "Info.plist").open("wb") as f:
@@ -104,8 +134,11 @@ def check(resources, simctl, simulator):
             subprocess.run(["xcrun", *simctl, "install", simulator, app], check=True, timeout=180)
             log = subprocess.run(["xcrun", *simctl, "launch", "--console-pty", "--terminate-running-process",
                                   simulator, bundle_id], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=90)
-            if log.returncode or "CoMaps resources and variant bundles passed" not in log.stdout.splitlines():
+            lines = log.stdout.splitlines()
+            symbol_result = next((line for line in lines if line.startswith("Compared CoMaps symbols")), None)
+            if log.returncode or not symbol_result or "CoMaps resources and variant bundles passed" not in lines:
                 raise SystemExit(f"CoMaps iOS {target} probe failed\n{log.stdout}")
+            print(symbol_result, flush=True)
             print(f"iOS {target} build passed the CoMaps nib, size-class and layout-direction checks "
                   f"and compared {pdf_count} PDF images with Xcode at 1x, 2x and 3x", flush=True)
 
