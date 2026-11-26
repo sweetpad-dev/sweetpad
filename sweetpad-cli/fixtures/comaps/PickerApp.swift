@@ -32,7 +32,8 @@ final class Scene: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options: UIScene.ConnectionOptions) {
         guard let scene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: scene)
-        window.rootViewController = UIViewController()
+        let controller = UIViewController()
+        window.rootViewController = controller
         self.window = window
         window.makeKeyAndVisible()
         DispatchQueue.main.async {
@@ -49,11 +50,18 @@ final class Scene: UIResponder, UIWindowSceneDelegate {
             close.sendActions(for: .valueChanged)
             precondition(cell.actions == ["open", "close"], "Date pickers called the wrong actions")
             checkCoMapsImages()
-            for name in ["XcodeVariants", "LinuxVariants"] {
+            guard #available(iOS 17.0, *) else { fatalError("Trait override checks need an iOS 17 or newer simulator") }
+            func variants(_ name: String) -> Bundle {
                 guard let url = Bundle.main.url(forResource: name, withExtension: "bundle"),
                       let bundle = Bundle(url: url) else { fatalError("Missing \(name) bundle") }
+                return bundle
+            }
+            let xcode = variants("XcodeVariants"), linux = variants("LinuxVariants")
+            for bundle in [xcode, linux] {
                 checkResourceVariants(in: bundle)
             }
+            for nib in ["XcodeNavigation", "LinuxNavigation"] { checkNavigationControl(nib, on: controller) }
+            checkImageDirections(linux: linux, xcode: xcode, on: controller)
             print("CoMaps resources and variant bundles passed")
             fflush(stdout)
             exit(0)

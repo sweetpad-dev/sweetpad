@@ -5,8 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value, json};
 
-use super::car::{Appearance, Bitmap, Car, Part, Rendering, Source, Variant};
-use super::catalog::SizeClasses;
+use super::car::{Bitmap, Car, Part, Rendering, Source, Variant};
 use super::catalog::{Asset, Catalog};
 use super::{Args, raster, write};
 use crate::cli::xml_plist;
@@ -96,10 +95,8 @@ pub(super) fn store_icon<'a>(
         return false;
     };
     let variant = Variant {
-        appearance: Appearance::Any,
-        scale: 1,
         idiom: 6,
-        size_classes: SizeClasses::ANY,
+        ..Variant::ANY
     };
     let source = Source {
         vector: false,

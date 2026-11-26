@@ -433,7 +433,7 @@ fn add_app_icon<'a>(
             appearance: image.appearance,
             scale: image.scale,
             idiom: image.idiom,
-            size_classes: SizeClasses::ANY,
+            ..Variant::ANY
         };
         let file = image.entry.filename.as_deref().unwrap_or_default();
         car.icon(
@@ -791,6 +791,7 @@ fn image_variant(
         platform,
     )?;
     variant.size_classes = entry.size_classes;
+    variant.direction = entry.direction;
     Some((variant, scale))
 }
 
@@ -1087,7 +1088,7 @@ fn variant(
         appearance,
         scale,
         idiom,
-        size_classes: SizeClasses::ANY,
+        ..Variant::ANY
     })
 }
 

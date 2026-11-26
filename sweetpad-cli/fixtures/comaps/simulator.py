@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import tempfile
 
-from compile import compile_variant_bundle
+from compile import NAVIGATION, compile_variant_bundle
 
 HERE = Path(__file__).resolve().parent
 BUNDLE_ID = "dev.sweetpad.CoMapsProbe"
@@ -34,7 +34,7 @@ def create_iphone(simctl):
 def rendition_manifest(bundle):
     rows = json.loads(xcrun("assetutil", "--info", bundle / "Assets.car"))
     fields = ["Name", "AssetType", "RenditionName", "Idiom", "Scale", "Appearance",
-              "SizeClass Horizontal", "SizeClass Vertical", "PixelWidth", "PixelHeight"]
+              "SizeClass Horizontal", "SizeClass Vertical", "LayoutDirection", "Flippable", "PixelWidth", "PixelHeight"]
     # Xcode can pack the same public renditions into internal texture atlases.
     return sorted(tuple(row.get(key, "") for key in fields)
                   for row in rows if row.get("AssetType") in {"Image", "Vector"})
@@ -46,15 +46,17 @@ def check(resources, simctl, simulator):
     with tempfile.TemporaryDirectory() as tmp:
         app = Path(tmp) / "CoMapsProbe.app"
         app.mkdir()
-        for filename in ["TimeSelector.nib", "Assets.car"]:
+        for filename in ["TimeSelector.nib", "LinuxNavigation.nib", "Assets.car"]:
             shutil.copyfile(resources / filename, app / filename)
         linux = app / "LinuxVariants.bundle"
         native = app / "XcodeVariants.bundle"
         shutil.copytree(resources / linux.name, linux)
         compile_variant_bundle(native)
+        xcrun("ibtool", "--module", "CoMaps", "--target-device", "iphone", "--minimum-deployment-target", "15.6",
+              "--compile", app / "XcodeNavigation.nib", resources / NAVIGATION.name)
         expected, actual = rendition_manifest(native), rendition_manifest(linux)
         if actual != expected:
-            raise SystemExit(f"Size-class renditions differ\nXcode: {expected}\nLinux: {actual}")
+            raise SystemExit(f"Image renditions differ\nXcode: {expected}\nLinux: {actual}")
         print(f"Matched {len(expected)} Xcode image and vector renditions", flush=True)
         for target in ["15.6", "17.0"]:
             bundle_id = f"{BUNDLE_ID}.ios{target.replace('.', '-')}"
@@ -63,7 +65,8 @@ def check(resources, simctl, simulator):
             subprocess.run(["xcrun", "--sdk", "iphoneos", *swift, "-typecheck", "-sdk", device_sdk, "-target", f"arm64-apple-ios{target}"], check=True)
             print(f"CoMaps calls type-check for iOS {target}", flush=True)
             subprocess.run(["xcrun", "--sdk", "iphonesimulator", *swift, "-parse-as-library", HERE / "PickerApp.swift",
-                            HERE / "ResourceVariants.swift", "-sdk", sim_sdk,
+                            HERE / "ResourceVariants.swift", HERE / "ImageDirection.swift", HERE / "NavigationControl.swift",
+                            "-sdk", sim_sdk,
                             "-target", f"{platform.machine()}-apple-ios{target}-simulator", "-o", app / "CoMapsProbe"], check=True)
             with (app / "Info.plist").open("wb") as f:
                 plistlib.dump({"CFBundleIdentifier": bundle_id, "CFBundleExecutable": "CoMapsProbe",
@@ -77,7 +80,7 @@ def check(resources, simctl, simulator):
                                   simulator, bundle_id], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=90)
             if log.returncode or "CoMaps resources and variant bundles passed" not in log.stdout.splitlines():
                 raise SystemExit(f"CoMaps iOS {target} probe failed\n{log.stdout}")
-            print(f"iOS {target} build passed the CoMaps, attributed-label and trait-specific image checks", flush=True)
+            print(f"iOS {target} build passed the CoMaps nib, size-class and layout-direction checks", flush=True)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,14 @@
+{
+  "images": [
+    {
+      "idiom": "universal",
+      "filename": "Reverse.png",
+      "language-direction": "right-to-left",
+      "scale": "1x"
+    }
+  ],
+  "info": {
+    "version": 1,
+    "author": "xcode"
+  }
+}

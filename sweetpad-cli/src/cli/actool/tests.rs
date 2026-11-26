@@ -888,6 +888,63 @@ fn platform_args(catalog: &Path, out: &Path, platform: &str) -> Args {
 }
 
 #[test]
+fn image_direction_keys_and_mirroring_follow_the_declared_slots() {
+    let temp = TempDir::new("sweetpad-actool-direction");
+    let catalog = temp.join("Direction.xcassets");
+    let set = catalog.join("Arrow.imageset");
+    std::fs::create_dir_all(&set).unwrap();
+    std::fs::write(set.join("arrow.png"), png_of(8, [0, 0, 255, 255])).unwrap();
+    let fixed = json!({"filename": "arrow.png", "scale": "2x"});
+    let left =
+        json!({"filename": "arrow.png", "scale": "1x", "language-direction": "left-to-right"});
+    let right =
+        json!({"filename": "arrow.png", "scale": "2x", "language-direction": "right-to-left"});
+    let empty_right = json!({"scale": "2x", "language-direction": "right-to-left"});
+    let invalid = json!({"filename": "arrow.png", "language-direction": "unknown"});
+    for (entries, expected) in [
+        (json!([fixed]), vec![(0, false)]),
+        (json!([left, invalid]), vec![(5, true)]),
+        (json!([right]), vec![(4, true)]),
+        (json!([left, right]), vec![(4, false), (5, false)]),
+        (json!([left, empty_right]), vec![(5, false)]),
+        (json!([fixed, left]), vec![(0, false), (0, false)]),
+    ] {
+        write_json(&set.join("Contents.json"), &json!({"images": entries}));
+        for platform in [
+            "iphonesimulator",
+            "macosx",
+            "watchsimulator",
+            "appletvsimulator",
+            "xrsimulator",
+        ] {
+            let out = temp.join(platform);
+            compile::compile(&platform_args(&catalog, &out, platform)).unwrap();
+            let data = std::fs::read(out.join("Assets.car")).unwrap();
+            let store = super::car::tests::Store::read(&data);
+            let direction = store.variable("KEYFORMAT")[12..]
+                .chunks_exact(4)
+                .position(|attr| attr == 4u32.to_le_bytes());
+            assert_eq!(
+                direction,
+                expected.iter().any(|&(d, _)| d != 0).then_some(5),
+                "{platform}: {entries}"
+            );
+            let (records, _) = store.tree("RENDITIONS");
+            let mut actual: Vec<_> = records
+                .iter()
+                .map(|(key, value)| {
+                    let code =
+                        direction.map_or(0, |i| u16::from_le_bytes([key[2 * i], key[2 * i + 1]]));
+                    (code, value[8] & 0x40 != 0)
+                })
+                .collect();
+            actual.sort_unstable();
+            assert_eq!(actual, expected, "{platform}: {entries}");
+        }
+    }
+}
+
+#[test]
 fn only_the_size_class_axes_used_by_targeted_images_widen_the_catalog() {
     let temp = TempDir::new("sweetpad-actool-size-classes");
     let catalog = temp.join("Sizes.xcassets");

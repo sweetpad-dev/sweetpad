@@ -70,6 +70,7 @@ pub struct Entry {
     /// Its appearances, as `(appearance, value)`: `("luminosity", "dark")`.
     pub appearances: Vec<(String, String)>,
     pub size_classes: SizeClasses,
+    pub direction: ImageDirection,
     /// Whether it varies by something else the stand-in doesn't compile:
     /// a display gamut, locale, memory or graphics class, or a
     /// device subtype, which only a watchOS app icon's slots read.
@@ -80,6 +81,18 @@ pub struct Entry {
     pub role: Option<String>,
     /// A data set file's type: `universal-type-identifier`.
     pub type_identifier: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ImageDirection {
+    #[default]
+    Fixed,
+    LeftToRight {
+        flippable: bool,
+    },
+    RightToLeft {
+        flippable: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -404,10 +417,30 @@ fn other_traits(entry: &Value) -> bool {
 /// An image, app icon or data set's entries, as the stand-in uses them.
 fn files(entries: &[Value], image_set: bool) -> Vec<Entry> {
     let text = |e: &Value, key: &str| e.get(key).and_then(Value::as_str).map(str::to_string);
+    // Xcode selects a direction mode for the entire image set, counting empty
+    // slots too. A fixed slot disables direction, and a pair disables mirroring.
+    let has_slot = |direction| {
+        entries
+            .iter()
+            .any(|e| e.get("language-direction").and_then(Value::as_str) == direction)
+    };
+    let directional = image_set && !has_slot(None);
+    let flippable =
+        directional && !(has_slot(Some("left-to-right")) && has_slot(Some("right-to-left")));
     entries
         .iter()
         .map(|e| {
             let size_classes = SizeClasses::read(e);
+            let direction = match e.get("language-direction").and_then(Value::as_str) {
+                Some("left-to-right") if directional => {
+                    Some(ImageDirection::LeftToRight { flippable })
+                }
+                Some("right-to-left") if directional => {
+                    Some(ImageDirection::RightToLeft { flippable })
+                }
+                None | Some("left-to-right" | "right-to-left") => Some(ImageDirection::Fixed),
+                _ => None,
+            };
             Entry {
                 filename: text(e, "filename"),
                 idiom: text(e, "idiom").unwrap_or_else(|| "universal".to_string()),
@@ -417,7 +450,9 @@ fn files(entries: &[Value], image_set: bool) -> Vec<Entry> {
                 appearance: e.get("appearances").is_some(),
                 appearances: appearances(e),
                 size_classes: size_classes.unwrap_or_default(),
+                direction: direction.unwrap_or_default(),
                 other_traits: other_traits(e)
+                    || (image_set && direction.is_none())
                     || size_classes.is_none()
                     || (!image_set && size_classes != Some(SizeClasses::ANY)),
                 subtype: text(e, "subtype"),

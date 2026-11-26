@@ -28,7 +28,7 @@ use crate::cli::bom::Bom;
 use std::collections::BTreeSet;
 use std::io::Write as _;
 
-use super::catalog::{SizeClass, SizeClasses};
+use super::catalog::{ImageDirection, SizeClass, SizeClasses};
 use super::photo::{Format as PhotoFormat, Photo};
 use super::raster::Rgba;
 use super::vector::Format;
@@ -148,6 +148,34 @@ pub struct Variant {
     /// 5 Watch, 6 marketing.
     pub idiom: u16,
     pub size_classes: SizeClasses,
+    pub direction: ImageDirection,
+}
+
+impl Variant {
+    pub const ANY: Self = Self {
+        appearance: Appearance::Any,
+        scale: 1,
+        idiom: 0,
+        size_classes: SizeClasses::ANY,
+        direction: ImageDirection::Fixed,
+    };
+}
+
+impl ImageDirection {
+    fn key(self) -> u16 {
+        match self {
+            Self::Fixed => 0,
+            Self::RightToLeft { .. } => 4, // CoreUI's Pointing Left
+            Self::LeftToRight { .. } => 5, // CoreUI's Pointing Right
+        }
+    }
+
+    fn flags(self) -> u32 {
+        match self {
+            Self::LeftToRight { flippable: true } | Self::RightToLeft { flippable: true } => 0x40,
+            _ => 0,
+        }
+    }
 }
 
 /// An image's pixels as CoreUI keeps them: premultiplied BGRA, row by row.
@@ -280,6 +308,7 @@ struct Key {
     scale: u16,
     idiom: u16,
     size_classes: SizeClasses,
+    direction: u16,
     /// A device class within the idiom, like 1792 for the iPhone XR.
     subtype: u16,
     /// An app icon size's index.
@@ -302,6 +331,7 @@ impl Key {
                     15 => self.idiom,
                     16 => self.subtype,
                     9 => self.dimension,
+                    4 => self.direction,
                     17 => self.identifier,
                     20 => self.size_classes.horizontal as u16,
                     21 => self.size_classes.vertical as u16,
@@ -471,7 +501,12 @@ impl Car {
             part: Part::Image as u16,
             ..key(identifier, variant)
         };
-        self.bitmap(key, name, image, rendering | source);
+        self.bitmap(
+            key,
+            name,
+            image,
+            rendering | source | variant.direction.flags(),
+        );
     }
 
     /// A JPEG or HEIF image's rendition: the file `data` as it is, with its
@@ -519,7 +554,7 @@ impl Car {
         let header = Header {
             name,
             layout: 12,
-            flags: rendering.flags(),
+            flags: rendering.flags() | variant.direction.flags(),
             width: 0,
             height: 0,
             scale: u32::from(variant.scale) * 100,
@@ -622,10 +657,8 @@ impl Car {
             color_space: 0,
         };
         let variant = Variant {
-            appearance: Appearance::Any,
-            scale: 1,
             idiom,
-            size_classes: SizeClasses::ANY,
+            ..Variant::ANY
         };
         self.add(
             Key {
@@ -711,7 +744,7 @@ impl Car {
         let header = Header {
             name,
             layout: 9,
-            flags: 0x04,
+            flags: 0x04 | variant.direction.flags(),
             width: 0,
             height: 0,
             scale: 0,
@@ -803,6 +836,7 @@ impl Car {
     /// (26, 27, 25). Symbols and icons both use dimension (9).
     fn key_format(&self) -> Vec<u32> {
         let glyphs = self.facets.iter().any(|f| f.symbol);
+        let directional = self.renditions.iter().any(|(key, _)| key.direction != 0);
         let icons = self.facets.iter().any(|f| f.part == Part::Icon)
             || self
                 .renditions
@@ -815,6 +849,9 @@ impl Car {
                     format.extend([26, 27, 9, 25]);
                 } else if icons {
                     format.push(9);
+                }
+                if directional {
+                    format.push(4);
                 }
                 if self
                     .renditions
@@ -834,7 +871,11 @@ impl Car {
                 format
             }
             Family::Mac => {
-                let mut format = vec![7, 13, 1, 2, 3, 17];
+                let mut format = vec![7, 13, 1, 2, 3];
+                if directional {
+                    format.push(4);
+                }
+                format.push(17);
                 if icons || glyphs {
                     format.push(9);
                 }
@@ -963,6 +1004,7 @@ fn key(identifier: u16, variant: Variant) -> Key {
         scale: variant.scale,
         idiom: variant.idiom,
         size_classes: variant.size_classes,
+        direction: variant.direction.key(),
         identifier,
         ..Key::default()
     }
@@ -1278,12 +1320,7 @@ pub(super) mod tests {
             .collect()
     }
 
-    const ANY: Variant = Variant {
-        appearance: Appearance::Any,
-        scale: 1,
-        idiom: 0,
-        size_classes: SizeClasses::ANY,
-    };
+    const ANY: Variant = Variant::ANY;
 
     #[test]
     fn a_color_is_written_as_xcode_writes_it() {

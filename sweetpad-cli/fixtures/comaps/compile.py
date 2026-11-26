@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 
 CELL = Path("UI/Editor/OpeningHours/Cells/MWMOpeningHoursTimeSelectorTableViewCell.xib")
+NAVIGATION = Path("Classes/CustomViews/NavigationDashboard/Views/NavigationControlView.xib")
 FIXTURES = Path(__file__).resolve().parents[1]
 
 
@@ -22,6 +23,7 @@ def compile_variant_bundle(bundle, binary=None):
         xib = FIXTURES / "ibtool" / source
         commands.append(["ibtool", "--module", "App", *target, "--compile", bundle / (xib.stem + ".nib"), xib])
     commands.append(["actool", FIXTURES / "actool/resources/SizeClasses.xcassets",
+                     FIXTURES / "actool/resources/Direction.xcassets",
                      "--platform", "iphonesimulator", *target, "--compile", bundle])
     for command in commands:
         if binary is None:
@@ -53,6 +55,8 @@ def compile_resources(binary, checkout, out):
             if not nibs or not all(nib.is_file() and nib.stat().st_size for nib in nibs):
                 raise SystemExit(f"Missing compiled nib data for {source}")
         shutil.copyfile((tmp / CELL).with_suffix(".nib"), out / "TimeSelector.nib")
+        shutil.copyfile((tmp / NAVIGATION).with_suffix(".nib"), out / "LinuxNavigation.nib")
+        shutil.copyfile(maps / NAVIGATION, out / NAVIGATION.name)
     print(f"Compiled {len(xibs)} XIBs and {len(storyboards)} storyboards", flush=True)
 
     common = ["actool", maps / "Images.xcassets", "--platform", "iphonesimulator",
