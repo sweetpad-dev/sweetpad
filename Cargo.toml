@@ -44,7 +44,7 @@ moxcms = "0.8.1"
 # the usvg and roxmltree it re-exports, and svgtypes, which usvg parses
 # with). Both are pure Rust; PDF and SVG are standard formats too large to
 # hand-roll.
-hayro = { version = "0.8", default-features = false }
+hayro = { version = "0.9", default-features = false }
 resvg = { version = "0.48", default-features = false }
 svgtypes = "0.16"
 # The codesign stand-in signs with an identity exported from Keychain Access:

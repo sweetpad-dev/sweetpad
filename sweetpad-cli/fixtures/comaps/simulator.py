@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import tempfile
 
-from compile import NAVIGATION, compile_variant_bundle
+from compile import CATALOGS, NAVIGATION, compile_image_bundle, compile_variant_bundle, write_bundle_info
 
 HERE = Path(__file__).resolve().parent
 BUNDLE_ID = "dev.sweetpad.CoMapsProbe"
@@ -40,6 +40,25 @@ def rendition_manifest(bundle):
                   for row in rows if row.get("AssetType") in {"Image", "Vector"})
 
 
+def compile_comaps_reference(resources, app):
+    shutil.unpack_archive(resources / "CoMapsImages.zip", app.parent)
+    catalog = app.parent / "Images.xcassets"
+    bundle = app / "XcodeCoMaps.bundle"
+    bundle.mkdir()
+    write_bundle_info(bundle)
+    xcrun("actool", catalog, "--platform", "iphonesimulator", "--target-device", "iphone",
+          "--target-device", "ipad", "--minimum-deployment-target", "15.6", "--bundle-identifier", BUNDLE_ID,
+          "--compile", bundle)
+    rows = json.loads(xcrun("assetutil", "--info", bundle / "Assets.car"))
+    names = sorted({r["Name"] for r in rows if r.get("AssetType") == "Vector"
+                    and r.get("RenditionName", "").lower().endswith(".pdf")})
+    sets = {pdf.parent for pdf in catalog.rglob("*.pdf")}
+    if len(names) != len(sets) or not {"ic_booking_plus", "ic_booking_minus"}.issubset(names):
+        raise SystemExit(f"Expected all {len(sets)} CoMaps PDF sets including both booking controls, got {names}")
+    (app / "CoMapsPDFs.json").write_text(json.dumps(names))
+    return len(names)
+
+
 def check(resources, simctl, simulator):
     device_sdk = xcrun("--sdk", "iphoneos", "--show-sdk-path")
     sim_sdk = xcrun("--sdk", "iphonesimulator", "--show-sdk-path")
@@ -52,9 +71,15 @@ def check(resources, simctl, simulator):
         native = app / "XcodeVariants.bundle"
         shutil.copytree(resources / linux.name, linux)
         compile_variant_bundle(native)
+        linux_masks = app / "LinuxPDFMasks.bundle"
+        native_masks = app / "XcodePDFMasks.bundle"
+        shutil.copytree(resources / linux_masks.name, linux_masks)
+        compile_image_bundle(native_masks, [CATALOGS / "PdfMasks.xcassets"])
+        pdf_count = compile_comaps_reference(resources, app)
         xcrun("ibtool", "--module", "CoMaps", "--target-device", "iphone", "--minimum-deployment-target", "15.6",
               "--compile", app / "XcodeNavigation.nib", resources / NAVIGATION.name)
-        expected, actual = rendition_manifest(native), rendition_manifest(linux)
+        expected = rendition_manifest(native) + rendition_manifest(native_masks)
+        actual = rendition_manifest(linux) + rendition_manifest(linux_masks)
         if actual != expected:
             raise SystemExit(f"Image renditions differ\nXcode: {expected}\nLinux: {actual}")
         print(f"Matched {len(expected)} Xcode image and vector renditions", flush=True)
@@ -66,6 +91,7 @@ def check(resources, simctl, simulator):
             print(f"CoMaps calls type-check for iOS {target}", flush=True)
             subprocess.run(["xcrun", "--sdk", "iphonesimulator", *swift, "-parse-as-library", HERE / "PickerApp.swift",
                             HERE / "ResourceVariants.swift", HERE / "ImageDirection.swift", HERE / "NavigationControl.swift",
+                            HERE / "PDFMasks.swift",
                             "-sdk", sim_sdk,
                             "-target", f"{platform.machine()}-apple-ios{target}-simulator", "-o", app / "CoMapsProbe"], check=True)
             with (app / "Info.plist").open("wb") as f:
@@ -80,7 +106,8 @@ def check(resources, simctl, simulator):
                                   simulator, bundle_id], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=90)
             if log.returncode or "CoMaps resources and variant bundles passed" not in log.stdout.splitlines():
                 raise SystemExit(f"CoMaps iOS {target} probe failed\n{log.stdout}")
-            print(f"iOS {target} build passed the CoMaps nib, size-class and layout-direction checks", flush=True)
+            print(f"iOS {target} build passed the CoMaps nib, size-class and layout-direction checks "
+                  f"and compared {pdf_count} PDF images with Xcode at 1x, 2x and 3x", flush=True)
 
 
 if __name__ == "__main__":

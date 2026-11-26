@@ -12,26 +12,32 @@ import tempfile
 CELL = Path("UI/Editor/OpeningHours/Cells/MWMOpeningHoursTimeSelectorTableViewCell.xib")
 NAVIGATION = Path("Classes/CustomViews/NavigationDashboard/Views/NavigationControlView.xib")
 FIXTURES = Path(__file__).resolve().parents[1]
+CATALOGS = FIXTURES / "actool/resources"
+IOS_TARGET = ["--target-device", "iphone", "--target-device", "ipad", "--minimum-deployment-target", "15.6"]
+
+
+def write_bundle_info(bundle):
+    with (bundle / "Info.plist").open("wb") as f:
+        plistlib.dump({"CFBundleIdentifier": f"dev.sweetpad.{bundle.stem}", "CFBundleName": bundle.stem,
+                       "CFBundlePackageType": "BNDL", "CFBundleVersion": "1"}, f)
+
+
+def run_tool(command, binary=None):
+    subprocess.run(command if binary else ["xcrun", *command], executable=binary, check=True)
+
+
+def compile_image_bundle(bundle, catalogs, binary=None):
+    bundle.mkdir(parents=True, exist_ok=True)
+    run_tool(["actool", *catalogs, "--platform", "iphonesimulator", *IOS_TARGET, "--compile", bundle], binary)
+    write_bundle_info(bundle)
 
 
 def compile_variant_bundle(bundle, binary=None):
     """Build the same inputs with the Linux CLI or the installed Xcode tools."""
-    bundle.mkdir(parents=True, exist_ok=True)
-    target = ["--target-device", "iphone", "--target-device", "ipad", "--minimum-deployment-target", "15.6"]
-    commands = []
+    compile_image_bundle(bundle, [CATALOGS / "SizeClasses.xcassets", CATALOGS / "Direction.xcassets"], binary)
     for source in ["Base.lproj/AttributedLabels.xib", "ButtonStateColors.xib"]:
         xib = FIXTURES / "ibtool" / source
-        commands.append(["ibtool", "--module", "App", *target, "--compile", bundle / (xib.stem + ".nib"), xib])
-    commands.append(["actool", FIXTURES / "actool/resources/SizeClasses.xcassets",
-                     FIXTURES / "actool/resources/Direction.xcassets",
-                     "--platform", "iphonesimulator", *target, "--compile", bundle])
-    for command in commands:
-        if binary is None:
-            command = ["xcrun", *command]
-        subprocess.run(command, executable=binary, check=True)
-    with (bundle / "Info.plist").open("wb") as f:
-        plistlib.dump({"CFBundleIdentifier": f"dev.sweetpad.{bundle.stem}", "CFBundleName": bundle.stem,
-                       "CFBundlePackageType": "BNDL", "CFBundleVersion": "1"}, f)
+        run_tool(["ibtool", "--module", "App", *IOS_TARGET, "--compile", bundle / (xib.stem + ".nib"), xib], binary)
 
 
 def compile_resources(binary, checkout, out):
@@ -68,7 +74,10 @@ def compile_resources(binary, checkout, out):
                    executable=binary, check=True)
     if not (out / "Assets.car").stat().st_size:
         raise SystemExit("Empty compiled CoMaps catalog")
+    # Pass the original catalog to Xcode so UIKit can compare the same named images.
+    shutil.make_archive(str(out / "CoMapsImages"), "zip", maps, "Images.xcassets")
     compile_variant_bundle(out / "LinuxVariants.bundle", binary)
+    compile_image_bundle(out / "LinuxPDFMasks.bundle", [CATALOGS / "PdfMasks.xcassets"], binary)
 
 
 if __name__ == "__main__":
