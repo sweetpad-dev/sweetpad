@@ -1,0 +1,721 @@
+{
+  "actions": {
+    "ConfirmProbe": {
+      "assistantDefinedSchemaTraits": [],
+      "assistantDefinedSchemas": [],
+      "authenticationPolicy": 0,
+      "availabilityAnnotations": {
+        "LNPlatformNameWildcard": {
+          "introducedVersion": "*"
+        }
+      },
+      "effectiveBundleIdentifiers": [],
+      "fullyQualifiedTypeName": "ResultProtocols.ConfirmProbe",
+      "identifier": "ConfirmProbe",
+      "isAuthPolExplicit": false,
+      "isDiscoverable": true,
+      "mangledTypeName": "15ResultProtocols12ConfirmProbeV",
+      "mangledTypeNameByBundleIdentifier": {},
+      "mangledTypeNameByBundleIdentifierV2": {},
+      "mangledTypeNameV2": "15ResultProtocols12ConfirmProbeV",
+      "openAppWhenRun": false,
+      "outputFlags": 0,
+      "parameters": [
+        {
+          "capabilities": 0,
+          "dynamicOptionsSupport": 0,
+          "inputConnectionBehavior": 0,
+          "isInput": false,
+          "isOptional": true,
+          "name": "text",
+          "resolvableInputTypes": [
+            {
+              "kindValue": 0,
+              "valueType": {
+                "array": {
+                  "wrapper": {
+                    "capabilities": 3,
+                    "memberValueType": {
+                      "primitive": {
+                        "wrapper": {
+                          "typeIdentifier": 2
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "kindValue": 0,
+              "valueType": {
+                "primitive": {
+                  "wrapper": {
+                    "typeIdentifier": 0
+                  }
+                }
+              }
+            },
+            {
+              "kindValue": 0,
+              "valueType": {
+                "primitive": {
+                  "wrapper": {
+                    "typeIdentifier": 2
+                  }
+                }
+              }
+            }
+          ],
+          "title": {
+            "alternatives": [],
+            "key": "Text"
+          },
+          "typeSpecificMetadata": [],
+          "valueType": {
+            "primitive": {
+              "wrapper": {
+                "typeIdentifier": 0
+              }
+            }
+          }
+        }
+      ],
+      "presentationStyle": 0,
+      "requiredCapabilities": [],
+      "supportedModes": 1,
+      "systemProtocolMetadata": [],
+      "systemProtocolMetadataV2": [],
+      "systemProtocols": [],
+      "title": {
+        "alternatives": [],
+        "key": "Confirm"
+      },
+      "typeSpecificMetadata": [],
+      "visibilityMetadata": {
+        "assistantOnly": false,
+        "isDiscoverable": true
+      }
+    },
+    "ConfirmationSnippet": {
+      "assistantDefinedSchemaTraits": [],
+      "assistantDefinedSchemas": [],
+      "authenticationPolicy": 0,
+      "availabilityAnnotations": {
+        "LNPlatformNameIOS": {
+          "introducedVersion": "26.0"
+        },
+        "LNPlatformNameMACOS": {
+          "introducedVersion": "26.0"
+        },
+        "LNPlatformNameTVOS": {
+          "introducedVersion": "26.0"
+        },
+        "LNPlatformNameVISIONOS": {
+          "introducedVersion": "26.0"
+        },
+        "LNPlatformNameWATCHOS": {
+          "introducedVersion": "26.0"
+        },
+        "LNPlatformNameWildcard": {
+          "introducedVersion": "*"
+        }
+      },
+      "effectiveBundleIdentifiers": [],
+      "fullyQualifiedTypeName": "ResultProtocols.ConfirmationSnippet",
+      "identifier": "ConfirmationSnippet",
+      "isAuthPolExplicit": false,
+      "isDiscoverable": false,
+      "mangledTypeName": "15ResultProtocols19ConfirmationSnippetV",
+      "mangledTypeNameByBundleIdentifier": {},
+      "mangledTypeNameByBundleIdentifierV2": {},
+      "mangledTypeNameV2": "15ResultProtocols19ConfirmationSnippetV",
+      "openAppWhenRun": false,
+      "outputFlags": 2,
+      "parameters": [],
+      "presentationStyle": 0,
+      "requiredCapabilities": [],
+      "supportedModes": 1,
+      "systemProtocolMetadata": [
+        "com.apple.link.systemProtocol.Snippet",
+        {
+          "empty": {}
+        }
+      ],
+      "systemProtocolMetadataV2": [
+        "com.apple.link.systemProtocol.Snippet",
+        {
+          "empty": {}
+        }
+      ],
+      "systemProtocols": [
+        "com.apple.link.systemProtocol.Snippet"
+      ],
+      "title": {
+        "alternatives": [],
+        "key": "Confirmation snippet"
+      },
+      "typeSpecificMetadata": [],
+      "visibilityMetadata": {
+        "assistantOnly": false,
+        "isDiscoverable": false
+      }
+    },
+    "ConnectionProbe": {
+      "assistantDefinedSchemaTraits": [],
+      "assistantDefinedSchemas": [],
+      "authenticationPolicy": 0,
+      "availabilityAnnotations": {
+        "LNPlatformNameWildcard": {
+          "introducedVersion": "*"
+        }
+      },
+      "effectiveBundleIdentifiers": [],
+      "fullyQualifiedTypeName": "ResultProtocols.ConnectionProbe",
+      "identifier": "ConnectionProbe",
+      "isAuthPolExplicit": false,
+      "isDiscoverable": true,
+      "mangledTypeName": "15ResultProtocols15ConnectionProbeV",
+      "mangledTypeNameByBundleIdentifier": {},
+      "mangledTypeNameByBundleIdentifierV2": {},
+      "mangledTypeNameV2": "15ResultProtocols15ConnectionProbeV",
+      "openAppWhenRun": false,
+      "outputFlags": 0,
+      "parameters": [
+        {
+          "capabilities": 0,
+          "dynamicOptionsSupport": 0,
+          "inputConnectionBehavior": 0,
+          "isInput": false,
+          "isOptional": true,
+          "name": "automatic",
+          "resolvableInputTypes": [
+            {
+              "kindValue": 0,
+              "valueType": {
+                "array": {
+                  "wrapper": {
+                    "capabilities": 3,
+                    "memberValueType": {
+                      "primitive": {
+                        "wrapper": {
+                          "typeIdentifier": 2
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "kindValue": 0,
+              "valueType": {
+                "primitive": {
+                  "wrapper": {
+                    "typeIdentifier": 0
+                  }
+                }
+              }
+            },
+            {
+              "kindValue": 0,
+              "valueType": {
+                "primitive": {
+                  "wrapper": {
+                    "typeIdentifier": 2
+                  }
+                }
+              }
+            }
+          ],
+          "title": {
+            "alternatives": [],
+            "key": "Default"
+          },
+          "typeSpecificMetadata": [],
+          "valueType": {
+            "primitive": {
+              "wrapper": {
+                "typeIdentifier": 0
+              }
+            }
+          }
+        },
+        {
+          "capabilities": 0,
+          "dynamicOptionsSupport": 0,
+          "inputConnectionBehavior": 1,
+          "isInput": false,
+          "isOptional": true,
+          "name": "never",
+          "resolvableInputTypes": [
+            {
+              "kindValue": 0,
+              "valueType": {
+                "array": {
+                  "wrapper": {
+                    "capabilities": 3,
+                    "memberValueType": {
+                      "primitive": {
+                        "wrapper": {
+                          "typeIdentifier": 2
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "kindValue": 0,
+              "valueType": {
+                "primitive": {
+                  "wrapper": {
+                    "typeIdentifier": 0
+                  }
+                }
+              }
+            },
+            {
+              "kindValue": 0,
+              "valueType": {
+                "primitive": {
+                  "wrapper": {
+                    "typeIdentifier": 2
+                  }
+                }
+              }
+            }
+          ],
+          "title": {
+            "alternatives": [],
+            "key": "Never"
+          },
+          "typeSpecificMetadata": [],
+          "valueType": {
+            "primitive": {
+              "wrapper": {
+                "typeIdentifier": 0
+              }
+            }
+          }
+        },
+        {
+          "capabilities": 0,
+          "dynamicOptionsSupport": 0,
+          "inputConnectionBehavior": 2,
+          "isInput": true,
+          "isOptional": true,
+          "name": "previous",
+          "resolvableInputTypes": [
+            {
+              "kindValue": 0,
+              "valueType": {
+                "array": {
+                  "wrapper": {
+                    "capabilities": 3,
+                    "memberValueType": {
+                      "primitive": {
+                        "wrapper": {
+                          "typeIdentifier": 2
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "kindValue": 0,
+              "valueType": {
+                "primitive": {
+                  "wrapper": {
+                    "typeIdentifier": 0
+                  }
+                }
+              }
+            },
+            {
+              "kindValue": 0,
+              "valueType": {
+                "primitive": {
+                  "wrapper": {
+                    "typeIdentifier": 2
+                  }
+                }
+              }
+            }
+          ],
+          "title": {
+            "alternatives": [],
+            "key": "Previous"
+          },
+          "typeSpecificMetadata": [],
+          "valueType": {
+            "primitive": {
+              "wrapper": {
+                "typeIdentifier": 0
+              }
+            }
+          }
+        }
+      ],
+      "presentationStyle": 0,
+      "requiredCapabilities": [],
+      "supportedModes": 1,
+      "systemProtocolMetadata": [],
+      "systemProtocolMetadataV2": [],
+      "systemProtocols": [],
+      "title": {
+        "alternatives": [],
+        "key": "Connection behavior"
+      },
+      "typeSpecificMetadata": [],
+      "visibilityMetadata": {
+        "assistantOnly": false,
+        "isDiscoverable": true
+      }
+    },
+    "DiscoverableSnippet": {
+      "assistantDefinedSchemaTraits": [],
+      "assistantDefinedSchemas": [],
+      "authenticationPolicy": 0,
+      "availabilityAnnotations": {
+        "LNPlatformNameIOS": {
+          "deprecatedVersion": "27.0",
+          "introducedVersion": "26.0",
+          "obsoletedVersion": "30.0"
+        },
+        "LNPlatformNameTVOS": {
+          "obsoletedVersion": "*"
+        },
+        "LNPlatformNameWildcard": {
+          "introducedVersion": "*"
+        }
+      },
+      "effectiveBundleIdentifiers": [],
+      "fullyQualifiedTypeName": "ResultProtocols.DiscoverableSnippet",
+      "identifier": "DiscoverableSnippet",
+      "isAuthPolExplicit": false,
+      "isDiscoverable": true,
+      "mangledTypeName": "15ResultProtocols19DiscoverableSnippetV",
+      "mangledTypeNameByBundleIdentifier": {},
+      "mangledTypeNameByBundleIdentifierV2": {},
+      "mangledTypeNameV2": "15ResultProtocols19DiscoverableSnippetV",
+      "openAppWhenRun": false,
+      "outputFlags": 2,
+      "parameters": [],
+      "presentationStyle": 0,
+      "requiredCapabilities": [],
+      "supportedModes": 1,
+      "systemProtocolMetadata": [
+        "com.apple.link.systemProtocol.Snippet",
+        {
+          "empty": {}
+        }
+      ],
+      "systemProtocolMetadataV2": [
+        "com.apple.link.systemProtocol.Snippet",
+        {
+          "empty": {}
+        }
+      ],
+      "systemProtocols": [
+        "com.apple.link.systemProtocol.Snippet"
+      ],
+      "title": {
+        "alternatives": [],
+        "key": "Discoverable snippet"
+      },
+      "typeSpecificMetadata": [],
+      "visibilityMetadata": {
+        "assistantOnly": false,
+        "isDiscoverable": true
+      }
+    },
+    "InteractiveResultProbe": {
+      "assistantDefinedSchemaTraits": [],
+      "assistantDefinedSchemas": [],
+      "authenticationPolicy": 0,
+      "availabilityAnnotations": {
+        "LNPlatformNameIOS": {
+          "introducedVersion": "26.0"
+        },
+        "LNPlatformNameWildcard": {
+          "introducedVersion": "*"
+        }
+      },
+      "effectiveBundleIdentifiers": [],
+      "fullyQualifiedTypeName": "ResultProtocols.InteractiveResultProbe",
+      "identifier": "InteractiveResultProbe",
+      "isAuthPolExplicit": false,
+      "isDiscoverable": true,
+      "mangledTypeName": "15ResultProtocols011InteractiveA5ProbeV",
+      "mangledTypeNameByBundleIdentifier": {},
+      "mangledTypeNameByBundleIdentifierV2": {},
+      "mangledTypeNameV2": "15ResultProtocols011InteractiveA5ProbeV",
+      "openAppWhenRun": false,
+      "outputFlags": 32,
+      "parameters": [],
+      "presentationStyle": 0,
+      "requiredCapabilities": [],
+      "supportedModes": 1,
+      "systemProtocolMetadata": [],
+      "systemProtocolMetadataV2": [],
+      "systemProtocols": [],
+      "title": {
+        "alternatives": [],
+        "key": "Show confirmation"
+      },
+      "typeSpecificMetadata": [],
+      "visibilityMetadata": {
+        "assistantOnly": false,
+        "isDiscoverable": true
+      }
+    },
+    "OpensWithDialogProbe": {
+      "assistantDefinedSchemaTraits": [],
+      "assistantDefinedSchemas": [],
+      "authenticationPolicy": 0,
+      "availabilityAnnotations": {
+        "LNPlatformNameWildcard": {
+          "introducedVersion": "*"
+        }
+      },
+      "effectiveBundleIdentifiers": [],
+      "fullyQualifiedTypeName": "ResultProtocols.OpensWithDialogProbe",
+      "identifier": "OpensWithDialogProbe",
+      "isAuthPolExplicit": false,
+      "isDiscoverable": true,
+      "mangledTypeName": "15ResultProtocols20OpensWithDialogProbeV",
+      "mangledTypeNameByBundleIdentifier": {},
+      "mangledTypeNameByBundleIdentifierV2": {},
+      "mangledTypeNameV2": "15ResultProtocols20OpensWithDialogProbeV",
+      "openAppWhenRun": false,
+      "outputFlags": 5,
+      "parameters": [],
+      "presentationStyle": 0,
+      "requiredCapabilities": [],
+      "supportedModes": 1,
+      "systemProtocolMetadata": [],
+      "systemProtocolMetadataV2": [],
+      "systemProtocols": [],
+      "title": {
+        "alternatives": [],
+        "key": "Open with dialog"
+      },
+      "typeSpecificMetadata": [],
+      "visibilityMetadata": {
+        "assistantOnly": false,
+        "isDiscoverable": true
+      }
+    },
+    "OpensWithViewProbe": {
+      "assistantDefinedSchemaTraits": [],
+      "assistantDefinedSchemas": [],
+      "authenticationPolicy": 0,
+      "availabilityAnnotations": {
+        "LNPlatformNameWildcard": {
+          "introducedVersion": "*"
+        }
+      },
+      "effectiveBundleIdentifiers": [],
+      "fullyQualifiedTypeName": "ResultProtocols.OpensWithViewProbe",
+      "identifier": "OpensWithViewProbe",
+      "isAuthPolExplicit": false,
+      "isDiscoverable": true,
+      "mangledTypeName": "15ResultProtocols18OpensWithViewProbeV",
+      "mangledTypeNameByBundleIdentifier": {},
+      "mangledTypeNameByBundleIdentifierV2": {},
+      "mangledTypeNameV2": "15ResultProtocols18OpensWithViewProbeV",
+      "openAppWhenRun": false,
+      "outputFlags": 3,
+      "parameters": [],
+      "presentationStyle": 0,
+      "requiredCapabilities": [],
+      "supportedModes": 1,
+      "systemProtocolMetadata": [],
+      "systemProtocolMetadataV2": [],
+      "systemProtocols": [],
+      "title": {
+        "alternatives": [],
+        "key": "Open with view"
+      },
+      "typeSpecificMetadata": [],
+      "visibilityMetadata": {
+        "assistantOnly": false,
+        "isDiscoverable": true
+      }
+    },
+    "PromptProbe": {
+      "assistantDefinedSchemaTraits": [],
+      "assistantDefinedSchemas": [],
+      "authenticationPolicy": 0,
+      "availabilityAnnotations": {
+        "LNPlatformNameWildcard": {
+          "introducedVersion": "*"
+        }
+      },
+      "effectiveBundleIdentifiers": [],
+      "fullyQualifiedTypeName": "ResultProtocols.PromptProbe",
+      "identifier": "PromptProbe",
+      "isAuthPolExplicit": false,
+      "isDiscoverable": true,
+      "mangledTypeName": "15ResultProtocols11PromptProbeV",
+      "mangledTypeNameByBundleIdentifier": {},
+      "mangledTypeNameByBundleIdentifierV2": {},
+      "mangledTypeNameV2": "15ResultProtocols11PromptProbeV",
+      "openAppWhenRun": false,
+      "outputFlags": 0,
+      "parameters": [
+        {
+          "capabilities": 0,
+          "dynamicOptionsSupport": 0,
+          "inputConnectionBehavior": 0,
+          "isInput": false,
+          "isOptional": true,
+          "name": "text",
+          "resolvableInputTypes": [
+            {
+              "kindValue": 0,
+              "valueType": {
+                "array": {
+                  "wrapper": {
+                    "capabilities": 3,
+                    "memberValueType": {
+                      "primitive": {
+                        "wrapper": {
+                          "typeIdentifier": 2
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "kindValue": 0,
+              "valueType": {
+                "primitive": {
+                  "wrapper": {
+                    "typeIdentifier": 0
+                  }
+                }
+              }
+            },
+            {
+              "kindValue": 0,
+              "valueType": {
+                "primitive": {
+                  "wrapper": {
+                    "typeIdentifier": 2
+                  }
+                }
+              }
+            }
+          ],
+          "title": {
+            "alternatives": [],
+            "key": "Text"
+          },
+          "typeSpecificMetadata": [],
+          "valueType": {
+            "primitive": {
+              "wrapper": {
+                "typeIdentifier": 0
+              }
+            }
+          }
+        }
+      ],
+      "presentationStyle": 0,
+      "requiredCapabilities": [],
+      "supportedModes": 1,
+      "systemProtocolMetadata": [],
+      "systemProtocolMetadataV2": [],
+      "systemProtocols": [],
+      "title": {
+        "alternatives": [],
+        "key": "Confirm"
+      },
+      "typeSpecificMetadata": [],
+      "visibilityMetadata": {
+        "assistantOnly": false,
+        "isDiscoverable": true
+      }
+    },
+    "ValueSnippet": {
+      "assistantDefinedSchemaTraits": [],
+      "assistantDefinedSchemas": [],
+      "authenticationPolicy": 0,
+      "availabilityAnnotations": {
+        "LNPlatformNameIOS": {
+          "introducedVersion": "26.0"
+        },
+        "LNPlatformNameWildcard": {
+          "introducedVersion": "*"
+        }
+      },
+      "effectiveBundleIdentifiers": [],
+      "fullyQualifiedTypeName": "ResultProtocols.ValueSnippet",
+      "identifier": "ValueSnippet",
+      "isAuthPolExplicit": false,
+      "isDiscoverable": true,
+      "mangledTypeName": "15ResultProtocols12ValueSnippetV",
+      "mangledTypeNameByBundleIdentifier": {},
+      "mangledTypeNameByBundleIdentifierV2": {},
+      "mangledTypeNameV2": "15ResultProtocols12ValueSnippetV",
+      "openAppWhenRun": false,
+      "outputFlags": 2,
+      "outputType": {
+        "primitive": {
+          "wrapper": {
+            "typeIdentifier": 0
+          }
+        }
+      },
+      "parameters": [],
+      "presentationStyle": 0,
+      "requiredCapabilities": [],
+      "supportedModes": 1,
+      "systemProtocolMetadata": [
+        "com.apple.link.systemProtocol.Snippet",
+        {
+          "empty": {}
+        }
+      ],
+      "systemProtocolMetadataV2": [
+        "com.apple.link.systemProtocol.Snippet",
+        {
+          "empty": {}
+        }
+      ],
+      "systemProtocols": [
+        "com.apple.link.systemProtocol.Snippet"
+      ],
+      "title": {
+        "alternatives": [],
+        "key": "Snippet with a value"
+      },
+      "typeSpecificMetadata": [],
+      "visibilityMetadata": {
+        "assistantOnly": false,
+        "isDiscoverable": true
+      }
+    }
+  },
+  "assistantEntities": [],
+  "assistantIntentNegativePhrases": [],
+  "assistantIntents": [],
+  "autoShortcuts": [],
+  "entities": {},
+  "enums": [],
+  "generator": {
+    "name": "xcode-tools",
+    "version": "27B52"
+  },
+  "negativePhrases": [],
+  "queries": {},
+  "shortcutTileColor": 14,
+  "version": 1
+}

@@ -35,6 +35,32 @@ fn identifier(value: &Value) -> &str {
 fn availability() -> Value {
     json!({"LNPlatformNameWildcard":{"introducedVersion":"*"}})
 }
+fn action_availability(value: &Value) -> Value {
+    let mut annotations = availability();
+    for attribute in array(&value["availabilityAttributes"]) {
+        let platform = match text(&attribute["platform"]) {
+            "iOS" => "LNPlatformNameIOS",
+            "macOS" => "LNPlatformNameMACOS",
+            "tvOS" => "LNPlatformNameTVOS",
+            "watchOS" => "LNPlatformNameWATCHOS",
+            "visionOS" => "LNPlatformNameVISIONOS",
+            // Xcode has no separate registration entry for macCatalyst.
+            _ => continue,
+        };
+        for key in ["introducedVersion", "deprecatedVersion", "obsoletedVersion"] {
+            if let Some(version) = attribute[key].as_str() {
+                annotations[platform][key] = json!(version);
+            }
+        }
+        if attribute["isDeprecated"] == true {
+            annotations[platform]["deprecatedVersion"] = json!("*");
+        }
+        if attribute["isUnavailable"] == true {
+            annotations[platform]["obsoletedVersion"] = json!("*");
+        }
+    }
+    annotations
+}
 fn visibility() -> Value {
     json!({"assistantOnly":false,"isDiscoverable":true})
 }
@@ -156,8 +182,11 @@ pub(super) fn strings_data(types: &[Value], metadata: &Value) -> Option<Value> {
 fn action(value: &Value, types: &[Value]) -> Result<Value, String> {
     let id = identifier(value);
     let widget = conforms(value, "WidgetConfigurationIntent");
+    let snippet = conforms(value, "SnippetIntent");
     let open = boolean(value, "openAppWhenRun", false)?;
-    let discoverable = boolean(value, "isDiscoverable", true)?;
+    let (flags, output) = action_result(value, types)?;
+    // Native registration hides a snippet without an output value unless the author opts in.
+    let discoverable = boolean(value, "isDiscoverable", !snippet || output.is_some())?;
     let authentication = if let Some(policy) = property(value, "authenticationPolicy") {
         match text(&policy["value"]["name"]) {
             "alwaysAllowed" => 0,
@@ -182,25 +211,33 @@ fn action(value: &Value, types: &[Value]) -> Result<Value, String> {
     )?;
     let mut action = json!({
         "assistantDefinedSchemaTraits":[],"assistantDefinedSchemas":[],"authenticationPolicy":authentication,
-        "availabilityAnnotations":availability(),"effectiveBundleIdentifiers":[],
+        "availabilityAnnotations":action_availability(value),"effectiveBundleIdentifiers":[],
         "fullyQualifiedTypeName":value["typeName"],"identifier":id,"isAuthPolExplicit":property(value,"authenticationPolicy").is_some(),
-        "isDiscoverable":discoverable&&!widget,"mangledTypeName":value["mangledTypeName"],
+        "mangledTypeName":value["mangledTypeName"],
         "mangledTypeNameByBundleIdentifier":{},"mangledTypeNameByBundleIdentifierV2":{},
         "mangledTypeNameV2":value["mangledTypeName"],"openAppWhenRun":open,
-        "outputFlags":if widget {8}else{0},"parameters":[],"presentationStyle":0,
+        "isDiscoverable":discoverable && !widget,"outputFlags":flags | if widget {8} else {0},"parameters":[],"presentationStyle":0,
         "requiredCapabilities":[],"supportedModes":if open {2}else{1},
         "systemProtocolMetadata":[],"systemProtocolMetadataV2":[],"systemProtocols":[],
         "title":localized(&title),"typeSpecificMetadata":[],"visibilityMetadata":visibility(),
     });
-    if !discoverable {
-        action["visibilityMetadata"]["isDiscoverable"] = json!(false);
+    action["visibilityMetadata"]["isDiscoverable"] = json!(discoverable);
+    for (applies, protocol) in [
+        (widget, "com.apple.link.systemProtocol.WidgetConfiguration"),
+        (snippet, "com.apple.link.systemProtocol.Snippet"),
+    ] {
+        if applies {
+            action["systemProtocolMetadata"]
+                .as_array_mut()
+                .unwrap()
+                .extend([json!(protocol), json!({"empty":{}})]);
+            action["systemProtocols"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!(protocol));
+        }
     }
-    if widget {
-        let protocol = "com.apple.link.systemProtocol.WidgetConfiguration";
-        action["systemProtocolMetadata"] = json!([protocol,{"empty":{}}]);
-        action["systemProtocolMetadataV2"] = action["systemProtocolMetadata"].clone();
-        action["systemProtocols"] = json!([protocol]);
-    }
+    action["systemProtocolMetadataV2"] = action["systemProtocolMetadata"].clone();
     if let Some(description) = property(value, "description") {
         action["descriptionMetadata"] =
             json!({"descriptionText":localized(&literal(description)?),"searchKeywords":[]});
@@ -218,29 +255,46 @@ fn action(value: &Value, types: &[Value]) -> Result<Value, String> {
     if let Some(summary) = action_summary(value, id)? {
         action["actionConfiguration"] = summary;
     }
+    if let Some(output) = output {
+        action["outputType"] = output;
+    }
+    Ok(action)
+}
+
+fn action_result(value: &Value, types: &[Value]) -> Result<(u8, Option<Value>), String> {
+    let id = identifier(value);
+    let mut flags = 0;
+    let mut output = None;
     for alias in array(&value["associatedTypeAliases"])
         .iter()
         .filter(|a| a["typeAliasName"] == "PerformResult")
     {
-        let mut flags = action["outputFlags"].as_u64().unwrap();
         for requirement in array(&alias["opaqueTypeProtocolRequirements"]) {
             match text(requirement) {
                 "AppIntents.OpensIntent" => flags |= 1,
                 "AppIntents.ShowsSnippetView" => flags |= 2,
                 "AppIntents.ProvidesDialog" => flags |= 4,
+                "AppIntents.ShowsSnippetIntent" => flags |= 32,
+                "AppIntents.IntentResult" | "AppIntents.ReturnsValue" => {}
+                name if name.starts_with("AppIntents.") => {
+                    return Err(format!(
+                        "unsupported App Intents result protocol '{name}' in intent '{id}'"
+                    ));
+                }
                 _ => {}
             }
         }
-        action["outputFlags"] = json!(flags);
         for requirement in array(&alias["opaqueTypeSameTypeRequirements"])
             .iter()
             .filter(|r| r["typeAliasName"] == "AppIntents.IntentResult.Value")
         {
-            action["outputType"] =
-                parameters::value_type(text(&requirement["substitutedTypeName"]), types)?;
+            output = Some(parameters::value_type(
+                text(&requirement["substitutedTypeName"]),
+                types,
+            )?);
         }
     }
-    Ok(action)
+    Ok((flags, output))
 }
 
 /// `parameterSummary` as a plain `Summary`: constant text with parameter key paths,
@@ -418,12 +472,17 @@ mod tests {
         assert_eq!(actual, expected);
     }
     fn normalize(value: &mut Value) {
+        if let Some(generator) = value.get_mut("generator").and_then(Value::as_object_mut) {
+            generator.remove("name");
+            generator.remove("version");
+        }
+        normalize_collections(value);
+    }
+    fn normalize_collections(value: &mut Value) {
         match value {
             Value::Object(object) => {
                 for (key, v) in object {
-                    if key == "generator" {
-                        *v = json!({"name":"normalized"});
-                    } else if key == "resolvableInputTypes" {
+                    if key == "resolvableInputTypes" {
                         v.as_array_mut().unwrap().sort_by_key(Value::to_string);
                     } else if key == "typeSpecificMetadata" {
                         // A flat key/value list that Xcode writes in hash order.
@@ -433,11 +492,11 @@ mod tests {
                         pairs.sort_by_key(|pair| pair[0].to_string());
                         *values = pairs.concat();
                     } else {
-                        normalize(v);
+                        normalize_collections(v);
                     }
                 }
             }
-            Value::Array(values) => values.iter_mut().for_each(normalize),
+            Value::Array(values) => values.iter_mut().for_each(normalize_collections),
             _ => {}
         }
     }
@@ -448,6 +507,10 @@ mod tests {
             ("DataApp.swiftconstvalues", "extract.actionsdata"),
             ("Types.swiftconstvalues", "Types.actionsdata"),
             ("Files.swiftconstvalues", "Files.actionsdata"),
+            (
+                "ResultProtocols.swiftconstvalues",
+                "ResultProtocols.actionsdata",
+            ),
         ] {
             let types: Vec<Value> =
                 serde_json::from_slice(&std::fs::read(dir.join(input)).unwrap()).unwrap();
@@ -476,40 +539,59 @@ mod tests {
         }
     }
     #[test]
-    fn unsupported_parameter_summaries_stop_extraction() {
-        fn summary(types: &mut [Value]) -> &mut Value {
-            types
-                .iter_mut()
-                .find(|t| text(&t["typeName"]).ends_with(".SummaryTwoProbeIntent"))
-                .unwrap()["properties"]
-                .as_array_mut()
-                .unwrap()
-                .iter_mut()
-                .find(|p| p["label"] == "parameterSummary")
-                .unwrap()
-        }
-        let mut types: Vec<Value> = serde_json::from_str(include_str!(
-            "../../../fixtures/appintents/OutputProbe.swiftconstvalues"
+    fn unsupported_swift_declarations_report_the_rejected_option_or_summary() {
+        let types: Vec<Value> = serde_json::from_str(include_str!(
+            "../../../fixtures/appintents/Unsupported.swiftconstvalues"
         ))
         .unwrap();
-        summary(&mut types)["value"]["arguments"][1]["valueKind"] = json!("RawLiteral");
-        assert!(
-            extract(&types)
-                .unwrap_err()
-                .contains("unsupported parameterSummary argument 'table'")
-        );
-        for condition in [
-            "ParameterSummaryWhenCondition",
-            "ParameterSummarySwitchCondition",
+        for (name, diagnostic) in [
+            (
+                "WhenProbe",
+                "unsupported parameterSummary 'AppIntents.ParameterSummaryWhenCondition",
+            ),
+            (
+                "SwitchProbe",
+                "unsupported parameterSummary 'AppIntents.ParameterSummarySwitchCondition",
+            ),
+            (
+                "TableProbe",
+                "unsupported parameterSummary argument 'table'",
+            ),
+            (
+                "RangeProbe",
+                "unsupported App Intents parameter option 'inclusiveRange'",
+            ),
+            (
+                "OptionsProviderProbe",
+                "unsupported App Intents parameter option 'optionsProvider'",
+            ),
         ] {
-            let kind = format!("AppIntents.{condition}");
-            summary(&mut types)["value"]["type"] = json!(kind);
-            assert!(
-                extract(&types)
-                    .unwrap_err()
-                    .contains(&format!("unsupported parameterSummary '{kind}'"))
-            );
+            let intent = types.iter().find(|t| identifier(t) == name).unwrap();
+            let error = extract(std::slice::from_ref(intent)).unwrap_err();
+            assert!(error.contains(diagnostic), "{name}: {error}");
         }
+    }
+    #[test]
+    fn unknown_sdk_result_protocols_report_the_protocol_and_intent() {
+        let mut types: Vec<Value> = serde_json::from_str(include_str!(
+            "../../../fixtures/appintents/ResultProtocols.swiftconstvalues"
+        ))
+        .unwrap();
+        let intent = types
+            .iter_mut()
+            .find(|t| identifier(t) == "InteractiveResultProbe")
+            .unwrap();
+        let result = intent["associatedTypeAliases"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|a| a["typeAliasName"] == "PerformResult")
+            .unwrap();
+        result["opaqueTypeProtocolRequirements"] = json!(["AppIntents.FutureResult"]);
+        assert_eq!(
+            extract(&types).unwrap_err(),
+            "unsupported App Intents result protocol 'AppIntents.FutureResult' in intent 'InteractiveResultProbe'"
+        );
     }
     #[test]
     fn input_options_reject_what_they_cannot_encode() {

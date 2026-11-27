@@ -1,0 +1,1392 @@
+[
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "15ResultProtocols12ConfirmProbeV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy15ResultProtocols12ConfirmProbeV_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "ResultProtocols.swift",
+    "kind": "struct",
+    "line": 4,
+    "mangledTypeName": "15ResultProtocols12ConfirmProbeV",
+    "properties": [
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_text",
+        "line": 6,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Text",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 5,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Confirm",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "text",
+        "line": 6,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Text",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "ResultProtocols.swift",
+            "line": 6,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Text",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$text",
+        "line": 6,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      }
+    ],
+    "typeName": "ResultProtocols.ConfirmProbe"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "15ResultProtocols11PromptProbeV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy15ResultProtocols11PromptProbeV_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "ResultProtocols.swift",
+    "kind": "struct",
+    "line": 10,
+    "mangledTypeName": "15ResultProtocols11PromptProbeV",
+    "properties": [
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_text",
+        "line": 13,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Text",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "value": "Which text?",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 12,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Confirm",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "text",
+        "line": 13,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Text",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "requestValueDialog",
+                "type": "Swift.Optional<AppIntents.IntentDialog>",
+                "value": "Which text?",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "ResultProtocols.swift",
+            "line": 13,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Text",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "value": "Which text?",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$text",
+        "line": 13,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      }
+    ],
+    "typeName": "ResultProtocols.PromptProbe"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.SnippetIntent"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ShowsSnippetView"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "15ResultProtocols19ConfirmationSnippetV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ShowsSnippetView",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy15ResultProtocols19ConfirmationSnippetV_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "availabilityAttributes": [
+      {
+        "introducedVersion": "26.0",
+        "isDeprecated": false,
+        "isUnavailable": false,
+        "platform": "macCatalyst"
+      },
+      {
+        "introducedVersion": "26.0",
+        "isDeprecated": false,
+        "isUnavailable": false,
+        "platform": "visionOS"
+      },
+      {
+        "introducedVersion": "26.0",
+        "isDeprecated": false,
+        "isUnavailable": false,
+        "platform": "watchOS"
+      },
+      {
+        "introducedVersion": "26.0",
+        "isDeprecated": false,
+        "isUnavailable": false,
+        "platform": "tvOS"
+      },
+      {
+        "introducedVersion": "26.0",
+        "isDeprecated": false,
+        "isUnavailable": false,
+        "platform": "macOS"
+      },
+      {
+        "introducedVersion": "26.0",
+        "isDeprecated": false,
+        "isUnavailable": false,
+        "platform": "iOS"
+      }
+    ],
+    "conformances": [
+      "AppIntents.SnippetIntent",
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "ResultProtocols.swift",
+    "kind": "struct",
+    "line": 18,
+    "mangledTypeName": "15ResultProtocols19ConfirmationSnippetV",
+    "properties": [
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 19,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Confirmation snippet",
+        "valueKind": "RawLiteral"
+      }
+    ],
+    "typeName": "ResultProtocols.ConfirmationSnippet"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.SnippetIntent"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ShowsSnippetView"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "15ResultProtocols19DiscoverableSnippetV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ShowsSnippetView",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy15ResultProtocols19DiscoverableSnippetV_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "availabilityAttributes": [
+      {
+        "isDeprecated": false,
+        "isUnavailable": true,
+        "platform": "tvOS"
+      },
+      {
+        "deprecatedVersion": "27.0",
+        "introducedVersion": "26.0",
+        "isDeprecated": false,
+        "isUnavailable": false,
+        "obsoletedVersion": "30.0",
+        "platform": "iOS"
+      }
+    ],
+    "conformances": [
+      "AppIntents.SnippetIntent",
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "ResultProtocols.swift",
+    "kind": "struct",
+    "line": 28,
+    "mangledTypeName": "15ResultProtocols19DiscoverableSnippetV",
+    "properties": [
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 29,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Discoverable snippet",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "isDiscoverable",
+        "line": 30,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Swift.Bool",
+        "value": "true",
+        "valueKind": "RawLiteral"
+      }
+    ],
+    "typeName": "ResultProtocols.DiscoverableSnippet"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.SnippetIntent"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ReturnsValue",
+          "AppIntents.ShowsSnippetView"
+        ],
+        "opaqueTypeSameTypeRequirements": [
+          {
+            "substitutedMangledTypeName": "SS",
+            "substitutedTypeName": "Swift.String",
+            "typeAliasName": "AppIntents.IntentResult.Value"
+          }
+        ],
+        "substitutedMangledTypeName": "15ResultProtocols12ValueSnippetV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ReturnsValue<Swift.String> & AppIntents.ShowsSnippetView",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy15ResultProtocols12ValueSnippetV_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "availabilityAttributes": [
+      {
+        "introducedVersion": "26.0",
+        "isDeprecated": false,
+        "isUnavailable": false,
+        "platform": "iOS"
+      }
+    ],
+    "conformances": [
+      "AppIntents.SnippetIntent",
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "ResultProtocols.swift",
+    "kind": "struct",
+    "line": 38,
+    "mangledTypeName": "15ResultProtocols12ValueSnippetV",
+    "properties": [
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 39,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Snippet with a value",
+        "valueKind": "RawLiteral"
+      }
+    ],
+    "typeName": "ResultProtocols.ValueSnippet"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ShowsSnippetIntent"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "15ResultProtocols011InteractiveA5ProbeV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ShowsSnippetIntent",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy15ResultProtocols011InteractiveF5ProbeV_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "availabilityAttributes": [
+      {
+        "introducedVersion": "26.0",
+        "isDeprecated": false,
+        "isUnavailable": false,
+        "platform": "iOS"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "ResultProtocols.swift",
+    "kind": "struct",
+    "line": 47,
+    "mangledTypeName": "15ResultProtocols011InteractiveA5ProbeV",
+    "properties": [
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 48,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Show confirmation",
+        "valueKind": "RawLiteral"
+      }
+    ],
+    "typeName": "ResultProtocols.InteractiveResultProbe"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.OpensIntent",
+          "AppIntents.ShowsSnippetView"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "15ResultProtocols18OpensWithViewProbeV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.OpensIntent & AppIntents.ShowsSnippetView",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy15ResultProtocols18OpensWithViewProbeV_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "ResultProtocols.swift",
+    "kind": "struct",
+    "line": 54,
+    "mangledTypeName": "15ResultProtocols18OpensWithViewProbeV",
+    "properties": [
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 55,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Open with view",
+        "valueKind": "RawLiteral"
+      }
+    ],
+    "typeName": "ResultProtocols.OpensWithViewProbe"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.OpensIntent",
+          "AppIntents.ProvidesDialog"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "15ResultProtocols20OpensWithDialogProbeV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.OpensIntent & AppIntents.ProvidesDialog",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy15ResultProtocols20OpensWithDialogProbeV_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "ResultProtocols.swift",
+    "kind": "struct",
+    "line": 62,
+    "mangledTypeName": "15ResultProtocols20OpensWithDialogProbeV",
+    "properties": [
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 63,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Open with dialog",
+        "valueKind": "RawLiteral"
+      }
+    ],
+    "typeName": "ResultProtocols.OpensWithDialogProbe"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "ResultProtocols",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "15ResultProtocols15ConnectionProbeV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy15ResultProtocols15ConnectionProbeV_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "ResultProtocols.swift",
+    "kind": "struct",
+    "line": 69,
+    "mangledTypeName": "15ResultProtocols15ConnectionProbeV",
+    "properties": [
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_automatic",
+        "line": 71,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Default",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "value": {
+                "name": "default"
+              },
+              "valueKind": "Enum"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_never",
+        "line": 72,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Never",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "value": {
+                "name": "never"
+              },
+              "valueKind": "Enum"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_previous",
+        "line": 73,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Previous",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "value": {
+                "name": "connectToPreviousIntentResult"
+              },
+              "valueKind": "Enum"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 70,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Connection behavior",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "automatic",
+        "line": 71,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Default",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputConnectionBehavior",
+                "type": "AppIntents.InputConnectionBehavior",
+                "value": {
+                  "name": "default"
+                },
+                "valueKind": "Enum"
+              }
+            ],
+            "file": "ResultProtocols.swift",
+            "line": 71,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Default",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "value": {
+                "name": "default"
+              },
+              "valueKind": "Enum"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$automatic",
+        "line": 71,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "never",
+        "line": 72,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Never",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputConnectionBehavior",
+                "type": "AppIntents.InputConnectionBehavior",
+                "value": {
+                  "name": "never"
+                },
+                "valueKind": "Enum"
+              }
+            ],
+            "file": "ResultProtocols.swift",
+            "line": 72,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Never",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "value": {
+                "name": "never"
+              },
+              "valueKind": "Enum"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$never",
+        "line": 72,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "previous",
+        "line": 73,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Previous",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputConnectionBehavior",
+                "type": "AppIntents.InputConnectionBehavior",
+                "value": {
+                  "name": "connectToPreviousIntentResult"
+                },
+                "valueKind": "Enum"
+              }
+            ],
+            "file": "ResultProtocols.swift",
+            "line": 73,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Previous",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "value": {
+                "name": "connectToPreviousIntentResult"
+              },
+              "valueKind": "Enum"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "ResultProtocols.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$previous",
+        "line": 73,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      }
+    ],
+    "typeName": "ResultProtocols.ConnectionProbe"
+  }
+]

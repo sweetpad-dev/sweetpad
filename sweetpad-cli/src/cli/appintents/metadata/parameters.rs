@@ -86,7 +86,8 @@ pub(super) fn parameter(value: &Value, types: &[Value]) -> Result<Value, String>
         .iter()
         .find(|a| a["label"] == "inputConnectionBehavior");
     let connection = match connection.map(|v| text(&v["value"]["name"])) {
-        None => 0,
+        None | Some("default") => 0,
+        Some("never") => 1,
         Some("connectToPreviousIntentResult") => 2,
         Some(name) => return Err(format!("unsupported inputConnectionBehavior '{name}'")),
     };
@@ -101,7 +102,7 @@ pub(super) fn parameter(value: &Value, types: &[Value]) -> Result<Value, String>
     let default = argument(value, "default").filter(|v| v["valueKind"] != "NilLiteral");
     let mut parameter = json!({
         "capabilities":u8::from(default.is_some()),"dynamicOptionsSupport":u8::from(kind.get("entity").is_some()),
-        "inputConnectionBehavior":connection,"isInput":connection != 0,"isOptional":is_optional,
+        "inputConnectionBehavior":connection,"isInput":connection == 2,"isOptional":is_optional,
         "name":value["label"],"resolvableInputTypes":resolvers(&kind),
         "title":localized(&literal(title)?),"typeSpecificMetadata":[],"valueType":kind,
     });
