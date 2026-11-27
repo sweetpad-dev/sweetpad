@@ -62,6 +62,24 @@ class ExportTests(unittest.TestCase):
 
 
 class ComparisonTests(unittest.TestCase):
+    def test_registration_compares_input_options_by_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            native, linux = self.bundles(Path(tmp), {"CFBundleIdentifier": "example"})
+            off, on = {"int": {"wrapper": 0}}, {"int": {"wrapper": 1}}
+            quotes, dashes = "LNValueTypeMetadataKeyStringSmartQuotes", "LNValueTypeMetadataKeyStringSmartDashes"
+
+            def write_options(bundle, pairs):
+                metadata = bundle / "Metadata.appintents"
+                metadata.mkdir(exist_ok=True)
+                action = {"parameters": [{"name": "text", "typeSpecificMetadata": pairs}]}
+                (metadata / "extract.actionsdata").write_text(json.dumps({"actions": {"Input": action}}))
+
+            write_options(native, [quotes, on, dashes, off])
+            write_options(linux, [dashes, off, quotes, on])
+            self.assertTrue(checks.compare(native, linux)["passed"])
+            write_options(linux, [dashes, on, quotes, off])
+            self.assertIn("appIntents", {f["kind"] for f in checks.compare(native, linux)["findings"]})
+
     def shortcut_models(self, native, linux):
         source = checks.REPO / "sweetpad-cli/fixtures/appintents/DataApp.nlu"
         data = source.read_bytes()

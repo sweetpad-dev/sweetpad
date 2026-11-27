@@ -2,27 +2,27 @@
   {
     "allConformances": [
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents.AppIntent"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents.PersistentlyIdentifiable"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents._SupportsAppDependencies"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.Sendable"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.SendableMetatype"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.BitwiseCopyable"
       }
     ],
@@ -32,7 +32,7 @@
           "AppIntents.ProvidesDialog"
         ],
         "opaqueTypeSameTypeRequirements": [],
-        "substitutedMangledTypeName": "3Sev21DialogOnlyProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedMangledTypeName": "11OutputProbe010DialogOnlyB6IntentV7performQryYaKFQOy_Qo_",
         "substitutedTypeName": "some AppIntents.ProvidesDialog",
         "typeAliasName": "PerformResult"
       },
@@ -41,7 +41,7 @@
           "AppIntents.ParameterSummary"
         ],
         "opaqueTypeSameTypeRequirements": [],
-        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy3Sev015DialogOnlyProbeC0V_Qo_",
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy11OutputProbe010DialogOnlygC0V_Qo_",
         "substitutedTypeName": "some AppIntents.ParameterSummary",
         "typeAliasName": "SummaryContent"
       }
@@ -57,7 +57,7 @@
     "file": "OutputProbe.swift",
     "kind": "struct",
     "line": 5,
-    "mangledTypeName": "3Sev21DialogOnlyProbeIntentV",
+    "mangledTypeName": "11OutputProbe010DialogOnlyB6IntentV",
     "properties": [
       {
         "file": "OutputProbe.swift",
@@ -71,32 +71,32 @@
         "valueKind": "RawLiteral"
       }
     ],
-    "typeName": "Sev.DialogOnlyProbeIntent"
+    "typeName": "OutputProbe.DialogOnlyProbeIntent"
   },
   {
     "allConformances": [
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents.AppIntent"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents.PersistentlyIdentifiable"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents._SupportsAppDependencies"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.Sendable"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.SendableMetatype"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.BitwiseCopyable"
       }
     ],
@@ -106,7 +106,7 @@
           "AppIntents.ShowsSnippetView"
         ],
         "opaqueTypeSameTypeRequirements": [],
-        "substitutedMangledTypeName": "3Sev22SnippetOnlyProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedMangledTypeName": "11OutputProbe011SnippetOnlyB6IntentV7performQryYaKFQOy_Qo_",
         "substitutedTypeName": "some AppIntents.ShowsSnippetView",
         "typeAliasName": "PerformResult"
       },
@@ -115,7 +115,7 @@
           "AppIntents.ParameterSummary"
         ],
         "opaqueTypeSameTypeRequirements": [],
-        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy3Sev016SnippetOnlyProbeC0V_Qo_",
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy11OutputProbe011SnippetOnlygC0V_Qo_",
         "substitutedTypeName": "some AppIntents.ParameterSummary",
         "typeAliasName": "SummaryContent"
       }
@@ -131,7 +131,7 @@
     "file": "OutputProbe.swift",
     "kind": "struct",
     "line": 10,
-    "mangledTypeName": "3Sev22SnippetOnlyProbeIntentV",
+    "mangledTypeName": "11OutputProbe011SnippetOnlyB6IntentV",
     "properties": [
       {
         "file": "OutputProbe.swift",
@@ -145,32 +145,32 @@
         "valueKind": "RawLiteral"
       }
     ],
-    "typeName": "Sev.SnippetOnlyProbeIntent"
+    "typeName": "OutputProbe.SnippetOnlyProbeIntent"
   },
   {
     "allConformances": [
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents.AppIntent"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents.PersistentlyIdentifiable"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents._SupportsAppDependencies"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.Sendable"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.SendableMetatype"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.BitwiseCopyable"
       }
     ],
@@ -187,7 +187,7 @@
             "typeAliasName": "AppIntents.IntentResult.Value"
           }
         ],
-        "substitutedMangledTypeName": "3Sev23ValueSnippetProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedMangledTypeName": "11OutputProbe012ValueSnippetB6IntentV7performQryYaKFQOy_Qo_",
         "substitutedTypeName": "some AppIntents.ReturnsValue<Swift.String> & AppIntents.ShowsSnippetView",
         "typeAliasName": "PerformResult"
       },
@@ -196,7 +196,7 @@
           "AppIntents.ParameterSummary"
         ],
         "opaqueTypeSameTypeRequirements": [],
-        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy3Sev017ValueSnippetProbeC0V_Qo_",
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy11OutputProbe012ValueSnippetgC0V_Qo_",
         "substitutedTypeName": "some AppIntents.ParameterSummary",
         "typeAliasName": "SummaryContent"
       }
@@ -212,7 +212,7 @@
     "file": "OutputProbe.swift",
     "kind": "struct",
     "line": 16,
-    "mangledTypeName": "3Sev23ValueSnippetProbeIntentV",
+    "mangledTypeName": "11OutputProbe012ValueSnippetB6IntentV",
     "properties": [
       {
         "file": "OutputProbe.swift",
@@ -226,32 +226,32 @@
         "valueKind": "RawLiteral"
       }
     ],
-    "typeName": "Sev.ValueSnippetProbeIntent"
+    "typeName": "OutputProbe.ValueSnippetProbeIntent"
   },
   {
     "allConformances": [
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents.AppIntent"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents.PersistentlyIdentifiable"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents._SupportsAppDependencies"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.Sendable"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.SendableMetatype"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.BitwiseCopyable"
       }
     ],
@@ -261,7 +261,7 @@
           "AppIntents.OpensIntent"
         ],
         "opaqueTypeSameTypeRequirements": [],
-        "substitutedMangledTypeName": "3Sev16OpensProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedMangledTypeName": "11OutputProbe05OpensB6IntentV7performQryYaKFQOy_Qo_",
         "substitutedTypeName": "some AppIntents.OpensIntent",
         "typeAliasName": "PerformResult"
       },
@@ -270,7 +270,7 @@
           "AppIntents.ParameterSummary"
         ],
         "opaqueTypeSameTypeRequirements": [],
-        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy3Sev010OpensProbeC0V_Qo_",
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy11OutputProbe05OpensgC0V_Qo_",
         "substitutedTypeName": "some AppIntents.ParameterSummary",
         "typeAliasName": "SummaryContent"
       }
@@ -286,7 +286,7 @@
     "file": "OutputProbe.swift",
     "kind": "struct",
     "line": 22,
-    "mangledTypeName": "3Sev16OpensProbeIntentV",
+    "mangledTypeName": "11OutputProbe05OpensB6IntentV",
     "properties": [
       {
         "file": "OutputProbe.swift",
@@ -300,32 +300,32 @@
         "valueKind": "RawLiteral"
       }
     ],
-    "typeName": "Sev.OpensProbeIntent"
+    "typeName": "OutputProbe.OpensProbeIntent"
   },
   {
     "allConformances": [
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents.AppIntent"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents.PersistentlyIdentifiable"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents._SupportsAppDependencies"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.Sendable"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.SendableMetatype"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.BitwiseCopyable"
       }
     ],
@@ -344,7 +344,7 @@
             "typeAliasName": "AppIntents.IntentResult.Value"
           }
         ],
-        "substitutedMangledTypeName": "3Sev21AllOutputsProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedMangledTypeName": "11OutputProbe010AllOutputsB6IntentV7performQryYaKFQOy_Qo_",
         "substitutedTypeName": "some AppIntents.OpensIntent & AppIntents.ProvidesDialog & AppIntents.ReturnsValue<Swift.String> & AppIntents.ShowsSnippetView",
         "typeAliasName": "PerformResult"
       },
@@ -353,7 +353,7 @@
           "AppIntents.ParameterSummary"
         ],
         "opaqueTypeSameTypeRequirements": [],
-        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy3Sev015AllOutputsProbeC0V_Qo_",
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy11OutputProbe010AllOutputsgC0V_Qo_",
         "substitutedTypeName": "some AppIntents.ParameterSummary",
         "typeAliasName": "SummaryContent"
       }
@@ -369,7 +369,7 @@
     "file": "OutputProbe.swift",
     "kind": "struct",
     "line": 27,
-    "mangledTypeName": "3Sev21AllOutputsProbeIntentV",
+    "mangledTypeName": "11OutputProbe010AllOutputsB6IntentV",
     "properties": [
       {
         "file": "OutputProbe.swift",
@@ -383,28 +383,28 @@
         "valueKind": "RawLiteral"
       }
     ],
-    "typeName": "Sev.AllOutputsProbeIntent"
+    "typeName": "OutputProbe.AllOutputsProbeIntent"
   },
   {
     "allConformances": [
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents.AppIntent"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents.PersistentlyIdentifiable"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents._SupportsAppDependencies"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.Sendable"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.SendableMetatype"
       }
     ],
@@ -414,7 +414,7 @@
           "AppIntents.IntentResult"
         ],
         "opaqueTypeSameTypeRequirements": [],
-        "substitutedMangledTypeName": "3Sev21SummaryTwoProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedMangledTypeName": "11OutputProbe010SummaryTwoB6IntentV7performQryYaKFQOy_Qo_",
         "substitutedTypeName": "some AppIntents.IntentResult",
         "typeAliasName": "PerformResult"
       },
@@ -423,7 +423,7 @@
           "AppIntents.ParameterSummary"
         ],
         "opaqueTypeSameTypeRequirements": [],
-        "substitutedMangledTypeName": "3Sev21SummaryTwoProbeIntentV09parameterB0QrvpZQOy_Qo_",
+        "substitutedMangledTypeName": "11OutputProbe010SummaryTwoB6IntentV09parameterC0QrvpZQOy_Qo_",
         "substitutedTypeName": "some AppIntents.ParameterSummary",
         "typeAliasName": "SummaryContent"
       }
@@ -438,7 +438,7 @@
     "file": "OutputProbe.swift",
     "kind": "struct",
     "line": 35,
-    "mangledTypeName": "3Sev21SummaryTwoProbeIntentV",
+    "mangledTypeName": "11OutputProbe010SummaryTwoB6IntentV",
     "properties": [
       {
         "file": "OutputProbe.swift",
@@ -832,28 +832,11 @@
           "arguments": [
             {
               "label": "",
-              "type": "AppIntents.ParameterSummaryString<Sev.SummaryTwoProbeIntent>",
+              "type": "AppIntents.ParameterSummaryString<OutputProbe.SummaryTwoProbeIntent>",
               "value": {
                 "segments": [
                   {
                     "value": "Send ",
-                    "valueKind": "RawLiteral"
-                  },
-                  {
-                    "value": {
-                      "components": [
-                        {
-                          "label": "$first",
-                          "type": "AppIntents.IntentParameter<Swift.String>"
-                        }
-                      ],
-                      "path": "$first",
-                      "rootType": "Sev.SummaryTwoProbeIntent"
-                    },
-                    "valueKind": "KeyPath"
-                  },
-                  {
-                    "value": " to ",
                     "valueKind": "RawLiteral"
                   },
                   {
@@ -865,12 +848,46 @@
                         }
                       ],
                       "path": "$second",
-                      "rootType": "Sev.SummaryTwoProbeIntent"
+                      "rootType": "OutputProbe.SummaryTwoProbeIntent"
                     },
                     "valueKind": "KeyPath"
                   },
                   {
-                    "value": "",
+                    "value": " to ",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "value": {
+                      "components": [
+                        {
+                          "label": "$first",
+                          "type": "AppIntents.IntentParameter<Swift.String>"
+                        }
+                      ],
+                      "path": "$first",
+                      "rootType": "OutputProbe.SummaryTwoProbeIntent"
+                    },
+                    "valueKind": "KeyPath"
+                  },
+                  {
+                    "value": ", then ",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "value": {
+                      "components": [
+                        {
+                          "label": "$second",
+                          "type": "AppIntents.IntentParameter<Swift.Int>"
+                        }
+                      ],
+                      "path": "$second",
+                      "rootType": "OutputProbe.SummaryTwoProbeIntent"
+                    },
+                    "valueKind": "KeyPath"
+                  },
+                  {
+                    "value": " again",
                     "valueKind": "RawLiteral"
                   }
                 ]
@@ -881,35 +898,61 @@
               "label": "table",
               "type": "Swift.Optional<Swift.String>",
               "valueKind": "NilLiteral"
+            },
+            {
+              "label": "",
+              "type": "() -> Swift.Array<Swift.PartialKeyPath<OutputProbe.SummaryTwoProbeIntent>>",
+              "value": {
+                "members": [
+                  {
+                    "element": {
+                      "value": {
+                        "components": [
+                          {
+                            "label": "$third",
+                            "type": "AppIntents.IntentParameter<Swift.Bool>"
+                          }
+                        ],
+                        "path": "$third",
+                        "rootType": "OutputProbe.SummaryTwoProbeIntent"
+                      },
+                      "valueKind": "KeyPath"
+                    },
+                    "kind": "buildExpression"
+                  }
+                ],
+                "type": ""
+              },
+              "valueKind": "Builder"
             }
           ],
-          "type": "AppIntents.IntentParameterSummary<Sev.SummaryTwoProbeIntent>"
+          "type": "AppIntents.IntentParameterSummary<OutputProbe.SummaryTwoProbeIntent>"
         },
         "valueKind": "InitCall"
       }
     ],
-    "typeName": "Sev.SummaryTwoProbeIntent"
+    "typeName": "OutputProbe.SummaryTwoProbeIntent"
   },
   {
     "allConformances": [
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents.AppIntent"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents.PersistentlyIdentifiable"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "AppIntents._SupportsAppDependencies"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.Sendable"
       },
       {
-        "conformanceDefiningModule": "Sev",
+        "conformanceDefiningModule": "OutputProbe",
         "protocolName": "Swift.SendableMetatype"
       }
     ],
@@ -919,7 +962,7 @@
           "AppIntents.IntentResult"
         ],
         "opaqueTypeSameTypeRequirements": [],
-        "substitutedMangledTypeName": "3Sev25SummaryBuilderProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedMangledTypeName": "11OutputProbe014SummaryBuilderB6IntentV7performQryYaKFQOy_Qo_",
         "substitutedTypeName": "some AppIntents.IntentResult",
         "typeAliasName": "PerformResult"
       },
@@ -928,7 +971,7 @@
           "AppIntents.ParameterSummary"
         ],
         "opaqueTypeSameTypeRequirements": [],
-        "substitutedMangledTypeName": "3Sev25SummaryBuilderProbeIntentV09parameterB0QrvpZQOy_Qo_",
+        "substitutedMangledTypeName": "11OutputProbe014SummaryBuilderB6IntentV09parameterC0QrvpZQOy_Qo_",
         "substitutedTypeName": "some AppIntents.ParameterSummary",
         "typeAliasName": "SummaryContent"
       }
@@ -942,15 +985,15 @@
     ],
     "file": "OutputProbe.swift",
     "kind": "struct",
-    "line": 44,
-    "mangledTypeName": "3Sev25SummaryBuilderProbeIntentV",
+    "line": 46,
+    "mangledTypeName": "11OutputProbe014SummaryBuilderB6IntentV",
     "properties": [
       {
         "file": "OutputProbe.swift",
         "isComputed": "false",
         "isStatic": "false",
         "label": "_first",
-        "line": 46,
+        "line": 48,
         "mangledTypeName": "n/a - deprecated",
         "type": "AppIntents.IntentParameter<Swift.String>",
         "value": {
@@ -996,7 +1039,7 @@
         "isComputed": "false",
         "isStatic": "false",
         "label": "_second",
-        "line": 47,
+        "line": 49,
         "mangledTypeName": "n/a - deprecated",
         "type": "AppIntents.IntentParameter<Swift.Int>",
         "value": {
@@ -1047,7 +1090,7 @@
         "isComputed": "false",
         "isStatic": "false",
         "label": "_third",
-        "line": 48,
+        "line": 50,
         "mangledTypeName": "n/a - deprecated",
         "type": "AppIntents.IntentParameter<Swift.Bool>",
         "value": {
@@ -1094,7 +1137,7 @@
         "isComputed": "false",
         "isStatic": "true",
         "label": "title",
-        "line": 45,
+        "line": 47,
         "mangledTypeName": "n/a - deprecated",
         "type": "Foundation.LocalizedStringResource",
         "value": "Summary builder",
@@ -1105,7 +1148,7 @@
         "isComputed": "true",
         "isStatic": "false",
         "label": "first",
-        "line": 46,
+        "line": 48,
         "mangledTypeName": "n/a - deprecated",
         "propertyWrappers": [
           {
@@ -1118,7 +1161,7 @@
               }
             ],
             "file": "OutputProbe.swift",
-            "line": 46,
+            "line": 48,
             "type": "AppIntents.IntentParameter"
           }
         ],
@@ -1166,7 +1209,7 @@
         "isComputed": "true",
         "isStatic": "false",
         "label": "$first",
-        "line": 46,
+        "line": 48,
         "mangledTypeName": "n/a - deprecated",
         "type": "AppIntents.IntentParameter<Swift.String>",
         "valueKind": "Runtime"
@@ -1176,7 +1219,7 @@
         "isComputed": "true",
         "isStatic": "false",
         "label": "second",
-        "line": 47,
+        "line": 49,
         "mangledTypeName": "n/a - deprecated",
         "propertyWrappers": [
           {
@@ -1189,7 +1232,7 @@
               }
             ],
             "file": "OutputProbe.swift",
-            "line": 47,
+            "line": 49,
             "type": "AppIntents.IntentParameter"
           }
         ],
@@ -1242,7 +1285,7 @@
         "isComputed": "true",
         "isStatic": "false",
         "label": "$second",
-        "line": 47,
+        "line": 49,
         "mangledTypeName": "n/a - deprecated",
         "type": "AppIntents.IntentParameter<Swift.Int>",
         "valueKind": "Runtime"
@@ -1252,7 +1295,7 @@
         "isComputed": "true",
         "isStatic": "false",
         "label": "third",
-        "line": 48,
+        "line": 50,
         "mangledTypeName": "n/a - deprecated",
         "propertyWrappers": [
           {
@@ -1271,7 +1314,7 @@
               }
             ],
             "file": "OutputProbe.swift",
-            "line": 48,
+            "line": 50,
             "type": "AppIntents.IntentParameter"
           }
         ],
@@ -1320,7 +1363,7 @@
         "isComputed": "true",
         "isStatic": "false",
         "label": "$third",
-        "line": 48,
+        "line": 50,
         "mangledTypeName": "n/a - deprecated",
         "type": "AppIntents.IntentParameter<Swift.Bool>",
         "valueKind": "Runtime"
@@ -1330,14 +1373,14 @@
         "isComputed": "true",
         "isStatic": "true",
         "label": "parameterSummary",
-        "line": 49,
+        "line": 51,
         "mangledTypeName": "n/a - deprecated",
         "type": "some AppIntents.ParameterSummary",
         "value": {
           "arguments": [
             {
               "label": "",
-              "type": "AppIntents.ParameterSummaryString<Sev.SummaryBuilderProbeIntent>",
+              "type": "AppIntents.ParameterSummaryString<OutputProbe.SummaryBuilderProbeIntent>",
               "value": "Just text",
               "valueKind": "RawLiteral"
             },
@@ -1348,7 +1391,7 @@
             },
             {
               "label": "",
-              "type": "() -> Swift.Array<Swift.PartialKeyPath<Sev.SummaryBuilderProbeIntent>>",
+              "type": "() -> Swift.Array<Swift.PartialKeyPath<OutputProbe.SummaryBuilderProbeIntent>>",
               "value": {
                 "members": [
                   {
@@ -1361,7 +1404,7 @@
                           }
                         ],
                         "path": "$third",
-                        "rootType": "Sev.SummaryBuilderProbeIntent"
+                        "rootType": "OutputProbe.SummaryBuilderProbeIntent"
                       },
                       "valueKind": "KeyPath"
                     },
@@ -1377,7 +1420,7 @@
                           }
                         ],
                         "path": "$first",
-                        "rootType": "Sev.SummaryBuilderProbeIntent"
+                        "rootType": "OutputProbe.SummaryBuilderProbeIntent"
                       },
                       "valueKind": "KeyPath"
                     },
@@ -1389,11 +1432,576 @@
               "valueKind": "Builder"
             }
           ],
-          "type": "AppIntents.IntentParameterSummary<Sev.SummaryBuilderProbeIntent>"
+          "type": "AppIntents.IntentParameterSummary<OutputProbe.SummaryBuilderProbeIntent>"
         },
         "valueKind": "InitCall"
       }
     ],
-    "typeName": "Sev.SummaryBuilderProbeIntent"
+    "typeName": "OutputProbe.SummaryBuilderProbeIntent"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ProvidesDialog",
+          "AppIntents.ReturnsValue"
+        ],
+        "opaqueTypeSameTypeRequirements": [
+          {
+            "substitutedMangledTypeName": "SS",
+            "substitutedTypeName": "Swift.String",
+            "typeAliasName": "AppIntents.IntentResult.Value"
+          }
+        ],
+        "substitutedMangledTypeName": "11OutputProbe013NoSummaryTextB6IntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ProvidesDialog & AppIntents.ReturnsValue<Swift.String>",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "11OutputProbe013NoSummaryTextB6IntentV09parameterD0QrvpZQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "OutputProbe.swift",
+    "kind": "struct",
+    "line": 60,
+    "mangledTypeName": "11OutputProbe013NoSummaryTextB6IntentV",
+    "properties": [
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 61,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "No summary text",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "true",
+        "label": "parameterSummary",
+        "line": 62,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "some AppIntents.ParameterSummary",
+        "value": {
+          "arguments": [],
+          "type": "AppIntents.IntentParameterSummary<OutputProbe.NoSummaryTextProbeIntent>"
+        },
+        "valueKind": "InitCall"
+      }
+    ],
+    "typeName": "OutputProbe.NoSummaryTextProbeIntent"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "11OutputProbe016EmptySummaryTextB6IntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "11OutputProbe016EmptySummaryTextB6IntentV09parameterD0QrvpZQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "OutputProbe.swift",
+    "kind": "struct",
+    "line": 68,
+    "mangledTypeName": "11OutputProbe016EmptySummaryTextB6IntentV",
+    "properties": [
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 69,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Empty summary text",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "true",
+        "label": "parameterSummary",
+        "line": 70,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "some AppIntents.ParameterSummary",
+        "value": {
+          "arguments": [
+            {
+              "label": "",
+              "type": "AppIntents.ParameterSummaryString<OutputProbe.EmptySummaryTextProbeIntent>",
+              "value": "",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "table",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            }
+          ],
+          "type": "AppIntents.IntentParameterSummary<OutputProbe.EmptySummaryTextProbeIntent>"
+        },
+        "valueKind": "InitCall"
+      }
+    ],
+    "typeName": "OutputProbe.EmptySummaryTextProbeIntent"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "OutputProbe",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "11OutputProbe021SummaryParametersOnlyB6IntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "11OutputProbe021SummaryParametersOnlyB6IntentV09parameterC0QrvpZQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "OutputProbe.swift",
+    "kind": "struct",
+    "line": 74,
+    "mangledTypeName": "11OutputProbe021SummaryParametersOnlyB6IntentV",
+    "properties": [
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_first",
+        "line": 76,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "First",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_second",
+        "line": 77,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Int>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Second",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Int>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "controlStyle",
+              "type": "AppIntents.IntentParameter<Swift.Int>.IntControlStyle",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "inclusiveRange",
+              "type": "Swift.Optional<(lowerBound: Swift.Int, upperBound: Swift.Int)>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Int>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 75,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Summary parameters only",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "first",
+        "line": 76,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "First",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "OutputProbe.swift",
+            "line": 76,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.String",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "First",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$first",
+        "line": 76,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.String>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "second",
+        "line": 77,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Second",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "OutputProbe.swift",
+            "line": 77,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Int",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Second",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Int>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "controlStyle",
+              "type": "AppIntents.IntentParameter<Swift.Int>.IntControlStyle",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "inclusiveRange",
+              "type": "Swift.Optional<(lowerBound: Swift.Int, upperBound: Swift.Int)>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Int>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$second",
+        "line": 77,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Int>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "true",
+        "label": "parameterSummary",
+        "line": 78,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "some AppIntents.ParameterSummary",
+        "value": {
+          "arguments": [
+            {
+              "label": "",
+              "type": "() -> Swift.Array<Swift.PartialKeyPath<OutputProbe.SummaryParametersOnlyProbeIntent>>",
+              "value": {
+                "members": [
+                  {
+                    "element": {
+                      "value": {
+                        "components": [
+                          {
+                            "label": "$second",
+                            "type": "AppIntents.IntentParameter<Swift.Int>"
+                          }
+                        ],
+                        "path": "$second",
+                        "rootType": "OutputProbe.SummaryParametersOnlyProbeIntent"
+                      },
+                      "valueKind": "KeyPath"
+                    },
+                    "kind": "buildExpression"
+                  },
+                  {
+                    "element": {
+                      "value": {
+                        "components": [
+                          {
+                            "label": "$first",
+                            "type": "AppIntents.IntentParameter<Swift.String>"
+                          }
+                        ],
+                        "path": "$first",
+                        "rootType": "OutputProbe.SummaryParametersOnlyProbeIntent"
+                      },
+                      "valueKind": "KeyPath"
+                    },
+                    "kind": "buildExpression"
+                  }
+                ],
+                "type": ""
+              },
+              "valueKind": "Builder"
+            }
+          ],
+          "type": "AppIntents.IntentParameterSummary<OutputProbe.SummaryParametersOnlyProbeIntent>"
+        },
+        "valueKind": "InitCall"
+      }
+    ],
+    "typeName": "OutputProbe.SummaryParametersOnlyProbeIntent"
   }
 ]

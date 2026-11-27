@@ -247,7 +247,10 @@ fn action(value: &Value, types: &[Value]) -> Result<Value, String> {
 /// plus the parameters its trailing builder lists. Conditional summaries
 /// (`When`, `Switch`) and localization tables are not supported yet.
 fn action_summary(value: &Value, id: &str) -> Result<Option<Value>, String> {
-    let Some(summary) = property(value, "parameterSummary") else {
+    let Some(summary) = properties(value)
+        .iter()
+        .find(|p| p["label"] == "parameterSummary" && p["isStatic"] == "true")
+    else {
         return Ok(None);
     };
     let unsupported = |what: &str| format!("unsupported parameterSummary {what} in intent '{id}'");
@@ -259,11 +262,14 @@ fn action_summary(value: &Value, id: &str) -> Result<Option<Value>, String> {
             text(&summary["value"]["type"])
         )));
     }
-    let (mut string, mut inline, mut other) = (String::new(), Vec::new(), Vec::new());
+    let mut format = None;
+    let mut inline = Vec::new();
+    let mut other = Vec::new();
     for argument in array(&summary["value"]["arguments"]) {
         match (text(&argument["label"]), text(&argument["valueKind"])) {
-            ("", "RawLiteral") => string.push_str(text(&argument["value"])),
+            ("", "RawLiteral") => format = Some(text(&argument["value"]).to_owned()),
             ("", "InterpolatedStringLiteral") => {
+                let mut string = String::new();
                 for segment in array(&argument["value"]["segments"]) {
                     if segment["valueKind"] == "RawLiteral" {
                         string.push_str(text(&segment["value"]));
@@ -273,6 +279,7 @@ fn action_summary(value: &Value, id: &str) -> Result<Option<Value>, String> {
                         inline.push(name);
                     }
                 }
+                format = Some(string);
             }
             ("", "Builder") => {
                 for member in array(&argument["value"]["members"]) {
@@ -287,10 +294,11 @@ fn action_summary(value: &Value, id: &str) -> Result<Option<Value>, String> {
             (label, _) => return Err(unsupported(&format!("argument '{label}'"))),
         }
     }
-    Ok(Some(json!({"actionSummary":{"wrapper":{
-        "otherParameterIdentifiers":other,
-        "summaryString":{"formatString":string,"parameterIdentifiers":inline},
-    }}})))
+    let mut wrapper = json!({"otherParameterIdentifiers":other});
+    if let Some(format) = format {
+        wrapper["summaryString"] = json!({"formatString":format,"parameterIdentifiers":inline});
+    }
+    Ok(Some(json!({"actionSummary":{"wrapper":wrapper}})))
 }
 
 /// A `\.$name` key path to one of the intent's parameters.
@@ -490,12 +498,18 @@ mod tests {
                 .unwrap_err()
                 .contains("unsupported parameterSummary argument 'table'")
         );
-        summary(&mut types)["value"]["type"] = json!("AppIntents.ParameterSummaryWhenCondition");
-        assert!(
-            extract(&types).unwrap_err().contains(
-                "unsupported parameterSummary 'AppIntents.ParameterSummaryWhenCondition'"
-            )
-        );
+        for condition in [
+            "ParameterSummaryWhenCondition",
+            "ParameterSummarySwitchCondition",
+        ] {
+            let kind = format!("AppIntents.{condition}");
+            summary(&mut types)["value"]["type"] = json!(kind);
+            assert!(
+                extract(&types)
+                    .unwrap_err()
+                    .contains(&format!("unsupported parameterSummary '{kind}'"))
+            );
+        }
     }
     #[test]
     fn input_options_reject_what_they_cannot_encode() {
@@ -545,5 +559,11 @@ mod tests {
             .unwrap()["typeSpecificMetadata"]
             .clone();
         assert!(!metadata.to_string().contains("StringMultiline"));
+        options(&mut types)["value"]["arguments"][2]["label"] = json!("futureOption");
+        assert!(
+            extract(&types)
+                .unwrap_err()
+                .contains("unsupported inputOptions argument 'futureOption'")
+        );
     }
 }

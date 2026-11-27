@@ -37,7 +37,9 @@ struct SummaryTwoProbeIntent: AppIntent {
   @Parameter(title: "First") var first: String
   @Parameter(title: "Second") var second: Int
   @Parameter(title: "Third", default: false) var third: Bool
-  static var parameterSummary: some ParameterSummary { Summary("Send \(\.$first) to \(\.$second)") }
+  static var parameterSummary: some ParameterSummary {
+    Summary("Send \(\.$second) to \(\.$first), then \(\.$second) again") { \.$third }
+  }
   func perform() async throws -> some IntentResult { .result() }
 }
 
@@ -49,6 +51,33 @@ struct SummaryBuilderProbeIntent: AppIntent {
   static var parameterSummary: some ParameterSummary {
     Summary("Just text") {
       \.$third
+      \.$first
+    }
+  }
+  func perform() async throws -> some IntentResult { .result() }
+}
+
+struct NoSummaryTextProbeIntent: AppIntent {
+  static let title: LocalizedStringResource = "No summary text"
+  static var parameterSummary: some ParameterSummary { Summary() }
+  func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
+    .result(value: "ok", dialog: "Done")
+  }
+}
+
+struct EmptySummaryTextProbeIntent: AppIntent {
+  static let title: LocalizedStringResource = "Empty summary text"
+  static var parameterSummary: some ParameterSummary { Summary("") }
+  func perform() async throws -> some IntentResult { .result() }
+}
+
+struct SummaryParametersOnlyProbeIntent: AppIntent {
+  static let title: LocalizedStringResource = "Summary parameters only"
+  @Parameter(title: "First") var first: String
+  @Parameter(title: "Second") var second: Int
+  static var parameterSummary: some ParameterSummary {
+    Summary {
+      \.$second
       \.$first
     }
   }

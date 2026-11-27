@@ -9,14 +9,14 @@
       }
     },
     "effectiveBundleIdentifiers": [],
-    "fullyQualifiedTypeName": "Sev.InputOptionsProbeIntent",
+    "fullyQualifiedTypeName": "InputOptionsProbe.InputOptionsProbeIntent",
     "identifier": "InputOptionsProbeIntent",
     "isAuthPolExplicit": false,
     "isDiscoverable": true,
-    "mangledTypeName": "3Sev23InputOptionsProbeIntentV",
+    "mangledTypeName": "17InputOptionsProbe0abC6IntentV",
     "mangledTypeNameByBundleIdentifier": {},
     "mangledTypeNameByBundleIdentifierV2": {},
-    "mangledTypeNameV2": "3Sev23InputOptionsProbeIntentV",
+    "mangledTypeNameV2": "17InputOptionsProbe0abC6IntentV",
     "openAppWhenRun": false,
     "outputFlags": 0,
     "parameters": [
@@ -71,19 +71,25 @@
           "key": "All off"
         },
         "typeSpecificMetadata": [
-          "LNValueTypeMetadataKeyStringSmartQuotes",
-          {
-            "int": {
-              "wrapper": 0
-            }
-          },
-          "LNValueTypeMetadataKeyStringCapitalizationType",
-          {
-            "int": {
-              "wrapper": 0
-            }
-          },
           "LNValueTypeMetadataKeyStringMultiline",
+          {
+            "int": {
+              "wrapper": 0
+            }
+          },
+          "LNValueTypeMetadataKeyStringSmartDashes",
+          {
+            "int": {
+              "wrapper": 0
+            }
+          },
+          "LNValueTypeMetadataKeyStringAutocorrect",
+          {
+            "int": {
+              "wrapper": 0
+            }
+          },
+          "LNValueTypeMetadataKeyStringSmartQuotes",
           {
             "int": {
               "wrapper": 0
@@ -95,13 +101,7 @@
               "wrapper": 4
             }
           },
-          "LNValueTypeMetadataKeyStringSmartDashes",
-          {
-            "int": {
-              "wrapper": 0
-            }
-          },
-          "LNValueTypeMetadataKeyStringAutocorrect",
+          "LNValueTypeMetadataKeyStringCapitalizationType",
           {
             "int": {
               "wrapper": 0
@@ -173,19 +173,7 @@
               "wrapper": 3
             }
           },
-          "LNValueTypeMetadataKeyStringSmartQuotes",
-          {
-            "int": {
-              "wrapper": 1
-            }
-          },
           "LNValueTypeMetadataKeyStringMultiline",
-          {
-            "int": {
-              "wrapper": 1
-            }
-          },
-          "LNValueTypeMetadataKeyStringAutocorrect",
           {
             "int": {
               "wrapper": 1
@@ -195,6 +183,18 @@
           {
             "int": {
               "wrapper": 0
+            }
+          },
+          "LNValueTypeMetadataKeyStringSmartQuotes",
+          {
+            "int": {
+              "wrapper": 1
+            }
+          },
+          "LNValueTypeMetadataKeyStringAutocorrect",
+          {
+            "int": {
+              "wrapper": 1
             }
           },
           "LNValueTypeMetadataKeyStringSmartDashes",
@@ -322,13 +322,13 @@
           "key": "Punct"
         },
         "typeSpecificMetadata": [
-          "LNValueTypeMetadataKeyStringCapitalizationType",
+          "LNValueTypeMetadataKeyStringKeyboardType",
           {
             "int": {
               "wrapper": 1
             }
           },
-          "LNValueTypeMetadataKeyStringKeyboardType",
+          "LNValueTypeMetadataKeyStringCapitalizationType",
           {
             "int": {
               "wrapper": 1
@@ -426,23 +426,6 @@
           {
             "kindValue": 0,
             "valueType": {
-              "array": {
-                "wrapper": {
-                  "capabilities": 3,
-                  "memberValueType": {
-                    "primitive": {
-                      "wrapper": {
-                        "typeIdentifier": 2
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
               "primitive": {
                 "wrapper": {
                   "typeIdentifier": 0
@@ -456,6 +439,23 @@
               "primitive": {
                 "wrapper": {
                   "typeIdentifier": 2
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "array": {
+                "wrapper": {
+                  "capabilities": 3,
+                  "memberValueType": {
+                    "primitive": {
+                      "wrapper": {
+                        "typeIdentifier": 2
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -492,23 +492,6 @@
           {
             "kindValue": 0,
             "valueType": {
-              "array": {
-                "wrapper": {
-                  "capabilities": 3,
-                  "memberValueType": {
-                    "primitive": {
-                      "wrapper": {
-                        "typeIdentifier": 2
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
               "primitive": {
                 "wrapper": {
                   "typeIdentifier": 0
@@ -522,6 +505,23 @@
               "primitive": {
                 "wrapper": {
                   "typeIdentifier": 2
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "array": {
+                "wrapper": {
+                  "capabilities": 3,
+                  "memberValueType": {
+                    "primitive": {
+                      "wrapper": {
+                        "typeIdentifier": 2
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -558,23 +558,6 @@
           {
             "kindValue": 0,
             "valueType": {
-              "array": {
-                "wrapper": {
-                  "capabilities": 3,
-                  "memberValueType": {
-                    "primitive": {
-                      "wrapper": {
-                        "typeIdentifier": 2
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
               "primitive": {
                 "wrapper": {
                   "typeIdentifier": 0
@@ -588,6 +571,23 @@
               "primitive": {
                 "wrapper": {
                   "typeIdentifier": 2
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "array": {
+                "wrapper": {
+                  "capabilities": 3,
+                  "memberValueType": {
+                    "primitive": {
+                      "wrapper": {
+                        "typeIdentifier": 2
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -624,23 +624,6 @@
           {
             "kindValue": 0,
             "valueType": {
-              "array": {
-                "wrapper": {
-                  "capabilities": 3,
-                  "memberValueType": {
-                    "primitive": {
-                      "wrapper": {
-                        "typeIdentifier": 2
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
               "primitive": {
                 "wrapper": {
                   "typeIdentifier": 0
@@ -654,6 +637,23 @@
               "primitive": {
                 "wrapper": {
                   "typeIdentifier": 2
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "array": {
+                "wrapper": {
+                  "capabilities": 3,
+                  "memberValueType": {
+                    "primitive": {
+                      "wrapper": {
+                        "typeIdentifier": 2
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -806,16 +806,16 @@
           "key": "Options and dialog"
         },
         "typeSpecificMetadata": [
-          "LNValueTypeMetadataKeyStringAutocorrect",
-          {
-            "int": {
-              "wrapper": 0
-            }
-          },
           "LNValueTypeMetadataKeyStringKeyboardType",
           {
             "int": {
               "wrapper": 3
+            }
+          },
+          "LNValueTypeMetadataKeyStringAutocorrect",
+          {
+            "int": {
+              "wrapper": 0
             }
           }
         ],
@@ -878,31 +878,19 @@
           "key": "Explicit defaults"
         },
         "typeSpecificMetadata": [
-          "LNValueTypeMetadataKeyStringSmartQuotes",
-          {
-            "int": {
-              "wrapper": 1
-            }
-          },
-          "LNValueTypeMetadataKeyStringKeyboardType",
-          {
-            "int": {
-              "wrapper": 0
-            }
-          },
           "LNValueTypeMetadataKeyStringMultiline",
           {
             "int": {
               "wrapper": 0
             }
           },
-          "LNValueTypeMetadataKeyStringSmartDashes",
+          "LNValueTypeMetadataKeyStringAutocorrect",
           {
             "int": {
               "wrapper": 1
             }
           },
-          "LNValueTypeMetadataKeyStringAutocorrect",
+          "LNValueTypeMetadataKeyStringSmartQuotes",
           {
             "int": {
               "wrapper": 1
@@ -913,8 +901,190 @@
             "int": {
               "wrapper": 2
             }
+          },
+          "LNValueTypeMetadataKeyStringSmartDashes",
+          {
+            "int": {
+              "wrapper": 1
+            }
+          },
+          "LNValueTypeMetadataKeyStringKeyboardType",
+          {
+            "int": {
+              "wrapper": 0
+            }
           }
         ],
+        "valueType": {
+          "primitive": {
+            "wrapper": {
+              "typeIdentifier": 0
+            }
+          }
+        }
+      },
+      {
+        "capabilities": 0,
+        "dynamicOptionsSupport": 0,
+        "inputConnectionBehavior": 0,
+        "isInput": false,
+        "isOptional": false,
+        "name": "words",
+        "resolvableInputTypes": [],
+        "title": {
+          "alternatives": [],
+          "key": "Words"
+        },
+        "typeSpecificMetadata": [
+          "LNValueTypeMetadataKeyStringMultiline",
+          {
+            "int": {
+              "wrapper": 1
+            }
+          },
+          "LNValueTypeMetadataKeyStringKeyboardType",
+          {
+            "int": {
+              "wrapper": 2
+            }
+          }
+        ],
+        "valueType": {
+          "array": {
+            "wrapper": {
+              "capabilities": 3,
+              "memberValueType": {
+                "primitive": {
+                  "wrapper": {
+                    "typeIdentifier": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "capabilities": 0,
+        "dynamicOptionsSupport": 0,
+        "inputConnectionBehavior": 0,
+        "isInput": false,
+        "isOptional": true,
+        "name": "optionalWords",
+        "resolvableInputTypes": [],
+        "title": {
+          "alternatives": [],
+          "key": "Optional words"
+        },
+        "typeSpecificMetadata": [
+          "LNValueTypeMetadataKeyStringAutocorrect",
+          {
+            "int": {
+              "wrapper": 0
+            }
+          }
+        ],
+        "valueType": {
+          "array": {
+            "wrapper": {
+              "capabilities": 3,
+              "memberValueType": {
+                "primitive": {
+                  "wrapper": {
+                    "typeIdentifier": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "capabilities": 0,
+        "dynamicOptionsSupport": 0,
+        "inputConnectionBehavior": 0,
+        "isInput": false,
+        "isOptional": false,
+        "name": "distinctWords",
+        "resolvableInputTypes": [],
+        "title": {
+          "alternatives": [],
+          "key": "Distinct words"
+        },
+        "typeSpecificMetadata": [
+          "LNValueTypeMetadataKeyStringSmartQuotes",
+          {
+            "int": {
+              "wrapper": 1
+            }
+          }
+        ],
+        "valueType": {
+          "array": {
+            "wrapper": {
+              "capabilities": 0,
+              "memberValueType": {
+                "primitive": {
+                  "wrapper": {
+                    "typeIdentifier": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "capabilities": 0,
+        "dynamicOptionsSupport": 0,
+        "inputConnectionBehavior": 0,
+        "isInput": false,
+        "isOptional": true,
+        "name": "parameterSummary",
+        "resolvableInputTypes": [
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 2
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "array": {
+                "wrapper": {
+                  "capabilities": 3,
+                  "memberValueType": {
+                    "primitive": {
+                      "wrapper": {
+                        "typeIdentifier": 2
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "title": {
+          "alternatives": [],
+          "key": "User's summary"
+        },
+        "typeSpecificMetadata": [],
         "valueType": {
           "primitive": {
             "wrapper": {

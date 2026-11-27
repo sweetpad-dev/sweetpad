@@ -9,19 +9,19 @@ pub(super) fn optional(name: &str) -> (&str, bool) {
 fn primitive(id: u64) -> Value {
     json!({"primitive":{"wrapper":{"typeIdentifier":id}}})
 }
-fn array_type(member: Value) -> Value {
-    let mut value = json!({"array":{"wrapper":{"capabilities":3}}});
+fn array_type(member: Value, capabilities: u8) -> Value {
+    let mut value = json!({"array":{"wrapper":{"capabilities":capabilities}}});
     value["array"]["wrapper"]["memberValueType"] = member;
     value
 }
 
 pub(super) fn value_type(name: &str, types: &[Value]) -> Result<Value, String> {
     let (name, _) = optional(name);
-    if let Some(member) = name
-        .strip_prefix("Swift.Array<")
-        .and_then(|n| n.strip_suffix('>'))
-    {
-        return value_type(member, types).map(array_type);
+    // Both use the array representation, with distinct native capability masks.
+    for (prefix, capabilities) in [("Swift.Array<", 3), ("Swift.Set<", 0)] {
+        if let Some(member) = name.strip_prefix(prefix).and_then(|n| n.strip_suffix('>')) {
+            return Ok(array_type(value_type(member, types)?, capabilities));
+        }
     }
     let id = match name {
         "Swift.String" => Some(0),
@@ -175,7 +175,11 @@ fn input_options(arguments: &[Value], parameter: &mut Value) -> Result<(), Strin
     else {
         return Ok(());
     };
-    if parameter["valueType"]["primitive"]["wrapper"]["typeIdentifier"] != 0 {
+    let kind = &parameter["valueType"];
+    let member = kind
+        .pointer("/array/wrapper/memberValueType")
+        .unwrap_or(kind);
+    if member["primitive"]["wrapper"]["typeIdentifier"] != 0 {
         return Err("inputOptions requires a String parameter".into());
     }
     if options["valueKind"] != "InitCall"
@@ -185,9 +189,6 @@ fn input_options(arguments: &[Value], parameter: &mut Value) -> Result<(), Strin
     }
     let mut metadata = Vec::new();
     for option in array(&options["value"]["arguments"]) {
-        if option["valueKind"] == "Runtime" {
-            continue;
-        }
         let label = text(&option["label"]);
         let (key, cases): (&str, &[&str]) = match label {
             "keyboardType" => ("KeyboardType", &KEYBOARD_TYPES),
@@ -198,6 +199,9 @@ fn input_options(arguments: &[Value], parameter: &mut Value) -> Result<(), Strin
             "smartDashes" => ("SmartDashes", &["false", "true"]),
             _ => return Err(format!("unsupported inputOptions argument '{label}'")),
         };
+        if option["valueKind"] == "Runtime" {
+            continue;
+        }
         let (expected, name) = if label.ends_with("Type") {
             ("Enum", text(&option["value"]["name"]))
         } else {
@@ -234,7 +238,7 @@ fn resolvers(kind: &Value) -> Vec<Value> {
         .map(|id| json!({"kindValue":0,"valueType":primitive(*id)}))
         .collect();
     if kind["primitive"]["wrapper"]["typeIdentifier"] == 0 {
-        types.push(json!({"kindValue":0,"valueType":array_type(primitive(2))}));
+        types.push(json!({"kindValue":0,"valueType":array_type(primitive(2), 3)}));
     }
     types
 }

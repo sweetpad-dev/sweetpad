@@ -9,14 +9,14 @@
       }
     },
     "effectiveBundleIdentifiers": [],
-    "fullyQualifiedTypeName": "Sev.AllOutputsProbeIntent",
+    "fullyQualifiedTypeName": "OutputProbe.AllOutputsProbeIntent",
     "identifier": "AllOutputsProbeIntent",
     "isAuthPolExplicit": false,
     "isDiscoverable": true,
-    "mangledTypeName": "3Sev21AllOutputsProbeIntentV",
+    "mangledTypeName": "11OutputProbe010AllOutputsB6IntentV",
     "mangledTypeNameByBundleIdentifier": {},
     "mangledTypeNameByBundleIdentifierV2": {},
-    "mangledTypeNameV2": "3Sev21AllOutputsProbeIntentV",
+    "mangledTypeNameV2": "11OutputProbe010AllOutputsB6IntentV",
     "openAppWhenRun": false,
     "outputFlags": 7,
     "outputType": {
@@ -53,14 +53,14 @@
       }
     },
     "effectiveBundleIdentifiers": [],
-    "fullyQualifiedTypeName": "Sev.DialogOnlyProbeIntent",
+    "fullyQualifiedTypeName": "OutputProbe.DialogOnlyProbeIntent",
     "identifier": "DialogOnlyProbeIntent",
     "isAuthPolExplicit": false,
     "isDiscoverable": true,
-    "mangledTypeName": "3Sev21DialogOnlyProbeIntentV",
+    "mangledTypeName": "11OutputProbe010DialogOnlyB6IntentV",
     "mangledTypeNameByBundleIdentifier": {},
     "mangledTypeNameByBundleIdentifierV2": {},
-    "mangledTypeNameV2": "3Sev21DialogOnlyProbeIntentV",
+    "mangledTypeNameV2": "11OutputProbe010DialogOnlyB6IntentV",
     "openAppWhenRun": false,
     "outputFlags": 4,
     "parameters": [],
@@ -80,6 +80,105 @@
       "isDiscoverable": true
     }
   },
+  "EmptySummaryTextProbeIntent": {
+    "actionConfiguration": {
+      "actionSummary": {
+        "wrapper": {
+          "otherParameterIdentifiers": [],
+          "summaryString": {
+            "formatString": "",
+            "parameterIdentifiers": []
+          }
+        }
+      }
+    },
+    "assistantDefinedSchemaTraits": [],
+    "assistantDefinedSchemas": [],
+    "authenticationPolicy": 0,
+    "availabilityAnnotations": {
+      "LNPlatformNameWildcard": {
+        "introducedVersion": "*"
+      }
+    },
+    "effectiveBundleIdentifiers": [],
+    "fullyQualifiedTypeName": "OutputProbe.EmptySummaryTextProbeIntent",
+    "identifier": "EmptySummaryTextProbeIntent",
+    "isAuthPolExplicit": false,
+    "isDiscoverable": true,
+    "mangledTypeName": "11OutputProbe016EmptySummaryTextB6IntentV",
+    "mangledTypeNameByBundleIdentifier": {},
+    "mangledTypeNameByBundleIdentifierV2": {},
+    "mangledTypeNameV2": "11OutputProbe016EmptySummaryTextB6IntentV",
+    "openAppWhenRun": false,
+    "outputFlags": 0,
+    "parameters": [],
+    "presentationStyle": 0,
+    "requiredCapabilities": [],
+    "supportedModes": 1,
+    "systemProtocolMetadata": [],
+    "systemProtocolMetadataV2": [],
+    "systemProtocols": [],
+    "title": {
+      "alternatives": [],
+      "key": "Empty summary text"
+    },
+    "typeSpecificMetadata": [],
+    "visibilityMetadata": {
+      "assistantOnly": false,
+      "isDiscoverable": true
+    }
+  },
+  "NoSummaryTextProbeIntent": {
+    "actionConfiguration": {
+      "actionSummary": {
+        "wrapper": {
+          "otherParameterIdentifiers": []
+        }
+      }
+    },
+    "assistantDefinedSchemaTraits": [],
+    "assistantDefinedSchemas": [],
+    "authenticationPolicy": 0,
+    "availabilityAnnotations": {
+      "LNPlatformNameWildcard": {
+        "introducedVersion": "*"
+      }
+    },
+    "effectiveBundleIdentifiers": [],
+    "fullyQualifiedTypeName": "OutputProbe.NoSummaryTextProbeIntent",
+    "identifier": "NoSummaryTextProbeIntent",
+    "isAuthPolExplicit": false,
+    "isDiscoverable": true,
+    "mangledTypeName": "11OutputProbe013NoSummaryTextB6IntentV",
+    "mangledTypeNameByBundleIdentifier": {},
+    "mangledTypeNameByBundleIdentifierV2": {},
+    "mangledTypeNameV2": "11OutputProbe013NoSummaryTextB6IntentV",
+    "openAppWhenRun": false,
+    "outputFlags": 4,
+    "outputType": {
+      "primitive": {
+        "wrapper": {
+          "typeIdentifier": 0
+        }
+      }
+    },
+    "parameters": [],
+    "presentationStyle": 0,
+    "requiredCapabilities": [],
+    "supportedModes": 1,
+    "systemProtocolMetadata": [],
+    "systemProtocolMetadataV2": [],
+    "systemProtocols": [],
+    "title": {
+      "alternatives": [],
+      "key": "No summary text"
+    },
+    "typeSpecificMetadata": [],
+    "visibilityMetadata": {
+      "assistantOnly": false,
+      "isDiscoverable": true
+    }
+  },
   "OpensProbeIntent": {
     "assistantDefinedSchemaTraits": [],
     "assistantDefinedSchemas": [],
@@ -90,14 +189,14 @@
       }
     },
     "effectiveBundleIdentifiers": [],
-    "fullyQualifiedTypeName": "Sev.OpensProbeIntent",
+    "fullyQualifiedTypeName": "OutputProbe.OpensProbeIntent",
     "identifier": "OpensProbeIntent",
     "isAuthPolExplicit": false,
     "isDiscoverable": true,
-    "mangledTypeName": "3Sev16OpensProbeIntentV",
+    "mangledTypeName": "11OutputProbe05OpensB6IntentV",
     "mangledTypeNameByBundleIdentifier": {},
     "mangledTypeNameByBundleIdentifierV2": {},
-    "mangledTypeNameV2": "3Sev16OpensProbeIntentV",
+    "mangledTypeNameV2": "11OutputProbe05OpensB6IntentV",
     "openAppWhenRun": false,
     "outputFlags": 1,
     "parameters": [],
@@ -127,14 +226,14 @@
       }
     },
     "effectiveBundleIdentifiers": [],
-    "fullyQualifiedTypeName": "Sev.SnippetOnlyProbeIntent",
+    "fullyQualifiedTypeName": "OutputProbe.SnippetOnlyProbeIntent",
     "identifier": "SnippetOnlyProbeIntent",
     "isAuthPolExplicit": false,
     "isDiscoverable": true,
-    "mangledTypeName": "3Sev22SnippetOnlyProbeIntentV",
+    "mangledTypeName": "11OutputProbe011SnippetOnlyB6IntentV",
     "mangledTypeNameByBundleIdentifier": {},
     "mangledTypeNameByBundleIdentifierV2": {},
-    "mangledTypeNameV2": "3Sev22SnippetOnlyProbeIntentV",
+    "mangledTypeNameV2": "11OutputProbe011SnippetOnlyB6IntentV",
     "openAppWhenRun": false,
     "outputFlags": 2,
     "parameters": [],
@@ -178,14 +277,14 @@
       }
     },
     "effectiveBundleIdentifiers": [],
-    "fullyQualifiedTypeName": "Sev.SummaryBuilderProbeIntent",
+    "fullyQualifiedTypeName": "OutputProbe.SummaryBuilderProbeIntent",
     "identifier": "SummaryBuilderProbeIntent",
     "isAuthPolExplicit": false,
     "isDiscoverable": true,
-    "mangledTypeName": "3Sev25SummaryBuilderProbeIntentV",
+    "mangledTypeName": "11OutputProbe014SummaryBuilderB6IntentV",
     "mangledTypeNameByBundleIdentifier": {},
     "mangledTypeNameByBundleIdentifierV2": {},
-    "mangledTypeNameV2": "3Sev25SummaryBuilderProbeIntentV",
+    "mangledTypeNameV2": "11OutputProbe014SummaryBuilderB6IntentV",
     "openAppWhenRun": false,
     "outputFlags": 0,
     "parameters": [
@@ -271,7 +370,7 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 0
+                  "typeIdentifier": 2
                 }
               }
             }
@@ -281,7 +380,7 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 2
+                  "typeIdentifier": 0
                 }
               }
             }
@@ -356,18 +455,14 @@
       "isDiscoverable": true
     }
   },
-  "SummaryTwoProbeIntent": {
+  "SummaryParametersOnlyProbeIntent": {
     "actionConfiguration": {
       "actionSummary": {
         "wrapper": {
-          "otherParameterIdentifiers": [],
-          "summaryString": {
-            "formatString": "Send ${first} to ${second}",
-            "parameterIdentifiers": [
-              "first",
-              "second"
-            ]
-          }
+          "otherParameterIdentifiers": [
+            "second",
+            "first"
+          ]
         }
       }
     },
@@ -380,14 +475,14 @@
       }
     },
     "effectiveBundleIdentifiers": [],
-    "fullyQualifiedTypeName": "Sev.SummaryTwoProbeIntent",
-    "identifier": "SummaryTwoProbeIntent",
+    "fullyQualifiedTypeName": "OutputProbe.SummaryParametersOnlyProbeIntent",
+    "identifier": "SummaryParametersOnlyProbeIntent",
     "isAuthPolExplicit": false,
     "isDiscoverable": true,
-    "mangledTypeName": "3Sev21SummaryTwoProbeIntentV",
+    "mangledTypeName": "11OutputProbe021SummaryParametersOnlyB6IntentV",
     "mangledTypeNameByBundleIdentifier": {},
     "mangledTypeNameByBundleIdentifierV2": {},
-    "mangledTypeNameV2": "3Sev21SummaryTwoProbeIntentV",
+    "mangledTypeNameV2": "11OutputProbe021SummaryParametersOnlyB6IntentV",
     "openAppWhenRun": false,
     "outputFlags": 0,
     "parameters": [
@@ -399,16 +494,6 @@
         "isOptional": false,
         "name": "first",
         "resolvableInputTypes": [
-          {
-            "kindValue": 0,
-            "valueType": {
-              "primitive": {
-                "wrapper": {
-                  "typeIdentifier": 2
-                }
-              }
-            }
-          },
           {
             "kindValue": 0,
             "valueType": {
@@ -432,6 +517,16 @@
               "primitive": {
                 "wrapper": {
                   "typeIdentifier": 0
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 2
                 }
               }
             }
@@ -463,7 +558,121 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
+                  "typeIdentifier": 7
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
                   "typeIdentifier": 2
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
+                }
+              }
+            }
+          }
+        ],
+        "title": {
+          "alternatives": [],
+          "key": "Second"
+        },
+        "typeSpecificMetadata": [],
+        "valueType": {
+          "primitive": {
+            "wrapper": {
+              "typeIdentifier": 2
+            }
+          }
+        }
+      }
+    ],
+    "presentationStyle": 0,
+    "requiredCapabilities": [],
+    "supportedModes": 1,
+    "systemProtocolMetadata": [],
+    "systemProtocolMetadataV2": [],
+    "systemProtocols": [],
+    "title": {
+      "alternatives": [],
+      "key": "Summary parameters only"
+    },
+    "typeSpecificMetadata": [],
+    "visibilityMetadata": {
+      "assistantOnly": false,
+      "isDiscoverable": true
+    }
+  },
+  "SummaryTwoProbeIntent": {
+    "actionConfiguration": {
+      "actionSummary": {
+        "wrapper": {
+          "otherParameterIdentifiers": [
+            "third"
+          ],
+          "summaryString": {
+            "formatString": "Send ${second} to ${first}, then ${second} again",
+            "parameterIdentifiers": [
+              "second",
+              "first",
+              "second"
+            ]
+          }
+        }
+      }
+    },
+    "assistantDefinedSchemaTraits": [],
+    "assistantDefinedSchemas": [],
+    "authenticationPolicy": 0,
+    "availabilityAnnotations": {
+      "LNPlatformNameWildcard": {
+        "introducedVersion": "*"
+      }
+    },
+    "effectiveBundleIdentifiers": [],
+    "fullyQualifiedTypeName": "OutputProbe.SummaryTwoProbeIntent",
+    "identifier": "SummaryTwoProbeIntent",
+    "isAuthPolExplicit": false,
+    "isDiscoverable": true,
+    "mangledTypeName": "11OutputProbe010SummaryTwoB6IntentV",
+    "mangledTypeNameByBundleIdentifier": {},
+    "mangledTypeNameByBundleIdentifierV2": {},
+    "mangledTypeNameV2": "11OutputProbe010SummaryTwoB6IntentV",
+    "openAppWhenRun": false,
+    "outputFlags": 0,
+    "parameters": [
+      {
+        "capabilities": 0,
+        "dynamicOptionsSupport": 0,
+        "inputConnectionBehavior": 0,
+        "isInput": false,
+        "isOptional": false,
+        "name": "first",
+        "resolvableInputTypes": [
+          {
+            "kindValue": 0,
+            "valueType": {
+              "array": {
+                "wrapper": {
+                  "capabilities": 3,
+                  "memberValueType": {
+                    "primitive": {
+                      "wrapper": {
+                        "typeIdentifier": 2
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -483,7 +692,59 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
+                  "typeIdentifier": 2
+                }
+              }
+            }
+          }
+        ],
+        "title": {
+          "alternatives": [],
+          "key": "First"
+        },
+        "typeSpecificMetadata": [],
+        "valueType": {
+          "primitive": {
+            "wrapper": {
+              "typeIdentifier": 0
+            }
+          }
+        }
+      },
+      {
+        "capabilities": 0,
+        "dynamicOptionsSupport": 0,
+        "inputConnectionBehavior": 0,
+        "isInput": false,
+        "isOptional": false,
+        "name": "second",
+        "resolvableInputTypes": [
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
                   "typeIdentifier": 7
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 2
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
                 }
               }
             }
@@ -568,14 +829,14 @@
       }
     },
     "effectiveBundleIdentifiers": [],
-    "fullyQualifiedTypeName": "Sev.ValueSnippetProbeIntent",
+    "fullyQualifiedTypeName": "OutputProbe.ValueSnippetProbeIntent",
     "identifier": "ValueSnippetProbeIntent",
     "isAuthPolExplicit": false,
     "isDiscoverable": true,
-    "mangledTypeName": "3Sev23ValueSnippetProbeIntentV",
+    "mangledTypeName": "11OutputProbe012ValueSnippetB6IntentV",
     "mangledTypeNameByBundleIdentifier": {},
     "mangledTypeNameByBundleIdentifierV2": {},
-    "mangledTypeNameV2": "3Sev23ValueSnippetProbeIntentV",
+    "mangledTypeNameV2": "11OutputProbe012ValueSnippetB6IntentV",
     "openAppWhenRun": false,
     "outputFlags": 2,
     "outputType": {

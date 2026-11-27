@@ -31,6 +31,15 @@ struct InputOptionsProbeIntent: AppIntent {
   @Parameter(title: "Explicit defaults", inputOptions: String.IntentInputOptions(keyboardType: .asciiCapable, capitalizationType: .sentences, multiline: false, autocorrect: true, smartQuotes: true, smartDashes: true))
   var explicitDefaults: String?
 
+  @Parameter(title: "Words", inputOptions: .init(keyboardType: .URL, multiline: true))
+  var words: [String]
+  @Parameter(title: "Optional words", inputOptions: .init(autocorrect: false))
+  var optionalWords: [String]?
+  @Parameter(title: "Distinct words", inputOptions: .init(smartQuotes: true))
+  var distinctWords: Set<String>
+  @Parameter(title: "User's summary", inputOptions: nil)
+  var parameterSummary: String?
+
   @MainActor
   func perform() async throws -> some IntentResult { .result() }
 }

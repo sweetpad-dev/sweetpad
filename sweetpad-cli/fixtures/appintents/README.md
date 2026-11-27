@@ -18,10 +18,12 @@ It ignores native phrase order and generation timestamps.
 
 Registration covers basic intents, primitive parameters, enums, entities,
 queries, widget configuration, authentication policies, App Shortcuts,
-`String.IntentInputOptions`, output flags, and plain parameter summaries
-(`*.actions.json` hold the probes' actions only).
+`String.IntentInputOptions`, output flags, and plain parameter summaries.
+The input options probe covers scalar strings, arrays, and sets. The summary
+probes cover omitted text, an explicit empty string, interpolation, and a
+trailing list of parameters. The `*.actions.json` files hold the probe actions.
 Assistant schemas, explicit supported modes, other custom parameter options,
-conditional parameter summaries,
-and dependency metadata currently stop extraction with an error.
+conditional summaries, summaries with a localization table, and dependency
+metadata currently stop extraction with an error.
 Localized shortcut phrase models and availability-specific metadata need more coverage.
 These captures establish format compatibility, not device registration or Siri behavior.

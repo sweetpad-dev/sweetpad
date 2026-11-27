@@ -4,9 +4,10 @@ Requires xcodegen and a built target/debug/sweetpad on macOS.
 
     DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer python3 -I sweetpad-cli/fixtures/appintents/regen.py
 
-Only source paths and JSON formatting are normalized. Rust tests normalize the
-generator and the order of the native resolver sets. The SSU test compares its
-semantic contents because native training adds a timestamp and reorders phrases.
+The captures normalize source paths and JSON formatting. Rust tests also
+normalize the generator identity, resolver sets, and metadata key/value order.
+The SSU test compares phrases because native training adds a timestamp and
+reorders phrases.
 """
 
 import ctypes
