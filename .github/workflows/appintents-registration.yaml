@@ -1,0 +1,71 @@
+name: App Intents SDK and registration
+
+on:
+  pull_request:
+    paths: &paths
+      - 'sweetpad-cli/src/**'
+      - 'sweetpad-cli/fixtures/appintents/**'
+      - 'sweetpad-core/**'
+      - 'sweetpad-lib/src/**'
+      - 'sweetpad-lib/ci/bundle_comparison.py'
+      - 'Cargo.*'
+      - 'rust-toolchain.toml'
+      - '.github/workflows/appintents-registration.yaml'
+  push:
+    branches: [main]
+    paths: *paths
+  schedule:
+    - cron: '25 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: appintents-registration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sdk:
+    name: Classify the public iOS SDK
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      - &select-xcode
+        name: Select the newest stable installed Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        with:
+          xcode-version: latest-stable
+      - run: xcodebuild -version
+      - run: python3 -B -I sweetpad-cli/fixtures/appintents/sdk_coverage.py
+
+  native:
+    name: Capture registration with Xcode
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      - *select-xcode
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --locked -p sweetpad-cli --bin sweetpad
+      - run: command -v xcodegen || brew install xcodegen
+      - run: python3 -B -I sweetpad-cli/fixtures/appintents/regen.py --export-registration "$RUNNER_TEMP/registrations"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: appintents-registrations
+          path: ${{ runner.temp }}/registrations
+          if-no-files-found: error
+
+  linux:
+    name: Compare complete registrations on Linux
+    needs: native
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v8
+        with:
+          name: appintents-registrations
+          path: ${{ runner.temp }}/registrations
+      - run: cargo build --locked -p sweetpad-cli --bin sweetpad
+      - run: python3 -B -I sweetpad-cli/fixtures/appintents/verify_registration.py "$RUNNER_TEMP/registrations"
+      - run: python3 -B -m unittest discover -s sweetpad-cli/fixtures/appintents -p 'test_*.py'
