@@ -1,5 +1,15 @@
 import UIKit
 
+private struct CachedMaster: Hashable, Decodable {
+    let name, weight, size: String
+    let display: Int
+}
+
+private struct SymbolCatalog: Decodable {
+    let names: [String]
+    let cached: Set<CachedMaster>
+}
+
 private struct SymbolPixels {
     let width: Int
     let height: Int
@@ -21,11 +31,12 @@ private struct SymbolPixels {
         rgba = Array(UnsafeBufferPointer(start: context.data!.assumingMemoryBound(to: UInt8.self), count: width * height * 4))
     }
 
-    func compare(with reference: Self, cached: Bool, fractional: Bool, label: String) {
-        precondition(width == reference.width && height == reference.height, "Raster dimensions differ for \(label)")
-        precondition(stride(from: 3, to: reference.rgba.count, by: 4).contains { reference.rgba[$0] != 0 },
-                     "Empty Xcode symbol for \(label)")
-        if rgba == reference.rgba { return }
+    func difference(from reference: Self, cached: Bool, fractional: Bool) -> String? {
+        guard width == reference.width && height == reference.height else { return "raster dimensions differ" }
+        guard stride(from: 3, to: reference.rgba.count, by: 4).contains(where: { reference.rgba[$0] != 0 }) else {
+            return "empty Xcode symbol"
+        }
+        if rgba == reference.rgba { return nil }
         let offsets = [-width - 1, -width, -width + 1, -1, 0, 1, width - 1, width, width + 1]
         var ink = 0, difference = 0
         for y in 0..<height {
@@ -41,38 +52,52 @@ private struct SymbolPixels {
                     if delta <= 2 { continue }
                     // Xcode can resample a cached bitmap near 15, 17 and 20 pt.
                     // A contour pixel may blend adjacent colors. Flat interiors must agree.
-                    precondition(cached && x > 0 && y > 0 && x + 1 < width && y + 1 < height,
-                                 "\(label) at (\(x), \(y)) channel \(channel): expected \(expected), got \(value)")
-                    precondition(offsets.contains { reference.rgba[j + $0 * 4] != reference.rgba[j] },
-                                 "\(label) at (\(x), \(y)) channel \(channel): expected flat \(expected), got \(value)")
+                    guard cached && x > 0 && y > 0 && x + 1 < width && y + 1 < height,
+                          offsets.contains(where: { reference.rgba[j + $0 * 4] != reference.rgba[j] }) else {
+                        return "pixel (\(x), \(y)) channel \(channel): expected \(expected), got \(value)"
+                    }
                 }
                 difference += worst
             }
         }
         // A fractional point size also resizes the cached raster. Bound the total
         // error against visible ink so a missing stroke cannot pass in a large frame.
-        precondition(difference * (fractional ? 8 : 50) <= ink,
-                     "\(label) differs by \(difference) channel levels over \(ink) alpha levels")
+        guard difference * (fractional ? 8 : 50) <= ink else {
+            return "difference of \(difference) channel levels over \(ink) alpha levels"
+        }
+        return nil
     }
 }
 
 @available(iOS 17.0, *)
 @MainActor func checkCustomSymbols(xcode: Bundle, linuxWidget: Bundle, xcodeWidget: Bundle) {
     let url = Bundle.main.url(forResource: "CoMapsSymbols", withExtension: "json")!
-    let names = try! JSONDecoder().decode([String: [String]].self, from: Data(contentsOf: url))
+    let catalogs = try! JSONDecoder().decode([String: SymbolCatalog].self, from: Data(contentsOf: url))
     let sizes: [(CGFloat, UIImage.SymbolWeight, UIImage.SymbolScale, CGFloat, UIUserInterfaceStyle)] = [
         (15, .regular, .medium, 2, .light), (17, .regular, .medium, 3, .light), (20, .regular, .medium, 1, .dark),
         (17.03, .regular, .medium, 3, .light), (29, .bold, .large, 2, .dark), (21, .ultraLight, .small, 1, .light)
     ]
-    let modes: [(String, UIImage.SymbolConfiguration?, Double?)] = [
-        ("default", nil, nil), ("monochrome", .preferringMonochrome(), nil),
-        ("multicolor", .preferringMulticolor(), nil), ("hierarchical", .init(hierarchicalColor: .systemOrange), nil),
+    let masterModes: [(String, UIImage.SymbolConfiguration?, Double?)] = [
+        ("default", nil, nil), ("multicolor", .preferringMulticolor(), nil)
+    ]
+    let modes = masterModes + [
+        ("monochrome", .preferringMonochrome(), nil), ("hierarchical", .init(hierarchicalColor: .systemOrange), nil),
         ("palette", .init(paletteColors: [.systemIndigo, .systemYellow, .systemTeal]), nil),
         ("variable 0", .preferringMulticolor(), 0), ("variable 0.75", .preferringMulticolor(), 0.75)
     ]
-    var comparisons = 0
+    let weights: [UIImage.SymbolWeight: String] = [.ultraLight: "Ultralight", .thin: "Thin", .light: "Light",
+        .regular: "Regular", .medium: "Medium", .semibold: "Semibold", .bold: "Bold", .heavy: "Heavy", .black: "Black"]
+    let scales: [UIImage.SymbolScale: String] = [.small: "Small", .medium: "Medium", .large: "Large"]
+    var cases = sizes.map { ($0, modes) }
+    for weight in weights.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+        for scale in [UIImage.SymbolScale.small, .medium, .large] where weight != .regular || scale != .medium {
+            cases.append(((17, weight, scale, 2, .light), masterModes))
+        }
+    }
+    var comparisons = 0, failures = 0
     for (catalog, linux, native) in [("app", Bundle.main, xcode), ("widget", linuxWidget, xcodeWidget)] {
-        for (points, weight, size, display, style) in sizes {
+        let assets = catalogs[catalog]!
+        for ((points, weight, size, display, style), sampleModes) in cases {
             let traits = UITraitCollection {
                 $0.displayScale = display
                 $0.userInterfaceStyle = style
@@ -80,11 +105,13 @@ private struct SymbolPixels {
             }
             let base = UIImage.SymbolConfiguration(pointSize: points, weight: weight, scale: size)
             traits.performAsCurrent {
-                for name in names[catalog]! {
-                    for (mode, colors, variable) in modes {
+                for name in assets.names {
+                    let master = CachedMaster(name: name, weight: weights[weight]!, size: scales[size]!, display: Int(display))
+                    let cached = assets.cached.contains(master) && [15, 17, 20].contains(points.rounded())
+                    for (mode, colors, variable) in sampleModes {
                         autoreleasepool {
                             let config = (colors.map { base.applying($0) } ?? base).withTraitCollection(traits)
-                            let label = "\(catalog)/\(name) \(mode), \(points)pt at \(display)x"
+                            let label = "\(catalog)/\(name) \(master.weight)-\(master.size) \(mode), \(points)pt at \(display)x"
                             func load(_ bundle: Bundle) -> UIImage {
                                 let image: UIImage?
                                 if let variable {
@@ -96,17 +123,29 @@ private struct SymbolPixels {
                                 return image
                             }
                             let test = load(linux), reference = load(native)
-                            precondition(test.size == reference.size && test.baselineOffsetFromBottom == reference.baselineOffsetFromBottom
-                                         && test.alignmentRectInsets == reference.alignmentRectInsets,
-                                         "Symbol layout differs for \(label): \(test.size) vs \(reference.size)")
-                            SymbolPixels(test, scale: display).compare(with: SymbolPixels(reference, scale: display),
-                                cached: weight == .regular && size == .medium, fractional: points != points.rounded(), label: label)
                             comparisons += 1
+                            let reason: String?
+                            if test.size != reference.size || test.baselineOffsetFromBottom != reference.baselineOffsetFromBottom
+                                || test.alignmentRectInsets != reference.alignmentRectInsets {
+                                func layout(_ image: UIImage) -> String {
+                                    let baseline = String(describing: image.baselineOffsetFromBottom)
+                                    return "\(image.size), baseline \(baseline), insets \(image.alignmentRectInsets)"
+                                }
+                                reason = "layout differs: Xcode \(layout(reference)), Linux \(layout(test))"
+                            } else {
+                                reason = SymbolPixels(test, scale: display).difference(from: SymbolPixels(reference, scale: display),
+                                    cached: cached, fractional: points != points.rounded())
+                            }
+                            if let reason {
+                                failures += 1
+                                if failures <= 20 { print("\(label): \(reason)"); fflush(stdout) }
+                            }
                         }
                     }
                 }
             }
         }
     }
-    print("Compared CoMaps symbols in UIKit: \(names["app"]!.count) app and \(names["widget"]!.count) widget sets, \(comparisons) renderings")
+    precondition(failures == 0, "\(failures) of \(comparisons) custom symbol renderings differ")
+    print("Compared CoMaps symbols in UIKit: \(catalogs["app"]!.names.count) app and \(catalogs["widget"]!.names.count) widget sets, \(comparisons) renderings")
 }

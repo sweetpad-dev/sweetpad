@@ -1,6 +1,5 @@
 """Type-check the original CoMaps calls and load the Linux-built nib and catalog in UIKit."""
 import argparse
-from itertools import zip_longest
 import json
 from pathlib import Path
 import platform
@@ -8,6 +7,7 @@ import plistlib
 import shutil
 import subprocess
 import tempfile
+import xml.etree.ElementTree as ET
 
 from compile import CATALOGS, NAVIGATION, WIDGET, compile_image_bundle, compile_variant_bundle, write_bundle_info
 
@@ -43,24 +43,41 @@ def rendition_manifest(bundle):
 
 def compare_symbol_catalog(linux, native_rows, catalog, count):
     def glyphs(rows):
-        fields = ["Name", "Glyph Weight", "Glyph Size", "Idiom", "Scale", "Reference Point Size",
-                  "Available Sizes", "Template Version", "Interpolatable", "Glyph RenderingMode",
+        fields = ["Idiom", "Scale", "Reference Point Size", "Template Version", "Interpolatable", "Glyph RenderingMode",
                   "Contains Hierarchical Layers", "Contains Multicolor Layers"]
-        return sorted(tuple(row.get(key) for key in fields) for row in rows if row.get("AssetType") == "Vector Glyph")
+        return {(row["Name"], row["Glyph Weight"], row["Glyph Size"]): tuple(row.get(key) for key in fields)
+                for row in rows if row.get("AssetType") == "Vector Glyph"}
 
     expected = glyphs(native_rows)
     actual = glyphs(json.loads(xcrun("assetutil", "--info", linux / "Assets.car")))
-    names = sorted({row[0] for row in expected})
-    sources = sorted(path.stem for path in catalog.rglob("*.symbolset"))
-    if len(sources) != count or names != sources:
-        raise SystemExit(f"Expected {count} named CoMaps symbols in {catalog}, got {names} from {sources}")
-    for actual_row, expected_row in zip_longest(actual, expected):
-        if actual_row != expected_row:
-            raise SystemExit(f"Symbol rendition differs in {catalog}:\nXcode: {expected_row}\nLinux: {actual_row}")
-    return names
+    sets = sorted(catalog.rglob("*.symbolset"))
+    names = sorted(path.stem for path in sets)
+    if len(sets) != count or any({key[0] for key in compiled} != set(names) for compiled in (expected, actual)):
+        raise SystemExit(f"Expected {count} CoMaps symbols in both catalogs for {catalog}")
+    # Xcode versions can also materialize interpolated masters and cache different point sizes.
+    # Compare the authored masters here. UIKit exercises all 27 weight/size combinations below.
+    sizes = {"S": "Small", "M": "Medium", "L": "Large"}
+    authored = set()
+    for path in sets:
+        slot, = json.loads((path / "Contents.json").read_text())["symbols"]
+        masters = ET.parse(path / slot["filename"]).find('.//{*}g[@id="Symbols"]')
+        if masters is None or not len(masters):
+            raise SystemExit(f"No symbol masters in {path}")
+        for master in masters.findall("{*}g"):
+            if len(master):
+                weight, size = master.attrib["id"].rsplit("-", 1)
+                authored.add((path.stem, weight, sizes[size]))
+    for key in sorted(authored):
+        if key not in expected or key not in actual or expected[key] != actual[key]:
+            raise SystemExit(f"Symbol master {key} differs in {catalog}: Xcode {expected.get(key)}, Linux {actual.get(key)}")
+    print(f"{catalog.name}: matched {len(authored)} authored masters. Additional interpolated masters: "
+          f"Xcode {len(expected.keys() - authored)}, Linux {len(actual.keys() - authored)}.", flush=True)
+    cache_keys = sorted({(row["Name"], row["Glyph Weight"], row["Glyph Size"], row["Scale"])
+                         for row in native_rows if row.get("AssetType") == "Image" and "Glyph Cached Index" in row})
+    return {"names": names, "cached": [dict(zip(("name", "weight", "size", "display"), key)) for key in cache_keys]}
 
 
-def compile_comaps_reference(resources, app):
+def compile_comaps_reference(resources, app, reference_output):
     shutil.unpack_archive(resources / "CoMapsImages.zip", app.parent)
     catalog = app.parent / "Images.xcassets"
     bundle = app / "XcodeCoMaps.bundle"
@@ -76,20 +93,24 @@ def compile_comaps_reference(resources, app):
     if len(names) != len(sets) or not {"ic_booking_plus", "ic_booking_minus"}.issubset(names):
         raise SystemExit(f"Expected all {len(sets)} CoMaps PDF sets including both booking controls, got {names}")
     (app / "CoMapsPDFs.json").write_text(json.dumps(names))
-    app_symbols = compare_symbol_catalog(app, rows, catalog, 55)
     shutil.unpack_archive(resources / "CoMapsWidget.zip", app.parent)
     widget_catalog = app.parent / WIDGET
     native_widget = app / "XcodeWidget.bundle"
     linux_widget = app / "LinuxWidget.bundle"
     compile_image_bundle(native_widget, [widget_catalog])
+    if reference_output:
+        reference_output.mkdir(parents=True, exist_ok=True)
+        for native in [bundle, native_widget]:
+            shutil.copyfile(native / "Assets.car", reference_output / (native.stem + ".car"))
     shutil.copytree(resources / linux_widget.name, linux_widget)
     widget_rows = json.loads(xcrun("assetutil", "--info", native_widget / "Assets.car"))
+    app_symbols = compare_symbol_catalog(app, rows, catalog, 55)
     widget_symbols = compare_symbol_catalog(linux_widget, widget_rows, widget_catalog, 1)
     (app / "CoMapsSymbols.json").write_text(json.dumps({"app": app_symbols, "widget": widget_symbols}))
     return len(names)
 
 
-def check(resources, simctl, simulator):
+def check(resources, simctl, simulator, reference_output):
     device_sdk = xcrun("--sdk", "iphoneos", "--show-sdk-path")
     sim_sdk = xcrun("--sdk", "iphonesimulator", "--show-sdk-path")
     with tempfile.TemporaryDirectory() as tmp:
@@ -105,7 +126,7 @@ def check(resources, simctl, simulator):
         native_masks = app / "XcodePDFMasks.bundle"
         shutil.copytree(resources / linux_masks.name, linux_masks)
         compile_image_bundle(native_masks, [CATALOGS / "PdfMasks.xcassets"])
-        pdf_count = compile_comaps_reference(resources, app)
+        pdf_count = compile_comaps_reference(resources, app, reference_output)
         xcrun("ibtool", "--module", "CoMaps", "--target-device", "iphone", "--minimum-deployment-target", "15.6",
               "--compile", app / "XcodeNavigation.nib", resources / NAVIGATION.name)
         expected = rendition_manifest(native) + rendition_manifest(native_masks)
@@ -133,7 +154,7 @@ def check(resources, simctl, simulator):
             subprocess.run(["codesign", "--force", "--sign", "-", app], check=True)
             subprocess.run(["xcrun", *simctl, "install", simulator, app], check=True, timeout=180)
             log = subprocess.run(["xcrun", *simctl, "launch", "--console-pty", "--terminate-running-process",
-                                  simulator, bundle_id], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=90)
+                                  simulator, bundle_id], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=240)
             lines = log.stdout.splitlines()
             symbol_result = next((line for line in lines if line.startswith("Compared CoMaps symbols")), None)
             if log.returncode or not symbol_result or "CoMaps resources and variant bundles passed" not in lines:
@@ -148,12 +169,13 @@ if __name__ == "__main__":
     parser.add_argument("resources", type=Path, help="output of compile.py")
     parser.add_argument("--simulator", help="reuse a simulator by UDID (otherwise create and delete a test iPhone)")
     parser.add_argument("--device-set", type=Path)
+    parser.add_argument("--reference-output", type=Path, help="save the Xcode catalogs to reproduce a comparison")
     args = parser.parse_args()
     simctl = ["simctl", "--set", str(args.device_set.resolve())] if args.device_set else ["simctl"]
     simulator = args.simulator or create_iphone(simctl)
     try:
         subprocess.run(["xcrun", *simctl, "bootstatus", simulator, "-b"], check=True, timeout=600)
-        check(args.resources.resolve(), simctl, simulator)
+        check(args.resources.resolve(), simctl, simulator, args.reference_output)
     finally:
         if not args.simulator:
             subprocess.run(["xcrun", *simctl, "shutdown", simulator], check=False, timeout=60)

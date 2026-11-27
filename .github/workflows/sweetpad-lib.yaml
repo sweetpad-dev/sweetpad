@@ -103,7 +103,17 @@ jobs:
           name: comaps-resources
           path: ${{ runner.temp }}/comaps-resources
       - name: Compare Linux resources with Xcode and load both in UIKit
-        run: python3 sweetpad-cli/fixtures/comaps/simulator.py "$RUNNER_TEMP/comaps-resources"
+        run: |
+          xcodebuild -version
+          python3 sweetpad-cli/fixtures/comaps/simulator.py "$RUNNER_TEMP/comaps-resources" --reference-output "$RUNNER_TEMP/comaps-xcode"
+      - name: Save Xcode catalogs for a failed comparison
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: comaps-xcode
+          path: ${{ runner.temp }}/comaps-xcode
+          if-no-files-found: ignore
+          retention-days: 1
   check:
     name: fmt · clippy · test
     runs-on: macos-latest
