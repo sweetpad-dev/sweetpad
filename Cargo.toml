@@ -47,6 +47,8 @@ moxcms = "0.8.1"
 hayro = { version = "0.9", default-features = false }
 resvg = { version = "0.48", default-features = false }
 svgtypes = "0.16"
+# Keep the original precision when measuring SF Symbols' Bézier control points.
+kurbo = "0.13"
 # The codesign stand-in signs with an identity exported from Keychain Access:
 # RSA signatures, and the Triple DES and AES that a .p12 file's contents are
 # encrypted with. The signature formats around them are Apple's, and

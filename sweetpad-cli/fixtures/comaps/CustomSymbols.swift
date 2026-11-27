@@ -1,5 +1,9 @@
 import UIKit
 
+private struct SymbolMaster: Hashable, Decodable {
+    let name, weight, size: String
+}
+
 private struct CachedMaster: Hashable, Decodable {
     let name, weight, size: String
     let display: Int
@@ -7,6 +11,7 @@ private struct CachedMaster: Hashable, Decodable {
 
 private struct SymbolCatalog: Decodable {
     let names: [String]
+    let generated: Set<SymbolMaster>
     let cached: Set<CachedMaster>
 }
 
@@ -31,7 +36,7 @@ private struct SymbolPixels {
         rgba = Array(UnsafeBufferPointer(start: context.data!.assumingMemoryBound(to: UInt8.self), count: width * height * 4))
     }
 
-    func difference(from reference: Self, cached: Bool, fractional: Bool) -> String? {
+    func difference(from reference: Self, cached: Bool, fractional: Bool, generated: Bool) -> String? {
         guard width == reference.width && height == reference.height else { return "raster dimensions differ" }
         guard stride(from: 3, to: reference.rgba.count, by: 4).contains(where: { reference.rgba[$0] != 0 }) else {
             return "empty Xcode symbol"
@@ -50,9 +55,10 @@ private struct SymbolPixels {
                     let delta = abs(value - expected)
                     worst = max(worst, delta)
                     if delta <= 2 { continue }
-                    // Xcode can resample a cached bitmap near 15, 17 and 20 pt.
-                    // A contour pixel may blend adjacent colors. Flat interiors must agree.
-                    guard cached && x > 0 && y > 0 && x + 1 < width && y + 1 < height,
+                    // Xcode 26 also bakes an intermediate vector that Xcode 27 leaves to UIKit.
+                    // Comparing the two Apple catalogs gives a maximum of 21 levels at its contours.
+                    guard (cached || (generated && delta <= 21)),
+                          x > 0 && y > 0 && x + 1 < width && y + 1 < height,
                           offsets.contains(where: { reference.rgba[j + $0 * 4] != reference.rgba[j] }) else {
                         return "pixel (\(x), \(y)) channel \(channel): expected \(expected), got \(value)"
                     }
@@ -62,7 +68,9 @@ private struct SymbolPixels {
         }
         // A fractional point size also resizes the cached raster. Bound the total
         // error against visible ink so a missing stroke cannot pass in a large frame.
-        guard difference * (fractional ? 8 : 50) <= ink else {
+        // The largest difference between Apple's baked and interpolated weights was 2.499% of ink.
+        let divisor = cached && fractional ? 8 : (generated ? 40 : 50)
+        guard difference * divisor <= ink else {
             return "difference of \(difference) channel levels over \(ink) alpha levels"
         }
         return nil
@@ -108,6 +116,7 @@ private struct SymbolPixels {
                 for name in assets.names {
                     let master = CachedMaster(name: name, weight: weights[weight]!, size: scales[size]!, display: Int(display))
                     let cached = assets.cached.contains(master) && [15, 17, 20].contains(points.rounded())
+                    let generated = assets.generated.contains(SymbolMaster(name: name, weight: master.weight, size: master.size))
                     for (mode, colors, variable) in sampleModes {
                         autoreleasepool {
                             let config = (colors.map { base.applying($0) } ?? base).withTraitCollection(traits)
@@ -134,7 +143,7 @@ private struct SymbolPixels {
                                 reason = "layout differs: Xcode \(layout(reference)), Linux \(layout(test))"
                             } else {
                                 reason = SymbolPixels(test, scale: display).difference(from: SymbolPixels(reference, scale: display),
-                                    cached: cached, fractional: points != points.rounded())
+                                    cached: cached, fractional: points != points.rounded(), generated: generated)
                             }
                             if let reason {
                                 failures += 1

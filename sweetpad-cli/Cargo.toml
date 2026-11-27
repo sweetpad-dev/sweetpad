@@ -34,6 +34,7 @@ moxcms.workspace = true
 hayro.workspace = true
 resvg.workspace = true
 svgtypes.workspace = true
+kurbo.workspace = true
 rsa.workspace = true
 des.workspace = true
 aes.workspace = true

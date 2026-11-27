@@ -74,7 +74,10 @@ def compare_symbol_catalog(linux, native_rows, catalog, count):
           f"Xcode {len(expected.keys() - authored)}, Linux {len(actual.keys() - authored)}.", flush=True)
     cache_keys = sorted({(row["Name"], row["Glyph Weight"], row["Glyph Size"], row["Scale"])
                          for row in native_rows if row.get("AssetType") == "Image" and "Glyph Cached Index" in row})
-    return {"names": names, "cached": [dict(zip(("name", "weight", "size", "display"), key)) for key in cache_keys]}
+    variant_fields = ("name", "weight", "size")
+    return {"names": names,
+            "generated": [dict(zip(variant_fields, key)) for key in sorted(expected.keys() - actual.keys())],
+            "cached": [dict(zip((*variant_fields, "display"), key)) for key in cache_keys]}
 
 
 def compile_comaps_reference(resources, app, reference_output):

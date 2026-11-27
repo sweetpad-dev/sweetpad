@@ -2227,6 +2227,7 @@ dependencies = [
  "hayro",
  "hkdf",
  "hmac",
+ "kurbo",
  "libc",
  "lz4_flex",
  "lzfse_rust",
