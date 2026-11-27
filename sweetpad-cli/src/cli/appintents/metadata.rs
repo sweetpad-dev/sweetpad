@@ -1,6 +1,7 @@
 //! The registration schema, checked against Xcode's constant-value captures.
 
 use serde_json::{Value, json};
+use std::fmt::Write as _;
 
 mod parameters;
 mod representations;
@@ -214,6 +215,9 @@ fn action(value: &Value, types: &[Value]) -> Result<Value, String> {
             .unwrap()
             .push(parameters::parameter(parameter, types)?);
     }
+    if let Some(summary) = action_summary(value, id)? {
+        action["actionConfiguration"] = summary;
+    }
     for alias in array(&value["associatedTypeAliases"])
         .iter()
         .filter(|a| a["typeAliasName"] == "PerformResult")
@@ -221,8 +225,9 @@ fn action(value: &Value, types: &[Value]) -> Result<Value, String> {
         let mut flags = action["outputFlags"].as_u64().unwrap();
         for requirement in array(&alias["opaqueTypeProtocolRequirements"]) {
             match text(requirement) {
-                "AppIntents.ProvidesDialog" => flags |= 2,
-                "AppIntents.ShowsSnippetView" => flags |= 4,
+                "AppIntents.OpensIntent" => flags |= 1,
+                "AppIntents.ShowsSnippetView" => flags |= 2,
+                "AppIntents.ProvidesDialog" => flags |= 4,
                 _ => {}
             }
         }
@@ -236,6 +241,65 @@ fn action(value: &Value, types: &[Value]) -> Result<Value, String> {
         }
     }
     Ok(action)
+}
+
+/// `parameterSummary` as a plain `Summary`: constant text with parameter key paths,
+/// plus the parameters its trailing builder lists. Conditional summaries
+/// (`When`, `Switch`) and localization tables are not supported yet.
+fn action_summary(value: &Value, id: &str) -> Result<Option<Value>, String> {
+    let Some(summary) = property(value, "parameterSummary") else {
+        return Ok(None);
+    };
+    let unsupported = |what: &str| format!("unsupported parameterSummary {what} in intent '{id}'");
+    if summary["valueKind"] != "InitCall"
+        || !text(&summary["value"]["type"]).starts_with("AppIntents.IntentParameterSummary<")
+    {
+        return Err(unsupported(&format!(
+            "'{}'",
+            text(&summary["value"]["type"])
+        )));
+    }
+    let (mut string, mut inline, mut other) = (String::new(), Vec::new(), Vec::new());
+    for argument in array(&summary["value"]["arguments"]) {
+        match (text(&argument["label"]), text(&argument["valueKind"])) {
+            ("", "RawLiteral") => string.push_str(text(&argument["value"])),
+            ("", "InterpolatedStringLiteral") => {
+                for segment in array(&argument["value"]["segments"]) {
+                    if segment["valueKind"] == "RawLiteral" {
+                        string.push_str(text(&segment["value"]));
+                    } else {
+                        let name = summary_parameter(segment).ok_or_else(|| unsupported("text"))?;
+                        let _ = write!(string, "${{{name}}}");
+                        inline.push(name);
+                    }
+                }
+            }
+            ("", "Builder") => {
+                for member in array(&argument["value"]["members"]) {
+                    other.push(
+                        summary_parameter(&member["element"])
+                            .filter(|_| member["kind"] == "buildExpression")
+                            .ok_or_else(|| unsupported("parameter list"))?,
+                    );
+                }
+            }
+            ("table", "NilLiteral") => {}
+            (label, _) => return Err(unsupported(&format!("argument '{label}'"))),
+        }
+    }
+    Ok(Some(json!({"actionSummary":{"wrapper":{
+        "otherParameterIdentifiers":other,
+        "summaryString":{"formatString":string,"parameterIdentifiers":inline},
+    }}})))
+}
+
+/// A `\.$name` key path to one of the intent's parameters.
+fn summary_parameter(value: &Value) -> Option<&str> {
+    let components = array(&value["value"]["components"]);
+    if value["valueKind"] != "KeyPath" || components.len() != 1 {
+        return None;
+    }
+    text(&components[0]["label"]).strip_prefix('$')
 }
 
 fn shortcuts(provider: &Value) -> Result<Value, String> {
@@ -388,20 +452,50 @@ mod tests {
         }
     }
     #[test]
-    fn string_input_options_match_xcode() {
+    fn probe_actions_match_xcode() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/appintents");
-        let types: Vec<Value> = serde_json::from_slice(
-            &std::fs::read(dir.join("InputOptionsProbe.swiftconstvalues")).unwrap(),
-        )
+        for probe in ["InputOptionsProbe", "OutputProbe"] {
+            let read = |name: String| -> Value {
+                serde_json::from_slice(&std::fs::read(dir.join(name)).unwrap()).unwrap()
+            };
+            let types: Vec<Value> =
+                serde_json::from_value(read(format!("{probe}.swiftconstvalues"))).unwrap();
+            let mut actual = extract(&types).unwrap()["actions"].take();
+            let mut expected = read(format!("{probe}.actions.json"));
+            normalize(&mut actual);
+            normalize(&mut expected);
+            assert_eq!(actual, expected, "{probe}");
+        }
+    }
+    #[test]
+    fn unsupported_parameter_summaries_stop_extraction() {
+        fn summary(types: &mut [Value]) -> &mut Value {
+            types
+                .iter_mut()
+                .find(|t| text(&t["typeName"]).ends_with(".SummaryTwoProbeIntent"))
+                .unwrap()["properties"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|p| p["label"] == "parameterSummary")
+                .unwrap()
+        }
+        let mut types: Vec<Value> = serde_json::from_str(include_str!(
+            "../../../fixtures/appintents/OutputProbe.swiftconstvalues"
+        ))
         .unwrap();
-        let mut actual = extract(&types).unwrap()["actions"]["InputOptionsProbeIntent"].take();
-        let mut expected: Value = serde_json::from_slice(
-            &std::fs::read(dir.join("InputOptionsProbe.action.json")).unwrap(),
-        )
-        .unwrap();
-        normalize(&mut actual);
-        normalize(&mut expected);
-        assert_eq!(actual, expected);
+        summary(&mut types)["value"]["arguments"][1]["valueKind"] = json!("RawLiteral");
+        assert!(
+            extract(&types)
+                .unwrap_err()
+                .contains("unsupported parameterSummary argument 'table'")
+        );
+        summary(&mut types)["value"]["type"] = json!("AppIntents.ParameterSummaryWhenCondition");
+        assert!(
+            extract(&types).unwrap_err().contains(
+                "unsupported parameterSummary 'AppIntents.ParameterSummaryWhenCondition'"
+            )
+        );
     }
     #[test]
     fn input_options_reject_what_they_cannot_encode() {

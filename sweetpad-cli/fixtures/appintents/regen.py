@@ -55,7 +55,7 @@ def decompress(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--only", choices=["DataApp", "Types", "Files", "InputOptionsProbe"])
+    parser.add_argument("--only", choices=["DataApp", "Types", "Files", "InputOptionsProbe", "OutputProbe"])
     selected = parser.parse_args().only
     developer = Path(os.environ.get("DEVELOPER_DIR") or capture("xcode-select", "-p"))
     sweetpad = HERE.parents[2] / "target/debug/sweetpad"
@@ -65,7 +65,7 @@ def main():
         (work / "Host.swift").write_text('import SwiftUI\n@main struct ProbeApp: App { var body: some Scene { WindowGroup { Text("Metadata") } } }\n')
         spec = {"name": "AppIntentsOracle", "options": {"deploymentTarget": {"iOS": "18.0"}}, "targets": {}}
         for source, module in [("DataApp", "DataApp"), ("Types", "MetadataProbe"), ("Files", "FileProbe"),
-                               ("InputOptionsProbe", "InputOptionsProbe")]:
+                               ("InputOptionsProbe", "InputOptionsProbe"), ("OutputProbe", "OutputProbe")]:
             spec["targets"][module] = {"type": "application", "platform": "iOS",
                 "sources": [{"path": str(HERE / f"{source}.swift")}, {"path": "Host.swift"}],
                 "settings": {"base": {"GENERATE_INFOPLIST_FILE": "YES", "SWIFT_VERSION": "6.0", "SWIFT_EMIT_LOC_STRINGS": "YES",
@@ -76,7 +76,8 @@ def main():
         for source, module, expected in [("DataApp", "DataApp", "extract.actionsdata"),
                                          ("Types", "MetadataProbe", "Types.actionsdata"),
                                          ("Files", "FileProbe", "Files.actionsdata"),
-                                         ("InputOptionsProbe", "InputOptionsProbe", "InputOptionsProbe.action.json")]:
+                                         ("InputOptionsProbe", "InputOptionsProbe", "InputOptionsProbe.actions.json"),
+                                         ("OutputProbe", "OutputProbe", "OutputProbe.actions.json")]:
             if selected and source != selected:
                 continue
             command = [str(sweetpad), "build", "--developer-dir", str(developer),
@@ -93,10 +94,10 @@ def main():
             values = json.loads(constants.read_text())
             normalize_paths(values)
             outputs[f"{source}.swiftconstvalues"] = json.dumps(values, indent=2, sort_keys=True).encode() + b"\n"
-            if expected.endswith(".action.json"):
-                # One action, compared on its own: the parameter metadata under test.
+            if expected.endswith(".actions.json"):
+                # The probe's actions only: the metadata under test.
                 actions = json.loads((metadata / "extract.actionsdata").read_text())["actions"]
-                outputs[expected] = json.dumps(actions["InputOptionsProbeIntent"], indent=2, sort_keys=True).encode() + b"\n"
+                outputs[expected] = json.dumps(actions, indent=2, sort_keys=True).encode() + b"\n"
             else:
                 outputs[expected] = (metadata / "extract.actionsdata").read_bytes()
             if source == "DataApp":

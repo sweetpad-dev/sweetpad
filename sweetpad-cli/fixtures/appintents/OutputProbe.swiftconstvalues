@@ -1,0 +1,1399 @@
+[
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ProvidesDialog"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "3Sev21DialogOnlyProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ProvidesDialog",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy3Sev015DialogOnlyProbeC0V_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "OutputProbe.swift",
+    "kind": "struct",
+    "line": 5,
+    "mangledTypeName": "3Sev21DialogOnlyProbeIntentV",
+    "properties": [
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 6,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Dialog only",
+        "valueKind": "RawLiteral"
+      }
+    ],
+    "typeName": "Sev.DialogOnlyProbeIntent"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ShowsSnippetView"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "3Sev22SnippetOnlyProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ShowsSnippetView",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy3Sev016SnippetOnlyProbeC0V_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "OutputProbe.swift",
+    "kind": "struct",
+    "line": 10,
+    "mangledTypeName": "3Sev22SnippetOnlyProbeIntentV",
+    "properties": [
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 11,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Snippet only",
+        "valueKind": "RawLiteral"
+      }
+    ],
+    "typeName": "Sev.SnippetOnlyProbeIntent"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ReturnsValue",
+          "AppIntents.ShowsSnippetView"
+        ],
+        "opaqueTypeSameTypeRequirements": [
+          {
+            "substitutedMangledTypeName": "SS",
+            "substitutedTypeName": "Swift.String",
+            "typeAliasName": "AppIntents.IntentResult.Value"
+          }
+        ],
+        "substitutedMangledTypeName": "3Sev23ValueSnippetProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ReturnsValue<Swift.String> & AppIntents.ShowsSnippetView",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy3Sev017ValueSnippetProbeC0V_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "OutputProbe.swift",
+    "kind": "struct",
+    "line": 16,
+    "mangledTypeName": "3Sev23ValueSnippetProbeIntentV",
+    "properties": [
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 17,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Value and snippet",
+        "valueKind": "RawLiteral"
+      }
+    ],
+    "typeName": "Sev.ValueSnippetProbeIntent"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.OpensIntent"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "3Sev16OpensProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.OpensIntent",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy3Sev010OpensProbeC0V_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "OutputProbe.swift",
+    "kind": "struct",
+    "line": 22,
+    "mangledTypeName": "3Sev16OpensProbeIntentV",
+    "properties": [
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 23,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Opens",
+        "valueKind": "RawLiteral"
+      }
+    ],
+    "typeName": "Sev.OpensProbeIntent"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.OpensIntent",
+          "AppIntents.ProvidesDialog",
+          "AppIntents.ReturnsValue",
+          "AppIntents.ShowsSnippetView"
+        ],
+        "opaqueTypeSameTypeRequirements": [
+          {
+            "substitutedMangledTypeName": "SS",
+            "substitutedTypeName": "Swift.String",
+            "typeAliasName": "AppIntents.IntentResult.Value"
+          }
+        ],
+        "substitutedMangledTypeName": "3Sev21AllOutputsProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.OpensIntent & AppIntents.ProvidesDialog & AppIntents.ReturnsValue<Swift.String> & AppIntents.ShowsSnippetView",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy3Sev015AllOutputsProbeC0V_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "OutputProbe.swift",
+    "kind": "struct",
+    "line": 27,
+    "mangledTypeName": "3Sev21AllOutputsProbeIntentV",
+    "properties": [
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 28,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "All outputs",
+        "valueKind": "RawLiteral"
+      }
+    ],
+    "typeName": "Sev.AllOutputsProbeIntent"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "3Sev21SummaryTwoProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "3Sev21SummaryTwoProbeIntentV09parameterB0QrvpZQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "OutputProbe.swift",
+    "kind": "struct",
+    "line": 35,
+    "mangledTypeName": "3Sev21SummaryTwoProbeIntentV",
+    "properties": [
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_first",
+        "line": 37,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "First",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_second",
+        "line": 38,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Int>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Second",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Int>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "controlStyle",
+              "type": "AppIntents.IntentParameter<Swift.Int>.IntControlStyle",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "inclusiveRange",
+              "type": "Swift.Optional<(lowerBound: Swift.Int, upperBound: Swift.Int)>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Int>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_third",
+        "line": 39,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Bool>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Third",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Bool>",
+              "value": "false",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "displayName",
+              "type": "Swift.Optional<Swift.Bool.IntentDisplayName>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Bool>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 36,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Summary two",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "first",
+        "line": 37,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "First",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "OutputProbe.swift",
+            "line": 37,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.String",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "First",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$first",
+        "line": 37,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.String>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "second",
+        "line": 38,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Second",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "OutputProbe.swift",
+            "line": 38,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Int",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Second",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Int>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "controlStyle",
+              "type": "AppIntents.IntentParameter<Swift.Int>.IntControlStyle",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "inclusiveRange",
+              "type": "Swift.Optional<(lowerBound: Swift.Int, upperBound: Swift.Int)>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Int>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$second",
+        "line": 38,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Int>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "third",
+        "line": 39,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Third",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "default",
+                "type": "Swift.Optional<Swift.Bool>",
+                "value": "false",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "OutputProbe.swift",
+            "line": 39,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Bool",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Third",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Bool>",
+              "value": "false",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "displayName",
+              "type": "Swift.Optional<Swift.Bool.IntentDisplayName>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Bool>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$third",
+        "line": 39,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Bool>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "true",
+        "label": "parameterSummary",
+        "line": 40,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "some AppIntents.ParameterSummary",
+        "value": {
+          "arguments": [
+            {
+              "label": "",
+              "type": "AppIntents.ParameterSummaryString<Sev.SummaryTwoProbeIntent>",
+              "value": {
+                "segments": [
+                  {
+                    "value": "Send ",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "value": {
+                      "components": [
+                        {
+                          "label": "$first",
+                          "type": "AppIntents.IntentParameter<Swift.String>"
+                        }
+                      ],
+                      "path": "$first",
+                      "rootType": "Sev.SummaryTwoProbeIntent"
+                    },
+                    "valueKind": "KeyPath"
+                  },
+                  {
+                    "value": " to ",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "value": {
+                      "components": [
+                        {
+                          "label": "$second",
+                          "type": "AppIntents.IntentParameter<Swift.Int>"
+                        }
+                      ],
+                      "path": "$second",
+                      "rootType": "Sev.SummaryTwoProbeIntent"
+                    },
+                    "valueKind": "KeyPath"
+                  },
+                  {
+                    "value": "",
+                    "valueKind": "RawLiteral"
+                  }
+                ]
+              },
+              "valueKind": "InterpolatedStringLiteral"
+            },
+            {
+              "label": "table",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            }
+          ],
+          "type": "AppIntents.IntentParameterSummary<Sev.SummaryTwoProbeIntent>"
+        },
+        "valueKind": "InitCall"
+      }
+    ],
+    "typeName": "Sev.SummaryTwoProbeIntent"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "3Sev25SummaryBuilderProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "3Sev25SummaryBuilderProbeIntentV09parameterB0QrvpZQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "OutputProbe.swift",
+    "kind": "struct",
+    "line": 44,
+    "mangledTypeName": "3Sev25SummaryBuilderProbeIntentV",
+    "properties": [
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_first",
+        "line": 46,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "First",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_second",
+        "line": 47,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Int>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Second",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Int>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "controlStyle",
+              "type": "AppIntents.IntentParameter<Swift.Int>.IntControlStyle",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "inclusiveRange",
+              "type": "Swift.Optional<(lowerBound: Swift.Int, upperBound: Swift.Int)>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Int>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_third",
+        "line": 48,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Bool>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Third",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Bool>",
+              "value": "false",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "displayName",
+              "type": "Swift.Optional<Swift.Bool.IntentDisplayName>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Bool>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 45,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Summary builder",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "first",
+        "line": 46,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "First",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "OutputProbe.swift",
+            "line": 46,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.String",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "First",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$first",
+        "line": 46,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.String>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "second",
+        "line": 47,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Second",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "OutputProbe.swift",
+            "line": 47,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Int",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Second",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Int>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "controlStyle",
+              "type": "AppIntents.IntentParameter<Swift.Int>.IntControlStyle",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "inclusiveRange",
+              "type": "Swift.Optional<(lowerBound: Swift.Int, upperBound: Swift.Int)>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Int>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$second",
+        "line": 47,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Int>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "third",
+        "line": 48,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Third",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "default",
+                "type": "Swift.Optional<Swift.Bool>",
+                "value": "false",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "OutputProbe.swift",
+            "line": 48,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Bool",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Third",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Bool>",
+              "value": "false",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "displayName",
+              "type": "Swift.Optional<Swift.Bool.IntentDisplayName>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Bool>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$third",
+        "line": 48,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Bool>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "OutputProbe.swift",
+        "isComputed": "true",
+        "isStatic": "true",
+        "label": "parameterSummary",
+        "line": 49,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "some AppIntents.ParameterSummary",
+        "value": {
+          "arguments": [
+            {
+              "label": "",
+              "type": "AppIntents.ParameterSummaryString<Sev.SummaryBuilderProbeIntent>",
+              "value": "Just text",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "table",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "",
+              "type": "() -> Swift.Array<Swift.PartialKeyPath<Sev.SummaryBuilderProbeIntent>>",
+              "value": {
+                "members": [
+                  {
+                    "element": {
+                      "value": {
+                        "components": [
+                          {
+                            "label": "$third",
+                            "type": "AppIntents.IntentParameter<Swift.Bool>"
+                          }
+                        ],
+                        "path": "$third",
+                        "rootType": "Sev.SummaryBuilderProbeIntent"
+                      },
+                      "valueKind": "KeyPath"
+                    },
+                    "kind": "buildExpression"
+                  },
+                  {
+                    "element": {
+                      "value": {
+                        "components": [
+                          {
+                            "label": "$first",
+                            "type": "AppIntents.IntentParameter<Swift.String>"
+                          }
+                        ],
+                        "path": "$first",
+                        "rootType": "Sev.SummaryBuilderProbeIntent"
+                      },
+                      "valueKind": "KeyPath"
+                    },
+                    "kind": "buildExpression"
+                  }
+                ],
+                "type": ""
+              },
+              "valueKind": "Builder"
+            }
+          ],
+          "type": "AppIntents.IntentParameterSummary<Sev.SummaryBuilderProbeIntent>"
+        },
+        "valueKind": "InitCall"
+      }
+    ],
+    "typeName": "Sev.SummaryBuilderProbeIntent"
+  }
+]

@@ -1,0 +1,605 @@
+{
+  "AllOutputsProbeIntent": {
+    "assistantDefinedSchemaTraits": [],
+    "assistantDefinedSchemas": [],
+    "authenticationPolicy": 0,
+    "availabilityAnnotations": {
+      "LNPlatformNameWildcard": {
+        "introducedVersion": "*"
+      }
+    },
+    "effectiveBundleIdentifiers": [],
+    "fullyQualifiedTypeName": "Sev.AllOutputsProbeIntent",
+    "identifier": "AllOutputsProbeIntent",
+    "isAuthPolExplicit": false,
+    "isDiscoverable": true,
+    "mangledTypeName": "3Sev21AllOutputsProbeIntentV",
+    "mangledTypeNameByBundleIdentifier": {},
+    "mangledTypeNameByBundleIdentifierV2": {},
+    "mangledTypeNameV2": "3Sev21AllOutputsProbeIntentV",
+    "openAppWhenRun": false,
+    "outputFlags": 7,
+    "outputType": {
+      "primitive": {
+        "wrapper": {
+          "typeIdentifier": 0
+        }
+      }
+    },
+    "parameters": [],
+    "presentationStyle": 0,
+    "requiredCapabilities": [],
+    "supportedModes": 1,
+    "systemProtocolMetadata": [],
+    "systemProtocolMetadataV2": [],
+    "systemProtocols": [],
+    "title": {
+      "alternatives": [],
+      "key": "All outputs"
+    },
+    "typeSpecificMetadata": [],
+    "visibilityMetadata": {
+      "assistantOnly": false,
+      "isDiscoverable": true
+    }
+  },
+  "DialogOnlyProbeIntent": {
+    "assistantDefinedSchemaTraits": [],
+    "assistantDefinedSchemas": [],
+    "authenticationPolicy": 0,
+    "availabilityAnnotations": {
+      "LNPlatformNameWildcard": {
+        "introducedVersion": "*"
+      }
+    },
+    "effectiveBundleIdentifiers": [],
+    "fullyQualifiedTypeName": "Sev.DialogOnlyProbeIntent",
+    "identifier": "DialogOnlyProbeIntent",
+    "isAuthPolExplicit": false,
+    "isDiscoverable": true,
+    "mangledTypeName": "3Sev21DialogOnlyProbeIntentV",
+    "mangledTypeNameByBundleIdentifier": {},
+    "mangledTypeNameByBundleIdentifierV2": {},
+    "mangledTypeNameV2": "3Sev21DialogOnlyProbeIntentV",
+    "openAppWhenRun": false,
+    "outputFlags": 4,
+    "parameters": [],
+    "presentationStyle": 0,
+    "requiredCapabilities": [],
+    "supportedModes": 1,
+    "systemProtocolMetadata": [],
+    "systemProtocolMetadataV2": [],
+    "systemProtocols": [],
+    "title": {
+      "alternatives": [],
+      "key": "Dialog only"
+    },
+    "typeSpecificMetadata": [],
+    "visibilityMetadata": {
+      "assistantOnly": false,
+      "isDiscoverable": true
+    }
+  },
+  "OpensProbeIntent": {
+    "assistantDefinedSchemaTraits": [],
+    "assistantDefinedSchemas": [],
+    "authenticationPolicy": 0,
+    "availabilityAnnotations": {
+      "LNPlatformNameWildcard": {
+        "introducedVersion": "*"
+      }
+    },
+    "effectiveBundleIdentifiers": [],
+    "fullyQualifiedTypeName": "Sev.OpensProbeIntent",
+    "identifier": "OpensProbeIntent",
+    "isAuthPolExplicit": false,
+    "isDiscoverable": true,
+    "mangledTypeName": "3Sev16OpensProbeIntentV",
+    "mangledTypeNameByBundleIdentifier": {},
+    "mangledTypeNameByBundleIdentifierV2": {},
+    "mangledTypeNameV2": "3Sev16OpensProbeIntentV",
+    "openAppWhenRun": false,
+    "outputFlags": 1,
+    "parameters": [],
+    "presentationStyle": 0,
+    "requiredCapabilities": [],
+    "supportedModes": 1,
+    "systemProtocolMetadata": [],
+    "systemProtocolMetadataV2": [],
+    "systemProtocols": [],
+    "title": {
+      "alternatives": [],
+      "key": "Opens"
+    },
+    "typeSpecificMetadata": [],
+    "visibilityMetadata": {
+      "assistantOnly": false,
+      "isDiscoverable": true
+    }
+  },
+  "SnippetOnlyProbeIntent": {
+    "assistantDefinedSchemaTraits": [],
+    "assistantDefinedSchemas": [],
+    "authenticationPolicy": 0,
+    "availabilityAnnotations": {
+      "LNPlatformNameWildcard": {
+        "introducedVersion": "*"
+      }
+    },
+    "effectiveBundleIdentifiers": [],
+    "fullyQualifiedTypeName": "Sev.SnippetOnlyProbeIntent",
+    "identifier": "SnippetOnlyProbeIntent",
+    "isAuthPolExplicit": false,
+    "isDiscoverable": true,
+    "mangledTypeName": "3Sev22SnippetOnlyProbeIntentV",
+    "mangledTypeNameByBundleIdentifier": {},
+    "mangledTypeNameByBundleIdentifierV2": {},
+    "mangledTypeNameV2": "3Sev22SnippetOnlyProbeIntentV",
+    "openAppWhenRun": false,
+    "outputFlags": 2,
+    "parameters": [],
+    "presentationStyle": 0,
+    "requiredCapabilities": [],
+    "supportedModes": 1,
+    "systemProtocolMetadata": [],
+    "systemProtocolMetadataV2": [],
+    "systemProtocols": [],
+    "title": {
+      "alternatives": [],
+      "key": "Snippet only"
+    },
+    "typeSpecificMetadata": [],
+    "visibilityMetadata": {
+      "assistantOnly": false,
+      "isDiscoverable": true
+    }
+  },
+  "SummaryBuilderProbeIntent": {
+    "actionConfiguration": {
+      "actionSummary": {
+        "wrapper": {
+          "otherParameterIdentifiers": [
+            "third",
+            "first"
+          ],
+          "summaryString": {
+            "formatString": "Just text",
+            "parameterIdentifiers": []
+          }
+        }
+      }
+    },
+    "assistantDefinedSchemaTraits": [],
+    "assistantDefinedSchemas": [],
+    "authenticationPolicy": 0,
+    "availabilityAnnotations": {
+      "LNPlatformNameWildcard": {
+        "introducedVersion": "*"
+      }
+    },
+    "effectiveBundleIdentifiers": [],
+    "fullyQualifiedTypeName": "Sev.SummaryBuilderProbeIntent",
+    "identifier": "SummaryBuilderProbeIntent",
+    "isAuthPolExplicit": false,
+    "isDiscoverable": true,
+    "mangledTypeName": "3Sev25SummaryBuilderProbeIntentV",
+    "mangledTypeNameByBundleIdentifier": {},
+    "mangledTypeNameByBundleIdentifierV2": {},
+    "mangledTypeNameV2": "3Sev25SummaryBuilderProbeIntentV",
+    "openAppWhenRun": false,
+    "outputFlags": 0,
+    "parameters": [
+      {
+        "capabilities": 0,
+        "dynamicOptionsSupport": 0,
+        "inputConnectionBehavior": 0,
+        "isInput": false,
+        "isOptional": false,
+        "name": "first",
+        "resolvableInputTypes": [
+          {
+            "kindValue": 0,
+            "valueType": {
+              "array": {
+                "wrapper": {
+                  "capabilities": 3,
+                  "memberValueType": {
+                    "primitive": {
+                      "wrapper": {
+                        "typeIdentifier": 2
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 2
+                }
+              }
+            }
+          }
+        ],
+        "title": {
+          "alternatives": [],
+          "key": "First"
+        },
+        "typeSpecificMetadata": [],
+        "valueType": {
+          "primitive": {
+            "wrapper": {
+              "typeIdentifier": 0
+            }
+          }
+        }
+      },
+      {
+        "capabilities": 0,
+        "dynamicOptionsSupport": 0,
+        "inputConnectionBehavior": 0,
+        "isInput": false,
+        "isOptional": false,
+        "name": "second",
+        "resolvableInputTypes": [
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 7
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 2
+                }
+              }
+            }
+          }
+        ],
+        "title": {
+          "alternatives": [],
+          "key": "Second"
+        },
+        "typeSpecificMetadata": [],
+        "valueType": {
+          "primitive": {
+            "wrapper": {
+              "typeIdentifier": 2
+            }
+          }
+        }
+      },
+      {
+        "capabilities": 1,
+        "dynamicOptionsSupport": 0,
+        "inputConnectionBehavior": 0,
+        "isInput": false,
+        "isOptional": false,
+        "name": "third",
+        "resolvableInputTypes": [
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 1
+                }
+              }
+            }
+          }
+        ],
+        "title": {
+          "alternatives": [],
+          "key": "Third"
+        },
+        "typeSpecificMetadata": [
+          "LNValueTypeSpecificMetadataKeyDefaultValue",
+          {
+            "int": {
+              "wrapper": 0
+            }
+          }
+        ],
+        "valueType": {
+          "primitive": {
+            "wrapper": {
+              "typeIdentifier": 1
+            }
+          }
+        }
+      }
+    ],
+    "presentationStyle": 0,
+    "requiredCapabilities": [],
+    "supportedModes": 1,
+    "systemProtocolMetadata": [],
+    "systemProtocolMetadataV2": [],
+    "systemProtocols": [],
+    "title": {
+      "alternatives": [],
+      "key": "Summary builder"
+    },
+    "typeSpecificMetadata": [],
+    "visibilityMetadata": {
+      "assistantOnly": false,
+      "isDiscoverable": true
+    }
+  },
+  "SummaryTwoProbeIntent": {
+    "actionConfiguration": {
+      "actionSummary": {
+        "wrapper": {
+          "otherParameterIdentifiers": [],
+          "summaryString": {
+            "formatString": "Send ${first} to ${second}",
+            "parameterIdentifiers": [
+              "first",
+              "second"
+            ]
+          }
+        }
+      }
+    },
+    "assistantDefinedSchemaTraits": [],
+    "assistantDefinedSchemas": [],
+    "authenticationPolicy": 0,
+    "availabilityAnnotations": {
+      "LNPlatformNameWildcard": {
+        "introducedVersion": "*"
+      }
+    },
+    "effectiveBundleIdentifiers": [],
+    "fullyQualifiedTypeName": "Sev.SummaryTwoProbeIntent",
+    "identifier": "SummaryTwoProbeIntent",
+    "isAuthPolExplicit": false,
+    "isDiscoverable": true,
+    "mangledTypeName": "3Sev21SummaryTwoProbeIntentV",
+    "mangledTypeNameByBundleIdentifier": {},
+    "mangledTypeNameByBundleIdentifierV2": {},
+    "mangledTypeNameV2": "3Sev21SummaryTwoProbeIntentV",
+    "openAppWhenRun": false,
+    "outputFlags": 0,
+    "parameters": [
+      {
+        "capabilities": 0,
+        "dynamicOptionsSupport": 0,
+        "inputConnectionBehavior": 0,
+        "isInput": false,
+        "isOptional": false,
+        "name": "first",
+        "resolvableInputTypes": [
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 2
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "array": {
+                "wrapper": {
+                  "capabilities": 3,
+                  "memberValueType": {
+                    "primitive": {
+                      "wrapper": {
+                        "typeIdentifier": 2
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
+                }
+              }
+            }
+          }
+        ],
+        "title": {
+          "alternatives": [],
+          "key": "First"
+        },
+        "typeSpecificMetadata": [],
+        "valueType": {
+          "primitive": {
+            "wrapper": {
+              "typeIdentifier": 0
+            }
+          }
+        }
+      },
+      {
+        "capabilities": 0,
+        "dynamicOptionsSupport": 0,
+        "inputConnectionBehavior": 0,
+        "isInput": false,
+        "isOptional": false,
+        "name": "second",
+        "resolvableInputTypes": [
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 2
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 7
+                }
+              }
+            }
+          }
+        ],
+        "title": {
+          "alternatives": [],
+          "key": "Second"
+        },
+        "typeSpecificMetadata": [],
+        "valueType": {
+          "primitive": {
+            "wrapper": {
+              "typeIdentifier": 2
+            }
+          }
+        }
+      },
+      {
+        "capabilities": 1,
+        "dynamicOptionsSupport": 0,
+        "inputConnectionBehavior": 0,
+        "isInput": false,
+        "isOptional": false,
+        "name": "third",
+        "resolvableInputTypes": [
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 1
+                }
+              }
+            }
+          }
+        ],
+        "title": {
+          "alternatives": [],
+          "key": "Third"
+        },
+        "typeSpecificMetadata": [
+          "LNValueTypeSpecificMetadataKeyDefaultValue",
+          {
+            "int": {
+              "wrapper": 0
+            }
+          }
+        ],
+        "valueType": {
+          "primitive": {
+            "wrapper": {
+              "typeIdentifier": 1
+            }
+          }
+        }
+      }
+    ],
+    "presentationStyle": 0,
+    "requiredCapabilities": [],
+    "supportedModes": 1,
+    "systemProtocolMetadata": [],
+    "systemProtocolMetadataV2": [],
+    "systemProtocols": [],
+    "title": {
+      "alternatives": [],
+      "key": "Summary two"
+    },
+    "typeSpecificMetadata": [],
+    "visibilityMetadata": {
+      "assistantOnly": false,
+      "isDiscoverable": true
+    }
+  },
+  "ValueSnippetProbeIntent": {
+    "assistantDefinedSchemaTraits": [],
+    "assistantDefinedSchemas": [],
+    "authenticationPolicy": 0,
+    "availabilityAnnotations": {
+      "LNPlatformNameWildcard": {
+        "introducedVersion": "*"
+      }
+    },
+    "effectiveBundleIdentifiers": [],
+    "fullyQualifiedTypeName": "Sev.ValueSnippetProbeIntent",
+    "identifier": "ValueSnippetProbeIntent",
+    "isAuthPolExplicit": false,
+    "isDiscoverable": true,
+    "mangledTypeName": "3Sev23ValueSnippetProbeIntentV",
+    "mangledTypeNameByBundleIdentifier": {},
+    "mangledTypeNameByBundleIdentifierV2": {},
+    "mangledTypeNameV2": "3Sev23ValueSnippetProbeIntentV",
+    "openAppWhenRun": false,
+    "outputFlags": 2,
+    "outputType": {
+      "primitive": {
+        "wrapper": {
+          "typeIdentifier": 0
+        }
+      }
+    },
+    "parameters": [],
+    "presentationStyle": 0,
+    "requiredCapabilities": [],
+    "supportedModes": 1,
+    "systemProtocolMetadata": [],
+    "systemProtocolMetadataV2": [],
+    "systemProtocols": [],
+    "title": {
+      "alternatives": [],
+      "key": "Value and snippet"
+    },
+    "typeSpecificMetadata": [],
+    "visibilityMetadata": {
+      "assistantOnly": false,
+      "isDiscoverable": true
+    }
+  }
+}
