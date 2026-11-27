@@ -1,4 +1,7 @@
-use super::{Value, argument, array, conforms, identifier, json, literal, localized, text};
+use super::{
+    RegistrationFormat, Value, argument, array, conforms, identifier, json, literal, localized,
+    text,
+};
 
 pub(super) fn optional(name: &str) -> (&str, bool) {
     name.strip_prefix("Swift.Optional<")
@@ -52,7 +55,11 @@ pub(super) fn value_type(name: &str, types: &[Value]) -> Result<Value, String> {
     Err(format!("unsupported App Intents value type '{name}'"))
 }
 
-pub(super) fn parameter(value: &Value, types: &[Value]) -> Result<Value, String> {
+pub(super) fn parameter(
+    value: &Value,
+    types: &[Value],
+    format: RegistrationFormat,
+) -> Result<Value, String> {
     let wrapper = array(&value["propertyWrappers"])
         .iter()
         .find(|w| text(&w["type"]).ends_with(".IntentParameter"))
@@ -75,11 +82,7 @@ pub(super) fn parameter(value: &Value, types: &[Value]) -> Result<Value, String>
             text(&argument["label"])
         ));
     }
-    let title = arguments
-        .iter()
-        .find(|a| a["label"] == "title")
-        .or_else(|| argument(value, "title"))
-        .ok_or("parameter has no constant title")?;
+    let title = parameter_title(value, arguments, format)?;
     let (name, is_optional) = optional(text(&value["type"]));
     let kind = value_type(name, types)?;
     let connection = arguments
@@ -104,7 +107,7 @@ pub(super) fn parameter(value: &Value, types: &[Value]) -> Result<Value, String>
         "capabilities":u8::from(default.is_some()),"dynamicOptionsSupport":u8::from(kind.get("entity").is_some()),
         "inputConnectionBehavior":connection,"isInput":connection == 2,"isOptional":is_optional,
         "name":value["label"],"resolvableInputTypes":resolvers(&kind),
-        "title":localized(&literal(title)?),"typeSpecificMetadata":[],"valueType":kind,
+        "title":localized(&title),"typeSpecificMetadata":[],"valueType":kind,
     });
     if let Some(default) = default {
         parameter["typeSpecificMetadata"] = json!([
@@ -166,6 +169,23 @@ const KEYBOARD_TYPES: [&str; 5] = [
     "default",
 ];
 const CAPITALIZATION_TYPES: [&str; 4] = ["none", "words", "sentences", "allCharacters"];
+
+fn parameter_title(
+    value: &Value,
+    arguments: &[Value],
+    format: RegistrationFormat,
+) -> Result<String, String> {
+    if format == RegistrationFormat::Xcode26 && value["label"] == "parameterSummary" {
+        // Xcode 26 infers the title when the instance parameter has this AppIntent requirement's name.
+        return Ok("Parameter Summary".to_owned());
+    }
+    let title = arguments
+        .iter()
+        .find(|a| a["label"] == "title")
+        .or_else(|| argument(value, "title"))
+        .ok_or("parameter has no constant title")?;
+    literal(title)
+}
 
 /// Xcode writes one key per `String.IntentInputOptions` argument the source passes.
 /// Arguments left at their defaults are captured as `Runtime` and omitted.

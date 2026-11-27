@@ -37,7 +37,13 @@ jobs:
         with:
           xcode-version: latest-stable
       - run: xcodebuild -version
-      - run: python3 -B -I sweetpad-cli/fixtures/appintents/sdk_coverage.py
+      - run: python3 -B -I sweetpad-cli/fixtures/appintents/sdk_coverage.py --export-signatures "$RUNNER_TEMP/sdk-inventory"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: appintents-sdk-inventory
+          path: ${{ runner.temp }}/sdk-inventory
+          if-no-files-found: error
 
   native:
     name: Capture registration with Xcode

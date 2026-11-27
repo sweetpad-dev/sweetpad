@@ -33,12 +33,12 @@ class SDKCoverageTests(unittest.TestCase):
 
     def test_new_overload_with_previously_classified_labels_fails(self):
         name = "IntentParameter.init(title:)"
-        with tempfile.TemporaryDirectory() as tmp, patch.object(sdk, "SIGNATURES", Path(tmp) / "snapshot"):
+        with tempfile.TemporaryDirectory() as tmp:
             with patch.object(sdk, "checklist", return_value={"parameter.title": "Match"}):
                 keys = {"parameter.title"}
-                sdk.check(keys, {name: {"one"}}, sdk.BASELINE, update=True)
+                sdk.check(keys, {name: {"one"}}, "26.5", update=True, directory=Path(tmp))
                 with self.assertRaisesRegex(ValueError, "SDK overloads changed"):
-                    sdk.check(keys, {name: {"one", "two"}}, sdk.BASELINE)
+                    sdk.check(keys, {name: {"one", "two"}}, "26.6", directory=Path(tmp))
 
     def test_complete_registration_detects_flags_and_other_schema_changes(self):
         native = json.loads((sdk.HERE / "ResultProtocols.actionsdata").read_text())

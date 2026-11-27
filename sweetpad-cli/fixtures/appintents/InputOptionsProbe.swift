@@ -43,3 +43,13 @@ struct InputOptionsProbeIntent: AppIntent {
   @MainActor
   func perform() async throws -> some IntentResult { .result() }
 }
+
+struct ParameterTitleProbe: AppIntent {
+  static let title: LocalizedStringResource = "Parameter titles"
+
+  @Parameter(title: "User's choice", inputOptions: nil) var ordinary: String?
+  @Parameter(title: "Custom label", description: "Extra detail", default: "ready", inputOptions: .init(multiline: true))
+  var parameterSummary: String
+
+  func perform() async throws -> some IntentResult { .result() }
+}

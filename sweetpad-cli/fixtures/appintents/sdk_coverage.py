@@ -14,7 +14,6 @@ import tempfile
 HERE = Path(__file__).resolve().parent
 BASELINE = "27.2"
 CHECKLIST = HERE / f"sdk-{BASELINE}.md"
-SIGNATURES = HERE / f"sdk-{BASELINE}-signatures.txt"
 EXAMPLES = {"result.OpensIntent+ProvidesDialog", "result.OpensIntent+ShowsSnippetView", "summary.table"}
 
 
@@ -97,33 +96,45 @@ def inventory(graphs):
     return keys, declarations
 
 
-def check(keys, declarations, version, update=False):
+def version_number(version):
+    return tuple(map(int, version.split(".")))
+
+
+def check(keys, declarations, version, update=False, directory=HERE, export=None):
     rows = checklist()
-    newer = tuple(map(int, version.split("."))) >= tuple(map(int, BASELINE.split(".")))
-    # Older SDKs expose a subset of the checklist and may mangle overloads differently.
+    newer = version_number(version) >= version_number(BASELINE)
+    # Older SDKs can legitimately expose a subset of the most recent checklist.
     errors = [f"Unclassified SDK declaration: {k}" for k in sorted(keys - rows.keys())]
     if newer:
         errors += [f"Checklist declaration missing from SDK: {k}" for k in sorted(rows.keys() - keys)]
-    if errors:
-        raise ValueError("\n".join(errors))
     lines = []
     for name, overloads in sorted(declarations.items()):
         digest = hashlib.sha256("\n".join(sorted(overloads)).encode()).hexdigest()[:20]
         lines.append(f"{name}\t{len(overloads)}\t{digest}\n")
+    name = f"sdk-{version}-signatures.txt"
+    if export:
+        export.mkdir(parents=True, exist_ok=True)
+        (export / name).write_text("".join(lines))
+    if errors:
+        raise ValueError("\n".join(errors))
     if update:
-        if version != BASELINE:
-            raise ValueError(f"Select the {BASELINE} SDK or version the checklist for {version} first")
-        SIGNATURES.write_text("".join(lines))
-    elif newer and SIGNATURES.read_text().splitlines(keepends=True) != lines:
-        diff = difflib.unified_diff(SIGNATURES.read_text().splitlines(keepends=True), lines,
-                                    fromfile=SIGNATURES.name, tofile=f"iOS {version} SDK")
-        raise ValueError("SDK overloads changed. Review the named declarations and their evidence.\n" + "".join(diff))
+        (directory / name).write_text("".join(lines))
+    else:
+        versions = {version_number(f.name.split("-")[1]): f for f in directory.glob("sdk-*-signatures.txt")}
+        candidates = [v for v in versions if v <= version_number(version)]
+        if candidates:
+            baseline = versions[max(candidates)]
+            previous = baseline.read_text().splitlines(keepends=True)
+            if previous != lines:
+                diff = difflib.unified_diff(previous, lines, fromfile=baseline.name, tofile=f"iOS {version} SDK")
+                raise ValueError("SDK overloads changed. Review the named declarations and their evidence.\n" + "".join(diff))
     print(f"iOS {version}: {len(keys)} classified entries, {sum(map(len, declarations.values()))} declarations")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--update-signatures", action="store_true", help="record reviewed overloads for the baseline SDK")
+    parser.add_argument("--update-signatures", action="store_true", help="record reviewed overloads for the selected SDK")
+    parser.add_argument("--export-signatures", type=Path, help="export this SDK's declaration inventory for review")
     args = parser.parse_args()
     sdk = subprocess.check_output(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], text=True).strip()
     version = subprocess.check_output(["xcrun", "--sdk", "iphoneos", "--show-sdk-version"], text=True).strip()
@@ -133,7 +144,7 @@ def main():
                         "-target", f"arm64-apple-ios{version}", "-sdk", sdk, "-minimum-access-level", "public",
                         "-output-dir", str(path)], check=True)
         keys, declarations = inventory(json.loads(f.read_text()) for f in sorted(path.glob("*.symbols.json")))
-        check(keys, declarations, version, args.update_signatures)
+        check(keys, declarations, version, args.update_signatures, export=args.export_signatures)
 
 
 if __name__ == "__main__":

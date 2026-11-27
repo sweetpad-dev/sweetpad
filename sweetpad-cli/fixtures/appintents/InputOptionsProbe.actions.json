@@ -33,16 +33,6 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 0
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
-              "primitive": {
-                "wrapper": {
                   "typeIdentifier": 2
                 }
               }
@@ -64,6 +54,16 @@
                 }
               }
             }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
+                }
+              }
+            }
           }
         ],
         "title": {
@@ -71,19 +71,13 @@
           "key": "All off"
         },
         "typeSpecificMetadata": [
-          "LNValueTypeMetadataKeyStringMultiline",
-          {
-            "int": {
-              "wrapper": 0
-            }
-          },
-          "LNValueTypeMetadataKeyStringSmartDashes",
-          {
-            "int": {
-              "wrapper": 0
-            }
-          },
           "LNValueTypeMetadataKeyStringAutocorrect",
+          {
+            "int": {
+              "wrapper": 0
+            }
+          },
+          "LNValueTypeMetadataKeyStringCapitalizationType",
           {
             "int": {
               "wrapper": 0
@@ -101,7 +95,13 @@
               "wrapper": 4
             }
           },
-          "LNValueTypeMetadataKeyStringCapitalizationType",
+          "LNValueTypeMetadataKeyStringMultiline",
+          {
+            "int": {
+              "wrapper": 0
+            }
+          },
+          "LNValueTypeMetadataKeyStringSmartDashes",
           {
             "int": {
               "wrapper": 0
@@ -129,16 +129,6 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 0
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
-              "primitive": {
-                "wrapper": {
                   "typeIdentifier": 2
                 }
               }
@@ -160,6 +150,16 @@
                 }
               }
             }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
+                }
+              }
+            }
           }
         ],
         "title": {
@@ -167,24 +167,6 @@
           "key": "All on"
         },
         "typeSpecificMetadata": [
-          "LNValueTypeMetadataKeyStringCapitalizationType",
-          {
-            "int": {
-              "wrapper": 3
-            }
-          },
-          "LNValueTypeMetadataKeyStringMultiline",
-          {
-            "int": {
-              "wrapper": 1
-            }
-          },
-          "LNValueTypeMetadataKeyStringKeyboardType",
-          {
-            "int": {
-              "wrapper": 0
-            }
-          },
           "LNValueTypeMetadataKeyStringSmartQuotes",
           {
             "int": {
@@ -197,7 +179,25 @@
               "wrapper": 1
             }
           },
+          "LNValueTypeMetadataKeyStringCapitalizationType",
+          {
+            "int": {
+              "wrapper": 3
+            }
+          },
+          "LNValueTypeMetadataKeyStringKeyboardType",
+          {
+            "int": {
+              "wrapper": 0
+            }
+          },
           "LNValueTypeMetadataKeyStringSmartDashes",
+          {
+            "int": {
+              "wrapper": 1
+            }
+          },
+          "LNValueTypeMetadataKeyStringMultiline",
           {
             "int": {
               "wrapper": 1
@@ -225,16 +225,6 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 0
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
-              "primitive": {
-                "wrapper": {
                   "typeIdentifier": 2
                 }
               }
@@ -253,6 +243,16 @@
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
                 }
               }
             }
@@ -284,16 +284,6 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 0
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
-              "primitive": {
-                "wrapper": {
                   "typeIdentifier": 2
                 }
               }
@@ -312,6 +302,16 @@
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
                 }
               }
             }
@@ -356,16 +356,6 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 0
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
-              "primitive": {
-                "wrapper": {
                   "typeIdentifier": 2
                 }
               }
@@ -387,6 +377,16 @@
                 }
               }
             }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
+                }
+              }
+            }
           }
         ],
         "title": {
@@ -394,13 +394,13 @@
           "key": "URL"
         },
         "typeSpecificMetadata": [
-          "LNValueTypeMetadataKeyStringCapitalizationType",
+          "LNValueTypeMetadataKeyStringKeyboardType",
           {
             "int": {
               "wrapper": 2
             }
           },
-          "LNValueTypeMetadataKeyStringKeyboardType",
+          "LNValueTypeMetadataKeyStringCapitalizationType",
           {
             "int": {
               "wrapper": 2
@@ -428,16 +428,6 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 0
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
-              "primitive": {
-                "wrapper": {
                   "typeIdentifier": 2
                 }
               }
@@ -456,6 +446,16 @@
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
                 }
               }
             }
@@ -494,16 +494,6 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 0
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
-              "primitive": {
-                "wrapper": {
                   "typeIdentifier": 2
                 }
               }
@@ -522,6 +512,16 @@
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
                 }
               }
             }
@@ -560,16 +560,6 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 0
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
-              "primitive": {
-                "wrapper": {
                   "typeIdentifier": 2
                 }
               }
@@ -588,6 +578,16 @@
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
                 }
               }
             }
@@ -626,16 +626,6 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 0
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
-              "primitive": {
-                "wrapper": {
                   "typeIdentifier": 2
                 }
               }
@@ -654,6 +644,16 @@
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
                 }
               }
             }
@@ -692,16 +692,6 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 0
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
-              "primitive": {
-                "wrapper": {
                   "typeIdentifier": 2
                 }
               }
@@ -720,6 +710,16 @@
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
                 }
               }
             }
@@ -768,16 +768,6 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 0
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
-              "primitive": {
-                "wrapper": {
                   "typeIdentifier": 2
                 }
               }
@@ -799,6 +789,16 @@
                 }
               }
             }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
+                }
+              }
+            }
           }
         ],
         "title": {
@@ -806,16 +806,16 @@
           "key": "Options and dialog"
         },
         "typeSpecificMetadata": [
-          "LNValueTypeMetadataKeyStringKeyboardType",
-          {
-            "int": {
-              "wrapper": 3
-            }
-          },
           "LNValueTypeMetadataKeyStringAutocorrect",
           {
             "int": {
               "wrapper": 0
+            }
+          },
+          "LNValueTypeMetadataKeyStringKeyboardType",
+          {
+            "int": {
+              "wrapper": 3
             }
           }
         ],
@@ -840,16 +840,6 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 0
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
-              "primitive": {
-                "wrapper": {
                   "typeIdentifier": 2
                 }
               }
@@ -871,6 +861,16 @@
                 }
               }
             }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
+                }
+              }
+            }
           }
         ],
         "title": {
@@ -884,16 +884,10 @@
               "wrapper": 0
             }
           },
-          "LNValueTypeMetadataKeyStringAutocorrect",
+          "LNValueTypeMetadataKeyStringKeyboardType",
           {
             "int": {
-              "wrapper": 1
-            }
-          },
-          "LNValueTypeMetadataKeyStringSmartQuotes",
-          {
-            "int": {
-              "wrapper": 1
+              "wrapper": 0
             }
           },
           "LNValueTypeMetadataKeyStringCapitalizationType",
@@ -902,16 +896,22 @@
               "wrapper": 2
             }
           },
+          "LNValueTypeMetadataKeyStringSmartQuotes",
+          {
+            "int": {
+              "wrapper": 1
+            }
+          },
           "LNValueTypeMetadataKeyStringSmartDashes",
           {
             "int": {
               "wrapper": 1
             }
           },
-          "LNValueTypeMetadataKeyStringKeyboardType",
+          "LNValueTypeMetadataKeyStringAutocorrect",
           {
             "int": {
-              "wrapper": 0
+              "wrapper": 1
             }
           }
         ],
@@ -1047,16 +1047,6 @@
             "valueType": {
               "primitive": {
                 "wrapper": {
-                  "typeIdentifier": 0
-                }
-              }
-            }
-          },
-          {
-            "kindValue": 0,
-            "valueType": {
-              "primitive": {
-                "wrapper": {
                   "typeIdentifier": 2
                 }
               }
@@ -1075,6 +1065,16 @@
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
                 }
               }
             }
@@ -1103,6 +1103,179 @@
     "title": {
       "alternatives": [],
       "key": "Input options probe"
+    },
+    "typeSpecificMetadata": [],
+    "visibilityMetadata": {
+      "assistantOnly": false,
+      "isDiscoverable": true
+    }
+  },
+  "ParameterTitleProbe": {
+    "assistantDefinedSchemaTraits": [],
+    "assistantDefinedSchemas": [],
+    "authenticationPolicy": 0,
+    "availabilityAnnotations": {
+      "LNPlatformNameWildcard": {
+        "introducedVersion": "*"
+      }
+    },
+    "effectiveBundleIdentifiers": [],
+    "fullyQualifiedTypeName": "InputOptionsProbe.ParameterTitleProbe",
+    "identifier": "ParameterTitleProbe",
+    "isAuthPolExplicit": false,
+    "isDiscoverable": true,
+    "mangledTypeName": "17InputOptionsProbe014ParameterTitleC0V",
+    "mangledTypeNameByBundleIdentifier": {},
+    "mangledTypeNameByBundleIdentifierV2": {},
+    "mangledTypeNameV2": "17InputOptionsProbe014ParameterTitleC0V",
+    "openAppWhenRun": false,
+    "outputFlags": 0,
+    "parameters": [
+      {
+        "capabilities": 0,
+        "dynamicOptionsSupport": 0,
+        "inputConnectionBehavior": 0,
+        "isInput": false,
+        "isOptional": true,
+        "name": "ordinary",
+        "resolvableInputTypes": [
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 2
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "array": {
+                "wrapper": {
+                  "capabilities": 3,
+                  "memberValueType": {
+                    "primitive": {
+                      "wrapper": {
+                        "typeIdentifier": 2
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
+                }
+              }
+            }
+          }
+        ],
+        "title": {
+          "alternatives": [],
+          "key": "User's choice"
+        },
+        "typeSpecificMetadata": [],
+        "valueType": {
+          "primitive": {
+            "wrapper": {
+              "typeIdentifier": 0
+            }
+          }
+        }
+      },
+      {
+        "capabilities": 1,
+        "dynamicOptionsSupport": 0,
+        "inputConnectionBehavior": 0,
+        "isInput": false,
+        "isOptional": false,
+        "name": "parameterSummary",
+        "parameterDescription": {
+          "alternatives": [],
+          "key": "Extra detail"
+        },
+        "resolvableInputTypes": [
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 2
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "array": {
+                "wrapper": {
+                  "capabilities": 3,
+                  "memberValueType": {
+                    "primitive": {
+                      "wrapper": {
+                        "typeIdentifier": 2
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "kindValue": 0,
+            "valueType": {
+              "primitive": {
+                "wrapper": {
+                  "typeIdentifier": 0
+                }
+              }
+            }
+          }
+        ],
+        "title": {
+          "alternatives": [],
+          "key": "Custom label"
+        },
+        "typeSpecificMetadata": [
+          "LNValueTypeMetadataKeyStringMultiline",
+          {
+            "int": {
+              "wrapper": 1
+            }
+          },
+          "LNValueTypeSpecificMetadataKeyDefaultValue",
+          {
+            "string": {
+              "wrapper": "ready"
+            }
+          }
+        ],
+        "valueType": {
+          "primitive": {
+            "wrapper": {
+              "typeIdentifier": 0
+            }
+          }
+        }
+      }
+    ],
+    "presentationStyle": 0,
+    "requiredCapabilities": [],
+    "supportedModes": 1,
+    "systemProtocolMetadata": [],
+    "systemProtocolMetadataV2": [],
+    "systemProtocols": [],
+    "title": {
+      "alternatives": [],
+      "key": "Parameter titles"
     },
     "typeSpecificMetadata": [],
     "visibilityMetadata": {

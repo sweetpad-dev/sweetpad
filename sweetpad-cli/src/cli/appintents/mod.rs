@@ -163,7 +163,7 @@ fn run(args: &Args) -> Result<(), String> {
         }
     }
     let types: Vec<Value> = types.into_values().collect();
-    let metadata = metadata::extract(&types)?;
+    let metadata = metadata::extract(&types, &args.version)?;
     for path in &args.strings {
         if let Some(value) = metadata::strings_data(&types, &metadata) {
             write_json(path, &value)?;

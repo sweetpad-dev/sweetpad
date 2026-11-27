@@ -1,6 +1,6 @@
 use super::{
-    Value, argument, array, availability, conforms, identifier, json, literal, localized,
-    parameters, properties, property, text, visibility,
+    RegistrationFormat, Value, argument, array, availability, conforms, identifier, json, literal,
+    localized, parameters, properties, property, text, visibility,
 };
 
 fn alias<'a>(value: &'a Value, name: &str) -> Option<&'a str> {
@@ -32,7 +32,7 @@ fn display(value: &Value) -> Result<Value, String> {
     Ok(result)
 }
 
-pub(super) fn enumeration(value: &Value) -> Result<Value, String> {
+pub(super) fn enumeration(value: &Value, format: RegistrationFormat) -> Result<Value, String> {
     let cases = property(value, "caseDisplayRepresentations")
         .ok_or("AppEnum has no constant caseDisplayRepresentations")?;
     if cases["valueKind"] != "Dictionary" {
@@ -57,28 +57,36 @@ pub(super) fn enumeration(value: &Value) -> Result<Value, String> {
         property(value, "typeDisplayRepresentation")
             .ok_or("AppEnum has no typeDisplayRepresentation")?,
     )?;
-    Ok(json!({
+    let mut result = json!({
         "assistantDefinedSchemas":[],"availabilityAnnotations":availability(),"cases":entries,
         "displayTypeName":localized(&title),"effectiveBundleIdentifiers":[],
         "fullyQualifiedTypeName":value["typeName"],"identifier":identifier(value),"isSystem":false,
         "mangledTypeName":value["mangledTypeName"],"mangledTypeNameByBundleIdentifier":{},
-        "systemProtocolMetadata":[],"visibilityMetadata":visibility(),
-    }))
+        "visibilityMetadata":visibility(),
+    });
+    if format == RegistrationFormat::Current {
+        result["systemProtocolMetadata"] = json!([]);
+    }
+    Ok(result)
 }
 
-pub(super) fn entity(value: &Value) -> Result<Value, String> {
+pub(super) fn entity(value: &Value, format: RegistrationFormat) -> Result<Value, String> {
     let title = literal(
         property(value, "typeDisplayRepresentation")
             .ok_or("AppEntity has no typeDisplayRepresentation")?,
     )?;
     let mut result = json!({
         "assistantDefinedSchemas":[],"availabilityAnnotations":availability(),"displayTypeName":localized(&title),
-        "effectiveBundleIdentifiers":[],"entitySyncMetadata":{"entitySyncType":0},
+        "effectiveBundleIdentifiers":[],
         "fullyQualifiedTypeName":value["typeName"],"mangledTypeName":value["mangledTypeName"],
         "mangledTypeNameByBundleIdentifier":{},"properties":[],"requiredCapabilities":[],
         "systemProtocolMetadata":[],"systemProtocolMetadataV2":[],"transient":false,
-        "typeName":identifier(value),"typeSpecificMetadata":[],"visibilityMetadata":visibility(),
+        "typeName":identifier(value),"visibilityMetadata":visibility(),
     });
+    if format == RegistrationFormat::Current {
+        result["entitySyncMetadata"] = json!({"entitySyncType":0});
+        result["typeSpecificMetadata"] = json!([]);
+    }
     if let Some(query) = alias(value, "DefaultQuery") {
         result["defaultQueryIdentifier"] = json!(query);
     }
