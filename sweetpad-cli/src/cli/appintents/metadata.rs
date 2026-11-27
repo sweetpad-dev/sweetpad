@@ -353,6 +353,13 @@ mod tests {
                         *v = json!({"name":"normalized"});
                     } else if key == "resolvableInputTypes" {
                         v.as_array_mut().unwrap().sort_by_key(Value::to_string);
+                    } else if key == "typeSpecificMetadata" {
+                        // A flat key/value list that Xcode writes in hash order.
+                        let values = v.as_array_mut().unwrap();
+                        let mut pairs: Vec<Vec<Value>> =
+                            values.chunks(2).map(<[Value]>::to_vec).collect();
+                        pairs.sort_by_key(|pair| pair[0].to_string());
+                        *values = pairs.concat();
                     } else {
                         normalize(v);
                     }
@@ -379,5 +386,70 @@ mod tests {
             normalize(&mut expected);
             assert_eq!(actual, expected, "{input}");
         }
+    }
+    #[test]
+    fn string_input_options_match_xcode() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/appintents");
+        let types: Vec<Value> = serde_json::from_slice(
+            &std::fs::read(dir.join("InputOptionsProbe.swiftconstvalues")).unwrap(),
+        )
+        .unwrap();
+        let mut actual = extract(&types).unwrap()["actions"]["InputOptionsProbeIntent"].take();
+        let mut expected: Value = serde_json::from_slice(
+            &std::fs::read(dir.join("InputOptionsProbe.action.json")).unwrap(),
+        )
+        .unwrap();
+        normalize(&mut actual);
+        normalize(&mut expected);
+        assert_eq!(actual, expected);
+    }
+    #[test]
+    fn input_options_reject_what_they_cannot_encode() {
+        fn options(types: &mut [Value]) -> &mut Value {
+            let intent = types
+                .iter_mut()
+                .find(|t| text(&t["typeName"]).ends_with(".InputOptionsProbeIntent"))
+                .unwrap();
+            let property = intent["properties"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|p| p["label"] == "allOn")
+                .unwrap();
+            property["propertyWrappers"][0]["arguments"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|a| a["label"] == "inputOptions")
+                .unwrap()
+        }
+        let base: Vec<Value> = serde_json::from_str(include_str!(
+            "../../../fixtures/appintents/InputOptionsProbe.swiftconstvalues"
+        ))
+        .unwrap();
+        let mut types = base.clone();
+        options(&mut types)["value"]["arguments"][0]["value"]["name"] = json!("futureKeyboard");
+        assert!(
+            extract(&types)
+                .unwrap_err()
+                .contains("keyboardType 'futureKeyboard'")
+        );
+        let mut types = base.clone();
+        *options(&mut types) = json!({"label":"inputOptions","valueKind":"Runtime"});
+        assert!(
+            extract(&types)
+                .unwrap_err()
+                .contains("constant String.IntentInputOptions")
+        );
+        let mut types = base;
+        options(&mut types)["value"]["arguments"][2]["valueKind"] = json!("Runtime");
+        let metadata = extract(&types).unwrap()["actions"]["InputOptionsProbeIntent"]["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["name"] == "allOn")
+            .unwrap()["typeSpecificMetadata"]
+            .clone();
+        assert!(!metadata.to_string().contains("StringMultiline"));
     }
 }

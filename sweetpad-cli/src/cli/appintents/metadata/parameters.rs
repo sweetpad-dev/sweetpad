@@ -67,6 +67,7 @@ pub(super) fn parameter(value: &Value, types: &[Value]) -> Result<Value, String>
                 | "requestValueDialog"
                 | "supportedContentTypes"
                 | "inputConnectionBehavior"
+                | "inputOptions"
         )
     }) {
         return Err(format!(
@@ -116,6 +117,7 @@ pub(super) fn parameter(value: &Value, types: &[Value]) -> Result<Value, String>
     {
         parameter["parameterDescription"] = localized(&literal(description)?);
     }
+    input_options(arguments, &mut parameter)?;
     if let Some(content_types) = arguments
         .iter()
         .find(|a| a["label"] == "supportedContentTypes")
@@ -152,6 +154,70 @@ pub(super) fn parameter(value: &Value, types: &[Value]) -> Result<Value, String>
             ]);
     }
     Ok(parameter)
+}
+
+/// `String.IntentInputOptions`, in the order of each option's metadata value.
+const KEYBOARD_TYPES: [&str; 5] = [
+    "asciiCapable",
+    "numbersAndPunctuation",
+    "URL",
+    "numberPad",
+    "default",
+];
+const CAPITALIZATION_TYPES: [&str; 4] = ["none", "words", "sentences", "allCharacters"];
+
+/// Xcode writes one key per `String.IntentInputOptions` argument the source passes.
+/// Arguments left at their defaults are captured as `Runtime` and omitted.
+fn input_options(arguments: &[Value], parameter: &mut Value) -> Result<(), String> {
+    let Some(options) = arguments
+        .iter()
+        .find(|a| a["label"] == "inputOptions" && a["valueKind"] != "NilLiteral")
+    else {
+        return Ok(());
+    };
+    if parameter["valueType"]["primitive"]["wrapper"]["typeIdentifier"] != 0 {
+        return Err("inputOptions requires a String parameter".into());
+    }
+    if options["valueKind"] != "InitCall"
+        || options["value"]["type"] != "Swift.String.IntentInputOptions"
+    {
+        return Err("inputOptions must be a constant String.IntentInputOptions initializer".into());
+    }
+    let mut metadata = Vec::new();
+    for option in array(&options["value"]["arguments"]) {
+        if option["valueKind"] == "Runtime" {
+            continue;
+        }
+        let label = text(&option["label"]);
+        let (key, cases): (&str, &[&str]) = match label {
+            "keyboardType" => ("KeyboardType", &KEYBOARD_TYPES),
+            "capitalizationType" => ("CapitalizationType", &CAPITALIZATION_TYPES),
+            "multiline" => ("Multiline", &["false", "true"]),
+            "autocorrect" => ("Autocorrect", &["false", "true"]),
+            "smartQuotes" => ("SmartQuotes", &["false", "true"]),
+            "smartDashes" => ("SmartDashes", &["false", "true"]),
+            _ => return Err(format!("unsupported inputOptions argument '{label}'")),
+        };
+        let (expected, name) = if label.ends_with("Type") {
+            ("Enum", text(&option["value"]["name"]))
+        } else {
+            ("RawLiteral", text(&option["value"]))
+        };
+        let value = cases
+            .iter()
+            .position(|c| *c == name)
+            .filter(|_| option["valueKind"] == expected)
+            .ok_or_else(|| format!("unsupported inputOptions {label} '{name}'"))?;
+        metadata.extend([
+            json!(format!("LNValueTypeMetadataKeyString{key}")),
+            json!({"int":{"wrapper":value}}),
+        ]);
+    }
+    parameter["typeSpecificMetadata"]
+        .as_array_mut()
+        .unwrap()
+        .extend(metadata);
+    Ok(())
 }
 
 fn resolvers(kind: &Value) -> Vec<Value> {

@@ -1,0 +1,2989 @@
+[
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "Sev",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "3Sev23InputOptionsProbeIntentV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy3Sev017InputOptionsProbeC0V_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "InputOptionsProbe.swift",
+    "kind": "struct",
+    "line": 4,
+    "mangledTypeName": "3Sev23InputOptionsProbeIntentV",
+    "properties": [
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_allOff",
+        "line": 9,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "All off",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "value": {
+                      "name": "default"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "value": {
+                      "name": "none"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_allOn",
+        "line": 11,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "All on",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "value": {
+                      "name": "asciiCapable"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "value": {
+                      "name": "allCharacters"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_empty",
+        "line": 13,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Empty",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_punct",
+        "line": 15,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Punct",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "value": {
+                      "name": "numbersAndPunctuation"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "value": {
+                      "name": "words"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_url",
+        "line": 17,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "URL",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "value": {
+                      "name": "URL"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "value": {
+                      "name": "sentences"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_numberPad",
+        "line": 19,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Number pad",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "value": {
+                      "name": "numberPad"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_quotes",
+        "line": 21,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Smart quotes only",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_dashes",
+        "line": 23,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Smart dashes only",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_autocorrect",
+        "line": 25,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Autocorrect only",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_withDefault",
+        "line": 27,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "With default",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "value": "hi",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_dialog",
+        "line": 29,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Options and dialog",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "value": "Described",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "value": {
+                      "name": "numberPad"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "value": "Which?",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_explicitDefaults",
+        "line": 32,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Explicit defaults",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "value": {
+                      "name": "asciiCapable"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "value": {
+                      "name": "sentences"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 5,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Input options probe",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "openAppWhenRun",
+        "line": 6,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Swift.Bool",
+        "value": "false",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "allOff",
+        "line": 9,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "All off",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputOptions",
+                "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+                "value": {
+                  "arguments": [
+                    {
+                      "label": "keyboardType",
+                      "type": "Swift.String.IntentInputOptions.KeyboardType",
+                      "value": {
+                        "name": "default"
+                      },
+                      "valueKind": "Enum"
+                    },
+                    {
+                      "label": "capitalizationType",
+                      "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                      "value": {
+                        "name": "none"
+                      },
+                      "valueKind": "Enum"
+                    },
+                    {
+                      "label": "multiline",
+                      "type": "Swift.Bool",
+                      "value": "false",
+                      "valueKind": "RawLiteral"
+                    },
+                    {
+                      "label": "autocorrect",
+                      "type": "Swift.Bool",
+                      "value": "false",
+                      "valueKind": "RawLiteral"
+                    },
+                    {
+                      "label": "smartQuotes",
+                      "type": "Swift.Bool",
+                      "value": "false",
+                      "valueKind": "RawLiteral"
+                    },
+                    {
+                      "label": "smartDashes",
+                      "type": "Swift.Bool",
+                      "value": "false",
+                      "valueKind": "RawLiteral"
+                    }
+                  ],
+                  "type": "Swift.String.IntentInputOptions"
+                },
+                "valueKind": "InitCall"
+              }
+            ],
+            "file": "InputOptionsProbe.swift",
+            "line": 8,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "All off",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "value": {
+                      "name": "default"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "value": {
+                      "name": "none"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$allOff",
+        "line": 9,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "allOn",
+        "line": 11,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "All on",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputOptions",
+                "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+                "value": {
+                  "arguments": [
+                    {
+                      "label": "keyboardType",
+                      "type": "Swift.String.IntentInputOptions.KeyboardType",
+                      "value": {
+                        "name": "asciiCapable"
+                      },
+                      "valueKind": "Enum"
+                    },
+                    {
+                      "label": "capitalizationType",
+                      "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                      "value": {
+                        "name": "allCharacters"
+                      },
+                      "valueKind": "Enum"
+                    },
+                    {
+                      "label": "multiline",
+                      "type": "Swift.Bool",
+                      "value": "true",
+                      "valueKind": "RawLiteral"
+                    },
+                    {
+                      "label": "autocorrect",
+                      "type": "Swift.Bool",
+                      "value": "true",
+                      "valueKind": "RawLiteral"
+                    },
+                    {
+                      "label": "smartQuotes",
+                      "type": "Swift.Bool",
+                      "value": "true",
+                      "valueKind": "RawLiteral"
+                    },
+                    {
+                      "label": "smartDashes",
+                      "type": "Swift.Bool",
+                      "value": "true",
+                      "valueKind": "RawLiteral"
+                    }
+                  ],
+                  "type": "Swift.String.IntentInputOptions"
+                },
+                "valueKind": "InitCall"
+              }
+            ],
+            "file": "InputOptionsProbe.swift",
+            "line": 10,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "All on",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "value": {
+                      "name": "asciiCapable"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "value": {
+                      "name": "allCharacters"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$allOn",
+        "line": 11,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "empty",
+        "line": 13,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Empty",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputOptions",
+                "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+                "value": {
+                  "arguments": [
+                    {
+                      "label": "keyboardType",
+                      "type": "Swift.String.IntentInputOptions.KeyboardType",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "capitalizationType",
+                      "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "multiline",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "autocorrect",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartQuotes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartDashes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    }
+                  ],
+                  "type": "Swift.String.IntentInputOptions"
+                },
+                "valueKind": "InitCall"
+              }
+            ],
+            "file": "InputOptionsProbe.swift",
+            "line": 12,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Empty",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$empty",
+        "line": 13,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "punct",
+        "line": 15,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Punct",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputOptions",
+                "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+                "value": {
+                  "arguments": [
+                    {
+                      "label": "keyboardType",
+                      "type": "Swift.String.IntentInputOptions.KeyboardType",
+                      "value": {
+                        "name": "numbersAndPunctuation"
+                      },
+                      "valueKind": "Enum"
+                    },
+                    {
+                      "label": "capitalizationType",
+                      "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                      "value": {
+                        "name": "words"
+                      },
+                      "valueKind": "Enum"
+                    },
+                    {
+                      "label": "multiline",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "autocorrect",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartQuotes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartDashes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    }
+                  ],
+                  "type": "Swift.String.IntentInputOptions"
+                },
+                "valueKind": "InitCall"
+              }
+            ],
+            "file": "InputOptionsProbe.swift",
+            "line": 14,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Punct",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "value": {
+                      "name": "numbersAndPunctuation"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "value": {
+                      "name": "words"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$punct",
+        "line": 15,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "url",
+        "line": 17,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "URL",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputOptions",
+                "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+                "value": {
+                  "arguments": [
+                    {
+                      "label": "keyboardType",
+                      "type": "Swift.String.IntentInputOptions.KeyboardType",
+                      "value": {
+                        "name": "URL"
+                      },
+                      "valueKind": "Enum"
+                    },
+                    {
+                      "label": "capitalizationType",
+                      "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                      "value": {
+                        "name": "sentences"
+                      },
+                      "valueKind": "Enum"
+                    },
+                    {
+                      "label": "multiline",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "autocorrect",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartQuotes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartDashes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    }
+                  ],
+                  "type": "Swift.String.IntentInputOptions"
+                },
+                "valueKind": "InitCall"
+              }
+            ],
+            "file": "InputOptionsProbe.swift",
+            "line": 16,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "URL",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "value": {
+                      "name": "URL"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "value": {
+                      "name": "sentences"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$url",
+        "line": 17,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "numberPad",
+        "line": 19,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Number pad",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputOptions",
+                "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+                "value": {
+                  "arguments": [
+                    {
+                      "label": "keyboardType",
+                      "type": "Swift.String.IntentInputOptions.KeyboardType",
+                      "value": {
+                        "name": "numberPad"
+                      },
+                      "valueKind": "Enum"
+                    },
+                    {
+                      "label": "capitalizationType",
+                      "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "multiline",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "autocorrect",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartQuotes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartDashes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    }
+                  ],
+                  "type": "Swift.String.IntentInputOptions"
+                },
+                "valueKind": "InitCall"
+              }
+            ],
+            "file": "InputOptionsProbe.swift",
+            "line": 18,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Number pad",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "value": {
+                      "name": "numberPad"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$numberPad",
+        "line": 19,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "quotes",
+        "line": 21,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Smart quotes only",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputOptions",
+                "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+                "value": {
+                  "arguments": [
+                    {
+                      "label": "keyboardType",
+                      "type": "Swift.String.IntentInputOptions.KeyboardType",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "capitalizationType",
+                      "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "multiline",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "autocorrect",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartQuotes",
+                      "type": "Swift.Bool",
+                      "value": "false",
+                      "valueKind": "RawLiteral"
+                    },
+                    {
+                      "label": "smartDashes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    }
+                  ],
+                  "type": "Swift.String.IntentInputOptions"
+                },
+                "valueKind": "InitCall"
+              }
+            ],
+            "file": "InputOptionsProbe.swift",
+            "line": 20,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Smart quotes only",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$quotes",
+        "line": 21,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "dashes",
+        "line": 23,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Smart dashes only",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputOptions",
+                "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+                "value": {
+                  "arguments": [
+                    {
+                      "label": "keyboardType",
+                      "type": "Swift.String.IntentInputOptions.KeyboardType",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "capitalizationType",
+                      "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "multiline",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "autocorrect",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartQuotes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartDashes",
+                      "type": "Swift.Bool",
+                      "value": "false",
+                      "valueKind": "RawLiteral"
+                    }
+                  ],
+                  "type": "Swift.String.IntentInputOptions"
+                },
+                "valueKind": "InitCall"
+              }
+            ],
+            "file": "InputOptionsProbe.swift",
+            "line": 22,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Smart dashes only",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$dashes",
+        "line": 23,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "autocorrect",
+        "line": 25,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Autocorrect only",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputOptions",
+                "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+                "value": {
+                  "arguments": [
+                    {
+                      "label": "keyboardType",
+                      "type": "Swift.String.IntentInputOptions.KeyboardType",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "capitalizationType",
+                      "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "multiline",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "autocorrect",
+                      "type": "Swift.Bool",
+                      "value": "false",
+                      "valueKind": "RawLiteral"
+                    },
+                    {
+                      "label": "smartQuotes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartDashes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    }
+                  ],
+                  "type": "Swift.String.IntentInputOptions"
+                },
+                "valueKind": "InitCall"
+              }
+            ],
+            "file": "InputOptionsProbe.swift",
+            "line": 24,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Autocorrect only",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$autocorrect",
+        "line": 25,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "withDefault",
+        "line": 27,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "With default",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "default",
+                "type": "Swift.Optional<Swift.String>",
+                "value": "hi",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputOptions",
+                "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+                "value": {
+                  "arguments": [
+                    {
+                      "label": "keyboardType",
+                      "type": "Swift.String.IntentInputOptions.KeyboardType",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "capitalizationType",
+                      "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "multiline",
+                      "type": "Swift.Bool",
+                      "value": "true",
+                      "valueKind": "RawLiteral"
+                    },
+                    {
+                      "label": "autocorrect",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartQuotes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartDashes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    }
+                  ],
+                  "type": "Swift.String.IntentInputOptions"
+                },
+                "valueKind": "InitCall"
+              }
+            ],
+            "file": "InputOptionsProbe.swift",
+            "line": 26,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.String",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "With default",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "value": "hi",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$withDefault",
+        "line": 27,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.String>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "dialog",
+        "line": 29,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Options and dialog",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "description",
+                "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+                "value": "Described",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputOptions",
+                "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+                "value": {
+                  "arguments": [
+                    {
+                      "label": "keyboardType",
+                      "type": "Swift.String.IntentInputOptions.KeyboardType",
+                      "value": {
+                        "name": "numberPad"
+                      },
+                      "valueKind": "Enum"
+                    },
+                    {
+                      "label": "capitalizationType",
+                      "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "multiline",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "autocorrect",
+                      "type": "Swift.Bool",
+                      "value": "false",
+                      "valueKind": "RawLiteral"
+                    },
+                    {
+                      "label": "smartQuotes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    },
+                    {
+                      "label": "smartDashes",
+                      "type": "Swift.Bool",
+                      "valueKind": "Runtime"
+                    }
+                  ],
+                  "type": "Swift.String.IntentInputOptions"
+                },
+                "valueKind": "InitCall"
+              },
+              {
+                "label": "requestValueDialog",
+                "type": "Swift.Optional<AppIntents.IntentDialog>",
+                "value": "Which?",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "InputOptionsProbe.swift",
+            "line": 28,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.String",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Options and dialog",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "value": "Described",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "value": {
+                      "name": "numberPad"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "valueKind": "Runtime"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "value": "Which?",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$dialog",
+        "line": 29,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.String>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "explicitDefaults",
+        "line": 32,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Explicit defaults",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inputOptions",
+                "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+                "value": {
+                  "arguments": [
+                    {
+                      "label": "keyboardType",
+                      "type": "Swift.String.IntentInputOptions.KeyboardType",
+                      "value": {
+                        "name": "asciiCapable"
+                      },
+                      "valueKind": "Enum"
+                    },
+                    {
+                      "label": "capitalizationType",
+                      "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                      "value": {
+                        "name": "sentences"
+                      },
+                      "valueKind": "Enum"
+                    },
+                    {
+                      "label": "multiline",
+                      "type": "Swift.Bool",
+                      "value": "false",
+                      "valueKind": "RawLiteral"
+                    },
+                    {
+                      "label": "autocorrect",
+                      "type": "Swift.Bool",
+                      "value": "true",
+                      "valueKind": "RawLiteral"
+                    },
+                    {
+                      "label": "smartQuotes",
+                      "type": "Swift.Bool",
+                      "value": "true",
+                      "valueKind": "RawLiteral"
+                    },
+                    {
+                      "label": "smartDashes",
+                      "type": "Swift.Bool",
+                      "value": "true",
+                      "valueKind": "RawLiteral"
+                    }
+                  ],
+                  "type": "Swift.String.IntentInputOptions"
+                },
+                "valueKind": "InitCall"
+              }
+            ],
+            "file": "InputOptionsProbe.swift",
+            "line": 31,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Optional<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Explicit defaults",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "value": {
+                "arguments": [
+                  {
+                    "label": "keyboardType",
+                    "type": "Swift.String.IntentInputOptions.KeyboardType",
+                    "value": {
+                      "name": "asciiCapable"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "capitalizationType",
+                    "type": "Swift.String.IntentInputOptions.CapitalizationType",
+                    "value": {
+                      "name": "sentences"
+                    },
+                    "valueKind": "Enum"
+                  },
+                  {
+                    "label": "multiline",
+                    "type": "Swift.Bool",
+                    "value": "false",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "autocorrect",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartQuotes",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "label": "smartDashes",
+                    "type": "Swift.Bool",
+                    "value": "true",
+                    "valueKind": "RawLiteral"
+                  }
+                ],
+                "type": "Swift.String.IntentInputOptions"
+              },
+              "valueKind": "InitCall"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "InputOptionsProbe.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$explicitDefaults",
+        "line": 32,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Optional<Swift.String>>",
+        "valueKind": "Runtime"
+      }
+    ],
+    "typeName": "Sev.InputOptionsProbeIntent"
+  }
+]

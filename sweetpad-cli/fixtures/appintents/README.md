@@ -1,7 +1,7 @@
 # App Intents compiler captures
 
 The Swift files are synthetic probes owned by this repository.
-`regen.py` builds both probes with Xcode through the local sweetpad binary.
+`regen.py` builds the probes with Xcode through the local sweetpad binary.
 It requires macOS, Xcode, and XcodeGen.
 
 ```sh
@@ -16,7 +16,8 @@ The language-model test compares decoded phrases and negative examples.
 It ignores native phrase order and generation timestamps.
 
 Registration covers basic intents, primitive parameters, enums, entities,
-queries, widget configuration, authentication policies, and App Shortcuts.
+queries, widget configuration, authentication policies, App Shortcuts,
+and `String.IntentInputOptions` (`InputOptionsProbe.action.json` holds that probe's action only).
 Assistant schemas, explicit supported modes, custom parameter options,
 and dependency metadata currently stop extraction with an error.
 Localized shortcut phrase models and availability-specific metadata need more coverage.
