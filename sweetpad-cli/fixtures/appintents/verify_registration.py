@@ -3,6 +3,7 @@
 
 import argparse
 from copy import deepcopy
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -14,7 +15,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[2] / "sweetpad-lib/ci"))
 from bundle_comparison import differences, normalize_registration
 from regen import PROBES
-from sdk_coverage import BASELINE, checklist
+from sdk_coverage import BASELINE, checklist, reviewed_baseline, version_number
 
 
 def read(path):
@@ -102,12 +103,33 @@ def verify_diagnostics(captures, work, binary):
     return len(case_errors), len(options)
 
 
-def verify(captures, binary):
-    sdk = read(captures / "sdk.json")["version"]
-    compare_baseline = tuple(map(int, sdk.split("."))) >= tuple(map(int, BASELINE.split(".")))
+def registration_fingerprints(captures, build):
+    fingerprints = {}
+    for source in PROBES:
+        capture = captures / source
+        version = read(capture / "version.json")
+        equal(f"{source}/toolsVersion", build, version.get("toolsVersion"))
+        # Compare the build identifier literally in the replay. Allow its value
+        # to advance when comparing native captures from different Xcode builds.
+        version["toolsVersion"] = "<Xcode build>"
+        documents = {
+            "version.json": version,
+            "extract.actionsdata": normalize_registration(read(capture / "extract.actionsdata")),
+        }
+        content = json.dumps(documents, sort_keys=True, separators=(",", ":")).encode()
+        fingerprints[source] = hashlib.sha256(content).hexdigest()
+    return fingerprints
+
+
+def verify(captures, binary, update=False):
+    toolchain = read(captures / "sdk.json")
+    sdk = toolchain["version"]
+    compare_baseline = version_number(sdk) >= version_number(BASELINE)
+    build = toolchain["xcode"].splitlines()[-1].removeprefix("Build version ")
     with tempfile.TemporaryDirectory(prefix="sweetpad-intents-replay-") as tmp:
         work = Path(tmp)
         total = 0
+        failures = []
         for source, (module, expected) in PROBES.items():
             if expected is None:
                 continue
@@ -116,12 +138,36 @@ def verify(captures, binary):
                 baseline = read(HERE / expected)
                 if expected.endswith(".actions.json"):
                     native, baseline = {"actions": native["actions"]}, {"actions": baseline}
-                equal(source + "/Xcode baseline", normalize_registration(baseline), normalize_registration(native))
-            count = compare_capture(captures / source, work / source, binary, module)
+                try:
+                    equal(source + "/Xcode baseline", normalize_registration(baseline), normalize_registration(native))
+                except ValueError as error:
+                    failures.append(str(error))
+            try:
+                count = compare_capture(captures / source, work / source, binary, module)
+            except (ValueError, OSError) as error:
+                failures.append(str(error))
+                continue
             total += count
             print(f"{source}: {count} actions; complete registration and version match")
-        verify_no_effect(read(captures / "ResultProtocols/extract.actionsdata"))
-        native, labels = verify_diagnostics(captures, work, binary)
+        try:
+            verify_no_effect(read(captures / "ResultProtocols/extract.actionsdata"))
+        except ValueError as error:
+            failures.append(str(error))
+        try:
+            native, labels = verify_diagnostics(captures, work, binary)
+        except ValueError as error:
+            failures.append(str(error))
+        try:
+            fingerprints = registration_fingerprints(captures, build)
+            if not update:
+                baseline = reviewed_baseline(sdk, "registration.json", HERE)
+                equal(f"Native registration changed since {baseline.name}", read(baseline), fingerprints)
+        except ValueError as error:
+            failures.append(str(error))
+        if failures:
+            raise ValueError("\n\n".join(failures))
+        if update:
+            (HERE / f"sdk-{sdk}-registration.json").write_text(json.dumps(fingerprints, indent=2, sort_keys=True) + "\n")
         print(f"{total} actions matched; {native} native diagnostic probes and {labels} option diagnostics passed")
 
 
@@ -129,5 +175,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("captures", type=Path)
     parser.add_argument("--sweetpad", type=Path, default=HERE.parents[2] / "target/debug/sweetpad")
+    parser.add_argument("--update-registrations", action="store_true", help="record reviewed native registration fingerprints")
     args = parser.parse_args()
-    verify(args.captures, args.sweetpad.resolve())
+    verify(args.captures, args.sweetpad.resolve(), args.update_registrations)

@@ -100,6 +100,16 @@ def version_number(version):
     return tuple(map(int, version.split(".")))
 
 
+def reviewed_baseline(version, suffix, directory):
+    versions = {version_number(f.name.split("-")[1]): f for f in directory.glob(f"sdk-*-{suffix}")}
+    current = version_number(version)
+    candidates = [v for v in versions if v <= current]
+    primary = version_number(BASELINE)
+    if not candidates or (current >= primary and primary not in versions):
+        raise ValueError(f"No reviewed {suffix} baseline for iOS {version}")
+    return versions[max(candidates)]
+
+
 def check(keys, declarations, version, update=False, directory=HERE, export=None):
     rows = checklist()
     newer = version_number(version) >= version_number(BASELINE)
@@ -120,14 +130,11 @@ def check(keys, declarations, version, update=False, directory=HERE, export=None
     if update:
         (directory / name).write_text("".join(lines))
     else:
-        versions = {version_number(f.name.split("-")[1]): f for f in directory.glob("sdk-*-signatures.txt")}
-        candidates = [v for v in versions if v <= version_number(version)]
-        if candidates:
-            baseline = versions[max(candidates)]
-            previous = baseline.read_text().splitlines(keepends=True)
-            if previous != lines:
-                diff = difflib.unified_diff(previous, lines, fromfile=baseline.name, tofile=f"iOS {version} SDK")
-                raise ValueError("SDK overloads changed. Review the named declarations and their evidence.\n" + "".join(diff))
+        baseline = reviewed_baseline(version, "signatures.txt", directory)
+        previous = baseline.read_text().splitlines(keepends=True)
+        if previous != lines:
+            diff = difflib.unified_diff(previous, lines, fromfile=baseline.name, tofile=f"iOS {version} SDK")
+            raise ValueError("SDK overloads changed. Review the named declarations and their evidence.\n" + "".join(diff))
     print(f"iOS {version}: {len(keys)} classified entries, {sum(map(len, declarations.values()))} declarations")
 
 

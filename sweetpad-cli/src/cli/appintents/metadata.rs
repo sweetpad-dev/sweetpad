@@ -550,6 +550,23 @@ mod tests {
         );
     }
     #[test]
+    fn xcode_26_infers_the_instance_parameter_named_parameter_summary() {
+        let types: Vec<Value> = serde_json::from_str(include_str!(
+            "../../../fixtures/appintents/InputOptionsProbe.swiftconstvalues"
+        ))
+        .unwrap();
+        let actions = &extract(&types, "17F113").unwrap()["actions"];
+        let parameters = &actions["ParameterTitleProbe"]["parameters"];
+        assert_eq!(parameters[0]["title"], localized("User's choice"));
+        let summary = &parameters[1];
+        assert_eq!(summary["name"], "parameterSummary");
+        assert_eq!(summary["title"], localized("Parameter Summary"));
+        assert_eq!(summary["isOptional"], false);
+        assert_eq!(summary["capabilities"], 0);
+        assert!(summary.get("parameterDescription").is_none());
+        assert_eq!(summary["typeSpecificMetadata"], json!([]));
+    }
+    #[test]
     fn probe_actions_match_xcode() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/appintents");
         for probe in ["InputOptionsProbe", "OutputProbe"] {

@@ -1,40 +1,45 @@
 # iOS App Intents SDK coverage
 
-Captured with Xcode 27.2 (27B52) and the arm64 iOS 27.2 SDK. The inventory covers public `IntentParameter` initializer labels across value types, string input settings and connection cases, protocols refining `IntentResult`, and the App Intent summary builders. Each match applies to the Swift types and constant expressions in the linked probe.
+Xcode 27.2 (27B52) and Xcode 26.6 (17F113) expose the same 63 checklist entries. The inventory covers public `IntentParameter` initializer labels across value types, string input settings and connection cases, protocols refining `IntentResult`, and the App Intent summary builders. Each match applies to the Swift types and constant expressions in the linked probe.
 
-The signature snapshot tracks overloads that reuse the same labels. The SDK check compares the public symbol graph, including overlays. On older SDKs it checks the available surface. On the baseline and newer SDKs it also checks additions, removals and changes to overloads. [Signature snapshot](sdk-27.2-signatures.txt) · [SDK check](sdk_coverage.py)
+| Xcode | iOS SDK | Public declarations including overloads | Native registration |
+| --- | --- | ---: | --- |
+| 26.6 (17F113) | 26.5 | [542 declarations](sdk-26.5-signatures.txt) | [Seven probe fingerprints](sdk-26.5-registration.json) |
+| 27.2 (27B52) | 27.2 | [587 declarations](sdk-27.2-signatures.txt) | [Seven probe fingerprints](sdk-27.2-registration.json) |
+
+CI compares the installed SDK’s public symbol graph, including overlays, with the most recent reviewed snapshot at or below that SDK version. It checks additions, removals and changes to overloads, including declarations that reuse existing labels. The registration check also compares fresh Xcode output to Linux and to the native fingerprints in the table. [SDK check](sdk_coverage.py) · [Registration check](verify_registration.py)
 
 ## Parameter initializer options
 
 | Declaration | Classification | Evidence |
 | --- | --- | --- |
-| `parameter.controlStyle` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
-| `parameter.currencyCodes` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
+| `parameter.controlStyle` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
+| `parameter.currencyCodes` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
 | `parameter.default` | Match | [TypesIntent](Types.swift#L25) · [Types.actionsdata](Types.actionsdata) |
-| `parameter.defaultUnit` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
-| `parameter.defaultUnitAdjustForLocale` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
-| `parameter.defaultValue` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
+| `parameter.defaultUnit` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
+| `parameter.defaultUnitAdjustForLocale` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
+| `parameter.defaultValue` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
 | `parameter.description` | Match | [FileInputIntent](Files.swift#L5) · [Files.actionsdata](Files.actionsdata) |
-| `parameter.displayName` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
-| `parameter.displayStyle` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
-| `parameter.inclusiveRange` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) · [RangeProbe](Unsupported.swift#L30) |
+| `parameter.displayName` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
+| `parameter.displayStyle` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
+| `parameter.inclusiveRange` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) · [RangeProbe](Unsupported.swift#L30) |
 | `parameter.inputConnectionBehavior` | Match | [ConnectionProbe](ResultProtocols.swift#L69) · [Xcode registration](ResultProtocols.actionsdata#L164) |
 | `parameter.inputOptions` | Match | [allOff](InputOptionsProbe.swift#L9) · [Xcode parameter](InputOptionsProbe.actions.json#L29) |
-| `parameter.kind` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
-| `parameter.mode` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
-| `parameter.optionsProvider` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) · [OptionsProviderProbe](Unsupported.swift#L40) |
-| `parameter.query` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
-| `parameter.requestDisambiguationDialog` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
-| `parameter.requestValueDialog` | No effect | [PromptProbe](ResultProtocols.swift#L10) · [Xcode registration](ResultProtocols.actionsdata#L550) · [native control comparison](verify_registration.py#L60) |
-| `parameter.resolvers` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
-| `parameter.size` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
+| `parameter.kind` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
+| `parameter.mode` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
+| `parameter.optionsProvider` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) · [OptionsProviderProbe](Unsupported.swift#L40) |
+| `parameter.query` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
+| `parameter.requestDisambiguationDialog` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
+| `parameter.requestValueDialog` | No effect | [PromptProbe](ResultProtocols.swift#L10) · [Xcode registration](ResultProtocols.actionsdata#L550) · [native control comparison](verify_registration.py#L61) |
+| `parameter.resolvers` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
+| `parameter.size` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
 | `parameter.supportedContentTypes` | Match | [FileInputIntent](Files.swift#L5) · [Files.actionsdata](Files.actionsdata) |
-| `parameter.supportedTypeIdentifiers` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
-| `parameter.supportedValues` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
-| `parameter.supportsNegativeNumbers` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
+| `parameter.supportedTypeIdentifiers` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
+| `parameter.supportedValues` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
+| `parameter.supportsNegativeNumbers` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
 | `parameter.title` | Match | [TypesIntent](Types.swift#L25) · [Types.actionsdata](Types.actionsdata) |
-| `parameter.unit` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
-| `parameter.unitAdjustForLocale` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L97) |
+| `parameter.unit` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
+| `parameter.unitAdjustForLocale` | Diagnostic | [per-option extractor diagnostic](verify_registration.py#L98) |
 
 ## Connection behavior
 
@@ -81,16 +86,16 @@ The signature snapshot tracks overloads that reuse the same labels. The SDK chec
 
 | Declaration | Classification | Evidence |
 | --- | --- | --- |
-| `summary.Case` | Diagnostic | [SwitchProbe](Unsupported.swift#L12) · [extractor diagnostic](verify_registration.py#L69) |
-| `summary.DefaultCase` | Diagnostic | [SwitchProbe](Unsupported.swift#L12) · [extractor diagnostic](verify_registration.py#L69) |
+| `summary.Case` | Diagnostic | [SwitchProbe](Unsupported.swift#L12) · [extractor diagnostic](verify_registration.py#L70) |
+| `summary.DefaultCase` | Diagnostic | [SwitchProbe](Unsupported.swift#L12) · [extractor diagnostic](verify_registration.py#L70) |
 | `summary.Summary` | Match | [SummaryTwoProbeIntent](OutputProbe.swift#L35) · [Xcode action](OutputProbe.actions.json#L617) |
 | `summary.Summary()` | Match | [NoSummaryTextProbeIntent](OutputProbe.swift#L60) · [Xcode action](OutputProbe.actions.json#L131) |
 | `summary.Summary(_:)` | Match | [SummaryParametersOnlyProbeIntent](OutputProbe.swift#L74) · [Xcode action](OutputProbe.actions.json#L458) |
 | `summary.Summary(_:table:)` | Match | [EmptySummaryTextProbeIntent](OutputProbe.swift#L68) · [Xcode action](OutputProbe.actions.json#L83) |
 | `summary.Summary(_:table:_:)` | Match | [SummaryTwoProbeIntent](OutputProbe.swift#L35) · [Xcode action](OutputProbe.actions.json#L617) |
-| `summary.Switch` | Diagnostic | [SwitchProbe](Unsupported.swift#L12) · [extractor diagnostic](verify_registration.py#L69) |
-| `summary.When` | Diagnostic | [WhenProbe](Unsupported.swift#L3) · [extractor diagnostic](verify_registration.py#L69) |
-| `summary.table` | Diagnostic | [TableProbe](Unsupported.swift#L24) · [extractor diagnostic](verify_registration.py#L69) |
+| `summary.Switch` | Diagnostic | [SwitchProbe](Unsupported.swift#L12) · [extractor diagnostic](verify_registration.py#L70) |
+| `summary.When` | Diagnostic | [WhenProbe](Unsupported.swift#L3) · [extractor diagnostic](verify_registration.py#L70) |
+| `summary.table` | Diagnostic | [TableProbe](Unsupported.swift#L24) · [extractor diagnostic](verify_registration.py#L70) |
 
 An explicit non-nil localization table is covered by `summary.table`. The two plain summary initializers accepting a table match with its default nil value. The conditional probe exercises both branches of `When` and includes `Case` and `DefaultCase` in a single `Switch`; the extractor rejects the enclosing condition.
 

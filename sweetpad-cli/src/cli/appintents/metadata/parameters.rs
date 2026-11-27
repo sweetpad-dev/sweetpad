@@ -82,18 +82,23 @@ pub(super) fn parameter(
             text(&argument["label"])
         ));
     }
-    let title = parameter_title(value, arguments, format)?;
+    let (arguments, title, default) =
+        if format == RegistrationFormat::Xcode26 && value["label"] == "parameterSummary" {
+            // Xcode 26 infers this instance parameter from its name and type. Its
+            // wrapper options are lost when the name matches the AppIntent requirement.
+            (&[][..], "Parameter Summary".to_owned(), None)
+        } else {
+            let title = arguments
+                .iter()
+                .find(|a| a["label"] == "title")
+                .or_else(|| argument(value, "title"))
+                .ok_or("parameter has no constant title")?;
+            let default = argument(value, "default").filter(|v| v["valueKind"] != "NilLiteral");
+            (arguments, literal(title)?, default)
+        };
     let (name, is_optional) = optional(text(&value["type"]));
     let kind = value_type(name, types)?;
-    let connection = arguments
-        .iter()
-        .find(|a| a["label"] == "inputConnectionBehavior");
-    let connection = match connection.map(|v| text(&v["value"]["name"])) {
-        None | Some("default") => 0,
-        Some("never") => 1,
-        Some("connectToPreviousIntentResult") => 2,
-        Some(name) => return Err(format!("unsupported inputConnectionBehavior '{name}'")),
-    };
+    let connection = input_connection_behavior(arguments)?;
     if let Some(dialog) = arguments
         .iter()
         .find(|a| a["label"] == "requestValueDialog" && a["valueKind"] != "NilLiteral")
@@ -102,7 +107,6 @@ pub(super) fn parameter(
         // Native registration contains no dialog field for this option.
         literal(dialog)?;
     }
-    let default = argument(value, "default").filter(|v| v["valueKind"] != "NilLiteral");
     let mut parameter = json!({
         "capabilities":u8::from(default.is_some()),"dynamicOptionsSupport":u8::from(kind.get("entity").is_some()),
         "inputConnectionBehavior":connection,"isInput":connection == 2,"isOptional":is_optional,
@@ -160,6 +164,18 @@ pub(super) fn parameter(
     Ok(parameter)
 }
 
+fn input_connection_behavior(arguments: &[Value]) -> Result<u8, String> {
+    let behavior = arguments
+        .iter()
+        .find(|a| a["label"] == "inputConnectionBehavior");
+    match behavior.map(|v| text(&v["value"]["name"])) {
+        None | Some("default") => Ok(0),
+        Some("never") => Ok(1),
+        Some("connectToPreviousIntentResult") => Ok(2),
+        Some(name) => Err(format!("unsupported inputConnectionBehavior '{name}'")),
+    }
+}
+
 /// `String.IntentInputOptions`, in the order of each option's metadata value.
 const KEYBOARD_TYPES: [&str; 5] = [
     "asciiCapable",
@@ -169,23 +185,6 @@ const KEYBOARD_TYPES: [&str; 5] = [
     "default",
 ];
 const CAPITALIZATION_TYPES: [&str; 4] = ["none", "words", "sentences", "allCharacters"];
-
-fn parameter_title(
-    value: &Value,
-    arguments: &[Value],
-    format: RegistrationFormat,
-) -> Result<String, String> {
-    if format == RegistrationFormat::Xcode26 && value["label"] == "parameterSummary" {
-        // Xcode 26 infers the title when the instance parameter has this AppIntent requirement's name.
-        return Ok("Parameter Summary".to_owned());
-    }
-    let title = arguments
-        .iter()
-        .find(|a| a["label"] == "title")
-        .or_else(|| argument(value, "title"))
-        .ok_or("parameter has no constant title")?;
-    literal(title)
-}
 
 /// Xcode writes one key per `String.IntentInputOptions` argument the source passes.
 /// Arguments left at their defaults are captured as `Runtime` and omitted.

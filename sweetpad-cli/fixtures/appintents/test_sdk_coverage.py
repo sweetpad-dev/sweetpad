@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 import sdk_coverage as sdk
-from verify_registration import equal, normalize_registration
+from verify_registration import equal, normalize_registration, registration_fingerprints
 
 
 def symbol(name, kind, uid=None):
@@ -39,6 +39,31 @@ class SDKCoverageTests(unittest.TestCase):
                 sdk.check(keys, {name: {"one"}}, "26.5", update=True, directory=Path(tmp))
                 with self.assertRaisesRegex(ValueError, "SDK overloads changed"):
                     sdk.check(keys, {name: {"one", "two"}}, "26.6", directory=Path(tmp))
+
+    def test_unreviewed_sdk_requires_a_baseline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError, "No reviewed"):
+                sdk.reviewed_baseline("26.5", "signatures.txt", Path(tmp))
+            (Path(tmp) / "sdk-26.5-signatures.txt").touch()
+            with self.assertRaisesRegex(ValueError, "No reviewed"):
+                sdk.reviewed_baseline(sdk.BASELINE, "signatures.txt", Path(tmp))
+
+    def test_native_registration_change_is_detected_even_if_linux_matches(self):
+        native = json.loads((sdk.HERE / "ResultProtocols.actionsdata").read_text())
+        expected = json.loads((sdk.HERE / "sdk-27.2-registration.json").read_text())["ResultProtocols"]
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("verify_registration.PROBES", {"ResultProtocols": None}, clear=True):
+            probe = Path(tmp) / "ResultProtocols"
+            probe.mkdir()
+            version = probe / "version.json"
+            registration = probe / "extract.actionsdata"
+            version.write_text(json.dumps({"version": "3.0", "toolsVersion": "next-build"}))
+            registration.write_text(json.dumps(native))
+            self.assertEqual(registration_fingerprints(probe.parent, "next-build")["ResultProtocols"], expected)
+            native["newRegistryField"] = True
+            registration.write_text(json.dumps(native))
+            self.assertNotEqual(registration_fingerprints(probe.parent, "next-build")["ResultProtocols"], expected)
+            with self.assertRaisesRegex(ValueError, "toolsVersion"):
+                registration_fingerprints(probe.parent, "wrong-build")
 
     def test_complete_registration_detects_flags_and_other_schema_changes(self):
         native = json.loads((sdk.HERE / "ResultProtocols.actionsdata").read_text())
