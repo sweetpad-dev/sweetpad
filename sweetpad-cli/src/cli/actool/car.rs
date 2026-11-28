@@ -15,7 +15,7 @@
 //!   keys take, which is how CoreUI finds the masters a symbol has.
 //!
 //! A color's rendition holds its components as an `RLOC` payload, and an
-//! image's its pixels, premultiplied BGRA compressed with gzip, which CoreUI
+//! image's its pixels, premultiplied BGRA or gray/alpha compressed with gzip, which CoreUI
 //! calls "zip". A vector image is drawn into one of those per scale, and its
 //! PDF or SVG is kept as a rendition of its own. A custom symbol is an SVG
 //! per weight and size its template draws, with the metrics that set it in
@@ -674,9 +674,24 @@ impl Car {
 
     /// A bitmap's rendition, keyed by `key`, with the header's `flags`.
     fn bitmap(&mut self, key: Key, name: &str, image: &Bitmap, flags: u32) {
+        let gray = image
+            .bgra
+            .chunks_exact(4)
+            .all(|p| p[0] == p[1] && p[1] == p[2]);
+        let gray_alpha;
+        let (pixels, pixel_format, color_space, bytes_per_pixel) = if gray {
+            gray_alpha = image
+                .bgra
+                .chunks_exact(4)
+                .flat_map(|p| [p[0], p[3]])
+                .collect::<Vec<_>>();
+            (gray_alpha.as_slice(), *b"GA8 ", 2, 2)
+        } else {
+            (image.bgra.as_slice(), *b"ARGB", 1, 4)
+        };
         let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         let compressed = gzip
-            .write_all(&image.bgra)
+            .write_all(pixels)
             .and_then(|()| gzip.finish())
             .unwrap_or_default();
         let mut payload = b"MLEC".to_vec();
@@ -716,7 +731,7 @@ impl Car {
             ),
             info(1004, &[&zero, &1f32.to_le_bytes()]),
             info(1006, &[&1u32.to_le_bytes()]),
-            info(1007, &[&(w * 4).to_le_bytes()]),
+            info(1007, &[&(w * bytes_per_pixel).to_le_bytes()]),
         ];
         let header = Header {
             name,
@@ -725,8 +740,8 @@ impl Car {
             width: w,
             height: h,
             scale: u32::from(key.scale) * 100,
-            pixel_format: u32::from_be_bytes(*b"ARGB"),
-            color_space: 1,
+            pixel_format: u32::from_be_bytes(pixel_format),
+            color_space,
         };
         self.add(key, header.rendition(&info, &payload));
     }
@@ -1457,6 +1472,41 @@ pub(super) mod tests {
         )
         .unwrap();
         assert_eq!(pixels, [0, 0, 255, 255, 128, 128, 128, 128]);
+    }
+
+    #[test]
+    fn gray_bitmaps_store_premultiplied_gray_then_alpha() {
+        let mut car = Car::new(Family::Ios, "ios", "15.6");
+        let id = car.facet("Marker", Part::Image).unwrap();
+        let image = Bitmap::from_rgba(&Rgba {
+            width: 3,
+            height: 1,
+            pixels: vec![180, 180, 180, 255, 80, 80, 80, 128, 0, 0, 0, 0],
+        });
+        car.image(
+            "Marker.png",
+            id,
+            ANY,
+            &image,
+            Rendering::Original,
+            Source {
+                vector: false,
+                preserved: false,
+            },
+        );
+        let data = car.write(0);
+        let store = Store::read(&data);
+        let (renditions, _) = store.tree("RENDITIONS");
+        let rendition = renditions[0].1;
+        assert_eq!(&rendition[24..28], b" 8AG");
+        let info_len = u32::from_le_bytes(rendition[168..172].try_into().unwrap()) as usize;
+        let mut pixels = Vec::new();
+        std::io::Read::read_to_end(
+            &mut flate2::read::GzDecoder::new(&rendition[184 + info_len + 16..]),
+            &mut pixels,
+        )
+        .unwrap();
+        assert_eq!(pixels, [180, 255, 40, 128, 0, 0]);
     }
 
     #[test]
