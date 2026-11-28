@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 use super::catalog::Catalog;
 use super::symbols::{self, Frameworks, Options};
@@ -105,6 +106,8 @@ fn probe_catalog(dir: &Path) -> Catalog {
 fn options(extensions: bool, frameworks: Frameworks) -> Options {
     Options {
         bundle_id: "dev.sweetpad.Probe".into(),
+        api: symbols::ResourceApi::System,
+        mac_catalyst: false,
         extensions,
         frameworks,
         target_devices: vec!["iphone".into(), "ipad".into()],
@@ -143,7 +146,9 @@ fn symbols_match_actool_in_every_mode() {
         uikit: false,
         swiftui: true,
     };
-    for (mode, opts) in [
+    let back_deployed: Value =
+        serde_json::from_str(&fixture("expected/back-deployed-sha256.json")).unwrap();
+    for (mode, mut opts) in [
         ("extensions", options(true, Frameworks::default())),
         ("no-extensions", options(false, Frameworks::default())),
         ("swiftui", options(true, swiftui)),
@@ -159,6 +164,32 @@ fn symbols_match_actool_in_every_mode() {
             &fixture("expected/symbols.h"),
             &format!("{mode} header"),
         );
+        opts.api = symbols::ResourceApi::BackDeployed;
+        let swift = symbols::generate(&catalogs, &opts).swift;
+        assert_eq!(
+            format!("{:x}", Sha256::digest(swift.as_bytes())),
+            back_deployed[mode].as_str().unwrap(),
+            "iOS 15.6 {mode} output differs from Xcode's actool",
+        );
+    }
+}
+
+#[test]
+fn catalyst_keeps_ipad_only_assets_as_thinnable_resources() {
+    let dir = TempDir::new("sweetpad-actool-catalyst");
+    let catalog = probe_catalog(&dir);
+    let mut opts = options(true, Frameworks::default());
+    opts.target_devices = vec!["mac".into()];
+    opts.mac_catalyst = true;
+    for api in [
+        symbols::ResourceApi::BackDeployed,
+        symbols::ResourceApi::System,
+    ] {
+        opts.api = api;
+        let swift = symbols::generate(std::slice::from_ref(&catalog), &opts).swift;
+        assert!(swift.contains(r#"ImageResource(thinnableName: "PadOnly""#));
+        assert!(swift.contains(r#"ColorResource(name: "MacOnly""#));
+        assert!(!swift.contains("PhoneOnly"));
     }
 }
 
@@ -857,6 +888,133 @@ fn platform_args(catalog: &Path, out: &Path, platform: &str) -> Args {
 }
 
 #[test]
+fn image_direction_keys_and_mirroring_follow_the_declared_slots() {
+    let temp = TempDir::new("sweetpad-actool-direction");
+    let catalog = temp.join("Direction.xcassets");
+    let set = catalog.join("Arrow.imageset");
+    std::fs::create_dir_all(&set).unwrap();
+    std::fs::write(set.join("arrow.png"), png_of(8, [0, 0, 255, 255])).unwrap();
+    let fixed = json!({"filename": "arrow.png", "scale": "2x"});
+    let left =
+        json!({"filename": "arrow.png", "scale": "1x", "language-direction": "left-to-right"});
+    let right =
+        json!({"filename": "arrow.png", "scale": "2x", "language-direction": "right-to-left"});
+    let empty_right = json!({"scale": "2x", "language-direction": "right-to-left"});
+    let invalid = json!({"filename": "arrow.png", "language-direction": "unknown"});
+    for (entries, expected) in [
+        (json!([fixed]), vec![(0, false)]),
+        (json!([left, invalid]), vec![(5, true)]),
+        (json!([right]), vec![(4, true)]),
+        (json!([left, right]), vec![(4, false), (5, false)]),
+        (json!([left, empty_right]), vec![(5, false)]),
+        (json!([fixed, left]), vec![(0, false), (0, false)]),
+    ] {
+        write_json(&set.join("Contents.json"), &json!({"images": entries}));
+        for platform in [
+            "iphonesimulator",
+            "macosx",
+            "watchsimulator",
+            "appletvsimulator",
+            "xrsimulator",
+        ] {
+            let out = temp.join(platform);
+            compile::compile(&platform_args(&catalog, &out, platform)).unwrap();
+            let data = std::fs::read(out.join("Assets.car")).unwrap();
+            let store = super::car::tests::Store::read(&data);
+            let direction = store.variable("KEYFORMAT")[12..]
+                .chunks_exact(4)
+                .position(|attr| attr == 4u32.to_le_bytes());
+            assert_eq!(
+                direction,
+                expected.iter().any(|&(d, _)| d != 0).then_some(5),
+                "{platform}: {entries}"
+            );
+            let (records, _) = store.tree("RENDITIONS");
+            let mut actual: Vec<_> = records
+                .iter()
+                .map(|(key, value)| {
+                    let code =
+                        direction.map_or(0, |i| u16::from_le_bytes([key[2 * i], key[2 * i + 1]]));
+                    (code, value[8] & 0x40 != 0)
+                })
+                .collect();
+            actual.sort_unstable();
+            assert_eq!(actual, expected, "{platform}: {entries}");
+        }
+    }
+}
+
+#[test]
+fn only_the_size_class_axes_used_by_targeted_images_widen_the_catalog() {
+    let temp = TempDir::new("sweetpad-actool-size-classes");
+    let catalog = temp.join("Sizes.xcassets");
+    let set = catalog.join("Pin.imageset");
+    std::fs::create_dir_all(&set).unwrap();
+    std::fs::write(set.join("pin.png"), png_of(8, [0, 0, 255, 255])).unwrap();
+    let base = json!({"idiom": "universal", "scale": "1x", "filename": "pin.png"});
+    for (horizontal, vertical) in [
+        (None, None),
+        (Some("compact"), None),
+        (None, Some("regular")),
+        (Some("compact"), Some("regular")),
+    ] {
+        let mut entries = vec![base.clone()];
+        let mut slot = base.clone();
+        if let Some(value) = horizontal {
+            slot["width-class"] = json!(value);
+        }
+        if let Some(value) = vertical {
+            slot["height-class"] = json!(value);
+        }
+        if slot != base {
+            entries.push(slot);
+        }
+        // Xcode represents the default by omitting the axis. Invalid selectors
+        // must never become extra copies of the default rendition.
+        for value in ["any", "unsupported"] {
+            let mut invalid = base.clone();
+            invalid["width-class"] = json!(value);
+            entries.push(invalid);
+        }
+        write_json(&set.join("Contents.json"), &json!({"images": entries}));
+        for platform in [
+            "iphoneos",
+            "iphonesimulator",
+            "xros",
+            "xrsimulator",
+            "macosx",
+            "appletvsimulator",
+            "watchsimulator",
+        ] {
+            let out = temp.join(platform);
+            compile::compile(&platform_args(&catalog, &out, platform)).unwrap();
+            let records = renditions(&out.join("Assets.car"));
+            let supported = matches!(
+                platform,
+                "iphoneos" | "iphonesimulator" | "xros" | "xrsimulator"
+            );
+            let width = horizontal.is_some() && supported;
+            let height = vertical.is_some() && supported;
+            let mut slots = Vec::new();
+            for (key, _, _) in records {
+                assert_eq!(key.contains_key(&20), width, "{platform} horizontal axis");
+                assert_eq!(key.contains_key(&21), height, "{platform} vertical axis");
+                slots.push((
+                    key.get(&20).copied().unwrap_or(0),
+                    key.get(&21).copied().unwrap_or(0),
+                ));
+            }
+            slots.sort_unstable();
+            let mut expected = vec![(0, 0)];
+            if width || height {
+                expected.push((u16::from(width), 2 * u16::from(height)));
+            }
+            assert_eq!(slots, expected, "{platform} {horizontal:?} {vertical:?}");
+        }
+    }
+}
+
+#[test]
 fn vector_images_are_drawn_at_each_scale_the_platform_has() {
     let dir = TempDir::new("sweetpad-actool-vectors");
     let catalog = template_catalog(&dir);
@@ -971,6 +1129,81 @@ fn a_symbol_set_goes_in_as_the_masters_its_template_draws() {
             (59, 4, 3, 5, 1017)
         ]
     );
+}
+
+#[test]
+fn a_symbol_sets_rendering_intent_selects_its_coreui_mode() {
+    let dir = TempDir::new("sweetpad-actool-symbol-intents");
+    let catalog = dir.join("Intents.xcassets");
+    let cases = [
+        ("automatic", 0),
+        ("template", 1),
+        ("multicolor", 2),
+        ("hierarchical", 3),
+        ("palette", 4),
+        ("monochrome", 0),
+    ];
+    for (name, _) in cases {
+        write_json(
+            &catalog.join(format!("{name}.symbolset/Contents.json")),
+            &json!({"properties": {"symbol-rendering-intent": name}}),
+        );
+    }
+    let parsed = Catalog::read(&catalog);
+    let modes: std::collections::BTreeMap<_, _> = parsed
+        .assets()
+        .into_iter()
+        .map(|(_, asset)| (asset.name.as_str(), asset.symbol.unwrap() as u32))
+        .collect();
+    assert_eq!(modes, cases.into());
+}
+
+#[test]
+fn layered_symbol_masters_retain_their_styles_intent_and_shared_margins() {
+    let dir = TempDir::new("sweetpad-actool-symbol-layers");
+    let catalog = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures/actool/resources/LayeredSymbols.xcassets");
+    let out = dir.join("out");
+    compile::compile(&platform_args(&catalog, &out, "iphonesimulator")).unwrap();
+    let data = std::fs::read(out.join("Assets.car")).unwrap();
+    let (rows, _) = super::car::tests::Store::read(&data).tree("RENDITIONS");
+    assert_eq!(rows.len(), 2);
+    for (_, row) in rows {
+        let word = |at| u32::from_le_bytes(row[at..at + 4].try_into().unwrap());
+        let end = 184 + word(168) as usize;
+        let mut fields = std::collections::BTreeMap::new();
+        let mut at = 184;
+        while at < end {
+            fields.insert(word(at), at + 8);
+            at += 8 + word(at + 4) as usize;
+        }
+        // Xcode records multicolor intent (2) and both layer flags (3)
+        // even though these two static masters cannot interpolate.
+        let modes = fields[&1019];
+        assert_eq!((word(modes + 4), word(modes + 8)), (2, 3));
+        let metrics = fields[&1018];
+        for (offset, expected) in [(20, 0.85), (28, 1.7)] {
+            assert!((f32::from_bits(word(metrics + offset)) - expected).abs() < 1e-5);
+        }
+        let svg = std::str::from_utf8(&row[end + 12..]).unwrap();
+        let document = resvg::usvg::roxmltree::Document::parse(svg).unwrap();
+        let css = document
+            .descendants()
+            .find(|n| n.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        for rule in [
+            "-sfsymbols-clear-behind:true",
+            "fill:#227744",
+            "fill:#FFAA33",
+        ] {
+            assert!(
+                css.contains(rule),
+                "{rule} missing from the standalone master"
+            );
+        }
+    }
 }
 
 #[test]

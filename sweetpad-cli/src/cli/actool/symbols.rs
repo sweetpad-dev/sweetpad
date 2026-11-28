@@ -10,6 +10,9 @@ use serde_json::{Value, json};
 
 use super::catalog::{Asset, Catalog, Folder, Kind};
 
+mod deployment;
+pub use deployment::ResourceApi;
+
 /// The frameworks that get accessors.
 #[derive(Debug, Clone, Copy)]
 pub struct Frameworks {
@@ -31,6 +34,8 @@ impl Default for Frameworks {
 #[derive(Debug)]
 pub struct Options {
     pub bundle_id: String,
+    pub api: ResourceApi,
+    pub mac_catalyst: bool,
     /// Accessors on `Color`, `UIColor`, `NSImage` and the rest, as well as the
     /// resource constants.
     pub extensions: bool,
@@ -111,20 +116,24 @@ impl<'a> Section<'a> {
                 if asset.kind != kind || !asset.has_content {
                     continue;
                 }
-                let applies = |device: &String| {
+                let applies = |device: &str| {
                     asset
                         .idioms
                         .iter()
                         .any(|idiom| idiom == "universal" || idiom == device)
                 };
-                if !options.target_devices.iter().any(applies) {
+                // Catalyst can use an iPad rendition on a Mac, but it can be
+                // thinned out. A Mac or universal rendition is guaranteed.
+                if !options.target_devices.iter().any(|device| {
+                    applies(device) || (options.mac_catalyst && device == "mac" && applies("ipad"))
+                }) {
                     continue;
                 }
                 scoped.push(Scoped {
                     catalog,
                     asset,
                     namespaces: namespaces(&chain),
-                    thinnable: !options.target_devices.iter().all(applies),
+                    thinnable: !options.target_devices.iter().all(|device| applies(device)),
                 });
             }
         }
@@ -151,13 +160,6 @@ impl<'a> Section<'a> {
         match self.kind {
             Kind::Color => "color",
             _ => "image",
-        }
-    }
-
-    fn type_name(&self) -> &'static str {
-        match self.kind {
-            Kind::Color => "ColorResource",
-            _ => "ImageResource",
         }
     }
 
@@ -301,7 +303,7 @@ fn all_caps(words: &[String]) -> bool {
 /// `Image`, or an all-caps name kept as it is with `_` between its words.
 fn swift_name(name: &str, suffix: &str) -> String {
     let mut words = words(name);
-    if words.len() > 1 && words.last().is_some_and(|w| w == suffix) {
+    if words.len() > 1 && words.last().is_some_and(|w| w.eq_ignore_ascii_case(suffix)) {
         words.pop();
     }
     let mut out = if all_caps(&words) {
@@ -590,16 +592,15 @@ const UICOLOR_TAKEN: &[&str] = &[
 
 const UIIMAGE_TAKEN: &[&str] = &["actions", "add", "checkmark", "remove", "strokedCheckmark"];
 
-const AVAILABLE_ALL: &str = "@available(iOS 17.0, macOS 14.0, tvOS 17.0, watchOS 10.0, *)";
-
 fn swift(colors: &Section, images: &Section, options: &Options) -> String {
     let f = options.frameworks;
-    let ext = options.extensions;
+    let api = options.api;
+    let import_frameworks = options.extensions || api == ResourceApi::BackDeployed;
     let mut out = String::from("import Foundation\n");
     for (on, module) in [
-        (ext && f.appkit, "AppKit"),
-        (ext && f.uikit, "UIKit"),
-        (ext && f.swiftui, "SwiftUI"),
+        (import_frameworks && f.appkit, "AppKit"),
+        (import_frameworks && f.uikit, "UIKit"),
+        (import_frameworks && f.swiftui, "SwiftUI"),
         (true, "DeveloperToolsSupport"),
     ] {
         if on {
@@ -619,31 +620,41 @@ fn swift(colors: &Section, images: &Section, options: &Options) -> String {
             Kind::Color => "Color",
             _ => "Image",
         };
+        let available = api.resource_availability(section.kind);
         let _ = write!(
             out,
-            "// MARK: - {title} Symbols -\n\n{AVAILABLE_ALL}\nextension DeveloperToolsSupport.{} {{\n{}\n}}\n\n",
-            section.type_name(),
+            "// MARK: - {title} Symbols -\n\n{available}\nextension {} {{\n{}\n}}\n\n",
+            api.resource_type(section.kind),
             body(&section.tree, 1, &|item, indent| Some(resource_item(
-                section, item, indent
+                section, item, indent, api
             ))),
         );
     }
-    if !ext {
-        return out;
+    if options.extensions {
+        symbol_extensions(&mut out, colors, images, options);
     }
+    if api == ResourceApi::BackDeployed {
+        deployment::backwards_support(&mut out, f);
+    }
+    out
+}
 
+fn symbol_extensions(out: &mut String, colors: &Section, images: &Section, options: &Options) {
+    let f = options.frameworks;
+    let api = options.api;
+    let swiftui = api.swiftui_availability();
     out.push_str("// MARK: - Color Symbol Extensions -\n\n");
     if f.appkit {
-        out.push_str(&accessor_extension(colors, Host::NsColor));
+        out.push_str(&accessor_extension(colors, Host::NsColor, api));
     }
     if f.uikit {
-        out.push_str(&accessor_extension(colors, Host::UiColor));
+        out.push_str(&accessor_extension(colors, Host::UiColor, api));
     }
     if f.swiftui {
         let _ = write!(
             out,
-            "#if canImport(SwiftUI)\n{AVAILABLE_ALL}\nextension SwiftUI.Color {{\n{}\n}}\n\n\
-             {AVAILABLE_ALL}\nextension SwiftUI.ShapeStyle where Self == SwiftUI.Color {{\n{}\n}}\n#endif\n\n",
+            "#if canImport(SwiftUI)\n{swiftui}\nextension SwiftUI.Color {{\n{}\n}}\n\n\
+             {swiftui}\nextension SwiftUI.ShapeStyle where Self == SwiftUI.Color {{\n{}\n}}\n#endif\n\n",
             body(&colors.tree, 1, &|item, indent| accessor_item(
                 colors,
                 Host::Color,
@@ -660,15 +671,14 @@ fn swift(colors: &Section, images: &Section, options: &Options) -> String {
     }
     out.push_str("// MARK: - Image Symbol Extensions -\n\n");
     if f.appkit {
-        out.push_str(&accessor_extension(images, Host::NsImage));
+        out.push_str(&accessor_extension(images, Host::NsImage, api));
     }
     if f.uikit {
-        out.push_str(&accessor_extension(images, Host::UiImage));
+        out.push_str(&accessor_extension(images, Host::UiImage, api));
     }
     out.push_str("// MARK: - Thinnable Asset Support -\n\n");
-    out.push_str(&thinnable_support(Kind::Color, f, !colors.is_empty()));
-    out.push_str(&thinnable_support(Kind::Image, f, !images.is_empty()));
-    out
+    out.push_str(&thinnable_support(Kind::Color, f, !colors.is_empty(), api));
+    out.push_str(&thinnable_support(Kind::Image, f, !images.is_empty(), api));
 }
 
 /// A body's items, each with a blank line before and after.
@@ -694,7 +704,7 @@ fn depth_of(indent: &str) -> usize {
     indent.len() / 4
 }
 
-fn resource_item(section: &Section, item: &Item, indent: &str) -> String {
+fn resource_item(section: &Section, item: &Item, indent: &str, api: ResourceApi) -> String {
     let kind = section.kind_name();
     match item {
         Item::Symbol(s) => {
@@ -708,10 +718,10 @@ fn resource_item(section: &Section, item: &Item, indent: &str) -> String {
             };
             format!(
                 "{indent}/// The \"{}\" asset catalog {kind} resource.\n{watch}\
-                 {indent}static let {} = DeveloperToolsSupport.{}({label}: \"{}\", bundle: resourceBundle)",
+                 {indent}static let {} = {}({label}: \"{}\", bundle: resourceBundle)",
                 s.full_name,
                 escaped(&s.plain),
-                section.type_name(),
+                api.resource_type(section.kind),
                 s.full_name,
             )
         }
@@ -726,22 +736,22 @@ fn resource_item(section: &Section, item: &Item, indent: &str) -> String {
             full_name,
             type_name,
             &body(items, depth_of(indent) + 1, &|item, indent| {
-                Some(resource_item(section, item, indent))
+                Some(resource_item(section, item, indent, api))
             }),
             indent,
         ),
     }
 }
 
-fn accessor_extension(section: &Section, host: Host) -> String {
+fn accessor_extension(section: &Section, host: Host, api: ResourceApi) -> String {
     let module = if matches!(host, Host::NsColor | Host::NsImage) {
         "AppKit"
     } else {
         "UIKit"
     };
-    let available = match module {
-        "AppKit" => "@available(macOS 14.0, *)\n@available(macCatalyst, unavailable)",
-        _ => "@available(iOS 17.0, tvOS 17.0, *)\n@available(watchOS, unavailable)",
+    let available = match host {
+        Host::NsColor | Host::NsImage => api.appkit_availability(section.kind),
+        _ => api.uikit_availability(),
     };
     format!(
         "#if canImport({module})\n{available}\nextension {} {{\n{}\n}}\n#endif\n\n",
@@ -825,17 +835,20 @@ fn accessor_item(section: &Section, host: Host, item: &Item, indent: &str) -> Op
 
 /// The private initializers a thinnable constant and its accessors go
 /// through.
-fn thinnable_support(kind: Kind, f: Frameworks, has_symbols: bool) -> String {
-    let (resource, appkit_check, uikit_check, nstype, uitype) = match kind {
+fn thinnable_support(kind: Kind, f: Frameworks, has_symbols: bool, api: ResourceApi) -> String {
+    let resource = api.resource_type(kind);
+    let available = api.resource_availability(kind);
+    let appkit = api.appkit_availability(kind);
+    let uikit = api.uikit_availability();
+    let swiftui = api.swiftui_availability();
+    let (appkit_check, uikit_check, nstype, uitype) = match kind {
         Kind::Color => (
-            "ColorResource",
             "AppKit.NSColor(named: NSColor.Name(thinnableName), bundle: bundle) != nil",
             "UIKit.UIColor(named: thinnableName, in: bundle, compatibleWith: nil) != nil",
             "AppKit.NSColor",
             "UIKit.UIColor",
         ),
         _ => (
-            "ImageResource",
             "bundle.image(forResource: NSImage.Name(thinnableName)) != nil",
             "UIKit.UIImage(named: thinnableName, in: bundle, compatibleWith: nil) != nil",
             "AppKit.NSImage",
@@ -866,12 +879,12 @@ fn thinnable_support(kind: Kind, f: Frameworks, has_symbols: bool) -> String {
         }
     };
     let mut out = format!(
-        "{AVAILABLE_ALL}\n@available(watchOS, unavailable)\nextension DeveloperToolsSupport.{resource} {{\n\n    \
+        "{available}\n@available(watchOS, unavailable)\nextension {resource} {{\n\n    \
          private init?(thinnableName: Swift.String, bundle: Foundation.Bundle) {{\n{lookup}    }}\n\n}}\n\n"
     );
-    let convenience = |guard: &str, resource: &str| {
+    let convenience = |guard: &str| {
         format!(
-            "    private convenience init?(thinnableResource: DeveloperToolsSupport.{resource}?) {{\n\
+            "    private convenience init?(thinnableResource: {resource}?) {{\n\
              #if {guard}\n        if let resource = thinnableResource {{\n            self.init(resource: resource)\n        }} else {{\n            return nil\n        }}\n\
              #else\n        return nil\n#endif\n    }}\n"
         )
@@ -879,23 +892,25 @@ fn thinnable_support(kind: Kind, f: Frameworks, has_symbols: bool) -> String {
     if f.appkit && has_symbols {
         let _ = write!(
             out,
-            "#if canImport(AppKit)\n@available(macOS 14.0, *)\n@available(macCatalyst, unavailable)\nextension {nstype} {{\n\n{}\n}}\n#endif\n\n",
-            convenience("!targetEnvironment(macCatalyst)", resource),
+            "#if canImport(AppKit)\n{appkit}\nextension {nstype} {{\n\n{}\n}}\n#endif\n\n",
+            convenience("!targetEnvironment(macCatalyst)"),
         );
     }
     if f.uikit {
         let _ = write!(
             out,
-            "#if canImport(UIKit)\n@available(iOS 17.0, tvOS 17.0, *)\n@available(watchOS, unavailable)\nextension {uitype} {{\n\n{}\n}}\n#endif\n\n",
-            convenience("!os(watchOS)", resource),
+            "#if canImport(UIKit)\n{uikit}\nextension {uitype} {{\n\n{}\n}}\n#endif\n\n",
+            convenience("!os(watchOS)"),
         );
     }
     if kind == Kind::Color && f.swiftui {
-        let init = "    private init?(thinnableResource: DeveloperToolsSupport.ColorResource?) {\n        if let resource = thinnableResource {\n            self.init(resource)\n        } else {\n            return nil\n        }\n    }\n";
+        let init = format!(
+            "    private init?(thinnableResource: {resource}?) {{\n        if let resource = thinnableResource {{\n            self.init(resource)\n        }} else {{\n            return nil\n        }}\n    }}\n"
+        );
         let _ = write!(
             out,
-            "#if canImport(SwiftUI)\n{AVAILABLE_ALL}\nextension SwiftUI.Color {{\n\n{init}\n}}\n\n\
-             {AVAILABLE_ALL}\nextension SwiftUI.ShapeStyle where Self == SwiftUI.Color {{\n\n{init}\n}}\n#endif\n\n"
+            "#if canImport(SwiftUI)\n{swiftui}\nextension SwiftUI.Color {{\n\n{init}\n}}\n\n\
+             {swiftui}\nextension SwiftUI.ShapeStyle where Self == SwiftUI.Color {{\n\n{init}\n}}\n#endif\n\n"
         );
     }
     out
@@ -991,6 +1006,8 @@ mod tests {
         for (name, swift) in [
             ("BrandRed", "brandRed"),
             ("URLColor", "URL"),
+            ("TEXT_COLOR", "TEXT"),
+            ("white_color", "white"),
             ("myURLColor", "myURL"),
             ("1stColor", "_1St"),
             ("HTML5Color", "HTML_5"),
@@ -1003,6 +1020,7 @@ mod tests {
         ] {
             assert_eq!(swift_name(name, "Color"), swift, "{name}");
         }
+        assert_eq!(swift_name("separator_image", "Image"), "separator");
         assert_eq!(objc_name("A_B"), "_A_B");
         assert_eq!(objc_name("Ünïcode"), "ncode");
         assert_eq!(type_name("my icons"), "MyIcons");

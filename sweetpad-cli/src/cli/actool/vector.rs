@@ -236,6 +236,26 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn pdf_alpha_masks_work_without_a_group_color_space() {
+        let bytes = include_bytes!(
+            "../../../fixtures/actool/resources/PdfMasks.xcassets/AlphaCutout.imageset/Cutout.pdf"
+        );
+        let drawing = Drawing::parse(Format::Pdf, bytes.to_vec()).unwrap();
+        for scale in [1u16, 2, 3] {
+            let bitmap = drawing.render(f32::from(scale)).unwrap();
+            let scale = usize::from(scale);
+            let pixel = |x: usize, y: usize| bitmap.pixel(x * scale, y * scale);
+            // A black alpha mask reveals the blue fill, with a hole and a half-opacity inset.
+            assert_eq!(pixel(0, 0), [0; 4]);
+            assert_eq!(pixel(3, 3), [255, 0, 0, 255]);
+            assert_eq!(pixel(6, 6), [0; 4]);
+            let [blue, green, red, alpha] = pixel(8, 6);
+            assert_eq!((blue, green, red), (alpha, 0, 0));
+            assert!(alpha.abs_diff(128) <= 1, "half-opacity inset: {alpha}");
+        }
+    }
+
+    #[test]
     fn an_svg_rounds_up_and_counts_72_units_an_inch() {
         let svg = |attributes: &str| {
             let text = format!(

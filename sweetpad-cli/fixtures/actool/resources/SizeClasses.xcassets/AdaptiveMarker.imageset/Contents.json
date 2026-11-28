@@ -1,0 +1,58 @@
+{
+  "images": [
+    {
+      "filename": "Base.png",
+      "idiom": "universal",
+      "scale": "1x"
+    },
+    {
+      "filename": "Narrow.png",
+      "idiom": "universal",
+      "scale": "1x",
+      "width-class": "compact"
+    },
+    {
+      "filename": "Short.png",
+      "idiom": "universal",
+      "scale": "1x",
+      "height-class": "compact"
+    },
+    {
+      "filename": "WideTall.png",
+      "idiom": "universal",
+      "scale": "1x",
+      "width-class": "regular",
+      "height-class": "regular"
+    },
+    {
+      "filename": "NarrowShort.png",
+      "idiom": "universal",
+      "scale": "1x",
+      "width-class": "compact",
+      "height-class": "compact"
+    },
+    {
+      "filename": "DarkNarrow.png",
+      "idiom": "universal",
+      "scale": "1x",
+      "width-class": "compact",
+      "appearances": [
+        {
+          "appearance": "luminosity",
+          "value": "dark"
+        }
+      ]
+    },
+    {
+      "filename": "PadWideTall.png",
+      "idiom": "ipad",
+      "width-class": "regular",
+      "height-class": "regular",
+      "scale": "2x"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}

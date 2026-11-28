@@ -4,7 +4,8 @@ use super::{Element, Encoder, Id, Options, Value, doubles, id_of, keyed, no, num
 
 impl Encoder<'_> {
     pub(super) fn table_view(&mut self, element: &Element, object: Id) -> Result<(), String> {
-        self.scroll_view(element, object);
+        self.scroll_view(element, object)?;
+        self.table_separators(element, object)?;
         let style = match element.attr("style") {
             None | Some("plain") => 0_i64,
             Some("grouped") => 1,
@@ -103,16 +104,74 @@ impl Encoder<'_> {
         Ok(())
     }
 
+    fn table_separators(&mut self, element: &Element, object: Id) -> Result<(), String> {
+        self.archive_inset(element, "separatorInset", object, "UISeparatorInset")?;
+        for (key, archive) in [
+            ("separatorColor", "UISeparatorColor"),
+            (
+                "sectionIndexBackgroundColor",
+                "UISectionIndexBackgroundColor",
+            ),
+            (
+                "sectionIndexTrackingBackgroundColor",
+                "UISectionIndexTrackingBackgroundColor",
+            ),
+        ] {
+            if let Some(color) = keyed(element, "color", key) {
+                let value = self.color(color)?;
+                self.graph.set(object, archive, value);
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn collection_view(&mut self, element: &Element, object: Id) -> Result<(), String> {
-        self.scroll_view(element, object);
+        self.scroll_view(element, object)?;
         self.graph.set(object, "UIDelegate", Value::Nil);
         let layout = keyed(element, "collectionViewFlowLayout", "collectionViewLayout")
-            .ok_or("a collection view has no flow layout")?;
-        let flow = self.graph.object("UICollectionViewFlowLayout");
-        self.bind(id_of(layout)?, flow);
-        self.objects.push(flow);
-        self.graph.set(object, "UICollectionLayout", flow);
-        self.flow_layout(layout, flow)?;
+            .or_else(|| keyed(element, "collectionViewLayout", "collectionViewLayout"))
+            .ok_or("a collection view has no layout")?;
+        let class = super::view_class(layout)?;
+        let archived = self.graph.object(if layout.attr("customClass").is_some() {
+            "UIClassSwapper"
+        } else {
+            class
+        });
+        self.bind(id_of(layout)?, archived);
+        self.objects.push(archived);
+        self.graph.set(object, "UICollectionLayout", archived);
+        if layout.name == "collectionViewFlowLayout" {
+            self.flow_layout(layout, archived)?;
+        } else {
+            for (attribute, _) in &layout.attributes {
+                if !matches!(
+                    attribute.as_str(),
+                    "key"
+                        | "id"
+                        | "customClass"
+                        | "customModule"
+                        | "customModuleProvider"
+                        | "userLabel"
+                ) {
+                    return Err(format!(
+                        "unsupported collection layout attribute {attribute}"
+                    ));
+                }
+            }
+            for child in &layout.children {
+                if !matches!(
+                    child.name.as_str(),
+                    "connections" | "userDefinedRuntimeAttributes"
+                ) {
+                    return Err(format!(
+                        "unsupported collection layout child <{}>",
+                        child.name
+                    ));
+                }
+            }
+        }
+        self.view_custom_class(layout, archived)?;
+        self.runtime_attributes(layout, archived)?;
         self.graph
             .set(object, "UIAllowsUserInitiatedMultipleSelection", true);
         self.graph.set(

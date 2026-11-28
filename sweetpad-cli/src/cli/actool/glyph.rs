@@ -9,6 +9,7 @@
 use std::fmt::Write as _;
 use std::mem::{Discriminant, discriminant};
 
+use kurbo::{Affine, BezPath, Rect};
 use resvg::tiny_skia::PathSegment;
 use resvg::usvg;
 use usvg::roxmltree::{Document, Node};
@@ -97,16 +98,24 @@ pub fn masters(bytes: &[u8], sizing: Sizing) -> Result<Vec<Glyph>, String> {
             return None;
         };
         let to_template = viewport.invert()?;
-        let (left, top, right, bottom) = control_bounds(group, to_template)?;
+        let source = element(id);
+        let bounds = control_bounds(group, to_template, source)?;
         Some(Outline {
-            left,
-            top,
-            right,
-            bottom,
-            transform: to_template.pre_concat(group.abs_transform()),
+            bounds,
+            transform: template_transform(to_template.pre_concat(group.abs_transform()), source),
         })
     };
     let regular_medium = measured("Regular-M");
+    let layer_flags = element("Symbols").map_or(0, layer_flags);
+    // The detached master still needs the template's layer colors, opacities
+    // and clear-behind instructions when CoreUI selects a rendering mode.
+    let mut styles = String::new();
+    for node in document
+        .descendants()
+        .filter(|n| n.has_tag_name((SVG_NAMESPACE, "style")))
+    {
+        write_node(node, &mut styles, 0);
+    }
     // A variable template draws an ultralight, a regular and a black master
     // that CoreUI interpolates into the other weights, which takes outlines
     // drawn with the same commands.
@@ -126,7 +135,8 @@ pub fn masters(bytes: &[u8], sizing: Sizing) -> Result<Vec<Glyph>, String> {
                 continue;
             };
             let guide = |name: &str| element(name).and_then(|n| Guide::of(n, &tree));
-            let baseline = guide(&format!("Baseline-{size_name}")).map_or(outline.bottom, |g| g.y);
+            let baseline =
+                guide(&format!("Baseline-{size_name}")).map_or(outline.bounds.y1, |g| g.y);
             let capline = guide(&format!("Capline-{size_name}")).map_or(baseline, |g| g.y);
             // A variable template has margins for each master; older ones
             // have one pair, drawn beside the regular medium master, or as
@@ -135,27 +145,28 @@ pub fn masters(bytes: &[u8], sizing: Sizing) -> Result<Vec<Glyph>, String> {
             let (left, right, against) = match (own("left"), own("right")) {
                 (Some(l), Some(r)) => (Some(l), Some(r), &outline),
                 _ => (
-                    guide("left-margin"),
-                    guide("right-margin"),
+                    guide("left-margin-Regular-M").or_else(|| guide("left-margin")),
+                    guide("right-margin-Regular-M").or_else(|| guide("right-margin")),
                     regular_medium.as_ref().unwrap_or(&outline),
                 ),
             };
-            let left_margin = left.map_or(0.0, |g| g.width.unwrap_or(against.left - g.x));
-            let right_margin = right.map_or(0.0, |g| g.width.unwrap_or(g.x - against.right));
+            let left_margin = left.map_or(0.0, |g| g.width.unwrap_or(against.bounds.x0 - g.x));
+            let right_margin = right.map_or(0.0, |g| g.width.unwrap_or(g.x - against.bounds.x1));
             let points = |units: f64| points(units, sizing.scale);
             glyphs.push(Glyph {
                 weight,
                 size,
-                svg: standalone(group, &outline, sizing.scale).into_bytes(),
+                svg: standalone(group, &outline, sizing.scale, &styles).into_bytes(),
                 point_size: sizing.point_size,
                 sizes: &[],
-                baseline: points(outline.bottom - baseline),
+                baseline: points(outline.bounds.y1 - baseline),
                 capline: points(baseline - capline),
                 left_margin: points(left_margin),
                 right_margin: points(right_margin),
                 padding: points(PADDING),
                 template_version,
                 interpolatable,
+                layer_flags,
             });
         }
     }
@@ -176,14 +187,24 @@ pub fn masters(bytes: &[u8], sizing: Sizing) -> Result<Vec<Glyph>, String> {
     Ok(glyphs)
 }
 
+/// CoreUI advertises the layers used by the symbol as a whole on every master.
+fn layer_flags(symbols: Node) -> u32 {
+    symbols
+        .descendants()
+        .filter_map(|n| n.attribute("class"))
+        .flat_map(str::split_ascii_whitespace)
+        .fold(0, |flags, class| match class.split_once('-') {
+            Some(("multicolor", _)) => flags | 1,
+            Some(("hierarchical", _)) => flags | 2,
+            _ => flags,
+        })
+}
+
 /// A master's outline: its bounds in template units, and the transform from
 /// its group's coordinates into the template's.
 struct Outline {
-    left: f64,
-    top: f64,
-    right: f64,
-    bottom: f64,
-    transform: usvg::Transform,
+    bounds: Rect,
+    transform: Affine,
 }
 
 /// The kinds of segment a group's outlines are drawn with, path by path.
@@ -204,17 +225,45 @@ fn commands(group: &usvg::Group) -> Vec<Vec<Discriminant<PathSegment>>> {
 /// A path's bounds, control points and all, which is how Core Graphics
 /// measures a path, with a stroked path's reaching half the stroke's width
 /// further, in its own coordinates.
-fn path_bounds(path: &usvg::Path) -> (f64, f64, f64, f64) {
+fn path_bounds(path: &usvg::Path, source: Option<Node>) -> Rect {
     let r = path.data().bounds();
+    let rendered = [r.left(), r.top(), r.right(), r.bottom()];
+    // usvg resolves CSS, uses and shapes, but its coordinates are f32. Keep
+    // original f64 control points when they describe the same rendered path bounds.
+    let rect = source
+        .and_then(|n| n.attribute("d"))
+        .and_then(|d| BezPath::from_svg(d).ok())
+        .map(|path| path.control_box())
+        .filter(|r| same_coordinates([r.x0, r.y0, r.x1, r.y1], rendered))
+        .unwrap_or_else(|| {
+            let [x0, y0, x1, y1] = rendered.map(f64::from);
+            Rect::new(x0, y0, x1, y1)
+        });
     let half = path
         .stroke()
         .map_or(0.0, |s| f64::from(s.width().get()) / 2.0);
-    (
-        f64::from(r.left()) - half,
-        f64::from(r.top()) - half,
-        f64::from(r.right()) + half,
-        f64::from(r.bottom()) + half,
-    )
+    rect.inflate(half, half)
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::float_cmp)] // exact equality at the renderer's precision
+fn same_coordinates<const N: usize>(source: [f64; N], rendered: [f32; N]) -> bool {
+    source.map(|v| v as f32) == rendered
+}
+
+fn template_transform(rendered: usvg::Transform, source: Option<Node>) -> Affine {
+    let coeffs = [
+        rendered.sx,
+        rendered.ky,
+        rendered.kx,
+        rendered.sy,
+        rendered.tx,
+        rendered.ty,
+    ];
+    source
+        .map(ancestor_transform)
+        .map(|t| [t.a, t.b, t.c, t.d, t.e, t.f])
+        .filter(|t| same_coordinates(*t, coeffs))
+        .map_or_else(|| Affine::new(coeffs.map(f64::from)), Affine::new)
 }
 
 /// The bounds of a group's paths in template units: each path's bounds
@@ -222,38 +271,34 @@ fn path_bounds(path: &usvg::Path) -> (f64, f64, f64, f64) {
 fn control_bounds(
     group: &usvg::Group,
     to_template: usvg::Transform,
-) -> Option<(f64, f64, f64, f64)> {
-    let mut bounds: Option<(f64, f64, f64, f64)> = None;
-    for node in group.children() {
-        let rect = match node {
-            usvg::Node::Group(inner) => control_bounds(inner, to_template),
-            usvg::Node::Path(path) => {
-                let ts = to_template.pre_concat(path.abs_transform());
-                let (l, t, r, b) = path_bounds(path);
-                let corners = [(l, t), (r, t), (l, b), (r, b)].map(|(x, y)| {
-                    (
-                        f64::from(ts.sx) * x + f64::from(ts.kx) * y + f64::from(ts.tx),
-                        f64::from(ts.ky) * x + f64::from(ts.sy) * y + f64::from(ts.ty),
-                    )
-                });
-                let xs = corners.map(|c| c.0);
-                let ys = corners.map(|c| c.1);
-                Some((
-                    xs.into_iter().fold(f64::INFINITY, f64::min),
-                    ys.into_iter().fold(f64::INFINITY, f64::min),
-                    xs.into_iter().fold(f64::NEG_INFINITY, f64::max),
-                    ys.into_iter().fold(f64::NEG_INFINITY, f64::max),
-                ))
+    source: Option<Node>,
+) -> Option<Rect> {
+    let mut elements = source
+        .into_iter()
+        .flat_map(|n| n.children())
+        .filter(Node::is_element);
+    let paired = elements.clone().count() == group.children().len();
+    group
+        .children()
+        .iter()
+        .filter_map(|node| {
+            let element = elements.next().filter(|_| paired);
+            match node {
+                usvg::Node::Group(inner) => control_bounds(
+                    inner,
+                    to_template,
+                    element.filter(|n| n.has_tag_name((SVG_NAMESPACE, "g"))),
+                ),
+                usvg::Node::Path(path) => {
+                    let source = element.filter(|n| n.has_tag_name((SVG_NAMESPACE, "path")));
+                    let ts =
+                        template_transform(to_template.pre_concat(path.abs_transform()), source);
+                    Some(ts.transform_rect_bbox(path_bounds(path, source)))
+                }
+                _ => None,
             }
-            _ => None,
-        };
-        if let Some((l, t, r, b)) = rect {
-            bounds = Some(bounds.map_or((l, t, r, b), |(bl, bt, br, bb)| {
-                (bl.min(l), bt.min(t), br.max(r), bb.max(b))
-            }));
-        }
-    }
-    bounds
+        })
+        .reduce(|a, b| a.union(b))
 }
 
 /// A guide line, or a margin bar, in template units.
@@ -396,37 +441,46 @@ fn points(units: f64, scale: f64) -> f32 {
 /// A master's group as an SVG of its own: its outline's bounds in points as
 /// the view box, and the group's children drawn through a transform that
 /// scales them to points and moves the outline to the origin.
-fn standalone(group: Node, outline: &Outline, scale: f64) -> String {
-    let t = outline.transform;
-    let (sx, ky, kx, sy, tx, ty) = (
-        f64::from(t.sx),
-        f64::from(t.ky),
-        f64::from(t.kx),
-        f64::from(t.sy),
-        f64::from(t.tx),
-        f64::from(t.ty),
-    );
+fn standalone(group: Node, outline: &Outline, scale: f64, styles: &str) -> String {
+    let [sx, ky, kx, sy, tx, ty] = outline.transform.as_coeffs();
+    let bounds = outline.bounds;
+    // Transform both origins to points before subtracting. At six significant
+    // digits, regrouping this calculation can move an antialiased contour.
     let matrix = [
         sx * scale,
         ky * scale,
         kx * scale,
         sy * scale,
-        (tx - outline.left) * scale,
-        (ty - outline.top) * scale,
+        tx * scale - bounds.x0 * scale,
+        ty * scale - bounds.y0 * scale,
     ];
     let mut out = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg version=\"1.1\" \
-         xmlns=\"{SVG_NAMESPACE}\" viewBox=\"0 0 {} {}\"><g id=\"s\" \
-         transform=\"matrix({})\">",
-        number((outline.right - outline.left) * scale),
-        number((outline.bottom - outline.top) * scale),
-        matrix.map(number).join(" "),
+         xmlns=\"{SVG_NAMESPACE}\" viewBox=\"0 0 {} {}\">",
+        number(bounds.width() * scale),
+        number(bounds.height() * scale),
     );
-    for child in group.children() {
-        write_node(child, &mut out, 0);
+    if !styles.is_empty() {
+        let _ = write!(out, "<defs>{styles}</defs>");
     }
+    let _ = write!(
+        out,
+        "<g id=\"s\" transform=\"matrix({})\">",
+        matrix.map(number).join(" ")
+    );
+    write_children(group, &mut out, 0);
     out.push_str("</g></svg>");
     out
+}
+
+fn write_children(node: Node, out: &mut String, depth: usize) {
+    // All stylesheets are already in the standalone SVG's defs, in document order.
+    for child in node
+        .children()
+        .filter(|n| !n.has_tag_name((SVG_NAMESPACE, "style")))
+    {
+        write_node(child, out, depth);
+    }
 }
 
 /// A number the way Xcode writes one, like C's `%g`: six significant
@@ -542,9 +596,7 @@ fn write_node(node: Node, out: &mut String, depth: usize) {
     }
     if node.has_children() {
         out.push('>');
-        for child in node.children() {
-            write_node(child, out, depth + 1);
-        }
+        write_children(node, out, depth + 1);
         let _ = write!(out, "</{name}>");
     } else {
         out.push_str("/>");
@@ -628,11 +680,51 @@ fn escape(text: &str) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn only_annotations_on_symbol_shapes_advertise_color_layers() {
+        for (class, expected) in [
+            ("monochrome-0", 0),
+            ("monochrome-0 multicolor-1:custom", 1),
+            ("hierarchical-0:secondary", 2),
+            ("multicolor-0:white hierarchical-1:primary", 3),
+        ] {
+            let svg = format!(
+                r#"<g><style>.multicolor-0:white{{fill:white}}</style><g><path class="{class}"/></g></g>"#
+            );
+            let document = Document::parse(&svg).unwrap();
+            assert_eq!(layer_flags(document.root_element()), expected, "{class}");
+        }
+    }
+
     fn fixture(name: &str) -> Vec<u8> {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("fixtures/actool/symbols")
             .join(name);
         std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    }
+
+    #[test]
+    fn symbol_crops_keep_the_precision_of_the_source_control_points() {
+        // Reduced to the extrema of the CoMaps cycling symbol. Its left edge
+        // falls halfway between two translations at CoreSVG's output precision.
+        let template = br#"<svg xmlns="http://www.w3.org/2000/svg" width="3300" height="2200">
+            <g id="Symbols"><g id="Ultralight-S" transform="translate(511.325 696)">
+            <path d="M12.3865 -61.8026L84.3865 -8.76151H12.3865Z" stroke="black" stroke-width=".5"/>
+            </g></g></svg>"#;
+        let glyphs = masters(template, Sizing::of("iphonesimulator")).unwrap();
+        let svg = Document::parse(std::str::from_utf8(&glyphs[0].svg).unwrap()).unwrap();
+        assert_eq!(
+            svg.root_element().attribute("viewBox"),
+            Some("0 0 12.325 9.10199")
+        );
+        let drawing = svg
+            .descendants()
+            .find(|n| n.attribute("id") == Some("s"))
+            .unwrap();
+        assert_eq!(
+            drawing.attribute("transform"),
+            Some("matrix(0.17 0 0 0.17 -2.0632 10.5489)")
+        );
     }
 
     /// A master as Xcode 27's actool wrote it: weight, size, baseline,

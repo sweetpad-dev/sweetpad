@@ -62,6 +62,58 @@ jobs:
         run: cargo test --workspace --lib -- --test-threads=1
       - name: Python regression checks
         run: python3 -B -m unittest discover -s sweetpad-lib/ci -p 'test_*.py'
+      - name: Check out the CoMaps interface files and asset catalog
+        uses: actions/checkout@v7
+        with:
+          repository: comaps/comaps
+          ref: 27ea5a9b92b266abe6d1b690e02ad5c89bf95217
+          path: .build/comaps-source
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /iphone/Maps/**/*.xib
+            /iphone/Maps/**/*.storyboard
+            /iphone/Maps/**/Contents.json
+            /iphone/Maps/Images.xcassets/
+            /iphone/Maps/CoMapsWidgetExtension/Assets.xcassets/
+      - name: Require fixture coverage for every CoMaps resource combination
+        if: matrix.os == 'ubuntu-24.04'
+        run: python3 sweetpad-cli/fixtures/resource_gaps.py .build/comaps-source/iphone/Maps --require-covered
+      - name: Compile CoMaps and the resource regression fixtures on Linux
+        run: |
+          cargo build -p sweetpad-cli --bin sweetpad
+          python3 sweetpad-cli/fixtures/comaps/compile.py target/debug/sweetpad .build/comaps-source "$RUNNER_TEMP/comaps-resources"
+      - name: Export Linux-built resources for UIKit
+        if: matrix.os == 'ubuntu-24.04'
+        uses: actions/upload-artifact@v7
+        with:
+          name: comaps-resources
+          path: ${{ runner.temp }}/comaps-resources
+          if-no-files-found: error
+          retention-days: 1
+  comaps-runtime:
+    name: CoMaps and resource variants · iPhone simulator
+    needs: linux
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: comaps-resources
+          path: ${{ runner.temp }}/comaps-resources
+      - name: Compare Linux resources with Xcode and load both in UIKit
+        run: |
+          xcodebuild -version
+          python3 sweetpad-cli/fixtures/comaps/simulator.py "$RUNNER_TEMP/comaps-resources" --reference-output "$RUNNER_TEMP/comaps-xcode"
+      - name: Save Xcode catalogs for a failed comparison
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: comaps-xcode
+          path: ${{ runner.temp }}/comaps-xcode
+          if-no-files-found: ignore
+          retention-days: 1
   check:
     name: fmt · clippy · test
     runs-on: macos-latest

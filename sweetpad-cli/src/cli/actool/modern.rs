@@ -57,8 +57,8 @@ pub(super) fn compile<'a>(
                     identifier,
                     Variant {
                         appearance,
-                        scale: 1,
                         idiom,
+                        ..Variant::ANY
                     },
                     0,
                     1,

@@ -32,6 +32,7 @@ use std::process::ExitCode;
 struct Args {
     version: bool,
     module: String,
+    deployment_major: Option<u32>,
     compilation_directory: Option<PathBuf>,
     compile: Option<PathBuf>,
     link: Option<PathBuf>,
@@ -95,6 +96,10 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
                 "--link" => parsed.link = path,
                 "--output-partial-info-plist" => parsed.partial_info_plist = path,
                 "--module" => parsed.module = value,
+                "--minimum-deployment-target" => {
+                    parsed.deployment_major =
+                        value.split('.').next().and_then(|major| major.parse().ok());
+                }
                 "--output-format" => parsed.output_format = output::Format::parse(&value)?,
                 "--strip" => parsed.strip = path,
                 "--flatten" => {
@@ -236,7 +241,7 @@ fn compile(input: &Path, args: &Args) -> Result<(), String> {
         .unwrap_or("Storyboard");
     if args.compile.is_none() && args.compilation_directory.is_none() {
         if extension == "xib" {
-            xib::compile(&document, &options)?;
+            xib::compile(&document, &options, args.deployment_major)?;
         } else if document.attr("targetRuntime") == Some("watchKit") {
             watch::compile(&document, &options)?;
         } else {
@@ -269,7 +274,7 @@ fn compile(input: &Path, args: &Args) -> Result<(), String> {
         Vec::new()
     };
     if extension == "xib" {
-        let compiled = xib::compile(&document, &options)?;
+        let compiled = xib::compile(&document, &options, args.deployment_major)?;
         package::write_xib(
             &out,
             &compiled,

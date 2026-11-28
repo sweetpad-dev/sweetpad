@@ -1,0 +1,5 @@
+{
+  "info": { "author": "xcode", "version": 1 },
+  "properties": { "symbol-rendering-intent": "multicolor" },
+  "symbols": [{ "filename": "Badge.svg", "idiom": "universal" }]
+}

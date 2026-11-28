@@ -7,6 +7,8 @@ symbol mode. Run it on a Mac after an Xcode update and review the diff:
     python3 -I sweetpad-cli/fixtures/actool/regen.py
 """
 
+import hashlib
+import itertools
 import json
 import os
 import shutil
@@ -92,19 +94,25 @@ def main():
     try:
         catalog = os.path.join(work, "Probe.xcassets")
         build(spec, catalog)
-        for mode, flags in MODES.items():
-            out = os.path.join(work, mode)
+        back_deployed = {}
+        for target, (mode, flags) in itertools.product(["18.2", "15.6"], MODES.items()):
+            out = os.path.join(work, f"{target}-{mode}")
             os.makedirs(out)
             subprocess.run(
                 ["xcrun", "actool", catalog, "--compile", out, "--output-format", "human-readable-text",
                  "--notices", "--warnings", "--output-partial-info-plist", os.path.join(out, "partial.plist"),
                  "--app-icon", "AppIcon", "--accent-color", "AccentColor", "--platform", "iphonesimulator",
-                 "--minimum-deployment-target", "18.2", "--target-device", "iphone", "--target-device", "ipad",
+                 "--minimum-deployment-target", target, "--target-device", "iphone", "--target-device", "ipad",
                  "--bundle-identifier", "dev.sweetpad.Probe", *flags,
                  "--generate-swift-asset-symbols", os.path.join(out, "Symbols.swift"),
                  "--generate-objc-asset-symbols", os.path.join(out, "Symbols.h"),
                  "--generate-asset-symbol-index", os.path.join(out, "Symbols-Index.plist")],
                 check=True, stdout=subprocess.DEVNULL)
+            if target == "15.6":
+                # The same large catalog exercises namespace collisions and thinnable assets in both APIs.
+                with open(os.path.join(out, "Symbols.swift"), "rb") as f:
+                    back_deployed[mode] = hashlib.sha256(f.read()).hexdigest()
+                continue
             shutil.copy(os.path.join(out, "Symbols.swift"), os.path.join(expected, f"{mode}.swift"))
             if mode != "extensions":
                 # The header and the index don't change with the mode.
@@ -120,6 +128,9 @@ def main():
             with open(os.path.join(expected, "index.json"), "w") as f:
                 json.dump(index, f, indent=1, ensure_ascii=False)
                 f.write("\n")
+        with open(os.path.join(expected, "back-deployed-sha256.json"), "w") as f:
+            json.dump(back_deployed, f, indent=2)
+            f.write("\n")
     finally:
         shutil.rmtree(work)
 

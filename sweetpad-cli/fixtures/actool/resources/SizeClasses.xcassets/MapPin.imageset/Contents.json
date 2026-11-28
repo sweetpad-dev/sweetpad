@@ -1,0 +1,19 @@
+{
+  "images": [
+    {
+      "filename": "Base.png",
+      "idiom": "universal",
+      "scale": "1x"
+    },
+    {
+      "filename": "Narrow.png",
+      "idiom": "universal",
+      "scale": "1x",
+      "width-class": "compact"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}

@@ -9,6 +9,7 @@ use super::nib::read::{self, Read};
 use super::*;
 use crate::cli::keyed_archive::{self, Plist};
 use crate::cli::testdir::TempDir;
+mod comaps;
 mod normalize;
 mod operations;
 
@@ -527,7 +528,7 @@ fn a_view_it_doesnt_know_is_refused_by_name() {
             <viewController id="a" sceneMemberID="viewController">
                 <view key="view" contentMode="scaleToFill" id="v">
                     <rect key="frame" x="0" y="0" width="10" height="10"/>
-                    <subviews><datePicker id="d"><rect key="frame" x="0" y="0" width="1" height="1"/></datePicker></subviews>
+                    <subviews><unknownWidget id="d"><rect key="frame" x="0" y="0" width="1" height="1"/></unknownWidget></subviews>
                 </view>
             </viewController>
         </objects></scene></scenes></document>"#,
@@ -536,7 +537,7 @@ fn a_view_it_doesnt_know_is_refused_by_name() {
     let Err(error) = storyboard::compile(&document, &Options::default()) else {
         panic!("compiled");
     };
-    assert!(error.contains("<datePicker>"), "{error}");
+    assert!(error.contains("<unknownWidget>"), "{error}");
 }
 
 /// Renumbering a loading boundary is harmless; changing the destination of

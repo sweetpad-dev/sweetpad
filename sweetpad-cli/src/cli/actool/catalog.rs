@@ -47,11 +47,33 @@ pub struct Asset {
     /// other sizes, besides the bitmaps drawn from them:
     /// `preserves-vector-representation`.
     pub preserves_vector: bool,
-    /// A symbol set rather than an image set.
-    pub symbol: bool,
+    /// A symbol set's preferred rendering mode.
+    pub symbol: Option<SymbolRendering>,
     /// Whether actool would compile anything for it: a color with a value,
     /// an image with a file.
     pub has_content: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u32)]
+pub enum SymbolRendering {
+    Automatic = 0,
+    Template = 1,
+    Multicolor = 2,
+    Hierarchical = 3,
+    Palette = 4,
+}
+
+impl SymbolRendering {
+    fn read(contents: Option<&Value>) -> Self {
+        match contents.and_then(|c| c.pointer("/properties/symbol-rendering-intent")?.as_str()) {
+            Some("template") => Self::Template,
+            Some("multicolor") => Self::Multicolor,
+            Some("hierarchical") => Self::Hierarchical,
+            Some("palette") => Self::Palette,
+            _ => Self::Automatic,
+        }
+    }
 }
 
 /// One entry of an image or app icon set's `Contents.json`.
@@ -69,8 +91,10 @@ pub struct Entry {
     pub appearance: bool,
     /// Its appearances, as `(appearance, value)`: `("luminosity", "dark")`.
     pub appearances: Vec<(String, String)>,
+    pub size_classes: SizeClasses,
+    pub direction: ImageDirection,
     /// Whether it varies by something else the stand-in doesn't compile:
-    /// a display gamut, locale, size class, memory or graphics class, or a
+    /// a display gamut, locale, memory or graphics class, or a
     /// device subtype, which only a watchOS app icon's slots read.
     pub other_traits: bool,
     /// The device a watchOS app icon slot is for, like `44mm`.
@@ -79,6 +103,56 @@ pub struct Entry {
     pub role: Option<String>,
     /// A data set file's type: `universal-type-identifier`.
     pub type_identifier: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ImageDirection {
+    #[default]
+    Fixed,
+    LeftToRight {
+        flippable: bool,
+    },
+    RightToLeft {
+        flippable: bool,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[repr(u16)]
+pub enum SizeClass {
+    #[default]
+    Any = 0,
+    Compact = 1,
+    Regular = 2,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SizeClasses {
+    pub horizontal: SizeClass,
+    pub vertical: SizeClass,
+}
+
+impl SizeClasses {
+    pub const ANY: Self = Self {
+        horizontal: SizeClass::Any,
+        vertical: SizeClass::Any,
+    };
+
+    fn read(entry: &Value) -> Option<Self> {
+        let axis = |key: &str| match entry.get(key) {
+            None => Some(SizeClass::Any),
+            Some(value) => match value.as_str()? {
+                // Xcode represents the Any slot by omitting the axis.
+                "compact" => Some(SizeClass::Compact),
+                "regular" => Some(SizeClass::Regular),
+                _ => None,
+            },
+        };
+        Some(Self {
+            horizontal: axis("width-class")?,
+            vertical: axis("height-class")?,
+        })
+    }
 }
 
 /// One entry of a color set's `Contents.json`.
@@ -126,7 +200,7 @@ impl Catalog {
                     colors: Vec::new(),
                     rendering: None,
                     preserves_vector: false,
-                    symbol: false,
+                    symbol: None,
                     has_content: true,
                 })],
                 ..Folder::default()
@@ -275,7 +349,7 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
                         .unwrap_or("universal")
                         .to_string(),
                     appearances: appearances(e),
-                    other_traits: other_traits(e),
+                    other_traits: other_traits(e) || SizeClasses::read(e) != Some(SizeClasses::ANY),
                     color: e.get("color").cloned(),
                 })
                 .collect();
@@ -294,12 +368,17 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
             } else {
                 Kind::Image
             };
-            (kind, idioms(&images), files(&images), has)
+            (
+                kind,
+                idioms(&images),
+                files(&images, extension == "imageset"),
+                has,
+            )
         }
         "dataset" => {
             let data = entries("data");
             let has = data.iter().any(|e| e.get("filename").is_some());
-            (Kind::Data, idioms(&data), files(&data), has)
+            (Kind::Data, idioms(&data), files(&data, false), has)
         }
         "icon" => (Kind::AppIcon, Vec::new(), Vec::new(), true),
         _ => (Kind::Other, Vec::new(), Vec::new(), true),
@@ -325,7 +404,7 @@ fn read_asset(path: &Path, relative_path: String) -> Asset {
         colors: color_entries,
         rendering,
         preserves_vector,
-        symbol: extension == "symbolset",
+        symbol: (extension == "symbolset").then(|| SymbolRendering::read(contents.as_ref())),
         has_content,
     }
 }
@@ -346,42 +425,62 @@ fn appearances(entry: &Value) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Whether an entry varies by a trait other than idiom, scale and
-/// appearance.
+/// Whether an entry uses a slot selector the compiler cannot represent.
 fn other_traits(entry: &Value) -> bool {
     entry
         .get("display-gamut")
         .and_then(Value::as_str)
         .is_some_and(|g| g != "sRGB")
-        || [
-            "locale",
-            "width-class",
-            "height-class",
-            "memory",
-            "graphics-feature-set",
-            "subtype",
-        ]
-        .iter()
-        .any(|k| entry.get(*k).is_some())
+        || ["locale", "memory", "graphics-feature-set", "subtype"]
+            .iter()
+            .any(|k| entry.get(*k).is_some())
 }
 
 /// An image, app icon or data set's entries, as the stand-in uses them.
-fn files(entries: &[Value]) -> Vec<Entry> {
+fn files(entries: &[Value], image_set: bool) -> Vec<Entry> {
     let text = |e: &Value, key: &str| e.get(key).and_then(Value::as_str).map(str::to_string);
+    // Xcode selects a direction mode for the entire image set, counting empty
+    // slots too. A fixed slot disables direction, and a pair disables mirroring.
+    let has_slot = |direction| {
+        entries
+            .iter()
+            .any(|e| e.get("language-direction").and_then(Value::as_str) == direction)
+    };
+    let directional = image_set && !has_slot(None);
+    let flippable =
+        directional && !(has_slot(Some("left-to-right")) && has_slot(Some("right-to-left")));
     entries
         .iter()
-        .map(|e| Entry {
-            filename: text(e, "filename"),
-            idiom: text(e, "idiom").unwrap_or_else(|| "universal".to_string()),
-            scale: text(e, "scale"),
-            size: text(e, "size"),
-            platform: text(e, "platform"),
-            appearance: e.get("appearances").is_some(),
-            appearances: appearances(e),
-            other_traits: other_traits(e),
-            subtype: text(e, "subtype"),
-            role: text(e, "role"),
-            type_identifier: text(e, "universal-type-identifier"),
+        .map(|e| {
+            let size_classes = SizeClasses::read(e);
+            let direction = match e.get("language-direction").and_then(Value::as_str) {
+                Some("left-to-right") if directional => {
+                    Some(ImageDirection::LeftToRight { flippable })
+                }
+                Some("right-to-left") if directional => {
+                    Some(ImageDirection::RightToLeft { flippable })
+                }
+                None | Some("left-to-right" | "right-to-left") => Some(ImageDirection::Fixed),
+                _ => None,
+            };
+            Entry {
+                filename: text(e, "filename"),
+                idiom: text(e, "idiom").unwrap_or_else(|| "universal".to_string()),
+                scale: text(e, "scale"),
+                size: text(e, "size"),
+                platform: text(e, "platform"),
+                appearance: e.get("appearances").is_some(),
+                appearances: appearances(e),
+                size_classes: size_classes.unwrap_or_default(),
+                direction: direction.unwrap_or_default(),
+                other_traits: other_traits(e)
+                    || (image_set && direction.is_none())
+                    || size_classes.is_none()
+                    || (!image_set && size_classes != Some(SizeClasses::ANY)),
+                subtype: text(e, "subtype"),
+                role: text(e, "role"),
+                type_identifier: text(e, "universal-type-identifier"),
+            }
         })
         .collect()
 }

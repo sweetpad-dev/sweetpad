@@ -16,7 +16,7 @@ use serde_json::{Map, Value, json};
 use super::car::{
     Appearance, Bitmap, Car, ColorSpace, Family, Glyph, Part, Rendering, Source, Variant,
 };
-use super::catalog::{Asset, Catalog, Kind, qualified_name};
+use super::catalog::{Asset, Catalog, Entry, Kind, SizeClasses, SymbolRendering, qualified_name};
 use super::photo::Photo;
 use super::uti;
 use super::vector::{Drawing, Format};
@@ -433,6 +433,7 @@ fn add_app_icon<'a>(
             appearance: image.appearance,
             scale: image.scale,
             idiom: image.idiom,
+            ..Variant::ANY
         };
         let file = image.entry.filename.as_deref().unwrap_or_default();
         car.icon(
@@ -706,8 +707,10 @@ fn add_assets<'a>(
         let name = qualified_name(&chain, asset);
         let added = match asset.kind {
             Kind::Color => add_color(car, &name, asset, devices, platform),
-            Kind::Image if asset.symbol => add_symbol(car, &name, asset, devices, platform),
-            Kind::Image => add_image(car, &name, asset, devices, platform),
+            Kind::Image => match asset.symbol {
+                Some(mode) => add_symbol(car, &name, asset, devices, platform, mode),
+                None => add_image(car, &name, asset, devices, platform),
+            },
             Kind::Data => add_data(car, &name, asset, devices, platform),
             Kind::AppIcon | Kind::Other => false,
         };
@@ -762,6 +765,38 @@ fn add_color(car: &mut Car, name: &str, asset: &Asset, devices: &[String], platf
     true
 }
 
+fn image_variant(
+    entry: &Entry,
+    devices: &[String],
+    platform: &str,
+) -> Option<(Variant, Option<u16>)> {
+    let scale = match entry.scale.as_deref() {
+        Some("1x") => Some(1),
+        Some("2x") => Some(2),
+        Some("3x") => Some(3),
+        _ => None,
+    };
+    if entry.size_classes != SizeClasses::ANY
+        && !matches!(
+            platform,
+            "iphoneos" | "iphonesimulator" | "xros" | "xrsimulator"
+        )
+    {
+        return None;
+    }
+    let mut variant = variant(
+        &entry.idiom,
+        &entry.appearances,
+        entry.other_traits,
+        scale.unwrap_or(1),
+        devices,
+        platform,
+    )?;
+    variant.size_classes = entry.size_classes;
+    variant.direction = entry.direction;
+    Some((variant, scale))
+}
+
 fn add_image(car: &mut Car, name: &str, asset: &Asset, devices: &[String], platform: &str) -> bool {
     let rendering = match asset.rendering.as_deref() {
         Some("template") => Rendering::Template,
@@ -776,20 +811,7 @@ fn add_image(car: &mut Car, name: &str, asset: &Asset, devices: &[String], platf
         let Some(filename) = entry.filename.as_deref() else {
             continue;
         };
-        let scale = match entry.scale.as_deref() {
-            Some("1x") => Some(1),
-            Some("2x") => Some(2),
-            Some("3x") => Some(3),
-            _ => None,
-        };
-        let Some(variant) = variant(
-            &entry.idiom,
-            &entry.appearances,
-            entry.other_traits,
-            scale.unwrap_or(1),
-            devices,
-            platform,
-        ) else {
+        let Some((variant, scale)) = image_variant(entry, devices, platform) else {
             continue;
         };
         let Ok(bytes) = std::fs::read(asset.dir.join(filename)) else {
@@ -920,8 +942,11 @@ fn draw<'a>(drawings: &[Drawn<'a>], scales: &[u16]) -> Vec<(Variant, &'a str, Bi
             continue;
         }
         let same = |d: &&Drawn| {
-            d.variant.idiom == drawn.variant.idiom
-                && d.variant.appearance == drawn.variant.appearance
+            d.variant
+                == Variant {
+                    scale: d.variant.scale,
+                    ..drawn.variant
+                }
         };
         match by_variant
             .iter_mut()
@@ -944,7 +969,12 @@ fn draw<'a>(drawings: &[Drawn<'a>], scales: &[u16]) -> Vec<(Variant, &'a str, Bi
     }
     plan.into_iter()
         .filter_map(|(drawn, target)| {
-            let factor = f32::from(target) / f32::from(drawn.scale.unwrap_or(1));
+            // SVG dimensions are in points even in an explicitly scaled slot.
+            let source_scale = match drawn.drawing {
+                Drawing::Svg(_) => 1,
+                Drawing::Pdf(_) => drawn.scale.unwrap_or(1),
+            };
+            let factor = f32::from(target) / f32::from(source_scale);
             let bitmap = drawn.drawing.render(factor).ok()?;
             let variant = Variant {
                 scale: target,
@@ -972,6 +1002,7 @@ fn add_symbol(
     asset: &Asset,
     devices: &[String],
     platform: &str,
+    mode: SymbolRendering,
 ) -> bool {
     let sizing = glyph::Sizing::of(platform);
     let symbols: Vec<(Variant, &str, Vec<Glyph>)> = ordered(&asset.entries, |e| &e.idiom)
@@ -998,7 +1029,7 @@ fn add_symbol(
     };
     for (variant, filename, glyphs) in symbols {
         for glyph in &glyphs {
-            car.glyph(filename, identifier, variant, glyph);
+            car.glyph(filename, identifier, variant, glyph, mode);
         }
     }
     true
@@ -1060,6 +1091,7 @@ fn variant(
         appearance,
         scale,
         idiom,
+        ..Variant::ANY
     })
 }
 

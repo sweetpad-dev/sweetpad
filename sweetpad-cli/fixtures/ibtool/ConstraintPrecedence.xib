@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.XIB" version="3.0" toolsVersion="18122" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES">
+    <device id="retina6_1" orientation="portrait" appearance="light"/>
+    <dependencies>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="18093"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <objects>
+        <placeholder placeholderIdentifier="IBFilesOwner" id="-1" userLabel="File's Owner"/>
+        <placeholder placeholderIdentifier="IBFirstResponder" id="-2" customClass="UIResponder"/>
+        <view id="9fq-65-qd9">
+            <rect key="frame" x="0" y="0" width="320" height="52"/>
+            <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+            <subviews>
+                <view translatesAutoresizingMaskIntoConstraints="NO" id="QLk-JN-wfO">
+                    <rect key="frame" x="0" y="0" width="88" height="52"/>
+                    <constraints>
+                        <constraint firstAttribute="width" priority="750" constant="72" id="6Dl-DP-LFT">
+                            <variation key="heightClass=compact" constant="128"/>
+                            <variation key="heightClass=regular" constant="88"/>
+                            <variation key="heightClass=compact-widthClass=compact" constant="72"/>
+                        </constraint>
+                    </constraints>
+                </view>
+            </subviews>
+            <constraints>
+                <constraint firstItem="QLk-JN-wfO" firstAttribute="leading" secondItem="9fq-65-qd9" secondAttribute="leading" id="Lft-aa-001"/>
+                <constraint firstItem="QLk-JN-wfO" firstAttribute="top" secondItem="9fq-65-qd9" secondAttribute="top" id="Top-aa-002"/>
+                <constraint firstAttribute="bottom" secondItem="QLk-JN-wfO" secondAttribute="bottom" id="Bot-aa-003"/>
+            </constraints>
+        </view>
+    </objects>
+</document>

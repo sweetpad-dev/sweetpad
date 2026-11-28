@@ -15,7 +15,7 @@
 //!   keys take, which is how CoreUI finds the masters a symbol has.
 //!
 //! A color's rendition holds its components as an `RLOC` payload, and an
-//! image's its pixels, premultiplied BGRA compressed with gzip, which CoreUI
+//! image's its pixels, premultiplied BGRA or gray/alpha compressed with gzip, which CoreUI
 //! calls "zip". A vector image is drawn into one of those per scale, and its
 //! PDF or SVG is kept as a rendition of its own. A custom symbol is an SVG
 //! per weight and size its template draws, with the metrics that set it in
@@ -28,6 +28,7 @@ use crate::cli::bom::Bom;
 use std::collections::BTreeSet;
 use std::io::Write as _;
 
+use super::catalog::{ImageDirection, SizeClass, SizeClasses, SymbolRendering};
 use super::photo::{Format as PhotoFormat, Photo};
 use super::raster::Rgba;
 use super::vector::Format;
@@ -146,6 +147,35 @@ pub struct Variant {
     /// CoreUI's idiom: 0 universal, 1 iPhone, 2 iPad, 3 TV, 4 CarPlay,
     /// 5 Watch, 6 marketing.
     pub idiom: u16,
+    pub size_classes: SizeClasses,
+    pub direction: ImageDirection,
+}
+
+impl Variant {
+    pub const ANY: Self = Self {
+        appearance: Appearance::Any,
+        scale: 1,
+        idiom: 0,
+        size_classes: SizeClasses::ANY,
+        direction: ImageDirection::Fixed,
+    };
+}
+
+impl ImageDirection {
+    fn key(self) -> u16 {
+        match self {
+            Self::Fixed => 0,
+            Self::RightToLeft { .. } => 4, // CoreUI's Pointing Left
+            Self::LeftToRight { .. } => 5, // CoreUI's Pointing Right
+        }
+    }
+
+    fn flags(self) -> u32 {
+        match self {
+            Self::LeftToRight { flippable: true } | Self::RightToLeft { flippable: true } => 0x40,
+            _ => 0,
+        }
+    }
 }
 
 /// An image's pixels as CoreUI keeps them: premultiplied BGRA, row by row.
@@ -260,6 +290,8 @@ pub struct Glyph {
     /// Whether the template is a variable one, whose ultralight, regular
     /// and black masters CoreUI interpolates into the other weights.
     pub interpolatable: bool,
+    /// Bit 0 for multicolor layers and bit 1 for hierarchical layers.
+    pub layer_flags: u32,
 }
 
 /// The platform a catalog is for, which decides the key format.
@@ -271,37 +303,14 @@ pub enum Family {
     Mac,
 }
 
-impl Family {
-    /// CoreUI's attribute ids, in the order a rendition key holds them:
-    /// appearance 7, localization 13, scale 12, idiom 15, subtype 16,
-    /// identifier 17, element 1, part 2, size 3, layer 11, with app icons
-    /// dimension 9, an icon's size index, and with symbols dimension 9,
-    /// deployment target 25, glyph weight 26 and glyph size 27.
-    fn key_format(self, kinds: Kinds) -> &'static [u32] {
-        match (self, kinds.glyphs, kinds.icons) {
-            (Family::Ios, false, false) => &[7, 13, 12, 15, 16, 17, 1, 2],
-            (Family::Ios, false, true) => &[7, 13, 12, 15, 16, 9, 17, 1, 2],
-            (Family::Ios, true, _) => &[7, 13, 12, 15, 16, 26, 27, 9, 25, 17, 1, 2],
-            (Family::Mac, false, false) => &[7, 13, 1, 2, 3, 17, 11, 12],
-            (Family::Mac, false, true) => &[7, 13, 1, 2, 3, 17, 9, 11, 12],
-            (Family::Mac, true, _) => &[7, 13, 1, 2, 3, 17, 9, 11, 12, 25, 26, 27],
-        }
-    }
-}
-
-/// The kinds of rendition a catalog has that widen its keys.
-#[derive(Debug, Clone, Copy)]
-struct Kinds {
-    glyphs: bool,
-    icons: bool,
-}
-
 /// The attributes of a rendition's key, the ones the stand-in sets.
 #[derive(Debug, Clone, Copy, Default)]
 struct Key {
     appearance: Appearance,
     scale: u16,
     idiom: u16,
+    size_classes: SizeClasses,
+    direction: u16,
     /// A device class within the idiom, like 1792 for the iPhone XR.
     subtype: u16,
     /// An app icon size's index.
@@ -314,9 +323,8 @@ struct Key {
 }
 
 impl Key {
-    fn bytes(&self, family: Family, kinds: Kinds) -> Vec<u8> {
-        family
-            .key_format(kinds)
+    fn bytes(&self, family: Family, format: &[u32]) -> Vec<u8> {
+        format
             .iter()
             .flat_map(|attribute| {
                 let value: u16 = match attribute {
@@ -325,7 +333,10 @@ impl Key {
                     15 => self.idiom,
                     16 => self.subtype,
                     9 => self.dimension,
+                    4 => self.direction,
                     17 => self.identifier,
+                    20 => self.size_classes.horizontal as u16,
+                    21 => self.size_classes.vertical as u16,
                     1 => ELEMENT,
                     2 => self.part,
                     25 => self.deployment,
@@ -492,7 +503,12 @@ impl Car {
             part: Part::Image as u16,
             ..key(identifier, variant)
         };
-        self.bitmap(key, name, image, rendering | source);
+        self.bitmap(
+            key,
+            name,
+            image,
+            rendering | source | variant.direction.flags(),
+        );
     }
 
     /// A JPEG or HEIF image's rendition: the file `data` as it is, with its
@@ -540,7 +556,7 @@ impl Car {
         let header = Header {
             name,
             layout: 12,
-            flags: rendering.flags(),
+            flags: rendering.flags() | variant.direction.flags(),
             width: 0,
             height: 0,
             scale: u32::from(variant.scale) * 100,
@@ -643,9 +659,8 @@ impl Car {
             color_space: 0,
         };
         let variant = Variant {
-            appearance: Appearance::Any,
-            scale: 1,
             idiom,
+            ..Variant::ANY
         };
         self.add(
             Key {
@@ -659,9 +674,24 @@ impl Car {
 
     /// A bitmap's rendition, keyed by `key`, with the header's `flags`.
     fn bitmap(&mut self, key: Key, name: &str, image: &Bitmap, flags: u32) {
+        let gray = image
+            .bgra
+            .chunks_exact(4)
+            .all(|p| p[0] == p[1] && p[1] == p[2]);
+        let gray_alpha;
+        let (pixels, pixel_format, color_space, bytes_per_pixel) = if gray {
+            gray_alpha = image
+                .bgra
+                .chunks_exact(4)
+                .flat_map(|p| [p[0], p[3]])
+                .collect::<Vec<_>>();
+            (gray_alpha.as_slice(), *b"GA8 ", 2, 2)
+        } else {
+            (image.bgra.as_slice(), *b"ARGB", 1, 4)
+        };
         let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         let compressed = gzip
-            .write_all(&image.bgra)
+            .write_all(pixels)
             .and_then(|()| gzip.finish())
             .unwrap_or_default();
         let mut payload = b"MLEC".to_vec();
@@ -701,7 +731,7 @@ impl Car {
             ),
             info(1004, &[&zero, &1f32.to_le_bytes()]),
             info(1006, &[&1u32.to_le_bytes()]),
-            info(1007, &[&(w * 4).to_le_bytes()]),
+            info(1007, &[&(w * bytes_per_pixel).to_le_bytes()]),
         ];
         let header = Header {
             name,
@@ -710,8 +740,8 @@ impl Car {
             width: w,
             height: h,
             scale: u32::from(key.scale) * 100,
-            pixel_format: u32::from_be_bytes(*b"ARGB"),
-            color_space: 1,
+            pixel_format: u32::from_be_bytes(pixel_format),
+            color_space,
         };
         self.add(key, header.rendition(&info, &payload));
     }
@@ -731,7 +761,7 @@ impl Car {
         let header = Header {
             name,
             layout: 9,
-            flags: 0x04,
+            flags: 0x04 | variant.direction.flags(),
             width: 0,
             height: 0,
             scale: 0,
@@ -757,7 +787,14 @@ impl Car {
     }
 
     /// One master of the symbol `identifier`, from the template file `name`.
-    pub fn glyph(&mut self, name: &str, identifier: u16, variant: Variant, glyph: &Glyph) {
+    pub fn glyph(
+        &mut self,
+        name: &str,
+        identifier: u16,
+        variant: Variant,
+        glyph: &Glyph,
+        mode: SymbolRendering,
+    ) {
         let mut metrics = Vec::new();
         for value in [if glyph.interpolatable { 7 } else { 3 }, glyph.point_size] {
             metrics.extend_from_slice(&u32::to_le_bytes(value));
@@ -785,8 +822,8 @@ impl Car {
             1019,
             &[
                 &1u32.to_le_bytes(),
-                &u32::from(glyph.interpolatable).to_le_bytes(),
-                &0u32.to_le_bytes(),
+                &(mode as u32).to_le_bytes(),
+                &glyph.layer_flags.to_le_bytes(),
             ],
         ));
         let header = Header {
@@ -817,16 +854,61 @@ impl Car {
         self.renditions.push((key, rendition));
     }
 
-    /// Whether any rendition is a symbol's or an app icon's, which widen
-    /// the key format.
-    fn kinds(&self) -> Kinds {
-        Kinds {
-            glyphs: self.facets.iter().any(|f| f.symbol),
-            icons: self.facets.iter().any(|f| f.part == Part::Icon)
-                || self
+    /// CoreUI uses one key format for the whole catalog. Each size-class axis
+    /// is present only when a rendition selects a value on that axis (20 for
+    /// width, 21 for height). Symbols add weight, size and deployment target
+    /// (26, 27, 25). Symbols and icons both use dimension (9).
+    fn key_format(&self) -> Vec<u32> {
+        let glyphs = self.facets.iter().any(|f| f.symbol);
+        let directional = self.renditions.iter().any(|(key, _)| key.direction != 0);
+        let icons = self.facets.iter().any(|f| f.part == Part::Icon)
+            || self
+                .renditions
+                .iter()
+                .any(|(key, _)| key.part == Part::Icon as u16);
+        match self.family {
+            Family::Ios => {
+                let mut format = vec![7, 13, 12, 15, 16];
+                if glyphs {
+                    format.extend([26, 27, 9, 25]);
+                } else if icons {
+                    format.push(9);
+                }
+                if directional {
+                    format.push(4);
+                }
+                if self
                     .renditions
                     .iter()
-                    .any(|(key, _)| key.part == Part::Icon as u16),
+                    .any(|(key, _)| key.size_classes.horizontal != SizeClass::Any)
+                {
+                    format.push(20);
+                }
+                if self
+                    .renditions
+                    .iter()
+                    .any(|(key, _)| key.size_classes.vertical != SizeClass::Any)
+                {
+                    format.push(21);
+                }
+                format.extend([17, 1, 2]);
+                format
+            }
+            Family::Mac => {
+                let mut format = vec![7, 13, 1, 2, 3];
+                if directional {
+                    format.push(4);
+                }
+                format.push(17);
+                if icons || glyphs {
+                    format.push(9);
+                }
+                format.extend([11, 12]);
+                if glyphs {
+                    format.extend([25, 26, 27]);
+                }
+                format
+            }
         }
     }
 
@@ -846,12 +928,11 @@ impl Car {
         let index = bom.add(header);
         bom.variable("CARHEADER", index);
 
-        let kinds = self.kinds();
-        let format = self.family.key_format(kinds);
+        let format = self.key_format();
         let renditions = self
             .renditions
             .iter()
-            .map(|(key, rendition)| (key.bytes(self.family, kinds), rendition.clone()))
+            .map(|(key, rendition)| (key.bytes(self.family, &format), rendition.clone()))
             .collect();
         bom.tree("RENDITIONS", renditions, Keys::Fixed(2 * format.len()));
         let facets = self
@@ -885,7 +966,7 @@ impl Car {
         bom.tree("APPEARANCEKEYS", appearances, Keys::Variable);
 
         let mut key_format = b"tmfk".to_vec();
-        for value in [0, count(format.len())].iter().chain(format) {
+        for value in [0, count(format.len())].iter().chain(&format) {
             key_format.extend_from_slice(&value.to_le_bytes());
         }
         let index = bom.add(key_format);
@@ -898,7 +979,7 @@ impl Car {
         metadata.extend_from_slice(&padded(b"sweetpad", 256));
         let index = bom.add(metadata);
         bom.variable("EXTENDED_METADATA", index);
-        bom.tree("BITMAPKEYS", self.bitmap_keys(kinds), Keys::Inline);
+        bom.tree("BITMAPKEYS", self.bitmap_keys(&format), Keys::Inline);
         bom.finish()
     }
 
@@ -906,8 +987,7 @@ impl Car {
     /// a mask with a bit set for each value its renditions take, or every
     /// bit for the attributes CoreUI doesn't narrow by: appearance,
     /// identifier, element and part.
-    fn bitmap_keys(&self, kinds: Kinds) -> Vec<(Vec<u8>, Vec<u8>)> {
-        let format = self.family.key_format(kinds);
+    fn bitmap_keys(&self, format: &[u32]) -> Vec<(Vec<u8>, Vec<u8>)> {
         self.facets
             .iter()
             .map(|facet| {
@@ -917,7 +997,7 @@ impl Car {
                     .iter()
                     .filter(|(k, _)| k.identifier == facet.identifier)
                 {
-                    let values = key.bytes(self.family, kinds);
+                    let values = key.bytes(self.family, format);
                     for (mask, value) in masks.iter_mut().zip(values.chunks(2)) {
                         let value = u16::from_le_bytes([value[0], value[1]]);
                         *mask |= 1u32.checked_shl(u32::from(value)).unwrap_or(u32::MAX);
@@ -947,6 +1027,8 @@ fn key(identifier: u16, variant: Variant) -> Key {
         appearance: variant.appearance,
         scale: variant.scale,
         idiom: variant.idiom,
+        size_classes: variant.size_classes,
+        direction: variant.direction.key(),
         identifier,
         ..Key::default()
     }
@@ -1262,11 +1344,7 @@ pub(super) mod tests {
             .collect()
     }
 
-    const ANY: Variant = Variant {
-        appearance: Appearance::Any,
-        scale: 1,
-        idiom: 0,
-    };
+    const ANY: Variant = Variant::ANY;
 
     #[test]
     fn a_color_is_written_as_xcode_writes_it() {
@@ -1397,6 +1475,41 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn gray_bitmaps_store_premultiplied_gray_then_alpha() {
+        let mut car = Car::new(Family::Ios, "ios", "15.6");
+        let id = car.facet("Marker", Part::Image).unwrap();
+        let image = Bitmap::from_rgba(&Rgba {
+            width: 3,
+            height: 1,
+            pixels: vec![180, 180, 180, 255, 80, 80, 80, 128, 0, 0, 0, 0],
+        });
+        car.image(
+            "Marker.png",
+            id,
+            ANY,
+            &image,
+            Rendering::Original,
+            Source {
+                vector: false,
+                preserved: false,
+            },
+        );
+        let data = car.write(0);
+        let store = Store::read(&data);
+        let (renditions, _) = store.tree("RENDITIONS");
+        let rendition = renditions[0].1;
+        assert_eq!(&rendition[24..28], b" 8AG");
+        let info_len = u32::from_le_bytes(rendition[168..172].try_into().unwrap()) as usize;
+        let mut pixels = Vec::new();
+        std::io::Read::read_to_end(
+            &mut flate2::read::GzDecoder::new(&rendition[184 + info_len + 16..]),
+            &mut pixels,
+        )
+        .unwrap();
+        assert_eq!(pixels, [180, 255, 40, 128, 0, 0]);
+    }
+
+    #[test]
     fn appearances_are_listed_by_name() {
         let mut car = Car::new(Family::Ios, "ios", "17.0");
         let id = car.facet("Brand", Part::Color).unwrap();
@@ -1459,6 +1572,7 @@ pub(super) mod tests {
             padding: f32::from_bits(0x3f94_c000),
             template_version: 0.0,
             interpolatable: false,
+            layer_flags: 0,
         }
     }
 
@@ -1466,7 +1580,13 @@ pub(super) mod tests {
     fn a_glyph_is_written_as_xcode_writes_it() {
         let mut car = Car::new(Family::Ios, "ios", "17.0");
         let id = car.symbol("Legacy").unwrap();
-        car.glyph("legacy.svg", id, ANY, &legacy_regular_medium());
+        car.glyph(
+            "legacy.svg",
+            id,
+            ANY,
+            &legacy_regular_medium(),
+            SymbolRendering::Automatic,
+        );
         let data = car.write(0);
         let store = Store::read(&data);
         let (renditions, _) = store.tree("RENDITIONS");
@@ -1525,7 +1645,13 @@ pub(super) mod tests {
                 sizes: &[],
                 ..legacy_regular_medium()
             };
-            car.glyph("variable.svg", symbol, ANY, &glyph);
+            car.glyph(
+                "variable.svg",
+                symbol,
+                ANY,
+                &glyph,
+                SymbolRendering::Automatic,
+            );
         }
         let data = car.write(0);
         let keys = Store::read(&data).inline_tree("BITMAPKEYS");
@@ -1593,7 +1719,13 @@ pub(super) mod tests {
     fn a_mac_cars_keys_widen_for_symbols_too() {
         let mut car = Car::new(Family::Mac, "macosx", "14.0");
         let id = car.symbol("Legacy").unwrap();
-        car.glyph("legacy.svg", id, ANY, &legacy_regular_medium());
+        car.glyph(
+            "legacy.svg",
+            id,
+            ANY,
+            &legacy_regular_medium(),
+            SymbolRendering::Automatic,
+        );
         let data = car.write(0);
         assert_eq!(
             Store::read(&data).variable("KEYFORMAT"),

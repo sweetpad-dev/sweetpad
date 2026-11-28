@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 160">
+  <style>
+    .monochrome-1 { opacity:0.0; -sfsymbols-clear-behind:true }
+    .multicolor-0:custom { fill:#227744 }
+    .multicolor-1:custom { fill:#FFAA33 }
+  </style>
+  <g id="Notes"><text id="template-version">Template v.4.0</text></g>
+  <g id="Guides" stroke="blue">
+    <line id="Baseline-S" x1="0" x2="320" y1="90" y2="90"/>
+    <line id="Capline-S" x1="0" x2="320" y1="19.541" y2="19.541"/>
+    <line id="Baseline-M" x1="0" x2="320" y1="130" y2="130"/>
+    <line id="Capline-M" x1="0" x2="320" y1="59.541" y2="59.541"/>
+    <line id="Baseline-L" x1="0" x2="320" y1="150" y2="150"/>
+    <line id="Capline-L" x1="0" x2="320" y1="79.541" y2="79.541"/>
+    <line id="left-margin-Regular-M" x1="145" x2="145" y1="70" y2="140"/>
+    <line id="right-margin-Regular-M" x1="210" x2="210" y1="70" y2="140"/>
+  </g>
+  <g id="Symbols">
+    <g id="Regular-S" transform="translate(10 20)">
+      <path class="monochrome-0 multicolor-0:custom hierarchical-0:secondary" d="M0 0h40v40H0Z"/>
+      <path class="monochrome-1 multicolor-1:custom hierarchical-1:primary" d="M10 10h20v20H10Z"/>
+    </g>
+    <g id="Regular-M" transform="translate(150 80)">
+      <path class="monochrome-0 multicolor-0:custom hierarchical-0:secondary" d="M0 0h50v50H0Z"/>
+      <path class="monochrome-1 multicolor-1:custom hierarchical-1:primary" d="M15 15h20v20H15Z"/>
+    </g>
+  </g>
+</svg>

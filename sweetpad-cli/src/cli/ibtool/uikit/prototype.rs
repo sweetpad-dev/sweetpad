@@ -12,7 +12,7 @@ fn element(name: &str, attributes: &[(&str, &str)]) -> Element {
         text: String::new(),
     }
 }
-pub(super) fn prepare(source: &Element) -> Element {
+pub(in crate::cli::ibtool) fn prepare(source: &Element) -> Element {
     let mut cell = source.clone();
     if cell.name != "collectionViewCell" {
         return cell;
@@ -29,7 +29,12 @@ pub(super) fn prepare(source: &Element) -> Element {
         .attr("id")
         .map_or_else(|| format!("{cell_id}-contentView"), str::to_string);
     let legacy = cell.children[content_index].attr("id").is_none();
-    if legacy {
+    let safe_area = cell
+        .children
+        .iter()
+        .position(|e| e.name == "viewLayoutGuide" && e.attr("key") == Some("safeArea"));
+    if legacy || safe_area.is_some() {
+        let guide = safe_area.map(|index| cell.children.remove(index));
         let constraints = cell
             .children
             .iter()
@@ -40,10 +45,16 @@ pub(super) fn prepare(source: &Element) -> Element {
             .iter_mut()
             .find(|e| e.attr("key") == Some("contentView"))
             .unwrap();
-        content.attributes = vec![
-            ("key".to_string(), "contentView".to_string()),
-            ("id".to_string(), content_id.clone()),
-        ];
+        if legacy {
+            // UIKit creates this anonymous content view with its own drawing and clipping defaults.
+            content.attributes = vec![
+                ("key".to_string(), "contentView".to_string()),
+                ("id".to_string(), content_id.clone()),
+            ];
+        }
+        if let Some(guide) = guide {
+            content.children.push(guide);
+        }
         if let Some(mut constraints) = constraints {
             for constraint in &mut constraints.children {
                 for (key, value) in &mut constraint.attributes {

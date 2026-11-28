@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="21701" targetRuntime="iOS.CocoaTouch" useAutolayout="YES" useTraitCollections="YES" colorMatched="YES" initialViewController="map-nav">
+    <scenes>
+        <scene sceneID="nav-scene">
+            <objects>
+                <navigationController id="map-nav" sceneMemberID="viewController">
+                    <value key="contentSizeForViewInPopover" type="size" width="600" height="500" />
+                    <navigationBar key="navigationBar" id="map-nav-bar">
+                        <rect key="frame" x="0" y="0" width="320" height="44" />
+                    </navigationBar>
+                    <connections>
+                        <segue destination="map-parent" kind="relationship" relationship="rootViewController" id="nav-root" />
+                    </connections>
+                </navigationController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="nav-responder" sceneMemberID="firstResponder" />
+            </objects>
+        </scene>
+        <scene sceneID="parent-scene">
+            <objects>
+                <viewController id="map-parent" sceneMemberID="viewController">
+                    <view key="view" id="map-parent-view">
+                        <rect key="frame" x="0" y="0" width="320" height="480" />
+                        <subviews>
+                            <containerView tag="501" id="map-container">
+                                <rect key="frame" x="0" y="0" width="300" height="200" />
+                                <color key="backgroundColor" red="0" green="1" blue="0" alpha="1" colorSpace="custom" customColorSpace="sRGB" />
+                                <connections>
+                                    <segue destination="map-child" kind="embed" id="embed-child" />
+                                </connections>
+                            </containerView>
+                        </subviews>
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="parent-responder" sceneMemberID="firstResponder" />
+            </objects>
+        </scene>
+        <scene sceneID="child-scene">
+            <objects>
+                <viewController id="map-child" sceneMemberID="viewController">
+                    <view key="view" id="map-child-view">
+                        <rect key="frame" x="0" y="0" width="300" height="200" />
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="child-responder" sceneMemberID="firstResponder" />
+            </objects>
+        </scene>
+    </scenes>
+</document>

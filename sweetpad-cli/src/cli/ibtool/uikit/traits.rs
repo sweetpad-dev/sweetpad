@@ -186,6 +186,15 @@ impl Encoder<'_> {
             for (attribute, value) in &variation.attributes {
                 match attribute.as_str() {
                     "key" | "text" => {}
+                    "image" if element.name == "imageView" => {
+                        let base = self.graph.value(object, "UIImage").unwrap_or(Value::Nil);
+                        let image = self.image(value, None, None)?;
+                        attributes
+                            .entry("image")
+                            .or_insert_with(|| (base, Vec::new()))
+                            .1
+                            .push((condition, Value::Object(image)));
+                    }
                     "hidden" => {
                         let base = self.boxed_boolean(element.attr("hidden") == Some("YES"));
                         let value = self.boxed_boolean(value == "YES");
@@ -252,11 +261,12 @@ impl Encoder<'_> {
             self.trait_storages
                 .push((self.current_trait_root.unwrap_or(object), object, storage));
         }
-        self.relationship_variations(object, &variations)
+        self.relationship_variations(element, object, &variations)
     }
 
     fn relationship_variations(
         &mut self,
+        element: &Element,
         object: Id,
         variations: &[&Element],
     ) -> Result<(), String> {
@@ -308,17 +318,23 @@ impl Encoder<'_> {
                     let reference = change
                         .attr("reference")
                         .ok_or("a variation mask entry has no reference")?;
+                    let changes = match change.name.as_str() {
+                        "include" => &mut added,
+                        "exclude" => &mut removed,
+                        other => return Err(format!("unsupported variation mask change {other}")),
+                    };
+                    // Placeholder constraints exist only on IB's design canvas. They
+                    // have no runtime object, including in trait relationship masks.
+                    if key == "constraints" && placeholder_constraint(element, reference) {
+                        continue;
+                    }
                     let target = self
                         .lookup(reference)
                         .ok_or_else(|| format!("unknown variation reference {reference}"))?;
                     if !candidates.contains(&target) {
                         candidates.push(target);
                     }
-                    match change.name.as_str() {
-                        "include" => added.push(target),
-                        "exclude" => removed.push(target),
-                        other => return Err(format!("unsupported variation mask change {other}")),
-                    }
+                    changes.push(target);
                 }
                 if condition == "default" {
                     let defaults: Vec<_> = original
@@ -388,4 +404,15 @@ impl Encoder<'_> {
         let lists = self.graph.array("NSArray", &lists);
         self.graph.replace(root, "UINibTraitStorageListsKey", lists);
     }
+}
+
+fn placeholder_constraint(element: &Element, reference: &str) -> bool {
+    element
+        .children_named("constraints")
+        .flat_map(|list| list.children.iter())
+        .any(|c| {
+            c.name == "constraint"
+                && c.attr("id") == Some(reference)
+                && c.attr("placeholder") == Some("YES")
+        })
 }
