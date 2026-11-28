@@ -2211,7 +2211,7 @@ dependencies = [
 
 [[package]]
 name = "sweetpad-cli"
-version = "0.1.30"
+version = "0.1.31"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -2256,7 +2256,7 @@ dependencies = [
 
 [[package]]
 name = "sweetpad-core"
-version = "0.1.30"
+version = "0.1.31"
 dependencies = [
  "serde_json",
  "sweetpad-lib",
@@ -2264,7 +2264,7 @@ dependencies = [
 
 [[package]]
 name = "sweetpad-lib"
-version = "0.1.30"
+version = "0.1.31"
 dependencies = [
  "libc",
  "serde_json",
@@ -2273,7 +2273,7 @@ dependencies = [
 
 [[package]]
 name = "sweetpad-native"
-version = "0.1.30"
+version = "0.1.31"
 dependencies = [
  "napi",
  "napi-build",
