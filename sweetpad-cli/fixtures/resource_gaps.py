@@ -67,11 +67,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("checkout", type=Path)
     parser.add_argument("--limit", type=int, default=10, help="maximum examples per tool")
+    parser.add_argument("--require-covered", action="store_true", help="fail if an observed combination has no fixture")
     args = parser.parse_args()
     root = args.checkout.resolve()
     if not root.is_dir() or args.limit < 0:
         parser.error("provide an existing checkout and a nonnegative example limit")
-    print(json.dumps({
+    report = {
         "ibtool": compare(interface_features(root), interface_features(HERE / "ibtool"), args.limit),
         "actool": compare(asset_features(root), asset_features(HERE / "actool/resources"), args.limit),
-    }, indent=2))
+    }
+    print(json.dumps(report, indent=2))
+    if args.require_covered and any(tool["missing"] for tool in report.values()):
+        raise SystemExit(1)

@@ -15,6 +15,7 @@ WIDGET = Path("CoMapsWidgetExtension/Assets.xcassets")
 FIXTURES = Path(__file__).resolve().parents[1]
 CATALOGS = FIXTURES / "actool/resources"
 IOS_TARGET = ["--target-device", "iphone", "--target-device", "ipad", "--minimum-deployment-target", "15.6"]
+COMAPS_ICONS = ["--app-icon", "Icon", "--alternate-app-icon", "Debug Icon"]
 
 
 def write_bundle_info(bundle):
@@ -39,6 +40,23 @@ def compile_variant_bundle(bundle, binary=None):
     for source in ["Base.lproj/AttributedLabels.xib", "ButtonStateColors.xib"]:
         xib = FIXTURES / "ibtool" / source
         run_tool(["ibtool", "--module", "App", *IOS_TARGET, "--compile", bundle / (xib.stem + ".nib"), xib], binary)
+
+
+def compile_gap_bundle(bundle, binary=None):
+    bundle.mkdir(parents=True, exist_ok=True)
+    run_tool(["actool", CATALOGS / "CoMapsSlots.xcassets", "--platform", "iphonesimulator", *IOS_TARGET,
+              "--app-icon", "MapIcon", "--output-partial-info-plist", bundle / "IconInfo.plist",
+              "--compile", bundle], binary)
+    write_bundle_info(bundle)
+    interfaces = FIXTURES / "ibtool/runtime/comaps"
+    for source in sorted(interfaces.iterdir()):
+        suffix = {".xib": ".nib", ".storyboard": ".storyboardc"}.get(source.suffix)
+        if suffix:
+            run_tool(["ibtool", "--module", "App", *IOS_TARGET, "--compile",
+                      bundle / (source.stem + suffix), source], binary)
+    run_tool(["ibtool", "--module", "App", "--target-device", "iphone", "--target-device", "ipad",
+              "--minimum-deployment-target", "17.0", "--compile", bundle / "CoMapsAdaptiveModern.nib",
+              interfaces / "CoMapsAdaptiveViews.xib"], binary)
 
 
 def compile_resources(binary, checkout, out):
@@ -71,7 +89,8 @@ def compile_resources(binary, checkout, out):
     for target in ["15.6", "17.0"]:
         subprocess.run([*common, "--minimum-deployment-target", target, "--generate-swift-asset-symbols",
                         out / f"Symbols-{target}.swift"], executable=binary, check=True)
-    subprocess.run([*common, "--minimum-deployment-target", "15.6", "--compile", out],
+    subprocess.run([*common, "--minimum-deployment-target", "15.6", *COMAPS_ICONS,
+                    "--output-partial-info-plist", out / "CoMapsIconInfo.plist", "--compile", out],
                    executable=binary, check=True)
     if not (out / "Assets.car").stat().st_size:
         raise SystemExit("Empty compiled CoMaps catalog")
@@ -80,6 +99,7 @@ def compile_resources(binary, checkout, out):
     compile_image_bundle(out / "LinuxWidget.bundle", [maps / WIDGET], binary)
     shutil.make_archive(str(out / "CoMapsWidget"), "zip", maps, WIDGET)
     compile_variant_bundle(out / "LinuxVariants.bundle", binary)
+    compile_gap_bundle(out / "LinuxSlots.bundle", binary)
     compile_image_bundle(out / "LinuxPDFMasks.bundle", [CATALOGS / "PdfMasks.xcassets"], binary)
 
 

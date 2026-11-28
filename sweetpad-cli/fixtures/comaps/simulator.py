@@ -1,5 +1,6 @@
 """Type-check the original CoMaps calls and load the Linux-built nib and catalog in UIKit."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import platform
@@ -9,7 +10,8 @@ import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 
-from compile import CATALOGS, NAVIGATION, WIDGET, compile_image_bundle, compile_variant_bundle, write_bundle_info
+from compile import (CATALOGS, COMAPS_ICONS, FIXTURES, IOS_TARGET, NAVIGATION, WIDGET, compile_gap_bundle, compile_image_bundle,
+                     compile_variant_bundle, write_bundle_info)
 
 HERE = Path(__file__).resolve().parent
 BUNDLE_ID = "dev.sweetpad.CoMapsProbe"
@@ -39,6 +41,50 @@ def rendition_manifest(bundle):
     # Xcode can pack the same public renditions into internal texture atlases.
     return sorted(tuple(row.get(key, "") for key in fields)
                   for row in rows if row.get("AssetType") in {"Image", "Vector"})
+
+
+def compare_slots(linux, native, linux_plist, names, reader, *, icons_only=False):
+    fields = ["Name", "AssetType", "Idiom", "Appearance", "Scale", "RenditionName", "PixelWidth", "PixelHeight",
+              "Icon Index", "Sizes", "Colorspace", "ColorModel", "Encoding", "Color components", "Opaque"]
+    def renditions(bundle):
+        rows = json.loads(xcrun("assetutil", "--info", bundle / "Assets.car"))
+        return sorted(json.dumps({k: r[k] for k in fields if k in r}, sort_keys=True)
+                      for r in rows if "AssetType" in r and (not icons_only or r.get("Name") in names))
+
+    expected, actual = renditions(native), renditions(linux)
+    if not expected or actual != expected:
+        raise SystemExit(f"Different asset slots in {linux.name}\nOnly in Xcode: {set(expected) - set(actual)}"
+                         f"\nOnly in Linux: {set(actual) - set(expected)}")
+    if plistlib.loads(linux_plist.read_bytes()) != plistlib.loads((native / "IconInfo.plist").read_bytes()):
+        raise SystemExit(f"Different app icon Info.plist entries for {names}")
+    for name in names:
+        def icon_pixels(bundle):
+            return subprocess.check_output([reader, bundle / "Assets.car", name], text=True).splitlines()
+        native_pixels, linux_pixels = icon_pixels(native), icon_pixels(linux)
+        if linux_pixels != native_pixels or len(native_pixels) != 6:
+            raise SystemExit(f"Different {name} pixels (iPhone/iPad × default/dark/tinted):"
+                             f"\nXcode {native_pixels}\nLinux {linux_pixels}")
+        if name == "MapIcon":
+            swatches = [(230, 30, 70, 255), (15, 45, 200, 255), (180, 180, 180, 255)]
+            hashes = [hashlib.sha256(bytes(rgba) * 1024**2).hexdigest() for rgba in swatches]
+            if [row.split()[-1] for row in native_pixels] != hashes * 2:
+                raise SystemExit("MapIcon did not resolve the authored swatch for every appearance and device")
+    print(f"Matched {len(expected)} asset slots and all six icon lookups for {', '.join(names)}", flush=True)
+
+
+def check_design_markers(native):
+    with tempfile.TemporaryDirectory() as tmp:
+        for name, key in [("CoMapsCells", "canvasLocation"), ("CoMapsControls", "simulatedStatusBarMetrics")]:
+            source = FIXTURES / "ibtool/runtime/comaps" / (name + ".xib")
+            document = ET.parse(source)
+            parent, child = next((p, c) for p in document.iter() for c in p if c.get("key") == key)
+            parent.remove(child)
+            control = Path(tmp) / source.name
+            document.write(control, encoding="utf-8", xml_declaration=True)
+            output = control.with_suffix(".nib")
+            xcrun("ibtool", "--module", "App", *IOS_TARGET, "--compile", output, control)
+            if output.read_bytes() != (native / output.name).read_bytes():
+                raise SystemExit(f"Removing the design-time {key} changed Xcode's {name} nib")
 
 
 def compare_symbol_catalog(linux, native_rows, catalog, count):
@@ -80,7 +126,7 @@ def compare_symbol_catalog(linux, native_rows, catalog, count):
             "cached": [dict(zip((*variant_fields, "display"), key)) for key in cache_keys]}
 
 
-def compile_comaps_reference(resources, app, reference_output):
+def compile_comaps_reference(resources, app, reference_output, icon_reader):
     shutil.unpack_archive(resources / "CoMapsImages.zip", app.parent)
     catalog = app.parent / "Images.xcassets"
     bundle = app / "XcodeCoMaps.bundle"
@@ -88,8 +134,17 @@ def compile_comaps_reference(resources, app, reference_output):
     write_bundle_info(bundle)
     xcrun("actool", catalog, "--platform", "iphonesimulator", "--target-device", "iphone",
           "--target-device", "ipad", "--minimum-deployment-target", "15.6", "--bundle-identifier", BUNDLE_ID,
-          "--compile", bundle)
+          *COMAPS_ICONS, "--output-partial-info-plist", bundle / "IconInfo.plist", "--compile", bundle)
     rows = json.loads(xcrun("assetutil", "--info", bundle / "Assets.car"))
+    compare_slots(app, bundle, resources / "CoMapsIconInfo.plist", ["Icon", "Debug Icon"], icon_reader, icons_only=True)
+    appearances = {
+        "images": sorted({r["Name"] for r in rows if r.get("AssetType") == "Vector" and
+                          r.get("Appearance") == "UIAppearanceDark" and r["RenditionName"].lower().endswith(".svg")}),
+        "colors": sorted({r["Name"] for r in rows if r.get("AssetType") == "Color"}),
+    }
+    if len(appearances["images"]) != 24 or len(appearances["colors"]) != 19:
+        raise SystemExit(f"Unexpected CoMaps appearance resources: {appearances}")
+    (app / "CoMapsAppearances.json").write_text(json.dumps(appearances))
     names = sorted({r["Name"] for r in rows if r.get("AssetType") == "Vector"
                     and r.get("RenditionName", "").lower().endswith(".pdf")})
     sets = {pdf.parent for pdf in catalog.rglob("*.pdf")}
@@ -129,7 +184,15 @@ def check(resources, simctl, simulator, reference_output):
         native_masks = app / "XcodePDFMasks.bundle"
         shutil.copytree(resources / linux_masks.name, linux_masks)
         compile_image_bundle(native_masks, [CATALOGS / "PdfMasks.xcassets"])
-        pdf_count = compile_comaps_reference(resources, app, reference_output)
+        icon_reader = app.parent / "icon-pixels"
+        subprocess.run(["xcrun", "clang", "-fobjc-arc", "-framework", "Foundation", "-framework", "CoreGraphics",
+                        HERE / "IconPixels.m", "-o", icon_reader], check=True)
+        linux_slots, native_slots = app / "LinuxSlots.bundle", app / "XcodeSlots.bundle"
+        shutil.copytree(resources / linux_slots.name, linux_slots)
+        compile_gap_bundle(native_slots)
+        check_design_markers(native_slots)
+        compare_slots(linux_slots, native_slots, linux_slots / "IconInfo.plist", ["MapIcon"], icon_reader)
+        pdf_count = compile_comaps_reference(resources, app, reference_output, icon_reader)
         xcrun("ibtool", "--module", "CoMaps", "--target-device", "iphone", "--minimum-deployment-target", "15.6",
               "--compile", app / "XcodeNavigation.nib", resources / NAVIGATION.name)
         expected = rendition_manifest(native) + rendition_manifest(native_masks)
@@ -145,13 +208,14 @@ def check(resources, simctl, simulator, reference_output):
             print(f"CoMaps calls type-check for iOS {target}", flush=True)
             subprocess.run(["xcrun", "--sdk", "iphonesimulator", *swift, "-parse-as-library", HERE / "PickerApp.swift",
                             HERE / "ResourceVariants.swift", HERE / "ImageDirection.swift", HERE / "NavigationControl.swift",
-                            HERE / "PDFMasks.swift", HERE / "CustomSymbols.swift",
+                            HERE / "PDFMasks.swift", HERE / "CustomSymbols.swift", HERE / "CoMapsGapProbe.swift",
+                            HERE / "CoMapsAppearances.swift",
                             "-sdk", sim_sdk,
                             "-target", f"{platform.machine()}-apple-ios{target}-simulator", "-o", app / "CoMapsProbe"], check=True)
             with (app / "Info.plist").open("wb") as f:
                 plistlib.dump({"CFBundleIdentifier": bundle_id, "CFBundleExecutable": "CoMapsProbe",
                                "CFBundleName": "CoMapsProbe", "CFBundlePackageType": "APPL",
-                               "CFBundleVersion": "1", "CFBundleShortVersionString": "1.0",
+                               "CFBundleVersion": "1", "CFBundleShortVersionString": "1.0", "CFBundleDevelopmentRegion": "en",
                                "UIApplicationSceneManifest": {"UIApplicationSupportsMultipleScenes": False},
                                "CFBundleSupportedPlatforms": ["iPhoneSimulator"], "MinimumOSVersion": target}, f)
             subprocess.run(["codesign", "--force", "--sign", "-", app], check=True)
@@ -163,6 +227,9 @@ def check(resources, simctl, simulator, reference_output):
             if log.returncode or not symbol_result or "CoMaps resources and variant bundles passed" not in lines:
                 raise SystemExit(f"CoMaps iOS {target} probe failed\n{log.stdout}")
             print(symbol_result, flush=True)
+            for line in lines:
+                if line.startswith("Compared CoMaps interface") or line.startswith("Compared CoMaps appearances"):
+                    print(line, flush=True)
             print(f"iOS {target} build passed the CoMaps nib, size-class and layout-direction checks "
                   f"and compared {pdf_count} PDF images with Xcode at 1x, 2x and 3x", flush=True)
 

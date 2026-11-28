@@ -62,6 +62,8 @@ final class Scene: UIResponder, UIWindowSceneDelegate {
             }
             for nib in ["XcodeNavigation", "LinuxNavigation"] { checkNavigationControl(nib, on: controller) }
             checkImageDirections(linux: linux, xcode: xcode, on: controller)
+            checkCoMapsGaps(linux: variants("LinuxSlots"), xcode: variants("XcodeSlots"), on: controller)
+            checkCoMapsAppearances(xcode: variants("XcodeCoMaps"))
             checkPDFMasks(linuxMasks: variants("LinuxPDFMasks"), xcodeMasks: variants("XcodePDFMasks"),
                           xcodeCoMaps: variants("XcodeCoMaps"))
             checkCustomSymbols(xcode: variants("XcodeCoMaps"), linuxWidget: variants("LinuxWidget"),
