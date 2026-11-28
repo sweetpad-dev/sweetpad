@@ -1,0 +1,1209 @@
+[
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "11Unsupported9WhenProbeV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "11Unsupported9WhenProbeV16parameterSummaryQrvpZQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "Unsupported.swift",
+    "kind": "struct",
+    "line": 3,
+    "mangledTypeName": "11Unsupported9WhenProbeV",
+    "properties": [
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_flag",
+        "line": 5,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Bool>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Flag",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Bool>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "displayName",
+              "type": "Swift.Optional<Swift.Bool.IntentDisplayName>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Bool>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 4,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Conditional",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "flag",
+        "line": 5,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Flag",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "Unsupported.swift",
+            "line": 5,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Bool",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Flag",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Bool>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "displayName",
+              "type": "Swift.Optional<Swift.Bool.IntentDisplayName>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Bool>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$flag",
+        "line": 5,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Bool>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "true",
+        "isStatic": "true",
+        "label": "parameterSummary",
+        "line": 6,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "some AppIntents.ParameterSummary",
+        "value": {
+          "arguments": [
+            {
+              "label": "",
+              "type": "Swift.KeyPath<Unsupported.WhenProbe, AppIntents.IntentParameter<Swift.Bool>>",
+              "value": {
+                "components": [
+                  {
+                    "label": "$flag",
+                    "type": "AppIntents.IntentParameter<Swift.Bool>"
+                  }
+                ],
+                "path": "$flag",
+                "rootType": "Unsupported.WhenProbe"
+              },
+              "valueKind": "KeyPath"
+            },
+            {
+              "label": "",
+              "type": "AppIntents.EquatableComparisonOperator",
+              "value": {
+                "name": "equalTo"
+              },
+              "valueKind": "Enum"
+            },
+            {
+              "label": "",
+              "type": "Swift.Bool",
+              "value": "true",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "",
+              "type": "() -> AppIntents.IntentParameterSummary<Unsupported.WhenProbe>",
+              "value": {
+                "members": [
+                  {
+                    "element": {
+                      "value": {
+                        "arguments": [
+                          {
+                            "label": "",
+                            "type": "AppIntents.ParameterSummaryString<Unsupported.WhenProbe>",
+                            "value": "On",
+                            "valueKind": "RawLiteral"
+                          },
+                          {
+                            "label": "table",
+                            "type": "Swift.Optional<Swift.String>",
+                            "valueKind": "NilLiteral"
+                          }
+                        ],
+                        "type": "AppIntents.IntentParameterSummary<Unsupported.WhenProbe>"
+                      },
+                      "valueKind": "InitCall"
+                    },
+                    "kind": "buildExpression"
+                  }
+                ],
+                "type": ""
+              },
+              "valueKind": "Builder"
+            },
+            {
+              "label": "otherwise",
+              "type": "() -> AppIntents.IntentParameterSummary<Unsupported.WhenProbe>",
+              "value": {
+                "members": [
+                  {
+                    "element": {
+                      "value": {
+                        "arguments": [
+                          {
+                            "label": "",
+                            "type": "AppIntents.ParameterSummaryString<Unsupported.WhenProbe>",
+                            "value": "Off",
+                            "valueKind": "RawLiteral"
+                          },
+                          {
+                            "label": "table",
+                            "type": "Swift.Optional<Swift.String>",
+                            "valueKind": "NilLiteral"
+                          }
+                        ],
+                        "type": "AppIntents.IntentParameterSummary<Unsupported.WhenProbe>"
+                      },
+                      "valueKind": "InitCall"
+                    },
+                    "kind": "buildExpression"
+                  }
+                ],
+                "type": ""
+              },
+              "valueKind": "Builder"
+            }
+          ],
+          "type": "AppIntents.ParameterSummaryWhenCondition<Unsupported.WhenProbe, AppIntents.IntentParameterSummary<Unsupported.WhenProbe>, AppIntents.IntentParameterSummary<Unsupported.WhenProbe>>"
+        },
+        "valueKind": "InitCall"
+      }
+    ],
+    "typeName": "Unsupported.WhenProbe"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "11Unsupported11SwitchProbeV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "11Unsupported11SwitchProbeV16parameterSummaryQrvpZQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "Unsupported.swift",
+    "kind": "struct",
+    "line": 12,
+    "mangledTypeName": "11Unsupported11SwitchProbeV",
+    "properties": [
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_number",
+        "line": 14,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Int>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Number",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Int>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "controlStyle",
+              "type": "AppIntents.IntentParameter<Swift.Int>.IntControlStyle",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "inclusiveRange",
+              "type": "Swift.Optional<(lowerBound: Swift.Int, upperBound: Swift.Int)>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Int>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 13,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Alternatives",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "number",
+        "line": 14,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Number",
+                "valueKind": "RawLiteral"
+              }
+            ],
+            "file": "Unsupported.swift",
+            "line": 14,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Int",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Number",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Int>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "controlStyle",
+              "type": "AppIntents.IntentParameter<Swift.Int>.IntControlStyle",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "inclusiveRange",
+              "type": "Swift.Optional<(lowerBound: Swift.Int, upperBound: Swift.Int)>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Int>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$number",
+        "line": 14,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Int>",
+        "valueKind": "Runtime"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "true",
+        "isStatic": "true",
+        "label": "parameterSummary",
+        "line": 15,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "some AppIntents.ParameterSummary",
+        "value": {
+          "arguments": [
+            {
+              "label": "",
+              "type": "Swift.KeyPath<Unsupported.SwitchProbe, AppIntents.IntentParameter<Swift.Int>>",
+              "value": {
+                "components": [
+                  {
+                    "label": "$number",
+                    "type": "AppIntents.IntentParameter<Swift.Int>"
+                  }
+                ],
+                "path": "$number",
+                "rootType": "Unsupported.SwitchProbe"
+              },
+              "valueKind": "KeyPath"
+            },
+            {
+              "label": "",
+              "type": "() -> AppIntents.ParameterSummaryTupleCaseCondition<Unsupported.SwitchProbe, Swift.Int, (AppIntents.ParameterSummaryCaseCondition<Unsupported.SwitchProbe, Swift.Int, AppIntents.IntentParameterSummary<Unsupported.SwitchProbe>>, AppIntents.ParameterSummaryDefaultCaseCondition<Unsupported.SwitchProbe, Swift.Int, AppIntents.IntentParameterSummary<Unsupported.SwitchProbe>>)>",
+              "value": {
+                "members": [
+                  {
+                    "element": {
+                      "value": {
+                        "arguments": [
+                          {
+                            "label": "",
+                            "type": "Swift.Int",
+                            "value": "1",
+                            "valueKind": "RawLiteral"
+                          },
+                          {
+                            "label": "",
+                            "type": "() -> AppIntents.IntentParameterSummary<Unsupported.SwitchProbe>",
+                            "value": {
+                              "members": [
+                                {
+                                  "element": {
+                                    "value": {
+                                      "arguments": [
+                                        {
+                                          "label": "",
+                                          "type": "AppIntents.ParameterSummaryString<Unsupported.SwitchProbe>",
+                                          "value": "One",
+                                          "valueKind": "RawLiteral"
+                                        },
+                                        {
+                                          "label": "table",
+                                          "type": "Swift.Optional<Swift.String>",
+                                          "valueKind": "NilLiteral"
+                                        }
+                                      ],
+                                      "type": "AppIntents.IntentParameterSummary<Unsupported.SwitchProbe>"
+                                    },
+                                    "valueKind": "InitCall"
+                                  },
+                                  "kind": "buildExpression"
+                                }
+                              ],
+                              "type": ""
+                            },
+                            "valueKind": "Builder"
+                          }
+                        ],
+                        "type": "AppIntents.ParameterSummaryCaseCondition<Unsupported.SwitchProbe, Swift.Int, AppIntents.IntentParameterSummary<Unsupported.SwitchProbe>>"
+                      },
+                      "valueKind": "InitCall"
+                    },
+                    "kind": "buildExpression"
+                  },
+                  {
+                    "element": {
+                      "value": {
+                        "arguments": [
+                          {
+                            "label": "",
+                            "type": "() -> AppIntents.IntentParameterSummary<Unsupported.SwitchProbe>",
+                            "value": {
+                              "members": [
+                                {
+                                  "element": {
+                                    "value": {
+                                      "arguments": [
+                                        {
+                                          "label": "",
+                                          "type": "AppIntents.ParameterSummaryString<Unsupported.SwitchProbe>",
+                                          "value": "Other",
+                                          "valueKind": "RawLiteral"
+                                        },
+                                        {
+                                          "label": "table",
+                                          "type": "Swift.Optional<Swift.String>",
+                                          "valueKind": "NilLiteral"
+                                        }
+                                      ],
+                                      "type": "AppIntents.IntentParameterSummary<Unsupported.SwitchProbe>"
+                                    },
+                                    "valueKind": "InitCall"
+                                  },
+                                  "kind": "buildExpression"
+                                }
+                              ],
+                              "type": ""
+                            },
+                            "valueKind": "Builder"
+                          }
+                        ],
+                        "type": "AppIntents.ParameterSummaryDefaultCaseCondition<Unsupported.SwitchProbe, Swift.Int, AppIntents.IntentParameterSummary<Unsupported.SwitchProbe>>"
+                      },
+                      "valueKind": "InitCall"
+                    },
+                    "kind": "buildExpression"
+                  }
+                ],
+                "type": ""
+              },
+              "valueKind": "Builder"
+            }
+          ],
+          "type": "AppIntents.ParameterSummarySwitchCondition<Unsupported.SwitchProbe, Swift.Int, AppIntents.ParameterSummaryTupleCaseCondition<Unsupported.SwitchProbe, Swift.Int, (AppIntents.ParameterSummaryCaseCondition<Unsupported.SwitchProbe, Swift.Int, AppIntents.IntentParameterSummary<Unsupported.SwitchProbe>>, AppIntents.ParameterSummaryDefaultCaseCondition<Unsupported.SwitchProbe, Swift.Int, AppIntents.IntentParameterSummary<Unsupported.SwitchProbe>>)>>"
+        },
+        "valueKind": "InitCall"
+      }
+    ],
+    "typeName": "Unsupported.SwitchProbe"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "Swift.SendableMetatype"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "11Unsupported10TableProbeV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "11Unsupported10TableProbeV16parameterSummaryQrvpZQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "Unsupported.swift",
+    "kind": "struct",
+    "line": 24,
+    "mangledTypeName": "11Unsupported10TableProbeV",
+    "properties": [
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 25,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Localization table",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "true",
+        "isStatic": "true",
+        "label": "parameterSummary",
+        "line": 26,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "some AppIntents.ParameterSummary",
+        "value": {
+          "arguments": [
+            {
+              "label": "",
+              "type": "AppIntents.ParameterSummaryString<Unsupported.TableProbe>",
+              "value": "From table",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "table",
+              "type": "Swift.Optional<Swift.String>",
+              "value": "Probe",
+              "valueKind": "RawLiteral"
+            }
+          ],
+          "type": "AppIntents.IntentParameterSummary<Unsupported.TableProbe>"
+        },
+        "valueKind": "InitCall"
+      }
+    ],
+    "typeName": "Unsupported.TableProbe"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "11Unsupported10RangeProbeV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy11Unsupported10RangeProbeV_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "Unsupported.swift",
+    "kind": "struct",
+    "line": 30,
+    "mangledTypeName": "11Unsupported10RangeProbeV",
+    "properties": [
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_count",
+        "line": 32,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Int>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Count",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Int>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "controlStyle",
+              "type": "AppIntents.IntentParameter<Swift.Int>.IntControlStyle",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "inclusiveRange",
+              "type": "Swift.Optional<(lowerBound: Swift.Int, upperBound: Swift.Int)>",
+              "value": [
+                {
+                  "type": "Swift.Int",
+                  "value": "1",
+                  "valueKind": "RawLiteral"
+                },
+                {
+                  "type": "Swift.Int",
+                  "value": "5",
+                  "valueKind": "RawLiteral"
+                }
+              ],
+              "valueKind": "Tuple"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Int>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 31,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Range",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "count",
+        "line": 32,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Count",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "inclusiveRange",
+                "type": "Swift.Optional<(lowerBound: Swift.Int, upperBound: Swift.Int)>",
+                "value": [
+                  {
+                    "type": "Swift.Int",
+                    "value": "1",
+                    "valueKind": "RawLiteral"
+                  },
+                  {
+                    "type": "Swift.Int",
+                    "value": "5",
+                    "valueKind": "RawLiteral"
+                  }
+                ],
+                "valueKind": "Tuple"
+              }
+            ],
+            "file": "Unsupported.swift",
+            "line": 32,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.Int",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Count",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<Swift.Int>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "controlStyle",
+              "type": "AppIntents.IntentParameter<Swift.Int>.IntControlStyle",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "inclusiveRange",
+              "type": "Swift.Optional<(lowerBound: Swift.Int, upperBound: Swift.Int)>",
+              "value": [
+                {
+                  "type": "Swift.Int",
+                  "value": "1",
+                  "valueKind": "RawLiteral"
+                },
+                {
+                  "type": "Swift.Int",
+                  "value": "5",
+                  "valueKind": "RawLiteral"
+                }
+              ],
+              "valueKind": "Tuple"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.Int>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$count",
+        "line": 32,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.Int>",
+        "valueKind": "Runtime"
+      }
+    ],
+    "typeName": "Unsupported.RangeProbe"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents.DynamicOptionsProvider"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "Swift.BitwiseCopyable"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "substitutedMangledTypeName": "SaySSG",
+        "substitutedTypeName": "Swift.Array<Swift.String>",
+        "typeAliasName": "Result"
+      },
+      {
+        "substitutedMangledTypeName": "SS",
+        "substitutedTypeName": "Swift.String",
+        "typeAliasName": "DefaultValue"
+      }
+    ],
+    "conformances": [
+      "AppIntents.DynamicOptionsProvider",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.BitwiseCopyable"
+    ],
+    "file": "Unsupported.swift",
+    "kind": "struct",
+    "line": 36,
+    "mangledTypeName": "11Unsupported7ChoicesV",
+    "properties": [],
+    "typeName": "Unsupported.Choices"
+  },
+  {
+    "allConformances": [
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents.AppIntent"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents.PersistentlyIdentifiable"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "AppIntents._SupportsAppDependencies"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "Swift.Sendable"
+      },
+      {
+        "conformanceDefiningModule": "Unsupported",
+        "protocolName": "Swift.SendableMetatype"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "11Unsupported20OptionsProviderProbeV7performQryYaKFQOy_Qo_",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "typeAliasName": "PerformResult"
+      },
+      {
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": [],
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy11Unsupported20OptionsProviderProbeV_Qo_",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "typeAliasName": "SummaryContent"
+      }
+    ],
+    "conformances": [
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "file": "Unsupported.swift",
+    "kind": "struct",
+    "line": 40,
+    "mangledTypeName": "11Unsupported20OptionsProviderProbeV",
+    "properties": [
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "false",
+        "isStatic": "false",
+        "label": "_choice",
+        "line": 42,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.String>",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Choice",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "optionsProvider",
+              "type": "Unsupported.Choices",
+              "value": {
+                "arguments": [],
+                "type": "Unsupported.Choices"
+              },
+              "valueKind": "InitCall"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "false",
+        "isStatic": "true",
+        "label": "title",
+        "line": 41,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "Foundation.LocalizedStringResource",
+        "value": "Choices",
+        "valueKind": "RawLiteral"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "choice",
+        "line": 42,
+        "mangledTypeName": "n/a - deprecated",
+        "propertyWrappers": [
+          {
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "value": "Choice",
+                "valueKind": "RawLiteral"
+              },
+              {
+                "label": "optionsProvider",
+                "type": "Unsupported.Choices",
+                "value": {
+                  "arguments": [],
+                  "type": "Unsupported.Choices"
+                },
+                "valueKind": "InitCall"
+              }
+            ],
+            "file": "Unsupported.swift",
+            "line": 42,
+            "type": "AppIntents.IntentParameter"
+          }
+        ],
+        "type": "Swift.String",
+        "value": {
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "value": "Choice",
+              "valueKind": "RawLiteral"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputOptions",
+              "type": "Swift.Optional<Swift.String.IntentInputOptions>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            },
+            {
+              "label": "optionsProvider",
+              "type": "Unsupported.Choices",
+              "value": {
+                "arguments": [],
+                "type": "Unsupported.Choices"
+              },
+              "valueKind": "InitCall"
+            }
+          ],
+          "type": "AppIntents.IntentParameter<Swift.String>"
+        },
+        "valueKind": "InitCall"
+      },
+      {
+        "file": "Unsupported.swift",
+        "isComputed": "true",
+        "isStatic": "false",
+        "label": "$choice",
+        "line": 42,
+        "mangledTypeName": "n/a - deprecated",
+        "type": "AppIntents.IntentParameter<Swift.String>",
+        "valueKind": "Runtime"
+      }
+    ],
+    "typeName": "Unsupported.OptionsProviderProbe"
+  }
+]

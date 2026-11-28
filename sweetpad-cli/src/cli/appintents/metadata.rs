@@ -1,6 +1,7 @@
 //! The registration schema, checked against Xcode's constant-value captures.
 
 use serde_json::{Value, json};
+use std::fmt::Write as _;
 
 mod parameters;
 mod representations;
@@ -33,6 +34,32 @@ fn identifier(value: &Value) -> &str {
 }
 fn availability() -> Value {
     json!({"LNPlatformNameWildcard":{"introducedVersion":"*"}})
+}
+fn action_availability(value: &Value) -> Value {
+    let mut annotations = availability();
+    for attribute in array(&value["availabilityAttributes"]) {
+        let platform = match text(&attribute["platform"]) {
+            "iOS" => "LNPlatformNameIOS",
+            "macOS" => "LNPlatformNameMACOS",
+            "tvOS" => "LNPlatformNameTVOS",
+            "watchOS" => "LNPlatformNameWATCHOS",
+            "visionOS" => "LNPlatformNameVISIONOS",
+            // Xcode has no separate registration entry for macCatalyst.
+            _ => continue,
+        };
+        for key in ["introducedVersion", "deprecatedVersion", "obsoletedVersion"] {
+            if let Some(version) = attribute[key].as_str() {
+                annotations[platform][key] = json!(version);
+            }
+        }
+        if attribute["isDeprecated"] == true {
+            annotations[platform]["deprecatedVersion"] = json!("*");
+        }
+        if attribute["isUnavailable"] == true {
+            annotations[platform]["obsoletedVersion"] = json!("*");
+        }
+    }
+    annotations
 }
 fn visibility() -> Value {
     json!({"assistantOnly":false,"isDiscoverable":true})
@@ -83,7 +110,18 @@ fn argument<'a>(value: &'a Value, label: &str) -> Option<&'a Value> {
         .find(|a| a["label"] == label)
 }
 
-pub(super) fn extract(types: &[Value]) -> Result<Value, String> {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RegistrationFormat {
+    Xcode26,
+    Current,
+}
+
+pub(super) fn extract(types: &[Value], xcode_build: &str) -> Result<Value, String> {
+    // Swift Build supplies XCODE_PRODUCT_BUILD_VERSION. Xcode 26 uses the 17-series builds.
+    let format = match xcode_build.as_bytes() {
+        [b'1', b'7', b'A'..=b'Z', ..] => RegistrationFormat::Xcode26,
+        _ => RegistrationFormat::Current,
+    };
     if types
         .iter()
         .filter(|t| conforms(t, "AppShortcutsProvider"))
@@ -113,10 +151,10 @@ pub(super) fn extract(types: &[Value]) -> Result<Value, String> {
             result["enums"]
                 .as_array_mut()
                 .unwrap()
-                .push(enumeration(value)?);
+                .push(enumeration(value, format)?);
         }
         if conforms(value, "AppEntity") {
-            let mut entity = entity(value)?;
+            let mut entity = entity(value, format)?;
             entity["properties"] = json!(representations::entity_properties(
                 &entity["properties"],
                 types
@@ -127,7 +165,7 @@ pub(super) fn extract(types: &[Value]) -> Result<Value, String> {
             result["queries"][id] = query(value, types)?;
         }
         if conforms(value, "AppIntent") || conforms(value, "WidgetConfigurationIntent") {
-            result["actions"][id] = action(value, types)?;
+            result["actions"][id] = action(value, types, format)?;
         }
         if conforms(value, "AppShortcutsProvider") {
             result["autoShortcutProviderMangledName"] = value["mangledTypeName"].clone();
@@ -152,11 +190,14 @@ pub(super) fn strings_data(types: &[Value], metadata: &Value) -> Option<Value> {
     Some(json!({"source":property["file"],"tables":{"AppShortcuts":entries},"version":2}))
 }
 
-fn action(value: &Value, types: &[Value]) -> Result<Value, String> {
+fn action(value: &Value, types: &[Value], format: RegistrationFormat) -> Result<Value, String> {
     let id = identifier(value);
     let widget = conforms(value, "WidgetConfigurationIntent");
+    let snippet = conforms(value, "SnippetIntent");
     let open = boolean(value, "openAppWhenRun", false)?;
-    let discoverable = boolean(value, "isDiscoverable", true)?;
+    let (flags, output) = action_result(value, types)?;
+    // Native registration hides a snippet without an output value unless the author opts in.
+    let discoverable = boolean(value, "isDiscoverable", !snippet || output.is_some())?;
     let authentication = if let Some(policy) = property(value, "authenticationPolicy") {
         match text(&policy["value"]["name"]) {
             "alwaysAllowed" => 0,
@@ -181,25 +222,33 @@ fn action(value: &Value, types: &[Value]) -> Result<Value, String> {
     )?;
     let mut action = json!({
         "assistantDefinedSchemaTraits":[],"assistantDefinedSchemas":[],"authenticationPolicy":authentication,
-        "availabilityAnnotations":availability(),"effectiveBundleIdentifiers":[],
+        "availabilityAnnotations":action_availability(value),"effectiveBundleIdentifiers":[],
         "fullyQualifiedTypeName":value["typeName"],"identifier":id,"isAuthPolExplicit":property(value,"authenticationPolicy").is_some(),
-        "isDiscoverable":discoverable&&!widget,"mangledTypeName":value["mangledTypeName"],
+        "mangledTypeName":value["mangledTypeName"],
         "mangledTypeNameByBundleIdentifier":{},"mangledTypeNameByBundleIdentifierV2":{},
         "mangledTypeNameV2":value["mangledTypeName"],"openAppWhenRun":open,
-        "outputFlags":if widget {8}else{0},"parameters":[],"presentationStyle":0,
+        "isDiscoverable":discoverable && !widget,"outputFlags":flags | if widget {8} else {0},"parameters":[],"presentationStyle":0,
         "requiredCapabilities":[],"supportedModes":if open {2}else{1},
         "systemProtocolMetadata":[],"systemProtocolMetadataV2":[],"systemProtocols":[],
         "title":localized(&title),"typeSpecificMetadata":[],"visibilityMetadata":visibility(),
     });
-    if !discoverable {
-        action["visibilityMetadata"]["isDiscoverable"] = json!(false);
+    action["visibilityMetadata"]["isDiscoverable"] = json!(discoverable);
+    for (applies, protocol) in [
+        (widget, "com.apple.link.systemProtocol.WidgetConfiguration"),
+        (snippet, "com.apple.link.systemProtocol.Snippet"),
+    ] {
+        if applies {
+            action["systemProtocolMetadata"]
+                .as_array_mut()
+                .unwrap()
+                .extend([json!(protocol), json!({"empty":{}})]);
+            action["systemProtocols"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!(protocol));
+        }
     }
-    if widget {
-        let protocol = "com.apple.link.systemProtocol.WidgetConfiguration";
-        action["systemProtocolMetadata"] = json!([protocol,{"empty":{}}]);
-        action["systemProtocolMetadataV2"] = action["systemProtocolMetadata"].clone();
-        action["systemProtocols"] = json!([protocol]);
-    }
+    action["systemProtocolMetadataV2"] = action["systemProtocolMetadata"].clone();
     if let Some(description) = property(value, "description") {
         action["descriptionMetadata"] =
             json!({"descriptionText":localized(&literal(description)?),"searchKeywords":[]});
@@ -212,30 +261,118 @@ fn action(value: &Value, types: &[Value]) -> Result<Value, String> {
         action["parameters"]
             .as_array_mut()
             .unwrap()
-            .push(parameters::parameter(parameter, types)?);
+            .push(parameters::parameter(parameter, types, format)?);
     }
+    if let Some(summary) = action_summary(value, id)? {
+        action["actionConfiguration"] = summary;
+    }
+    if let Some(output) = output {
+        action["outputType"] = output;
+    }
+    Ok(action)
+}
+
+fn action_result(value: &Value, types: &[Value]) -> Result<(u8, Option<Value>), String> {
+    let id = identifier(value);
+    let mut flags = 0;
+    let mut output = None;
     for alias in array(&value["associatedTypeAliases"])
         .iter()
         .filter(|a| a["typeAliasName"] == "PerformResult")
     {
-        let mut flags = action["outputFlags"].as_u64().unwrap();
         for requirement in array(&alias["opaqueTypeProtocolRequirements"]) {
             match text(requirement) {
-                "AppIntents.ProvidesDialog" => flags |= 2,
-                "AppIntents.ShowsSnippetView" => flags |= 4,
+                "AppIntents.OpensIntent" => flags |= 1,
+                "AppIntents.ShowsSnippetView" => flags |= 2,
+                "AppIntents.ProvidesDialog" => flags |= 4,
+                "AppIntents.ShowsSnippetIntent" => flags |= 32,
+                "AppIntents.IntentResult" | "AppIntents.ReturnsValue" => {}
+                name if name.starts_with("AppIntents.") => {
+                    return Err(format!(
+                        "unsupported App Intents result protocol '{name}' in intent '{id}'"
+                    ));
+                }
                 _ => {}
             }
         }
-        action["outputFlags"] = json!(flags);
         for requirement in array(&alias["opaqueTypeSameTypeRequirements"])
             .iter()
             .filter(|r| r["typeAliasName"] == "AppIntents.IntentResult.Value")
         {
-            action["outputType"] =
-                parameters::value_type(text(&requirement["substitutedTypeName"]), types)?;
+            output = Some(parameters::value_type(
+                text(&requirement["substitutedTypeName"]),
+                types,
+            )?);
         }
     }
-    Ok(action)
+    Ok((flags, output))
+}
+
+/// `parameterSummary` as a plain `Summary`: constant text with parameter key paths,
+/// plus the parameters its trailing builder lists. Conditional summaries
+/// (`When`, `Switch`) and localization tables are not supported yet.
+fn action_summary(value: &Value, id: &str) -> Result<Option<Value>, String> {
+    let Some(summary) = properties(value)
+        .iter()
+        .find(|p| p["label"] == "parameterSummary" && p["isStatic"] == "true")
+    else {
+        return Ok(None);
+    };
+    let unsupported = |what: &str| format!("unsupported parameterSummary {what} in intent '{id}'");
+    if summary["valueKind"] != "InitCall"
+        || !text(&summary["value"]["type"]).starts_with("AppIntents.IntentParameterSummary<")
+    {
+        return Err(unsupported(&format!(
+            "'{}'",
+            text(&summary["value"]["type"])
+        )));
+    }
+    let mut format = None;
+    let mut inline = Vec::new();
+    let mut other = Vec::new();
+    for argument in array(&summary["value"]["arguments"]) {
+        match (text(&argument["label"]), text(&argument["valueKind"])) {
+            ("", "RawLiteral") => format = Some(text(&argument["value"]).to_owned()),
+            ("", "InterpolatedStringLiteral") => {
+                let mut string = String::new();
+                for segment in array(&argument["value"]["segments"]) {
+                    if segment["valueKind"] == "RawLiteral" {
+                        string.push_str(text(&segment["value"]));
+                    } else {
+                        let name = summary_parameter(segment).ok_or_else(|| unsupported("text"))?;
+                        let _ = write!(string, "${{{name}}}");
+                        inline.push(name);
+                    }
+                }
+                format = Some(string);
+            }
+            ("", "Builder") => {
+                for member in array(&argument["value"]["members"]) {
+                    other.push(
+                        summary_parameter(&member["element"])
+                            .filter(|_| member["kind"] == "buildExpression")
+                            .ok_or_else(|| unsupported("parameter list"))?,
+                    );
+                }
+            }
+            ("table", "NilLiteral") => {}
+            (label, _) => return Err(unsupported(&format!("argument '{label}'"))),
+        }
+    }
+    let mut wrapper = json!({"otherParameterIdentifiers":other});
+    if let Some(format) = format {
+        wrapper["summaryString"] = json!({"formatString":format,"parameterIdentifiers":inline});
+    }
+    Ok(Some(json!({"actionSummary":{"wrapper":wrapper}})))
+}
+
+/// A `\.$name` key path to one of the intent's parameters.
+fn summary_parameter(value: &Value) -> Option<&str> {
+    let components = array(&value["value"]["components"]);
+    if value["valueKind"] != "KeyPath" || components.len() != 1 {
+        return None;
+    }
+    text(&components[0]["label"]).strip_prefix('$')
 }
 
 fn shortcuts(provider: &Value) -> Result<Value, String> {
@@ -327,7 +464,7 @@ mod tests {
             .unwrap();
         policy["value"]["name"] = json!("futureAuthenticationPolicy");
         assert!(
-            extract(&types)
+            extract(&types, "27B52")
                 .unwrap_err()
                 .contains("unsupported authenticationPolicy")
         );
@@ -338,7 +475,7 @@ mod tests {
             "../../../fixtures/appintents/DataApp.swiftconstvalues"
         ))
         .unwrap();
-        let actual = strings_data(&types, &extract(&types).unwrap()).unwrap();
+        let actual = strings_data(&types, &extract(&types, "27B52").unwrap()).unwrap();
         let expected: Value = serde_json::from_str(include_str!(
             "../../../fixtures/appintents/Shortcuts.stringsdata"
         ))
@@ -346,19 +483,31 @@ mod tests {
         assert_eq!(actual, expected);
     }
     fn normalize(value: &mut Value) {
+        if let Some(generator) = value.get_mut("generator").and_then(Value::as_object_mut) {
+            generator.remove("name");
+            generator.remove("version");
+        }
+        normalize_collections(value);
+    }
+    fn normalize_collections(value: &mut Value) {
         match value {
             Value::Object(object) => {
                 for (key, v) in object {
-                    if key == "generator" {
-                        *v = json!({"name":"normalized"});
-                    } else if key == "resolvableInputTypes" {
+                    if key == "resolvableInputTypes" {
                         v.as_array_mut().unwrap().sort_by_key(Value::to_string);
+                    } else if key == "typeSpecificMetadata" {
+                        // A flat key/value list that Xcode writes in hash order.
+                        let values = v.as_array_mut().unwrap();
+                        let mut pairs: Vec<Vec<Value>> =
+                            values.chunks(2).map(<[Value]>::to_vec).collect();
+                        pairs.sort_by_key(|pair| pair[0].to_string());
+                        *values = pairs.concat();
                     } else {
-                        normalize(v);
+                        normalize_collections(v);
                     }
                 }
             }
-            Value::Array(values) => values.iter_mut().for_each(normalize),
+            Value::Array(values) => values.iter_mut().for_each(normalize_collections),
             _ => {}
         }
     }
@@ -369,15 +518,179 @@ mod tests {
             ("DataApp.swiftconstvalues", "extract.actionsdata"),
             ("Types.swiftconstvalues", "Types.actionsdata"),
             ("Files.swiftconstvalues", "Files.actionsdata"),
+            (
+                "ResultProtocols.swiftconstvalues",
+                "ResultProtocols.actionsdata",
+            ),
         ] {
             let types: Vec<Value> =
                 serde_json::from_slice(&std::fs::read(dir.join(input)).unwrap()).unwrap();
-            let mut actual = extract(&types).unwrap();
+            let mut actual = extract(&types, "27B52").unwrap();
             let mut expected: Value =
                 serde_json::from_slice(&std::fs::read(dir.join(expected)).unwrap()).unwrap();
             normalize(&mut actual);
             normalize(&mut expected);
             assert_eq!(actual, expected, "{input}");
         }
+    }
+    #[test]
+    fn xcode_26_registration_uses_the_older_enum_and_entity_schema() {
+        let types: Vec<Value> = serde_json::from_str(include_str!(
+            "../../../fixtures/appintents/Types.swiftconstvalues"
+        ))
+        .unwrap();
+        let registration = extract(&types, "17F113").unwrap();
+        let entity = &registration["entities"]["SampleEntity"];
+        assert!(entity.get("entitySyncMetadata").is_none());
+        assert!(entity.get("typeSpecificMetadata").is_none());
+        assert!(
+            registration["enums"][0]
+                .get("systemProtocolMetadata")
+                .is_none()
+        );
+    }
+    #[test]
+    fn xcode_26_infers_the_instance_parameter_named_parameter_summary() {
+        let types: Vec<Value> = serde_json::from_str(include_str!(
+            "../../../fixtures/appintents/InputOptionsProbe.swiftconstvalues"
+        ))
+        .unwrap();
+        let actions = &extract(&types, "17F113").unwrap()["actions"];
+        let parameters = &actions["ParameterTitleProbe"]["parameters"];
+        assert_eq!(parameters[0]["title"], localized("User's choice"));
+        let summary = &parameters[1];
+        assert_eq!(summary["name"], "parameterSummary");
+        assert_eq!(summary["title"], localized("Parameter Summary"));
+        assert_eq!(summary["isOptional"], false);
+        assert_eq!(summary["capabilities"], 0);
+        assert!(summary.get("parameterDescription").is_none());
+        assert_eq!(summary["typeSpecificMetadata"], json!([]));
+    }
+    #[test]
+    fn probe_actions_match_xcode() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/appintents");
+        for probe in ["InputOptionsProbe", "OutputProbe"] {
+            let read = |name: String| -> Value {
+                serde_json::from_slice(&std::fs::read(dir.join(name)).unwrap()).unwrap()
+            };
+            let types: Vec<Value> =
+                serde_json::from_value(read(format!("{probe}.swiftconstvalues"))).unwrap();
+            let mut actual = extract(&types, "27B52").unwrap()["actions"].take();
+            let mut expected = read(format!("{probe}.actions.json"));
+            normalize(&mut actual);
+            normalize(&mut expected);
+            assert_eq!(actual, expected, "{probe}");
+        }
+    }
+    #[test]
+    fn unsupported_swift_declarations_report_the_rejected_option_or_summary() {
+        let types: Vec<Value> = serde_json::from_str(include_str!(
+            "../../../fixtures/appintents/Unsupported.swiftconstvalues"
+        ))
+        .unwrap();
+        for (name, diagnostic) in [
+            (
+                "WhenProbe",
+                "unsupported parameterSummary 'AppIntents.ParameterSummaryWhenCondition",
+            ),
+            (
+                "SwitchProbe",
+                "unsupported parameterSummary 'AppIntents.ParameterSummarySwitchCondition",
+            ),
+            (
+                "TableProbe",
+                "unsupported parameterSummary argument 'table'",
+            ),
+            (
+                "RangeProbe",
+                "unsupported App Intents parameter option 'inclusiveRange'",
+            ),
+            (
+                "OptionsProviderProbe",
+                "unsupported App Intents parameter option 'optionsProvider'",
+            ),
+        ] {
+            let intent = types.iter().find(|t| identifier(t) == name).unwrap();
+            let error = extract(std::slice::from_ref(intent), "27B52").unwrap_err();
+            assert!(error.contains(diagnostic), "{name}: {error}");
+        }
+    }
+    #[test]
+    fn unknown_sdk_result_protocols_report_the_protocol_and_intent() {
+        let mut types: Vec<Value> = serde_json::from_str(include_str!(
+            "../../../fixtures/appintents/ResultProtocols.swiftconstvalues"
+        ))
+        .unwrap();
+        let intent = types
+            .iter_mut()
+            .find(|t| identifier(t) == "InteractiveResultProbe")
+            .unwrap();
+        let result = intent["associatedTypeAliases"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|a| a["typeAliasName"] == "PerformResult")
+            .unwrap();
+        result["opaqueTypeProtocolRequirements"] = json!(["AppIntents.FutureResult"]);
+        assert_eq!(
+            extract(&types, "27B52").unwrap_err(),
+            "unsupported App Intents result protocol 'AppIntents.FutureResult' in intent 'InteractiveResultProbe'"
+        );
+    }
+    #[test]
+    fn input_options_reject_what_they_cannot_encode() {
+        fn options(types: &mut [Value]) -> &mut Value {
+            let intent = types
+                .iter_mut()
+                .find(|t| text(&t["typeName"]).ends_with(".InputOptionsProbeIntent"))
+                .unwrap();
+            let property = intent["properties"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|p| p["label"] == "allOn")
+                .unwrap();
+            property["propertyWrappers"][0]["arguments"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|a| a["label"] == "inputOptions")
+                .unwrap()
+        }
+        let base: Vec<Value> = serde_json::from_str(include_str!(
+            "../../../fixtures/appintents/InputOptionsProbe.swiftconstvalues"
+        ))
+        .unwrap();
+        let mut types = base.clone();
+        options(&mut types)["value"]["arguments"][0]["value"]["name"] = json!("futureKeyboard");
+        assert!(
+            extract(&types, "27B52")
+                .unwrap_err()
+                .contains("keyboardType 'futureKeyboard'")
+        );
+        let mut types = base.clone();
+        *options(&mut types) = json!({"label":"inputOptions","valueKind":"Runtime"});
+        assert!(
+            extract(&types, "27B52")
+                .unwrap_err()
+                .contains("constant String.IntentInputOptions")
+        );
+        let mut types = base;
+        options(&mut types)["value"]["arguments"][2]["valueKind"] = json!("Runtime");
+        let metadata =
+            extract(&types, "27B52").unwrap()["actions"]["InputOptionsProbeIntent"]["parameters"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|p| p["name"] == "allOn")
+                .unwrap()["typeSpecificMetadata"]
+                .clone();
+        assert!(!metadata.to_string().contains("StringMultiline"));
+        options(&mut types)["value"]["arguments"][2]["label"] = json!("futureOption");
+        assert!(
+            extract(&types, "27B52")
+                .unwrap_err()
+                .contains("unsupported inputOptions argument 'futureOption'")
+        );
     }
 }

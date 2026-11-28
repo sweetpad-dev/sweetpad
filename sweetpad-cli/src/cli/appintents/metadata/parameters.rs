@@ -1,4 +1,7 @@
-use super::{Value, argument, array, conforms, identifier, json, literal, localized, text};
+use super::{
+    RegistrationFormat, Value, argument, array, conforms, identifier, json, literal, localized,
+    text,
+};
 
 pub(super) fn optional(name: &str) -> (&str, bool) {
     name.strip_prefix("Swift.Optional<")
@@ -9,19 +12,19 @@ pub(super) fn optional(name: &str) -> (&str, bool) {
 fn primitive(id: u64) -> Value {
     json!({"primitive":{"wrapper":{"typeIdentifier":id}}})
 }
-fn array_type(member: Value) -> Value {
-    let mut value = json!({"array":{"wrapper":{"capabilities":3}}});
+fn array_type(member: Value, capabilities: u8) -> Value {
+    let mut value = json!({"array":{"wrapper":{"capabilities":capabilities}}});
     value["array"]["wrapper"]["memberValueType"] = member;
     value
 }
 
 pub(super) fn value_type(name: &str, types: &[Value]) -> Result<Value, String> {
     let (name, _) = optional(name);
-    if let Some(member) = name
-        .strip_prefix("Swift.Array<")
-        .and_then(|n| n.strip_suffix('>'))
-    {
-        return value_type(member, types).map(array_type);
+    // Both use the array representation, with distinct native capability masks.
+    for (prefix, capabilities) in [("Swift.Array<", 3), ("Swift.Set<", 0)] {
+        if let Some(member) = name.strip_prefix(prefix).and_then(|n| n.strip_suffix('>')) {
+            return Ok(array_type(value_type(member, types)?, capabilities));
+        }
     }
     let id = match name {
         "Swift.String" => Some(0),
@@ -52,7 +55,11 @@ pub(super) fn value_type(name: &str, types: &[Value]) -> Result<Value, String> {
     Err(format!("unsupported App Intents value type '{name}'"))
 }
 
-pub(super) fn parameter(value: &Value, types: &[Value]) -> Result<Value, String> {
+pub(super) fn parameter(
+    value: &Value,
+    types: &[Value],
+    format: RegistrationFormat,
+) -> Result<Value, String> {
     let wrapper = array(&value["propertyWrappers"])
         .iter()
         .find(|w| text(&w["type"]).ends_with(".IntentParameter"))
@@ -67,6 +74,7 @@ pub(super) fn parameter(value: &Value, types: &[Value]) -> Result<Value, String>
                 | "requestValueDialog"
                 | "supportedContentTypes"
                 | "inputConnectionBehavior"
+                | "inputOptions"
         )
     }) {
         return Err(format!(
@@ -74,21 +82,23 @@ pub(super) fn parameter(value: &Value, types: &[Value]) -> Result<Value, String>
             text(&argument["label"])
         ));
     }
-    let title = arguments
-        .iter()
-        .find(|a| a["label"] == "title")
-        .or_else(|| argument(value, "title"))
-        .ok_or("parameter has no constant title")?;
+    let (arguments, title, default) =
+        if format == RegistrationFormat::Xcode26 && value["label"] == "parameterSummary" {
+            // Xcode 26 infers this instance parameter from its name and type. Its
+            // wrapper options are lost when the name matches the AppIntent requirement.
+            (&[][..], "Parameter Summary".to_owned(), None)
+        } else {
+            let title = arguments
+                .iter()
+                .find(|a| a["label"] == "title")
+                .or_else(|| argument(value, "title"))
+                .ok_or("parameter has no constant title")?;
+            let default = argument(value, "default").filter(|v| v["valueKind"] != "NilLiteral");
+            (arguments, literal(title)?, default)
+        };
     let (name, is_optional) = optional(text(&value["type"]));
     let kind = value_type(name, types)?;
-    let connection = arguments
-        .iter()
-        .find(|a| a["label"] == "inputConnectionBehavior");
-    let connection = match connection.map(|v| text(&v["value"]["name"])) {
-        None => 0,
-        Some("connectToPreviousIntentResult") => 2,
-        Some(name) => return Err(format!("unsupported inputConnectionBehavior '{name}'")),
-    };
+    let connection = input_connection_behavior(arguments)?;
     if let Some(dialog) = arguments
         .iter()
         .find(|a| a["label"] == "requestValueDialog" && a["valueKind"] != "NilLiteral")
@@ -97,12 +107,11 @@ pub(super) fn parameter(value: &Value, types: &[Value]) -> Result<Value, String>
         // Native registration contains no dialog field for this option.
         literal(dialog)?;
     }
-    let default = argument(value, "default").filter(|v| v["valueKind"] != "NilLiteral");
     let mut parameter = json!({
         "capabilities":u8::from(default.is_some()),"dynamicOptionsSupport":u8::from(kind.get("entity").is_some()),
-        "inputConnectionBehavior":connection,"isInput":connection != 0,"isOptional":is_optional,
+        "inputConnectionBehavior":connection,"isInput":connection == 2,"isOptional":is_optional,
         "name":value["label"],"resolvableInputTypes":resolvers(&kind),
-        "title":localized(&literal(title)?),"typeSpecificMetadata":[],"valueType":kind,
+        "title":localized(&title),"typeSpecificMetadata":[],"valueType":kind,
     });
     if let Some(default) = default {
         parameter["typeSpecificMetadata"] = json!([
@@ -116,6 +125,7 @@ pub(super) fn parameter(value: &Value, types: &[Value]) -> Result<Value, String>
     {
         parameter["parameterDescription"] = localized(&literal(description)?);
     }
+    input_options(arguments, &mut parameter)?;
     if let Some(content_types) = arguments
         .iter()
         .find(|a| a["label"] == "supportedContentTypes")
@@ -154,6 +164,86 @@ pub(super) fn parameter(value: &Value, types: &[Value]) -> Result<Value, String>
     Ok(parameter)
 }
 
+fn input_connection_behavior(arguments: &[Value]) -> Result<u8, String> {
+    let behavior = arguments
+        .iter()
+        .find(|a| a["label"] == "inputConnectionBehavior");
+    match behavior.map(|v| text(&v["value"]["name"])) {
+        None | Some("default") => Ok(0),
+        Some("never") => Ok(1),
+        Some("connectToPreviousIntentResult") => Ok(2),
+        Some(name) => Err(format!("unsupported inputConnectionBehavior '{name}'")),
+    }
+}
+
+/// `String.IntentInputOptions`, in the order of each option's metadata value.
+const KEYBOARD_TYPES: [&str; 5] = [
+    "asciiCapable",
+    "numbersAndPunctuation",
+    "URL",
+    "numberPad",
+    "default",
+];
+const CAPITALIZATION_TYPES: [&str; 4] = ["none", "words", "sentences", "allCharacters"];
+
+/// Xcode writes one key per `String.IntentInputOptions` argument the source passes.
+/// Arguments left at their defaults are captured as `Runtime` and omitted.
+fn input_options(arguments: &[Value], parameter: &mut Value) -> Result<(), String> {
+    let Some(options) = arguments
+        .iter()
+        .find(|a| a["label"] == "inputOptions" && a["valueKind"] != "NilLiteral")
+    else {
+        return Ok(());
+    };
+    let kind = &parameter["valueType"];
+    let member = kind
+        .pointer("/array/wrapper/memberValueType")
+        .unwrap_or(kind);
+    if member["primitive"]["wrapper"]["typeIdentifier"] != 0 {
+        return Err("inputOptions requires a String parameter".into());
+    }
+    if options["valueKind"] != "InitCall"
+        || options["value"]["type"] != "Swift.String.IntentInputOptions"
+    {
+        return Err("inputOptions must be a constant String.IntentInputOptions initializer".into());
+    }
+    let mut metadata = Vec::new();
+    for option in array(&options["value"]["arguments"]) {
+        let label = text(&option["label"]);
+        let (key, cases): (&str, &[&str]) = match label {
+            "keyboardType" => ("KeyboardType", &KEYBOARD_TYPES),
+            "capitalizationType" => ("CapitalizationType", &CAPITALIZATION_TYPES),
+            "multiline" => ("Multiline", &["false", "true"]),
+            "autocorrect" => ("Autocorrect", &["false", "true"]),
+            "smartQuotes" => ("SmartQuotes", &["false", "true"]),
+            "smartDashes" => ("SmartDashes", &["false", "true"]),
+            _ => return Err(format!("unsupported inputOptions argument '{label}'")),
+        };
+        if option["valueKind"] == "Runtime" {
+            continue;
+        }
+        let (expected, name) = if label.ends_with("Type") {
+            ("Enum", text(&option["value"]["name"]))
+        } else {
+            ("RawLiteral", text(&option["value"]))
+        };
+        let value = cases
+            .iter()
+            .position(|c| *c == name)
+            .filter(|_| option["valueKind"] == expected)
+            .ok_or_else(|| format!("unsupported inputOptions {label} '{name}'"))?;
+        metadata.extend([
+            json!(format!("LNValueTypeMetadataKeyString{key}")),
+            json!({"int":{"wrapper":value}}),
+        ]);
+    }
+    parameter["typeSpecificMetadata"]
+        .as_array_mut()
+        .unwrap()
+        .extend(metadata);
+    Ok(())
+}
+
 fn resolvers(kind: &Value) -> Vec<Value> {
     let ids: &[u64] = match kind["primitive"]["wrapper"]["typeIdentifier"].as_u64() {
         Some(0) => &[2, 0],
@@ -168,7 +258,7 @@ fn resolvers(kind: &Value) -> Vec<Value> {
         .map(|id| json!({"kindValue":0,"valueType":primitive(*id)}))
         .collect();
     if kind["primitive"]["wrapper"]["typeIdentifier"] == 0 {
-        types.push(json!({"kindValue":0,"valueType":array_type(primitive(2))}));
+        types.push(json!({"kindValue":0,"valueType":array_type(primitive(2), 3)}));
     }
     types
 }
