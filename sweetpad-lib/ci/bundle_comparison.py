@@ -44,14 +44,21 @@ def normalize_plist(value):
     return value
 
 
-def normalize_registration(value):
+def normalize_registration(value, *, root=True):
     if isinstance(value, dict):
-        result = {k: normalize_registration(v) for k, v in value.items() if k != "generator"}
+        result = {k: normalize_registration(v, root=False) for k, v in value.items()}
+        if root and isinstance(result.get("generator"), dict):
+            result["generator"] = {k: v for k, v in result["generator"].items() if k not in {"name", "version"}}
         if "resolvableInputTypes" in result:
             result["resolvableInputTypes"].sort(key=lambda v: json.dumps(v, sort_keys=True))
+        metadata = result.get("typeSpecificMetadata")
+        if isinstance(metadata, list) and len(metadata) % 2 == 0:
+            # Xcode serializes its dictionary as alternating keys and values in hash order.
+            pairs = sorted(zip(metadata[::2], metadata[1::2]), key=lambda pair: json.dumps(pair[0], sort_keys=True))
+            result["typeSpecificMetadata"] = [item for pair in pairs for item in pair]
         return result
     if isinstance(value, list):
-        return [normalize_registration(v) for v in value]
+        return [normalize_registration(v, root=False) for v in value]
     return value
 
 
