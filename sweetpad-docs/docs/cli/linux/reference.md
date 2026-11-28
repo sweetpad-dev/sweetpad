@@ -39,10 +39,11 @@ These build on Linux:
 - App Intents metadata and shortcut language models
 - Icon Composer icons, as static light, dark, and tinted images
 - Sticker packs with PNG, GIF, and JPEG stickers
+- Metal shader libraries using the experimental native compiler. Install Python 3, `clang-14` and `llvm-14`, then set `SWEETPAD_NATIVE_METAL=1` for the build. The compiler covers tested forms of all nine shader function kinds. Textures, matrices and cross-file shader helpers remain open.
 
 These don't:
 
-- Metal shaders, Core ML model classes, SceneKit assets, and RealityKit assets, which need Apple's own tools. The build stops and names the tool and the file.
+- Metal archives, Core ML model classes, SceneKit assets, and RealityKit assets, which need Apple's own tools. The build stops and names the tool and the file.
 - Plugin commands implemented only in the `XcodeProjectPlugin` entry point. These require Xcode.
 - Sticker sequences, localized sticker-pack strings, Icon Composer's glass and material effects, and advanced Core Data mapping expressions.
 

@@ -1109,6 +1109,9 @@ fn tools_fingerprint(exe: &Path, bundle: &Path) -> String {
         bundle.display()
     )
     .into_bytes();
+    if super::metal::enabled() {
+        identity.extend(b"native-metal-llvm14");
+    }
     if let Ok(meta) = std::fs::metadata(exe) {
         identity.extend(meta.len().to_le_bytes());
         if let Ok(time) = meta.modified()
@@ -1215,6 +1218,11 @@ fn remove_stale_tools(current: &Path) {
 /// Xcode's tools, and `llvm`, LLVM's multicall binary, for the linker and
 /// `dsymutil` the stand-ins for those run.
 fn stand_in_links(exe: &Path, llvm: Option<&Path>) -> Vec<(&'static str, PathBuf)> {
+    let metal_tools: &[&str] = if super::metal::enabled() {
+        &["metal", "metallib"]
+    } else {
+        &[]
+    };
     [
         "actool",
         "ibtool",
@@ -1231,6 +1239,7 @@ fn stand_in_links(exe: &Path, llvm: Option<&Path>) -> Vec<(&'static str, PathBuf
     ]
     .iter()
     .chain(super::darwin_tools::TOOLS)
+    .chain(metal_tools)
     .map(|tool| (*tool, exe.to_path_buf()))
     .chain(llvm.into_iter().flat_map(|llvm| {
         [
@@ -2437,7 +2446,7 @@ fn unspawned_tool(message: &str) -> Option<&str> {
 fn macos_only_tool(tool: &str) -> Option<&'static str> {
     let name = tool.rsplit('/').next().unwrap_or(tool);
     Some(match name {
-        "metal" | "metallib" | "metal-ar" => "Apple's Metal shader compiler",
+        "metal-ar" => "Apple's Metal archive tool",
         "osacompile" => "the AppleScript compiler",
         "Rez" | "ResMerger" => "the Carbon resource compiler",
         "mig" => "the Mach interface generator",
@@ -2454,6 +2463,16 @@ fn macos_only_tool(tool: &str) -> Option<&'static str> {
 /// The way past a build whose `task` needs `tool`, which isn't here.
 fn spawn_blocker(tool: &str, task: Option<&str>) -> String {
     let task = task.map_or_else(|| "a build task".to_string(), |t| format!("'{t}'"));
+    if cfg!(target_os = "linux")
+        && matches!(
+            Path::new(tool).file_name().and_then(|n| n.to_str()),
+            Some("metal" | "metallib")
+        )
+    {
+        return format!(
+            "{task} needs '{tool}'. To use the experimental Linux shader compiler, install Python 3, clang-14 and llvm-14 and set SWEETPAD_NATIVE_METAL=1"
+        );
+    }
     match macos_only_tool(tool) {
         Some(what) if !cfg!(target_os = "macos") => format!(
             "{task} needs '{tool}', {what}, which has no Linux version; build this target on a Mac"
@@ -2819,6 +2838,9 @@ mod tests {
             blocker.starts_with("'Compile Shaders.metal' needs 'metal'"),
             "{blocker}"
         );
+        if cfg!(target_os = "linux") {
+            assert!(blocker.contains("SWEETPAD_NATIVE_METAL=1"), "{blocker}");
+        }
         assert_eq!(
             unspawned_tool("unable to spawn process 'x' (Permission denied)"),
             None

@@ -47,6 +47,7 @@ pub mod keyed_archive;
 pub(crate) mod linux_setup;
 pub mod mapc;
 pub mod merge;
+pub mod metal;
 pub mod momc;
 pub mod net;
 pub mod oslog;

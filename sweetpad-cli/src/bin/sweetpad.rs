@@ -36,6 +36,9 @@ fn main() -> ExitCode {
     // debug adapter setting takes a binary but no arguments (Zed's Swift
     // adapter) starts the adapter through that name.
     let name = std::path::Path::new(&program).file_name();
+    if let Some(tool @ ("metal" | "metallib")) = name.and_then(|s| s.to_str()) {
+        return sweetpad_cli::cli::metal::main(tool, &args);
+    }
     if name == Some(std::ffi::OsStr::new("sweetpad-dap")) {
         args.insert(0, "dap".to_string());
     }

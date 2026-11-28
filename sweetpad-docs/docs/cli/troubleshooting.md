@@ -218,7 +218,7 @@ These failures have a known cause:
 | `Could not determine path to developer directory` | sweetpad couldn't find the pinned Swift. Run `sweetpad setup`, then `sweetpad doctor --target ios`. |
 | `swbuild was killed by SIGKILL` | The kernel's out-of-memory killer sends SIGKILL, and `journalctl -k` says if it did. If so, give the VM or container more memory. |
 | `'-allowProvisioningUpdates' is an xcodebuild flag` | After `--`, Swift Build takes only build settings (`KEY=VALUE`), `-derivedDataPath`, `-xcconfig`, `-testPlan`, `-verbose` and `-quiet`. Remove the flag from the command or from `[xcodebuild].args` in `sweetpad.toml`. |
-| `needs 'metal', Apple's Metal shader compiler, which has no Linux version` | Build that target on a Mac. [Projects and resources](linux/reference.md#projects-and-resources) lists the inputs that need macOS tools. |
+| `needs 'metal'` | Install Python 3, `clang-14` and `llvm-14` and set `SWEETPAD_NATIVE_METAL=1` to try the experimental Linux shader compiler. Shaders outside its supported subset still require Xcode. [Projects and resources](linux/reference.md#projects-and-resources) |
 | `needs 'mytool', which Swift Build couldn't find` | A run script or build rule calls a tool this machine lacks. Install it on the search path. [Run scripts and scheme actions](linux/reference.md#run-scripts-and-scheme-actions) lists the macOS tools the build supplies. |
 | `'…/Core.swift' is '…/core.swift' on disk` | Linux file names are case-sensitive. Rename the file or the project's reference so they match. |
 

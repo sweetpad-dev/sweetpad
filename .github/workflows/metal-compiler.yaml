@@ -1,0 +1,75 @@
+name: Native Metal compiler
+
+on:
+  pull_request:
+    paths: &paths
+      - 'sweetpad-cli/src/cli/metal/**'
+      - 'sweetpad-cli/src/bin/sweetpad.rs'
+      - 'sweetpad-cli/src/cli/swbuild.rs'
+      - 'sweetpad-cli/fixtures/metal/**'
+      - '.github/workflows/metal-compiler.yaml'
+  push:
+    branches: [main]
+    paths: *paths
+  workflow_dispatch:
+    inputs:
+      hardware:
+        description: Compare with Xcode and execute on the configured Apple GPU runner
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  KHRONOS_REV: 78b75e2d99ccf038fd525ba1effad3ebe7b6aeb4
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y clang-14 llvm-14
+      - name: Build the multicall CLI
+        run: |
+          cargo build --locked -p sweetpad-cli --bin sweetpad
+          mkdir -p "$RUNNER_TEMP/tools"
+          for name in metal metallib; do ln -s "$PWD/target/debug/sweetpad" "$RUNNER_TEMP/tools/$name"; done
+      - name: Exercise the packaged driver
+        run: SWEETPAD_METAL_TOOLS="$RUNNER_TEMP/tools" python3 sweetpad-cli/fixtures/metal/test_driver.py
+      - name: Build the pinned shaders in all language modes
+        run: |
+          curl --fail --location --retry 3 "https://codeload.github.com/KhronosGroup/SPIRV-Cross/tar.gz/$KHRONOS_REV" -o "$RUNNER_TEMP/corpus.tar.gz"
+          python3 sweetpad-cli/fixtures/metal/verify.py build --compiler linux --tools "$RUNNER_TEMP/tools" --corpus "$RUNNER_TEMP/corpus.tar.gz" --output "$RUNNER_TEMP/linux"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-metal
+          path: |
+            ${{ runner.temp }}/linux/results.json
+            ${{ runner.temp }}/linux/khronos/*.metallib
+            ${{ runner.temp }}/linux/stages/*.metallib
+          if-no-files-found: error
+
+  apple-gpu:
+    needs: linux
+    if: github.event_name == 'workflow_dispatch' && inputs.hardware
+    runs-on: [self-hosted, macOS, ARM64, metal-gpu]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux-metal
+          path: ${{ runner.temp }}/linux
+      - name: Build the Xcode controls
+        run: |
+          curl --fail --location --retry 3 "https://codeload.github.com/KhronosGroup/SPIRV-Cross/tar.gz/$KHRONOS_REV" -o "$RUNNER_TEMP/corpus.tar.gz"
+          python3 sweetpad-cli/fixtures/metal/verify.py build --compiler xcode --corpus "$RUNNER_TEMP/corpus.tar.gz" --output "$RUNNER_TEMP/xcode"
+      - name: Execute both sets of libraries on the GPU
+        run: python3 sweetpad-cli/fixtures/metal/verify.py compare --linux "$RUNNER_TEMP/linux" --xcode "$RUNNER_TEMP/xcode" --output "$RUNNER_TEMP/metal-report"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: metal-comparison
+          path: ${{ runner.temp }}/metal-report/comparison.json
+          if-no-files-found: warn
