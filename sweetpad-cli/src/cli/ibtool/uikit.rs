@@ -28,6 +28,7 @@ mod lists;
 mod more_views;
 mod navigation;
 mod prototype;
+pub(super) use prototype::prepare as prepare_cell;
 mod traits;
 
 /// Encodes one nib's objects, from the document they're in.
@@ -82,7 +83,7 @@ fn no(element: &Element, attribute: &str) -> bool {
     element.attr(attribute) == Some("NO")
 }
 
-fn number(element: &Element, attribute: &str) -> Result<Option<f64>, String> {
+pub(super) fn number(element: &Element, attribute: &str) -> Result<Option<f64>, String> {
     element
         .attr(attribute)
         .map(|text| {
@@ -664,7 +665,7 @@ impl<'a> Encoder<'a> {
             "button" => self.button(element, object)?,
             "textField" => self.text_field(element, object)?,
             "switch" => self.switch(element, object, [x, y, width, height])?,
-            "scrollView" => self.scroll_view(element, object),
+            "scrollView" => self.scroll_view(element, object)?,
             "stackView" => self.stack_view(element, object, &children)?,
             "tableViewCell" => self.table_cell(element, object)?,
             "navigationBar" => self.navigation_bar(element, object),

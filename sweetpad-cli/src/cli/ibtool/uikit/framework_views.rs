@@ -1,5 +1,5 @@
 use super::controls::enumeration;
-use super::{Element, Encoder, Id, Value, no, number};
+use super::{Element, Encoder, Id, Value, keyed, no, number, yes};
 
 impl Encoder<'_> {
     pub(super) fn framework_view(&mut self, element: &Element, object: Id) -> Result<(), String> {
@@ -69,13 +69,18 @@ impl Encoder<'_> {
         let store = self.graph.object("WKWebsiteDataStore");
         self.graph.set(store, "isDefaultDataStore", true);
         self.graph.set(configuration, "websiteDataStore", store);
+        let media_key = "mediaTypesRequiringUserActionForPlayback";
+        self.graph.set(
+            configuration,
+            media_key,
+            requires_playback_action(source, media_key),
+        );
         for (attribute, default) in [
             ("suppressesIncrementalRendering", false),
             ("allowsAirPlayForMediaPlayback", true),
             ("drawsBackground", true),
             ("allowsInlineMediaPlayback", false),
             ("allowsInlineMediaPlaybackAfterFullscreen", false),
-            ("mediaTypesRequiringUserActionForPlayback", true),
             ("allowsPictureInPictureMediaPlayback", true),
             ("ignoresViewportScaleLimits", false),
             ("textInteractionGesturesEnabled", true),
@@ -182,4 +187,16 @@ impl Encoder<'_> {
         }
         Ok(())
     }
+}
+
+fn requires_playback_action(source: &Element, key: &str) -> bool {
+    // WKWebViewConfiguration's nib field is a boolean, including for video-only playback.
+    keyed(source, "audiovisualMediaTypes", key).map_or_else(
+        || source.attr(key).is_none_or(|value| value == "YES"),
+        |options| {
+            ["audio", "video", "all"]
+                .iter()
+                .any(|name| yes(options, name))
+        },
+    )
 }

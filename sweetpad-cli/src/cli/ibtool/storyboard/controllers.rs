@@ -821,6 +821,15 @@ fn controller_metadata(
     nav_items: &HashMap<String, Id>,
 ) -> Result<(), String> {
     let controller_id = id(controller)?;
+    if let Some(size) = controller.children_named("value").find(|e| {
+        e.attr("key") == Some("contentSizeForViewInPopover") && e.attr("type") == Some("size")
+    }) {
+        let value = crate::cli::ibtool::nib::doubles(&[
+            crate::cli::ibtool::uikit::number(size, "width")?.unwrap_or(0.0),
+            crate::cli::ibtool::uikit::number(size, "height")?.unwrap_or(0.0),
+        ]);
+        encoder.graph.set(object, "UIPreferredContentSize", value);
+    }
     let templates: Vec<Id> = segues(controller)
         .iter()
         .filter_map(|s| encoder.lookup(s.attr("id")?))

@@ -76,7 +76,7 @@ impl Encoder<'_> {
             self.graph.set(object, "UISymbolWeight", value);
         }
         if let Some(size) = number(element, "pointSize")? {
-            self.graph.set(object, "UISymbolPointSize", size);
+            self.graph.set(object, "UIPointSize", single(size));
         }
         Ok(self.graph.intern(object))
     }

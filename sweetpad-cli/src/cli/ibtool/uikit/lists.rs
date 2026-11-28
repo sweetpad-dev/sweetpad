@@ -4,7 +4,8 @@ use super::{Element, Encoder, Id, Options, Value, doubles, id_of, keyed, no, num
 
 impl Encoder<'_> {
     pub(super) fn table_view(&mut self, element: &Element, object: Id) -> Result<(), String> {
-        self.scroll_view(element, object);
+        self.scroll_view(element, object)?;
+        self.table_separators(element, object)?;
         let style = match element.attr("style") {
             None | Some("plain") => 0_i64,
             Some("grouped") => 1,
@@ -103,8 +104,29 @@ impl Encoder<'_> {
         Ok(())
     }
 
+    fn table_separators(&mut self, element: &Element, object: Id) -> Result<(), String> {
+        self.archive_inset(element, "separatorInset", object, "UISeparatorInset")?;
+        for (key, archive) in [
+            ("separatorColor", "UISeparatorColor"),
+            (
+                "sectionIndexBackgroundColor",
+                "UISectionIndexBackgroundColor",
+            ),
+            (
+                "sectionIndexTrackingBackgroundColor",
+                "UISectionIndexTrackingBackgroundColor",
+            ),
+        ] {
+            if let Some(color) = keyed(element, "color", key) {
+                let value = self.color(color)?;
+                self.graph.set(object, archive, value);
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn collection_view(&mut self, element: &Element, object: Id) -> Result<(), String> {
-        self.scroll_view(element, object);
+        self.scroll_view(element, object)?;
         self.graph.set(object, "UIDelegate", Value::Nil);
         let layout = keyed(element, "collectionViewFlowLayout", "collectionViewLayout")
             .or_else(|| keyed(element, "collectionViewLayout", "collectionViewLayout"))

@@ -13,6 +13,7 @@ fn compile_xib(body: &str) -> Result<Vec<read::Object>, String> {
             module: "Maps",
             localized: false,
         },
+        None,
     )
     .map(|bytes| read::parse(&bytes))
 }
@@ -54,6 +55,55 @@ fn dictionary(objects: &[read::Object], id: usize) -> BTreeMap<String, usize> {
     refs.chunks_exact(2)
         .map(|pair| (string(&objects[pair[0]]).to_owned(), pair[1]))
         .collect()
+}
+
+#[test]
+fn webkit_playback_options_use_xcodes_boolean_archive_field() {
+    for (attributes, expected) in [
+        ("", false),
+        (r#"none="YES""#, false),
+        (r#"audio="YES""#, true),
+        (r#"video="YES""#, true),
+        (r#"audio="YES" video="YES""#, true),
+        (r#"all="YES""#, true),
+    ] {
+        let body = format!(
+            r#"<wkWebView id="web"><wkWebViewConfiguration key="configuration">
+            <audiovisualMediaTypes key="mediaTypesRequiringUserActionForPlayback" {attributes}/>
+            </wkWebViewConfiguration></wkWebView>"#
+        );
+        let objects = compile_xib(&body).unwrap();
+        assert_eq!(
+            value(
+                class(&objects, "WKWebViewConfiguration"),
+                "mediaTypesRequiringUserActionForPlayback"
+            ),
+            &Read::Bool(expected),
+            "{attributes}"
+        );
+    }
+}
+
+#[test]
+fn standalone_collection_cell_installs_its_safe_area_constraint_on_content_view() {
+    let source = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/fixtures/ibtool/runtime/comaps/CoMapsCells.xib"
+    ));
+    for source in [
+        source.to_string(),
+        source.replace(r#" id="map-item-content""#, ""),
+    ] {
+        let document = sweetpad_lib::xcscheme::parse(&source).unwrap();
+        let objects = read::parse(&xib::compile(&document, &Options::default(), Some(15)).unwrap());
+        let cell = class(&objects, "UICollectionViewCell");
+        let content = reference(cell, "UIContentView");
+        let constraint = objects.iter().find(|o| o.values.iter().any(|(key, value)| {
+            matches!(value, Read::Object(i) if key == "NSLayoutIdentifier" && string(&objects[*i]) == "item-safe-width")
+        })).unwrap();
+        let guide = &objects[reference(constraint, "NSFirstItem")];
+        assert_eq!(reference(guide, "UILayoutGuideOwningView"), content);
+    }
 }
 
 #[test]

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.XIB" version="3.0" toolsVersion="21701" targetRuntime="iOS.CocoaTouch" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES">
+    <device id="retina6_1" orientation="portrait" appearance="light" />
+    <dependencies>
+        <deployment identifier="iOS" />
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="21679" />
+        <capability name="Safe area layout guides" minToolsVersion="9.0" />
+    </dependencies>
+    <objects>
+        <placeholder placeholderIdentifier="IBFilesOwner" id="-1" userLabel="File's Owner" />
+        <placeholder placeholderIdentifier="IBFirstResponder" id="-2" customClass="UIResponder" />
+        <tableViewCell tag="301" id="map-cell" reuseIdentifier="MapCell" rowHeight="100" indentationWidth="10">
+            <rect key="frame" x="0" y="0" width="320" height="100" />
+            <tableViewCellContentView key="contentView" tableViewCell="map-cell" id="map-content">
+                <rect key="frame" x="0" y="0" width="320" height="100" />
+                <subviews>
+                    <datePicker tag="302" id="map-picker" datePickerMode="time" style="wheels">
+                        <rect key="frame" x="0" y="0" width="128" height="90" />
+                        <locale key="locale" localeIdentifier="ru" />
+                    </datePicker>
+                </subviews>
+                <color key="backgroundColor" red="0" green="1" blue="0" alpha="1" colorSpace="custom" customColorSpace="sRGB" />
+                <color key="tintColor" red="0" green="0" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB" />
+            </tableViewCellContentView>
+            <viewLayoutGuide key="safeArea" id="map-cell-safe" />
+            <constraints>
+                <constraint firstItem="map-cell-safe" firstAttribute="width" relation="greaterThanOrEqual" constant="1" identifier="cell-safe-width" id="cell-safe-width" />
+            </constraints>
+            <color key="tintColor" red="1" green="0" blue="0" alpha="1" colorSpace="custom" customColorSpace="sRGB" />
+        </tableViewCell>
+        <collectionViewCell tag="303" id="map-collection-cell" reuseIdentifier="MapItem">
+            <rect key="frame" x="0" y="0" width="64" height="48" />
+            <view key="contentView" id="map-item-content">
+                <rect key="frame" x="0" y="0" width="64" height="48" />
+            </view>
+            <viewLayoutGuide key="safeArea" id="map-item-safe" />
+            <constraints>
+                <constraint firstItem="map-item-safe" firstAttribute="width" relation="greaterThanOrEqual" constant="1" identifier="item-safe-width" id="item-safe-width" />
+            </constraints>
+            <point key="canvasLocation" x="31" y="72" />
+        </collectionViewCell>
+    </objects>
+</document>

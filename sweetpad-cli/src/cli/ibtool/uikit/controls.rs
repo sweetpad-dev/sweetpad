@@ -113,13 +113,7 @@ impl Encoder<'_> {
             "UIIndentationWidth",
             single(number(element, "indentationWidth")?.unwrap_or(10.0)),
         );
-        if let Some(inset) = keyed(element, "inset", "separatorInset") {
-            let mut values = Vec::new();
-            for key in ["minY", "minX", "maxY", "maxX"] {
-                values.push(number(inset, key)?.unwrap_or(0.0));
-            }
-            self.graph.set(object, "UISeparatorInset", doubles(&values));
-        }
+        self.archive_inset(element, "separatorInset", object, "UISeparatorInset")?;
         self.table_background(element, object, selection)?;
         self.graph
             .set(object, "UIContentConfigurationView", Value::Nil);
@@ -253,12 +247,7 @@ impl Encoder<'_> {
             ("titleEdgeInsets", "UITitleEdgeInsets"),
             ("contentEdgeInsets", "UIContentEdgeInsets"),
         ] {
-            if let Some(inset) = keyed(element, "inset", key) {
-                let values = ["minY", "minX", "maxY", "maxX"]
-                    .map(|key| number(inset, key).map(|v| v.unwrap_or(0.0)));
-                let values = values.into_iter().collect::<Result<Vec<_>, _>>()?;
-                self.graph.set(object, archive, doubles(&values));
-            }
+            self.archive_inset(element, key, object, archive)?;
         }
         if let Some(configuration) = element.child("buttonConfiguration") {
             let configuration = self.button_configuration(configuration, element)?;
@@ -329,14 +318,20 @@ impl Encoder<'_> {
                 ("image", "UIImage"),
                 ("backgroundImage", "UIBackgroundImage"),
             ] {
-                if let Some(name) = state.attr(key) {
-                    let image = self.image(
-                        name,
-                        state.attr("catalog"),
-                        state.child("preferredSymbolConfiguration"),
-                    )?;
+                let reference = keyed(state, "imageReference", key);
+                let source = reference.unwrap_or(state);
+                if let Some(name) = reference
+                    .and_then(|r| r.attr("image"))
+                    .or_else(|| state.attr(key))
+                {
+                    let image = self.image(name, source.attr("catalog"), reference)?;
                     self.graph.set(content, archive, image);
                 }
+            }
+            if let Some(preferred) = state.child("preferredSymbolConfiguration") {
+                let configuration = self.symbol_configuration(preferred)?;
+                self.graph
+                    .set(content, "UIImageSymbolConfiguration", configuration);
             }
             states.push((key, content));
         }
@@ -566,7 +561,30 @@ impl Encoder<'_> {
         Ok(())
     }
 
-    pub(super) fn scroll_view(&mut self, element: &Element, object: Id) {
+    pub(super) fn archive_inset(
+        &mut self,
+        element: &Element,
+        key: &str,
+        object: Id,
+        archive: &str,
+    ) -> Result<(), String> {
+        if let Some(inset) = keyed(element, "inset", key) {
+            let mut coordinates = [0.0; 4];
+            for (coordinate, name) in coordinates.iter_mut().zip(["minY", "minX", "maxY", "maxX"]) {
+                *coordinate = number(inset, name)?.unwrap_or(0.0);
+            }
+            self.graph.set(object, archive, doubles(&coordinates));
+        }
+        Ok(())
+    }
+
+    pub(super) fn scroll_view(&mut self, element: &Element, object: Id) -> Result<(), String> {
+        self.archive_inset(
+            element,
+            "scrollIndicatorInsets",
+            object,
+            "UIScrollIndicatorInsets",
+        )?;
         self.graph.set(
             object,
             "UIScrollViewIndicatorInsetAdjustmentBehavior",
@@ -617,6 +635,7 @@ impl Encoder<'_> {
                 );
             }
         }
+        Ok(())
     }
 
     pub(super) fn stack_view(
@@ -678,9 +697,7 @@ impl Encoder<'_> {
         self.graph.set(
             object,
             "UIStackViewLayoutMarginsRelative",
-            (yes(element, "layoutMarginsRelativeArrangement")
-                || yes(element, "layoutMarginsRelative"))
-                && keyed(element, "edgeInsets", "layoutMargins").is_some()
+            keyed(element, "edgeInsets", "layoutMargins").is_some()
                 || keyed(element, "directionalEdgeInsets", "directionalLayoutMargins").is_some(),
         );
         Ok(())
